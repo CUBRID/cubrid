@@ -98,6 +98,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -184,6 +185,8 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
+  ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
   )
@@ -343,35 +346,41 @@ set(OBJECT_HEADERS
 )
 
 set(SP_SOURCES
-  ${SP_DIR}/jsp_cl.c
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
-  ${SP_DIR}/jsp_sr.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_connection.cpp
+  ${SP_DIR}/pl_compile_handler.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
+  ${SP_DIR}/pl_executor.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_file.c
+  ${SP_DIR}/pl_sr.cpp
+  ${SP_DIR}/pl_sr_jvm.cpp
+  ${SP_DIR}/sp_catalog.cpp
+  ${SP_DIR}/sp_code.cpp
   )
+
+set(SP_HEADERS
+  ${SP_DIR}/pl_connection.hpp
+  ${SP_DIR}/pl_execution_stack_context.hpp
+  ${SP_DIR}/pl_signature.hpp
+  ${SP_DIR}/pl_struct_compile.cpp
+)
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_connection_sr.cpp
-  ${METHOD_DIR}/method_connection_java.cpp
-  ${METHOD_DIR}/method_connection_pool.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
-  ${METHOD_DIR}/method_compile.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
-  ${METHOD_DIR}/method_invoke_java.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_query_handler.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/query_method.cpp
   )
@@ -634,6 +643,7 @@ add_library(cubridsa SHARED
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${SP_SOURCES}
+  ${SP_HEADERS}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}

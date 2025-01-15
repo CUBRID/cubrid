@@ -77,7 +77,8 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
-#include "method_runtime_context.hpp"
+#include "pl_session.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2761,6 +2762,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      cubpl::session * session = cubpl::get_session ();
+	      if (session)
+		{
+		  session->set_interrupt (ER_INTERRUPTED);
+		}
 	    }
 
 	  return true;
@@ -2834,10 +2841,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-      if (rctx)
+      cubpl::session * session = cubpl::get_session ();
+      if (session)
 	{
-	  rctx->set_interrupt (ER_INTERRUPTED);
+	  session->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -6073,7 +6080,21 @@ log_tdes::lock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_lock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_lock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6083,7 +6104,21 @@ log_tdes::unlock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_unlock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_unlock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }

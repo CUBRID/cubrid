@@ -32,6 +32,7 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
@@ -51,26 +52,14 @@ public class OidValue extends Value {
 
     public OidValue(SOID oid) {
         oidValue = oid;
+        this.dbType = DBType.DB_OID;
     }
 
     public OidValue(CUBRIDOID oid) {
         byte[] bOid = oid.getOID();
         oidValue = new SOID(bOid);
         this.oidObject = oid;
-    }
-
-    public OidValue(SOID oid, int mode, int dbType) {
-        super(mode);
-        this.oidValue = oid;
-        this.dbType = dbType;
-    }
-
-    public OidValue(CUBRIDOID oid, int mode, int dbType) {
-        super(mode);
-        this.oidObject = oid;
-        byte[] bOid = oid.getOID();
-        oidValue = new SOID(bOid);
-        this.dbType = dbType;
+        this.dbType = DBType.DB_OID;
     }
 
     @Override

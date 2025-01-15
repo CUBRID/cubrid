@@ -484,6 +484,17 @@ extern "C"
     DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS = 'c',
     DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY = 'd',
     DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
+  } DB_INSTANCE_TYPE;
+
+  typedef enum
+  {
+    DB_OBJECT_UNKNOWN = -1,
+    DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
+    DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
+    DB_OBJECT_SERIAL = 2,	/* SERIAL (db_serial) */
+    DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
+    DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
+    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */
@@ -569,6 +580,10 @@ extern "C"
 
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -1
+
+/* This constant indecates that SP function's default NUMERIC domain */
+#define DB_NUMERIC_PRECISION_SP 38
+#define DB_NUMERIC_SCALE_SP 15
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION 15

@@ -15,15 +15,18 @@
 #   limitations under the License.
 # 
 
-set(WITH_FLEX_URL "https://github.com/westes/flex/files/981163/flex-2.6.4.tar.gz")                            # flex
-set(WITH_BISON_URL "https://ftp.gnu.org/gnu/bison/bison-3.4.1.tar.gz")                                        # bison
-set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")   # expat library sources URL
-set(WITH_LIBJANSSON_URL "https://github.com/akheron/jansson/releases/download/v2.10/jansson-2.10.tar.gz")                          # jansson library sources URL
+set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
+set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
+set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.2.5.tar.bz2")             # expat library sources URL
+set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")                          # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")                     # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL "https://ftp.osuosl.org/pub/blfs/conglomeration/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
-set(WITH_LIBTBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz")               # intel oneTBB library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1f.tar.gz")       # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
+set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
+set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
+set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
+set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -47,6 +50,9 @@ set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d
 set(WITH_LIBOPENSSL_URL_HASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")                     # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
+set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
+set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")
+set(WITH_LZ4_URL_HASH "SHA256=658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc")
 
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
@@ -66,6 +72,7 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
+set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
@@ -75,6 +82,7 @@ message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
+message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
@@ -114,10 +122,8 @@ endif(WIN32)
 if(WITH_LIBFLEXBISON STREQUAL "EXTERNAL")
   if(WIN32)
     # bison and flex for Windows
-    set(WIN_FLEX_BISON_VERSION "2.5.22")
-    set(WIN_FLEX_BISON_URL "https://github.com/lexxmark/winflexbison/releases/download/v${WIN_FLEX_BISON_VERSION}/win_flex_bison-${WIN_FLEX_BISON_VERSION}.zip")
     set(WIN_FLEX_BISON_FILENAME "${WINDOWS_EXTERNAL_DIR}/Download/win_flex_bison.zip")
-    file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME})
+    file(DOWNLOAD ${WIN_FLEX_BISON_URL} ${WIN_FLEX_BISON_FILENAME} INACTIVITY_TIMEOUT 600)
 
     set(WIN_FLEX_BISON_INSTALL_DIR "${WINDOWS_EXTERNAL_DIR}/Install/win_flex_bison")
     file(MAKE_DIRECTORY ${WIN_FLEX_BISON_INSTALL_DIR})
@@ -326,11 +332,14 @@ else()
   set(LZ4_LIBS ${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a)
   ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
-    GIT_REPOSITORY        https://github.com/lz4/lz4
-    GIT_TAG fdf2ef5                           # https://github.com/lz4/lz4/releases/tag/v1.9.2
+    URL                  ${WITH_LZ4_URL}
+    URL_HASH             ${WITH_LZ4_URL_HASH}
+    TIMEOUT              600
+    LOG_BUILD            TRUE
+    DOWNLOAD_NO_PROGRESS 1
     CONFIGURE_COMMAND     ""                  # no configure
     BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    BUILD_COMMAND         make CFLAGS="-fPIC" # to allow static linking in shared library
+    BUILD_COMMAND         make CFLAGS=-fPIC   # to allow static linking in shared library
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -457,11 +466,14 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
     set(RE2_LIBS ${3RDPARTY_LIBS_DIR}/Source/re2/obj/libre2.a)
     ADD_BY_PRODUCTS_VARIABLE ("RE2" ${RE2_LIBS})
     externalproject_add(${RE2_TARGET}
-      GIT_REPOSITORY https://github.com/google/re2
-      GIT_TAG 5723bb8             # https://github.com/google/re2/releases/tag/2022-06-01
+      URL                  ${WITH_RE2_URL}
+      URL_HASH             ${WITH_RE2_URL_HASH}
+      TIMEOUT              600
+      LOG_BUILD            TRUE
+      DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      BUILD_COMMAND make CFLAGS="-fPIC" CXXFLAGS="-fPIC" # to allow static linking in shared library
+      BUILD_COMMAND make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )

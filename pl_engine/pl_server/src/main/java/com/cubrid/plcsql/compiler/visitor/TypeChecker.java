@@ -83,13 +83,13 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpec(TypeSpec node) {
-        return null; // nothing to do
+        return node.type;
     }
 
     @Override
     public Type visitTypeSpecPercent(TypeSpecPercent node) {
         assert node.type != null;
-        return null;
+        return node.type;
     }
 
     @Override
@@ -134,7 +134,19 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitDeclParamIn(DeclParamIn node) {
-        visitDeclParam(node);
+        Type paramTy = visitDeclParam(node);
+        if (node.hasDefault()) {
+            Type defaultValTy = visit(node.defaultVal);
+            Coercion c = Coercion.getCoercion(iStore, defaultValTy, paramTy);
+            if (c == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.defaultVal.ctx), // s239
+                        "type of the default value is not compatible with the parameter type");
+            } else {
+                node.defaultVal.setCoercion(c);
+            }
+        }
+
         return null;
     }
 
@@ -895,27 +907,31 @@ public class TypeChecker extends AstVisitor<Type> {
         return null;
     }
 
+    private void checkCursorArgs(ExprId cursor, NodeList<Expr> args) {
+
+        DeclCursor declCursor = (DeclCursor) cursor.decl;
+        int len = args.nodes.size();
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.nodes.get(i);
+            Type argType = visit(arg);
+            Type paramType = declCursor.paramList.nodes.get(i).typeSpec().type;
+            assert paramType != null;
+            Coercion c = Coercion.getCoercion(iStore, argType, paramType);
+            if (c == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(arg.ctx), // s219
+                        String.format("argument %d to the cursor has an incompatible type", i + 1));
+            } else {
+                arg.setCoercion(c);
+            }
+        }
+    }
+
     @Override
     public Type visitStmtCursorOpen(StmtCursorOpen node) {
         Type idType = visit(node.cursor);
         if (idType == Type.CURSOR) {
-            DeclCursor declCursor = (DeclCursor) node.cursor.decl;
-            int len = node.args.nodes.size();
-            for (int i = 0; i < len; i++) {
-                Expr arg = node.args.nodes.get(i);
-                Type argType = visit(arg);
-                Type paramType = declCursor.paramList.nodes.get(i).typeSpec().type;
-                assert paramType != null;
-                Coercion c = Coercion.getCoercion(iStore, argType, paramType);
-                if (c == null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(arg.ctx), // s219
-                            String.format(
-                                    "argument %d to the cursor has an incompatible type", i + 1));
-                } else {
-                    arg.setCoercion(c);
-                }
-            }
+            checkCursorArgs(node.cursor, node.args); // s219
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
@@ -1019,8 +1035,17 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtForCursorLoop(StmtForCursorLoop node) {
-        visitStmtCursorOpen(node); // StmtForCursorLoop extends StmtCursorOpen
+
+        Type idType = visit(node.cursor);
+        if (idType == Type.CURSOR) {
+            checkCursorArgs(node.cursor, node.cursorArgs); // s240
+        } else {
+            assert false : "unreachable"; // by earlier check
+            throw new RuntimeException("unreachable");
+        }
+
         visitNodeList(node.stmts);
+
         return null;
     }
 
@@ -1232,8 +1257,8 @@ public class TypeChecker extends AstVisitor<Type> {
         }
     }
 
-    private void visitDeclParam(DeclParam node) {
-        visit(node.typeSpec);
+    private Type visitDeclParam(DeclParam node) {
+        return visit(node.typeSpec);
     }
 
     private Type visitDeclRoutine(DeclRoutine node) {

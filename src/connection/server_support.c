@@ -66,7 +66,7 @@
 #include "log_manager.h"
 #include "network.h"
 #include "object_representation.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -321,7 +321,7 @@ css_setup_server_loop (void)
 #endif /* not WINDOWS */
 
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  if (!jsp_jvm_is_loaded ())
+  if (!pl_jvm_is_loaded ())
     {
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
     }
@@ -776,6 +776,7 @@ css_process_get_eof_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
   LOG_LSA *eof_lsa;
+  static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
   THREAD_ENTRY *thread_p;
@@ -791,6 +792,16 @@ css_process_get_eof_request (SOCKET master_fd)
   (void) or_pack_log_lsa (reply, eof_lsa);
 
   LOG_CS_EXIT (thread_p);
+
+  if (LSA_EQ (&prev_eof_lsa, eof_lsa))
+    {
+      er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+		    LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
+    }
+  else
+    {
+      LSA_COPY (&prev_eof_lsa, eof_lsa);
+    }
 
   css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -2769,6 +2780,8 @@ css_server_task::execute (context_type &thread_ref)
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
+
+  (void) session_notify_pl_task_completion (session_p);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;

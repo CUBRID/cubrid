@@ -151,6 +151,9 @@ CSS_THREAD_FN css_Request_handler = NULL;
 /* This will handle closed connection errors */
 CSS_THREAD_FN css_Connection_error_handler = NULL;
 
+static char css_Server_exec_path[PATH_MAX];
+static char **css_Server_argv;
+
 #define CSS_CONN_IDX(conn_arg) ((conn_arg) - css_Conn_array)
 
 #define CSS_FREE_CONN_MSG "Free count = %d, head = %d"
@@ -1074,6 +1077,32 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 }
 
 /*
+ * css_set_proc_register() - make a server proc register.
+ *   return:
+ *   server_name(in):
+ *   server_name_lenth(in):
+ *   proc_register(out):
+ */
+static void
+css_set_proc_register (const char *server_name, int server_name_length, CSS_SERVER_PROC_REGISTER * proc_register)
+{
+  char *p, *last;
+  char **argv;
+
+  memcpy (proc_register->server_name, server_name, server_name_length);
+  proc_register->server_name_length = server_name_length;
+  proc_register->pid = getpid ();
+  strncpy_bufsize (proc_register->exec_path, css_Server_exec_path);
+
+  p = (char *) proc_register->args;
+  last = p + proc_register->CSS_SERVER_MAX_SZ_PROC_ARGS;
+  for (argv = css_Server_argv; *argv; argv++)
+    {
+      p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
+    }
+}
+
+/*
  * css_connect_to_master_server() - Connect to the master from the server.
  *   return: connection entry if success, or NULL
  *   master_port_id(in):
@@ -1093,6 +1122,9 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   std::string pname;
   int datagram_fd, socket_fd;
 #endif
+  const char *data;
+  int data_length;
+  CSS_SERVER_PROC_REGISTER proc_register = CSS_SERVER_PROC_REGISTER_INITIALIZER;
 
   css_Service_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
@@ -1108,18 +1140,27 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     }
 
   /* select the connection protocol */
+
+  //  TODO : When supporting the Windows environment, It will be modified to send the same data
+  //  (proc_register) for the Windows protocol (SERVER_REQUEST_NEW) as well.
+
   if (css_Server_use_new_connection_protocol)
     {
       // Windows
       connection_protocol = SERVER_REQUEST_NEW;
+      data = server_name;
+      data_length = name_length;
     }
   else
     {
       // Linux and Unix
-      connection_protocol = SERVER_REQUEST;
+      connection_protocol = SERVER_REQUEST_FROM_SERVER;
+      css_set_proc_register (server_name, name_length, &proc_register);
+      data = (const char *) &proc_register;
+      data_length = sizeof (proc_register);
     }
 
-  if (css_common_connect (conn, &rid, hname, connection_protocol, server_name, name_length, master_port_id) == NULL)
+  if (css_common_connect (conn, &rid, hname, connection_protocol, data, data_length, master_port_id) == NULL)
     {
       goto fail_end;
     }
@@ -3121,4 +3162,30 @@ css_free_user_access_status (void)
   csect_exit (NULL, CSECT_ACCESS_STATUS);
 
   return;
+}
+
+/*
+ * css_set_exec_path () -
+ *   return: none
+ *
+ *   exec_path(in):
+ */
+void
+css_set_exec_path (char *exec_path)
+{
+  assert (exec_path != NULL);
+  strncpy (css_Server_exec_path, exec_path, sizeof (css_Server_exec_path) - 1);
+}
+
+/*
+ * css_set_argv () -
+ *   return: none
+ *
+ *   argv(in):
+ */
+void
+css_set_argv (char **argv)
+{
+  assert (argv != NULL);
+  css_Server_argv = argv;
 }

@@ -713,7 +713,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, false));
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
     }
@@ -850,10 +850,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        int argSize = node.args.nodes.size();
-        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        int paramSize = node.decl.paramList.nodes.size();
+        String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
-                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+                getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         CodeTemplate tmpl =
@@ -876,7 +876,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, true));
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
     }
@@ -1383,9 +1383,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.cursor.javaCode());
         } else {
 
-            Object dupCursorArgs = getDupCursorArgs(node, decl.paramRefCounts);
+            Object dupCursorArgs = getDupCursorArgs(node.args, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor, node.args, decl.paramNumOfHostExpr, decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtCursorOpen",
@@ -1662,9 +1663,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     visitNodeList(node.stmts));
         } else {
 
-            Object dupCursorArgs = getDupCursorArgs(node, decl.paramRefCounts);
+            Object dupCursorArgs = getDupCursorArgs(node.cursorArgs, decl.paramRefCounts);
             CodeTemplateList hostExprs =
-                    getHostExprs(node, decl.paramNumOfHostExpr, decl.paramRefCounts);
+                    getHostExprs(
+                            node.cursor,
+                            node.cursorArgs,
+                            decl.paramNumOfHostExpr,
+                            decl.paramRefCounts);
 
             return new CodeTemplate(
                     "StmtForCursorLoop",
@@ -1934,7 +1939,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
                 code.updateOutArgs,
                 "%'+ARGUMENTS'%",
-                visitArguments(node.args, node.decl.paramList));
+                visitArguments(node.args, node.decl.paramList, false));
     }
 
     // -------------------------------------------------------------------------
@@ -1996,13 +2001,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        int argSize = node.args.nodes.size();
-        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        int paramSize = node.decl.paramList.nodes.size();
+        String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
         LocalCallCodeSnippets code =
-                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+                getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
-        return Misc.isEmpty(node.args)
+        return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
                         "StmtLocalProcCall", Misc.UNKNOWN_LINE_COLUMN, block + node.name + "();")
                 : new CodeTemplate(
@@ -2022,7 +2027,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+UPDATE-OUT-ARGS'%",
                         code.updateOutArgs,
                         "%'+ARGUMENTS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList, true));
     }
 
     @Override
@@ -2392,7 +2397,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplDupCursorArg =
             new String[] {"Object a%'INDEX'%_%'LEVEL'% =", "  %'+ARG'%;"};
 
-    private Object getDupCursorArgs(StmtCursorOpen node, int[] paramRefCounts) {
+    private Object getDupCursorArgs(NodeList<Expr> args, int[] paramRefCounts) {
 
         CodeTemplateList ret = new CodeTemplateList();
 
@@ -2401,7 +2406,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             if (paramRefCounts[i] > 1) {
 
-                Expr arg = node.args.nodes.get(i);
+                Expr arg = args.nodes.get(i);
                 ret.addElement(
                         new CodeTemplate(
                                 "duplicate cursor argument",
@@ -2418,12 +2423,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     public CodeTemplateList getHostExprs(
-            StmtCursorOpen node, int[] paramNumOfHostExpr, int[] paramRefCounts) {
+            ExprId cursor, NodeList<Expr> args, int[] paramNumOfHostExpr, int[] paramRefCounts) {
 
         int size = paramNumOfHostExpr.length;
         assert size > 0;
 
-        DeclCursor decl = (DeclCursor) node.cursor.decl;
+        DeclCursor decl = (DeclCursor) cursor.decl;
         ArrayList<Expr> hostExprs = new ArrayList<>(decl.staticSql.hostExprs.keySet());
         assert size == hostExprs.size();
 
@@ -2442,7 +2447,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     "a" + k + "_%'LEVEL'%"));
                 } else {
                     assert paramRefCounts[k] == 1;
-                    ret.addElement((CodeTemplate) visit(node.args.nodes.get(k)));
+                    ret.addElement((CodeTemplate) visit(args.nodes.get(k)));
                 }
             } else {
                 Expr e = hostExprs.get(i);
@@ -2458,11 +2463,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret.setDelimiter(",");
     }
 
-    private CodeTemplateList visitArguments(NodeList<Expr> args, NodeList<DeclParam> paramList) {
+    private CodeTemplateList visitArguments(
+            NodeList<Expr> args, NodeList<DeclParam> paramList, boolean local) {
 
         assert args != null;
         assert paramList != null;
-        assert args.nodes.size() == paramList.nodes.size();
+
+        int paramCnt = paramList.nodes.size();
+        int argsCnt = args.nodes.size();
+        assert argsCnt <= paramCnt;
 
         CodeTemplateList ret = new CodeTemplateList();
 
@@ -2484,6 +2493,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             ret.addElement(tmpl);
             i++;
+        }
+        if ((argsCnt < paramCnt) && local) {
+            while (i < paramCnt) {
+
+                DeclParam dp = paramList.nodes.get(i);
+                assert dp.hasDefault();
+                DeclParamIn dpi = (DeclParamIn) dp;
+                ret.addElement((CodeTemplate) visit(dpi.defaultVal));
+
+                i++;
+            }
         }
 
         return ret.setDelimiter(",");
