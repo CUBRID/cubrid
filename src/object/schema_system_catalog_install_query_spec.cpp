@@ -1277,6 +1277,8 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [sp].[data_type] = [t].[type_id]) "
 	    "END AS [data_type], "
 	  "CASE [sp].[mode] WHEN 1 THEN 'IN' WHEN 2 THEN 'OUT' ELSE 'INOUT' END AS [mode], "
+          "CASE [sp].[is_optional] WHEN 1 THEN 'YES' ELSE 'NO' END AS [is_optional], "
+          "[sp].[default_value] AS [default_value], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_ARGS_NAME */
