@@ -140,7 +140,7 @@ jobs:
     resource_class: medium
     environment:
       TEST_SUITE: << parameters.test_suite >>
-      GH_TOKEN: $GITHUB_TOKEN
+      GITHUB_TOKEN: $GHI_TOKEN
     steps:
       - run:
           name: Set TEST_SUITE environment
