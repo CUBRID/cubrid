@@ -3989,10 +3989,6 @@ xts_save_packable_object (const cubpacking::packable_object & po)
   packing_packer packer;
   cubmem::extensible_block eb;
   packer.set_buffer_and_pack_all (eb, po);
-  if (packer.has_error ())
-    {
-      return er_errid ();
-    }
 
   size = packer.get_current_size () + OR_INT_SIZE;
 
