@@ -22,6 +22,7 @@
 #include <queue>
 #include <functional>
 
+#include "error_manager.h"
 #include "thread_compat.hpp"
 #include "mem_block.hpp" /* cubmem::block */
 #include "packer.hpp" /* packing_packer */
