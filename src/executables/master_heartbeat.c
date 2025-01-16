@@ -1586,7 +1586,7 @@ hb_cluster_calc_score (void)
 	    {
 	      // Current master node is isolated. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
 	      hb_Is_master_node_isolated = true;
-	      snprintf (hb_Master_host_name, strlen (node->host_name), node->host_name);
+	      snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
 	    }
 
 	  node->heartbeat_gap = 0;
@@ -1866,7 +1866,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	      {
 		// Current master node has been demoted. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
 		is_state_changed = true;
-		snprintf (hb_Master_host_name, strlen (node->host_name), node->host_name);
+		snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
 	      }
 
 	    node->state = hb_state;
