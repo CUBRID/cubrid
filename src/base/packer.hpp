@@ -23,6 +23,8 @@
 #ifndef _PACKER_HPP_
 #define _PACKER_HPP_
 
+#include "porting.h"
+
 #include "dbtype_def.h"
 #include "mem_block.hpp"
 
@@ -48,7 +50,7 @@ namespace cubpacking
  */
 namespace cubpacking
 {
-  class packer
+  class EXPORT_IMPORT packer
   {
     public:
       packer ();
@@ -176,6 +178,8 @@ namespace cubpacking
       template <typename ExtBlk, typename ... Args>
       void append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
+      bool has_error (void) const;
+
     private:
       void pack_large_c_string (const char *string, const size_t str_size);
 
@@ -189,12 +193,13 @@ namespace cubpacking
       template <typename T>
       void pack_all_recursive (T &&t);
 
+      int m_error_code;
       const char *m_start_ptr; /* start of buffer */
       const char *m_end_ptr;     /* end of available serialization scope */
       char *m_ptr;
   };
 
-  class unpacker
+  class EXPORT_IMPORT unpacker
   {
     public:
       unpacker () = default;
@@ -272,6 +277,8 @@ namespace cubpacking
       template <typename ... Args>
       void unpack_all (Args &&... args);
 
+      bool has_error (void) const;
+
     private:
       void unpack_string_size (size_t &len);
 
@@ -280,6 +287,7 @@ namespace cubpacking
       template <typename T>
       void unpack_all_recursive (T &&t);
 
+      int m_error_code;
       const char *m_start_ptr; /* start of buffer */
       const char *m_end_ptr;     /* end of available serialization scope */
       const char *m_ptr;
@@ -327,10 +335,12 @@ namespace cubpacking
   packer::get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset)
   {
     size_t size = get_packed_bigint_size (curr_offset);
-
-    for (const T &t: container)
+    if (size > 0)
       {
-	size += get_packed_size_overloaded (t, size);
+	for (const T &t: container)
+	  {
+	    size += get_packed_size_overloaded (t, size);
+	  }
       }
 
     return size;
@@ -342,9 +352,13 @@ namespace cubpacking
   {
     const size_t count = container.size ();
     pack_bigint (count);
-    for (const T &t : container)
+
+    if (count > 0)
       {
-	pack_overloaded (t);
+	for (const T &t : container)
+	  {
+	    pack_overloaded (t);
+	  }
       }
   }
 
@@ -462,7 +476,6 @@ namespace cubpacking
   {
     int64_t count;
     unpack_bigint (count);
-
     if (count > 0)
       {
 	container.resize (count);

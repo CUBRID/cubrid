@@ -10661,26 +10661,31 @@ method_invoke_fold_constants (const method_sig_list & sig_list,
 	    // *INDENT-OFF*
 	    std::vector <DB_VALUE> out_args;
 	    // *INDENT-ON*
-	unpacker.unpack_all (result, out_args);
-
-	method_sig_node *sig = sig_list.method_sig;
-	for (int i = 0; i < sig->num_method_args; i++)
+	if (data_reply_size > 0)
 	  {
-	    if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	    unpacker.unpack_all (result, out_args);
+
+	    method_sig_node *sig = sig_list.method_sig;
+	    for (int i = 0; i < sig->num_method_args; i++)
 	      {
-		continue;
+		if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+		  {
+		    continue;
+		  }
+
+		int pos = sig->method_arg_pos[i];
+
+		DB_VALUE & arg = args[pos];
+		DB_VALUE & out_arg = out_args[pos];
+
+		db_value_clear (&arg);
+		db_value_clone (&out_arg, &arg);
 	      }
 
-	    int pos = sig->method_arg_pos[i];
+	    pr_clear_value_vector (out_args);
 
-	    DB_VALUE & arg = args[pos];
-	    DB_VALUE & out_arg = out_args[pos];
-
-	    db_value_clear (&arg);
-	    db_value_clone (&out_arg, &arg);
 	  }
 
-	pr_clear_value_vector (out_args);
       }
     else
       {
@@ -10692,10 +10697,13 @@ error:
   if (req_error != NO_ERROR)
     {
       packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
-      int error_code;
-      std::string error_msg;
-      unpacker.unpack_all (error_code, error_msg);
-      cubmethod::handle_method_error (error_code, error_msg);
+      if (data_reply_size > 0)
+	{
+	  int error_code;
+	  std::string error_msg;
+	  unpacker.unpack_all (error_code, error_msg);
+	  cubmethod::handle_method_error (error_code, error_msg);
+	}
     }
 
   if (data_reply != NULL)

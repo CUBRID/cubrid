@@ -101,7 +101,7 @@ namespace cubmethod
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_group_stack.back() == claimed->get_id ();
+      return m_group_stack.empty () || m_group_stack.back() == claimed->get_id ();
     };
 
     // Guaranteed to be removed from the topmost element
@@ -109,8 +109,11 @@ namespace cubmethod
 
     if (pred ())
       {
-	destroy_group (m_group_stack.back ());
-	m_group_stack.pop_back ();
+	if (!m_group_stack.empty())
+	  {
+	    destroy_group (m_group_stack.back ());
+	    m_group_stack.pop_back ();
+	  }
       }
 
     // should be freed for all XASL structure
@@ -123,10 +126,12 @@ namespace cubmethod
 
     if (m_group_stack.empty())
       {
+	m_is_running = false;
+
 	// reset interrupt state
 	m_is_interrupted = false;
 	m_interrupt_id = NO_ERROR;
-	m_is_running = false;
+	m_interrupt_msg.clear ();
 
 	// notify m_group_stack becomes empty ();
 	ulock.unlock ();
