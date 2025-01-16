@@ -99,7 +99,46 @@
         }                         \
     } while (0)
 
-#define IS_PARALLEL_SORT(t) ((t)->px_max_index > 1)
+#define SORT_IS_PARALLEL(t) ((t)->px_max_index > 1)
+
+// *INDENT-OFF*
+#define SORT_EXECUTE_PARALLEL(num, px_sort_param, function)  \
+    do {                          \
+	for (int i = 0; i < num; i++) {				\
+	    cubthread::entry_callable_task * task =		\
+	      new cubthread::entry_callable_task (std::		\
+	          bind (function, std::placeholders::_1, &px_sort_param[i]));	\
+	    css_push_external_task (css_get_current_conn_entry (), task);	\
+	  }	\
+    } while (0)
+// *INDENT-ON*
+
+#define SORT_WAIT_PARALLEL(parallel_num, sort_param, px_sort_param) \
+    do {                          \
+	  pthread_mutex_lock (sort_param->px_mtx); \
+      while (1) \
+	{ \
+	  int done = true;  \
+	  for (int i = 0; i < parallel_num; i++)  \
+	    {  \
+	      if (px_sort_param[i].px_status == PX_PROGRESS)  \
+		{  \
+		  done = false; \
+		  break; \
+		} \
+	      else if (px_sort_param[i].px_status == PX_ERR_FAILED) \
+		{ \
+		  error = ER_FAILED; \
+		} \
+	    } \
+	  if (done) \
+	    { \
+	      break; \
+	    } \
+	  pthread_cond_wait (sort_param->complete_cond, sort_param->px_mtx); \
+	} \
+      pthread_mutex_unlock (sort_param->px_mtx); \
+    } while (0)
 
 enum parallel_type
 {
@@ -1537,40 +1576,10 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	}
 
       /* execute parallel sort */
-      // *INDENT-OFF*
-      for (int i = 0; i < parallel_num; i++)
-	{
-	  cubthread::entry_callable_task * task =
-	    new cubthread::entry_callable_task (std::
-						bind (sort_listfile_execute, std::placeholders::_1, &px_sort_param[i]));
-	  css_push_external_task (css_get_current_conn_entry (), task);
-	}
-      // *INDENT-ON*
+      SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_listfile_execute);
 
       /* wait for threads */
-      pthread_mutex_lock (sort_param->px_mtx);
-      while (1)
-	{
-	  int done = true;
-	  for (int i = 0; i < parallel_num; i++)
-	    {
-	      if (px_sort_param[i].px_status == PX_PROGRESS)
-		{
-		  done = false;
-		  break;
-		}
-	      else if (px_sort_param[i].px_status == PX_ERR_FAILED)
-		{
-		  error = ER_FAILED;
-		}
-	    }
-	  if (done)
-	    {
-	      break;
-	    }
-	  pthread_cond_wait (sort_param->complete_cond, sort_param->px_mtx);
-	}
-      pthread_mutex_unlock (sort_param->px_mtx);
+      SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1717,7 +1726,9 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   TSC_TICKS start_tick, end_tick;
   TSC_TICKS start_tick2, end_tick2;
   TSCTIMEVAL tv_diff, tv_diff2;
-  struct timeval orderby_time  = {0,}, orderby_time2  = {0,};
+  struct timeval orderby_time = { 0, }, orderby_time2 =
+  {
+  0,};
   tsc_getticks (&start_tick);
 #endif
 
@@ -1738,7 +1749,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   tsc_getticks (&start_tick2);
 #endif
 
-  if (sort_param->tot_runs > 1 || IS_PARALLEL_SORT (sort_param))
+  if (sort_param->tot_runs > 1 || SORT_IS_PARALLEL (sort_param))
     {
       assert (sort_param->tot_runs > 0);
       /* Create output temporary files make file and temporary volume page count estimates */
@@ -1749,7 +1760,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	{
 	  error =
 	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
-			       IS_PARALLEL_SORT (sort_param));
+			       SORT_IS_PARALLEL (sort_param));
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2064,8 +2075,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error =
-		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
+		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file, SORT_IS_PARALLEL (sort_param));
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -2077,7 +2087,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
 		    {
-		      file_temp_retire (thread_p, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
+		      file_temp_retire (thread_p, &sort_param->multipage_file, SORT_IS_PARALLEL (sort_param));
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
@@ -2159,7 +2169,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	  goto exit_on_error;
 	}
 
-      if (sort_param->tot_runs > 0 || IS_PARALLEL_SORT (sort_param))
+      if (sort_param->tot_runs > 0 || SORT_IS_PARALLEL (sort_param))
 	{
 	  /* There has been other runs produced already */
 
@@ -2193,7 +2203,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	    }
 	}
     }
-  else if (sort_param->tot_runs == 1 && !IS_PARALLEL_SORT (sort_param))
+  else if (sort_param->tot_runs == 1 && !SORT_IS_PARALLEL (sort_param))
     {
       if (once_flushed)
 	{
@@ -2290,7 +2300,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
     {
       error =
 	sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false,
-			   sort_param->tde_encrypted, IS_PARALLEL_SORT (sort_param));
+			   sort_param->tde_encrypted, SORT_IS_PARALLEL (sort_param));
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2541,7 +2551,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   /* OUTER LOOP */
 
   /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!IS_PARALLEL_SORT (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+  if (!SORT_IS_PARALLEL (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
       error = sort_put_result_from_tmpfile (thread_p, sort_param);
       if (error != NO_ERROR)
@@ -2863,7 +2873,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  out_runsize = 0;
 
 	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
-	  if (very_last_run && IS_PARALLEL_SORT (sort_param))
+	  if (very_last_run && SORT_IS_PARALLEL (sort_param))
 	    {
 	      sort_param->px_result_file_idx = cur_outfile;
 	    }
@@ -2880,7 +2890,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  /* we found first unique sort_key record */
 
-		  if (very_last_run && !IS_PARALLEL_SORT (sort_param))
+		  if (very_last_run && !SORT_IS_PARALLEL (sort_param))
 		    {
 		      /* OUTPUT THE RECORD */
 		      /* Obtain the output record for this temporary record */
@@ -3166,7 +3176,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!(very_last_run && !IS_PARALLEL_SORT (sort_param)))
+	  if (!(very_last_run && !SORT_IS_PARALLEL (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
@@ -3432,7 +3442,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     }
 
   /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!IS_PARALLEL_SORT (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
+  if (!SORT_IS_PARALLEL (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
     {
       error = sort_put_result_from_tmpfile (thread_p, sort_param);
       if (error != NO_ERROR)
@@ -3744,7 +3754,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  out_runsize = 0;
 
 	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
-	  if (very_last_run && IS_PARALLEL_SORT (sort_param))
+	  if (very_last_run && SORT_IS_PARALLEL (sort_param))
 	    {
 	      sort_param->px_result_file_idx = cur_outfile;
 	    }
@@ -3756,7 +3766,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
 	      min = min_p->rec_pos;
 
-	      if (very_last_run && !IS_PARALLEL_SORT (sort_param))
+	      if (very_last_run && !SORT_IS_PARALLEL (sort_param))
 		{
 		  /* OUTPUT THE RECORD */
 		  /* Obtain the output record for this temporary record */
@@ -4025,7 +4035,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!(very_last_run && !IS_PARALLEL_SORT (sort_param)))
+	  if (!(very_last_run && !SORT_IS_PARALLEL (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 
@@ -4609,12 +4619,12 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time  = {0,};
+  struct timeval orderby_time = { 0, };
   tsc_getticks (&start_tick);
 #endif
 
   /* Merge the parallel processed results. */
-  sort_param->px_max_index = 2; /* (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2*/
+  sort_param->px_max_index = 2;	/* (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2 */
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
@@ -4767,7 +4777,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time  = {0,};
+  struct timeval orderby_time = { 0, };
   tsc_getticks (&start_tick);
 #endif
 
@@ -5043,7 +5053,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], IS_PARALLEL_SORT (sort_param));
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], SORT_IS_PARALLEL (sort_param));
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
