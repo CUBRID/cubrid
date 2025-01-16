@@ -178,6 +178,8 @@ namespace cubpacking
       template <typename ExtBlk, typename ... Args>
       void append_to_buffer_and_pack_all (ExtBlk &eb, Args &&... args);
 
+      bool has_error (void) const;
+
     private:
       void pack_large_c_string (const char *string, const size_t str_size);
 
@@ -191,6 +193,7 @@ namespace cubpacking
       template <typename T>
       void pack_all_recursive (T &&t);
 
+      int m_error_code;
       const char *m_start_ptr; /* start of buffer */
       const char *m_end_ptr;     /* end of available serialization scope */
       char *m_ptr;
@@ -274,6 +277,8 @@ namespace cubpacking
       template <typename ... Args>
       void unpack_all (Args &&... args);
 
+      bool has_error (void) const;
+
     private:
       void unpack_string_size (size_t &len);
 
@@ -282,6 +287,7 @@ namespace cubpacking
       template <typename T>
       void unpack_all_recursive (T &&t);
 
+      int m_error_code;
       const char *m_start_ptr; /* start of buffer */
       const char *m_end_ptr;     /* end of available serialization scope */
       const char *m_ptr;
