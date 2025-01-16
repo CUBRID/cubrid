@@ -42,7 +42,20 @@ namespace cubpl
   {
     session *s = nullptr;
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
-    session_get_pl_session (thread_p, s);
+#if defined (SERVER_MODE)
+    // only worker thread can access session
+    if (thread_p && thread_p->type != TT_WORKER)
+      {
+	return nullptr;
+      }
+#endif
+
+    int error = session_get_pl_session (thread_p, s);
+    if (error != NO_ERROR)
+      {
+	// session expired or internal error
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->tran_index);
+      }
     return s;
   }
 
@@ -69,6 +82,8 @@ namespace cubpl
 
   session::~session ()
   {
+    er_log_debug (ARG_FILE_LINE, "pl_session (delete): %d\n", m_id);
+
     destroy_pl_context_jvm ();
 
     if (!m_session_connections.empty ())
@@ -279,6 +294,8 @@ namespace cubpl
 	m_is_interrupted = true;
 	m_interrupt_id = reason;
 	m_interrupt_msg.assign ("");
+
+
 	break;
 
       /* 1 arg */
@@ -293,6 +310,13 @@ namespace cubpl
 	/* do nothing */
 	break;
       }
+
+#if !defined (NDEBUG)
+    if (m_is_interrupted)
+      {
+	er_log_debug (ARG_FILE_LINE, "pl_session (interrupted): %d\n", m_id);
+      }
+#endif
 
     destroy_pl_context_jvm ();
   }
