@@ -105,7 +105,7 @@ namespace cubpl
       void remove_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
       void promote_to_session_cursor (QUERY_ID query_id);
-      void destory_all_cursors ();
+      void destory_all_cursors (session *sess);
 
       /* query handler */
       void add_query_handler (int handler_id);
@@ -141,8 +141,7 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    return ER_FAILED; // Handle the case where connection is unavailable
 	  }
 
 	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
@@ -154,8 +153,7 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    return ER_FAILED; // Handle the case where connection is unavailable
 	  }
 
 	pl_callback_func interrupt_func = [this]()
@@ -192,7 +190,7 @@ namespace cubpl
 
       std::string get_error_message ()
       {
-	if (m_error_message.empty () && er_msg ())
+	if (m_error_message.empty () && er_errid () != NO_ERROR)
 	  {
 	    m_error_message = er_msg ();
 	  }
