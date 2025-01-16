@@ -96,5 +96,5 @@ extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, 
 extern void session_notify_pl_task_completion (const struct session_state *session_arg);
 #endif
 
-extern void session_stop_attached_threads (void *session);
+extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 #endif /* _SESSION_H_ */

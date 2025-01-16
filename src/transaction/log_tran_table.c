@@ -2763,10 +2763,14 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 
-	      cubpl::session * session = cubpl::get_session ();
-	      if (session)
+	      // Only TT_WORKER threads use pl_session
+	      if (thread_p->type == TT_WORKER)
 		{
-		  session->set_interrupt (ER_INTERRUPTED);
+		  cubpl::session * session = cubpl::get_session ();
+		  if (session)
+		    {
+		      session->set_interrupt (ER_INTERRUPTED);
+		    }
 		}
 	    }
 

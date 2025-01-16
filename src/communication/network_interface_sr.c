@@ -10493,9 +10493,9 @@ end:
 }
 
 void
-ssession_stop_attached_threads (void *session)
+ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
 {
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 }
 
 static bool
