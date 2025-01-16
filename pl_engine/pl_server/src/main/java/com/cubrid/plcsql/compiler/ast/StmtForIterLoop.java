@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForIterLoop extends Stmt {
+public class StmtForIterLoop extends StmtLoop {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -50,6 +50,7 @@ public class StmtForIterLoop extends Stmt {
 
     public StmtForIterLoop(
             ParserRuleContext ctx,
+            StmtLoop.LoopOptimizable loopOptimizable,
             DeclLabel declLabel,
             DeclForIter iter,
             boolean reverse,
@@ -57,7 +58,7 @@ public class StmtForIterLoop extends Stmt {
             Expr upperBound,
             Expr step,
             NodeList<Stmt> stmts) {
-        super(ctx);
+        super(ctx, loopOptimizable);
 
         this.declLabel = declLabel;
         this.iter = iter;

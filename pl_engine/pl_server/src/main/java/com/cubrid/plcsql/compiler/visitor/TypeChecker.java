@@ -1092,40 +1092,6 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     @Override
-    public Type visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
-
-        Type sqlType = visit(node.sql);
-        if (sqlType.idx != Type.IDX_STRING) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(node.sql.ctx), // s225
-                    "SQL in EXECUTE IMMEDIATE statements must be of a string type");
-        }
-
-        // check types of expressions in the USING clause
-        if (node.usedExprList != null) {
-            for (Expr e : node.usedExprList) {
-                Type tyUsedExpr = visit(e); // s429
-                switch (tyUsedExpr.idx) {
-                    case Type.IDX_CURSOR:
-                    case Type.IDX_RECORD:
-                    case Type.IDX_BOOLEAN:
-                    case Type.IDX_SYS_REFCURSOR:
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(e.ctx), // s428
-                                "expressions in a USING clause cannot be of "
-                                        + tyUsedExpr.plcName
-                                        + " type");
-                    default:; // OK
-                }
-            }
-        }
-
-        visitNodeList(node.stmts);
-
-        return null;
-    }
-
-    @Override
     public Type visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
         typeCheckHostExprs(node.staticSql); // s406

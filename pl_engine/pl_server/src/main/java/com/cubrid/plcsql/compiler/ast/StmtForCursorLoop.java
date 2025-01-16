@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForCursorLoop extends Stmt {
+public class StmtForCursorLoop extends StmtLoop {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -50,6 +50,7 @@ public class StmtForCursorLoop extends Stmt {
 
     public StmtForCursorLoop(
             ParserRuleContext ctx,
+            StmtLoop.LoopOptimizable loopOptimizable,
             ExprId cursor,
             NodeList<Expr> cursorArgs,
             String label,
@@ -57,7 +58,7 @@ public class StmtForCursorLoop extends Stmt {
             TypeRecord recordType,
             NodeList<Stmt> stmts) {
 
-        super(ctx);
+        super(ctx, loopOptimizable);
 
         assert cursor.decl instanceof DeclCursor;
         assert cursorArgs != null;
