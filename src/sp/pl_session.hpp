@@ -81,7 +81,7 @@ namespace cubpl
   class session
   {
     public:
-      session ();
+      session (SESSION_ID id);
       ~session ();
 
       using exec_stack_map_type = std::unordered_map <PL_STACK_ID, execution_stack *>;
@@ -107,6 +107,10 @@ namespace cubpl
       void pop_and_destroy_stack (const PL_STACK_ID sid);
       execution_stack *top_stack ();
       void notify_waiting_stacks ();
+
+      /* connection management */
+      connection_view claim_connection ();
+      void release_connection (connection_view &conn);
 
       /* thread */
       bool is_thread_involved (thread_id_t id);
@@ -140,6 +144,7 @@ namespace cubpl
     private:
       execution_stack *top_stack_internal ();
       void destroy_all_cursors ();
+      void destroy_pl_context_jvm ();
 
       std::mutex m_mutex;
       std::condition_variable m_cond_var;
@@ -149,11 +154,12 @@ namespace cubpl
 
       exec_stack_map_type m_stack_map; // method executor storage
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
+      exec_stack_id_type m_deferred_free_stack;
       int m_stack_idx;
 
       cursor_map_type m_cursor_map; // server-side cursor storage
 
-      exec_stack_id_type m_deferred_free_stack;
+      std::deque <connection_view> m_session_connections;
 
       std::atomic <METHOD_REQ_ID> m_req_id;
 

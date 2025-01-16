@@ -2073,8 +2073,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  int pl_port;
-  bool pl;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2313,6 +2311,29 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
+
+  /*
+   * Call pl_server_init() before log_initialize() to avoid potential issues
+   * with large memory allocations impacting fork() system calls.
+   *
+   * Context:
+   * 1. During log_initialize(), large data buffer allocations might cause fork()
+   *    system call failures. To prevent this, pl_server_init() is invoked earlier.
+   *
+   * 2. In cases with large-scale databases such as those used for YCSB testing, 
+   *    the time taken by log_initialize() is nearly identical to the time taken 
+   *    to reach it via boot_start_server(). This suggests that other modules 
+   *    during server startup consume significant system resources, although the 
+   *    specifics are yet to be analyzed.
+   *
+   * 3. To enhance PL server initialization reliability, pl_server_init() is called 
+   *    before other modules’ initialization.
+   */
+  error_code = pl_server_init (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -2718,7 +2739,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = pl_server_init (db_name);
+  error_code = pl_server_wait_for_ready ();
   if (error_code != NO_ERROR)
     {
       goto error;

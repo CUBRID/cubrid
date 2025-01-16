@@ -1586,7 +1586,7 @@ hb_cluster_calc_score (void)
 	    {
 	      // Current master node is isolated. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
 	      hb_Is_master_node_isolated = true;
-	      snprintf (hb_Master_host_name, strlen (node->host_name), node->host_name);
+	      snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
 	    }
 
 	  node->heartbeat_gap = 0;
@@ -1866,7 +1866,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	      {
 		// Current master node has been demoted. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
 		is_state_changed = true;
-		snprintf (hb_Master_host_name, strlen (node->host_name), node->host_name);
+		snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
 	      }
 
 	    node->state = hb_state;
@@ -4846,13 +4846,13 @@ hb_thread_check_disk_failure (void *arg)
 			    HA_FAILBACK_DIAG_STRING);
 		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
-		  /* be silent to avoid blocking write operation on disk */
-		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
-		  hb_Resource->state = HB_NSTATE_SLAVE;
-
 		  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully demoted to slave",
 			    HA_FAILBACK_SUCCESS_STRING);
 		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
+		  /* be silent to avoid blocking write operation on disk */
+		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
+		  hb_Resource->state = HB_NSTATE_SLAVE;
 
 		  pthread_mutex_unlock (&hb_Resource->lock);
 		  pthread_mutex_unlock (&hb_Cluster->lock);

@@ -11026,6 +11026,7 @@ error:
 	{
 	  unpacker.unpack_all (error_code, error_msg);
 	  cubmethod::handle_method_error (error_code, error_msg);
+	  req_error = error_code;
 	}
     }
 
@@ -11064,7 +11065,8 @@ error:
 
 	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	    req_error = ER_SP_EXECUTE_ERROR;
 	  }
 
 	packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
