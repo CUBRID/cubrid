@@ -325,13 +325,13 @@ exit:
     if (error != NO_ERROR)
       {
 	// Check if the session is in an interrupting state by calling get_session()
-        // TODO: Verify the behavior of get_session() and validate this code flow.
+	// TODO: Verify the behavior of get_session() and validate this code flow.
 	session *sess = get_session ();
 	if (sess)
 	  {
-            // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
-            // In this case, get_session() should return NULL.
-            // According to the current analysis, the following code should be unreachable.
+	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // In this case, get_session() should return NULL.
+	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  }
       }
