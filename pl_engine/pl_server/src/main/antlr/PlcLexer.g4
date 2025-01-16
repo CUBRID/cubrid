@@ -267,7 +267,7 @@ SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
 // Fragment rules
 // ************************
 
-fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+ | BASIC_UINT '.') ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
+fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+) ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
 fragment FPNUM_WO_POINT : BASIC_UINT [eE] ('+'|'-')? BASIC_UINT [fF]?;
 fragment BASIC_UINT     : '0'|[1-9][0-9]*;
 fragment NEWLINE_EOF    : NEWLINE | EOF;
