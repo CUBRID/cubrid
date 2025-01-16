@@ -73,7 +73,7 @@ namespace cubpl
   class server_manager final
   {
     public:
-      static constexpr std::size_t CONNECTION_POOL_SIZE = 100;
+      static constexpr std::size_t CONNECTION_POOL_SIZE = 10;
 
       explicit server_manager (const char *db_name);
 
@@ -479,6 +479,7 @@ namespace cubpl
 	  }
 	else
 	  {
+	    er_log_debug (ARG_FILE_LINE, "PL server is terminated. pid=%d\n", m_pid);
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
 	  }
 	break;
