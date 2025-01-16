@@ -10559,6 +10559,11 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
       (void) return_error_to_client (thread_p, rid);
     }
 
+  if (packer.has_error ())
+    {
+      error_code = er_errid ();
+    }
+
   char *reply_data = eb.get_ptr ();
   int reply_data_size = (int) packer.get_current_size ();
 

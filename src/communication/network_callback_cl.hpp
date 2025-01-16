@@ -40,8 +40,12 @@ int xs_pack_and_queue (Args &&... args)
   packing_packer packer;
   cubmem::extensible_block eb;
   packer.set_buffer_and_pack_all (eb, std::forward<Args> (args)...);
-  eb.extend_to (packer.get_current_size ()); // ensure eb.get_size () == packer.get_current_size ()
+  if (packer.has_error ())
+    {
+      return er_errid ();
+    }
 
+  eb.extend_to (packer.get_current_size ()); // ensure eb.get_size () == packer.get_current_size ()
   xs_get_data_queue().push (std::move (eb));
   return NO_ERROR;
 }
