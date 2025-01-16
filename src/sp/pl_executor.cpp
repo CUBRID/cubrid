@@ -299,10 +299,11 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-
     // restore execution rights
-    error = change_exec_rights (NULL);
-
+    if (change_exec_rights (NULL) != NO_ERROR)
+      {
+	error = er_errid ();
+      }
     return error;
   }
 
