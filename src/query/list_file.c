@@ -4044,7 +4044,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time;
+  struct timeval orderby_time  = {0,};
   tsc_getticks (&start_tick);
 #endif
 

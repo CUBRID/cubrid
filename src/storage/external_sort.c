@@ -1636,7 +1636,7 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time;
+  struct timeval orderby_time = {0,};
   tsc_getticks (&start_tick);
 #endif
 
@@ -1717,7 +1717,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   TSC_TICKS start_tick, end_tick;
   TSC_TICKS start_tick2, end_tick2;
   TSCTIMEVAL tv_diff, tv_diff2;
-  struct timeval orderby_time, orderby_time2;
+  struct timeval orderby_time  = {0,}, orderby_time2  = {0,};
   tsc_getticks (&start_tick);
 #endif
 
@@ -1730,7 +1730,9 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 #if !defined(NDEBUG)
   tsc_getticks (&end_tick);
   tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  orderby_time.tv_usec = tv_diff.tv_usec;
+  orderby_time.tv_sec = tv_diff.tv_sec;
+
   printf ("sort_inphase_sort time: %d\n", TO_MSEC (orderby_time));
 
   tsc_getticks (&start_tick2);
@@ -1768,7 +1770,8 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 #if !defined(NDEBUG)
   tsc_getticks (&end_tick2);
   tsc_elapsed_time_usec (&tv_diff2, end_tick2, start_tick2);
-  TSC_ADD_TIMEVAL (orderby_time2, tv_diff2);
+  orderby_time2.tv_usec = tv_diff2.tv_usec;
+  orderby_time2.tv_sec = tv_diff2.tv_sec;
   printf ("sort_exphase_merge time: %d\n", TO_MSEC (orderby_time2));
 #endif
 
@@ -2061,7 +2064,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
+		  error =
+		    file_create_temp (thread_p, 1, &sort_param->multipage_file, IS_PARALLEL_SORT (sort_param));
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -4605,12 +4609,12 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time;
+  struct timeval orderby_time  = {0,};
   tsc_getticks (&start_tick);
 #endif
 
   /* Merge the parallel processed results. */
-  sort_param->px_max_index = (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2;
+  sort_param->px_max_index = 2; /* (remaining_run <= SORT_MAX_HALF_FILES) ? 1 : 2*/
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
@@ -4763,7 +4767,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 #if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time;
+  struct timeval orderby_time  = {0,};
   tsc_getticks (&start_tick);
 #endif
 
