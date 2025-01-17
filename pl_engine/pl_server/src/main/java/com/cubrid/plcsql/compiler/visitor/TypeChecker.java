@@ -1255,6 +1255,24 @@ public class TypeChecker extends AstVisitor<Type> {
         int len = args.size();
         for (int i = 0; i < len; i++) {
             Expr arg = args.get(i);
+
+            // special handling
+            if (funcName.equals("STR_TO_DATE") && i == 1) {
+
+                // second argument of STR_TO_DATE
+
+                if (arg instanceof ExprStr) {
+                    sb.append(", ");
+                    sb.append("'" + ((ExprStr) arg).val + "'");
+                } else {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(arg.ctx), // s241
+                            "second argument to STR_TO_DATE function must be a string literal");
+                }
+
+                continue;
+            }
+
             Type argType = visit(arg);
 
             String typicalValueStr = argType.typicalValueStr;
