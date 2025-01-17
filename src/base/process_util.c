@@ -89,6 +89,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 
   GetStartupInfo (&start_info);
   start_info.wShowWindow = SW_HIDE;
+  start_info.dwFlags = STARTF_USESTDHANDLES;
 
   if (stdin_file)
     {
@@ -101,9 +102,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	}
 
       SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdInput = hStdIn;
-      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
@@ -115,10 +114,14 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	  return 1;
 	}
       SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdOutput = hStdOut;
-      inherit_flag = TRUE;
     }
+  else
+    {
+      hStdOut = GetStdHandle (STD_OUTPUT_HANDLE);
+      start_info.hStdOutput = hStdOut;
+    }
+
   if (stderr_file)
     {
       hStdErr =
@@ -131,10 +134,15 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	}
 
       SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdError = hStdErr;
-      inherit_flag = TRUE;
     }
+  else
+    {
+      hStdErr = GetStdHandle (STD_ERROR_HANDLE);
+      start_info.hStdError = hStdErr;
+    }
+
+  inherit_flag = true;
 
   res =
     CreateProcess (path, cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
