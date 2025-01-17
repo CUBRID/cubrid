@@ -86,10 +86,7 @@ namespace cubpl
 
     destroy_pl_context_jvm ();
 
-    if (!m_session_connections.empty ())
-      {
-	m_session_connections.clear ();
-      }
+    m_session_connections.clear ();
   }
 
   execution_stack *
@@ -294,8 +291,6 @@ namespace cubpl
 	m_is_interrupted = true;
 	m_interrupt_id = reason;
 	m_interrupt_msg.assign ("");
-
-
 	break;
 
       /* 1 arg */
