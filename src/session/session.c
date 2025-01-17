@@ -3266,8 +3266,8 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
       else if (state_p->pl_session_p->is_interrupted ())
 	{
 	  pl_session_ref_ptr = nullptr;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->index);
-	  error = ER_INTERRUPTING;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error = ER_INTERRUPTED;
 	}
 
       if (state_p->pl_session_p != NULL)

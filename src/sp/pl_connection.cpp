@@ -20,8 +20,11 @@
 
 #include <algorithm> /* std::count_if */
 #include <memory> /* std::unique_ptr */
+#include <cmath>
 
 #include "boot_sr.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 #include "pl_sr.h" /* pl_server_port(), pl_connect_server() */
 #include "pl_comm.h" /* pl_disconnect_server (), pl_ping () */
 #include "object_representation.h" /* OR_ */
@@ -41,6 +44,7 @@ namespace cubpl
 
   constexpr int SYSTEM_REVISION = -1;
   constexpr int INITIAL_REVISION = 0;
+  constexpr float INCREMENT_FACTOR = 1.5;
 
   connection_pool::connection_pool (int pool_size)
     : m_pool (pool_size, nullptr)
@@ -49,9 +53,6 @@ namespace cubpl
     , m_mutex ()
   {
     assert (pool_size > 0);
-    // TODO: make it configurable
-    m_min_conn_size = 3;
-    m_inc_conn_size = 5;
 
     initialize_pool ();
   }
@@ -90,30 +91,42 @@ namespace cubpl
     std::lock_guard<std::mutex> lock (m_mutex);
 
     // Check if a connection is available in the queue
-    if (!m_queue.empty())
+    auto get_connection_from_queue = [this]() -> connection_view
+    {
+      if (!m_queue.empty())
+	{
+	  int index = m_queue.front();
+	  m_queue.pop();
+
+	  if (m_pool[index] == nullptr)
+	    {
+	      create_new_connection (index);
+	    }
+
+	  return get_connection_view (index);
+	}
+      return nullptr;
+    };
+
+    connection_view conn_view = get_connection_from_queue();
+    if (conn_view != nullptr)
       {
-	int index = m_queue.front();
-	m_queue.pop();
-
-	if (m_pool[index] == nullptr)
-	  {
-	    create_new_connection (index);
-	  }
-
-	return get_connection_view (index);
+	return conn_view;
       }
 
-    // If no connections are available, find a slot for a new connection
-    for (size_t i = 0; i < m_pool.size(); ++i)
+    // If no slots are available, increase the pool size
+    size_t currentSize = m_pool.size();
+    size_t newSize = static_cast<size_t> (std::ceil (currentSize * 1.5));
+    m_pool.resize (newSize, nullptr);
+    er_log_debug (ARG_FILE_LINE, "pl_connection_pool extended: %lld to %lld\n", currentSize, newSize);
+
+    // Create the new connection
+    for (int i = currentSize; i < newSize; ++i)
       {
-	if (m_pool[i] == nullptr)
-	  {
-	    create_new_connection (i);
-	    return get_connection_view (i);
-	  }
+	m_queue.push (i);
       }
 
-    return nullptr;
+    return get_connection_from_queue();
   }
 
   void
@@ -168,6 +181,8 @@ namespace cubpl
     std::lock_guard<std::mutex> lock (m_mutex);
 
     m_queue.push (conn->get_index ());
+
+    er_log_debug (ARG_FILE_LINE, "pl_connection_pool: connection retire (%d)\n", conn->get_index ());
   }
 
   void
@@ -176,10 +191,6 @@ namespace cubpl
     for (int i = 0; i < (int) m_pool.size (); ++i)
       {
 	m_pool[i] = nullptr;
-      }
-
-    for (int i = 0; i < m_min_conn_size && i < (int) m_pool.size (); ++i)
-      {
 	m_queue.push (i); // Pre-fill the queue with indices
       }
   }
