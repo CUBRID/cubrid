@@ -29,6 +29,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
+  ${COMPAT_DIR}/db_vector.cpp
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
@@ -40,6 +41,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/db_set.h
   ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/db_vector.hpp
   )
 
 set(THREAD_SOURCES

@@ -51,6 +51,7 @@
 #include "db_json.hpp"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
+#include "db_vector.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -5018,119 +5019,10 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   DB_SET *vec = NULL;
   DB_VALUE e_val;
 
-  if (p == NULL)
-    {
+  int error = db_string_to_vector(p, db_get_string_size(src), float_array, &count);
+  if (error != NO_ERROR) {
       return ER_FAILED;
-    }
-
-  // Skip leading spaces and opening bracket
-  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-    {
-      p++;
-    }
-
-  if (p >= end || *p != '[')
-    {
-      return ER_FAILED;
-    }
-  p++;
-
-  while (p < end && count < max_vector_size)
-    {
-      // Skip spaces before number
-      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-	{
-	  p++;
-	}
-
-      if (p >= end)
-	{
-	  return ER_FAILED;
-	}
-
-      // Check for closing bracket
-      if (*p == ']')
-	{
-	  break;
-	}
-
-      // Get number into buffer
-      buffer_idx = 0;
-      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size - 1)
-	{
-	  if (!isspace (*p))
-	    {
-	      number_buffer[buffer_idx++] = *p;
-	    }
-	  p++;
-	}
-
-      if (buffer_idx == 0 || buffer_idx >= number_buffer_size - 1)
-	{
-	  return ER_FAILED;
-	}
-
-      number_buffer[buffer_idx] = '\0';
-
-      // Convert to float
-      char *end_ptr = NULL;
-      errno = 0;
-      float_array[count] = strtof (number_buffer, &end_ptr);
-      if (errno == ERANGE)
-	{
-	  return ER_FAILED;
-	}
-      if (*end_ptr != '\0')
-	{
-	  return ER_FAILED;
-	}
-      count++;
-
-      // Skip spaces after number
-      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-	{
-	  p++;
-	}
-
-      if (p >= end)
-	{
-	  return ER_FAILED;
-	}
-
-      // Must be comma or closing bracket
-      if (*p == ']')
-	{
-	  break;
-	}
-      else if (*p != ',')
-	{
-	  return ER_FAILED;
-	}
-      p++;
-    }
-
-  // Check for closing bracket
-  if (p >= end || *p != ']')
-    {
-      return ER_FAILED;
-    }
-  p++;
-
-  // Skip trailing spaces
-  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-    {
-      p++;
-    }
-
-  if (p != end)
-    {
-      return ER_FAILED;
-    }
-
-  if (count == 0)
-    {
-      return ER_FAILED;
-    }
+  }
 
   // Create vector and populate it
   vec = db_vec_create (NULL, NULL, 0);
