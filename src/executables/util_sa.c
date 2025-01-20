@@ -1735,6 +1735,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
 	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
 	}
+      else if (class_name && class_list_file)
+	{
+	  goto print_diag_usage;
+	}
       else if (class_name != NULL)
 	{
 	  if (!sm_check_system_class_by_name (class_name))
