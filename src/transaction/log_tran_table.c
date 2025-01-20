@@ -2766,10 +2766,13 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      // Only TT_WORKER threads use pl_session
 	      if (thread_p && thread_p->type == TT_WORKER)
 		{
-		  cubpl::session * session = cubpl::get_session ();
-		  if (session)
+		  if (session_has_pl_session (thread_p))
 		    {
-		      session->set_interrupt (ER_INTERRUPTED);
+		      cubpl::session * session = cubpl::get_session ();
+		      if (session)
+			{
+			  session->set_interrupt (ER_INTERRUPTED);
+			}
 		    }
 		}
 	    }
