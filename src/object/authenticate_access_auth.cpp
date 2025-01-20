@@ -45,15 +45,15 @@ const char *AU_TYPE_SET[] =
   "EXECUTE"			/* DB_AUTH_EXECUTE */
 };
 
-const int AU_TYPE_SET_LEN[] =
+constexpr int AU_TYPE_SET_LEN[] =
 {
-  strlen ("SELECT"),		/* DB_AUTH_SELECT */
-  strlen ("INSERT"),		/* DB_AUTH_INSERT */
-  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
-  strlen ("DELETE"),		/* DB_AUTH_DELETE */
-  strlen ("ALTER"),		/* DB_AUTH_ALTER */
-  strlen ("INDEX"),		/* DB_AUTH_INDEX */
-  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
+  sizeof ("SELECT") - 1,		/* DB_AUTH_SELECT */
+  sizeof ("INSERT") - 1,		/* DB_AUTH_INSERT */
+  sizeof ("UPDATE") - 1,		/* DB_AUTH_UPDATE */
+  sizeof ("DELETE") - 1,		/* DB_AUTH_DELETE */
+  sizeof ("ALTER") - 1,		/* DB_AUTH_ALTER */
+  sizeof ("INDEX") - 1,		/* DB_AUTH_INDEX */
+  sizeof ("EXECUTE") - 1		/* DB_AUTH_EXECUTE */
 };
 
 au_auth_accessor::au_auth_accessor ()
