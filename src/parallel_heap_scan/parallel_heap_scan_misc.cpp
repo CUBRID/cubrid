@@ -1,9 +1,12 @@
-
+#if defined (SERVER_MODE)
 #include "parallel_heap_scan_misc.hpp"
 #include "memory_alloc.h"
 #include "fetch.h"
 #include "query_reevaluation.hpp"
 #include "dbtype.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace parallel_heap_scan
 {
@@ -463,3 +466,4 @@ restart_scan_oid:
       }
   }
 }
+#endif /* SERVER_MODE */

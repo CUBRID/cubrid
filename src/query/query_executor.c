@@ -81,7 +81,12 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "parallel_heap_scan.hpp"
+
+#if defined (SERVER_MODE)
+#include "parallel_heap_scan_checker.hpp"
+#include "parallel_heap_scan_manager.hpp"
+#endif
+
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1926,7 +1931,9 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_HEAP_SCAN_RECORD_INFO:
 	case S_CLASS_ATTR_SCAN:
 	case S_HEAP_SAMPLING_SCAN:
+	#if defined (SERVER_MODE)
 	case S_PARALLEL_HEAP_SCAN:
+	#endif
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.rest_regu_list, is_final);
 
@@ -9142,10 +9149,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
+	  #if defined (SERVER_MODE)
 	  if (scan_check_parallel_heap_scan_possible (thread_p, (void *) curr_spec, mvcc_select_lock_needed))
 	    {
 	      scan_type = S_PARALLEL_HEAP_SCAN;
 	    }
+	    #endif
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
@@ -9206,6 +9215,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
+	#if defined(SERVER_MODE)
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
 	  error_code =
@@ -9225,6 +9235,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
+	#endif
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
 	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),

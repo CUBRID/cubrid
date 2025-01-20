@@ -254,7 +254,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
   ${QUERY_DIR}/xasl_cache.c
-  ${QUERY_DIR}/parallel_heap_scan.cpp
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
@@ -303,6 +302,25 @@ set(SP_HEADERS
   ${SP_DIR}/pl_signature.hpp
   ${SP_DIR}/pl_struct_compile.cpp
 )
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_result_queue.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_task.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_result_queue.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_task.hpp
+  )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_error.cpp
@@ -526,6 +544,7 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -541,6 +560,7 @@ set (CUBRID_LIB_HEADERS
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
   )
 
 add_library(cubrid SHARED

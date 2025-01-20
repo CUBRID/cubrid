@@ -51,7 +51,7 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
-#include "parallel_heap_scan.hpp"
+#include "parallel_heap_scan_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4407,7 +4407,9 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
+#if defined (SERVER_MODE)
       scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
+#endif
       break;
 
     case S_INDX_SCAN:
@@ -4728,7 +4730,9 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
+#if defined (SERVER_MODE)
       scan_end_parallel_heap_scan (thread_p, scan_id);
+#endif
       break;
 
     case S_CLASS_ATTR_SCAN:
@@ -4824,7 +4828,9 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
+#if defined (SERVER_MODE)
       scan_close_parallel_heap_scan (thread_p, scan_id);
+#endif
       break;
 
     case S_INDX_SCAN:
@@ -5127,7 +5133,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
     case S_PARALLEL_HEAP_SCAN:
+#if defined (SERVER_MODE)
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
+#endif
       break;
 
     case S_HEAP_PAGE_SCAN:

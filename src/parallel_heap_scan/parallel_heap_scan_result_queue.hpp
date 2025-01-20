@@ -1,3 +1,4 @@
+#if defined (SERVER_MODE)
 #include <vector>
 #include "dbtype_def.h"
 #include "scan_manager.h"
@@ -5,6 +6,9 @@
 #if defined(SERVER_MODE)
 #include "tbb/concurrent_queue.h"
 #endif
+
+#ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
+#define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 
 namespace parallel_heap_scan
 {
@@ -17,11 +21,15 @@ namespace parallel_heap_scan
 
       result_queue (size_t max_size);
       ~result_queue();
-      inline void enqueue (std::shared_ptr<entry> entry);
-      inline bool try_enqueue (std::shared_ptr<entry> entry);
-      inline bool dequeue_timeout (std::shared_ptr<entry> &entry, int milliseconds);
-      inline std::shared_ptr<entry> dequeue ();
-      inline void clear();
+      void enqueue (std::shared_ptr<entry> entry);
+      bool try_enqueue (std::shared_ptr<entry> entry);
+      bool dequeue_timeout (std::shared_ptr<entry> &entry, int milliseconds);
+      std::shared_ptr<entry> dequeue ();
+      void clear();
+      inline size_t size()
+      {
+	return m_size;
+      }
     private:
       std::condition_variable m_cv_full;
       std::condition_variable m_cv_empty;
@@ -66,3 +74,5 @@ namespace parallel_heap_scan
   };
 
 }
+#endif
+#endif /* _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_ */

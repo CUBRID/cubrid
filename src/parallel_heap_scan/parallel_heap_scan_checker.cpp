@@ -1,9 +1,13 @@
-
 #include "parallel_heap_scan_checker.hpp"
+
+#if defined (SERVER_MODE)
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 #include "system_parameter.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace parallel_heap_scan
 {
@@ -23,6 +27,57 @@ namespace parallel_heap_scan
 
       void add_not_parallel_heap_scan_flag (XASL_NODE *xasl);
   };
+
+  void checker::add_not_parallel_heap_scan_flag (XASL_NODE *xasl)
+  {
+    ACCESS_SPEC_TYPE *curr_spec;
+    XASL_NODE *xaslp;
+    if (xasl->spec_list)
+      {
+	curr_spec = xasl->spec_list;
+	while (curr_spec)
+	  {
+	    curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+	    curr_spec = curr_spec->next;
+	  }
+      }
+    if (xasl->merge_spec)
+      {
+	curr_spec = xasl->merge_spec;
+	while (curr_spec)
+	  {
+	    curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+	    curr_spec = curr_spec->next;
+	  }
+      }
+    if (xasl->aptr_list)
+      {
+	xaslp = xasl->aptr_list;
+	while (xaslp)
+	  {
+	    add_not_parallel_heap_scan_flag (xaslp);
+	    xaslp = xaslp->next;
+	  }
+      }
+    if (xasl->dptr_list)
+      {
+	xaslp = xasl->dptr_list;
+	while (xaslp)
+	  {
+	    add_not_parallel_heap_scan_flag (xaslp);
+	    xaslp = xaslp->next;
+	  }
+      }
+    if (xasl->scan_ptr)
+      {
+	xaslp = xasl->scan_ptr;
+	while (xaslp)
+	  {
+	    add_not_parallel_heap_scan_flag (xaslp);
+	    xaslp = xaslp->next;
+	  }
+      }
+  }
 
   int checker::check (REGU_VARIABLE *src)
   {
@@ -197,7 +252,7 @@ namespace parallel_heap_scan
 
 int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, bool mvcc_select_lock_needed)
 {
-#if defined(SERVER_MODE)
+  ACCESS_SPEC_TYPE *curr_spec = (ACCESS_SPEC_TYPE *)spec;
   int parallel_heap_scan_threads = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
   if (parallel_heap_scan_threads == 0)
     {
@@ -211,9 +266,10 @@ int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, 
 	      && ! (curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN) && ! curr_spec->parts)	/* Only for User table */
 	    {
 	      int cnt = 0;
-	      cnt += parallel_heap_scan::checker.check (curr_spec->s.cls_node.cls_regu_list_pred);
-	      cnt += parallel_heap_scan::checker.check (curr_spec->where_pred);
-	      cnt += parallel_heap_scan::checker.check (curr_spec->s.cls_node.cls_regu_list_rest);
+	      parallel_heap_scan::checker checker;
+	      cnt += checker.check (curr_spec->s.cls_node.cls_regu_list_pred);
+	      cnt += checker.check (curr_spec->where_pred);
+	      cnt += checker.check (curr_spec->s.cls_node.cls_regu_list_rest);
 	      if (cnt == 0)
 		{
 		  return TRUE;
@@ -221,6 +277,11 @@ int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, 
 	    }
 	}
     }
-#endif
   return FALSE;
 }
+#else
+int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, bool mvcc_select_lock_needed)
+{
+  return 0;
+}
+#endif

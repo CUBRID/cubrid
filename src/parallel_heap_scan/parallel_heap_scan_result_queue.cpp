@@ -1,6 +1,10 @@
+#if defined (SERVER_MODE)
 #include "parallel_heap_scan_result_queue.hpp"
 #include "dbtype.h"
 #include "regu_var.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace parallel_heap_scan
 {
@@ -16,7 +20,7 @@ namespace parallel_heap_scan
   {
   }
 
-  inline void result_queue::enqueue (std::shared_ptr<result_queue::entry> entry)
+  void result_queue::enqueue (std::shared_ptr<result_queue::entry> entry)
   {
     while (m_size.load() >= max_size)
       {
@@ -28,7 +32,7 @@ namespace parallel_heap_scan
     m_cv_empty.notify_one();
   }
 
-  inline bool result_queue::try_enqueue (std::shared_ptr<result_queue::entry> entry)
+  bool result_queue::try_enqueue (std::shared_ptr<result_queue::entry> entry)
   {
     if (m_size.load() >= max_size)
       {
@@ -40,7 +44,7 @@ namespace parallel_heap_scan
     return true;
   }
 
-  inline bool result_queue::dequeue_timeout (std::shared_ptr<result_queue::entry> &entry, int milliseconds)
+  bool result_queue::dequeue_timeout (std::shared_ptr<result_queue::entry> &entry, int milliseconds)
   {
     auto end_time = std::chrono::steady_clock::now() + std::chrono::milliseconds (milliseconds);
     while (!m_queue.try_pop (entry))
@@ -59,7 +63,7 @@ namespace parallel_heap_scan
     return true;
   }
 
-  inline std::shared_ptr<result_queue::entry> result_queue::dequeue ()
+  std::shared_ptr<result_queue::entry> result_queue::dequeue ()
   {
     std::shared_ptr<entry> entry;
     while (!m_queue.try_pop (entry))
@@ -75,7 +79,7 @@ namespace parallel_heap_scan
     return entry;
   }
 
-  inline void result_queue::clear()
+  void result_queue::clear()
   {
     std::shared_ptr<entry> entry;
     while (m_queue.try_pop (entry))
@@ -86,72 +90,58 @@ namespace parallel_heap_scan
     m_cv_empty.notify_all();
   }
 
-  result_queue::entry::entry (SCAN_ID *scan_id, SCAN_CODE code)
+  result_queue::entry::entry (SCAN_ID *scan_id, SCAN_CODE scan_code)
+    : scan_code (scan_code)
   {
-    HEAP_SCAN_ID *hsid = &scan_id->s.hsid;
-    scan_code = code;
-    curr_oid = hsid->curr_oid;
-    capture_regu_var_list (hsid->scan_pred.regu_list, preds);
-    capture_regu_var_list (hsid->rest_regu_list, rests);
+    curr_oid = scan_id->s.hsid.curr_oid;
+    capture_regu_var_list (scan_id->s.hsid.scan_pred.regu_list, preds);
+    capture_regu_var_list (scan_id->s.hsid.rest_regu_list, rests);
   }
 
   result_queue::entry::~entry()
   {
-    for (auto &val : preds)
-      {
-	pr_clear_value (&val);
-      }
-    for (auto &val : rests)
-      {
-	pr_clear_value (&val);
-      }
   }
 
-  void result_queue::entry::unpack (SCAN_ID *scan_id, SCAN_CODE *scan_code_p)
+  void
+  result_queue::entry::unpack (SCAN_ID *scan_id, SCAN_CODE *scan_code)
   {
-    HEAP_SCAN_ID *hsid = &scan_id->s.hsid;
-    *scan_code_p = scan_code;
-    hsid->curr_oid = curr_oid;
-    copy_to_regu_var_list (preds, hsid->scan_pred.regu_list);
-    copy_to_regu_var_list (rests, hsid->rest_regu_list);
+    scan_id->s.hsid.curr_oid = curr_oid;
+    copy_to_regu_var_list (preds, scan_id->s.hsid.scan_pred.regu_list);
+    copy_to_regu_var_list (rests, scan_id->s.hsid.rest_regu_list);
+    *scan_code = this->scan_code;
   }
 
-  void result_queue::entry::capture_regu_var_list (struct regu_variable_list_node   *list,
+  void
+  result_queue::entry::capture_regu_var_list (struct regu_variable_list_node   *list,
       std::vector<DB_VALUE> &dbvalue_array)
   {
-    if (list == nullptr)
+    struct regu_variable_list_node   *curr = list;
+    while (curr)
       {
-	return;
-      }
-    struct regu_variable_list_node   *iter = list;
-    DB_VALUE dbval;
-    while (iter != nullptr)
-      {
-	if (iter->value.vfetch_to != nullptr)
+	if (curr->value.type == TYPE_DBVAL)
 	  {
-	    db_value_clone (iter->value.vfetch_to, &dbval);
-	    dbvalue_array.push_back (dbval);
+	    dbvalue_array.push_back (curr->value.value.dbval);
 	  }
-	iter = iter->next;
+	curr = curr->next;
       }
   }
 
-  void result_queue::entry::copy_to_regu_var_list (std::vector<DB_VALUE> &dbvalue_array,
+  void
+  result_queue::entry::copy_to_regu_var_list (std::vector<DB_VALUE> &dbvalue_array,
       struct regu_variable_list_node   *list)
   {
-    if (list == nullptr || dbvalue_array.empty())
+    struct regu_variable_list_node   *curr = list;
+    size_t i = 0;
+    while (curr)
       {
-	return;
-      }
-    struct regu_variable_list_node   *iter = list;
-    for (size_t i = 0; i < dbvalue_array.size() && iter != nullptr; i++)
-      {
-	if (iter->value.vfetch_to != nullptr)
+	if (curr->value.type == TYPE_DBVAL)
 	  {
-	    db_value_clone (&dbvalue_array[i], iter->value.vfetch_to);
+	    curr->value.value.dbval = dbvalue_array[i++];
 	  }
-	iter = iter->next;
+	curr = curr->next;
       }
   }
 
 }
+
+#endif /* SERVER_MODE */
