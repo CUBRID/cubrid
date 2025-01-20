@@ -1271,6 +1271,9 @@ public class TypeChecker extends AstVisitor<Type> {
                 if (arg instanceof ExprStr) {
                     sb.append(", ");
                     sb.append("'" + ((ExprStr) arg).val + "'");
+                } else if (arg instanceof ExprNull) {
+                    sb.append(", ");
+                    sb.append("null");
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(arg.ctx), // s241
