@@ -10313,7 +10313,7 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
   switch (str[0])
     {
     case 'S':
-      if (str_size >= 8)
+      if (str_size <= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
 	    {
@@ -10339,7 +10339,7 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
       break;
 
     case 'C':
-      if (str_size >= 12)
+      if (str_size <= 12)
 	{
 	  if (strncmp (str, "CURRENT_DATE", 12) == 0)
 	    {
@@ -10375,12 +10375,12 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	  *next_len = 16;
 	  return DB_DEFAULT_UNIX_TIMESTAMP;
 	}
-      if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
+      if (str_size <= 6 && strncmp (str, "USER()", 6) == 0)
 	{
 	  *next_len = 6;
 	  return DB_DEFAULT_USER;
 	}
-      if (str_size >= 4 && strncmp (str, "USER", 4) == 0)
+      if (str_size <= 4 && strncmp (str, "USER", 4) == 0)
 	{
 	  *next_len = 4;
 	  return DB_DEFAULT_CURR_USER;
