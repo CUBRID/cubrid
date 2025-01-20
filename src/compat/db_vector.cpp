@@ -77,24 +77,102 @@ namespace
     size_t end = input.find_first_not_of (WHITESPACE, pos + 1);
     return end == std::string_view::npos && !result.empty();
   }
-}  // anonymous namespace
 
-/**
- * @brief Converts a string representation of a vector to std::vector<float>
- * @param input String view containing vector in format "[n1, n2, ...]"
- * @return Optional vector of floats, nullopt if parsing fails
- */
+  /**
+   * @brief Extracts and validates a number from the input string
+   * @param input Input string being parsed
+   * @param pos Current position in input
+   * @param number_buffer Buffer to store the number string
+   * @return Position after the number, or npos if invalid
+   */
+  size_t extract_number (
+	  const std::string_view& input,
+	  size_t pos,
+	  std::string& number_buffer
+  )
+  {
+    number_buffer.clear();
+    size_t number_end = pos;
+
+    while (number_end < input.size() &&
+	   input[number_end] != ',' &&
+	   input[number_end] != ']' &&
+	   number_buffer.size() < NUMBER_BUFFER_SIZE - 1)
+      {
+	if (!std::isspace (input[number_end]))
+	  {
+	    number_buffer.push_back (input[number_end]);
+	  }
+	++number_end;
+      }
+
+    return (number_buffer.empty() ||
+	    number_buffer.size() >= NUMBER_BUFFER_SIZE - 1)
+	   ? std::string_view::npos
+	   : number_end;
+  }
+
+  /**
+   * @brief Converts string to float and adds to result vector
+   * @param number_str String containing the number
+   * @param result Vector to append the number to
+   * @return true if conversion successful
+   */
+  bool parse_and_add_number (
+	  const std::string& number_str,
+	  std::vector<float> &result
+  )
+  {
+    try
+      {
+	result.push_back (std::stof (number_str));
+	return true;
+      }
+    catch (const std::exception &)
+      {
+	return false;
+      }
+  }
+
+  /**
+   * @brief Checks for valid delimiter after number
+   * @param input Input string being parsed
+   * @param pos Position to check
+   * @return Next position to parse, or npos if invalid
+   */
+  size_t validate_delimiter (
+	  const std::string_view& input,
+	  size_t pos
+  )
+  {
+    pos = input.find_first_not_of (WHITESPACE, pos);
+    if (pos == std::string_view::npos)
+      {
+	return std::string_view::npos;
+      }
+
+    if (input[pos] == ']')
+      {
+	return pos;
+      }
+    if (input[pos] != ',')
+      {
+	return std::string_view::npos;
+      }
+    return pos + 1;
+  }
+}
+
 std::optional<std::vector<float>>
 db_string_to_vector (std::string_view input)
 {
   // Validate input starting with '['
-  size_t start = input.find_first_not_of (WHITESPACE);
-  if (start == std::string_view::npos || input[start] != '[')
+  size_t pos = input.find_first_not_of (WHITESPACE);
+  if (pos == std::string_view::npos || input[pos] != '[')
     {
       return std::nullopt;
     }
 
-  // Initialize result vector and number buffer
   std::vector<float> result;
   result.reserve (INITIAL_VECTOR_CAPACITY);
 
@@ -102,73 +180,41 @@ db_string_to_vector (std::string_view input)
   number_buffer.reserve (NUMBER_BUFFER_SIZE);
 
   // Parse numbers until end of input or max size reached
-  size_t pos = start + 1;
+  pos = pos + 1;
   while (should_continue_parsing (pos, result.size(), input))
     {
-      // Skip leading whitespace before number
+      // Skip leading whitespace and check for end
       pos = input.find_first_not_of (WHITESPACE, pos);
       if (pos == std::string_view::npos)
 	{
 	  return std::nullopt;
 	}
-
-      // Check for end of vector
       if (input[pos] == ']')
 	{
 	  break;
 	}
 
-      // Extract and parse number
-      number_buffer.clear();
-      size_t number_end = pos;
-
-      // Build number string, skipping whitespace
-      while (number_end < input.size() &&
-	     input[number_end] != ',' &&
-	     input[number_end] != ']' &&
-	     number_buffer.size() < NUMBER_BUFFER_SIZE - 1)
-	{
-	  if (!std::isspace (input[number_end]))
-	    {
-	      number_buffer.push_back (input[number_end]);
-	    }
-	  ++number_end;
-	}
-
-      // Validate number buffer
-      if (number_buffer.empty() ||
-	  number_buffer.size() >= NUMBER_BUFFER_SIZE - 1)
+      size_t number_end = extract_number (input, pos, number_buffer);
+      if (number_end == std::string_view::npos)
 	{
 	  return std::nullopt;
 	}
 
-      // Convert to float and add to result
-      try
-	{
-	  result.push_back (std::stof (number_buffer));
-	}
-      catch (const std::exception &)
+      if (!parse_and_add_number (number_buffer, result))
 	{
 	  return std::nullopt;
 	}
 
-      // Move position and check delimiter
-      pos = input.find_first_not_of (WHITESPACE, number_end);
+      // Validate and move past delimiter
+      pos = validate_delimiter (input, number_end);
       if (pos == std::string_view::npos)
 	{
 	  return std::nullopt;
 	}
-
-      // Handle end of vector or comma separator
-      if (input[pos] == ']')
+      if (input[pos - 1] == ']')
 	{
 	  break;
 	}
-      if (input[pos] != ',')
-	{
-	  return std::nullopt;
-	}
-      ++pos;
     }
 
   return has_valid_ending (pos, input, result)
