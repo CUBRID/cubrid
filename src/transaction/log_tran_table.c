@@ -2849,10 +2849,13 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      cubpl::session * session = cubpl::get_session ();
-      if (session)
+      if (session_has_pl_session (thread_p))
 	{
-	  session->set_interrupt (ER_INTERRUPTED);
+	  cubpl::session * session = cubpl::get_session ();
+	  if (session)
+	    {
+	      session->set_interrupt (ER_INTERRUPTED);
+	    }
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -6092,7 +6095,7 @@ log_tdes::lock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t ())
+      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
       {
         cubpl::session *session = cubpl::get_session();
       if (session 
@@ -6116,7 +6119,7 @@ log_tdes::unlock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t ())
+      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
       {
         cubpl::session *session = cubpl::get_session();
       if (session 
