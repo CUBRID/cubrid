@@ -77,6 +77,7 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "session.h"
 #include "pl_session.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
