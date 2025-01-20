@@ -1756,15 +1756,15 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	}
-      else if (fname != NULL)
+      else if (class_list_file != NULL)
 	{
-	  FILE *fp = fopen (fname, "r");
+	  FILE *fp = fopen (class_list_file, "r");
 	  int len = 0, file_getc = 0;
 	  char fget_name[SM_MAX_IDENTIFIER_LENGTH];
 	  char name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
 	  if (fp == NULL)
 	    {
-	      perror (fname);
+	      perror (class_list_file);
 	      goto error_exit;
 	    }
 
