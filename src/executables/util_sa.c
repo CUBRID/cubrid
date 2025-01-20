@@ -1533,7 +1533,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   DIAGDUMP_TYPE diag;
   THREAD_ENTRY *thread_p;
   int error_code = NO_ERROR;
-  char *fname;
+  char *class_list_file;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1566,7 +1566,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
 
-  fname = utility_get_option_string_value (arg_map, DIAG_INPUT_FILE_S, 0);
+  class_list_file = utility_get_option_string_value (arg_map, DIAG_INPUT_FILE_S, 0);
 
   diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
@@ -1580,7 +1580,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto print_diag_usage;
     }
 
-  if (diag != DIAGDUMP_HEAP && fname != NULL)
+  if (diag != DIAGDUMP_HEAP && class_list_file != NULL)
     {
       goto print_diag_usage;
     }
@@ -1731,12 +1731,12 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       bool dump_records;
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
 
-      if (class_name == NULL && fname == NULL)
+      if (class_name == NULL && class_list_file == NULL)
 	{
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
 	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
 	}
-      else if (class_name && fname)
+      else if (class_name && class_list_file)
 	{
 	  goto print_diag_usage;
 	}
