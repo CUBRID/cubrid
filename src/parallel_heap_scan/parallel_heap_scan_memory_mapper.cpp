@@ -70,11 +70,11 @@ namespace parallel_heap_scan
   {
     PRED_EXPR *dest = nullptr;
     typed_memory tm;
-    
-    if(!src)
-    {
+
+    if (!src)
+      {
 	return dest;
-    }
+      }
     auto it = m_map.find ((void *)src);
     if (it != m_map.end())
       {
@@ -111,9 +111,9 @@ namespace parallel_heap_scan
   template<>
   PRED *memory_mapper::copy_and_map (PRED *src)
   {
-    
+
   }
-  
+
   template<>
   REGU_VARIABLE *memory_mapper::copy_and_map (REGU_VARIABLE *regu_var)
   {
