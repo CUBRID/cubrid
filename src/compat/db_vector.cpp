@@ -21,127 +21,138 @@
  */
 
 #include "error_code.h"
-#include <cerrno>
-#include <cstdlib>
-#include <cctype>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <charconv>
+#include <optional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-int
-db_string_to_vector (const char *p, int str_len, float * vector, int *p_count)
+std::optional<std::vector<float>>
+db_string_to_vector (std::string_view input)
 {
-  const char *end = p + str_len;
-  int count = 0;
-  const int number_buffer_size = 64;
-  char number_buffer[number_buffer_size];
-  int buffer_idx;
-  const int max_vector_size = 2000;
+  static constexpr size_t max_vector_size = 2000;
+  static constexpr size_t number_buffer_size = 64;
 
-  if (p == nullptr || vector == nullptr || p_count == nullptr)
+  // Skip leading whitespace
+  auto start = input.find_first_not_of (" \t\n\r");
+  if (start == std::string_view::npos || input[start] != '[')
     {
-      return ER_FAILED;
+      return std::nullopt;
     }
 
-  // Skip leading spaces and opening bracket
-  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-    {
-      p++;
-    }
-  if (p >= end || *p != '[')
-    {
-      return ER_FAILED;
-    }
-  p++;
+  std::vector<float> result;
+  result.reserve (64); // Reserve some initial capacity
 
-  while (p < end && count < max_vector_size)
+  size_t pos = start + 1;
+  std::string number_buffer;
+  number_buffer.reserve (number_buffer_size);
+
+  while (pos < input.size() && result.size() < max_vector_size)
     {
-      // Skip spaces before number
-      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-        {
-          p++;
-        }
-      if (p >= end)
-        {
-          return ER_FAILED;
-        }
+      // Skip whitespace before number
+      pos = input.find_first_not_of (" \t\n\r", pos);
+      if (pos == std::string_view::npos)
+	{
+	  return std::nullopt;
+	}
+
       // Check for closing bracket
-      if (*p == ']')
-        {
-          break;
-        }
+      if (input[pos] == ']')
+	{
+	  break;
+	}
 
-      // Get number into buffer
-      buffer_idx = 0;
-      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size - 1)
-        {
-          if (!isspace (*p))
-            {
-              number_buffer[buffer_idx++] = *p;
-            }
-          p++;
-        }
-      if (buffer_idx == 0 || buffer_idx >= number_buffer_size - 1)
-        {
-          return ER_FAILED;
-        }
-      number_buffer[buffer_idx] = '\0';
+      // Extract number until comma or closing bracket
+      number_buffer.clear();
+      size_t number_end = pos;
+      while (number_end < input.size() &&
+	     input[number_end] != ',' &&
+	     input[number_end] != ']' &&
+	     number_buffer.size() < number_buffer_size - 1)
+	{
+	  if (!std::isspace (input[number_end]))
+	    {
+	      number_buffer.push_back (input[number_end]);
+	    }
+	  ++number_end;
+	}
 
-      // Convert to float
-      char *end_ptr = nullptr;
-      errno = 0;
-      vector[count] = strtof (number_buffer, &end_ptr);
-      if (errno == ERANGE)
-        {
-          return ER_FAILED;
-        }
-      if (*end_ptr != '\0')
-        {
-          return ER_FAILED;
-        }
-      count++;
+      if (number_buffer.empty() || number_buffer.size() >= number_buffer_size - 1)
+	{
+	  return std::nullopt;
+	}
 
-      // Skip spaces after number
-      while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-        {
-          p++;
-        }
-      if (p >= end)
-        {
-          return ER_FAILED;
-        }
+      // Convert string to float
+      try
+	{
+	  float value = std::stof (number_buffer);
+	  result.push_back (value);
+	}
+      catch (const std::exception &)
+	{
+	  return std::nullopt;
+	}
+
+      pos = number_end;
+
+      // Skip whitespace after number
+      pos = input.find_first_not_of (" \t\n\r", pos);
+      if (pos == std::string_view::npos)
+	{
+	  return std::nullopt;
+	}
+
       // Must be comma or closing bracket
-      if (*p == ']')
-        {
-          break;
-        }
-      else if (*p != ',')
-        {
-          return ER_FAILED;
-        }
-      p++;
+      if (input[pos] == ']')
+	{
+	  break;
+	}
+      if (input[pos] != ',')
+	{
+	  return std::nullopt;
+	}
+      ++pos;
     }
 
-  // Check for closing bracket
-  if (p >= end || *p != ']')
+  // Verify proper ending
+  if (pos >= input.size() || input[pos] != ']')
+    {
+      return std::nullopt;
+    }
+
+  // Check for trailing content
+  auto end = input.find_first_not_of (" \t\n\r", pos + 1);
+  if (end != std::string_view::npos || result.empty())
+    {
+      return std::nullopt;
+    }
+
+  return result;
+}
+
+// Optional wrapper function to maintain backward compatibility
+int db_string_to_vector (const char* p, int str_len, float* vector, int* p_count)
+{
+  if (!p || !vector || !p_count || str_len <= 0)
     {
       return ER_FAILED;
     }
-  p++;
 
-  // Skip trailing spaces
-  while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
-    {
-      p++;
-    }
-  if (p != end)
-    {
-      return ER_FAILED;
-    }
-  if (count == 0)
+  auto result = db_string_to_vector (std::string_view (p, static_cast<size_t> (str_len)));
+  if (!result)
     {
       return ER_FAILED;
     }
 
-  *p_count = count;
+  if (result->size() > static_cast<size_t> (std::numeric_limits<int>::max()))
+    {
+      return ER_FAILED;
+    }
+
+  std::copy (result->begin(), result->end(), vector);
+  *p_count = static_cast<int> (result->size());
   return NO_ERROR;
 }
