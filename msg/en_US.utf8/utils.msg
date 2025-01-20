@@ -837,8 +837,7 @@ valid options:\n\
                                 6 dump disk bitmaps\n\
                                 7 dump catalog\n\
                                 8 dump log\n\
-                                9 dump heap\n\
-  -i, --input-class-file=FILE  input FILE of table names\n
+                                9 dump heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB

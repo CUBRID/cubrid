@@ -834,8 +834,7 @@ diagdb: 데이터베이스 정보 덤프\n\
                                 6 디스크 bitmap 덤프\n\
                                 7 카탈로그 덤프\n\
                                 8 로그 덤프\n\
-                                9 힙 덤프\n\
-  -i, --input-class-file=FILE  테이블 이름이 기입된 파일\n
+                                9 힙 덤프\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
