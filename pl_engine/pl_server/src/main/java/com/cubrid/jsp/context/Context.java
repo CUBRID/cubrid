@@ -185,6 +185,27 @@ public class Context {
         }
     }
 
+    public void destroy() {
+        clear();
+        if (sessionClassLoaderManager != null) {
+            sessionClassLoaderManager.clear();
+            sessionClassLoaderManager = null;
+        }
+
+        if (oldClassLoader != null) {
+            oldClassLoader = null;
+        }
+
+        if (methodCache != null) {
+            methodCache.clear();
+            methodCache = null;
+        }
+
+        if (messageBuffer != null) {
+            messageBuffer.clear();
+        }
+    }
+
     public MessageBuffer getMessageBuffer() {
         if (messageBuffer == null) {
             messageBuffer = new MessageBuffer();

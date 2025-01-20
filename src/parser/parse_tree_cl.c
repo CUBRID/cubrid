@@ -12942,17 +12942,34 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, p->info.host_var.str);
-  /* for internal print, print a host variable with its index */
-  if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+
+  if (parser->flag.is_parsing_static_sql == 1 && pt_has_error (parser))
     {
-      sprintf (s, " ");
+      /*
+       * To avoid the following error message:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  ?:0 ='ttt' where  id =1
+       * we need to print the host variable name as it is.
+
+       * The following error message is expected:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  s ='ttt' where  id =1
+       */
+      q = pt_append_nulstring (parser, q, p->info.host_var.label);
     }
   else
     {
-      sprintf (s, ":%d", p->info.host_var.index);
+      q = pt_append_nulstring (parser, q, p->info.host_var.str);
+      /* for internal print, print a host variable with its index */
+      if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+	{
+	  sprintf (s, " ");
+	}
+      else
+	{
+	  sprintf (s, ":%d", p->info.host_var.index);
+	}
+      q = pt_append_nulstring (parser, q, s);
     }
-  q = pt_append_nulstring (parser, q, s);
+
   q = pt_append_nulstring (parser, q, " ");
 
   for (t = p->or_next; t; t = t->or_next)

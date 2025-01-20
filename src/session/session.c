@@ -346,7 +346,7 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -3246,22 +3246,41 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 int
 session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr))
 {
+  int error = NO_ERROR;
   SESSION_STATE *state_p = NULL;
+
+  pl_session_ref_ptr = nullptr;
 
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
-      return ER_FAILED;
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
-
-  if (state_p->pl_session_p == NULL)
+  else
     {
-      state_p->pl_session_p = new PL_SESSION ();
+      if (state_p->pl_session_p == NULL)
+	{
+	  state_p->pl_session_p = new PL_SESSION (state_p->id);
+	  er_log_debug (ARG_FILE_LINE, "pl_session (create): %d\n", state_p->id);
+	}
+      else if (state_p->pl_session_p->is_interrupted ())
+	{
+	  pl_session_ref_ptr = nullptr;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error = ER_INTERRUPTED;
+	}
+
+      if (state_p->pl_session_p != NULL)
+	{
+	  pl_session_ref_ptr = state_p->pl_session_p;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PL_SESSION));
+	}
     }
 
-  pl_session_ref_ptr = state_p->pl_session_p;
-
-  return NO_ERROR;
+  return error;
 }
 
 #if defined (SERVER_MODE)
@@ -3283,7 +3302,7 @@ session_notify_pl_task_completion (const SESSION_STATE * session)
  *
  */
 void
-session_stop_attached_threads (void *session_arg)
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3300,7 +3319,7 @@ session_stop_attached_threads (void *session_arg)
       session->load_session_p = NULL;
     }
 
-  if (session->pl_session_p != NULL)
+  if (thread_p->type == TT_WORKER && session->pl_session_p != NULL)
     {
       session->pl_session_p->set_interrupt (er_errid ());
       session->pl_session_p->wait_for_interrupt ();

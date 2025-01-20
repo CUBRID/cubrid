@@ -907,27 +907,31 @@ public class TypeChecker extends AstVisitor<Type> {
         return null;
     }
 
+    private void checkCursorArgs(ExprId cursor, NodeList<Expr> args) {
+
+        DeclCursor declCursor = (DeclCursor) cursor.decl;
+        int len = args.nodes.size();
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.nodes.get(i);
+            Type argType = visit(arg);
+            Type paramType = declCursor.paramList.nodes.get(i).typeSpec().type;
+            assert paramType != null;
+            Coercion c = Coercion.getCoercion(iStore, argType, paramType);
+            if (c == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(arg.ctx), // s219
+                        String.format("argument %d to the cursor has an incompatible type", i + 1));
+            } else {
+                arg.setCoercion(c);
+            }
+        }
+    }
+
     @Override
     public Type visitStmtCursorOpen(StmtCursorOpen node) {
         Type idType = visit(node.cursor);
         if (idType == Type.CURSOR) {
-            DeclCursor declCursor = (DeclCursor) node.cursor.decl;
-            int len = node.args.nodes.size();
-            for (int i = 0; i < len; i++) {
-                Expr arg = node.args.nodes.get(i);
-                Type argType = visit(arg);
-                Type paramType = declCursor.paramList.nodes.get(i).typeSpec().type;
-                assert paramType != null;
-                Coercion c = Coercion.getCoercion(iStore, argType, paramType);
-                if (c == null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(arg.ctx), // s219
-                            String.format(
-                                    "argument %d to the cursor has an incompatible type", i + 1));
-                } else {
-                    arg.setCoercion(c);
-                }
-            }
+            checkCursorArgs(node.cursor, node.args); // s219
         } else {
             assert false : "unreachable"; // by earlier check
             throw new RuntimeException("unreachable");
@@ -1031,8 +1035,17 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtForCursorLoop(StmtForCursorLoop node) {
-        visitStmtCursorOpen(node); // StmtForCursorLoop extends StmtCursorOpen
+
+        Type idType = visit(node.cursor);
+        if (idType == Type.CURSOR) {
+            checkCursorArgs(node.cursor, node.cursorArgs); // s240
+        } else {
+            assert false : "unreachable"; // by earlier check
+            throw new RuntimeException("unreachable");
+        }
+
         visitNodeList(node.stmts);
+
         return null;
     }
 
@@ -1070,40 +1083,6 @@ public class TypeChecker extends AstVisitor<Type> {
                         "steps of FOR loops must have a type compatible with INT");
             } else {
                 node.step.setCoercion(c);
-            }
-        }
-
-        visitNodeList(node.stmts);
-
-        return null;
-    }
-
-    @Override
-    public Type visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
-
-        Type sqlType = visit(node.sql);
-        if (sqlType.idx != Type.IDX_STRING) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(node.sql.ctx), // s225
-                    "SQL in EXECUTE IMMEDIATE statements must be of a string type");
-        }
-
-        // check types of expressions in the USING clause
-        if (node.usedExprList != null) {
-            for (Expr e : node.usedExprList) {
-                Type tyUsedExpr = visit(e); // s429
-                switch (tyUsedExpr.idx) {
-                    case Type.IDX_CURSOR:
-                    case Type.IDX_RECORD:
-                    case Type.IDX_BOOLEAN:
-                    case Type.IDX_SYS_REFCURSOR:
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(e.ctx), // s428
-                                "expressions in a USING clause cannot be of "
-                                        + tyUsedExpr.plcName
-                                        + " type");
-                    default:; // OK
-                }
             }
         }
 
@@ -1261,6 +1240,8 @@ public class TypeChecker extends AstVisitor<Type> {
         return null;
     }
 
+    private static final int CASE_STR_TO_DATE = 1;
+
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
         if (args.size() == 0) {
             if (SymbolStack.noParenBuiltInFunc.indexOf(funcName) >= 0) {
@@ -1273,24 +1254,48 @@ public class TypeChecker extends AstVisitor<Type> {
         StringBuilder sb = new StringBuilder();
         sb.append("(");
 
+        int specialCase = 0;
+        if (funcName.equals("STR_TO_DATE")) {
+            specialCase = CASE_STR_TO_DATE;
+        }
+
         int len = args.size();
         for (int i = 0; i < len; i++) {
+
             Expr arg = args.get(i);
-            Type argType = visit(arg);
 
-            String typicalValueStr = argType.typicalValueStr;
-            if (typicalValueStr == null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(arg.ctx), // s234
-                        String.format(
-                                "argument %d to the built-in function %s has an invalid type",
-                                i + 1, funcName));
-            }
+            if (specialCase == CASE_STR_TO_DATE && i == 1) {
 
-            if (i > 0) {
-                sb.append(", ");
+                // second argument of STR_TO_DATE
+
+                if (arg instanceof ExprStr) {
+                    sb.append(", ");
+                    sb.append("'" + ((ExprStr) arg).val + "'");
+                } else {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(arg.ctx), // s241
+                            "second argument to STR_TO_DATE function must be a string literal");
+                }
+            } else {
+
+                // ordinary case
+
+                Type argType = visit(arg);
+
+                String typicalValueStr = argType.typicalValueStr;
+                if (typicalValueStr == null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(arg.ctx), // s234
+                            String.format(
+                                    "argument %d to the built-in function %s has an invalid type",
+                                    i + 1, funcName));
+                }
+
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(typicalValueStr);
             }
-            sb.append(typicalValueStr);
         }
 
         sb.append(")");

@@ -33,7 +33,6 @@ namespace cubpl
   execution_stack::execution_stack (cubthread::entry *thread_p)
     : m_id ((std::uint64_t) this)
     , m_thread_p (thread_p)
-    , m_session {get_session ()}
     , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */, 0)
     , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */, 0)
     , m_connection {nullptr}
@@ -42,26 +41,25 @@ namespace cubpl
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;
 
-    if (m_session)
+    session *sess = get_session ();
+    if (sess)
       {
-	m_client_header.id = m_session->get_id ();
+	m_client_header.id = sess->get_id ();
+	m_java_header.id = sess->get_id ();
       }
   }
 
   execution_stack::~execution_stack ()
   {
-    if (m_session)
+    // use local variable
+    session *sess = get_session ();
+    if (sess)
       {
-	// retire connection
-	if (m_connection)
-	  {
-	    m_connection.reset ();
-	  }
+	destory_all_cursors (sess);
+
+	sess->release_connection (m_connection); // release connection to session
+	sess->pop_and_destroy_stack (get_id ());
       }
-
-    destory_all_cursors ();
-
-    m_session->pop_and_destroy_stack (get_id ());
   }
 
   void
@@ -106,7 +104,13 @@ namespace cubpl
     m_stack_cursor_id.insert (query_id);
     m_stack_cursor_map[query_id] = handler_id;
 
-    query_cursor *cursor = m_session->create_cursor (m_thread_p, query_id, oid_included);
+    query_cursor *cursor = nullptr;
+    session *sess = get_session ();
+    if (sess)
+      {
+	cursor = sess->create_cursor (m_thread_p, query_id, oid_included);
+      }
+
     return cursor ? NO_ERROR : ER_FAILED;
   }
 
@@ -121,17 +125,21 @@ namespace cubpl
 	return cursor;
       }
 
-    cursor = m_session->get_cursor (m_thread_p, query_id);
-    if (cursor == nullptr)
+    session *sess = get_session ();
+    if (sess)
       {
-	if (m_session->is_session_cursor (query_id))
+	cursor = sess->get_cursor (m_thread_p, query_id);
+	if (cursor == nullptr)
 	  {
-	    cursor = m_session->create_cursor (m_thread_p, query_id, false);
-	    if (cursor)
+	    if (sess->is_session_cursor (query_id))
 	      {
-		// add to the clearing list at the end of stack
-		m_session->remove_session_cursor (m_thread_p, query_id);
-		m_stack_cursor_id.insert (query_id);
+		cursor = sess->create_cursor (m_thread_p, query_id, false);
+		if (cursor)
+		  {
+		    // add to the clearing list at the end of stack
+		    sess->remove_session_cursor (m_thread_p, query_id);
+		    m_stack_cursor_id.insert (query_id);
+		  }
 	      }
 	  }
       }
@@ -147,7 +155,11 @@ namespace cubpl
 	return;
       }
 
-    m_session->add_session_cursor (m_thread_p, query_id);
+    session *sess = get_session ();
+    if (sess)
+      {
+	sess->add_session_cursor (m_thread_p, query_id);
+      }
 
     // remove from stack resource
     m_stack_cursor_id.erase (query_id);
@@ -155,15 +167,15 @@ namespace cubpl
   }
 
   void
-  execution_stack::destory_all_cursors ()
+  execution_stack::destory_all_cursors (session *sess)
   {
     for (auto &cursor_it : m_stack_cursor_id)
       {
 	// If the cursor is received from the child function and is not returned to the parent function, the cursor remains in m_cursor_set.
 	// So here trying to find the cursor Id in the global returning cursor storage and remove it if exists.
-	m_session->remove_session_cursor (m_thread_p, cursor_it);
+	sess->remove_session_cursor (m_thread_p, cursor_it);
 
-	m_session->destroy_cursor (m_thread_p, cursor_it);
+	sess->destroy_cursor (m_thread_p, cursor_it);
       }
 
     m_stack_cursor_id.clear ();
@@ -174,13 +186,12 @@ namespace cubpl
   {
     if (m_connection == nullptr)
       {
-	connection_pool *pool = get_connection_pool ();
-	if (pool)
+	session *sess = get_session ();
+	if (sess)
 	  {
-	    m_connection = pool->claim ();
+	    m_connection = sess->claim_connection ();
 	  }
       }
-
     return m_connection;
   }
 
@@ -237,9 +248,17 @@ namespace cubpl
     bool dummy_continue;
     if (logtb_is_interrupted (m_thread_p, true, &dummy_continue))
       {
-	m_session->set_local_error_for_interrupt ();
 	m_connection->invalidate ();
-	return m_session->get_interrupt_id ();
+	session *sess = get_session ();
+	if (sess)
+	  {
+	    sess->set_local_error_for_interrupt ();
+	    return sess->get_interrupt_id ();
+	  }
+	else
+	  {
+	    return ER_INTERRUPTING;
+	  }
       }
     return NO_ERROR;
   }

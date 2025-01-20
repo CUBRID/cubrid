@@ -55,8 +55,20 @@ public class ContextManager {
             synchronized (ContextManager.class) {
                 Context newCtx = new Context(id);
                 contextMap.put(id, newCtx);
+                // System.out.println ("new session =" + id); // for debug
                 return newCtx;
             }
+        }
+    }
+
+    public static void destroyContext(long id) {
+        if (hasContext(id)) {
+            Context ctx = contextMap.get(id);
+            if (ctx != null) {
+                ctx.destroy();
+            }
+            contextMap.remove(id);
+            // System.out.println ("deleted session =" + id); // for debug
         }
     }
 

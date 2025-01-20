@@ -6697,8 +6697,8 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
        * TO DO: We need to define a separate type for numeric(any,any) in the future.
        */
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
-      regu->domain->precision = DB_NUMERIC_PRECISION_ANY;
-      regu->domain->scale = DB_NUMERIC_SCALE_ANY;
+      regu->domain->precision = DB_NUMERIC_PRECISION_SP;
+      regu->domain->scale = DB_NUMERIC_SCALE_SP;
     }
 
   return regu;

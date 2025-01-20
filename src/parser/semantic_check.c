@@ -11250,6 +11250,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_assignments (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
       pt_no_double_updates (parser, node);
 
       /* cannot update derived tables */
@@ -11413,6 +11418,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_assignments (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
       pt_no_double_updates (parser, node);
 
       /* check destination derived table */
