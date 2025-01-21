@@ -99,6 +99,11 @@ namespace cubpl
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
+    if (m_stack_idx >= METHOD_MAX_RECURSION_DEPTH)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+      }
+
     // check interrupt
     if (is_interrupted () && m_stack_idx > -1)
       {
@@ -284,6 +289,12 @@ namespace cubpl
   void
   session::set_interrupt (int reason, std::string msg)
   {
+    if (m_is_interrupted)
+      {
+	// do not overwrite interrupt
+	return;
+      }
+
     switch (reason)
       {
       /* no arg */
