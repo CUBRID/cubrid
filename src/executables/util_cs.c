@@ -4601,6 +4601,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+
   if (db_restart (arg->command_name, TRUE, database_name))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
