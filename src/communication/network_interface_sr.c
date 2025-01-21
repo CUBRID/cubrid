@@ -10551,7 +10551,11 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
     }
   else
     {
-      std::string err_msg = executor.get_stack ()->get_error_message ();
+      std::string err_msg;
+      if (executor.get_stack ())
+	{
+	  err_msg = executor.get_stack ()->get_error_message ();
+	}
       if (err_msg.empty () && error_code != ER_SP_EXECUTE_ERROR)
 	{
 	  err_msg.assign (er_msg ());
