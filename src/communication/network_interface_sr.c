@@ -163,10 +163,13 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -201,10 +204,13 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
