@@ -57,7 +57,7 @@ namespace cubpl
       {
 	destory_all_cursors (sess);
 
-	if (sess->is_interrupted () || er_errid () != NO_ERROR)
+	if (m_connection && (sess->is_interrupted () || er_errid () != NO_ERROR))
 	  {
 	    m_connection->invalidate ();
 	  }
