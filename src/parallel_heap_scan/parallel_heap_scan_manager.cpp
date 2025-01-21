@@ -4,17 +4,33 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define PARALLEL_HEAP_SCAN_LOG 1
+
+#if PARALLEL_HEAP_SCAN_LOG
+#include <unistd.h>
+#include <sys/syscall.h>
+#include "error_manager.h"
+#endif
 
 namespace parallel_heap_scan
 {
   manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 		    std::size_t core_count)
-    : m_thread_p (thread_p),
+    : m_is_start_once (false),
+      m_thread_p (thread_p),
       m_scan_id (scan_id),
-      parallelism (core_count),
-      m_is_start_once (false),
-      m_context (thread_p, scan_id, core_count)
+      parallelism (core_count)
   {
+    m_context = std::make_shared<context> (thread_p, scan_id);
+    m_result_queue = std::make_shared<result_queue> (128*parallelism);
+
+    m_memory_mappers.reserve (parallelism);
+    for (size_t i = 0; i < parallelism; i++)
+      {
+	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
+      }
+    m_workpool = thread_get_manager()->create_worker_pool (core_count, core_count, "Parallel heap scan pool",
+		 m_context.get(), core_count, true);
   }
 
   manager::~manager()
@@ -32,30 +48,32 @@ namespace parallel_heap_scan
     int timeout_count = 0;
 
     std::shared_ptr<result_queue::entry> entry;
-    if (m_context.has_error())
+    if (m_context->has_error())
       {
 	return S_ERROR;
       }
-    if (m_context.all_tasks_scan_ended() && m_context.get_result_queue()->size() == 0)
+    if (m_context->all_tasks_scan_ended() && m_result_queue->size() == 0)
       {
 	return S_END;
       }
-    while (!m_context.get_result_queue()->dequeue_timeout (entry, 1))
+
+    while (!m_result_queue->dequeue_timeout (entry, 1))
       {
 	timeout_count++;
 	if (timeout_count > 1000)
 	  {
 	    return S_ERROR;
 	  }
-	if (m_context.has_error())
+	if (m_context->has_error())
 	  {
 	    return S_ERROR;
 	  }
-	if (m_context.all_tasks_scan_ended() && m_context.get_result_queue()->size() == 0)
+	if (m_context->all_tasks_scan_ended() && m_result_queue->size() == 0)
 	  {
 	    return S_END;
 	  }
       }
+
     entry->unpack (m_scan_id, &scan_code);
     return scan_code;
   }
@@ -72,29 +90,28 @@ namespace parallel_heap_scan
 
   void manager::start_tasks ()
   {
-    m_workpool = thread_get_manager()->create_worker_pool (parallelism, parallelism, "Parallel heap scan pool",
-		 &m_context, parallelism, 1);
     std::unique_ptr<task> taskp = NULL;
-    for (int i = 0; i < parallelism; i++)
+
+    for (size_t i = 0; i < parallelism; i++)
       {
-	taskp.reset (new task (&m_context, i));
+	taskp.reset (new task (m_context, m_result_queue, m_memory_mappers[i]));
 	thread_get_manager()->push_task (m_workpool, taskp.release());
-	m_context.add_tasks_started();
+	m_context->add_tasks_started();
       }
   }
 
   void manager::end()
   {
-    m_context.get_result_queue()->is_scan_external_ended = true;
-    if (m_context.has_error())
+    m_result_queue->is_scan_external_ended = true;
+    if (m_context->has_error())
       {
 	return;
       }
-    m_context.get_result_queue()->clear();
-    while (!m_context.all_tasks_ended())
+    m_result_queue->clear();
+    while (!m_context->all_tasks_ended())
       {
 	thread_sleep (1);
-	m_context.get_result_queue()->clear();
+	m_result_queue->clear();
       }
     m_is_start_once = false;
   }
@@ -106,6 +123,9 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   SCAN_CODE ret;
   if (!scan_id->s.phsid.manager->m_is_start_once)
     {
+#if defined (PARALLEL_HEAP_SCAN_LOG)
+      er_log_debug (ARG_FILE_LINE, "manager thread : %ld", syscall (SYS_gettid));
+#endif
       scan_id->s.phsid.manager->start_tasks();
       scan_id->s.phsid.manager->m_is_start_once = true;
     }
@@ -124,6 +144,7 @@ extern int
 scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
   scan_id->s.phsid.manager->reset();
+  return NO_ERROR;
 }
 
 extern void

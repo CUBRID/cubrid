@@ -28,13 +28,15 @@ namespace parallel_heap_scan
       void end();
       inline context &get_context()
       {
-	return m_context;
+	return *m_context;
       }
     private :
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
       std::size_t parallelism;
-      context m_context;
+      std::shared_ptr<context> m_context;
+      std::shared_ptr<result_queue> m_result_queue;
+      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       cubthread::entry_workpool *m_workpool;
   };
 }

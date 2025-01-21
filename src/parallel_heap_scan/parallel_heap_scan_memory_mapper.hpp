@@ -47,35 +47,58 @@ namespace parallel_heap_scan
 	return scan_id;
       }
       template<typename T>
-      T *copy_and_map (T *src);
+      T *copy_and_map (T *src)
+      {
+	assert (false);
+	return nullptr;
+      }
       template<typename T>
-      void clear_and_free (T *src);
-
-      // 특수화된 템플릿 함수들의 선언
-      void clear_and_free (heap_cache_attrinfo *ptr);
-      void clear_and_free (PRED_EXPR *ptr);
-      void clear_and_free (DB_VALUE *ptr);
-      void clear_and_free (ARITH_TYPE *ptr);
-      void clear_and_free (val_descr *ptr);
-
-      val_descr *copy_and_map (val_descr *vd);
-      struct function_node *copy_and_map (struct function_node *func);
-      PRED_EXPR *copy_and_map (PRED_EXPR *src);
-      PRED *copy_and_map (PRED *dest);
-      EVAL_TERM *copy_and_map (EVAL_TERM *dest);
-      struct regu_variable_list_node *copy_and_map (struct regu_variable_list_node *src_list);
-      DB_VALUE *copy_and_map (DB_VALUE *src);
-      ARITH_TYPE *copy_and_map (ARITH_TYPE *src);
-      SP_TYPE *copy_and_map (SP_TYPE *src);
-      heap_cache_attrinfo *copy_and_map (heap_cache_attrinfo *src);
-      REGU_VARIABLE *copy_and_map (REGU_VARIABLE *regu_var);
-
+      void clear_and_free (T *src)
+      {
+	free (src);
+	m_obj_cnt--;
+      }
     private:
       void *val_descr_ptr;
+      void *orig_val_descr_ptr;
       SCAN_ID *scan_id;
       std::unordered_map<void *, typed_memory> m_map;
       std::atomic<int> m_obj_cnt;
   };
+  template<>
+  void memory_mapper::clear_and_free<heap_cache_attrinfo> (heap_cache_attrinfo *ptr);
+  template<>
+  void memory_mapper::clear_and_free<PRED_EXPR> (PRED_EXPR *ptr);
+  template<>
+  void memory_mapper::clear_and_free<DB_VALUE> (DB_VALUE *ptr);
+  template<>
+  void memory_mapper::clear_and_free<ARITH_TYPE> (ARITH_TYPE *ptr);
+  template<>
+  void memory_mapper::clear_and_free<val_descr> (val_descr *ptr);
+  template<>
+  val_descr *memory_mapper::copy_and_map<val_descr> (val_descr *vd);
+  template<>
+  struct function_node *memory_mapper::copy_and_map<struct function_node> (struct function_node *func);
+  template<>
+  PRED_EXPR *memory_mapper::copy_and_map<PRED_EXPR> (PRED_EXPR *src);
+  template<>
+  PRED *memory_mapper::copy_and_map<PRED> (PRED *dest);
+  template<>
+  EVAL_TERM *memory_mapper::copy_and_map<EVAL_TERM> (EVAL_TERM *dest);
+  template<>
+  struct regu_variable_list_node *memory_mapper::copy_and_map<struct regu_variable_list_node>
+  (struct regu_variable_list_node *src_list);
+  template<>
+  DB_VALUE *memory_mapper::copy_and_map<DB_VALUE> (DB_VALUE *src);
+  template<>
+  ARITH_TYPE *memory_mapper::copy_and_map<ARITH_TYPE> (ARITH_TYPE *src);
+  template<>
+  SP_TYPE *memory_mapper::copy_and_map<SP_TYPE> (SP_TYPE *src);
+  template<>
+  heap_cache_attrinfo *memory_mapper::copy_and_map<heap_cache_attrinfo> (heap_cache_attrinfo *src);
+  template<>
+  REGU_VARIABLE *memory_mapper::copy_and_map<REGU_VARIABLE> (REGU_VARIABLE *regu_var);
+
 }
 #endif
 #endif /* _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_ */

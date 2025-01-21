@@ -17,7 +17,8 @@ namespace parallel_heap_scan
       task (task &&) = delete;
       task &operator= (task &&) = delete;
 
-      task (context *context, int index);
+      task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
+	    std::shared_ptr<memory_mapper> memory_mapper);
       ~task();
 
       virtual void execute (cubthread::entry &thread_ref) override;

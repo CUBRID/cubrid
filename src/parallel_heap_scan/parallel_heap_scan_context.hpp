@@ -29,11 +29,9 @@ namespace parallel_heap_scan
       context (context &&) = delete;
       context &operator= (context &&) = delete;
 
-      context (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, int parallelism);
+      context (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
       ~context();
 
-      std::shared_ptr<memory_mapper> get_memory_mapper (int index) const;
-      std::shared_ptr<result_queue> get_result_queue() const;
       void set_error (cuberr::er_message &msg);
       void get_error (cuberr::er_message &msg);
       void add_tasks_executed();
@@ -48,11 +46,9 @@ namespace parallel_heap_scan
       THREAD_ENTRY *m_orig_thread_p;
 
     private:
-      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       std::atomic<std::uint64_t> m_tasks_executed;
       std::atomic<std::uint64_t> m_tasks_started;
       std::atomic<std::uint64_t> m_tasks_scan_ended;
-      std::shared_ptr <result_queue> m_result_queue;
       std::atomic<bool> m_has_error;
       cuberr::er_message m_error_msg;
 

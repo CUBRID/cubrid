@@ -6,15 +6,23 @@
 #include <memory>
 #include "thread_entry.hpp"
 
+#define PARALLEL_HEAP_SCAN_LOG 1
+#if PARALLEL_HEAP_SCAN_LOG
+#include <unistd.h>
+#include <sys/syscall.h>
+#include "error_manager.h"
+#endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_heap_scan
 {
-  task::task (context *context, int index)
+  task::task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
+	      std::shared_ptr<memory_mapper> memory_mapper)
     : m_context (context)
-    , m_result_queue (context->get_result_queue())
-    , m_memory_mapper (context->get_memory_mapper (index))
+    , m_result_queue (result_queue)
+    , m_memory_mapper (memory_mapper)
   {
 
   }
@@ -68,18 +76,22 @@ namespace parallel_heap_scan
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
 
-    scan_open_heap_scan (thread_p, scan_id, orig_scan_id->mvcc_select_lock_needed, orig_scan_id->scan_op_type,
-			 orig_scan_id->fixed, orig_scan_id->grouped, orig_scan_id->single_fetch, orig_scan_id->join_dbval,
-			 orig_scan_id->val_list, orig_scan_id->vd, &phsidp->cls_oid, &phsidp->hfid,
-			 phsidp->scan_pred.regu_list, phsidp->scan_pred.pred_expr, phsidp->rest_regu_list,
-			 phsidp->pred_attrs.num_attrs, phsidp->pred_attrs.attr_ids, phsidp->pred_attrs.attr_cache,
-			 phsidp->rest_attrs.num_attrs, phsidp->rest_attrs.attr_ids, phsidp->rest_attrs.attr_cache,
-			 S_HEAP_SCAN, phsidp->cache_recordinfo, phsidp->recordinfo_regu_list, false);
+#if PARALLEL_HEAP_SCAN_LOG
+    er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
+#endif
+
+    scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
+			 scan_id->fixed, scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval,
+			 scan_id->val_list, scan_id->vd, &hsidp->cls_oid, &hsidp->hfid,
+			 hsidp->scan_pred.regu_list, hsidp->scan_pred.pred_expr, hsidp->rest_regu_list,
+			 hsidp->pred_attrs.num_attrs, hsidp->pred_attrs.attr_ids, hsidp->pred_attrs.attr_cache,
+			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
+			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
 
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
-
+    VPID_SET_NULL (&vpid);
     while (TRUE)
       {
 	if (m_context->has_error() || m_result_queue->is_scan_internal_ended || m_result_queue->is_scan_external_ended)
@@ -128,6 +140,10 @@ namespace parallel_heap_scan
     db_change_private_heap (thread_p, orig_heap_id);
     thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
+#if PARALLEL_HEAP_SCAN_LOG
+    er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
+#endif
+    m_context->add_tasks_executed();
   }
 }
 #endif /* SERVER_MODE */

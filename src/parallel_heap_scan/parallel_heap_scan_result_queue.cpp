@@ -56,7 +56,7 @@ namespace parallel_heap_scan
 	  }
       }
     m_size.fetch_sub (1);
-    if (m_size < max_size / 2)
+    if ((m_size.load()*2) < max_size)
       {
 	m_cv_full.notify_one();
       }
@@ -72,7 +72,7 @@ namespace parallel_heap_scan
 	m_cv_empty.wait (lock);
       }
     m_size.fetch_sub (1);
-    if (m_size < max_size / 2)
+    if (m_size.load() < max_size / 2)
       {
 	m_cv_full.notify_one();
       }
@@ -100,6 +100,7 @@ namespace parallel_heap_scan
 
   result_queue::entry::~entry()
   {
+
   }
 
   void
@@ -113,35 +114,41 @@ namespace parallel_heap_scan
 
   void
   result_queue::entry::capture_regu_var_list (struct regu_variable_list_node   *list,
-      std::vector<DB_VALUE> &dbvalue_array)
+      std::vector<DB_VALUE>  &dbvalue_array)
   {
     struct regu_variable_list_node   *curr = list;
     while (curr)
       {
-	if (curr->value.type == TYPE_DBVAL)
+	if (curr->value.vfetch_to)
 	  {
-	    dbvalue_array.push_back (curr->value.value.dbval);
+	    DB_VALUE dbvp;
+	    pr_clone_value (curr->value.vfetch_to, &dbvp);
+	    dbvalue_array.push_back (dbvp);
 	  }
 	curr = curr->next;
       }
   }
 
   void
-  result_queue::entry::copy_to_regu_var_list (std::vector<DB_VALUE> &dbvalue_array,
+  result_queue::entry::copy_to_regu_var_list (std::vector<DB_VALUE>  &dbvalue_array,
       struct regu_variable_list_node   *list)
   {
     struct regu_variable_list_node   *curr = list;
     size_t i = 0;
     while (curr)
       {
-	if (curr->value.type == TYPE_DBVAL)
+	if (curr->value.vfetch_to)
 	  {
-	    curr->value.value.dbval = dbvalue_array[i++];
+	    if (!DB_IS_NULL (curr->value.vfetch_to))
+	      {
+		pr_clear_value (curr->value.vfetch_to);
+	      }
+	    pr_clone_value (&dbvalue_array[i], curr->value.vfetch_to);
 	  }
+	i++;
 	curr = curr->next;
       }
   }
-
 }
 
 #endif /* SERVER_MODE */
