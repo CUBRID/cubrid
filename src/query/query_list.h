@@ -443,6 +443,17 @@ struct qfile_list_id
   bool is_result_cached;	/* for subquery result cache */
 };
 
+typedef struct qfile_partition_list_id QFILE_PARTITION_LIST_ID;
+struct qfile_partition_list_id
+{
+  QFILE_LIST_ID **list_ids;
+  unsigned int (*part_func) (void *thread_p, void *key_vals, void *vd, int *key_idxs, int key_cnt);
+  int *key_idxs;
+  int key_cnt;
+  int part_cnt;
+  int curr_part_id;
+};
+
 #define QFILE_CLEAR_LIST_ID(list_id) \
   do \
     { \

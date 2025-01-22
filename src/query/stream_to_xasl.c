@@ -1766,6 +1766,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
+  xasl->part_list_id = NULL;
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3168,6 +3170,12 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
+  assert (node_p->build == NULL);
+  assert (node_p->probe == NULL);
+
+  assert (node_p->enable_partiton == false);
+  node_p->curr_part_id = -1;
+
   /**
    * merge_info
    */
@@ -3320,9 +3328,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  ptr = or_unpack_domain (ptr, &node_p->coerce_domains[i], 0);
 	}
     }
-
-  node_p->build = NULL;
-  node_p->probe = NULL;
 
   return ptr;
 

@@ -14503,6 +14503,9 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NO
   xasl->proc.hashjoin.outer.xasl = outer_xasl;
   xasl->proc.hashjoin.inner.xasl = inner_xasl;
 
+  assert (xasl->proc.hashjoin.enable_partiton == false);
+  xasl->proc.hashjoin.curr_part_id = -1;
+
   return xasl;
 }
 

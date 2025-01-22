@@ -311,6 +311,37 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   return hash_val;
 }
 
+unsigned int
+qdata_partition_hash_key (void *thread_p, void *key_vals, void *vd, int *key_idxs, int key_cnt)
+{
+  VALPTR_LIST *valptr_list_p = (VALPTR_LIST *) key_vals;
+  VAL_DESCR *val_desc_p = (VAL_DESCR *) vd;
+  unsigned int hash_val = 0;
+
+  for (int i = 0; i < key_cnt; i++)
+    {
+      REGU_VARIABLE_LIST regu_list = valptr_list_p->valptrp;
+      for (int skip_index = 0; skip_index < key_idxs[i]; skip_index++)
+	{
+	  regu_list = regu_list->next;
+	}
+
+      DB_VALUE *value =
+	qdata_get_dbval_from_constant_regu_variable ((THREAD_ENTRY *) thread_p, &regu_list->value, val_desc_p);
+
+      hash_val = ROTL32 (hash_val, 13);
+
+      unsigned int tmp_hash_val = mht_get_hash_number (UINT_MAX, value);
+      hash_val ^= tmp_hash_val;
+      if (hash_val == 0)
+	{
+	  hash_val = tmp_hash_val;
+	}
+    }
+
+  return hash_val;
+}
+
 /*
  * qdata_hscan_key_compare () - compare two aggregate keys
  *   returns: comparison result
