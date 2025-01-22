@@ -375,11 +375,8 @@ struct hashjoin_input
   XASL_NODE *xasl;
   ACCESS_SPEC_TYPE *spec_list;
   VAL_LIST *val_list;
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
   TP_DOMAIN **domains;
   int *value_indexes;
-#endif
 };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -446,13 +443,13 @@ struct hashjoin_proc_node
 
   HASHJOIN_INPUT *build;
   HASHJOIN_INPUT *probe;
+#endif
 
   /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
   /* Whether there is a need to use the coerce domain. */
   bool need_coerce_domains;
-#endif
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;

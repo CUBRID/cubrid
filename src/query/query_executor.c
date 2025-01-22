@@ -6559,18 +6559,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   XASL_NODE *outer_xasl, *inner_xasl;
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
 
-  TP_DOMAIN **outer_domains, **inner_domains;
-  TP_DOMAIN **hashjoin_outer_domains, **hashjoin_inner_domains, **hashjoin_coerce_domains;
-  int *hashjoin_outer_value_indexes, *hashjoin_inner_value_indexes;
-
-  DB_TYPE outer_type, inner_type;
-  int outer_precision, inner_precision;
-  int outer_scale, inner_scale;
-  int outer_integral, inner_integral;
-  int common_precision, common_scale;
-
-  bool need_coerce_domains;
-
   QFILE_LIST_MERGE_INFO *merge_info;
   int value_count;
 
@@ -6595,185 +6583,10 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
   assert (outer_list_id != NULL && outer_list_id->tuple_cnt > 0);
   assert (inner_list_id != NULL && inner_list_id->tuple_cnt > 0);
 
-  outer_domains = outer_list_id->type_list.domp;
-  inner_domains = inner_list_id->type_list.domp;
-  assert (outer_domains != NULL);
-  assert (inner_domains != NULL);
-
   merge_info = &(hashjoin_proc->merge_info);
 
   value_count = merge_info->ls_column_cnt;
   assert (value_count > 0);
-
-  /**
-   * outer
-   */
-  assert (hashjoin_proc->outer.domains != NULL);
-  assert (hashjoin_proc->outer.value_indexes != NULL);
-
-  hashjoin_outer_domains = hashjoin_proc->outer.domains;
-  hashjoin_outer_value_indexes = hashjoin_proc->outer.value_indexes;
-
-  /**
-   * inner
-   */
-  assert (hashjoin_proc->inner.domains != NULL);
-  assert (hashjoin_proc->inner.value_indexes != NULL);
-
-  hashjoin_inner_domains = hashjoin_proc->inner.domains;
-  hashjoin_inner_value_indexes = hashjoin_proc->inner.value_indexes;
-
-  /**
-   * coerce_domains
-   */
-  {
-    hashjoin_proc->coerce_domains = NULL;
-    hashjoin_coerce_domains = NULL;
-
-    need_coerce_domains = false;
-
-    for (domain_index = 0; domain_index < value_count; domain_index++)
-      {
-	hashjoin_outer_domains[domain_index] = outer_domains[hashjoin_outer_value_indexes[domain_index]];
-	hashjoin_inner_domains[domain_index] = inner_domains[hashjoin_inner_value_indexes[domain_index]];
-
-	outer_type = TP_DOMAIN_TYPE (hashjoin_outer_domains[domain_index]);
-	inner_type = TP_DOMAIN_TYPE (hashjoin_inner_domains[domain_index]);
-
-	if (outer_type == inner_type)
-	  {
-	    outer_precision = hashjoin_outer_domains[domain_index]->precision;
-	    outer_scale = hashjoin_outer_domains[domain_index]->scale;
-
-	    inner_precision = hashjoin_inner_domains[domain_index]->precision;
-	    inner_scale = hashjoin_inner_domains[domain_index]->scale;
-
-	    if ((outer_precision == inner_precision) && (outer_scale == inner_scale))
-	      {
-		if (hashjoin_coerce_domains != NULL)
-		  {
-		    hashjoin_coerce_domains[domain_index] = NULL;
-		  }
-	      }
-	    else
-	      {
-		/* outer_type == inner_type && (outer_precision != inner_precision || outer_scale != inner_scale) */
-
-		if (need_coerce_domains == true)
-		  {
-		    assert (hashjoin_coerce_domains != NULL);
-		  }
-		else
-		  {
-		    need_coerce_domains = true;
-
-		    hashjoin_proc->coerce_domains =
-		      (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-		    if (hashjoin_proc->coerce_domains == NULL)
-		      {
-			error = ER_OUT_OF_VIRTUAL_MEMORY;
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-			goto exit_on_error;
-		      }
-
-		    hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
-
-		    for (skip_index = 0; skip_index < domain_index; skip_index++)
-		      {
-			hashjoin_coerce_domains[skip_index] = NULL;
-		      }
-		  }
-
-		if (outer_type == DB_TYPE_NUMERIC)
-		  {
-		    common_scale = MAX (outer_scale, inner_scale);
-
-		    outer_integral = outer_precision - outer_scale;
-		    inner_integral = inner_precision - inner_scale;
-
-		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		    common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
-
-		    if (common_precision == outer_precision && common_scale == outer_scale)
-		      {
-			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-		      }
-		    else if (common_precision == inner_precision && common_scale == inner_scale)
-		      {
-			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-		      }
-		    else
-		      {
-			hashjoin_coerce_domains[domain_index] =
-			  tp_domain_copy (hashjoin_outer_domains[domain_index], false);
-			if (hashjoin_coerce_domains[domain_index] == NULL)
-			  {
-			    goto exit_on_error;
-			  }
-
-			hashjoin_coerce_domains[domain_index]->precision = common_precision;
-			hashjoin_coerce_domains[domain_index]->scale = common_scale;
-		      }
-		  }
-		else
-		  {
-		    common_precision = MAX (outer_precision, inner_precision);
-		    if (common_precision == outer_precision)
-		      {
-			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-		      }
-		    else
-		      {
-			assert (common_precision == inner_precision);
-			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-		      }
-		  }
-	      }
-	  }
-	else
-	  {
-	    /* outer_type != inner_type */
-
-	    if (need_coerce_domains == true)
-	      {
-		assert (hashjoin_coerce_domains != NULL);
-	      }
-	    else
-	      {
-		need_coerce_domains = true;
-
-		hashjoin_proc->coerce_domains =
-		  (TP_DOMAIN **) db_private_alloc (thread_p, value_count * sizeof (TP_DOMAIN *));
-		if (hashjoin_proc->coerce_domains == NULL)
-		  {
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, value_count * sizeof (TP_DOMAIN *));
-		    goto exit_on_error;
-		  }
-
-		hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
-
-		for (skip_index = 0; skip_index < domain_index; skip_index++)
-		  {
-		    hashjoin_coerce_domains[skip_index] = NULL;
-		  }
-	      }
-
-	    if (tp_more_general_type (outer_type, inner_type) > 0)
-	      {
-		hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
-	      }
-	    else
-	      {
-		hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
-	      }
-	  }
-      }
-
-    assert ((need_coerce_domains == false) || (hashjoin_coerce_domains != NULL));
-  }
-
-  hashjoin_proc->need_coerce_domains = need_coerce_domains;
 
   /**
    * The build input may need to be changed even if the cached xasl is reused,
@@ -6829,6 +6642,20 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
       goto exit_on_error;
     }
 
+  assert ((hashjoin_proc->need_coerce_domains == false) || (hashjoin_proc->coerce_domains != NULL));
+
+  /**
+   * build
+   */
+  assert (hashjoin_proc->build->domains != NULL);
+  assert (hashjoin_proc->build->value_indexes != NULL);
+
+  /**
+   * probe
+   */
+  assert (hashjoin_proc->probe->domains != NULL);
+  assert (hashjoin_proc->probe->value_indexes != NULL);
+
   /*
    * hash_scan
    */
@@ -6838,8 +6665,6 @@ qexec_hash_join_init (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pro
     {
       goto exit_on_error;
     }
-
-  hashjoin_proc->hash_scan.need_coerce_type = need_coerce_domains;
 
   /**
    * stats
@@ -6873,11 +6698,6 @@ qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASHJOIN_PROC_NODE * hashjoin_pr
     {
       assert (false);
       return;
-    }
-
-  if (hashjoin_proc->coerce_domains != NULL)
-    {
-      db_private_free_and_init (thread_p, hashjoin_proc->coerce_domains);
     }
 
   qexec_hash_join_scan_clear (thread_p, &(hashjoin_proc->hash_scan));

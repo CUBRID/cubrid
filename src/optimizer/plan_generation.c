@@ -888,6 +888,230 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
     }
 
+  /**
+   * STEP 4: Check coerce_domains.
+   */
+  {
+    REGU_VARIABLE_LIST outer_domains, inner_domains;
+    TP_DOMAIN **hashjoin_outer_domains, **hashjoin_inner_domains, **hashjoin_coerce_domains;
+    int *hashjoin_outer_value_indexes, *hashjoin_inner_value_indexes;
+
+    DB_TYPE outer_type, inner_type;
+    int outer_precision, inner_precision;
+    int outer_scale, inner_scale;
+    int outer_integral, inner_integral;
+    int common_precision, common_scale;
+
+    bool need_coerce_domains;
+
+    int value_count;
+
+    int domain_index, skip_index;
+    int error = NO_ERROR;
+
+    value_count = merge_info->ls_column_cnt;
+    assert (value_count > 0);
+
+    /**
+     * outer
+     */
+    hashjoin_proc->outer.domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+    if (hashjoin_proc->outer.domains == NULL)
+      {
+	error = ER_OUT_OF_VIRTUAL_MEMORY;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * value_count);
+	goto exit_on_error;
+      }
+    hashjoin_outer_domains = hashjoin_proc->outer.domains;
+    hashjoin_outer_value_indexes = hashjoin_proc->outer.value_indexes = merge_info->ls_outer_column;
+
+    /**
+     * inner
+     */
+    hashjoin_proc->inner.domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+    if (hashjoin_proc->inner.domains == NULL)
+      {
+	error = ER_OUT_OF_VIRTUAL_MEMORY;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * value_count);
+	goto exit_on_error;
+      }
+    hashjoin_inner_domains = hashjoin_proc->inner.domains;
+    hashjoin_inner_value_indexes = hashjoin_proc->inner.value_indexes = merge_info->ls_inner_column;
+
+    /**
+     * coerce_domains
+     */
+    hashjoin_proc->coerce_domains = NULL;
+    hashjoin_coerce_domains = NULL;
+
+    need_coerce_domains = false;
+
+    for (domain_index = 0; domain_index < value_count; domain_index++)
+      {
+	outer_domains = outer_xasl->outptr_list->valptrp;
+	for (skip_index = 0; skip_index < outer_xasl->outptr_list->valptr_cnt; skip_index++)
+	  {
+	    if (hashjoin_outer_value_indexes[domain_index] == skip_index)
+	      {
+		break;
+	      }
+	    outer_domains = outer_domains->next;
+	  }
+
+	inner_domains = inner_xasl->outptr_list->valptrp;
+	for (skip_index = 0; skip_index < inner_xasl->outptr_list->valptr_cnt; skip_index++)
+	  {
+	    if (hashjoin_inner_value_indexes[domain_index] == skip_index)
+	      {
+		break;
+	      }
+	    inner_domains = inner_domains->next;
+	  }
+
+	assert (outer_domains != NULL);
+	assert (inner_domains != NULL);
+
+	hashjoin_outer_domains[domain_index] = outer_domains->value.domain;
+	hashjoin_inner_domains[domain_index] = inner_domains->value.domain;
+
+	outer_type = TP_DOMAIN_TYPE (hashjoin_outer_domains[domain_index]);
+	inner_type = TP_DOMAIN_TYPE (hashjoin_inner_domains[domain_index]);
+
+	if (outer_type == inner_type)
+	  {
+	    outer_precision = hashjoin_outer_domains[domain_index]->precision;
+	    outer_scale = hashjoin_outer_domains[domain_index]->scale;
+
+	    inner_precision = hashjoin_inner_domains[domain_index]->precision;
+	    inner_scale = hashjoin_inner_domains[domain_index]->scale;
+
+	    if ((outer_precision == inner_precision) && (outer_scale == inner_scale))
+	      {
+		if (hashjoin_coerce_domains != NULL)
+		  {
+		    hashjoin_coerce_domains[domain_index] = NULL;
+		  }
+	      }
+	    else
+	      {
+		/* outer_type == inner_type && (outer_precision != inner_precision || outer_scale != inner_scale) */
+
+		if (need_coerce_domains == true)
+		  {
+		    assert (hashjoin_coerce_domains != NULL);
+		  }
+		else
+		  {
+		    need_coerce_domains = true;
+
+		    hashjoin_proc->coerce_domains =
+		      (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+		    if (hashjoin_proc->coerce_domains == NULL)
+		      {
+			error = ER_OUT_OF_VIRTUAL_MEMORY;
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * value_count);
+			goto exit_on_error;
+		      }
+
+		    hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
+
+		    for (skip_index = 0; skip_index < domain_index; skip_index++)
+		      {
+			hashjoin_coerce_domains[skip_index] = NULL;
+		      }
+		  }
+
+		if (outer_type == DB_TYPE_NUMERIC)
+		  {
+		    common_scale = MAX (outer_scale, inner_scale);
+
+		    outer_integral = outer_precision - outer_scale;
+		    inner_integral = inner_precision - inner_scale;
+
+		    common_precision = MAX (outer_integral, inner_integral) + common_scale;
+		    common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+
+		    if (common_precision == outer_precision && common_scale == outer_scale)
+		      {
+			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
+		      }
+		    else if (common_precision == inner_precision && common_scale == inner_scale)
+		      {
+			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
+		      }
+		    else
+		      {
+			hashjoin_coerce_domains[domain_index] =
+			  tp_domain_copy (hashjoin_outer_domains[domain_index], false);
+			if (hashjoin_coerce_domains[domain_index] == NULL)
+			  {
+			    goto exit_on_error;
+			  }
+
+			hashjoin_coerce_domains[domain_index]->precision = common_precision;
+			hashjoin_coerce_domains[domain_index]->scale = common_scale;
+		      }
+		  }
+		else
+		  {
+		    common_precision = MAX (outer_precision, inner_precision);
+		    if (common_precision == outer_precision)
+		      {
+			hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
+		      }
+		    else
+		      {
+			assert (common_precision == inner_precision);
+			hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
+		      }
+		  }
+	      }
+	  }
+	else
+	  {
+	    /* outer_type != inner_type */
+
+	    if (need_coerce_domains == true)
+	      {
+		assert (hashjoin_coerce_domains != NULL);
+	      }
+	    else
+	      {
+		need_coerce_domains = true;
+
+		hashjoin_proc->coerce_domains =
+		  (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+		if (hashjoin_proc->coerce_domains == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * value_count);
+		    goto exit_on_error;
+		  }
+
+		hashjoin_coerce_domains = hashjoin_proc->coerce_domains;
+
+		for (skip_index = 0; skip_index < domain_index; skip_index++)
+		  {
+		    hashjoin_coerce_domains[skip_index] = NULL;
+		  }
+	      }
+
+	    if (tp_more_general_type (outer_type, inner_type) > 0)
+	      {
+		hashjoin_coerce_domains[domain_index] = hashjoin_outer_domains[domain_index];
+	      }
+	    else
+	      {
+		hashjoin_coerce_domains[domain_index] = hashjoin_inner_domains[domain_index];
+	      }
+	  }
+      }
+
+    assert ((need_coerce_domains == false) || (hashjoin_coerce_domains != NULL));
+
+    hashjoin_proc->need_coerce_domains = need_coerce_domains;
+  }
+
 exit_on_end:
   bitset_delset (&term_segs_set);
 
