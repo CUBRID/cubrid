@@ -266,7 +266,16 @@ namespace cubpl
   server_manager::wait_for_server_ready ()
   {
     m_server_monitor_task->wait_for_ready ();
-    return m_server_monitor_task->is_running () ? NO_ERROR : ER_FAILED;
+    if (m_server_monitor_task->is_running ())
+      {
+	return NO_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		m_db_name.c_str ());
+	return er_errid ();
+      }
   }
 
   connection_pool *
@@ -385,7 +394,7 @@ namespace cubpl
 					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE);
 				  };
 #else
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING; };
+    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING || m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE; };
 #endif
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
@@ -436,7 +445,11 @@ namespace cubpl
       }
 
     // set unknown state here
+#if defined (SERVER_MODE)
     m_state = SERVER_MONITOR_STATE_UNKNOWN;
+#else
+    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
+#endif
 
     if (error == NO_ERROR)
       {
