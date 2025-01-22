@@ -765,6 +765,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
 
+/* This code was added for testing purposes and should be removed later. (by youngjinj) */
+#define PRM_NAME_MAX_PARALLEL_THREAD "max_parallel_thread"
+/* end. (by youngjinj) */
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2472,6 +2476,14 @@ static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
 static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
 static unsigned int prm_max_subquery_cache_size_flag = 0;
+
+/* This code was added for testing purposes and should be removed later. (by youngjinj) */
+int PRM_MAX_PARALLEL_THREAD = 1;
+static int prm_max_parallel_thread_default = 1;
+static int prm_max_parallel_thread_upper = 32;
+static int prm_max_parallel_thread_lower = 1;
+static unsigned int prm_max_parallel_thread_flag = 0;
+/* end. (by youngjinj) */
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6531,7 +6543,21 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* This code was added for testing purposes and should be removed later. (by youngjinj) */
+  {PRM_ID_MAX_PARALLEL_THREAD,
+   PRM_NAME_MAX_PARALLEL_THREAD,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_INTEGER,
+   &prm_max_parallel_thread_flag,
+   (void *) &prm_max_parallel_thread_default,
+   (void *) &PRM_MAX_PARALLEL_THREAD,
+   (void *) &prm_max_parallel_thread_upper,
+   (void *) &prm_max_parallel_thread_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
+  /* end. (by youngjinj) */
 };
 
 static int num_session_parameters = 0;

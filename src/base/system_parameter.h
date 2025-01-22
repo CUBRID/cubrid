@@ -494,8 +494,15 @@ enum param_id
   PRM_ID_STORED_PROCEDURE_DEBUG,
   PRM_ID_STORED_PROCEDURE_UDS,
   PRM_ID_STORED_PROCEDURE_DUMP_ICODE,
+
+  /* This code was added for testing purposes and should be removed later. (by youngjinj) */
+  PRM_ID_MAX_PARALLEL_THREAD,
+  /* end. (by youngjinj)
+   * PRM_LAST_ID must be reverted to its original value.
+   */
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_STORED_PROCEDURE_DUMP_ICODE
+  PRM_LAST_ID = PRM_ID_MAX_PARALLEL_THREAD
 };
 typedef enum param_id PARAM_ID;
 
