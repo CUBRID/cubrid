@@ -154,13 +154,8 @@ namespace cubpl
 	    m_stack->get_data_queue ().pop ();
 	  }
 
-	// free phase
-	if (response_blk.is_valid ())
-	  {
-	    delete [] response_blk.ptr;
-	    response_blk.ptr = NULL;
-	    response_blk.dim = 0;
-	  }
+	// free reponse block
+	response_blk.freemem ();
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
 
