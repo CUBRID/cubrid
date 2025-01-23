@@ -303,7 +303,6 @@ set(SP_HEADERS
   ${SP_DIR}/pl_struct_compile.cpp
 )
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_context.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_manager.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_memory_mapper.cpp
@@ -313,7 +312,6 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_context.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_manager.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_memory_mapper.hpp

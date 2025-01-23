@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-
+#include "parallel_heap_scan_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -9998,16 +9998,6 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	       * also just been determined to be a correlated subquery. */
 	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_CORRELATED);
 
-	      for (table_info = symbols->table_info; table_info != NULL; table_info = table_info->next)
-		{
-		  PT_SPEC_FLAG flag = table_info->class_spec->info.spec.flag;
-		  if (table_info->class_spec)
-		    {
-		      table_info->class_spec->info.spec.flag =
-			(PT_SPEC_FLAG) (flag | PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-		    }
-		}
-
 	      table_info = NULL;
 
 	      if (symbols->stack == NULL)
@@ -12288,12 +12278,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (PT_IS_VALUE_QUERY (spec))
 		{
 		  scan_type = TARGET_REGUVAL_LIST;
-		  is_parallel_heap_scan_callable = false;
 		}
 	      else if (spec->info.spec.meta_class == PT_META_CLASS)
 		{
 		  scan_type = TARGET_CLASS_ATTR;
-		  is_parallel_heap_scan_callable = false;
 		}
 	      else
 		{
@@ -12600,8 +12588,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
-	      if (!is_parallel_heap_scan_callable
-		  || PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))
 		{
 		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
 		}
@@ -13322,14 +13309,6 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
   /* set the CONNECT BY pointer and flag */
   xasl->connect_by_ptr = connect_by_xasl;
   XASL_SET_FLAG (xasl, XASL_HAS_CONNECT_BY);
-  for (ACCESS_SPEC_TYPE * specp = connect_by_xasl->spec_list; specp; specp = specp->next)
-    {
-      specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-    }
-  for (ACCESS_SPEC_TYPE * specp = xasl->spec_list; specp; specp = specp->next)
-    {
-      specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-    }
 
   /* make regu vars for use for pseudo-columns values fetching */
 
@@ -14323,7 +14302,6 @@ ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, PT
 
   if (spec != NULL)
     {
-      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
       xasl->spec_list = pt_to_spec_list (parser, spec, where_key_part, where_part, plan, info, NULL, where_hash_part);
       if (xasl->spec_list == NULL)
 	{
@@ -18322,6 +18300,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
+  scan_check_parallel_heap_scan_possible(xasl);
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -18662,32 +18642,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
 	  xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
 	  xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
-	}
-      if (xasl != NULL && xasl->aptr_list != NULL)
-	{
-	  ACCESS_SPEC_TYPE *specp;
-	  XASL_NODE *xptr1, *xptr2;
-	  for (xptr1 = xasl->aptr_list; xptr1; xptr1 = xptr1->next)
-	    {
-	      for (specp = xptr1->spec_list; specp; specp = specp->next)
-		{
-		  if (specp->access == ACCESS_METHOD_SEQUENTIAL)
-		    {
-		      specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-		    }
-		}
-	      for (xptr2 = xptr1->scan_ptr; xptr2; xptr2 = xptr2->next)
-		{
-		  for (specp = xptr2->spec_list; specp; specp = specp->next)
-		    {
-		      if (specp->access == ACCESS_METHOD_SEQUENTIAL)
-			{
-			  specp->flags =
-			    (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-			}
-		    }
-		}
-	    }
 	}
     }
   else
@@ -22138,6 +22092,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       break;
     }
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)

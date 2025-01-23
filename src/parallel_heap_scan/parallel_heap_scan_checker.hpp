@@ -1,8 +1,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_CHECKER_HPP_
 #define _PARALLEL_HEAP_SCAN_CHECKER_HPP_
+#include "xasl.h"
 
-#include "thread_compat.hpp"
-
-int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, bool mvcc_select_lock_needed);
+extern "C" int scan_check_parallel_heap_scan_possible (XASL_NODE *xasl);
 
 #endif /* _PARALLEL_HEAP_SCAN_CHECKER_HPP_ */

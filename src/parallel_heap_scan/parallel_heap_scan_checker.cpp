@@ -1,10 +1,8 @@
 #include "parallel_heap_scan_checker.hpp"
 
-#if defined (SERVER_MODE)
 #include "regu_var.hpp"
-#include "xasl.h"
 #include "xasl_predicate.hpp"
-#include "system_parameter.h"
+#include <set>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -24,59 +22,217 @@ namespace parallel_heap_scan
       int check (ALSM_EVAL_TERM *src);
       int check (LIKE_EVAL_TERM *src);
       int check (RLIKE_EVAL_TERM *src);
+      int check (ACCESS_SPEC_TYPE *src);
+      int check (XASL_NODE *xasl);
 
-      void add_not_parallel_heap_scan_flag (XASL_NODE *xasl);
+      int set_impossible (XASL_NODE *xasl);
+      int set_impossible_recursively (XASL_NODE *xasl);
+
+    private:
+      std::set<void *> visited_ptr;
+      std::set<void *> impossible_ptr;
   };
 
-  void checker::add_not_parallel_heap_scan_flag (XASL_NODE *xasl)
+  int checker::set_impossible (XASL_NODE *xasl)
   {
-    ACCESS_SPEC_TYPE *curr_spec;
+    ACCESS_SPEC_TYPE *specp;
+    if (!xasl)
+      {
+	return 0;
+      }
+
+    if (impossible_ptr.find ((void *)xasl) != impossible_ptr.end())
+      {
+	return 0;
+      }
+    impossible_ptr.insert ((void *)xasl);
+
+    for (specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+      }
+    for (specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+      }
+    return 0;
+  }
+
+  int checker::set_impossible_recursively (XASL_NODE *xasl)
+  {
+    int cnt = 0;
     XASL_NODE *xaslp;
-    if (xasl->spec_list)
+    if (!xasl)
       {
-	curr_spec = xasl->spec_list;
-	while (curr_spec)
-	  {
-	    curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-	    curr_spec = curr_spec->next;
-	  }
+	return 0;
       }
-    if (xasl->merge_spec)
+
+    if (impossible_ptr.find ((void *)xasl) != impossible_ptr.end())
       {
-	curr_spec = xasl->merge_spec;
-	while (curr_spec)
-	  {
-	    curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
-	    curr_spec = curr_spec->next;
-	  }
+	return 0;
       }
-    if (xasl->aptr_list)
+
+    set_impossible (xasl);
+    for (xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	xaslp = xasl->aptr_list;
-	while (xaslp)
-	  {
-	    add_not_parallel_heap_scan_flag (xaslp);
-	    xaslp = xaslp->next;
-	  }
+	cnt += set_impossible_recursively (xaslp);
       }
-    if (xasl->dptr_list)
+    /* bptr : cannot parallel heap scan */
+    for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
       {
-	xaslp = xasl->dptr_list;
-	while (xaslp)
-	  {
-	    add_not_parallel_heap_scan_flag (xaslp);
-	    xaslp = xaslp->next;
-	  }
+	cnt += set_impossible_recursively (xaslp);
+	cnt++;
       }
-    if (xasl->scan_ptr)
+    /* dptr : cannot parallel heap scan */
+    for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	xaslp = xasl->scan_ptr;
-	while (xaslp)
-	  {
-	    add_not_parallel_heap_scan_flag (xaslp);
-	    xaslp = xaslp->next;
-	  }
+	cnt += set_impossible_recursively (xaslp);
       }
+    /* fptr : cannot parallel heap scan */
+    for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+	cnt++;
+      }
+    /* scan_ptr : cannot parallel heap scan */
+    for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+    /* connect_by_ptr : cannot parallel heap scan */
+    for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+	cnt++;
+      }
+
+    return cnt;
+  }
+
+
+  int checker::check (XASL_NODE *xasl)
+  {
+    int cnt = 0;
+    XASL_NODE *xaslp;
+    ACCESS_SPEC_TYPE *specp;
+    if (!xasl)
+      {
+	return 0;
+      }
+    auto it = visited_ptr.find ((void *)xasl);
+    if (it != visited_ptr.end())
+      {
+	return 0;
+      }
+    visited_ptr.insert ((void *)xasl);
+
+    switch (xasl->type)
+      {
+      case BUILDLIST_PROC:
+	break;
+      case CTE_PROC:
+	if (xasl->proc.cte.non_recursive_part)
+	  {
+	    cnt += check (xasl->proc.cte.non_recursive_part);
+	  }
+	if (xasl->proc.cte.recursive_part)
+	  {
+	    cnt += set_impossible_recursively (xasl->proc.cte.recursive_part);
+	  }
+	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+      case OBJFETCH_PROC:
+      case MERGELIST_PROC:
+      case HASHJOIN_PROC:
+      case UPDATE_PROC:
+      case DELETE_PROC:
+      case INSERT_PROC:
+      case CONNECTBY_PROC:
+      case DO_PROC:
+      case MERGE_PROC:
+      case BUILD_SCHEMA_PROC:
+      case SCAN_PROC:
+      default:
+	set_impossible_recursively (xasl);
+	return 0;
+	break;
+      }
+
+    /* lower xasl search */
+    /* aptr : can parallel heap scan */
+    for (xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+      {
+	check (xaslp);
+      }
+    /* bptr : cannot parallel heap scan */
+    for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+    /* dptr : cannot parallel heap scan */
+    for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+    /* fptr : cannot parallel heap scan */
+    for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+    /* scan_ptr : cannot parallel heap scan */
+    for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+    /* connect_by_ptr : cannot parallel heap scan */
+    for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
+      {
+	cnt += set_impossible_recursively (xaslp);
+      }
+
+    /* this xasl's spec list search */
+    for (specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	cnt += check (specp);
+      }
+    for (specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	cnt += check (specp);
+      }
+    if (cnt > 0)
+      {
+	set_impossible (xasl);
+      }
+
+    return cnt;
+  }
+
+  int checker::check (ACCESS_SPEC_TYPE *src)
+  {
+    int cnt = 0;
+    if (!src)
+      {
+	return 0;
+      }
+    cnt += check (src->s.cls_node.cls_regu_list_pred);
+    cnt += check (src->s.cls_node.cls_regu_list_rest);
+    cnt += check (src->where_pred);
+    if (src->next) /* not for partition table */
+      {
+	cnt++;
+      }
+    if (src->access != ACCESS_METHOD_SEQUENTIAL)
+      {
+	cnt++;
+      }
+    if (src->type != TARGET_CLASS)
+      {
+	cnt++;
+      }
+
+    return cnt;
   }
 
   int checker::check (REGU_VARIABLE *src)
@@ -86,10 +242,11 @@ namespace parallel_heap_scan
       {
 	return 0;
       }
+
     if (src->xasl)
       {
 	cnt++;
-	add_not_parallel_heap_scan_flag (src->xasl);
+	set_impossible_recursively (src->xasl);
       }
 
     switch (src->type)
@@ -105,11 +262,11 @@ namespace parallel_heap_scan
 	cnt += check (src->value.arithptr);
 	break;
       case TYPE_SP:
-	cnt+=check (src->value.sp_ptr->args);
+	cnt += check (src->value.sp_ptr->args);
 	cnt++;
 	break;
       case TYPE_FUNC:
-	cnt+=check (src->value.funcp->operand);
+	cnt += check (src->value.funcp->operand);
 	break;
       case TYPE_DBVAL:
 	break;
@@ -117,7 +274,7 @@ namespace parallel_heap_scan
 	cnt++;
 	break;
       case TYPE_REGU_VAR_LIST:
-	cnt+=check (src->value.regu_var_list);
+	cnt += check (src->value.regu_var_list);
 	break;
       default:
 	break;
@@ -250,38 +407,12 @@ namespace parallel_heap_scan
 
 }
 
-int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, bool mvcc_select_lock_needed)
+extern int
+scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
 {
-  ACCESS_SPEC_TYPE *curr_spec = (ACCESS_SPEC_TYPE *)spec;
-  int parallel_heap_scan_threads = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
-  if (parallel_heap_scan_threads == 0)
-    {
-      return FALSE;
-    }
-  if (!mvcc_select_lock_needed)
-    {
-      if (thread_p->private_heap_id != 0)
-	{
-	  if (!oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid)
-	      && ! (curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN) && ! curr_spec->parts)	/* Only for User table */
-	    {
-	      int cnt = 0;
-	      parallel_heap_scan::checker checker;
-	      cnt += checker.check (curr_spec->s.cls_node.cls_regu_list_pred);
-	      cnt += checker.check (curr_spec->where_pred);
-	      cnt += checker.check (curr_spec->s.cls_node.cls_regu_list_rest);
-	      if (cnt == 0)
-		{
-		  return TRUE;
-		}
-	    }
-	}
-    }
-  return FALSE;
+  parallel_heap_scan::checker checker;
+  return checker.check (xasl);
 }
-#else
-int scan_check_parallel_heap_scan_possible (THREAD_ENTRY *thread_p, void *spec, bool mvcc_select_lock_needed)
-{
-  return 0;
-}
-#endif
+
+
+

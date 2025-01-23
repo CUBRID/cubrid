@@ -101,5 +101,4 @@ extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, qfile_list_id 
 					 valptr_list_node * outptr_list, val_descr * vd, qfile_tuple_record * tplrec);
 extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable_node * regu,
 						      xasl_node * xasl, xasl_node * connect_by_ptr);
-extern void reset_pred_or_regu_var_list (void *object, bool is_pred);
 #endif /* _QUERY_EXECUTOR_H_ */

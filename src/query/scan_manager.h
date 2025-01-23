@@ -120,8 +120,9 @@ struct heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
-namespace parallel_heap_scan {
-  class manager;  // forward declaration
+namespace parallel_heap_scan
+{
+  class manager;		// forward declaration
 }
 
 typedef struct parallel_heap_scan_id PARALLEL_HEAP_SCAN_ID;
@@ -142,7 +143,7 @@ struct parallel_heap_scan_id
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
   sampling_info sampling;	/* for sampling statistics */
-  parallel_heap_scan::manager *manager;
+    parallel_heap_scan::manager * manager;
 };				/* Heap PARALLEL Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;

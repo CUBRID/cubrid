@@ -41,6 +41,7 @@ namespace parallel_heap_scan
       bool all_tasks_scan_ended() const;
       bool has_error() const;
       bool set_has_error();
+      void reset_vpid();
 
       SCAN_ID *m_scan_id;
       THREAD_ENTRY *m_orig_thread_p;

@@ -15,6 +15,7 @@ namespace parallel_heap_scan
     public:
       manager() = delete;
       std::atomic<bool> m_is_start_once;
+      bool timeout_occurred;
       manager (const manager &) = delete;
       manager &operator= (const manager &) = delete;
 

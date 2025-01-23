@@ -72,7 +72,7 @@ namespace parallel_heap_scan
 	m_cv_empty.wait (lock);
       }
     m_size.fetch_sub (1);
-    if (m_size.load() < max_size / 2)
+    if ((m_size.load()*2) < max_size)
       {
 	m_cv_full.notify_one();
       }

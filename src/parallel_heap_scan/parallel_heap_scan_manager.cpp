@@ -17,6 +17,7 @@ namespace parallel_heap_scan
   manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 		    std::size_t core_count)
     : m_is_start_once (false),
+      timeout_occurred (false),
       m_thread_p (thread_p),
       m_scan_id (scan_id),
       parallelism (core_count)
@@ -57,11 +58,12 @@ namespace parallel_heap_scan
 	return S_END;
       }
 
-    while (!m_result_queue->dequeue_timeout (entry, 1))
+    while (!m_result_queue->dequeue_timeout (entry, 10))
       {
 	timeout_count++;
 	if (timeout_count > 1000)
 	  {
+	    timeout_occurred = true;
 	    return S_ERROR;
 	  }
 	if (m_context->has_error())
@@ -85,7 +87,25 @@ namespace parallel_heap_scan
 
   void manager::reset ()
   {
-    assert (false);
+#if defined (PARALLEL_HEAP_SCAN_LOG)
+    er_log_debug (ARG_FILE_LINE, "manager thread : %ld reset'd", syscall (SYS_gettid));
+#endif
+    end();
+    m_context->reset_vpid();
+    m_scan_id->single_fetched = false;
+    m_scan_id->null_fetched = false;
+    m_scan_id->qualified_block = false;
+    m_scan_id->position = (m_scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
+    OID_SET_NULL (&m_scan_id->s.phsid.curr_oid);
+    for (auto &memory_mapper : m_memory_mappers)
+      {
+	SCAN_ID *scan_id = memory_mapper->get_scan_id();
+	scan_id->single_fetched = false;
+	scan_id->null_fetched = false;
+	scan_id->qualified_block = false;
+	scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
+	OID_SET_NULL (&scan_id->s.hsid.curr_oid);
+      }
   }
 
   void manager::start_tasks ()
@@ -114,6 +134,9 @@ namespace parallel_heap_scan
 	m_result_queue->clear();
       }
     m_is_start_once = false;
+    timeout_occurred = false;
+    m_result_queue->is_scan_external_ended = false;
+    m_result_queue->is_scan_internal_ended = false;
   }
 }
 
@@ -130,6 +153,13 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       scan_id->s.phsid.manager->m_is_start_once = true;
     }
   ret = scan_id->s.phsid.manager->get_result();
+  if (scan_id->s.phsid.manager->timeout_occurred)
+    {
+#if defined (PARALLEL_HEAP_SCAN_LOG)
+      er_log_debug (ARG_FILE_LINE, "manager thread : %ld timeout occurred", syscall (SYS_gettid));
+#endif
+      return S_ERROR;
+    }
   if (ret == S_ERROR)
     {
       while (!scan_id->s.phsid.manager->get_context().has_error());
@@ -178,6 +208,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 {
   int ret;
   int parallelism = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
+  HL_HEAPID orig_heap_id;
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
   scan_id->type = S_HEAP_SCAN;
   ret = scan_open_heap_scan (thread_p, scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
@@ -185,7 +216,6 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
 			     num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
   scan_id->type = S_PARALLEL_HEAP_SCAN;
-  HL_HEAPID orig_heap_id;
   orig_heap_id = db_change_private_heap (thread_p, 0);
   scan_id->s.phsid.manager = new parallel_heap_scan::manager (thread_p, scan_id, parallelism, parallelism,
       parallelism);

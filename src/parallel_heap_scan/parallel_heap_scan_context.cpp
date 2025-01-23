@@ -27,6 +27,14 @@ namespace parallel_heap_scan
   }
 
   void
+  context::reset_vpid()
+  {
+    std::lock_guard<std::mutex> lock (m_locked_vpid.mutex);
+    VPID_SET_NULL (&m_locked_vpid.vpid);
+    m_locked_vpid.is_ended = false;
+  }
+
+  void
   context::set_error (cuberr::er_message &msg)
   {
     m_error_msg.swap (msg);
