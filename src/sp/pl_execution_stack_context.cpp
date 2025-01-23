@@ -57,6 +57,11 @@ namespace cubpl
       {
 	destory_all_cursors (sess);
 
+	if (m_connection && (sess->is_interrupted () || er_errid () != NO_ERROR))
+	  {
+	    m_connection->invalidate ();
+	  }
+
 	sess->release_connection (m_connection); // release connection to session
 	sess->pop_and_destroy_stack (get_id ());
       }

@@ -149,7 +149,7 @@ namespace cubpl
 	// Check if the session is in an interrupting state by calling get_session()
 	// TODO: Verify the behavior of get_session() and validate this code flow.
 	session *sess = get_session ();
-	if (sess)
+	if (sess && er_errid () == NO_ERROR)
 	  {
 	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.
@@ -284,7 +284,7 @@ namespace cubpl
 	// Check if the session is in an interrupting state by calling get_session()
 	// TODO: Verify the behavior of get_session() and validate this code flow.
 	session *sess = get_session ();
-	if (sess)
+	if (sess && er_errid () == NO_ERROR)
 	  {
 	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.
@@ -350,7 +350,7 @@ exit:
 	// Check if the session is in an interrupting state by calling get_session()
 	// TODO: Verify the behavior of get_session() and validate this code flow.
 	session *sess = get_session ();
-	if (sess)
+	if (sess && er_errid () == NO_ERROR)
 	  {
 	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.

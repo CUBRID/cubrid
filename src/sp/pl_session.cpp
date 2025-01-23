@@ -97,7 +97,15 @@ namespace cubpl
 	thread_p = thread_get_thread_entry_info ();
       }
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> lock (m_mutex);
+
+    if (m_stack_idx >= METHOD_MAX_RECURSION_DEPTH)
+      {
+	lock.unlock ();
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
+	return nullptr;
+      }
 
     // check interrupt
     if (is_interrupted () && m_stack_idx > -1)
@@ -284,6 +292,12 @@ namespace cubpl
   void
   session::set_interrupt (int reason, std::string msg)
   {
+    if (m_is_interrupted)
+      {
+	// do not overwrite interrupt
+	return;
+      }
+
     switch (reason)
       {
       /* no arg */
