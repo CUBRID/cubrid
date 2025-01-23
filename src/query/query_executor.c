@@ -2646,14 +2646,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+	      if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+		{
+		  /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
@@ -2666,14 +2668,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+	      if (xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+		{
+		  /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
