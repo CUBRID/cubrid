@@ -162,7 +162,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	  return 1;
 	}
     }
-  if (hStdOut != INVALID_HANDLE_VALUE)
+  if (stdout_file && (hStdOut != INVALID_HANDLE_VALUE))
     {
       rc = CloseHandle (hStdOut);
       if (rc == FALSE)
@@ -171,7 +171,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	  return 1;
 	}
     }
-  if (hStdErr != INVALID_HANDLE_VALUE)
+  if (stderr_file && (hStdErr != INVALID_HANDLE_VALUE))
     {
       rc = CloseHandle (hStdErr);
       if (rc == FALSE)
