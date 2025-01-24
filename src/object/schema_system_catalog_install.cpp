@@ -944,13 +944,13 @@ namespace cubschema
       {
 	"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
-	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
+	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	}
       },
       {
 	"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
-	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
+	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	}
       },
       {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
@@ -1856,6 +1856,8 @@ namespace cubschema
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},
       {"mode", "varchar(6)"},
+      {"is_optional", "varchar(3)"},
+      {"default_value", "varchar(255)"},
       {"comment", "varchar(1024)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}

@@ -117,7 +117,11 @@ namespace cubpl
   executor::executor (pl_signature &sig)
     : m_sig (sig)
   {
-    m_stack = get_session ()->create_and_push_stack (nullptr);
+    session *sess = get_session ();
+    if (sess)
+      {
+	m_stack = sess->create_and_push_stack (nullptr);
+      }
   }
 
   executor::~executor ()
@@ -126,7 +130,7 @@ namespace cubpl
     pr_clear_value_vector (m_out_args);
 
     // exit stack
-    if (m_stack != nullptr)
+    if (get_session () && m_stack != nullptr)
       {
 	delete m_stack;
       }
@@ -142,7 +146,18 @@ namespace cubpl
 
     if (m_stack == NULL)
       {
-	return ER_FAILED;
+	// Check if the session is in an interrupting state by calling get_session()
+	// TODO: Verify the behavior of get_session() and validate this code flow.
+	session *sess = get_session ();
+	if (sess && er_errid () == NO_ERROR)
+	  {
+	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // In this case, get_session() should return NULL.
+	    // According to the current analysis, the following code should be unreachable.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  }
+
+	return er_errid ();
       }
 
     cubthread::entry *m_thread_p = m_stack->get_thread_entry ();
@@ -266,7 +281,18 @@ namespace cubpl
 
     if (m_stack == NULL)
       {
-	return ER_FAILED;
+	// Check if the session is in an interrupting state by calling get_session()
+	// TODO: Verify the behavior of get_session() and validate this code flow.
+	session *sess = get_session ();
+	if (sess && er_errid () == NO_ERROR)
+	  {
+	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // In this case, get_session() should return NULL.
+	    // According to the current analysis, the following code should be unreachable.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  }
+
+	return er_errid ();
       }
 
     // execution rights
@@ -290,11 +316,16 @@ namespace cubpl
       }
 
 exit:
-    m_stack->reset_query_handlers ();
+    if (m_stack != NULL)
+      {
+	m_stack->reset_query_handlers ();
+      }
 
     // restore execution rights
-    change_exec_rights (NULL);
-
+    if (change_exec_rights (NULL) != NO_ERROR)
+      {
+	error = er_errid ();
+      }
     return error;
   }
 
@@ -312,7 +343,22 @@ exit:
     else
       {
 	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+      }
 
+    if (error != NO_ERROR)
+      {
+	// Check if the session is in an interrupting state by calling get_session()
+	// TODO: Verify the behavior of get_session() and validate this code flow.
+	session *sess = get_session ();
+	if (sess && er_errid () == NO_ERROR)
+	  {
+	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // In this case, get_session() should return NULL.
+	    // According to the current analysis, the following code should be unreachable.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  }
+
+	error = er_errid ();
       }
 
     return error;
@@ -719,7 +765,7 @@ exit:
       {
 	s_code = cursor->next_row ();
 	int tuple_index = cursor->get_current_index ();
-	if (s_code == S_END || tuple_index - start_index >= fetch_count)
+	if (s_code == S_END)
 	  {
 	    break;
 	  }
@@ -736,6 +782,11 @@ exit:
 	else
 	  {
 	    info.tuples.emplace_back (tuple_index, tuple_values);
+	  }
+
+	if (tuple_index - start_index >= fetch_count - 1)
+	  {
+	    break;
 	  }
       }
 

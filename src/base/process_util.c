@@ -39,6 +39,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
+ * create_child_process() - create a child process
+ *   return: process id of the child process, or 1 if failed
+ *   path(in): path to the executable
+ *   argv(in): arguments for the executable
+ *   wait_flag(in): flag to wait for the child process
+ *   stdin_file(in): file name for standard input
+ *   stdout_file(in): file name for standard output
+ *   stderr_file(in): file name for standard error
+ *   exit_status(out): exit status of the child process
+ */
 int
 create_child_process (const char *path, const char *const argv[], int wait_flag, const char *stdin_file,
 		      char *stdout_file, char *stderr_file, int *exit_status)
@@ -78,6 +89,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 
   GetStartupInfo (&start_info);
   start_info.wShowWindow = SW_HIDE;
+  start_info.dwFlags = STARTF_USESTDHANDLES;
 
   if (stdin_file)
     {
@@ -90,9 +102,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	}
 
       SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdInput = hStdIn;
-      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
@@ -104,10 +114,14 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	  return 1;
 	}
       SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdOutput = hStdOut;
-      inherit_flag = TRUE;
     }
+  else
+    {
+      hStdOut = GetStdHandle (STD_OUTPUT_HANDLE);
+      start_info.hStdOutput = hStdOut;
+    }
+
   if (stderr_file)
     {
       hStdErr =
@@ -120,10 +134,15 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 	}
 
       SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdError = hStdErr;
-      inherit_flag = TRUE;
     }
+  else
+    {
+      hStdErr = GetStdHandle (STD_ERROR_HANDLE);
+      start_info.hStdError = hStdErr;
+    }
+
+  inherit_flag = true;
 
   res =
     CreateProcess (path, cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);

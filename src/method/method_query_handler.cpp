@@ -20,6 +20,7 @@
 
 #include "parser.h"
 #include "api_compat.h" /* DB_SESSION */
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
@@ -37,6 +38,7 @@ namespace cubmethod
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
     , m_tid (NULL_TRANID)
+    , m_user ("")
     , m_error_ctx (ctx)
     , m_sql_stmt ()
     , m_stmt_type (CUBRID_STMT_NONE)
@@ -87,6 +89,12 @@ namespace cubmethod
   query_handler::get_id () const
   {
     return m_id;
+  }
+
+  std::string
+  query_handler::get_user_name () const
+  {
+    return m_user;
   }
 
   std::string
@@ -197,6 +205,7 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
+	m_user = au_get_current_user_name ();
 	m_prepare_info.handle_id = get_id ();
 	m_prepare_info.stmt_type = m_query_result.stmt_type;
 	m_prepare_info.num_markers = get_num_markers ();

@@ -152,6 +152,12 @@ public class ExecuteThread extends Thread {
                             break;
                         }
 
+                    case RequestCode.DESTROY:
+                        {
+                            ContextManager.destroyContext(ctx.getSessionId());
+                            break;
+                        }
+
                         /* the following request codes are for system requests */
                     case RequestCode.UTIL_BOOTSTRAP:
                         {
@@ -421,12 +427,13 @@ public class ExecuteThread extends Thread {
 
                 // dump translated code into $CUBRID_TMP
                 if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
-                    Path path =
-                            Paths.get(
-                                    Server.getConfig().getTmpPath()
-                                            + "/"
-                                            + info.className
-                                            + ".java");
+
+                    Path dirPath = Paths.get(Server.getConfig().getTmpPath() + "/icode");
+                    if (Files.notExists(dirPath)) {
+                        Files.createDirectories(dirPath);
+                    }
+
+                    Path path = dirPath.resolve(info.className + ".java");
                     Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
                 }
 

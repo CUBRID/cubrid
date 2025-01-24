@@ -11057,7 +11057,12 @@ error:
       }
     else
       {
-	std::string err_msg = executor.get_stack ()->get_error_message ();
+	std::string err_msg;
+	if (executor.get_stack ())
+	  {
+	    err_msg = executor.get_stack ()->get_error_message ();
+	  }
+
 	if (err_msg.empty () && req_error != ER_SP_EXECUTE_ERROR)
 	  {
 	    err_msg.assign (er_msg ());
@@ -11065,7 +11070,7 @@ error:
 
 	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	    req_error = ER_SP_EXECUTE_ERROR;
 	  }
 
