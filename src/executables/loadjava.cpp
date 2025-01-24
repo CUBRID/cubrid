@@ -183,6 +183,14 @@ copy_file (const fs::path &java_dir_path)
       fs::path src_path = fs::path (Src_class);
       if (fs::exists (src_path) == false)
 	{
+	  fprintf (stderr, "loadjava fail: '%s' does not exisit.\n", src_path.c_str ());
+	  return ER_FAILED;
+	}
+
+      std::string ext_nm = src_path.extension().generic_string();
+      if ( ext_nm.empty() || ((ext_nm.compare (".class") != 0) && (ext_nm.compare (".jar") != 0)))
+	{
+	  fprintf (stderr, "loadjava fail: The extension name of '%s' is invalid.\n", src_path.c_str ());
 	  return ER_FAILED;
 	}
 
