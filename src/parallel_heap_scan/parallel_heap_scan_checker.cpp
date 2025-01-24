@@ -1,3 +1,21 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 #include "parallel_heap_scan_checker.hpp"
 
 #include "regu_var.hpp"
@@ -212,9 +230,20 @@ namespace parallel_heap_scan
   int checker::check (ACCESS_SPEC_TYPE *src)
   {
     int cnt = 0;
+
     if (!src)
       {
 	return 0;
+      }
+    if (src->access != ACCESS_METHOD_SEQUENTIAL)
+      {
+	cnt++;
+	return cnt;
+      }
+    if (src->type != TARGET_CLASS)
+      {
+	cnt++;
+	return cnt;
       }
     cnt += check (src->s.cls_node.cls_regu_list_pred);
     cnt += check (src->s.cls_node.cls_regu_list_rest);
@@ -223,14 +252,7 @@ namespace parallel_heap_scan
       {
 	cnt++;
       }
-    if (src->access != ACCESS_METHOD_SEQUENTIAL)
-      {
-	cnt++;
-      }
-    if (src->type != TARGET_CLASS)
-      {
-	cnt++;
-      }
+
 
     return cnt;
   }

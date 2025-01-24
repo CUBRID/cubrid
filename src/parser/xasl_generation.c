@@ -18300,7 +18300,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
-  scan_check_parallel_heap_scan_possible(xasl);
+  scan_check_parallel_heap_scan_possible (xasl);
 
   if (pt_has_error (parser))
     {
