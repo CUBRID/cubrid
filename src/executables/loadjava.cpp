@@ -187,7 +187,7 @@ copy_file (const fs::path &java_dir_path)
 	  return ER_FAILED;
 	}
 
-      std::string ext_nm = src_path.extension();
+      std::string ext_nm = src_path.extension().generic_string();
       if ( ext_nm.empty() || ((ext_nm.compare (".class") != 0) && (ext_nm.compare (".jar") != 0)))
 	{
 	  fprintf (stderr, "loadjava fail: The extension name of '%s' is invalid.\n", src_path.c_str ());
