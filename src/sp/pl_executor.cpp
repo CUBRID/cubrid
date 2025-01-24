@@ -444,13 +444,8 @@ exit:
 	    m_stack->get_data_queue ().pop ();
 	  }
 
-	// free phase
-	if (response_blk.is_valid ())
-	  {
-	    delete [] response_blk.ptr;
-	    response_blk.ptr = NULL;
-	    response_blk.dim = 0;
-	  }
+	// free response block
+	response_blk.freemem ();
       }
     while (error_code == NO_ERROR && start_code == SP_CODE_INTERNAL_JDBC);
 
@@ -637,7 +632,7 @@ exit:
     if (blk.is_valid ())
       {
 	m_stack->send_data_to_java (blk);
-	delete[] blk.ptr;
+	blk.freemem ();
       }
 
     return error;
@@ -802,13 +797,7 @@ exit:
       }
 
     error = m_stack->send_data_to_java (blk);
-    if (blk.is_valid ())
-      {
-	delete [] blk.ptr;
-	blk.ptr = NULL;
-	blk.dim = 0;
-      }
-
+    blk.freemem ();
     return error;
   }
 
@@ -1026,11 +1015,7 @@ exit:
     db_value_clear (&res);
 
     error = m_stack->send_data_to_java (blk);
-
-    if (blk.is_valid ())
-      {
-	delete[]  blk.ptr;
-      }
+    blk.freemem ();
 
     return error;
   }
