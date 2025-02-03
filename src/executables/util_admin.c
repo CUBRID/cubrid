@@ -320,6 +320,7 @@ static UTIL_ARG_MAP ua_Diag_Option_Map[] = {
   {DIAG_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {DIAG_EMERGENCY_S, {ARG_BOOLEAN}, {0}},
   {DIAG_CLASS_NAME_S, {ARG_STRING}, {0}},
+  {DIAG_INPUT_FILE_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
@@ -329,6 +330,7 @@ static GETOPT_LONG ua_Diag_Option[] = {
   {DIAG_OUTPUT_FILE_L, 1, 0, DIAG_OUTPUT_FILE_S},
   {DIAG_EMERGENCY_L, 0, 0, DIAG_EMERGENCY_S},
   {DIAG_CLASS_NAME_L, 1, 0, DIAG_CLASS_NAME_S},
+  {DIAG_INPUT_FILE_L, 1, 0, DIAG_INPUT_FILE_S},
   {0, 0, 0, 0}
 };
 
