@@ -60,6 +60,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
+  ${COMPAT_DIR}/db_vector.cpp
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/dbtype_function.c
   )

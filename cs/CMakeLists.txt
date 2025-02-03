@@ -59,6 +59,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_temp.c
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
+  ${COMPAT_DIR}/db_vector.cpp
   ${COMPAT_DIR}/db_virt.c
   ${COMPAT_DIR}/dbtype_function.c
   )
@@ -79,6 +80,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/db_admin.h
+  ${COMPAT_DIR}/db_vector.hpp
   )
 
 set(BASE_SOURCES
