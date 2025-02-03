@@ -27,11 +27,10 @@
 namespace parallel_heap_scan
 {
   result_queue::result_queue (size_t size)
-    : max_size (size)
-    , is_scan_internal_ended (false)
+    : is_scan_internal_ended (false)
     , is_scan_external_ended (false)
-    , m_size (0)
   {
+    m_queue.set_capacity (size);
   }
 
   result_queue::~result_queue()
@@ -40,72 +39,41 @@ namespace parallel_heap_scan
 
   void result_queue::enqueue (std::shared_ptr<result_queue::entry> entry)
   {
-    while (m_size.load() >= max_size)
-      {
-	std::unique_lock<std::mutex> lock (m_mutex);
-	m_cv_full.wait (lock);
-      }
     m_queue.push (entry);
-    m_size.fetch_add (1);
-    m_cv_empty.notify_one();
   }
 
   bool result_queue::try_enqueue (std::shared_ptr<result_queue::entry> entry)
   {
-    if (m_size.load() >= max_size)
-      {
-	return false;
-      }
-    m_queue.push (entry);
-    m_size.fetch_add (1);
-    m_cv_empty.notify_one();
-    return true;
+    return m_queue.try_push (entry);
   }
 
   bool result_queue::dequeue_timeout (std::shared_ptr<result_queue::entry> &entry, int milliseconds)
   {
     auto end_time = std::chrono::steady_clock::now() + std::chrono::milliseconds (milliseconds);
-    while (!m_queue.try_pop (entry))
-      {
-	std::unique_lock<std::mutex> lock (m_mutex);
-	if (m_cv_empty.wait_until (lock, end_time) == std::cv_status::timeout)
-	  {
-	    return false;
-	  }
+    while (std::chrono::steady_clock::now() < end_time) {
+      if (m_queue.try_pop(entry)) {
+        return true;
       }
-    m_size.fetch_sub (1);
-    if ((m_size.load()*2) < max_size)
-      {
-	m_cv_full.notify_one();
-      }
-    return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
   }
 
   std::shared_ptr<result_queue::entry> result_queue::dequeue ()
   {
     std::shared_ptr<entry> entry;
-    while (!m_queue.try_pop (entry))
-      {
-	std::unique_lock<std::mutex> lock (m_mutex);
-	m_cv_empty.wait (lock);
-      }
-    m_size.fetch_sub (1);
-    if ((m_size.load()*2) < max_size)
-      {
-	m_cv_full.notify_one();
-      }
+    m_queue.pop(entry);
     return entry;
   }
 
   void result_queue::clear()
   {
-    std::shared_ptr<entry> entry;
-    while (m_queue.try_pop (entry))
-      {
-	m_size.fetch_sub (1);
-      }
-    m_cv_full.notify_all();
-    m_cv_empty.notify_all();
+    m_queue.clear();
+  }
+
+  size_t result_queue::size()
+  {
+    return m_queue.size();
   }
 
   result_queue::entry::entry (SCAN_ID *scan_id, SCAN_CODE scan_code)
@@ -118,7 +86,6 @@ namespace parallel_heap_scan
 
   result_queue::entry::~entry()
   {
-
   }
 
   void
@@ -137,13 +104,13 @@ namespace parallel_heap_scan
     struct regu_variable_list_node   *curr = list;
     while (curr)
       {
-	if (curr->value.vfetch_to)
-	  {
-	    DB_VALUE dbvp;
-	    pr_clone_value (curr->value.vfetch_to, &dbvp);
-	    dbvalue_array.push_back (dbvp);
-	  }
-	curr = curr->next;
+        if (curr->value.vfetch_to)
+          {
+            DB_VALUE dbvp;
+            pr_clone_value (curr->value.vfetch_to, &dbvp);
+            dbvalue_array.push_back (dbvp);
+          }
+        curr = curr->next;
       }
   }
 
@@ -155,16 +122,16 @@ namespace parallel_heap_scan
     size_t i = 0;
     while (curr)
       {
-	if (curr->value.vfetch_to)
-	  {
-	    if (!DB_IS_NULL (curr->value.vfetch_to))
-	      {
-		pr_clear_value (curr->value.vfetch_to);
-	      }
-	    pr_clone_value (&dbvalue_array[i], curr->value.vfetch_to);
-	  }
-	i++;
-	curr = curr->next;
+        if (curr->value.vfetch_to)
+          {
+            if (!DB_IS_NULL (curr->value.vfetch_to))
+              {
+                pr_clear_value (curr->value.vfetch_to);
+              }
+            pr_clone_value (&dbvalue_array[i], curr->value.vfetch_to);
+          }
+        i++;
+        curr = curr->next;
       }
   }
 }

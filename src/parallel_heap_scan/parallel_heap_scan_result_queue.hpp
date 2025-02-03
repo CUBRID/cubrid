@@ -39,37 +39,31 @@ namespace parallel_heap_scan
 
       result_queue (size_t max_size);
       ~result_queue();
+
       void enqueue (std::shared_ptr<entry> entry);
       bool try_enqueue (std::shared_ptr<entry> entry);
       bool dequeue_timeout (std::shared_ptr<entry> &entry, int milliseconds);
       std::shared_ptr<entry> dequeue ();
       void clear();
-      inline size_t size()
-      {
-	return m_size;
-      }
+      size_t size();
+
     private:
-      std::condition_variable m_cv_full;
-      std::condition_variable m_cv_empty;
-      std::mutex m_mutex;
-      std::atomic<size_t> m_size;
-      size_t max_size ;
 #if defined(SERVER_MODE)
-      tbb::concurrent_queue<std::shared_ptr<entry>> m_queue;
+      tbb::concurrent_bounded_queue<std::shared_ptr<entry>> m_queue;
 #else
       /* never */
       class virtual_queue : public std::queue<std::shared_ptr<entry>>
       {
-	public:
-	  virtual_queue() : std::queue<std::shared_ptr<entry>>()
-	  {
-	    assert (false);
-	  }
-	  bool try_pop (std::shared_ptr<entry> &value)
-	  {
-	    assert (false);
-	    return true;
-	  }
+        public:
+          virtual_queue() : std::queue<std::shared_ptr<entry>>()
+          {
+            assert (false);
+          }
+          bool try_pop (std::shared_ptr<entry> &value)
+          {
+            assert (false);
+            return true;
+          }
       } m_queue;
       /* never */
 #endif

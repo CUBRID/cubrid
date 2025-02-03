@@ -177,7 +177,10 @@ namespace parallel_heap_scan
 	return 0;
 	break;
       }
-
+    if (xasl->selected_upd_list)
+      {
+	set_impossible_recursively (xasl);
+      }
     /* lower xasl search */
     /* aptr : can parallel heap scan */
     for (xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)

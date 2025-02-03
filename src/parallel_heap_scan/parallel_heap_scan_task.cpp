@@ -98,7 +98,7 @@ namespace parallel_heap_scan
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
 
-    scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
+     scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
 			 scan_id->fixed, scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval,
 			 scan_id->val_list, scan_id->vd, &hsidp->cls_oid, &hsidp->hfid,
 			 hsidp->scan_pred.regu_list, hsidp->scan_pred.pred_expr, hsidp->rest_regu_list,
