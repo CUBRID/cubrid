@@ -1602,6 +1602,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_diag_usage;
     }
+
   if (class_name && class_list_file)
     {
       goto print_diag_usage;
