@@ -145,12 +145,8 @@ namespace cubpl
       {
 	cubmem::block b = pack_data_block (std::forward<Args> (args)...);
 	int status = send_buffer (b);
-	if (b.is_valid ())
-	  {
-	    delete [] b.ptr;
-	    b.ptr = NULL;
-	    b.dim = 0;
-	  }
+	b.freemem ();
+
 	return status;
       }
 

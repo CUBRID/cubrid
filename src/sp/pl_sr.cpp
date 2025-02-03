@@ -570,12 +570,7 @@ namespace cubpl
       }
 
 exit:
-    if (ping_response.is_valid ())
-      {
-	delete [] ping_response.ptr;
-	ping_response.ptr = NULL;
-	ping_response.dim = 0;
-      }
+    ping_response.freemem ();
 
     cv.reset ();
 
@@ -605,6 +600,8 @@ exit:
       {
 	packing_unpacker deserializator (bootstrap_response);
 	deserializator.unpack_int (error);
+
+	bootstrap_response.freemem ();
       }
 
     return error;
