@@ -27,7 +27,7 @@ set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
-set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.7.3.tar.gz")
+set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.7.3.tar.gz")               # Faiss
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
