@@ -235,7 +235,8 @@ extern int au_change_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern int au_change_sp_owner (MOP sp, MOP owner);
+extern int au_change_sp_owner (PARSER_CONTEXT * parser, MOP sp, MOP owner);
+extern int au_change_sp_owner_pre (PARSER_CONTEXT * parser, MOP sp_mop, MOP owner_mop);
 extern MOP au_get_class_owner (MOP classmop);
 //
 
