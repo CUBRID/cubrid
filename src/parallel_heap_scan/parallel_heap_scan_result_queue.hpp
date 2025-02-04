@@ -20,10 +20,7 @@
 #include <vector>
 #include "dbtype_def.h"
 #include "scan_manager.h"
-
-#if defined(SERVER_MODE)
 #include "tbb/concurrent_queue.h"
-#endif
 
 #ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 #define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
@@ -48,25 +45,7 @@ namespace parallel_heap_scan
       size_t size();
 
     private:
-#if defined(SERVER_MODE)
       tbb::concurrent_bounded_queue<std::shared_ptr<entry>> m_queue;
-#else
-      /* never */
-      class virtual_queue : public std::queue<std::shared_ptr<entry>>
-      {
-        public:
-          virtual_queue() : std::queue<std::shared_ptr<entry>>()
-          {
-            assert (false);
-          }
-          bool try_pop (std::shared_ptr<entry> &value)
-          {
-            assert (false);
-            return true;
-          }
-      } m_queue;
-      /* never */
-#endif
   };
 
   class result_queue::entry

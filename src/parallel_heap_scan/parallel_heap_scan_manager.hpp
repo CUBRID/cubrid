@@ -30,10 +30,13 @@ namespace parallel_heap_scan
   {
     public:
       manager() = delete;
-      std::atomic<bool> m_is_start_once;
-      bool timeout_occurred;
       manager (const manager &) = delete;
       manager &operator= (const manager &) = delete;
+      manager (manager &&) = delete;
+      manager &operator= (manager &&) = delete;
+
+      std::atomic<bool> m_is_start_once;
+      bool timeout_occurred;
 
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 	       std::size_t core_count);

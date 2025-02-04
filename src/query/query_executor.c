@@ -9136,7 +9136,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))	/* Only for User table */
 		{
-		  scan_type = S_PARALLEL_HEAP_SCAN;
+		  if (prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)
+		    {
+		      scan_type = S_PARALLEL_HEAP_SCAN;
+		    }
 		}
 	    }
 #endif

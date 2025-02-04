@@ -50,19 +50,21 @@ namespace parallel_heap_scan
   bool result_queue::dequeue_timeout (std::shared_ptr<result_queue::entry> &entry, int milliseconds)
   {
     auto end_time = std::chrono::steady_clock::now() + std::chrono::milliseconds (milliseconds);
-    while (std::chrono::steady_clock::now() < end_time) {
-      if (m_queue.try_pop(entry)) {
-        return true;
+    while (std::chrono::steady_clock::now() < end_time)
+      {
+	if (m_queue.try_pop (entry))
+	  {
+	    return true;
+	  }
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
     return false;
   }
 
   std::shared_ptr<result_queue::entry> result_queue::dequeue ()
   {
     std::shared_ptr<entry> entry;
-    m_queue.pop(entry);
+    m_queue.pop (entry);
     return entry;
   }
 
@@ -104,13 +106,13 @@ namespace parallel_heap_scan
     struct regu_variable_list_node   *curr = list;
     while (curr)
       {
-        if (curr->value.vfetch_to)
-          {
-            DB_VALUE dbvp;
-            pr_clone_value (curr->value.vfetch_to, &dbvp);
-            dbvalue_array.push_back (dbvp);
-          }
-        curr = curr->next;
+	if (curr->value.vfetch_to)
+	  {
+	    DB_VALUE dbvp;
+	    pr_clone_value (curr->value.vfetch_to, &dbvp);
+	    dbvalue_array.push_back (dbvp);
+	  }
+	curr = curr->next;
       }
   }
 
@@ -122,16 +124,16 @@ namespace parallel_heap_scan
     size_t i = 0;
     while (curr)
       {
-        if (curr->value.vfetch_to)
-          {
-            if (!DB_IS_NULL (curr->value.vfetch_to))
-              {
-                pr_clear_value (curr->value.vfetch_to);
-              }
-            pr_clone_value (&dbvalue_array[i], curr->value.vfetch_to);
-          }
-        i++;
-        curr = curr->next;
+	if (curr->value.vfetch_to)
+	  {
+	    if (!DB_IS_NULL (curr->value.vfetch_to))
+	      {
+		pr_clear_value (curr->value.vfetch_to);
+	      }
+	    pr_clone_value (&dbvalue_array[i], curr->value.vfetch_to);
+	  }
+	i++;
+	curr = curr->next;
       }
   }
 }

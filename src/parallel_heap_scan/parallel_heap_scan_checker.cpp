@@ -95,29 +95,29 @@ namespace parallel_heap_scan
       {
 	cnt += set_impossible_recursively (xaslp);
       }
-    /* bptr : cannot parallel heap scan */
+
     for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
 	cnt++;
       }
-    /* dptr : cannot parallel heap scan */
+
     for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
       }
-    /* fptr : cannot parallel heap scan */
+
     for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
 	cnt++;
       }
-    /* scan_ptr : cannot parallel heap scan */
+
     for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
       }
-    /* connect_by_ptr : cannot parallel heap scan */
+
     for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
@@ -147,6 +147,7 @@ namespace parallel_heap_scan
     switch (xasl->type)
       {
       case BUILDLIST_PROC:
+      case BUILDVALUE_PROC:
 	break;
       case CTE_PROC:
 	if (xasl->proc.cte.non_recursive_part)
@@ -267,7 +268,7 @@ namespace parallel_heap_scan
       {
 	return 0;
       }
-
+    /* cannot execute regu-linked xasl */
     if (src->xasl)
       {
 	cnt++;
@@ -288,6 +289,7 @@ namespace parallel_heap_scan
 	break;
       case TYPE_SP:
 	cnt += check (src->value.sp_ptr->args);
+	/* cannot execute sp in child threads */
 	cnt++;
 	break;
       case TYPE_FUNC:
