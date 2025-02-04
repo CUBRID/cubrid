@@ -3751,6 +3751,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	  search_all = true;
 	  start_pos = -1;
 	  next_vpid = heap_hdr->estimates.full_search_vpid;
+	  start_vpid = next_vpid;
 	}
       else
 	{
