@@ -2220,7 +2220,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
-      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+      if (!is_abort && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 	{
 	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
 	}
@@ -2344,9 +2344,11 @@ qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block_p)
 {
   OID_BLOCK_LIST *p;
 
-  for (p = oid_block_p; p; p = p->next)
+  while (oid_block_p)
     {
-      p->last_oid_idx = 0;
+      p = oid_block_p;
+      oid_block_p = p->next;
+      free (p);
     }
 }
 
