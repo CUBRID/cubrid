@@ -27,6 +27,7 @@ set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
+set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.7.3.tar.gz")
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -74,6 +75,7 @@ set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODB
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
 set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
+set(WITH_FAISS        "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with Faiss library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -84,6 +86,7 @@ message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
 message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
+message(STATUS "Build with Faiss library: ${WITH_FAISS}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -525,6 +528,35 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
   endif(UNIX)
 endif()
 
+# libFaiss
+set(LIBFAISS_TARGET libfaiss)
+set(LIBFAISS_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/libfaiss/faiss)
+set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss.a)
+ADD_BY_PRODUCTS_VARIABLE ("LIBFAISS" ${LIBFAISS_LIBS})
+if(WITH_FAISS STREQUAL "EXTERNAL")
+  externalproject_add(
+        ${LIBFAISS_TARGET}
+        URL ${WITH_FAISS_URL}
+        LOG_CONFIGURE TRUE
+        LOG_BUILD TRUE
+        LOG_INSTALL TRUE
+        TIMEOUT 600
+        DOWNLOAD_NO_PROGRESS 1
+        BUILD_BYPRODUCTS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss.a
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
+        -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/faiss
+        -DBUILD_SHARED_LIBS=OFF
+        -DFAISS_ENABLE_GPU=OFF
+        -DFAISS_ENABLE_PYTHON=OFF
+        -DBUILD_TESTING=OFF
+        BUILD_COMMAND make -C <BINARY_DIR> -j faiss
+  )
+endif()
+
+list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
+list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
+list(APPEND EP_LIBS ${LIBFAISS_LIBS})
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -555,3 +587,4 @@ expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
+expose_3rdparty_variable(LIBFAISS)
