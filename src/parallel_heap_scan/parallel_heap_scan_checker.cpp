@@ -73,6 +73,15 @@ namespace parallel_heap_scan
       {
 	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
       }
+    for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	set_impossible_recursively (xaslp);
+      }
+    if (xasl->type == CTE_PROC)
+      {
+	set_impossible (xasl->proc.cte.non_recursive_part);
+	set_impossible (xasl->proc.cte.recursive_part);
+      }
     return 0;
   }
 
@@ -122,6 +131,12 @@ namespace parallel_heap_scan
       {
 	cnt += set_impossible_recursively (xaslp);
 	cnt++;
+      }
+
+    if (xasl->type == CTE_PROC)
+      {
+	cnt += set_impossible_recursively (xasl->proc.cte.non_recursive_part);
+	cnt += set_impossible_recursively (xasl->proc.cte.recursive_part);
       }
 
     return cnt;

@@ -68,6 +68,11 @@ namespace parallel_heap_scan
     return entry;
   }
 
+  bool result_queue::try_dequeue (std::shared_ptr<entry> &entry)
+  {
+    return m_queue.try_pop (entry);
+  }
+
   void result_queue::clear()
   {
     m_queue.clear();

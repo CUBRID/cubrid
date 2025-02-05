@@ -146,16 +146,17 @@ namespace parallel_heap_scan
       {
 	return;
       }
-    m_result_queue->clear();
     while (!m_context->all_tasks_ended())
       {
+	std::shared_ptr<result_queue::entry> entry;
+	m_result_queue->try_dequeue (entry);
 	thread_sleep (1);
-	m_result_queue->clear();
       }
     m_is_start_once = false;
     timeout_occurred = false;
     m_result_queue->is_scan_external_ended = false;
     m_result_queue->is_scan_internal_ended = false;
+    m_result_queue->clear();
   }
 }
 
