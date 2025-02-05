@@ -442,6 +442,11 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	  return error;
 	}
     }
+  else
+    {
+      AU_SET_USER (save_user);
+      return ER_FAILED;
+    }
   AU_SET_USER (save_user);
 
   /* change the owner of a partition */
@@ -662,15 +667,15 @@ au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 	  goto error;
 	}
     }
-
+  else
+    {
+      AU_SET_USER (save_user);
+      return ER_FAILED;
+    }
   AU_SET_USER (save_user);
 
   /* change the owner of a sp */
   err = au_change_sp_owner (parser, sp_mop, new_owner_mop);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
 
 error:
 

@@ -1393,10 +1393,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
-      if (err < 0)
-	{
-	  goto error;
-	}
     }
 
 error:
