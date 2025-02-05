@@ -7180,7 +7180,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
 	      if (need_combine)
 		{
-		  t_list_id = qfile_combine_two_list (thread_p, xasl->list_id, list_id, QFILE_FLAG_ALL);
+		  t_list_id = qfile_combine_two_list (thread_p, xasl->list_id, list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
 		  if (t_list_id == NULL)
 		    {
 		      GOTO_EXIT_ON_ERROR;
