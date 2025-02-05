@@ -28,6 +28,8 @@ set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.7.3.tar.gz")               # Faiss
+set(WITH_OPENBLAS_URL "https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.24.tar.gz")                  # OpenBLAS
+set(WITH_LAPACK_URL "http://www.netlib.org/lapack/lapack-3.11.0.tar.gz")                                      # LAPACK
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -556,6 +558,31 @@ endif()
 list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
 list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
 list(APPEND EP_LIBS ${LIBFAISS_LIBS})
+
+# OpenBLAS
+if(UNIX)
+  set(OPENBLAS_TARGET libopenblas)
+  set(OPENBLAS_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/libopenblas)
+  set(OPENBLAS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libopenblas/lib/libopenblas.a)
+  ADD_BY_PRODUCTS_VARIABLE("OPENBLAS" ${OPENBLAS_LIBS})
+
+  externalproject_add(${OPENBLAS_TARGET}
+    URL                  ${WITH_OPENBLAS_URL}
+    LOG_CONFIGURE        TRUE
+    LOG_BUILD            TRUE
+    LOG_INSTALL          TRUE
+    TIMEOUT              600
+    DOWNLOAD_NO_PROGRESS 1
+    BUILD_BYPRODUCTS     ${OPENBLAS_LIBS}
+    CONFIGURE_COMMAND    ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR> -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/OpenBLAS
+    BUILD_COMMAND        make -C <BINARY_DIR> -j
+    INSTALL_COMMAND      make -C <BINARY_DIR> install
+  )
+endif()
+
+list(APPEND EP_TARGETS ${OPENBLAS_TARGET})
+list(APPEND EP_INCLUDES ${OPENBLAS_INCLUDES})
+list(APPEND EP_LIBS ${OPENBLAS_LIBS})
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
