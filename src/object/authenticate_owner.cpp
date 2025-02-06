@@ -420,8 +420,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   owner = au_get_class_owner (class_mop);
   if (owner == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
@@ -616,7 +615,7 @@ end:
 int
 au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
-  int err = NO_ERROR;
+  int error = NO_ERROR;
   MOP owner_mop = NULL, save_user = NULL;
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
@@ -626,9 +625,9 @@ au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 
   if (!au_is_dba_group_member (Au_user))
     {
-      err = ER_AU_DBA_ONLY;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, "change_sp_owner");
-      goto error;
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "change_sp_owner");
+      goto end;
     }
 
   /* create dummy parser of change_sp_owner_method */
@@ -637,8 +636,8 @@ au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
       dummy_parser = parser_create_parser ();
       if (dummy_parser == NULL)
 	{
-	  err = ER_FAILED;
-	  goto error;
+	  error = ER_FAILED;
+	  goto end;
 	}
 
       parser = dummy_parser;
@@ -647,37 +646,39 @@ au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
   /* when changing the owner, all privileges are revoked */
   if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
-      assert (er_errid () != NO_ERROR);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   owner_mop = jsp_get_owner (sp_mop);
   if (owner_mop == NULL)
     {
-      err = ER_FAILED;
-      goto error;
+      error = ER_FAILED;
+      goto end;
     }
 
   save_user = Au_user;
   if (AU_SET_USER (owner_mop) == NO_ERROR)
     {
-      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
-      if (err != NO_ERROR)
+      error = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
+      if (error != NO_ERROR)
 	{
 	  AU_SET_USER (save_user);
-	  goto error;
+	  goto end;
 	}
     }
   else
     {
       AU_SET_USER (save_user);
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (err);
+      goto end;
     }
   AU_SET_USER (save_user);
 
   /* change the owner of a sp */
-  err = au_change_sp_owner (parser, sp_mop, new_owner_mop);
+  error = au_change_sp_owner (parser, sp_mop, new_owner_mop);
 
-error:
+end:
 
   if (dummy_parser != NULL)
     {
@@ -685,5 +686,5 @@ error:
       parser = NULL;
     }
 
-  return err;
+  return error;
 }
