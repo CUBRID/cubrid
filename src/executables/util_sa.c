@@ -1747,57 +1747,38 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else if (class_list_file != NULL)
 	{
-	  FILE *fp = fopen (class_list_file, "r");
-	  int len = 0, file_getc = 0;
-	  char fget_name[SM_MAX_IDENTIFIER_LENGTH];
-	  char name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
-	  if (fp == NULL)
+	  FILE *input_file = fopen (class_list_file, "r");
+	  char class_name[SM_MAX_IDENTIFIER_LENGTH];
+	  if (input_file == NULL)
 	    {
 	      perror (class_list_file);
 	      goto error_exit;
 	    }
 
-	  while (file_getc != EOF)
+	  while (fgets ((char *) class_name, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
-	      file_getc = fgetc (fp);
+	      trim (class_name);
 
-	      if (char_isspace2 (file_getc) || file_getc == ',')
+	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+
+	      if (error_code != NO_ERROR)
 		{
-		  if (len > 0)
+		  if (error_code == ER_LC_UNKNOWN_CLASSNAME)
 		    {
-		      fget_name[len] = '\0';
-		      strncpy (name, fget_name, len);
-		      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, name);
-		      if (error_code != NO_ERROR)
-			{
-			  if (error_code == ER_LC_UNKNOWN_CLASSNAME)
-			    {
-			      PRINT_AND_LOG_ERR_MSG (msgcat_message
-						     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
-						      DIAGDB_MSG_UNKNOWN_CLASS), name);
-			    }
-			  goto error_exit;
-			}
+		      PRINT_AND_LOG_ERR_MSG (msgcat_message
+					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
+					      DIAGDB_MSG_UNKNOWN_CLASS), class_name);
 		    }
-
-		  memset (name, '\0', sizeof (name));
-		  len = 0;
-		  continue;
-		}
-
-	      fget_name[len++] = file_getc;
-
-	      if (len == SM_MAX_IDENTIFIER_LENGTH)
-		{
-		  /* too long table name */
-		  if (utility_check_class_name (fget_name) != NO_ERROR)
-		    {
-		      fclose (fp);
-		      /* The util_log_write_errid function is called inside the utility_check_class_name function. */
-		      return ER_GENERIC_ERROR;
-		    }
+		  goto error_exit;
 		}
 	    }
+
+	  if (input_file != NULL)
+	    {
+	      fclose (input_file);
+	      input_file = NULL;
+	    }
+	  memset (class_name, 0, sizeof (class_name));
 	}
       else
 	{
