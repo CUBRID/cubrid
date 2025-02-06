@@ -218,7 +218,7 @@ if(UNIX)
     # C flags for both debug and release build
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
-    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp")
+    set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp -lopenblas -llapack")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")

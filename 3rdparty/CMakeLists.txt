@@ -27,7 +27,7 @@ set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
-set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.7.3.tar.gz")               # Faiss
+set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.8.0.tar.gz")               # Faiss
 set(WITH_OPENBLAS_URL "https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.24.tar.gz")                  # OpenBLAS
 set(WITH_LAPACK_URL "http://www.netlib.org/lapack/lapack-3.11.0.tar.gz")                                      # LAPACK
 
