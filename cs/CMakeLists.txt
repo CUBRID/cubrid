@@ -598,10 +598,3 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
-
-target_include_directories(cubridcs PRIVATE
-  ${CMAKE_SOURCE_DIR}/src/base
-  ${CMAKE_SOURCE_DIR}/src/connection
-  ${CMAKE_SOURCE_DIR}/src/heaplayers
-  ${CMAKE_SOURCE_DIR}/src/query/parallel_query/parallel_heap_scan
-  )
