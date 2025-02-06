@@ -29,7 +29,7 @@ endif(UNIX)
 set(JDK_DEST_DIR "${JDK_DIR}/jdk8")
 
 if(NOT EXISTS ${JDK_ARCHIVE})
-    message(STATUS "[INFO]  Downloading Temurin JDK 8...")
+    message(STATUS "[INFO] Downloading Temurin JDK 8...")
     file(DOWNLOAD ${JDK_URL} ${JDK_ARCHIVE})
 endif()
 
