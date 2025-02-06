@@ -832,6 +832,7 @@ add_subdirectory(pl_engine)
 
 set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
 set(ENV{JAVA_HOME} "${JAVA_HOME}")
+set(ENV{PATH} "$ENV{JAVA_HOME}/bin:$ENV{PATH}")
 
 # For PL server
 find_package(Java REQUIRED)
@@ -843,6 +844,12 @@ endif(JNI_FOUND)
 
 message(STATUS "Found Java: ${Java_JAVA_EXECUTABLE}")
 message(STATUS "Found JNI: ${JNI_INCLUDE_DIRS}")
+
+# For JVM libraries
+if(WIN32)
+    set(JVM_LIBS ${JAVA_HOME}/lib/jvm.lib)
+    list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
+endif(WIN32)
 
 # include subdirectories
 add_subdirectory(sa)
