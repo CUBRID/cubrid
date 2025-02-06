@@ -1,7 +1,49 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:develop
+    - image: cubridci/cubridci:cubvec
+
+test_defaults: &test_defaults
+  steps:
+    - attach_workspace:
+        at: .
+    - run:
+        name: Test
+        shell: /bin/bash
+        environment:
+          _JAVA_OPTIONS: -Xmx1g
+        command: |
+          ulimit -c 1
+          /entrypoint.sh checkout
+          if [ $TEST_SUITE = "plcsql" ] 
+          then
+            # Hack way to run plcsql test without modifying CUBRID CI docker
+            TEST_SUITE="sql"
+            glob_path=cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}
+          elif [ $TEST_SUITE = "sql" ] 
+          then
+            rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
+            rm -rf cubrid-testcases/$TEST_SUITE/_35_fig_cake/plcsql
+            glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          else
+            glob_path="cubrid-testcases/$TEST_SUITE/_*"
+          fi
+          circleci tests glob $glob_path | circleci tests split | tee tc.list
+          find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+          /entrypoint.sh test
+    - run:
+        name: Collect Logs
+        command: |
+          mkdir -p /tmp/logs
+          mv -f CUBRID/log /tmp/logs/cubrid_log
+          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+          find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+          #dmesg > /tmp/logs/dmesg.out
+        when: on_fail
+    - store_test_results:
+        path: /tmp/tests
+    - store_artifacts:
+        path: /tmp/logs
 
 version: 2
 jobs:
@@ -20,13 +62,93 @@ jobs:
       - run:
           name: Build
           command: |
-            echo "hello"
-            echo $PWD
+            mkdir -p /tmp/build_logs
+            scl enable devtoolset-8 -- /entrypoint.sh build
+            mv -f build.log /tmp/build_logs
+      - run:
+          name: Commits
+          command: |
+            mkdir -p /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
+      - persist_to_workspace:
+          root: .
+          paths:
+            - CUBRID
       - store_artifacts:
           path: /tmp/build_logs
+  test_medium:
+    <<: *defaults
+    environment:
+      TEST_SUITE: medium
+    resource_class: medium
+    <<: *test_defaults
+
+  test_sql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: sql
+    resource_class: medium
+    parallelism: 8
+    <<: *test_defaults
+
+  test_plcsql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: plcsql
+    resource_class: medium
+    <<: *test_defaults
+
+  build-windows:
+    machine:
+      image: "windows-server-2019"
+      resource_class: windows.large
+      shell: powershell.exe -ExecutionPolicy Bypass
+    environment:
+      - CMAKE_GENERATOR: "Visual Studio 15 2017"
+      - CMAKE_BUILD_PARALLEL_LEVEL: 10
+      - WITH_CCI: true
+    steps:
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule update --init --recursive
+            git rm -f cubridmanager
+      - run:
+          name: Install dependencies
+          command: |
+            choco upgrade chocolatey -y
+            choco install openjdk8redhatbuild --no-progress -y
+            choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+            choco install winflexbison wixtoolset --no-progress -y
+            choco install ant --ignore-dependencies --no-progress -y
+            choco install visualstudio2017buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATLMFC --includeRecommended" --no-progress -y
+      - run:
+          name: CMake Configure
+          command: |
+            cmake -E make_directory build
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -A x64 -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+      - run:
+          name: CMake Build
+          command: |
+            cmake --build build --config RelWithDebInfo --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
 
 workflows:
   version: 2
   build_test:
     jobs:
       - build
+      - test_medium:
+          requires:
+            - build
+      - test_sql:
+          requires:
+            - build
+      - test_plcsql:
+          requires:
+            - build
+
+      - build-windows:
+          requires:
+            - build
