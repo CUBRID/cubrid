@@ -15,11 +15,17 @@
 #   limitations under the License.
 # 
 #
-include(FindJava)
-find_package(Java 1.6 COMPONENTS Development)
+
+# Donwload JDK
+
+
+
+# include(FindJava)
+# find_package(Java 1.6 COMPONENTS Development)
 
 set(PL_ENGINE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/pl_engine)
 set(PL_ENGINE_BUILD_DIR ${CMAKE_BINARY_DIR}/pl_engine)
+set(JDK_DIR ${CMAKE_BINARY_DIR}/vm)
 
 # Find gradlew
 if(UNIX)
@@ -30,7 +36,14 @@ endif(UNIX)
 
 set(LOCAL_JDBC_PATH_COMMAND)
 
+add_custom_target(pl_install_jdk)
+add_custom_command(TARGET pl_install_jdk
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${JDK_DIR}
+  COMMAND ${CMAKE_COMMAND} -DJDK_DIR=${JDK_DIR} -P ${PL_ENGINE_SOURCE_DIR}/cmake/install_jdk.cmake
+)
+
 add_custom_target(pl_build ALL)
+add_dependencies(pl_build pl_install_jdk)
 
 if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
@@ -61,5 +74,10 @@ add_dependencies(pl_unittest pl_build)
 install(FILES
   ${PL_ENGINE_BUILD_DIR}/libs/pl_server.jar
   ${PL_ENGINE_BUILD_DIR}/resources/main/logging.properties
-  DESTINATION ${CUBRID_JAVADIR}
+  DESTINATION ${CUBRID_VMDIR}
+)
+
+install(DIRECTORY
+  ${JDK_DIR}/jdk8
+  DESTINATION ${CUBRID_VMDIR}
 )
