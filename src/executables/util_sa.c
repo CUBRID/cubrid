@@ -1798,7 +1798,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		}
 	    }
 	}
-
       else
 	{
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
