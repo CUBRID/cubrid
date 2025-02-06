@@ -1262,8 +1262,8 @@ public class TypeChecker extends AstVisitor<Type> {
             if (arg instanceof SqlLiteral) {
                 assert arg.ctx != null;
                 if (arg.ctx == null) {
-                    assert false: "a built-in function argument without a context";   // unreachable
-                    typicalValueStr = "null";   // temporary
+                    assert false : "a built-in function argument without a context"; // unreachable
+                    typicalValueStr = "null"; // temporary
                 } else {
                     typicalValueStr = arg.ctx.getText();
                 }

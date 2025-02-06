@@ -31,4 +31,4 @@
 package com.cubrid.plcsql.compiler.ast;
 
 // marker interface
-public interface SqlLiteral { }
+public interface SqlLiteral {}
