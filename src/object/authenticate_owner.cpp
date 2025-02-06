@@ -670,7 +670,7 @@ au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
   else
     {
       AU_SET_USER (save_user);
-      ASSERT_ERROR_AND_SET (err);
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
   AU_SET_USER (save_user);
