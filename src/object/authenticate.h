@@ -246,6 +246,17 @@ extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 extern void au_dump_auth (FILE * fp);
+
+#if defined (SA_MODE)
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void au_disable_passwords ();
+
+#ifdef __cplusplus
+}
+#endif
 //
 
 /*
@@ -256,5 +267,7 @@ extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 extern int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 extern int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 //
+
+#endif
 
 #endif /* _AUTHENTICATE_H_ */
