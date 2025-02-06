@@ -1776,6 +1776,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 						     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
 						      DIAGDB_MSG_UNKNOWN_CLASS), name);
 			    }
+			  goto error_exit;
 			}
 		    }
 
@@ -1802,7 +1803,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
 	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
-        }
+	}
     }
 
   db_shutdown ();
