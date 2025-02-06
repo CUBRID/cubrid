@@ -53,15 +53,40 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   add_dependencies(pl_build jdbc_build)
 endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
+set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
+if(UNIX)
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+message(STATUS "JAVA_HOME: ${JAVA_HOME}")
+else(UNIX)
+string(REPLACE "/" "\\" JAVA_HOME ${JAVA_HOME})
+message(STATUS "JAVA_HOME: ${JAVA_HOME}")
+endif(UNIX)
+
+# For PL server
+find_package(Java REQUIRED)
+
+if(UNIX)
 add_custom_command(TARGET pl_build
   COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
   COMMAND ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
+else(UNIX)
+add_custom_command(TARGET pl_build
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
+  COMMAND cmd.exe /C "set JAVA_HOME=${JAVA_HOME} && ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}"
+)
+endif(UNIX)
 
 add_custom_target(pl_unittest)
+if(UNIX)
 add_custom_command(TARGET pl_unittest
   COMMAND ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
+else(UNIX)
+add_custom_command(TARGET pl_unittest
+  COMMAND cmd.exe /C "set JAVA_HOME=${JAVA_HOME} && ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}"
+)
+endif(UNIX)
 add_dependencies(pl_unittest pl_build)
 
 install(FILES
