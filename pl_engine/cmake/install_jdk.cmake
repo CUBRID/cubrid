@@ -18,8 +18,14 @@
 
 message ("[INFO] Install JDK 8")
 
-set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u442-b06/OpenJDK8U-jdk_x64_linux_hotspot_8u442b06.tar.gz")
-set(JDK_ARCHIVE "${JDK_DIR}/jdk8.tar.gz")
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+  set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u442-b06/OpenJDK8U-jdk_x64_windows_hotspot_8u442b06.zip")
+  set(JDK_ARCHIVE "${JDK_DIR}/jdk8.zip")
+else()
+  set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u442-b06/OpenJDK8U-jdk_x64_linux_hotspot_8u442b06.tar.gz")
+  set(JDK_ARCHIVE "${JDK_DIR}/jdk8.tar.gz")
+endif()
+
 set(JDK_DEST_DIR "${JDK_DIR}/jdk8")
 
 if(NOT EXISTS ${JDK_ARCHIVE})
@@ -29,6 +35,7 @@ endif()
 
 if(NOT EXISTS ${JDK_DEST_DIR})
     message(STATUS "[INFO] Extracting JDK...")
+    
     execute_process(
         COMMAND ${CMAKE_COMMAND} -E tar xzf ${JDK_ARCHIVE}
         WORKING_DIRECTORY ${JDK_DIR}
