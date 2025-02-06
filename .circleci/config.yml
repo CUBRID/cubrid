@@ -20,9 +20,6 @@ jobs:
       - run:
           name: Build
           command: |
-      - run:
-          name: Commits
-          command: |
             echo "hello"
             echo $PWD
       - persist_to_workspace:
