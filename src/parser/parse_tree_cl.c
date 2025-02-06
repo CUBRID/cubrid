@@ -14641,6 +14641,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_SUBQUERY_CACHE ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HEAP_SCAN ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_ELIMINATE_JOIN ");

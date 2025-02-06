@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-
+#include "phs_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -9997,6 +9997,9 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	      /* The attribute is correlated variable. Find it in an enclosing scope(s). Note that this subquery has
 	       * also just been determined to be a correlated subquery. */
 	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_CORRELATED);
+
+	      table_info = NULL;
+
 	      if (symbols->stack == NULL)
 		{
 		  if (!pt_has_error (parser))
@@ -12219,6 +12222,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
   OUTPTR_LIST *output_val_list = NULL;
   REGU_VARIABLE_LIST regu_var_list = NULL;
   DB_VALUE **db_values_array_p = NULL;
+  bool is_parallel_heap_scan_callable = true;
 
   assert (parser != NULL);
 
@@ -12583,6 +12587,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
+		}
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
 		}
 
 	      access->next = access_list;
@@ -18292,6 +18300,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
+  scan_check_parallel_heap_scan_possible (xasl);
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -22082,6 +22092,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       break;
     }
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)

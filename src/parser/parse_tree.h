@@ -1411,6 +1411,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
+#define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
 
 /* Codes for error messages */
 typedef enum
@@ -1743,7 +1744,8 @@ typedef enum
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
-  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000	/* spec for odku assignment */
+  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
+  PT_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN = 0x8000	/* spec for not for parallel heap scan */
 } PT_SPEC_FLAG;
 
 typedef enum

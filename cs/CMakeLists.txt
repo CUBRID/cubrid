@@ -387,7 +387,6 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   )
 
-
 set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
@@ -489,6 +488,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${API_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -498,6 +498,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
+  )
+
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.hpp
   )
 
 add_library(cubridcs SHARED
@@ -532,6 +540,8 @@ add_library(cubridcs SHARED
   ${LOADDB_HEADERS}
   ${API_SOURCES}
   ${API_HEADERS}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -588,3 +598,10 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+target_include_directories(cubridcs PRIVATE
+  ${CMAKE_SOURCE_DIR}/src/base
+  ${CMAKE_SOURCE_DIR}/src/connection
+  ${CMAKE_SOURCE_DIR}/src/heaplayers
+  ${CMAKE_SOURCE_DIR}/src/query/parallel_query/parallel_heap_scan
+  )

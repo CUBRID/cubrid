@@ -82,6 +82,11 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 
+#if defined (SERVER_MODE)
+#include "phs_checker.hpp"
+#include "phs_manager.hpp"
+#endif
+
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1927,6 +1932,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_HEAP_SCAN_RECORD_INFO:
 	case S_CLASS_ATTR_SCAN:
 	case S_HEAP_SAMPLING_SCAN:
+	case S_PARALLEL_HEAP_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.rest_regu_list, is_final);
 
@@ -9122,6 +9128,19 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
+#if defined (SERVER_MODE)
+	  if (thread_p->private_heap_id != 0 && !mvcc_select_lock_needed
+	      && !oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid))
+	    {
+	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))	/* Only for User table */
+		{
+		  if (prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)
+		    {
+		      scan_type = S_PARALLEL_HEAP_SCAN;
+		    }
+		}
+	    }
+#endif
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
@@ -9182,6 +9201,27 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
+#if defined(SERVER_MODE)
+      else if (scan_type == S_PARALLEL_HEAP_SCAN)
+	{
+	  error_code =
+	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+					  &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+					  curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+					  curr_spec->s.cls_node.cls_regu_list_rest,
+					  curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
+					  curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
+					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
+					  scan_type, curr_spec->s.cls_node.cache_reserved,
+					  curr_spec->s.cls_node.cls_regu_list_reserved, false);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	}
+#endif
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
 	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),

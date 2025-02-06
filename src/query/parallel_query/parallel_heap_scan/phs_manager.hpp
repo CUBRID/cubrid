@@ -1,0 +1,105 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * phs_manager.hpp - manager for parallel heap scans executed within a single XASL
+ */
+
+#ifndef _PARALLEL_HEAP_SCAN_MANAGER_HPP_
+#define _PARALLEL_HEAP_SCAN_MANAGER_HPP_
+
+#if defined (SERVER_MODE)
+#include "dbtype.h"
+#include "scan_manager.h"
+#include "thread_manager.hpp"
+#include "phs_context.hpp"
+
+namespace parallel_heap_scan
+{
+  class manager
+  {
+    public:
+      manager() = delete;
+      manager (const manager &) = delete;
+      manager &operator= (const manager &) = delete;
+      manager (manager &&) = delete;
+      manager &operator= (manager &&) = delete;
+
+      std::atomic<bool> m_is_start_once;
+      bool timeout_occurred;
+
+      manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
+	       std::size_t core_count);
+      ~manager();
+      SCAN_CODE get_result ();
+      void start ();
+      void reset ();
+      void start_tasks ();
+      void end();
+      inline context &get_context()
+      {
+	return *m_context;
+      }
+    private :
+      THREAD_ENTRY *m_thread_p;
+      SCAN_ID *m_scan_id;
+      std::size_t parallelism;
+      std::shared_ptr<context> m_context;
+      std::shared_ptr<result_queue> m_result_queue;
+      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
+      cubthread::entry_workpool *m_workpool;
+  };
+}
+
+extern SCAN_CODE
+scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+extern int
+scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+extern void
+scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+extern void
+scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+extern int
+scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
+			      /* fields of SCAN_ID */
+			      bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
+			      int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE *join_dbval,
+			      val_list_node *val_list, VAL_DESCR *vd,
+			      /* fields of HEAP_SCAN_ID */
+			      OID *cls_oid, HFID *hfid, regu_variable_list_node *regu_list_pred,
+			      PRED_EXPR *pr, regu_variable_list_node *regu_list_rest, int num_attrs_pred,
+			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
+			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
+			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
+			      bool is_partition_table);
+extern int
+scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+
+#else /* !SERVER_MODE */
+
+#include "thread_compat.hpp"
+extern int
+scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+{
+  assert (false);
+  return 0;
+}
+
+#endif /* SERVER_MODE */
+
+#endif /* _PARALLEL_HEAP_SCAN_MANAGER_HPP_ */
