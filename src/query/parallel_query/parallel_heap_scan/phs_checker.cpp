@@ -16,7 +16,11 @@
  *
  */
 
-#include "parallel_heap_scan_checker.hpp"
+/*
+ * phs_checker.cpp - module that checks whether parallel heap scan is possible.
+ */
+
+#include "phs_checker.hpp"
 
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
@@ -30,6 +34,9 @@ namespace parallel_heap_scan
   class checker
   {
     public:
+
+      int set_impossible (XASL_NODE *xasl);
+      int set_impossible_recursively (XASL_NODE *xasl);
       int check (REGU_VARIABLE *src);
       int check (PRED_EXPR *src);
       int check (struct regu_variable_list_node   *src);
@@ -42,9 +49,6 @@ namespace parallel_heap_scan
       int check (RLIKE_EVAL_TERM *src);
       int check (ACCESS_SPEC_TYPE *src);
       int check (XASL_NODE *xasl);
-
-      int set_impossible (XASL_NODE *xasl);
-      int set_impossible_recursively (XASL_NODE *xasl);
 
     private:
       std::set<void *> visited_ptr;

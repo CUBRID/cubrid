@@ -16,10 +16,15 @@
  *
  */
 
-#if defined (SERVER_MODE)
+/*
+ * phs_memory_mapper.hpp - module created to perform deep copying of
+ * heap scan-related information from the XASL structure.
+ */
 
 #ifndef _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
 #define _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
+
+#if defined (SERVER_MODE)
 
 #include <unordered_map>
 #include <atomic>

@@ -16,14 +16,20 @@
  *
  */
 
+/*
+ * phs_misc.hpp - miscellaneous functions for parallel heap scan
+ */
+
+#ifndef _PARALLEL_HEAP_SCAN_MISC_HPP_
+#define _PARALLEL_HEAP_SCAN_MISC_HPP_
+
 #if defined (SERVER_MODE)
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
 
-#ifndef _PARALLEL_HEAP_SCAN_MISC_HPP_
-#define _PARALLEL_HEAP_SCAN_MISC_HPP_
+
 
 namespace parallel_heap_scan
 {

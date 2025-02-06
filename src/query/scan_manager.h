@@ -143,7 +143,9 @@ struct parallel_heap_scan_id
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
   sampling_info sampling;	/* for sampling statistics */
-    parallel_heap_scan::manager * manager;
+  // *INDENT-OFF*
+  parallel_heap_scan::manager * manager;
+  // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;

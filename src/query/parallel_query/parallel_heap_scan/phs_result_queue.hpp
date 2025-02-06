@@ -16,14 +16,18 @@
  *
  */
 
+/*
+ * phs_result_queue.hpp - queue for temporarily storing heap scan results
+ */
+
+#ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
+#define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
+
 #if defined (SERVER_MODE)
 #include <vector>
 #include "dbtype_def.h"
 #include "scan_manager.h"
 #include "tbb/concurrent_queue.h"
-
-#ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
-#define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 
 namespace parallel_heap_scan
 {

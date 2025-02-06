@@ -476,7 +476,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
-  ${PARSER_DIR}/parallel_heap_scan_checker.cpp
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
@@ -502,11 +501,11 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/parallel_heap_scan_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.hpp
   )
 
 add_library(cubridcs SHARED
@@ -604,5 +603,5 @@ target_include_directories(cubridcs PRIVATE
   ${CMAKE_SOURCE_DIR}/src/base
   ${CMAKE_SOURCE_DIR}/src/connection
   ${CMAKE_SOURCE_DIR}/src/heaplayers
-  ${CMAKE_SOURCE_DIR}/src/parallel_heap_scan
+  ${CMAKE_SOURCE_DIR}/src/query/parallel_query/parallel_heap_scan
   )

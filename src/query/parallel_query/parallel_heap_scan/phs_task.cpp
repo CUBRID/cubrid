@@ -16,10 +16,14 @@
  *
  */
 
+/*
+ * phs_task.cpp - derived from cubthread::entry_task
+ */
+
 #if defined (SERVER_MODE)
 
-#include "parallel_heap_scan_task.hpp"
-#include "parallel_heap_scan_misc.hpp"
+#include "phs_task.hpp"
+#include "phs_misc.hpp"
 #include "error_context.hpp"
 #include <memory>
 #include "thread_entry.hpp"

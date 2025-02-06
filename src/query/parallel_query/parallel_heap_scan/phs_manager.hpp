@@ -16,6 +16,10 @@
  *
  */
 
+/*
+ * phs_manager.hpp - manager for parallel heap scans executed within a single XASL
+ */
+
 #ifndef _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 #define _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 
@@ -23,7 +27,8 @@
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
-#include "parallel_heap_scan_context.hpp"
+#include "phs_context.hpp"
+
 namespace parallel_heap_scan
 {
   class manager
@@ -60,6 +65,7 @@ namespace parallel_heap_scan
       cubthread::entry_workpool *m_workpool;
   };
 }
+
 extern SCAN_CODE
 scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 extern int
@@ -83,13 +89,17 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      bool is_partition_table);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-#else
+
+#else /* !SERVER_MODE */
+
 #include "thread_compat.hpp"
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
+  assert (false);
   return 0;
 }
-#endif
+
+#endif /* SERVER_MODE */
 
 #endif /* _PARALLEL_HEAP_SCAN_MANAGER_HPP_ */

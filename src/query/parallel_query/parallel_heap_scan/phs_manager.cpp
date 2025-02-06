@@ -16,9 +16,13 @@
  *
  */
 
+/*
+ * phs_manager.cpp - manager for parallel heap scans executed within a single XASL
+ */
+
 #if defined (SERVER_MODE)
-#include "parallel_heap_scan_manager.hpp"
-#include "parallel_heap_scan_task.hpp"
+#include "phs_manager.hpp"
+#include "phs_task.hpp"
 
 #define PARALLEL_HEAP_SCAN_LOG 1
 

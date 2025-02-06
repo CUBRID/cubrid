@@ -50,7 +50,6 @@ namespace cubquery
     switch (sid.type)
       {
       case S_HEAP_SCAN:
-      case S_PARALLEL_HEAP_SCAN:
 	// no range & key
 	range_filter = filter_info ();
 	key_filter = filter_info ();
@@ -72,6 +71,9 @@ namespace cubquery
 	rest_attrs = &sid.s.isid.rest_attrs;
 	rest_regu_list = sid.s.isid.rest_regu_list;
 	qualification = sid.qualification;
+	break;
+      case S_PARALLEL_HEAP_SCAN:
+	assert (0);
 	break;
 
       default:

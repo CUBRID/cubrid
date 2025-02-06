@@ -83,8 +83,8 @@
 #include "subquery_cache.h"
 
 #if defined (SERVER_MODE)
-#include "parallel_heap_scan_checker.hpp"
-#include "parallel_heap_scan_manager.hpp"
+#include "phs_checker.hpp"
+#include "phs_manager.hpp"
 #endif
 
 #include <vector>

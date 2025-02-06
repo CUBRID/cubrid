@@ -51,7 +51,7 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
-#include "parallel_heap_scan_manager.hpp"
+#include "phs_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7953,7 +7953,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-    case S_PARALLEL_HEAP_SCAN:
     case S_HEAP_SAMPLING_SCAN:
       if (scan_id->scan_stats.noscan)
 	{
@@ -7963,6 +7962,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	{
 	  fprintf (fp, "(heap");
 	}
+      break;
+
+    case S_PARALLEL_HEAP_SCAN:
+      fprintf (fp, "(parallel heap");
       break;
 
     case S_INDX_SCAN:

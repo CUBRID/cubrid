@@ -16,6 +16,10 @@
  *
  */
 
+/*
+ * phs_checker.hpp - module that checks whether parallel heap scan is possible.
+ */
+
 #ifndef _PARALLEL_HEAP_SCAN_CHECKER_HPP_
 #define _PARALLEL_HEAP_SCAN_CHECKER_HPP_
 #include "xasl.h"

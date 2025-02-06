@@ -16,12 +16,16 @@
  *
  */
 
-#if defined (SERVER_MODE)
-#include "thread_entry_task.hpp"
-#include "parallel_heap_scan_context.hpp"
+/*
+ * phs_task.hpp - derived from cubthread::entry_task
+ */
 
 #ifndef _PARALLEL_HEAP_SCAN_TASK_HPP_
 #define _PARALLEL_HEAP_SCAN_TASK_HPP_
+
+#if defined (SERVER_MODE)
+#include "thread_entry_task.hpp"
+#include "phs_context.hpp"
 
 namespace parallel_heap_scan
 {
