@@ -257,6 +257,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#endif
 //
 
 /*
@@ -267,7 +269,5 @@ extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);
 extern int au_get_object (MOP obj, const char *attname, MOP * mop_ptr);
 extern int au_set_get_obj (DB_SET * set, int index, MOP * obj);
 //
-
-#endif
 
 #endif /* _AUTHENTICATE_H_ */
