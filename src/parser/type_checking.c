@@ -7489,7 +7489,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
 
-	  if (node->info.query.order_by)
+	  if (node->info.query.order_by && !node->info.query.flag.order_siblings)	/* when order siblings by */
 	    {
 	      expr_pred = &node->info.query.orderby_for;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_ORDERBY_NUM, false);
