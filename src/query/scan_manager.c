@@ -7965,7 +7965,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-      fprintf (fp, "(parallel heap");
+      fprintf (fp, "(heap");	/* TODO: add parallel heap scan stats */
       break;
 
     case S_INDX_SCAN:
