@@ -22,10 +22,6 @@ jobs:
           command: |
             echo "hello"
             echo $PWD
-      - persist_to_workspace:
-          root: .
-          paths:
-            - CUBRID
       - store_artifacts:
           path: /tmp/build_logs
 
