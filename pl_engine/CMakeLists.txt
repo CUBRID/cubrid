@@ -16,13 +16,6 @@
 # 
 #
 
-# Donwload JDK
-
-
-
-# include(FindJava)
-# find_package(Java 1.6 COMPONENTS Development)
-
 set(PL_ENGINE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/pl_engine)
 set(PL_ENGINE_BUILD_DIR ${CMAKE_BINARY_DIR}/pl_engine)
 set(JDK_DIR ${CMAKE_BINARY_DIR}/vm)
