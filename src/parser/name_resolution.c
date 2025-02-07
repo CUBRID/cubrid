@@ -7958,6 +7958,24 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  goto exit_on_error;
 	}
+      if (*no_use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
+	}
     }
 
   if (hint & PT_HINT_USE_HASH)
@@ -7965,6 +7983,24 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
       if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+      if (*use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -8031,8 +8067,8 @@ exit_on_error:
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
-      node->info.delete_.no_use_hash_hint = NULL;
-      node->info.delete_.use_hash_hint = NULL;
+      node->info.update.no_use_hash_hint = NULL;
+      node->info.update.use_hash_hint = NULL;
       break;
     default:
       break;
