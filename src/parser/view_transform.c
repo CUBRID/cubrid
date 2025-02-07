@@ -4945,7 +4945,6 @@ exit_on_error:
 static PT_NODE *
 mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *with_clause;
 
   /* TODO: need to handle other node types (DML ... ) */
   if (node->node_type != PT_SELECT && node->node_type != PT_UNION && node->node_type != PT_DIFFERENCE
@@ -4956,14 +4955,12 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.query.with != NULL)
     {
-      node->info.query.with =
-	parser_walk_tree (parser, node->info.query.with, mq_rewrite_materialize_cte, NULL, NULL, NULL);
-
-      with_clause = node->info.query.with;
-      node->info.query.with = NULL;
-
-      node = parser_walk_tree (parser, node, mq_plalt_cte_pre, NULL, NULL, NULL);
-      parser_free_tree (parser, with_clause);
+      bool is_recursive = false;
+      node = parser_walk_tree (parser, node, mq_rewrite_materialize_cte, &is_recursive, NULL, NULL);
+      if (!is_recursive)
+	{
+	  parser_free_tree (parser, node->info.query.with);
+	}
     }
 
   return node;
@@ -4972,6 +4969,7 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 static PT_NODE *
 mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool *is_recursive = (bool *) arg;
   PT_NODE *derived, *cte_list, *tbl_name, *attributes, *spec, *attr, *node_pointer;
 
   if (node == NULL)
@@ -4987,6 +4985,13 @@ mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  node_pointer = PT_SPEC_CTE_POINTER (node->info.query.q.select.from);
 	  cte_list = parser_copy_tree (parser, node_pointer);
 	  CAST_POINTER_TO_NODE (cte_list);
+
+	  if (cte_list->info.cte.recursive_part)
+	    {
+	      *is_recursive = true;
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
 
 	  spec = node->info.query.q.select.from;
 
@@ -5177,7 +5182,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
       /* reconstruct as_attr_list */
       idx = 0;
       as_attr_list = NULL;
-      for (col = derived->info.query.q.select.list; col; col = col->next)	// attribute에 type_enum, resolved ... 필요한가 ?
+      for (col = derived->info.query.q.select.list; col; col = col->next)
 	{
 	  tmp = pt_name (parser, mq_generate_name (parser, "a", &idx));
 	  tmp->info.name.meta_class = PT_NORMAL;
