@@ -331,14 +331,13 @@ main (int argc, char *argv[])
 	PL_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
-
-#if defined(WINDOWS)
-    // socket shutdown for windows
-    windows_socket_shutdown (pl_old_hook);
-#endif /* WINDOWS */
   }
 
 exit:
+#if defined(WINDOWS)
+  // socket shutdown for windows
+  windows_socket_shutdown (pl_old_hook);
+#endif /* WINDOWS */
 
   if (command.compare ("ping") == 0)
     {
@@ -460,6 +459,11 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 
       er_clear (); // clear error before string JVM
       status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
+      if (er_has_error())
+	{
+	  PL_PRINT_ERR_MSG ("%s\n", er_msg());
+	  er_clear();
+	}
 
       int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
       PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };

@@ -46,7 +46,7 @@ typedef enum
   SP_CODE_RESULT = 0x02,
   SP_CODE_ERROR = 0x04,
   SP_CODE_INTERNAL_JDBC = 0x08,
-  // SP_CODE_DESTROY = 0x10,
+  SP_CODE_DESTROY = 0x10,
   // SP_CODE_END = 0x20,
   SP_CODE_PREPARE_ARGS = 0x40,
 
@@ -74,7 +74,7 @@ struct pl_status_info
 extern "C"
 {
 #endif
-  EXPORT_IMPORT SOCKET pl_connect_server (const char *db_name, int server_port);
+  EXPORT_IMPORT int pl_connect_server (const char *db_name, int server_port, SOCKET & out);
   EXPORT_IMPORT void pl_disconnect_server (SOCKET & sockfd);
   EXPORT_IMPORT int pl_writen (SOCKET fd, const void *vptr, int n);
   EXPORT_IMPORT int pl_readn (SOCKET fd, void *vptr, int n);

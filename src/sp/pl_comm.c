@@ -63,9 +63,9 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static SOCKET pl_connect_server_tcp (int server_port);
+static int pl_connect_server_tcp (int server_port, SOCKET & out);
 #if !defined (WINDOWS)
-static SOCKET pl_connect_server_uds (const char *db_name);
+static int pl_connect_server_uds (const char *db_name, SOCKET & out);
 #endif
 /*
  * pl_connect_server
@@ -75,23 +75,21 @@ static SOCKET pl_connect_server_uds (const char *db_name);
  * Note:
  */
 
-SOCKET
-pl_connect_server (const char *db_name, int server_port)
+int
+pl_connect_server (const char *db_name, int server_port, SOCKET & out)
 {
-  SOCKET socket = INVALID_SOCKET;
 #if defined (WINDOWS)
-  socket = pl_connect_server_tcp (server_port);
+  return pl_connect_server_tcp (server_port, out);
 #else
   if (server_port == PL_PORT_UDS_MODE)
     {
-      socket = pl_connect_server_uds (db_name);
+      return pl_connect_server_uds (db_name, out);
     }
   else
     {
-      socket = pl_connect_server_tcp (server_port);
+      return pl_connect_server_tcp (server_port, out);
     }
 #endif
-  return socket;
 }
 
 /*
@@ -254,8 +252,8 @@ pl_get_socket_file_path (const char *db_name)
 }
 
 #if !defined (WINDOWS)
-static SOCKET
-pl_connect_server_uds (const char *db_name)
+static int
+pl_connect_server_uds (const char *db_name, SOCKET & out)
 {
   struct sockaddr_un sock_addr;
   SOCKET sockfd = INVALID_SOCKET;
@@ -263,7 +261,7 @@ pl_connect_server_uds (const char *db_name)
   sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd))
     {
-      return INVALID_SOCKET;
+      out = INVALID_SOCKET;
     }
 
   int slen = sizeof (sock_addr);
@@ -274,18 +272,20 @@ pl_connect_server_uds (const char *db_name)
   int success = connect (sockfd, (struct sockaddr *) &sock_addr, slen);
   if (success < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
-      return INVALID_SOCKET;
+      out = INVALID_SOCKET;
+      return ER_SP_CANNOT_CONNECT_JVM;
     }
 
   int one = 1;
   setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
-  return sockfd;
+  out = sockfd;
+
+  return NO_ERROR;
 }
 #endif
 
-static SOCKET
-pl_connect_server_tcp (int server_port)
+static int
+pl_connect_server_tcp (int server_port, SOCKET & out)
 {
   struct sockaddr_in tcp_srv_addr;
 
@@ -304,7 +304,8 @@ pl_connect_server_tcp (int server_port)
 
   if (server_port < 0)
     {
-      return sockfd;		/* INVALID_SOCKET (-1) */
+      out = sockfd;		/* INVALID_SOCKET (-1) */
+      return ER_SP_CANNOT_CONNECT_JVM;
     }
 
   inaddr = inet_addr (server_host);
@@ -325,7 +326,7 @@ pl_connect_server_tcp (int server_port)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, server_host,
 			       HOSTS_FILE);
-	  return INVALID_SOCKET;
+	  out = INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
     }
@@ -335,8 +336,8 @@ pl_connect_server_tcp (int server_port)
   sockfd = socket (saddr->sa_family, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "socket()");
-      return INVALID_SOCKET;
+      out = INVALID_SOCKET;
+      return ER_SP_CANNOT_CONNECT_JVM;
     }
   else
     {
@@ -347,11 +348,13 @@ pl_connect_server_tcp (int server_port)
   success = connect (sockfd, saddr, slen);
   if (success < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
-      return INVALID_SOCKET;
+      out = INVALID_SOCKET;
+      return ER_SP_CANNOT_CONNECT_JVM;
     }
 
-  return sockfd;
+  out = sockfd;
+
+  return NO_ERROR;
 }
 
 #if defined(WINDOWS)

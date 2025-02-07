@@ -2008,6 +2008,17 @@ lang_final (void)
 }
 
 /*
+ * lang_is_all_initialized - Checks if the all language support modules are initialized
+ *   return: true if the module has been initialized, false otherwise
+ */
+bool
+lang_is_all_initialized (void)
+{
+  return (lang_Initialized && lang_Builtin_initialized && lang_Charset_initialized && lang_Language_initialized
+	  && lang_Msg_env_initialized);
+}
+
+/*
  * lang_currency_symbol - Computes an appropriate printed representation for
  *                        a currency identifier
  *   return: currency string
