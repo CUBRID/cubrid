@@ -722,12 +722,13 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  /*
-     the remote-DML of dblink must not execute mq_translate
-     because the query of remote-DML should be executed at remote server side
-   */
   if (PT_IS_DBLINK_DML_QUERY (statement))
     {
+      /*
+         the remote-DML of dblink must not execute mq_translate
+         because the query of remote-DML should be executed at remote server side
+       */
+
       /*
          The remote DML query can not use the cached plan,
          because the atuo-variable holder can not be composed during compiling.
@@ -787,7 +788,8 @@ db_compile_statement_local (DB_SESSION * session)
    * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
-  if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
+  if (!parser->flag.is_parsing_static_sql && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
+      && statement->flag.cannot_prepare == 0)
     {
       if (session->is_subsession_for_prepared)
 	{
