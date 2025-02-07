@@ -1758,6 +1758,12 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  while (fgets ((char *) class_name, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
 	      trim (class_name);
+	      if (utility_check_class_name (class_name) != NO_ERROR)
+		{
+		  fclose (input_file);
+
+		  return ER_GENERIC_ERROR;
+		}
 
 	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
 
