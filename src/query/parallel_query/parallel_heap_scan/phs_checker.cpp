@@ -271,7 +271,7 @@ namespace parallel_heap_scan
     cnt += check (src->s.cls_node.cls_regu_list_pred);
     cnt += check (src->s.cls_node.cls_regu_list_rest);
     cnt += check (src->where_pred);
-    if (src->next) /* not for partition table */
+    if (src->next) /* not for 'select c1 from (t1 t2)' */
       {
 	cnt++;
       }
@@ -459,6 +459,3 @@ scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
   parallel_heap_scan::checker checker;
   return checker.check (xasl);
 }
-
-
-

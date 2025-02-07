@@ -9997,9 +9997,6 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	      /* The attribute is correlated variable. Find it in an enclosing scope(s). Note that this subquery has
 	       * also just been determined to be a correlated subquery. */
 	      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_CORRELATED);
-
-	      table_info = NULL;
-
 	      if (symbols->stack == NULL)
 		{
 		  if (!pt_has_error (parser))
