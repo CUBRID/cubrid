@@ -3169,15 +3169,12 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   if (query_p == NULL)
     {
-      if (query_p == NULL)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
+      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-	  if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
-	    {
-	      // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
-	      // And this routine is called in the middle of processing the root query.
-	      return true;
-	    }
+	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
+	  // And this routine is called in the middle of processing the root query.
+	  return true;
 	}
     }
 
