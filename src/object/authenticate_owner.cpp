@@ -475,7 +475,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  error = au_change_owner (sub_partitions[i], owner_mop);
+	  error = au_change_class_owner_including_partitions (sub_partitions[i], owner_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -485,7 +485,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
     }
 
   /* change the owner of a class */
-  error = au_change_owner (class_mop, owner_mop);
+  error = au_change_class_owner_including_partitions (class_mop, owner_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -606,14 +606,14 @@ end:
 }
 
 /*
- * au_change_sp_owner_pre -
+ * au_change_sp_owner_with_privilege_cleanup -
  *   return: error code
  *   parser(in):
  *   sp_mop(in):
  *   owner_mop(in):
  */
 int
-au_change_sp_owner_pre (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
+au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
   MOP owner_mop = NULL, save_user = NULL;
