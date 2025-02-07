@@ -971,11 +971,11 @@ $ LOADDB
 898 Replication error: "%1$s"
 899 Invalid partition requests.
 900 VM library is not found: %1$s.
-901 Java VM can not be started: %1$s.
-902 Java VM is not running.
-903 Can't connect Java VM: %1$s
+901 PL server can not be started: %1$s.
+902 PL server is not running.
+903 Can't connect PL server: %1$s
 904 Invalid stored procedure name.
-905 Networking with JVM failed: %1$d
+905 Networking with PL server failed: %1$d
 906 Invalid java method signature.
 907 The owner or a member of DBA group can drop stored procedure.
 908 Too many arguments of stored procedure '%1$s'.

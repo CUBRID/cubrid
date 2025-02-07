@@ -221,7 +221,7 @@ main (int argc, char *argv[])
 	char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	snprintf (err_msg, sizeof (err_msg), "Error while opening file (%s)", info_path);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1, err_msg);
 	goto exit;
       }
 
@@ -479,8 +479,8 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 	  char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	  pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	  snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
-	  status = ER_SP_CANNOT_START_JVM;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1, err_msg);
+	  status = ER_SP_CANNOT_START_PL_SERVER;
 	}
     }
 
