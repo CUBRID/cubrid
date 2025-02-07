@@ -99,15 +99,11 @@ namespace cubpl
       void create_new_connection (int index);
       connection_view get_connection_view (int index);
 
-
       void initialize_pool ();
       void cleanup_pool ();
 
       std::vector <connection *> m_pool;
       std::atomic<int> m_epoch; // Whenever PL server is restarted, server_manager increments this value
-
-      int m_min_conn_size; // minimum connection size
-      int m_inc_conn_size; // increment connection size for lazy initialization
 
       // for connection
       std::string m_db_name;
@@ -149,12 +145,8 @@ namespace cubpl
       {
 	cubmem::block b = pack_data_block (std::forward<Args> (args)...);
 	int status = send_buffer (b);
-	if (b.is_valid ())
-	  {
-	    delete [] b.ptr;
-	    b.ptr = NULL;
-	    b.dim = 0;
-	  }
+	b.freemem ();
+
 	return status;
       }
 

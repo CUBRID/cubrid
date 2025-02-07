@@ -45,7 +45,8 @@ public class StmtExecImme extends StmtSql {
             int level,
             Expr dynamicSql,
             NodeList<Expr> intoTargetList,
-            NodeList<? extends Expr> usedExprList) {
+            NodeList<? extends Expr> usedExprList,
+            int sqlSerialNo) {
         super(
                 ctx,
                 true,
@@ -53,6 +54,7 @@ public class StmtExecImme extends StmtSql {
                 dynamicSql,
                 null,
                 intoTargetList == null ? null : intoTargetList.nodes,
-                usedExprList == null ? null : usedExprList.nodes);
+                usedExprList == null ? null : usedExprList.nodes,
+                sqlSerialNo);
     }
 }

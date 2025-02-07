@@ -143,6 +143,7 @@ namespace cubpl
 
     private:
       execution_stack *top_stack_internal ();
+      void destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
