@@ -415,7 +415,7 @@ static void pl_signal_handler (int sig)
 	}
       free (symbols);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PL_SERVER_CRASHED, 1, err_msg.c_str ());
 
       exit (1);
     }

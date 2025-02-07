@@ -1446,7 +1446,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1357 Converting SQL string to wide string failed.
 1358 Number of rows affected is unknown.
 
-1359 Java VM crashed: %1$s
+1359 PL server crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1361 Invalid result cache for subquery.

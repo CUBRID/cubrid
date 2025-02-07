@@ -1446,7 +1446,7 @@ $ LOADDB
 1357 SQL 문자열을 와이드 문자열로 변환 실패.
 1358 영향을 받은 행 수를 알 수 없음.
 
-1359 Java VM 에 장애가 발생함. : %1$s
+1359 PL 서버에 장애가 발생함. : %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1361 부질의 캐시가 잘못되었습니다.
