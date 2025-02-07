@@ -411,6 +411,9 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
+static PT_NODE *mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node);
+
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -4939,6 +4942,99 @@ exit_on_error:
   return NULL;
 }
 
+static PT_NODE *
+mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *with_clause;
+
+  /* TODO: need to handle other node types (DML ... ) */
+  if (node->node_type != PT_SELECT && node->node_type != PT_UNION && node->node_type != PT_DIFFERENCE
+      && node->node_type != PT_INTERSECTION)
+    {
+      return node;
+    }
+
+  if (node->info.query.with != NULL)
+    {
+      node->info.query.with =
+	parser_walk_tree (parser, node->info.query.with, mq_rewrite_materialize_cte, NULL, NULL, NULL);
+
+      with_clause = node->info.query.with;
+      node->info.query.with = NULL;
+
+      node = parser_walk_tree (parser, node, mq_plalt_cte_pre, NULL, NULL, NULL);
+      parser_free_tree (parser, with_clause);
+    }
+
+  return node;
+}
+
+static PT_NODE *
+mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *derived, *cte_list, *tbl_name, *attributes, *spec, *attr, *node_pointer;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (PT_SPEC_IS_CTE (node->info.query.q.select.from))
+	{
+	  node_pointer = PT_SPEC_CTE_POINTER (node->info.query.q.select.from);
+	  cte_list = parser_copy_tree (parser, node_pointer);
+	  CAST_POINTER_TO_NODE (cte_list);
+
+	  spec = node->info.query.q.select.from;
+
+	  attributes = parser_copy_tree_list (parser, cte_list->info.cte.as_attr_list);
+	  derived = parser_copy_tree (parser, cte_list->info.cte.non_recursive_part);
+
+	  tbl_name = parser_copy_tree (parser, cte_list->info.cte.name);
+	  tbl_name->info.name.spec_id = spec->info.spec.id;
+
+	  for (attr = attributes; attr; attr = attr->next)
+	    {
+	      /* TODO: if inline cte merged, mq_lambda() -> pt_name_equal() function check meta_class. 
+	       * need to inspect the code. */
+
+	      attr->info.name.meta_class = PT_NORMAL;
+	      attr->info.name.spec_id = spec->info.spec.id;
+
+	      /* no need to copy, because it is already created. (perhaps) */
+	      // attr->data_type = parser_copy_tree (parser, col->data_type);  
+	    }
+
+	  spec->info.spec.derived_table = derived;
+	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	  spec->info.spec.as_attr_list = attributes;
+	  spec->info.spec.range_var = tbl_name;
+
+	  node->info.query.q.select.from = spec;
+
+	  if (spec->info.spec.cte_pointer != NULL)
+	    {
+	      spec->info.spec.cte_pointer = NULL;
+	    }
+
+	  if (spec->info.spec.cte_name)
+	    {
+	      parser_free_node (parser, spec->info.spec.cte_name);
+	    }
+
+	  node = mq_reset_ids (parser, node, spec);
+	}
+      break;
+
+    default:
+      break;
+    }
+  return node;
+}
+
 /*
  * mq_rewrite_aggregate_as_derived() -
  *   return: rewritten select statement with derived table
@@ -5081,7 +5177,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
       /* reconstruct as_attr_list */
       idx = 0;
       as_attr_list = NULL;
-      for (col = derived->info.query.q.select.list; col; col = col->next)
+      for (col = derived->info.query.q.select.list; col; col = col->next)	// attribute에 type_enum, resolved ... 필요한가 ?
 	{
 	  tmp = pt_name (parser, mq_generate_name (parser, "a", &idx));
 	  tmp->info.name.meta_class = PT_NORMAL;
@@ -7649,6 +7745,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+      node = mq_check_rewrite_cte (parser, node);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
