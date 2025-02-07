@@ -53,6 +53,7 @@
 #include "dynamic_array.h"
 #include "heartbeat.h"
 #include "process_util.h"
+#include "pl_file.h"
 
 #include <string>
 
@@ -2838,11 +2839,11 @@ is_pl_running (const char *server_name)
     }
 }
 
+#define WAIT_TIMEOUT_CUB_PL  (10)
 static int
-process_pl_restart (const char *db_name, bool suppress_message, bool process_window_service)
+process_pl_restart (const char *db_name, bool suppress_message)
 {
   int status = NO_ERROR;
-  static const int wait_timeout = 10;
   int waited_secs = 0;
 
   if (!suppress_message)
@@ -2861,44 +2862,48 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 
   if (status == NO_ERROR)
     {
-      if (process_window_service)
-	{
-#if defined(WINDOWS)
-	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_PL,
-	    COMMAND_TYPE_STOP, db_name, NULL
-	  };
+      PL_SERVER_INFO pl_old = PL_SERVER_INFO_INITIALIZER;
+      PL_SERVER_INFO pl_new = PL_SERVER_INFO_INITIALIZER;
 
-	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-#endif
-	}
-      else
-	{
-	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
-	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
-	  sleep (1);
-	}
+      pl_read_info (db_name, pl_old);
+      pl_new.pid = pl_old.pid;
+
+      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
+      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+
+      /* We don't start cub_pl directly here.
+       * We just request a shutdown, and it will be restarted by cub_server.
+       */
 
       UTIL_PL_SERVER_STATUS_E pl_status;
       do
 	{
 	  // The pl server needs a few seconds to accept ping request
-	  pl_status = is_pl_running (db_name);
-	  status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
-	  sleep (1);		// wait to stop
+	  sleep (1);
 
-	  if (!is_server_running (CHECK_SERVER, db_name, 0))
+	  if (pl_old.pid == pl_new.pid)
 	    {
-	      status = ER_GENERIC_ERROR;
-	      if (!suppress_message)
+	      pl_read_info (db_name, pl_new);
+	    }
+	  else
+	    {
+	      pl_status = is_pl_running (db_name);
+	      status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+
+	      if (!is_server_running (CHECK_SERVER, db_name, 0))
 		{
-		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		  status = ER_GENERIC_ERROR;
+		  if (!suppress_message)
+		    {
+		      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		    }
+		  break;
 		}
-	      break;
 	    }
 
 	  waited_secs++;
 	}
-      while (status != NO_ERROR && waited_secs < wait_timeout);
+      while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
     }
 
   if (!suppress_message)
@@ -2913,8 +2918,6 @@ static int
 process_pl_status (const char *db_name)
 {
   int status = NO_ERROR;
-
-  static const int wait_timeout = 10;
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
@@ -2947,7 +2950,7 @@ process_pl_status (const char *db_name)
       sleep (1);
       waited_secs++;
     }
-  while (status != NO_ERROR && waited_secs < wait_timeout);
+  while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
 
   if (status != NO_ERROR)
     {
@@ -3025,7 +3028,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	    }
 	  break;
 	case RESTART:
-	  status = process_pl_restart (db_name, suppress_message, process_window_service);
+	  status = process_pl_restart (db_name, suppress_message);
 	  break;
 	case STATUS:
 	  status = process_pl_status (db_name);

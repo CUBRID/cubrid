@@ -406,7 +406,7 @@ extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
 					    const char *db_user, const char *host, const char *program_name);
-extern int csession_end_session (SESSION_ID session_id);
+extern int csession_end_session (SESSION_ID session_id, bool is_keep_session);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
 extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id);

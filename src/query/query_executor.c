@@ -2646,14 +2646,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+	      if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+		{
+		  /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
@@ -2666,14 +2668,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+	      if (xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+		{
+		  /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
@@ -3030,7 +3034,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  /* free currently fixed page */
 		  if (info->fixed_page != NULL)
 		    {
-		      qmgr_free_old_page_and_init (info->fixed_page, list_idp->tfile_vfid);
+		      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, info->fixed_page);
 		    }
 
 		  /* fix page and cache fixed vpid */
@@ -3100,7 +3104,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		    }
 		}
 #if 1				/* SortCache */
-	      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 #endif
 	    }
 	  else
@@ -3733,7 +3737,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   /* free currently fixed page */
   if (gbstate->fixed_page != NULL)
     {
-      qmgr_free_old_page_and_init (gbstate->fixed_page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, gbstate->fixed_page);
     }
 #endif
 
@@ -4087,7 +4091,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 		}
 	      if (status != NO_ERROR)
 		{
-		  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+		  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 		  return ER_FAILED;
 		}
 
@@ -4097,7 +4101,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	    {
 	      peek = PEEK;	/* avoid unnecessary COPY */
 	    }
-	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 	}
       else
 	{
@@ -4247,7 +4251,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      /* free currently fixed page */
 	      if (info->fixed_page != NULL)
 		{
-		  qmgr_free_old_page_and_init (info->fixed_page, list_idp->tfile_vfid);
+		  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, info->fixed_page);
 		}
 
 	      /* fix page and cache fixed vpid */
@@ -4456,7 +4460,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 #if 1				/* SortCache */
       if (page)
 	{
-	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 	}
 #endif
 
@@ -4466,7 +4470,7 @@ wrapup:
 #if 1				/* SortCache */
   if (page)
     {
-      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
     }
 #endif
 
@@ -4814,7 +4818,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       QFILE_LIST_ID *list_idp;
 
       list_idp = &(gbstate.input_scan->list_id);
-      qmgr_free_old_page_and_init (gbstate.fixed_page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, gbstate.fixed_page);
     }
 #endif
   qfile_destroy_list (thread_p, list_id);
@@ -14585,7 +14589,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  continue;
 	}
 
-      if (xptr->status == XASL_CLEARED || xptr->status == XASL_INITIALIZED)
+      if (IS_XASL_INITIAL_STATUS (xptr->status))
 	{
 	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 	    {
@@ -16759,7 +16763,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  continue;
 		}
 
-	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
+	      if (IS_XASL_INITIAL_STATUS (xptr2->status))
 		{
 		  if (QEXEC_IS_SUBQUERY_CACHE (xptr2))
 		    {
@@ -17442,7 +17446,6 @@ qfile_list_id *
 qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
 		     QUERY_ID query_id)
 {
-  int re_execute;
   int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
@@ -17595,72 +17598,65 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       (void) logtb_get_mvcc_snapshot (thread_p);
     }
 
-  do
-    {
-      re_execute = false;
+  /* execute the query set the query in progress flag so that qmgr_clear_trans_wakeup() will not remove our XASL
+   * tree out from under us in the event the transaction is unilaterally aborted during query execution. */
 
-      /* execute the query set the query in progress flag so that qmgr_clear_trans_wakeup() will not remove our XASL
-       * tree out from under us in the event the transaction is unilaterally aborted during query execution. */
-
-      xasl->query_in_progress = true;
-      stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
-      xasl->query_in_progress = false;
+  xasl->query_in_progress = true;
+  stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
+  xasl->query_in_progress = false;
 
 #if defined(SERVER_MODE)
-      if (thread_is_on_trace (thread_p))
-	{
-	  qexec_set_xasl_trace_to_session (thread_p, xasl);
-	}
+  if (thread_is_on_trace (thread_p))
+    {
+      qexec_set_xasl_trace_to_session (thread_p, xasl);
+    }
 #endif
 
-      if (stat != NO_ERROR)
+  if (stat != NO_ERROR)
+    {
+      switch (er_errid ())
 	{
-	  switch (er_errid ())
-	    {
-	    case NO_ERROR:
-	      {
-		char buf[512];
+	case NO_ERROR:
+	  {
+	    char buf[512];
 
-		/* Make sure this does NOT return error indication without setting an error message and code. If we
-		 * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
-		 * condition. */
-		snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
-		break;
-	      }
-	    case ER_INTERRUPTED:
-	      /*
-	       * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
-	       * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
-	       *  finishing their cleanup), so disable it.
-	       */
-	      xlogtb_set_interrupt (thread_p, false);
-	      break;
-	    }
-
-	  qmgr_set_query_error (thread_p, query_id);	/* propagate error */
-
-	  if (xasl->list_id)
-	    {
-	      qfile_close_list (thread_p, xasl->list_id);
-	    }
-
-	  list_id = qexec_get_xasl_list_id (xasl);
-
-	  (void) qexec_clear_xasl (thread_p, xasl, true);
-
-	  /* caller will detect the error condition and free the listid */
-	  goto end;
-	}
-      /* for async query, clean error */
-      else
-	{
-	  /* async query executed successfully */
-	  er_clear ();
+	    /* Make sure this does NOT return error indication without setting an error message and code. If we
+	     * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
+	     * condition. */
+	    snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
+	    break;
+	  }
+	case ER_INTERRUPTED:
+	  /*
+	   * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
+	   * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
+	   *  finishing their cleanup), so disable it.
+	   */
+	  xlogtb_set_interrupt (thread_p, false);
+	  break;
 	}
 
+      qmgr_set_query_error (thread_p, query_id);	/* propagate error */
+
+      if (xasl->list_id)
+	{
+	  qfile_close_list (thread_p, xasl->list_id);
+	}
+
+      list_id = qexec_get_xasl_list_id (xasl);
+
+      (void) qexec_clear_xasl (thread_p, xasl, true);
+
+      /* caller will detect the error condition and free the listid */
+      goto end;
     }
-  while (re_execute);
+  /* for async query, clean error */
+  else
+    {
+      /* async query executed successfully */
+      er_clear ();
+    }
 
   list_id = qexec_get_xasl_list_id (xasl);
 
@@ -18531,7 +18527,7 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr, lfscan_id.list_id.tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, lfscan_id.curr_pgptr);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -18548,7 +18544,7 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr, lfscan_id.list_id.tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, lfscan_id.curr_pgptr);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -18646,7 +18642,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
 
   /* first the non recursive part from the CTE shall be executed */
-  if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
+  if (IS_XASL_INITIAL_STATUS (non_recursive_part->status))
     {
       if (non_recursive_part->sub_xasl_id == NULL
 	  || (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR))
@@ -22294,8 +22290,7 @@ wrapup:
       /* clear current input: sort items and input scan */
       if (analytic_state.curr_sort_page.page_p != NULL)
 	{
-	  qmgr_free_old_page_and_init (thread_p, analytic_state.curr_sort_page.page_p,
-				       analytic_state.input_scan->list_id.tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state.curr_sort_page.page_p);
 	  analytic_state.curr_sort_page.vpid.pageid = NULL_PAGEID;
 	  analytic_state.curr_sort_page.vpid.volid = NULL_VOLID;
 	}
@@ -22672,7 +22667,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	{
 	  if (analytic_state->curr_sort_page.page_p != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p, list_idp->tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state->curr_sort_page.page_p);
 	    }
 
 	  analytic_state->curr_sort_page.page_p = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
@@ -23172,8 +23167,7 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_s
 
   if (analytic_state->curr_sort_page.page_p != NULL)
     {
-      qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p,
-				   analytic_state->input_scan->list_id.tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state->curr_sort_page.page_p);
       analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
       analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
     }

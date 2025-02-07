@@ -1154,7 +1154,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
   else
     {
       // Linux and Unix
-      connection_protocol = SERVER_REQUEST;
+      connection_protocol = SERVER_REQUEST_FROM_SERVER;
       css_set_proc_register (server_name, name_length, &proc_register);
       data = (const char *) &proc_register;
       data_length = sizeof (proc_register);

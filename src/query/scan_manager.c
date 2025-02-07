@@ -8399,7 +8399,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    {
 	      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 		{
-		  qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+		  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, scan_id_p->curr_pgptr);
 		}
 	      scan_id_p->position = S_AFTER;
 	      return S_END;
@@ -8438,7 +8438,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	      *tuple = tplrec.tpl;
 	      return S_SUCCESS;
 	    case EH_KEY_NOTFOUND:
-	      qmgr_free_old_page_and_init (thread_p, scan_id_p->curr_pgptr, scan_id_p->list_id.tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, scan_id_p->curr_pgptr);
 	      scan_id_p->position = S_AFTER;
 	      return S_END;
 	    case EH_ERROR_OCCURRED:

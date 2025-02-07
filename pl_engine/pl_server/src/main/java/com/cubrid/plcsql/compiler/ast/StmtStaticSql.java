@@ -44,7 +44,7 @@ public class StmtStaticSql extends StmtSql {
 
     public final StaticSql staticSql;
 
-    public StmtStaticSql(ParserRuleContext ctx, int level, StaticSql staticSql) {
+    public StmtStaticSql(ParserRuleContext ctx, int level, StaticSql staticSql, int sqlSerialNo) {
 
         super(
                 ctx,
@@ -53,7 +53,8 @@ public class StmtStaticSql extends StmtSql {
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
                 staticSql.getColumnTypeList(),
                 staticSql.intoTargetList,
-                new ArrayList(staticSql.hostExprs.keySet()));
+                new ArrayList(staticSql.hostExprs.keySet()),
+                sqlSerialNo);
 
         this.staticSql = staticSql;
     }

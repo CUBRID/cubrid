@@ -86,13 +86,7 @@ struct lk_entry
   LOCK blocked_mode;		/* blocked lock mode */
   int count;			/* number of lock requests */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
-
-  /* this member is usually used for the freelist, but can be used for other purposes as well. */
-  /* until the block is claimed, this member cannot be used because it may be used for the retired list. */
-  /* after the block is claimed, this member can be used for any purpose. currently, it is used for the following purposes... */
-  /*    1. linked list for deadlock logging */
-  LK_ENTRY *stack;
-
+  LK_ENTRY *stack;		/* pointer to retired stack */
   LK_ENTRY *next;		/* next entry */
   LK_ENTRY *tran_next;		/* list of locks that trans. holds */
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds */

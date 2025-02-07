@@ -100,6 +100,9 @@
 #define PT_NODE_SP_AUTHID(node) \
   ((node)->info.sp.auth_id)
 
+#define PT_NODE_SP_DETERMINISTIC_TYPE(node) \
+  ((node)->info.sp.dtrm_type)
+
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? "" : \
    (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
@@ -124,6 +127,7 @@ static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
+static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directive);
 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
@@ -870,9 +874,10 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
  * Note:
  */
 static int
-jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out)
+jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, std::string &out)
 {
   int error = NO_ERROR;
+  is_null = false;
 
   DB_DEFAULT_EXPR default_expr;
   pt_get_default_expression_from_data_default_node (parser, node, &default_expr);
@@ -894,6 +899,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 	  else
 	    {
 	      // empty out consider as NULL
+	      is_null = true;
 	    }
 	}
       else
@@ -928,18 +934,44 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
     }
   else
     {
-      DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
+      PT_NODE *default_value = node->info.data_default.default_value;
+      DB_VALUE *value = NULL;
+      // do not use initialized db value
+      if (default_value->info.value.db_value_is_initialized)
+	{
+	  default_value->info.value.db_value_is_initialized = false;
+	}
+
+      value = pt_value_to_db (parser, default_value);
+
       if (!DB_IS_NULL (value))
 	{
-	  string_buffer sb;
-	  sb.clear ();
-	  db_sprint_value (value, sb);
+	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
+	    {
+	      if (db_get_string_size (value) > 255)
+		{
+		  pt_reset_error (parser);
+		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
+		}
 
-	  out.append (sb.get_buffer ());
+	      out.append (db_get_string (value));
+	    }
+	  else
+	    {
+	      DB_VALUE tmp_val;
+	      error = db_value_coerce (value, &tmp_val, db_type_to_db_domain (DB_TYPE_VARCHAR));
+	      if (error == NO_ERROR)
+		{
+		  out.append (db_get_string (&tmp_val));
+		  db_value_clear (&tmp_val);
+		}
+	    }
 	}
       else
 	{
-	  // empty out consider as NULL
+	  // empty out is considered NULL
+	  is_null = true;
 	}
     }
 
@@ -1012,6 +1044,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (sp_info.sp_type == SP_TYPE_FUNCTION)
     {
       sp_info.return_type = pt_type_enum_to_db (statement->info.sp.ret_type);
+      // check the deterministic_type of function
+      sp_info.directive = jsp_map_pt_to_sp_dtrm_type (PT_NODE_SP_DETERMINISTIC_TYPE (statement), sp_info.directive);
     }
   else
     {
@@ -1035,10 +1069,11 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       PT_NODE *default_value = p->info.sp_param.default_value;
       if (default_value)
 	{
+	  bool is_null;
 	  std::string default_value_str;
-	  if (jsp_default_value_string (parser, default_value, default_value_str) == NO_ERROR)
+	  if (jsp_default_value_string (parser, default_value, is_null, default_value_str) == NO_ERROR)
 	    {
-	      if (!default_value_str.empty ())
+	      if (!is_null)
 		{
 		  db_make_string (&arg_info.default_value, ws_copy_string (default_value_str.c_str ()));
 		}
@@ -1051,7 +1086,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  else
 	    {
-	      ASSERT_ERROR ();
+	      // MSGCAT_SEMANTIC_PREC_TOO_BIG
 	      goto error_exit;
 	    }
 	}
@@ -1475,6 +1510,20 @@ jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid)
   assert (pt_authid == PT_AUTHID_OWNER || pt_authid == PT_AUTHID_CALLER);
   return (pt_authid == PT_AUTHID_OWNER ? SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER :
 	  SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER);
+}
+
+static SP_DIRECTIVE_ENUM
+jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directive)
+{
+  assert (pt_dtrm_type == PT_NOT_DETERMINISTIC || pt_dtrm_type == PT_DETERMINISTIC);
+
+  if (pt_dtrm_type == PT_DETERMINISTIC)
+    {
+      directive = static_cast<SP_DIRECTIVE_ENUM> (static_cast<int> (directive) | static_cast<int>
+		  (SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC));
+    }
+
+  return directive;
 }
 
 /*
@@ -2032,6 +2081,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   int save;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
+  DB_OBJECT *mop_p = NULL;
 
   assert (node);
 
@@ -2049,7 +2099,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	DB_OBJECT *mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+	mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
 	if (mop_p == NULL)
 	  {
 	    error = er_errid ();
@@ -2074,7 +2124,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 	/* semantic check */
 	int directive = db_get_int (&entry.vals[SP_ATTR_INDEX_DIRECTIVE]);
-	const char *auth_name = (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER ? jsp_get_owner_name (
+	const char *auth_name = (! (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER) ? jsp_get_owner_name (
 					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
 
 	int result_type = db_get_int (&entry.vals[SP_ATTR_INDEX_RETURN_TYPE]);
@@ -2093,9 +2143,20 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	    goto exit;
 	  }
 
+#if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
+	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
+	  {
+	    sig.is_deterministic = true;
+	  }
+	else
+	  {
+	    sig.is_deterministic = false;
+	  }
+#endif
+
 	sig.result_type = result_type;
-	if (directive == SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER)
+	if (! (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER))
 	  {
 	    jsp_get_owner_name (name, user_name_buffer, DB_MAX_USER_LENGTH);
 	    sig.auth = db_private_strndup (NULL, user_name_buffer, DB_MAX_USER_LENGTH);
@@ -2139,7 +2200,10 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   }
 
 exit:
-  AU_ENABLE (save);
+  if (mop_p != NULL)
+    {
+      AU_ENABLE (save);
+    }
   return error;
 }
 
@@ -2365,9 +2429,13 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
   PT_NODE *default_next_node = NULL;
   for (int i = 0; i < sig.arg.arg_size; i++)
     {
-      if (sig.arg.arg_default_value_size[i] == 0)
+      if (sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NULL)
 	{
 	  default_next_node = pt_make_string_value (parser, NULL);
+	}
+      else if (sig.arg.arg_default_value_size[i] == 0)
+	{
+	  default_next_node = pt_make_string_value (parser, "");
 	}
       else if (sig.arg.arg_default_value_size[i] > 0)
 	{
@@ -2425,8 +2493,6 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  else
 	    {
 	      default_next_node = pt_make_string_value (parser, sig.arg.arg_default_value[i]);
-	      default_next_node = pt_wrap_with_cast_op (parser, default_next_node, pt_db_to_type_enum ((DB_TYPE) sig.arg.arg_type[i]),
-				  TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	    }
 	}
 

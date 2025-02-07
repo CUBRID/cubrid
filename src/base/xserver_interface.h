@@ -262,8 +262,9 @@ extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * cla
 
 extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
-extern int xsession_end_session (THREAD_ENTRY * thread, const SESSION_ID id);
+extern int xsession_end_session (THREAD_ENTRY * thread, const SESSION_ID id, bool is_keep_session);
 
+extern int xsession_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session);
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);

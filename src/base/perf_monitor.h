@@ -228,6 +228,14 @@ typedef enum
   PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
   PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */
   PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page */
+
+#if 0
+  /* PAGE_MEMORY is unused in PGBUF_IOPAGE_BUFFER, so PGBUF_FIX_PERF cannot be collected.
+   * PERF_PAGE_MEMORY should not be added here, but a comment is left for consistency.
+   */
+  PERF_PAGE_MEMORY,		/* temp file memory page (unused in PGBUF_IOPAGE_BUFFER) */
+#endif
+
   PERF_PAGE_CNT
 } PERF_PAGE_TYPE;
 

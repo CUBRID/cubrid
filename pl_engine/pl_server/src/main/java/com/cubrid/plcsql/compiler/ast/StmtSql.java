@@ -43,6 +43,7 @@ public abstract class StmtSql extends Stmt {
     public final List<Type> columnTypeList;
     public final List<Expr> intoTargetList;
     public final List<? extends Expr> usedExprList;
+    public final int sqlSerialNo;
 
     public List<Coercion> coercions;
 
@@ -53,7 +54,8 @@ public abstract class StmtSql extends Stmt {
             Expr sql,
             List<Type> columnTypeList,
             List<Expr> intoTargetList,
-            List<? extends Expr> usedExprList) {
+            List<? extends Expr> usedExprList,
+            int sqlSerialNo) {
         super(ctx);
 
         // if static and a SELECT statement, then columnTypeList must be given
@@ -65,6 +67,7 @@ public abstract class StmtSql extends Stmt {
         this.columnTypeList = columnTypeList;
         this.intoTargetList = intoTargetList;
         this.usedExprList = usedExprList;
+        this.sqlSerialNo = sqlSerialNo;
     }
 
     public void setCoercions(List<Coercion> coercions) {

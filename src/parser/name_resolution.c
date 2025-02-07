@@ -1988,12 +1988,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   PT_NODE *method_name_node = NULL;
   const char *method_name;
 
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!node || !parser)
+  if (!node || !parser || pt_has_error (parser))
     {
       return node;
     }
+
+  *continue_walk = PT_CONTINUE_WALK;
 
   /* treat scopes as the next outermost scope */
   scopestack.next = bind_arg->scopes;
@@ -3618,6 +3618,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_SINGLE_TABLE_IN,
 			      pt_short_print (parser, node));
 		}
+	    }
+
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
       break;

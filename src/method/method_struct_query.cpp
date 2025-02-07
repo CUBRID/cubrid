@@ -610,6 +610,7 @@ namespace cubmethod
 
   execute_info::execute_info ()
   {
+    handle_id = -1;
     num_affected = 0;
     stmt_type = CUBRID_STMT_NONE;
     num_markers = 0;
@@ -631,6 +632,7 @@ namespace cubmethod
   void
   execute_info::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (handle_id);
     serializator.pack_int (num_affected);
     qresult_info.pack (serializator);
 
@@ -659,6 +661,7 @@ namespace cubmethod
   void
   execute_info::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (handle_id);
     deserializator.unpack_int (num_affected);
     qresult_info.unpack (deserializator);
 
@@ -691,7 +694,8 @@ namespace cubmethod
   size_t
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // num_affected
+    size_t size = serializator.get_packed_int_size (start_offset); // handle_id
+    size += serializator.get_packed_int_size (size); // num_affected
 
     size += qresult_info.get_packed_size (serializator, size);
 

@@ -66,8 +66,8 @@ enum css_command_type
   NULL_REQUEST = 0,
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
-  SERVER_REQUEST = 3,		/* let new server attach */
-  UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
+  SERVER_REQUEST_FROM_SERVER = 3,	/* let new server attach */
+  SERVER_REQUEST_FROM_CLIENT = 4,	/* let new client process attach */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
   MAX_REQUEST
 };

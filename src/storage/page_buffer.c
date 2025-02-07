@@ -144,16 +144,6 @@ static int rv;
     assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \
   } while (0)
 
-#define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
-  do { \
-    (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
-  } while (0)
-
-#define CAST_IOPGPTR_TO_PGPTR(pgptr, io_pgptr) \
-  do { \
-    (pgptr) = (PAGE_PTR) ((char *) (io_pgptr)->page); \
-  } while (0)
-
 #define CAST_BFPTR_TO_PGPTR(pgptr, bufptr) \
   do { \
     assert ((bufptr) == (bufptr)->iopage_buffer->bcb); \

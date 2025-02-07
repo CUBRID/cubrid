@@ -60,6 +60,16 @@ extern const VPID vpid_Null_vpid;
 #define PGBUF_PAGE_MODIFY_ARGS(pg, prev_lsa) \
   PGBUF_PAGE_VPID_AS_ARGS (pg), LSA_AS_ARGS (prev_lsa), PGBUF_PAGE_LSA_AS_ARGS (pg)
 
+/* macros for casting pointers */
+#define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
+  do { \
+    (io_pgptr) = (FILEIO_PAGE *) ((char *) pgptr - offsetof (FILEIO_PAGE, page)); \
+  } while (0)
+
+#define CAST_IOPGPTR_TO_PGPTR(pgptr, io_pgptr) \
+  do { \
+    (pgptr) = (PAGE_PTR) ((char *) (io_pgptr)->page); \
+  } while (0)
 
 #define pgbuf_unfix_and_init_after_check(thread_p, pgptr) \
   do { \

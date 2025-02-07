@@ -111,6 +111,7 @@ class print_output;
 #define AU_ENABLE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
@@ -131,6 +132,7 @@ class print_output;
 #define AU_RESTORE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
@@ -244,6 +246,19 @@ extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 extern void au_dump_auth (FILE * fp);
+
+#if defined (SA_MODE)
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void au_disable_passwords ();
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
 //
 
 /*
