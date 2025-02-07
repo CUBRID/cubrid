@@ -7952,7 +7952,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (hint & PT_HINT_NO_USE_HASH)
+  if ((hint & PT_HINT_NO_USE_HASH) && (*no_use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
@@ -7978,7 +7978,7 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (hint & PT_HINT_USE_HASH)
+  if ((hint & PT_HINT_USE_HASH) && (*use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
