@@ -39,10 +39,10 @@
 // forward definitions
 struct xasl_cache_ent;
 
-#define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
+#define QMGR_FREE_OLD_PAGE_AND_INIT(thread_p, page_p) \
   do \
     { \
-      qmgr_free_old_page ((thread_p), (page_p), (tfile_vfidp)); \
+      qmgr_free_old_page ((thread_p), (page_p)); \
       (page_p) = NULL; \
     } \
   while (0)
@@ -152,9 +152,8 @@ extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
-extern void qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
-extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page, LOG_DATA_ADDR * addrp,
-				 QMGR_TEMP_FILE * tfile_vfidp);
+extern void qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page);
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
 extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 						  QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type);

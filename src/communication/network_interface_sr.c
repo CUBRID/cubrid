@@ -5398,7 +5398,7 @@ null_list:
 		}
 
 	      memcpy (aligned_page_buf, page_ptr, page_size);
-	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page_ptr);
 	      page_ptr = aligned_page_buf;
 
 	      /* for now, allow end query if there is only one page and more ... */
@@ -5913,7 +5913,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 
 	  /* to free page_ptr early */
 	  memcpy (aligned_page_buf, page_ptr, page_size);
-	  qmgr_free_old_page_and_init (thread_p, page_ptr, q_result->tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page_ptr);
 	}
       else
 	{

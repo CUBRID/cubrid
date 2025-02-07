@@ -3034,7 +3034,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  /* free currently fixed page */
 		  if (info->fixed_page != NULL)
 		    {
-		      qmgr_free_old_page_and_init (info->fixed_page, list_idp->tfile_vfid);
+		      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, info->fixed_page);
 		    }
 
 		  /* fix page and cache fixed vpid */
@@ -3104,7 +3104,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		    }
 		}
 #if 1				/* SortCache */
-	      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 #endif
 	    }
 	  else
@@ -3737,7 +3737,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   /* free currently fixed page */
   if (gbstate->fixed_page != NULL)
     {
-      qmgr_free_old_page_and_init (gbstate->fixed_page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, gbstate->fixed_page);
     }
 #endif
 
@@ -4091,7 +4091,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 		}
 	      if (status != NO_ERROR)
 		{
-		  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+		  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 		  return ER_FAILED;
 		}
 
@@ -4101,7 +4101,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	    {
 	      peek = PEEK;	/* avoid unnecessary COPY */
 	    }
-	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 	}
       else
 	{
@@ -4251,7 +4251,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      /* free currently fixed page */
 	      if (info->fixed_page != NULL)
 		{
-		  qmgr_free_old_page_and_init (info->fixed_page, list_idp->tfile_vfid);
+		  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, info->fixed_page);
 		}
 
 	      /* fix page and cache fixed vpid */
@@ -4460,7 +4460,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 #if 1				/* SortCache */
       if (page)
 	{
-	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
 	}
 #endif
 
@@ -4470,7 +4470,7 @@ wrapup:
 #if 1				/* SortCache */
   if (page)
     {
-      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, page);
     }
 #endif
 
@@ -4818,7 +4818,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       QFILE_LIST_ID *list_idp;
 
       list_idp = &(gbstate.input_scan->list_id);
-      qmgr_free_old_page_and_init (gbstate.fixed_page, list_idp->tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, gbstate.fixed_page);
     }
 #endif
   qfile_destroy_list (thread_p, list_id);
@@ -18527,7 +18527,7 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr, lfscan_id.list_id.tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, lfscan_id.curr_pgptr);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -18544,7 +18544,7 @@ exit_on_error:
 	{
 	  if (lfscan_id.curr_pgptr != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, lfscan_id.curr_pgptr, lfscan_id.list_id.tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, lfscan_id.curr_pgptr);
 	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
@@ -22290,8 +22290,7 @@ wrapup:
       /* clear current input: sort items and input scan */
       if (analytic_state.curr_sort_page.page_p != NULL)
 	{
-	  qmgr_free_old_page_and_init (thread_p, analytic_state.curr_sort_page.page_p,
-				       analytic_state.input_scan->list_id.tfile_vfid);
+	  QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state.curr_sort_page.page_p);
 	  analytic_state.curr_sort_page.vpid.pageid = NULL_PAGEID;
 	  analytic_state.curr_sort_page.vpid.volid = NULL_VOLID;
 	}
@@ -22668,7 +22667,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	{
 	  if (analytic_state->curr_sort_page.page_p != NULL)
 	    {
-	      qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p, list_idp->tfile_vfid);
+	      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state->curr_sort_page.page_p);
 	    }
 
 	  analytic_state->curr_sort_page.page_p = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
@@ -23168,8 +23167,7 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_s
 
   if (analytic_state->curr_sort_page.page_p != NULL)
     {
-      qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p,
-				   analytic_state->input_scan->list_id.tfile_vfid);
+      QMGR_FREE_OLD_PAGE_AND_INIT (thread_p, analytic_state->curr_sort_page.page_p);
       analytic_state->curr_sort_page.vpid.pageid = NULL_PAGEID;
       analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
     }
