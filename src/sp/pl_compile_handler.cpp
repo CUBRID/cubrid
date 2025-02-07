@@ -36,7 +36,7 @@ namespace cubpl
   compile_handler::~compile_handler ()
   {
     // exit stack
-    if (m_stack != nullptr)
+    if (get_session () && m_stack != nullptr)
       {
 	delete m_stack;
       }
@@ -84,6 +84,12 @@ namespace cubpl
   compile_handler::compile (const compile_request &req, cubmem::extensible_block &out_blk)
   {
     int error_code = NO_ERROR;
+
+    if (m_stack == nullptr)
+      {
+	return er_errid ();
+      }
+
     SESSION_ID sid = get_session ()->get_id ();
 
     // get changed session parameters
@@ -148,13 +154,8 @@ namespace cubpl
 	    m_stack->get_data_queue ().pop ();
 	  }
 
-	// free phase
-	if (response_blk.is_valid ())
-	  {
-	    delete [] response_blk.ptr;
-	    response_blk.ptr = NULL;
-	    response_blk.dim = 0;
-	  }
+	// free reponse block
+	response_blk.freemem ();
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
 

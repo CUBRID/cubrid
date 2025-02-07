@@ -144,8 +144,6 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node);
 
-    public abstract R visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node);
-
     public abstract R visitStmtGlobalProcCall(StmtGlobalProcCall node);
 
     public abstract R visitStmtIf(StmtIf node);

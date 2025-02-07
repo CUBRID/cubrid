@@ -1856,6 +1856,8 @@ namespace cubschema
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},
       {"mode", "varchar(6)"},
+      {"is_optional", "varchar(3)"},
+      {"default_value", "varchar(255)"},
       {"comment", "varchar(1024)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
