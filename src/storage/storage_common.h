@@ -162,7 +162,10 @@ typedef enum
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
-  PAGE_MEMORY,
+
+  /* Be cautious when using PAGE_LAST in loops, as PAGE_MEMORY is unused in PGBUF_IOPAGE_BUFFER. */
+  PAGE_MEMORY,			/* temp file memory page */
+
   PAGE_LAST = PAGE_MEMORY
 } PAGE_TYPE;
 
