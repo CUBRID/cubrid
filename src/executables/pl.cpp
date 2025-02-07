@@ -153,7 +153,7 @@ get_ppid (DWORD &ppid)
 #endif
 
 /*
- * main() - javasp main function
+ * main() - pl server main function
  */
 
 int
@@ -209,7 +209,7 @@ main (int argc, char *argv[])
 
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
-	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
+	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_pl.err", db_name.c_str ());
 	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
@@ -280,7 +280,7 @@ main (int argc, char *argv[])
     // load system parameter
     sysprm_load_and_init (db_name.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS);
 
-    /* javasp command main routine */
+    /* pl command main routine */
     if (command.compare ("start") == 0)
       {
 	(void) pl_start_server (pl_info, db_name, pathname);
@@ -573,7 +573,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 exit:
   if (status != NO_ERROR)
     {
-      fprintf (stdout, "Java Stored Procedure Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
+      fprintf (stdout, "Procedure Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
   if (buffer.ptr)
@@ -624,17 +624,17 @@ pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 {
   if (status_info.port == PL_PORT_UDS_MODE)
     {
-      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
+      fprintf (fp, "Procedure Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
     }
   else
     {
-      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
+      fprintf (fp, "Procedure Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
 	       status_info.port);
     }
   auto vm_args_len = status_info.vm_args.size();
   if (vm_args_len > 0)
     {
-      fprintf (fp, "Java VM arguments :\n");
+      fprintf (fp, "VM arguments :\n");
       fprintf (fp, " -------------------------------------------------\n");
       for (int i = 0; i < (int) vm_args_len; i++)
 	{
