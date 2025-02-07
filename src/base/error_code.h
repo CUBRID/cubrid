@@ -1125,7 +1125,7 @@
 
 #define ER_INVALID_PARTITION_REQUEST                -899
 
-#define ER_SP_JVM_LIB_NOT_FOUND                     -900
+#define ER_SP_VM_LIB_NOT_FOUND                     -900
 #define ER_SP_CANNOT_START_JVM                      -901
 #define ER_SP_NOT_RUNNING_JVM                       -902
 #define ER_SP_CANNOT_CONNECT_JVM                    -903

@@ -321,7 +321,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
     {
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND):
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND):
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_VM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       break;
 
     default:
@@ -435,7 +435,7 @@ pl_create_java_vm (JNIEnv **env_p, JavaVMInitArgs *vm_arguments)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_VM_LIB_NOT_FOUND, 1, err_msgs.c_str ());
       res = -1;
     }
 #endif /* WINDOWS */
