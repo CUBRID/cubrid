@@ -765,6 +765,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
 
+#define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2344,6 +2346,11 @@ static unsigned int prm_stored_procedure_uds_flag = 0;
 bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
 static bool prm_stored_procedure_dump_icode_default = false;
 static unsigned int prm_stored_procedure_dump_icode_flag = 0;
+
+int *PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE = NULL;
+static int prm_stored_procedure_return_numeric_size_default[] = { 38, 15 };
+
+static unsigned int prm_stored_procedure_return_numeric_size_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -6528,6 +6535,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_stored_procedure_dump_icode_flag,
    (void *) &prm_stored_procedure_dump_icode_default,
    (void *) &PRM_STORED_PROCEDURE_DUMP_ICODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_INTEGER_LIST,
+   &prm_stored_procedure_return_numeric_size_flag,
+   (void *) &prm_stored_procedure_return_numeric_size_default,
+   (void *) &PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
