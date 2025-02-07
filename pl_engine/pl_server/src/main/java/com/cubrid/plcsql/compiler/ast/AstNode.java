@@ -37,6 +37,8 @@ public abstract class AstNode {
 
     public final ParserRuleContext ctx;
 
+    public StmtLoop outermostLoop;
+
     public abstract <R> R accept(AstVisitor<R> visitor);
 
     public AstNode(ParserRuleContext ctx) {

@@ -163,10 +163,13 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -201,10 +204,13 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
@@ -10493,9 +10499,9 @@ end:
 }
 
 void
-ssession_stop_attached_threads (void *session)
+ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
 {
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 }
 
 static bool
@@ -10545,7 +10551,11 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
     }
   else
     {
-      std::string err_msg = executor.get_stack ()->get_error_message ();
+      std::string err_msg;
+      if (executor.get_stack ())
+	{
+	  err_msg = executor.get_stack ()->get_error_message ();
+	}
       if (err_msg.empty () && error_code != ER_SP_EXECUTE_ERROR)
 	{
 	  err_msg.assign (er_msg ());

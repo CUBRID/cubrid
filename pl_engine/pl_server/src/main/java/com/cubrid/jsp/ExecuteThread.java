@@ -152,6 +152,12 @@ public class ExecuteThread extends Thread {
                             break;
                         }
 
+                    case RequestCode.DESTROY:
+                        {
+                            ContextManager.destroyContext(ctx.getSessionId());
+                            break;
+                        }
+
                         /* the following request codes are for system requests */
                     case RequestCode.UTIL_BOOTSTRAP:
                         {
