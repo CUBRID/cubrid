@@ -1,7 +1,5 @@
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
 /**
  * Computes the L2 distance between two string representations.
