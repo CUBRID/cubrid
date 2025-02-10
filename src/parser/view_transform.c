@@ -411,8 +411,9 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
-static PT_NODE *mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_rewrite_cte_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -4943,8 +4944,9 @@ exit_on_error:
 }
 
 static PT_NODE *
-mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+  PT_NODE *pointer_list, *with_clause, *cte_definition_list, *prev, *curr, *next;
 
   /* TODO: need to handle other node types (DML ... ) */
   if (node->node_type != PT_SELECT && node->node_type != PT_UNION && node->node_type != PT_DIFFERENCE
@@ -4955,11 +4957,49 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->info.query.with != NULL)
     {
-      bool is_recursive = false;
-      node = parser_walk_tree (parser, node, mq_rewrite_materialize_cte, &is_recursive, NULL, NULL);
-      if (!is_recursive)
+      pointer_list = NULL;
+      node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, &pointer_list, NULL, NULL);
+
+      with_clause = node->info.query.with;
+      cte_definition_list = with_clause->info.with_clause.cte_definition_list;
+
+      prev = NULL;
+      curr = cte_definition_list;
+
+      while (curr && pointer_list)
 	{
-	  parser_free_tree (parser, node->info.query.with);
+	  next = curr->next;
+	  if (curr == pointer_list->info.pointer.node)
+	    {
+	      if (prev == NULL)
+		{
+		  cte_definition_list = curr->next;
+		}
+	      else
+		{
+		  prev->next = next;
+		}
+
+	      curr->next = NULL;
+	      parser_free_node (parser, curr);
+	      curr = next;
+	      pointer_list = pointer_list->next;
+	    }
+	  else
+	    {
+	      prev = curr;
+	      curr = next;
+	    }
+	}
+
+      if (cte_definition_list == NULL)
+	{
+	  parser_free_node (parser, with_clause);
+	  node->info.query.with = NULL;
+	}
+      else
+	{
+	  with_clause->info.with_clause.cte_definition_list = cte_definition_list;
 	}
     }
 
@@ -4967,9 +5007,9 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static PT_NODE *
-mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *is_recursive = (bool *) arg;
+  PT_NODE **pointer_list = (PT_NODE **) arg;
   PT_NODE *derived, *cte_list, *tbl_name, *attributes, *spec, *attr, *node_pointer;
 
   if (node == NULL)
@@ -4986,10 +5026,10 @@ mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  cte_list = parser_copy_tree (parser, node_pointer);
 	  CAST_POINTER_TO_NODE (cte_list);
 
-	  if (cte_list->info.cte.recursive_part)
+	  /* TODO: */
+	  if (cte_list->info.cte.non_recursive_part->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
 	    {
-	      *is_recursive = true;
-	      *continue_walk = PT_STOP_WALK;
+	      // *continue_walk = PT_LIST_WALK;
 	      break;
 	    }
 
@@ -5009,8 +5049,7 @@ mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      attr->info.name.meta_class = PT_NORMAL;
 	      attr->info.name.spec_id = spec->info.spec.id;
 
-	      /* no need to copy, because it is already created. (perhaps) */
-	      // attr->data_type = parser_copy_tree (parser, col->data_type);  
+	      /* no need to copy data_type, because it is already created. */
 	    }
 
 	  spec->info.spec.derived_table = derived;
@@ -5022,6 +5061,30 @@ mq_rewrite_materialize_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 
 	  if (spec->info.spec.cte_pointer != NULL)
 	    {
+	      if (*pointer_list == NULL)
+		{
+		  *pointer_list = parser_copy_tree (parser, spec->info.spec.cte_pointer);
+		}
+	      else
+		{
+		  PT_NODE *list = *pointer_list;
+		  PT_NODE *cte;
+		  while (list)
+		    {
+		      if (list->info.pointer.node == spec->info.spec.cte_pointer)
+			{
+			  break;
+			}
+		      list = list->next;
+		    }
+
+		  if (list == NULL)
+		    {
+		      PT_NODE *cte_pointer = parser_copy_tree (parser, spec->info.spec.cte_pointer);
+		      *pointer_list = parser_append_node (cte_pointer, *pointer_list);
+		    }
+		}
+
 	      spec->info.spec.cte_pointer = NULL;
 	    }
 
@@ -7750,7 +7813,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      node = mq_check_rewrite_cte (parser, node);
+      node = mq_rewrite_materialized_cte (parser, node);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
@@ -7803,6 +7866,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
+      node = mq_rewrite_materialized_cte (parser, node);
+
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
