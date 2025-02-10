@@ -30,8 +30,12 @@ vector_l2_distance(DB_VALUE *result, DB_VALUE *args[], int num_args)
     DB_VALUE *arg1 = args[1];
 
     printf("Computing L2 distance between two vectors:\n");
+    printf("arg 1: ");
     db_value_print(arg0);
+    printf("\n");
+    printf("arg 2: ");
     db_value_print(arg1);
+    printf("\n");
     
     // TODO: Replace this constant with a real computation using the Faiss library.
     db_make_double(result, 9999999.99999999);
