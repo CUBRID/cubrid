@@ -363,6 +363,7 @@ atom
     : literal                                   # literal_exp
     | record_field                              # field_exp
     | function_call                             # call_exp
+    | syntaxed_call                             # syntaxed_call_exp
     | identifier                                # id_exp
     | keyword_builtin_func                      # builtin_func
     | case_expression                           # case_exp
@@ -401,6 +402,57 @@ keyword_builtin_func
     | TIME
     | TIMESTAMP
     | TRUNCATE
+    ;
+
+syntaxed_call
+    : CAST LPAREN argument AS type_spec RPAREN                                                # syntaxed_call_cast
+    | CHR LPAREN  argument USING ( UTF8 | ISO88591 ) RPAREN                                   # syntaxed_call_chr
+    | (DATE_ADD | ADDDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_adddate
+    | (DATE_SUB | SUBDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_subdate
+    | EXTRACT LPAREN time_field FROM argument RPAREN                                          # syntaxed_call_extract
+    | POSITION LPAREN sub=argument IN whole=argument RPAREN                                   # syntaxed_call_position
+    | TRIM LPAREN trim_dir? cut=argument FROM whole=argument RPAREN                           # syntaxed_call_trim
+    ;
+
+time_unit
+    : TU_MILLISECOND
+    | TU_SECOND
+    | TU_MINUTE
+    | TU_HOUR
+    | TU_DAY
+    | TU_WEEK
+    | TU_MONTH
+    | TU_QUARTER
+    | TU_YEAR
+    | TU_SECOND_MILLISECOND
+    | TU_MINUTE_MILLISECOND
+    | TU_MINUTE_SECOND
+    | TU_HOUR_MILLISECOND
+    | TU_HOUR_SECOND
+    | TU_HOUR_MINUTE
+    | TU_DAY_MILLISECOND
+    | TU_DAY_SECOND
+    | TU_DAY_MINUTE
+    | TU_DAY_HOUR
+    | TU_YEAR_MONTH
+    ;
+
+time_field
+    : TU_MILLISECOND
+    | TU_SECOND
+    | TU_MINUTE
+    | TU_HOUR
+    | TU_DAY
+    | TU_WEEK
+    | TU_MONTH
+    | TU_QUARTER
+    | TU_YEAR
+    ;
+
+trim_dir
+    : TD_BOTH
+    | TD_LEADING
+    | TD_TRAILING
     ;
 
 relational_operator
@@ -612,7 +664,20 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
+
     | REVERSE
+
+    | ADDDATE
+    | CHR
+    | DATE_ADD
+    | DATE_SUB
+    | SUBDATE
+
+    | UTF8
+    | ISO88591
+
+    | WEEK
+    | QUARTER
     ;
 
 
