@@ -1313,7 +1313,7 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	"SELECT "
 	  "[sp].[sp_of].[sp_name] AS [sp_name], "
 	  "CAST ([sp].[sp_of].[owner].[name] AS VARCHAR(255)) AS [sp_owner_name], " /* string -> varchar(255) */
-          "[sp].[pkg_name] AS [pkg_name], "
+          "CAST ([sp].[sp_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "

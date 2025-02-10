@@ -7921,9 +7921,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       if (node->info.method_call.method_type == PT_SP_FUNCTION
 	  && !PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_SP_NUMERIC) && node->type_enum == PT_TYPE_NUMERIC)
 	{
+	  int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
+
 	  PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_SP_NUMERIC);
-	  node =
-	    pt_wrap_with_cast_op (parser, node, PT_TYPE_NUMERIC, DB_NUMERIC_PRECISION_SP, DB_NUMERIC_SCALE_SP, NULL);
+	  node = pt_wrap_with_cast_op (parser, node, PT_TYPE_NUMERIC, numeric[PRM_PRECISION], numeric[PRM_SCALE], NULL);
 	  if (node == NULL)
 	    {
 	      assert (false);
