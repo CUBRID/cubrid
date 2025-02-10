@@ -483,204 +483,203 @@ namespace cubpl
 	  {
 	    // close the cursor, if it is opened
 	    cursor->close ();
+	    delete cursor;
 	  }
-	delete cursor;
-      }
 
-    m_cursor_map.erase (search);
+	m_cursor_map.erase (search);
+      }
   }
-}
 
-void
-session::add_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
-{
-  if (query_id == NULL_QUERY_ID)
-    {
-      /* do nothing */
-      return;
-    }
-
-  std::lock_guard<std::mutex> ulock (m_mutex);
-  m_session_cursors.insert (query_id);
-}
-
-void
-session::remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
-{
-  if (query_id == NULL_QUERY_ID)
-    {
-      /* do nothing */
-      return;
-    }
-
-  std::lock_guard<std::mutex> ulock (m_mutex);
-  m_session_cursors.erase (query_id);
-}
-
-bool
-session::is_session_cursor (QUERY_ID query_id)
-{
-  std::lock_guard<std::mutex> ulock (m_mutex);
-  if (m_session_cursors.find (query_id) != m_session_cursors.end ())
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-}
-
-void
-session::destroy_all_cursors ()
-{
-  std::unique_lock<std::mutex> ulock (m_mutex);
-
-  for (auto &it : m_cursor_map)
-    {
-      query_cursor *cursor = it.second;
-      if (cursor)
-	{
-	  destroy_cursor (cursor->get_owner (), it.first /* QUERY_ID */);
-	  delete it.second;
-	}
-    }
-  m_cursor_map.clear ();
-  m_session_cursors.clear ();
-}
-
-cubmethod::db_parameter_info *
-session::get_db_parameter_info () const
-{
-  return m_param_info;
-}
-
-void
-session::set_db_parameter_info (cubmethod::db_parameter_info *param_info)
-{
-  m_param_info = param_info;
-}
-
-const std::vector <sys_param>
-session::obtain_session_parameters (bool reset)
-{
-  std::vector<sys_param> changed_sys_params;
-  SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
-  while (session_params != NULL)
-    {
-      if (m_session_param_changed_ids.find (session_params->prm_id) == m_session_param_changed_ids.end ())
-	{
-	  session_params = session_params->next;
-	  continue;
-	}
-
+  void
+  session::add_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  {
+    if (query_id == NULL_QUERY_ID)
       {
-	changed_sys_params.emplace_back (session_params);
+	/* do nothing */
+	return;
       }
 
-      session_params = session_params->next;
-    }
+    std::lock_guard<std::mutex> ulock (m_mutex);
+    m_session_cursors.insert (query_id);
+  }
 
-  if (session_params)
-    {
-      sysprm_free_assign_values (&session_params);
-    }
+  void
+  session::remove_session_cursor (cubthread::entry *thread_p, QUERY_ID query_id)
+  {
+    if (query_id == NULL_QUERY_ID)
+      {
+	/* do nothing */
+	return;
+      }
 
-  if (reset)
-    {
-      m_session_param_changed_ids.clear ();
-    }
+    std::lock_guard<std::mutex> ulock (m_mutex);
+    m_session_cursors.erase (query_id);
+  }
 
-  return changed_sys_params;
-}
+  bool
+  session::is_session_cursor (QUERY_ID query_id)
+  {
+    std::lock_guard<std::mutex> ulock (m_mutex);
+    if (m_session_cursors.find (query_id) != m_session_cursors.end ())
+      {
+	return true;
+      }
+    else
+      {
+	return false;
+      }
+  }
 
-void
-session::mark_session_param_changed (PARAM_ID prm_id)
-{
-  m_session_param_changed_ids.insert (prm_id);
-}
+  void
+  session::destroy_all_cursors ()
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    for (auto &it : m_cursor_map)
+      {
+	query_cursor *cursor = it.second;
+	if (cursor)
+	  {
+	    destroy_cursor (cursor->get_owner (), it.first /* QUERY_ID */);
+	    delete it.second;
+	  }
+      }
+    m_cursor_map.clear ();
+    m_session_cursors.clear ();
+  }
+
+  cubmethod::db_parameter_info *
+  session::get_db_parameter_info () const
+  {
+    return m_param_info;
+  }
+
+  void
+  session::set_db_parameter_info (cubmethod::db_parameter_info *param_info)
+  {
+    m_param_info = param_info;
+  }
+
+  const std::vector <sys_param>
+  session::obtain_session_parameters (bool reset)
+  {
+    std::vector<sys_param> changed_sys_params;
+    SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
+    while (session_params != NULL)
+      {
+	if (m_session_param_changed_ids.find (session_params->prm_id) == m_session_param_changed_ids.end ())
+	  {
+	    session_params = session_params->next;
+	    continue;
+	  }
+
+	{
+	  changed_sys_params.emplace_back (session_params);
+	}
+
+	session_params = session_params->next;
+      }
+
+    if (session_params)
+      {
+	sysprm_free_assign_values (&session_params);
+      }
+
+    if (reset)
+      {
+	m_session_param_changed_ids.clear ();
+      }
+
+    return changed_sys_params;
+  }
+
+  void
+  session::mark_session_param_changed (PARAM_ID prm_id)
+  {
+    m_session_param_changed_ids.insert (prm_id);
+  }
 
 #define SYS_PARAM_PACKER_ARGS() \
   prm_id, prm_type, prm_value
 
-sys_param::sys_param (SYSPRM_ASSIGN_VALUE *db_param)
-{
-  prm_id = (int) db_param->prm_id;
-  prm_type = GET_PRM_DATATYPE (db_param->prm_id);
+  sys_param::sys_param (SYSPRM_ASSIGN_VALUE *db_param)
+  {
+    prm_id = (int) db_param->prm_id;
+    prm_type = GET_PRM_DATATYPE (db_param->prm_id);
 
-  const SYSPRM_PARAM *prm = GET_PRM (db_param->prm_id);
-  set_prm_value (prm);
-}
+    const SYSPRM_PARAM *prm = GET_PRM (db_param->prm_id);
+    set_prm_value (prm);
+  }
 
-void
-sys_param::set_prm_value (const SYSPRM_PARAM *prm)
-{
-  if (PRM_IS_BOOLEAN (prm))
-    {
-      bool val = prm_get_bool_value (prm->id);
-      prm_value = val ? "true" : "false";
-    }
-  else if (PRM_IS_STRING (prm))
-    {
-      const char *val = prm_get_string_value (prm->id);
-      if (val == NULL)
-	{
-	  switch (prm->id)
-	    {
-	    case PRM_ID_INTL_COLLATION:
-	      val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
-	      break;
-	    case PRM_ID_INTL_DATE_LANG:
-	    case PRM_ID_INTL_NUMBER_LANG:
-	      val = lang_get_Lang_name ();
-	      break;
-	    case PRM_ID_TIMEZONE:
-	      val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
-	      break;
-	    default:
-	      /* do nothing */
-	      break;
-	    }
-	}
-      prm_value = val;
-    }
-  else if (PRM_IS_INTEGER (prm))
-    {
-      int val = prm_get_integer_value (prm->id);
-      prm_value = std::to_string (val);
-    }
-  else if (PRM_IS_BIGINT (prm))
-    {
-      UINT64 val = prm_get_bigint_value (prm->id);
-      prm_value = std::to_string (val);
-    }
-  else if (PRM_IS_FLOAT (prm))
-    {
-      float val = prm_get_float_value (prm->id);
-      prm_value = std::to_string (val);
-    }
-  else
-    {
-      assert (false);
-      prm_value = "*unknown*";
-    }
-}
+  void
+  sys_param::set_prm_value (const SYSPRM_PARAM *prm)
+  {
+    if (PRM_IS_BOOLEAN (prm))
+      {
+	bool val = prm_get_bool_value (prm->id);
+	prm_value = val ? "true" : "false";
+      }
+    else if (PRM_IS_STRING (prm))
+      {
+	const char *val = prm_get_string_value (prm->id);
+	if (val == NULL)
+	  {
+	    switch (prm->id)
+	      {
+	      case PRM_ID_INTL_COLLATION:
+		val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
+		break;
+	      case PRM_ID_INTL_DATE_LANG:
+	      case PRM_ID_INTL_NUMBER_LANG:
+		val = lang_get_Lang_name ();
+		break;
+	      case PRM_ID_TIMEZONE:
+		val = prm_get_string_value (PRM_ID_SERVER_TIMEZONE);
+		break;
+	      default:
+		/* do nothing */
+		break;
+	      }
+	  }
+	prm_value = val;
+      }
+    else if (PRM_IS_INTEGER (prm))
+      {
+	int val = prm_get_integer_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else if (PRM_IS_BIGINT (prm))
+      {
+	UINT64 val = prm_get_bigint_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else if (PRM_IS_FLOAT (prm))
+      {
+	float val = prm_get_float_value (prm->id);
+	prm_value = std::to_string (val);
+      }
+    else
+      {
+	assert (false);
+	prm_value = "*unknown*";
+      }
+  }
 
-void
-sys_param::pack (cubpacking::packer &serializator) const
-{
-  serializator.pack_all (SYS_PARAM_PACKER_ARGS());
-}
+  void
+  sys_param::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_all (SYS_PARAM_PACKER_ARGS());
+  }
 
-size_t
-sys_param::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-{
-  return serializator.get_all_packed_size_starting_offset (start_offset, SYS_PARAM_PACKER_ARGS ());
-}
+  size_t
+  sys_param::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    return serializator.get_all_packed_size_starting_offset (start_offset, SYS_PARAM_PACKER_ARGS ());
+  }
 
-void
-sys_param::unpack (cubpacking::unpacker &deserializator)
-{
-  deserializator.unpack_all (SYS_PARAM_PACKER_ARGS ());
-}
+  void
+  sys_param::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_all (SYS_PARAM_PACKER_ARGS ());
+  }
 } // cubmethod
