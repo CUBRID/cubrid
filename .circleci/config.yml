@@ -1,7 +1,7 @@
 defaults: &defaults
   working_directory: /home
   docker:
-    - image: cubridci/cubridci:develop_build_mode
+    - image: cubridci/cubridci:develop
 
 test_defaults: &test_defaults
   steps:
@@ -12,7 +12,6 @@ test_defaults: &test_defaults
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
-          TEST_BUILD_MODE: debug
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
