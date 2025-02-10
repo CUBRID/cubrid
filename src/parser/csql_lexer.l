@@ -819,7 +819,7 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][gG][eE][xX][pP][_][lL][iI][kK][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REGEXP_LIKE; }
-(l2_distance|L2_DISTANCE)				{ begin_token(yytext);
+[lL]2_[dD][iI][sS][tT][aA][nN][cC][eE]  { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return L2_DISTANCE; }
 [rR][eE][gG][eE][xX][pP][_][rR][eE][pP][lL][aA][cC][eE]			{ begin_token(yytext);
