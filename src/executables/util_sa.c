@@ -1749,24 +1749,24 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       else if (class_list_file != NULL)
 	{
 	  FILE *input_file = fopen (class_list_file, "r");
-	  char class_name[SM_MAX_IDENTIFIER_LENGTH];
+	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
 	  if (input_file == NULL)
 	    {
 	      perror (class_list_file);
 	      goto error_exit;
 	    }
 
-	  while (fgets ((char *) class_name, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+	  while (fgets ( input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
-	      trim (class_name);
-	      if (utility_check_class_name (class_name) != NO_ERROR)
+	      trim (input_class);
+	      if (utility_check_class_name (input_class) != NO_ERROR)
 		{
 		  fclose (input_file);
 
 		  return ER_GENERIC_ERROR;
 		}
 
-	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
 
 	      if (error_code != NO_ERROR)
 		{
@@ -1774,7 +1774,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		    {
 		      PRINT_AND_LOG_ERR_MSG (msgcat_message
 					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
-					      DIAGDB_MSG_UNKNOWN_CLASS), class_name);
+					      DIAGDB_MSG_UNKNOWN_CLASS), input_class);
 		    }
 		  goto error_exit;
 		}
@@ -1785,7 +1785,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      fclose (input_file);
 	      input_file = NULL;
 	    }
-	  memset (class_name, 0, sizeof (class_name));
+	  memset (input_class, 0, sizeof (input_class));
 	}
       else
 	{
