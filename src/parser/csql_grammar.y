@@ -1619,6 +1619,7 @@ static int g_plcsql_text_pos;
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> L2_DISTANCE
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -1670,7 +1671,6 @@ static int g_plcsql_text_pos;
 %token <cptr> REGEXP_COUNT
 %token <cptr> REGEXP_INSTR
 %token <cptr> REGEXP_LIKE
-%token <cptr> L2_DISTANCE
 %token <cptr> REGEXP_REPLACE
 %token <cptr> REGEXP_SUBSTR
 %token <cptr> REJECT_
@@ -18187,6 +18187,12 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+    | L2_DISTANCE '(' expression_list ')'
+        {{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
+
+            $$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 3);
+
+        DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
 	  '(' expression_ ',' expression_ ')'
@@ -18510,12 +18516,6 @@ reserved_func
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_LIKE, $3, 2, 3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-    | L2_DISTANCE '(' expression_list ')'
-        {{
-
-            $$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 3);
-
-        }}
 	| REGEXP_REPLACE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_REPLACE '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_REPLACE, $3, 3, 6);
