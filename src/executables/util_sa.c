@@ -1756,7 +1756,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 
-	  while (fgets ( input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
 	      trim (input_class);
 	      if (utility_check_class_name (input_class) != NO_ERROR)
