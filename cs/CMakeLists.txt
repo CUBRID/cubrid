@@ -256,6 +256,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS

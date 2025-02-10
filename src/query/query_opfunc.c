@@ -22,6 +22,7 @@
 
 #include "db_function.hpp"
 #include "string_opfunc.h"
+#include "vector_opfunc.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -8658,7 +8659,7 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
     switch (function_p->ftype)
     {
       case F_L2_DISTANCE:
-        distance_func = db_string_l2_distance;
+        distance_func = vector_l2_distance;
         break;
       default:
         assert (false);

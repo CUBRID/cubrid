@@ -255,6 +255,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -579,7 +580,7 @@ if(UNIX)
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
-  add_dependencies(cubrid ${TBB_TARGETS})
+#   add_dependencies(cubrid ${TBB_TARGETS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

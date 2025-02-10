@@ -234,7 +234,6 @@ extern int db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], const i
 				   cub_compiled_regex ** comp_regex);
 extern int db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				  cub_compiled_regex ** comp_regex);
-extern int db_string_l2_distance (DB_VALUE * result, DB_VALUE * args[], const int num_args);
 extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
 				     cub_compiled_regex ** comp_regex);
 extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,

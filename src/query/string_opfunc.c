@@ -5178,42 +5178,6 @@ exit:
   return error_status;
 }
 
-/**
- * Computes the L2 distance between two string representations.
- * 
- * Note: This is a temporary implementation. A constant value is returned,
- * and the Faiss library will be used for an actual calculation soon.
- *
- * @param result  Pointer to the DB_VALUE that will hold the result.
- * @param args    Array of DB_VALUE pointers; expects exactly two string values.
- * @param num_args The number of arguments provided.
- *
- * @return 0 on success; a non-zero error code otherwise.
- */
-int
-db_string_l2_distance(DB_VALUE *result, DB_VALUE *args[], int num_args)
-{
-    // Validate the number of arguments.
-    if (num_args != 2) {
-        fprintf(stderr, "db_string_l2_distance error: expected 2 arguments, but received %d.\n", num_args);
-        return ER_OBJ_INVALID_ARGUMENTS;
-    }
-    
-    // Retrieve the string values from the DB_VALUE arguments.
-    const char *str1 = db_get_string(args[0]);
-    const char *str2 = db_get_string(args[1]);
-    
-    // Log the input arguments for debugging purposes.
-    // Using a conditional operator to handle potential NULL values.
-    printf("db_string_l2_distance: arg0 = %s\n", (str1 != NULL) ? str1 : "(null)");
-    printf("db_string_l2_distance: arg1 = %s\n", (str2 != NULL) ? str2 : "(null)");
-    
-    // TODO: Replace this constant with a real computation using the Faiss library.
-    db_make_double(result, 9999999.99999999);
-    
-    return 0;
-}
-
 /*
  * db_string_regexp_replace ()  returns replaced string by regex pattern
  *
