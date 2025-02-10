@@ -1117,7 +1117,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   int is_update_object;
   PT_NODE *err_node;
 
-  assert (parser != NULL || !*new_trigger_stmt);
+  assert (parser != NULL && new_trigger_stmt != NULL);
 
   if (!trigger_stmt)
     return NULL;
@@ -1238,7 +1238,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression, with_evaluate);
       if (new_trigger_stmt_str == NULL)
 	{
-	  assert (new_trigger_stmt_str != NULL);
+	  assert (false);
 	  return NULL;
 	}
 
