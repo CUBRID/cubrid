@@ -367,6 +367,9 @@ func_all_signatures sig_of_regexp_like =
 func_all_signatures sig_of_vector_distance_l2 =
 {
 // all signatures: src, pattern [,match_type ] -> INTEGER
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING, PT_TYPE_VECTOR}, {}},
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
 };
 
