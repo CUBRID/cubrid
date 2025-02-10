@@ -20,6 +20,7 @@
  * func_type.cpp
  */
 
+#include "db_function.hpp"
 #include "dbtype.h"
 #include "func_type.hpp"
 #include "message_catalog.h"
@@ -363,6 +364,12 @@ func_all_signatures sig_of_regexp_like =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
+func_all_signatures sig_of_vector_distance_l2 =
+{
+// all signatures: src, pattern [,match_type ] -> INTEGER
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+};
+
 func_all_signatures sig_of_regexp_replace =
 {
 // all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
@@ -524,6 +531,8 @@ get_signatures (FUNC_CODE ft)
       return &sig_of_regexp_instr;
     case F_REGEXP_LIKE:
       return &sig_of_regexp_like;
+    case F_L2_DISTANCE:
+      return &sig_of_vector_distance_l2;
     case F_REGEXP_REPLACE:
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:
@@ -3105,6 +3114,7 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case F_REGEXP_COUNT:
     case F_REGEXP_INSTR:
     case F_REGEXP_LIKE:
+    case F_L2_DISTANCE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
     // COUNT functions

@@ -18941,6 +18941,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
       error = db_string_regexp_like (result, args, num_args, NULL);
       break;
 
+    case F_L2_DISTANCE:
+      error = db_string_l2_distance (result, args, num_args);
+      break;
+
     case F_REGEXP_REPLACE:
       error = db_string_regexp_replace (result, args, num_args, NULL);
       break;

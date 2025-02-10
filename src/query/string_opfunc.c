@@ -5177,6 +5177,17 @@ exit:
   return error_status;
 }
 
+int
+db_string_l2_distance (DB_VALUE * result, DB_VALUE * args[], int const num_args)
+{
+
+  // treat args[0] = first vector
+  // args[1] = second vector
+  db_make_double (result, 1.711112222333344445555);
+
+  return 0;
+}
+
 /*
  * db_string_regexp_replace ()  returns replaced string by regex pattern
  *

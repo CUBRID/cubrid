@@ -176,6 +176,8 @@ fcode_get_uppercase_name (FUNC_CODE ftype)
       return "REGEXP_INSTR";
     case F_REGEXP_LIKE:
       return "REGEXP_LIKE";
+    case F_L2_DISTANCE:
+      return "L2_DISTANCE";
     case F_REGEXP_REPLACE:
       return "REGEXP_REPLACE";
     case F_REGEXP_SUBSTR:
@@ -332,6 +334,8 @@ fcode_get_lowercase_name (FUNC_CODE ftype)
       return "regexp_instr";
     case F_REGEXP_LIKE:
       return "regexp_like";
+    case F_L2_DISTANCE:
+      return "l2_distance";
     case F_REGEXP_REPLACE:
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
