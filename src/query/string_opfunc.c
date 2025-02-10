@@ -5234,7 +5234,7 @@ db_string_l2_distance(DB_VALUE *result, DB_VALUE *args[], int num_args)
  *      ER_QSTR_INCOMPATIBLE_CODE_SETS:
  *          <src>, <pattern> (if it's not NULL)
  *          have different character code sets.
- *12#
+ *
  *      ER_QSTR_INCOMPATIBLE_COLLATIONS:
  *          <src>, <pattern>, <replace> (if it's not NULL)
  *          are incompatible collations.
