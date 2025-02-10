@@ -2347,8 +2347,10 @@ bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
 static bool prm_stored_procedure_dump_icode_default = false;
 static unsigned int prm_stored_procedure_dump_icode_flag = 0;
 
+static int prm_stored_procedure_return_numeric_size_default_arr[] = { 2, 38, 15 };
+
 int *PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE = NULL;
-static int prm_stored_procedure_return_numeric_size_default[] = { 38, 15 };
+static int *prm_stored_procedure_return_numeric_size_default = prm_stored_procedure_return_numeric_size_default_arr;
 
 static unsigned int prm_stored_procedure_return_numeric_size_flag = 0;
 
@@ -10191,6 +10193,23 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    /* save size in the first position */
 	    val[0] = list_size;
 	  }
+
+	if (sysprm_get_id (prm) == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
+	  {
+	    /*  
+	     *  The length of the parameter must be 2
+	     *  Check the valid range
+	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
+	     *    precision >= scale
+	     */
+	    if (val[0] != 2 || val[1] > DB_MAX_NUMERIC_PRECISION || val[1] < 1 || val[2] > DB_MAX_NUMERIC_PRECISION
+		|| val[2] < 0 || val[1] < val[2])
+	      {
+		free_and_init (val);
+		return PRM_ERR_BAD_VALUE;
+	      }
+	  }
+
 	new_value->integer_list = val;
 	break;
       }

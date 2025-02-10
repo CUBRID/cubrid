@@ -682,6 +682,13 @@ extern "C"
 			&& PRM_IS_FOR_SERVER (GET_PRM_STATIC_FLAG (id)) \
 			&& !PRM_CLIENT_SESSION_ONLY (GET_PRM_STATIC_FLAG (id)))
 
+/* 
+ * for PRM_STORE_PROCEDURE_RETURN_NUMERIC_SIZE
+ * PARAM type integer list, first is precision second is scale
+ */
+#define PRM_PRECISION	1
+#define PRM_SCALE	2
+
   typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
   struct sysprm_param
