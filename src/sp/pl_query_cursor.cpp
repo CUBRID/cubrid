@@ -23,6 +23,7 @@
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+#include "xserver_interface.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -80,8 +81,15 @@ namespace cubpl
       {
 	clear ();
 	qfile_close_scan (m_thread, &m_scan_id);
+	xqmgr_end_query (m_thread, m_query_id);
 	m_is_opened = false;
       }
+  }
+
+  bool
+  query_cursor::is_opened () const
+  {
+    return m_is_opened;
   }
 
   void
