@@ -21,7 +21,6 @@
  * fetch.c - Object/Tuple value fetch routines
  */
 
-#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
