@@ -484,10 +484,9 @@ namespace cubpl
 	query_cursor *cursor = search->second;
 	if (cursor)
 	  {
-	    cursor->close ();
-	    if (query_id > 0)
+	    if (cursor->is_opened ())
 	      {
-		(void) xqmgr_end_query (thread_p, query_id);
+		cursor->close ();
 	      }
 	    delete cursor;
 	  }

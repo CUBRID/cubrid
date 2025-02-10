@@ -286,7 +286,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
   else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
     {
-      assert (qmgr_max_query_entry_per_tran >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -387,6 +386,7 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
   pthread_mutex_lock (&tran_entry_p->mutex);
   query_p->next = tran_entry_p->free_query_entry_list_p;
   tran_entry_p->free_query_entry_list_p = query_p;
+  tran_entry_p->num_query_entries--;
   pthread_mutex_unlock (&tran_entry_p->mutex);
 }
 
@@ -1876,6 +1876,11 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+  if (query_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
+      goto exit_on_error;
+    }
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
