@@ -20,7 +20,6 @@
  * func_type.cpp
  */
 
-#include "db_function.hpp"
 #include "dbtype.h"
 #include "func_type.hpp"
 #include "message_catalog.h"
