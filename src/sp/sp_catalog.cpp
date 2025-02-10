@@ -64,7 +64,6 @@ static const std::vector<std::string> sp_entry_names
 static const std::vector<std::string> sp_args_entry_names
 {
   SP_ATTR_SP_OF,
-  SP_ATTR_PKG,
   SP_ATTR_INDEX_OF_NAME,
   SP_ATTR_IS_SYSTEM_GENERATED,
   SP_ATTR_ARG_NAME,
