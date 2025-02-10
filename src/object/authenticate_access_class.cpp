@@ -57,14 +57,14 @@ static int check_authorization (MOP classobj, SM_CLASS *sm_class, DB_AUTH type);
 static int is_protected_class (MOP classmop, SM_CLASS *sm_class, DB_AUTH auth);
 
 /*
- * au_change_owner - This changes the owning user of a class.
+ * au_change_class_owner_including_partitions - This changes the owning user of a class.
  *                   This should be called only by the DBA.
  *   return: error code
  *   classmop(in): class whose owner is to change
  *   owner(in): new owner
  */
 int
-au_change_owner (MOP class_mop, MOP owner_mop)
+au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *attr = NULL;

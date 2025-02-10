@@ -1132,7 +1132,7 @@
 #define ER_SP_INVALID_NAME                          -904
 #define ER_SP_NETWORK_ERROR                         -905
 #define ER_SP_INVAILD_JAVA_METHOD                   -906
-#define ER_SP_DROP_NOT_ALLOWED_PRIVILEGES           -907
+#define ER_SP_DDL_NOT_ALLOWED_PRIVILEGES            -907
 #define ER_SP_TOO_MANY_ARG_COUNT                    -908
 
 #define ER_BO_MISSING_OR_INVALID_CATALOG            -909
