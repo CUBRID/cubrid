@@ -722,13 +722,12 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
+  /*
+     the remote-DML of dblink must not execute mq_translate
+     because the query of remote-DML should be executed at remote server side
+   */
   if (PT_IS_DBLINK_DML_QUERY (statement))
     {
-      /*
-         the remote-DML of dblink must not execute mq_translate
-         because the query of remote-DML should be executed at remote server side
-       */
-
       /*
          The remote DML query can not use the cached plan,
          because the atuo-variable holder can not be composed during compiling.
