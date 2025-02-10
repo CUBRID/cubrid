@@ -10202,8 +10202,8 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
 	     *    precision >= scale
 	     */
-	    if (val[0] != 2 || val[1] > DB_MAX_NUMERIC_PRECISION || val[1] < 1 || val[2] > DB_MAX_NUMERIC_PRECISION
-		|| val[2] < 0 || val[1] < val[2])
+	    if (val[0] != 2 || val[PRM_PRECISION] < 1 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
+		|| val[PRM_SCALE] < 0 || val[PRM_SCALE] > val[PRM_PRECISION])
 	      {
 		free_and_init (val);
 		return PRM_ERR_BAD_VALUE;
