@@ -20,7 +20,6 @@
  * query_opfunc.c - The manipulation of data stored in the XASL nodes
  */
 
-#include "vector_opfunc.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -53,6 +52,7 @@
 #include "query_list.h"
 #include "db_json.hpp"
 #include "arithmetic.h"
+#include "vector_opfunc.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
