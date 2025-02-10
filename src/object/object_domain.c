@@ -51,6 +51,7 @@
 #include "db_json.hpp"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
+#include "db_vector.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -581,6 +582,7 @@ static int tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
 static int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
 static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
+static int tp_atovector (DB_VALUE const *src, DB_VALUE * result);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
 #endif
@@ -611,7 +613,6 @@ static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool trun
 					 DB_DATA_STATUS * data_stat);
 
 static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
-static int tp_str_to_vector (DB_VALUE const *src, DB_VALUE * result);
 
 /*
  * tp_init - Global initialization for this module.
@@ -5005,7 +5006,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
  *    src is a string db_value.
  */
 static int
-tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
+tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 {
   const char *p = db_get_string (src);
   const char *end = p + db_get_string_size (src);
@@ -5017,109 +5018,11 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
   float float_array[max_vector_size];
   DB_SET *vec = NULL;
   DB_VALUE e_val;
-  INTL_CODESET codeset = db_get_string_codeset (src);
 
-  if (p == NULL)
-    {
+  int error = db_string_to_vector(p, db_get_string_size(src), float_array, &count);
+  if (error != NO_ERROR) {
       return ER_FAILED;
-    }
-
-  // Skip leading spaces and opening bracket
-  p = (char *) intl_skip_spaces (p, end, codeset);
-  if (p >= end || *p != '[')
-    {
-      return ER_FAILED;
-    }
-  p++;
-
-  while (p < end && count < max_vector_size)
-    {
-      // Skip spaces before number
-      p = (char *) intl_skip_spaces (p, end, codeset);
-      if (p >= end)
-	{
-	  return ER_FAILED;
-	}
-
-      // Check for closing bracket
-      if (*p == ']')
-	{
-	  break;
-	}
-
-      // Get number into buffer
-      buffer_idx = 0;
-      while (p < end && *p != ',' && *p != ']' && buffer_idx < number_buffer_size - 1)
-	{
-	  if (!isspace (*p))
-	    {
-	      number_buffer[buffer_idx++] = *p;
-	    }
-	  p++;
-	}
-
-      if (buffer_idx == 0 || buffer_idx >= number_buffer_size - 1)
-	{
-
-	  return ER_FAILED;
-	}
-
-      number_buffer[buffer_idx] = '\0';
-
-      // Convert to float
-      char *end_ptr = NULL;
-      errno = 0;
-      float_array[count] = strtof (number_buffer, &end_ptr);
-
-      if (errno == ERANGE)
-	{
-	  return ER_FAILED;
-	}
-
-      if (*end_ptr != '\0')
-	{
-	  return ER_FAILED;
-	}
-
-      count++;
-
-      // Skip spaces after number
-      p = (char *) intl_skip_spaces (p, end, codeset);
-      if (p >= end)
-	{
-	  return ER_FAILED;
-	}
-
-      // Must be comma or closing bracket
-      if (*p == ']')
-	{
-	  break;
-	}
-      else if (*p != ',')
-	{
-	  return ER_FAILED;
-	}
-      p++;
-    }
-
-  // Check for closing bracket
-  if (p >= end || *p != ']')
-    {
-      return ER_FAILED;
-    }
-  p++;
-
-  // Skip trailing spaces
-  p = (char *) intl_skip_spaces (p, end, codeset);
-  if (p != end)
-    {
-      return ER_FAILED;
-    }
-
-  if (count == 0)
-    {
-      return ER_FAILED;
-    }
+  }
 
   // Create vector and populate it
   vec = db_vec_create (NULL, NULL, 0);
@@ -5130,7 +5033,6 @@ tp_str_to_vector (const DB_VALUE * src, DB_VALUE * result)
     }
 
   db_make_vector (result, vec);
-
   for (int i = 0; i < count; ++i)
     {
       db_make_float (&e_val, float_array[i]);
@@ -9283,7 +9185,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  {
 
-	    err = tp_str_to_vector (src, target);
+	    err = tp_atovector (src, target);
 	    break;
 
 	  }
