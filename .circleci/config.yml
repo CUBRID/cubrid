@@ -1,5 +1,13 @@
-# .circleci/config.yml
 version: 2.1
+
+# Define pipeline-level parameters to receive values from the CircleCI API (from GitHub Actions)
+parameters:
+  baseline:
+    type: string
+    default: "none"
+  run_shell_test:
+    type: boolean
+    default: false
 
 # --------------------------------------------------
 # 1. Reusable commands
@@ -35,8 +43,8 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
-            #need to handle shell test case location.
-            #it is in /home/shell/cubrid-testcases-private-ex/shell/_*
+              # need to handle shell test case location.
+              # it is in /home/shell/cubrid-testcases-private-ex/shell/_*
               rm -rf cubrid-testcases-private-ex/shell/_06_issues
               rm -rf cubrid-testcases-private-ex/shell/_25_unstable
               glob_path="cubrid-testcases-private-ex/shell/_*"
@@ -143,6 +151,7 @@ jobs:
     executor: << parameters.my_executor >>
     resource_class: medium
     environment:
+      # Pass job parameters as environment variables
       TEST_SUITE: << parameters.test_suite >>
       BASELINE: << parameters.baseline >>
       GITHUB_TOKEN: $GHI_TOKEN
@@ -150,16 +159,17 @@ jobs:
       - run:
           name: Set TEST_SUITE environment
           command: |
-            echo "TEST_SUITE=<< parameters.test_suite >>"
-            echo "BASELINE=<< parameters.baseline >>"
-            echo "TEST_SUITE=$TEST_SUITE"
-            echo "BASELINE=$BASELINE"
-            # comment out for debugging
-            # if [ "<< parameters.run_shell_test >>" == "true" ]; then
-            #   /entrypoint.sh worker
-            # fi
-            # echo "export TEST_SUITE=<< parameters.test_suite >>" >> $BASH_ENV
-            # echo "export BASELINE=<< parameters.baseline >>" >> $BASH_ENV
+            # Print the received parameters (in English)
+            echo "TEST_SUITE from parameter: << parameters.test_suite >>"
+            echo "BASELINE from parameter: << parameters.baseline >>"
+            echo "run_shell_test from parameter: << parameters.run_shell_test >>"
+
+            exit 1
+            # Example usage: if run_shell_test is true, run additional worker command
+            #if [ "<< parameters.run_shell_test >>" == "true" ]; then
+            #  echo "Running shell test worker"
+            #  /entrypoint.sh worker
+            #fi
       - attach-and-run-tests
 
   # Windows build (기존)
@@ -206,36 +216,39 @@ workflows:
     jobs:
       - build
 
+      # Note: Remove parallelism for parameterized jobs to avoid unexpected argument error
       - test_job:
           name: test_medium
           requires:
             - build
-          parameters:
-            test_suite: "medium"
+          test_suite: "medium"
+          baseline: << pipeline.parameters.baseline >>
+          run_shell_test: << pipeline.parameters.run_shell_test >>
 
       - test_job:
           name: test_sql
           requires:
             - build
-          parameters:
-            test_suite: "sql"
-          parallelism: 8
+          test_suite: "sql"
+          baseline: << pipeline.parameters.baseline >>
+          run_shell_test: << pipeline.parameters.run_shell_test >>
 
       - test_job:
           name: test_plcsql
           requires:
             - build
-          parameters:
-            test_suite: "plcsql"
+          test_suite: "plcsql"
+          baseline: << pipeline.parameters.baseline >>
+          run_shell_test: << pipeline.parameters.run_shell_test >>
 
       - test_job:
           name: test_shell
           requires:
             - build
-          parameters:
-            my_executor: ctp_shell 
-            test_suite: "shell"
-          parallelism: 8
+          my_executor: ctp_shell
+          test_suite: "shell"
+          baseline: << pipeline.parameters.baseline >>
+          run_shell_test: << pipeline.parameters.run_shell_test >>
 
       - build-windows:
           requires:
