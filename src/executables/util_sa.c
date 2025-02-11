@@ -1762,6 +1762,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      if (utility_check_class_name (input_class) != NO_ERROR)
 		{
 		  fclose (input_file);
+		  fclose (outfp);
 		  return ER_GENERIC_ERROR;
 		}
 
