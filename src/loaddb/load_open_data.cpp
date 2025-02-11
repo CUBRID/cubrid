@@ -35,11 +35,14 @@
 
 namespace cubload
 {
-  static std::unordered_set <std::string> desired_names = {"train", "test", "neighbors", "distance"};
+  static std::unordered_set <std::string> desired_names = {"train", "test", "neighbors", "distances"};
 
   int read_hdf5_file (const std::string &file_name)
   {
     using namespace HighFive;
+
+    int class_idx = 0;
+    std::string create_table_header = "CREATE TABLE ";
 
     File file (file_name, File::ReadOnly);
 
@@ -82,18 +85,6 @@ namespace cubload
     // open schema file
     std::ofstream schema_file (schema_file_name);
 
-    // create table SQL
-    std::string table_ddl = "CREATE TABLE ";
-
-    std::string table_train = table_ddl + base_name + "_train (id INT NOT NULL PRIMARY KEY, vec STRING);";
-    std::string table_test = table_ddl + base_name + "_test (id INT NOT NULL PRIMARY KEY, vec STRING);";
-
-    // write DDL to schema_file
-    schema_file << table_train << std::endl;
-    schema_file << table_test << std::endl;
-
-    schema_file.close ();
-
     // create a new object file with the same name as the hdf5 file without the extension
     std::string object_file_name = base_name + "_object";
     fprintf (stdout, "object file name: %s\n", object_file_name.c_str());
@@ -102,8 +93,9 @@ namespace cubload
     std::ofstream object_file (object_file_name);
 
     // write DDL to schema_file
-    object_file << "\%id " << base_name << "_train " << 60 << std::endl;
-    object_file << "\%id " << base_name << "_test " << 61 << std::endl;
+    object_file << "\%id " << base_name << "_train " << class_idx++ << std::endl;
+    object_file << "\%id " << base_name << "_test " << class_idx++ << std::endl;
+    object_file << "\%id " << base_name << "_answer " << class_idx++ << std::endl;
 
     // read train data
     DataSet dataset = file.getDataSet ("train");
@@ -112,6 +104,10 @@ namespace cubload
     std::string data_type = dataset.getDataType().string();
 
     fprintf (stdout, "train data format: %s\n", data_type.c_str());
+
+    std::string table_train = create_table_header + base_name + "_train (id BIGINT PRIMARY KEY, vec VECTOR (" +
+			      std::to_string (dims[1]) + "));";
+    schema_file << table_train << std::endl;
 
     std::vector<std::vector<float>> train_data_vector;
     dataset.read (train_data_vector);
@@ -133,6 +129,7 @@ namespace cubload
 
 	object_file << i << " " << vec_str << std::endl;
       }
+    train_data_vector.clear ();
 
     // read test data
     dataset = file.getDataSet ("test");
@@ -141,6 +138,10 @@ namespace cubload
     data_type = dataset.getDataType().string();
 
     fprintf (stdout, "test data format: %s\n", data_type.c_str());
+
+    std::string table_test = create_table_header + base_name + "_test (id BIGINT PRIMARY KEY, vec VECTOR (" +
+			     std::to_string (dims[1]) + "));";
+    schema_file << table_test << std::endl;
 
     std::vector<std::vector<float>> test_data_vector;
     dataset.read (test_data_vector);
@@ -162,8 +163,51 @@ namespace cubload
 
 	object_file << i << " " << vec_str << std::endl;
       }
+    test_data_vector.clear ();
+
+    std::string table_answer = create_table_header + base_name +
+			       "_answer (id BIGINT, neighbor_id BIGINT, neighbor_distance DOUBLE);";
+    schema_file << table_answer << std::endl;
+
+    // read answer data
+    DataSet neighbor_dataset = file.getDataSet ("neighbors");
+    DataSpace neighbor_dataspace = neighbor_dataset.getSpace();
+    std::vector<size_t> neighbor_dims = dataspace.getDimensions();
+    std::string neighbor_data_type = neighbor_dataset.getDataType().string();
+
+    DataSet distance_dataset = file.getDataSet ("distances");
+    DataSpace distance_dataspace = distance_dataset.getSpace();
+    std::vector<size_t> distance_dims = dataspace.getDimensions();
+    std::string distance_data_type = distance_dataset.getDataType().string();
+
+    if (neighbor_dims[0] != distance_dims[0] || neighbor_dims[1] != distance_dims[1])
+      {
+	fprintf (stdout, "neighbor and distance data do not match\n");
+	return ER_FAILED;
+      }
+
+    std::vector<std::vector<uint64_t>> test_neighbor_vector;
+    std::vector<std::vector<double>> test_distance_vector;
+
+    neighbor_dataset.read (test_neighbor_vector);
+    distance_dataset.read (test_distance_vector);
+
+    object_file << "\%class " << base_name << "_answer ([id] [neighbor_id] [neighbor_distance])" << std::endl;
+    for (size_t i = 0; i < test_neighbor_vector.size (); i++)
+      {
+	std::vector<uint64_t> &vec1 = test_neighbor_vector[i];
+	std::vector<double> &vec2 = test_distance_vector[i];
+
+	for (size_t j = 0; j < vec1.size (); j++)
+	  {
+	    object_file << i << " " << vec1[j] << " " << vec2[j] << std::endl;
+	  }
+      }
+    test_neighbor_vector.clear ();
+    test_distance_vector.clear ();
 
     object_file.close ();
+    schema_file.close ();
 
     return NO_ERROR;
   }
