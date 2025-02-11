@@ -26,8 +26,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "highfive/H5Easy.hpp"
-
 #include "db.h"
 #include "load_object_table.h"
 #include "memory_alloc.h"
