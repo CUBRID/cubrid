@@ -18,7 +18,7 @@
 
 
 /*
- * vector_opfunc.h - Manipulate arbitrary vectors
+ * vector_opfunc.hpp - Manipulate arbitrary vectors
  */
 
 #ifndef _VECTOR_OPFUNC_H_
