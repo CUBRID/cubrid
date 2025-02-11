@@ -65,7 +65,7 @@ namespace cubpl
   int
   query_cursor::open ()
   {
-    if (m_is_opened == false)
+    if (m_is_opened == false && m_list_id != NULL && m_list_id->tuple_cnt != 0)
       {
 	qfile_open_list_scan (m_list_id, &m_scan_id);
 
@@ -101,6 +101,11 @@ namespace cubpl
   SCAN_CODE
   query_cursor::prev_row ()
   {
+    if (m_is_opened == false)
+      {
+	return S_END;
+      }
+
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_prev (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)
@@ -152,6 +157,11 @@ namespace cubpl
   SCAN_CODE
   query_cursor::next_row ()
   {
+    if (m_is_opened == false)
+      {
+	return S_END;
+      }
+
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_next (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)

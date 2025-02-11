@@ -119,7 +119,12 @@ public class PlcsqlCompilerMain {
             throw new SyntaxError(lei.line, lei.column, lei.msg);
         }
         if (sei.hasError) {
-            throw new SyntaxError(sei.line, sei.column, sei.msg);
+            int cut;
+            String errMsg = sei.msg;
+            if (errMsg != null && (cut = errMsg.indexOf(" expecting {")) > 0) {
+                errMsg = errMsg.substring(0, cut);
+            }
+            throw new SyntaxError(sei.line, sei.column, errMsg);
         }
 
         sqlTemplate[0] = lexer.getCreateSqlTemplate();
