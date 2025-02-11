@@ -617,11 +617,7 @@ public class TypeChecker extends AstVisitor<Type> {
         return Type.BOOLEAN;
     }
 
-    @Override
-    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
-
-        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
-        String sql = String.format("select %s%s from dual", node.name, tvStr);
+    private Type typeBuiltinFuncCall(BuiltinFuncCall node, String name, String sql) {
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;
@@ -640,18 +636,10 @@ public class TypeChecker extends AstVisitor<Type> {
                         Misc.getLineColumnOf(node.ctx), // s233
                         String.format(
                                 "unsupported return type (code %d) of the built-in function %s",
-                                ci.type, node.name));
+                                ci.type, name));
             }
 
             node.setResultType(ret);
-
-            Expr arg0;
-            if (node.args.nodes.size() == 1
-                    && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
-                // cast to Object, a hint for Javac compiler. see CBRD-25168
-                arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
-            }
-
             return ret;
         } else {
             Server.log(
@@ -661,9 +649,52 @@ public class TypeChecker extends AstVisitor<Type> {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s235
                     "function "
-                            + node.name
+                            + name
                             + " is undefined or given wrong number or types of arguments");
         }
+    }
+
+    @Override
+    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
+
+        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
+        String sql = String.format("select %s%s from dual", node.name, tvStr);
+        return typeBuiltinFuncCall(node, node.name, sql);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
+        return typeBuiltinFuncCall(node, "ADDDATE", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
+        return typeBuiltinFuncCall(node, "CAST", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
+        return typeBuiltinFuncCall(node, "CHR", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
+        return typeBuiltinFuncCall(node, "EXTRACT", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
+        return typeBuiltinFuncCall(node, "POSITION", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
+        return typeBuiltinFuncCall(node, "SUBDATE", null);
+    }
+
+    @Override
+    public Type visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
+        return typeBuiltinFuncCall(node, "TRIM", null);
     }
 
     @Override

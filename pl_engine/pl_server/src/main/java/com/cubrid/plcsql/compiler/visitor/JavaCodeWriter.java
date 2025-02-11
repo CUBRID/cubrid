@@ -808,6 +808,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     "(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
                                     ty, node.name, node.resultType.idx));
         } else {
+
+            Expr arg0;
+            if (node.args.nodes.size() == 1 && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
+                // cast to Object, a hint for Javac compiler. see CBRD-25168
+                arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
+            }
+
             tmpl =
                     new CodeTemplate(
                             "ExprBuiltinFuncCall",
@@ -825,6 +832,41 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
+        return null;
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
+        return null;
     }
 
     // -------------------------------------------------------------------------

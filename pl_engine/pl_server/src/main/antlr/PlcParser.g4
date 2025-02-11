@@ -411,7 +411,7 @@ syntaxed_call
     | (DATE_SUB | SUBDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_subdate
     | EXTRACT LPAREN time_field FROM argument RPAREN                                          # syntaxed_call_extract
     | POSITION LPAREN sub=argument IN whole=argument RPAREN                                   # syntaxed_call_position
-    | TRIM LPAREN trim_dir? cut=argument FROM whole=argument RPAREN                           # syntaxed_call_trim
+    | TRIM LPAREN trim_dir? trim_str=argument? FROM str=argument RPAREN                       # syntaxed_call_trim
     ;
 
 time_unit
