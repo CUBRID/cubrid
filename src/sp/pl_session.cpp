@@ -447,9 +447,6 @@ namespace cubpl
 	QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
 	if (query_entry_p != NULL)
 	  {
-	    // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
-
 	    // store a new cursor in map
 	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
@@ -484,10 +481,8 @@ namespace cubpl
 	query_cursor *cursor = search->second;
 	if (cursor)
 	  {
-	    if (cursor->is_opened ())
-	      {
-		cursor->close ();
-	      }
+	    // close the cursor, if it is opened
+	    cursor->close ();
 	    delete cursor;
 	  }
 
