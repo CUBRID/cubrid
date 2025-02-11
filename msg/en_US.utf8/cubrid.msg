@@ -977,7 +977,7 @@ $ LOADDB
 904 Invalid stored procedure name.
 905 Networking with JVM failed: %1$d
 906 Invalid java method signature.
-907 The owner or a member of DBA group can drop stored procedure.
+907 The owner or a member of DBA group can %1$s stored procedure.
 908 Too many arguments of stored procedure '%1$s'.
 909 Missing or invalid catalog class/vclass is found.
 910 Not allowed access to partition.

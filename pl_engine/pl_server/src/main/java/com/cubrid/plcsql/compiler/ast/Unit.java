@@ -94,7 +94,10 @@ public class Unit extends AstNode {
 
         if (className == null) {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className = String.format("%s_%s_%s", kindStr, routine.name, revision);
+            className =
+                    String.format(
+                            "%s_%s_%s_%d",
+                            kindStr, routine.name, revision, new java.util.Date().getTime());
         }
 
         return className;

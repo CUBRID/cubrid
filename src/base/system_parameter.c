@@ -765,6 +765,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
 
+#define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2344,6 +2346,13 @@ static unsigned int prm_stored_procedure_uds_flag = 0;
 bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
 static bool prm_stored_procedure_dump_icode_default = false;
 static unsigned int prm_stored_procedure_dump_icode_flag = 0;
+
+static int prm_stored_procedure_return_numeric_size_default_arr[] = { 2, 38, 15 };
+
+int *PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE = NULL;
+static int *prm_stored_procedure_return_numeric_size_default = prm_stored_procedure_return_numeric_size_default_arr;
+
+static unsigned int prm_stored_procedure_return_numeric_size_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -6531,6 +6540,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_INTEGER_LIST,
+   &prm_stored_procedure_return_numeric_size_flag,
+   (void *) &prm_stored_procedure_return_numeric_size_default,
+   (void *) &PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
 };
 
@@ -10173,6 +10193,23 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    /* save size in the first position */
 	    val[0] = list_size;
 	  }
+
+	if (sysprm_get_id (prm) == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
+	  {
+	    /*  
+	     *  The length of the parameter must be 2
+	     *  Check the valid range
+	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
+	     *    precision >= scale
+	     */
+	    if (val[0] != 2 || val[PRM_PRECISION] < 1 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
+		|| val[PRM_SCALE] < 0 || val[PRM_SCALE] > val[PRM_PRECISION])
+	      {
+		free_and_init (val);
+		return PRM_ERR_BAD_VALUE;
+	      }
+	  }
+
 	new_value->integer_list = val;
 	break;
       }

@@ -117,11 +117,14 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
+  XASL_BUILD,
+  XASL_INITIALIZED,
   XASL_CLEARED,
   XASL_SUCCESS,
-  XASL_FAILURE,
-  XASL_INITIALIZED
+  XASL_FAILURE
 } XASL_STATUS;
+//#define IS_XASL_INITIAL_STATUS(s) ((s) == XASL_CLEARED || (s) == XASL_INITIALIZED || (s) == XASL_BUILD)
+#define IS_XASL_INITIAL_STATUS(s) ((s) <= XASL_CLEARED)
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -603,7 +606,7 @@ struct cte_proc_node
 	  if (XASL_IS_FLAGED (_x, XASL_LINK_TO_REGU_VARIABLE)) \
 	    { \
 	      /* clear correlated subquery list files */ \
-	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
+	      if (IS_XASL_INITIAL_STATUS((_x)->status)) \
 		{ \
 		  /* execute xasl query */ \
 		  if (_x->sub_xasl_id) \

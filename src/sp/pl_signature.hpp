@@ -37,8 +37,8 @@ enum PL_TYPE
 
 enum PL_ARG_DEFAULT
 {
-  PL_ARG_DEFAULT_NONE = -1,
-  PL_ARG_DEFAULT_NULL = 0
+  PL_ARG_DEFAULT_NONE = -2,
+  PL_ARG_DEFAULT_NULL = -1
 };
 
 namespace cubpl

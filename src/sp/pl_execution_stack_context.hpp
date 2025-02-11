@@ -64,11 +64,11 @@ namespace cubpl
       session *m_session;
 
       /* resources */
+      connection_view m_connection;
+
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
       std::map <std::uint64_t, int> m_stack_cursor_map;
-
-      connection_view m_connection;
 
       /* error */
       std::string m_error_message;
@@ -105,7 +105,7 @@ namespace cubpl
       void remove_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
       void promote_to_session_cursor (QUERY_ID query_id);
-      void destory_all_cursors ();
+      void destory_all_cursors (session *sess);
 
       /* query handler */
       void add_query_handler (int handler_id);
@@ -141,8 +141,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
 	  }
 
 	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
@@ -154,8 +154,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
 	  }
 
 	pl_callback_func interrupt_func = [this]()
@@ -192,6 +192,10 @@ namespace cubpl
 
       std::string get_error_message ()
       {
+	if (m_error_message.empty () && er_errid () != NO_ERROR)
+	  {
+	    m_error_message = er_msg ();
+	  }
 	return m_error_message;
       }
 

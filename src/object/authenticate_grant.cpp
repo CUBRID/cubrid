@@ -187,7 +187,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	  error = check_grant_option (class_mop, classobj, type);
 	  if (error != NO_ERROR)
 	    {
-	      return (error);
+	      goto fail_end;
 	    }
 	}
       else if (ws_is_same_object (classobj->owner, user))
@@ -198,7 +198,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
       else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner,
 			NULL)) != NO_ERROR)
 	{
-	  return (error);
+	  goto fail_end;
 	}
       else
 	{
@@ -335,7 +335,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
     {
       error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
-      return (error);
+      goto end;
     }
 
   if (ws_is_same_object (user, Au_user))
@@ -356,7 +356,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, NULL)) != NO_ERROR)
 	{
-	  return (error);
+	  goto end;
 	}
       else
 	{

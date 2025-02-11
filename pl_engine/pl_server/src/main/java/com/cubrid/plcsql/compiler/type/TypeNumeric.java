@@ -61,7 +61,7 @@ public class TypeNumeric extends Type {
     }
 
     private static String getTypicalValueStr(int precision, short scale) {
-        return String.format("cast(? as numeric(%d, %d))", precision, scale);
+        return String.format("cast(0.1 as numeric(%d, %d))", precision, scale);
     }
 
     private TypeNumeric(int precision, short scale) {
