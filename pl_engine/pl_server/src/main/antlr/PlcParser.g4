@@ -364,14 +364,14 @@ atom
     | record_field                              # field_exp
     | function_call                             # call_exp
     | syntaxed_call                             # syntaxed_call_exp
-    | identifier                                # id_exp
+    | SQLCODE                                   # sqlcode_exp
+    | SQLERRM                                   # sqlerrm_exp
     | reserved_builtin_func                     # builtin_func
+    | identifier                                # id_exp
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
     | LPAREN expression RPAREN                  # paren_exp
-    | SQLCODE                                   # sqlcode_exp
-    | SQLERRM                                   # sqlerrm_exp
     ;
 
 record_field
@@ -392,9 +392,13 @@ func_name
     ;
 
 reserved_builtin_func   /* those which cannot be an identifier */
-    : CAST
+    : ADDDATE
+    | CAST
+    | CHR
     | CURRENT_USER
     | DATE
+    | DATE_ADD
+    | DATE_SUB
     | DAY
     | DEFAULT
     | EXTRACT
@@ -405,12 +409,16 @@ reserved_builtin_func   /* those which cannot be an identifier */
     | MOD
     | MONTH
     | POSITION
+    | QUARTER
     | REPLACE
+    | REVERSE
     | SECOND
+    | SUBDATE
     | TIME
     | TIMESTAMP
     | TRIM
     | TRUNCATE
+    | WEEK
     | YEAR
     ;
 
@@ -674,36 +682,6 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    // lexer tokens which can be used as an identifier
-    | ADDDATE
-    | AUTHID
-    | AUTONOMOUS_TRANSACTION
-    | CALLER
-    | CHR
-    | CLOSE
-    | COMMENT
-    | CONSTANT
-    | DATE_ADD
-    | DATE_SUB
-    | DBMS_OUTPUT
-    | DEFINER
-    | DETERMINISTIC
-    | ELSIF
-    | EXIT
-    | ISO88591
-    | OPEN
-    | OR_REPLACE
-    | OWNER
-    | PRAGMA
-    | QUARTER
-    | RAISE
-    | RAISE_APPLICATION_ERROR
-    | REVERSE
-    | SQLERRM
-    | SUBDATE
-    | SYS_REFCURSOR
-    | UTF8
-    | WEEK
     ;
 
 
