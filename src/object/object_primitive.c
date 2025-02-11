@@ -2010,6 +2010,7 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
     case DB_TYPE_VOBJ:
       set_free (db_get_set (value));
       value->data.set = NULL;
