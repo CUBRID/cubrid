@@ -136,8 +136,6 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int drop_stored_procedure_code (const char *name);
-static int alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
-					int sp_recompile);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
@@ -874,9 +872,10 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
  * Note:
  */
 static int
-jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out)
+jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, std::string &out)
 {
   int error = NO_ERROR;
+  is_null = false;
 
   DB_DEFAULT_EXPR default_expr;
   pt_get_default_expression_from_data_default_node (parser, node, &default_expr);
@@ -898,6 +897,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 	  else
 	    {
 	      // empty out consider as NULL
+	      is_null = true;
 	    }
 	}
       else
@@ -949,6 +949,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
 	      if (db_get_string_size (value) > 255)
 		{
 		  pt_reset_error (parser);
+		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
@@ -968,6 +969,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &ou
       else
 	{
 	  // empty out is considered NULL
+	  is_null = true;
 	}
     }
 
@@ -1053,7 +1055,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.unique_name, sp_info.pkg_name);
+      SP_ARG_INFO arg_info (sp_info.unique_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
@@ -1065,10 +1067,11 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       PT_NODE *default_value = p->info.sp_param.default_value;
       if (default_value)
 	{
+	  bool is_null;
 	  std::string default_value_str;
-	  if (jsp_default_value_string (parser, default_value, default_value_str) == NO_ERROR)
+	  if (jsp_default_value_string (parser, default_value, is_null, default_value_str) == NO_ERROR)
 	    {
-	      if (!default_value_str.empty ())
+	      if (!is_null)
 		{
 		  db_make_string (&arg_info.default_value, ws_copy_string (default_value_str.c_str ()));
 		}
@@ -1251,15 +1254,11 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   int err = NO_ERROR, sp_recompile, save, lang;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
   const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL, *target_cls = NULL;
-  char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
-  new_name_str[0] = '\0';
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
-  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
-  unique_name[0] = '\0';
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
-  MOP sp_mop = NULL, new_owner = NULL, owner = NULL, save_user = NULL;
+  MOP sp_mop = NULL, new_owner_mop = NULL, owner_mop = NULL;
   DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
 
   assert (statement != NULL);
@@ -1300,14 +1299,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   AU_DISABLE (save);
 
-  /* authentication */
-  if (!au_is_dba_group_member (Au_user))
-    {
-      err = ER_AU_DBA_ONLY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "change stored procedure owner");
-      goto error;
-    }
-
   /* existence of sp */
   sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_SELECT);
   if (sp_mop == NULL)
@@ -1315,44 +1306,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
       goto error;
-    }
-
-  /* when changing the owner, all privileges are revoked */
-  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-    }
-
-  owner = jsp_get_owner (sp_mop);
-  if (owner == NULL)
-    {
-      err = ER_FAILED;
-      goto error;
-    }
-
-  save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
-    {
-      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
-      if (err != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  goto error;
-	}
-    }
-
-  AU_SET_USER (save_user);
-
-  /* existence of new owner */
-  if (sp_owner != NULL)
-    {
-      new_owner = db_find_user (owner_str);
-      if (new_owner == NULL)
-	{
-	  err = ER_OBJ_OBJECT_NOT_FOUND;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, owner_str);
-	  goto error;
-	}
     }
 
   /* check type */
@@ -1371,42 +1324,52 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       goto error;
     }
 
-  /* change _db_stored_procedure */
+  /* change the owner */
   if (sp_owner != NULL)
     {
-      /* change the unique_name */
-      sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-      sprintf (new_name_str, "%s.%s", downcase_owner_name, sm_remove_qualifier_name (name_str));
+      /* existence of new owner */
+      new_owner_mop = db_find_user (owner_str);
+      if (new_owner_mop == NULL)
+	{
+	  err = ER_OBJ_OBJECT_NOT_FOUND;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, owner_str);
+	  goto error;
+	}
 
-      db_make_string (&user_val, new_name_str);
-      err = obj_set (sp_mop, SP_ATTR_UNIQUE_NAME, &user_val);
-      if (err < 0)
+      err = au_change_sp_owner_with_privilege_cleanup (parser, sp_mop, new_owner_mop);
+      if (err != NO_ERROR)
 	{
 	  goto error;
 	}
-      pr_clear_value (&user_val);
-
-      /* change the owner */
-      db_make_object (&user_val, new_owner);
-      err = obj_set (sp_mop, SP_ATTR_OWNER, &user_val);
-      if (err < 0)
-	{
-	  goto error;
-	}
-      pr_clear_value (&user_val);
     }
 
-  /* check lang */
-  err = db_get (sp_mop, SP_ATTR_LANG, &sp_lang_val);
-  if (err != NO_ERROR)
+  /* authentication */
+  owner_mop = jsp_get_owner (sp_mop);
+  if (owner_mop == NULL)
     {
+      err = ER_FAILED;
       goto error;
     }
 
-  lang = db_get_int (&sp_lang_val);
-  if (lang == SP_LANG_PLCSQL)
+  if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      if (sp_owner != NULL || sp_recompile == 1)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "alter");
+      err = er_errid ();
+      goto error;
+    }
+
+  /* pl/csql compile */
+  if (sp_recompile)
+    {
+      /* check lang */
+      err = db_get (sp_mop, SP_ATTR_LANG, &sp_lang_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      lang = db_get_int (&sp_lang_val);
+      if (lang == SP_LANG_PLCSQL)
 	{
 	  err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
 	  if (err != NO_ERROR)
@@ -1415,19 +1378,14 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  target_cls = db_get_string (&target_cls_val);
 
-	  if (sp_recompile == 1)
-	    {
-	      owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-	    }
+	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
 
 	  err = alter_stored_procedure_code (parser, sp_mop, target_cls, owner_str, sp_recompile);
 	  if (err != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  pr_clear_value (&target_cls_val);
 	}
-      pr_clear_value (&sp_lang_val);
     }
 
   /* change the comment */
@@ -1435,11 +1393,6 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
-      if (err < 0)
-	{
-	  goto error;
-	}
-      pr_clear_value (&user_val);
     }
 
 error:
@@ -1598,7 +1551,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
       err = er_errid ();
       goto error;
     }
@@ -1758,7 +1711,7 @@ drop_stored_procedure_code (const char *name)
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
       err = er_errid ();
       goto error;
     }
@@ -1795,7 +1748,7 @@ error:
  * Note:
  */
 
-static int
+int
 alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *name, const char *owner_str,
 			     int sp_recompile)
 {
@@ -2076,6 +2029,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   int save;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
+  DB_OBJECT *mop_p = NULL;
 
   assert (node);
 
@@ -2093,7 +2047,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
-	DB_OBJECT *mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+	mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
 	if (mop_p == NULL)
 	  {
 	    error = er_errid ();
@@ -2194,7 +2148,10 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   }
 
 exit:
-  AU_ENABLE (save);
+  if (mop_p != NULL)
+    {
+      AU_ENABLE (save);
+    }
   return error;
 }
 
@@ -2420,9 +2377,13 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
   PT_NODE *default_next_node = NULL;
   for (int i = 0; i < sig.arg.arg_size; i++)
     {
-      if (sig.arg.arg_default_value_size[i] == 0)
+      if (sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NULL)
 	{
 	  default_next_node = pt_make_string_value (parser, NULL);
+	}
+      else if (sig.arg.arg_default_value_size[i] == 0)
+	{
+	  default_next_node = pt_make_string_value (parser, "");
 	}
       else if (sig.arg.arg_default_value_size[i] > 0)
 	{

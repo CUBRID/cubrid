@@ -61,7 +61,7 @@ public class TypeChar extends Type {
     }
 
     private static String getTypicalValueStr(int length) {
-        return String.format("cast(? as char(%d))", length);
+        return String.format("cast('a' as char(%d))", length);
     }
 
     private TypeChar(int length) {
