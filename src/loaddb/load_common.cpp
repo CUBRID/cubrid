@@ -190,6 +190,7 @@ namespace cubload
     , no_user_specified_name (false)
     , schema_file_list ()
     , cs_mode (false)
+    , hdf5_file ()
   {
     //
   }

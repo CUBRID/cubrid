@@ -117,6 +117,7 @@ namespace cubload
     bool no_user_specified_name;
     std::string schema_file_list;
     bool cs_mode;
+    std::string hdf5_file;
   };
 
   /*

@@ -4030,7 +4030,7 @@ pt_is_pseudo_const (PT_NODE * expr)
     case PT_METHOD_CALL:
       PT_NODE * p;
       /*
-       * Even if there are columns(PT_NAME) in the parameter of the Java Stored Procedure(METHOD_CALL),
+       * Even if there are columns(PT_NAME) in the parameter of the Stored Procedure (METHOD_CALL),
        * it can be guaranteed to be evaluated by the time it is referenced.
        */
       for (p = expr->info.method_call.arg_list; p; p = p->next)

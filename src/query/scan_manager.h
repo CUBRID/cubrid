@@ -336,6 +336,8 @@ struct scan_stats
 
   /* hash list scan */
   struct timeval elapsed_hash_build;
+
+  /* for calls */
 };
 
 typedef struct scan_id_struct SCAN_ID;

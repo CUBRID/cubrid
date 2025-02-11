@@ -394,6 +394,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
   ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/load_open_data.cpp
   )
 
 set(LOADDB_HEADERS
