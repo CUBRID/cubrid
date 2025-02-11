@@ -8665,11 +8665,6 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
     }
     // *INDENT-ON*
 
-    if (function_p->tmp_obj == NULL)
-      {
-	function_p->tmp_obj = new function_tmp_obj;
-	function_p->tmp_obj->compiled_regex = new cub_compiled_regex ();
-      }
 
     error_status = distance_func (function_p->value, args, no_args);
     if (error_status != NO_ERROR)
