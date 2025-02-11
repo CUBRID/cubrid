@@ -1762,7 +1762,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      if (utility_check_class_name (input_class) != NO_ERROR)
 		{
 		  fclose (input_file);
-
 		  return ER_GENERIC_ERROR;
 		}
 
@@ -1775,6 +1774,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		      PRINT_AND_LOG_ERR_MSG (msgcat_message
 					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
 					      DIAGDB_MSG_UNKNOWN_CLASS), input_class);
+
+		      fclose (input_file);
 		    }
 		  goto error_exit;
 		}
