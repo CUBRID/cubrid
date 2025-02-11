@@ -80,7 +80,7 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
-static int sl_remove_oldest_file (void);
+static void sl_delete_oldest_file_if_needed (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
 static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
@@ -552,13 +552,7 @@ sl_write_sql (string_buffer & query, string_buffer * select)
     {
       log_fp = sl_open_next_file (log_fp);
 
-      if (sl_Info.curr_file_id >= sql_log_max_cnt)
-	{
-	  if (sl_remove_oldest_file () != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	}
+      sl_delete_oldest_file_if_needed ();
     }
 
   return NO_ERROR;
@@ -626,26 +620,45 @@ sl_open_next_file (FILE * old_fp)
 }
 
 /*
- * sl_remove_oldest_file() - remove oldest sql log file
- *   return: error code
+ * sl_delete_oldest_file_if_needed() - Delete the oldest file only if the number of SQL log files exceeds the 'sql_log_max_cnt' value.
  *
  * Note:
  *   This function is related to the ha_sql_log_max_count system parameter.
  *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
  */
-static int
-sl_remove_oldest_file (void)
+static void
+sl_delete_oldest_file_if_needed (void)
 {
   unsigned int oldest_file_id;
   char oldest_file_path[PATH_MAX];
 
-  oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
+  // step(1) : guess oldest file
+  if (sl_Info.curr_file_id < sql_log_max_cnt)
+    {
+      /*
+       * Cases : 
+       * 1. 'curr_file_id' has never exceeded the maximum value of UINT_MAX, which means there is no oldest file to delete.
+       * 2. 'curr_file_id' exceeds UINT_MAX and wraps around to 0, which means there is oldest file (e.g. oldest file id == UINT_MAX) to delete.
+       *  
+       * Instead of using a complicated process to decide between the two cases, always assume it’s case 2.
+       */
+      oldest_file_id = UINT_MAX - sql_log_max_cnt + sl_Info.curr_file_id + 1;
+    }
+  else
+    {
+      oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
+    }
 
   snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
 
+  // step(2) : delete the oldest file if it exists
   unlink (oldest_file_path);
-
-  return NO_ERROR;
+  /*
+   * if (errno == EACCES), then this corresponds to case1 mentioned above.
+   * There isn't actually a file to delete, but it will attempt to delete the guessed 'oldest_file_path'.
+   * However, this situation is expected, and the unlink() function does not attempt to delete a file that does not exist,
+   * so even if the 'oldest_file_path' is guessed incorrectly, the issue is mitigated.
+   */
 }
 
 /*

@@ -30,13 +30,14 @@
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
 #include "memory_hash.h"
-#include "method_def.hpp"
+
 #include "query_hash_scan.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"
@@ -116,11 +117,14 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
+  XASL_BUILD,
+  XASL_INITIALIZED,
   XASL_CLEARED,
   XASL_SUCCESS,
-  XASL_FAILURE,
-  XASL_INITIALIZED
+  XASL_FAILURE
 } XASL_STATUS;
+//#define IS_XASL_INITIAL_STATUS(s) ((s) == XASL_CLEARED || (s) == XASL_INITIALIZED || (s) == XASL_BUILD)
+#define IS_XASL_INITIAL_STATUS(s) ((s) <= XASL_CLEARED)
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -602,7 +606,7 @@ struct cte_proc_node
 	  if (XASL_IS_FLAGED (_x, XASL_LINK_TO_REGU_VARIABLE)) \
 	    { \
 	      /* clear correlated subquery list files */ \
-	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
+	      if (IS_XASL_INITIAL_STATUS((_x)->status)) \
 		{ \
 		  /* execute xasl query */ \
 		  if (_x->sub_xasl_id) \
@@ -615,13 +619,16 @@ struct cte_proc_node
 		      /* fetch the single tuple from list_id */ \
 		      else \
 		        { \
-		          if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			  if (_x->single_tuple) \
 			    { \
-		              _x->status = XASL_FAILURE; \
-			    } \
-		          else \
-			    { \
-		              (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+		              if (qdata_get_single_tuple_from_list_id ((thread_p), _x->list_id, _x->single_tuple) != NO_ERROR) \
+			        { \
+		                  _x->status = XASL_FAILURE; \
+			        } \
+		              else \
+			        { \
+		                  (r)->value.dbvalptr = _x->single_tuple->valp->val; \
+			        } \
 			    } \
 		        } \
 		    } \
@@ -888,7 +895,7 @@ struct method_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the */
   /* list file ID for the method */
   /* arguments */
-  METHOD_SIG_LIST *method_sig_list;	/* method signature list */
+  PL_SIGNATURE_ARRAY_TYPE *sig_array;	/* method signature array */
 };
 
 struct dblink_spec_node
@@ -981,8 +988,8 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_REGU_LIST(ptr) \
         ((ptr)->s.method_node.method_regu_list)
 
-#define ACCESS_SPEC_METHOD_SIG_LIST(ptr) \
-        ((ptr)->s.method_node.method_sig_list)
+#define ACCESS_SPEC_METHOD_SIG_ARRAY(ptr) \
+        ((ptr)->s.method_node.sig_array)
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)

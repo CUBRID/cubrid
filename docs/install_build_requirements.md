@@ -6,8 +6,7 @@
   - GCC 8.3 or newer (devtoolset-8 is recommended)
   - Visual Studio 2017 version 15.0 or newer
 - A Java Developer Kit (JDK) 1.8 or newer required
-- CMake 2.8 or newer
-  - To use ninja build system, CMake 3.16.3 or later is required
+- CMake 3.21 or newer
 - 3rdparty libraries that you need to install on your development environments.
 
 ## Linux (Fedora/RHEL/CentOS)

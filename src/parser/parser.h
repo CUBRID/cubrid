@@ -178,7 +178,10 @@ extern "C"
   extern PT_NODE *pt_get_node_from_list (PT_NODE * list, int index);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
+
+  extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
+
   extern int pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val);
   extern DB_VALUE *pt_find_value_of_label (const char *label);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -231,9 +234,11 @@ extern "C"
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  extern int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+				       PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
   extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
-						DB_DEFAULT_EXPR_TYPE default_expr_type);
+						DB_DEFAULT_EXPR_TYPE default_expr_type, bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,
@@ -674,6 +679,8 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
+						     DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

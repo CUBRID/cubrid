@@ -895,37 +895,18 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
 	}
     }
 
-  /* free entry if alloc_cnt is greater than max_alloc_cnt */
-  if (freelist->alloc_cnt > edesc->max_alloc_cnt)
-    {
-      edesc->f_free (entry);
-      ATOMIC_INC_32 (&freelist->alloc_cnt, -1);
-
-      /* end local transaction */
-      if (local_tran)
-	{
-	  lf_tran_end_with_mb (tran_entry);
-	}
-      return ret;
-    }
-
   /* set transaction index of entry */
   tran_id = (UINT64 *) OF_GET_PTR (entry, edesc->of_del_tran_id);
   *tran_id = tran_entry->transaction_id;
 
   /* push to local list */
-  ret = lf_stack_push (&tran_entry->retired_list, entry, edesc);
-  if (ret == NO_ERROR)
-    {
-      /* for stats purposes */
-      ATOMIC_INC_32 (&freelist->retired_cnt, 1);
+  OF_GET_PTR_DEREF (entry, edesc->of_local_next) = tran_entry->retired_list;
+  tran_entry->retired_list = entry;
 
-      LF_UNITTEST_INC (&lf_retires, 1);
-    }
-  else
-    {
-      assert (false);
-    }
+  /* for stats purposes */
+  ATOMIC_INC_32 (&freelist->retired_cnt, 1);
+
+  LF_UNITTEST_INC (&lf_retires, 1);
 
   /* end local transaction */
   if (local_tran)
@@ -948,8 +929,9 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
   LF_TRAN_SYSTEM *tran_system;
   LF_ENTRY_DESCRIPTOR *edesc;
   UINT64 min_tran_id = 0;
-  int transported_count = 0;
-  void *list = NULL, *list_trailer = NULL;
+  UINT64 *del_id;
+  int transported_count = 0, freed_count = 0;
+  void *list = NULL, *list_next = NULL, *list_trailer = NULL;
   void *aval_first = NULL, *aval_last = NULL;
   void *old_head;
 
@@ -969,28 +951,42 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
     }
 
   /* walk private list and unlink old entries */
-  for (list = tran_entry->retired_list; list != NULL; list = OF_GET_PTR_DEREF (list, edesc->of_local_next))
+  list = tran_entry->retired_list;
+  while (list != NULL)
     {
+      list_next = OF_GET_PTR_DEREF (list, edesc->of_local_next);
 
       if (aval_first == NULL)
 	{
-	  UINT64 *del_id = (UINT64 *) OF_GET_PTR (list, edesc->of_del_tran_id);
+	  del_id = (UINT64 *) OF_GET_PTR (list, edesc->of_del_tran_id);
 	  assert (del_id != NULL);
 
 	  if (*del_id < min_tran_id)
 	    {
-	      /* found first reusable entry - since list is ordered by descending transaction id, entries that follow
-	       * are also reusable */
-	      aval_first = list;
-	      aval_last = list;
-
 	      /* uninit the reusable entry */
 	      if (edesc->f_uninit != NULL)
 		{
 		  edesc->f_uninit (list);
 		}
 
-	      transported_count = 1;
+	      /* free entry if alloc_cnt is greater than max_alloc_cnt */
+	      if (freelist->alloc_cnt > edesc->max_alloc_cnt)
+		{
+		  assert (edesc->f_free);
+
+		  edesc->f_free (list);
+		  freed_count++;
+
+		  list = list_next;
+		  continue;
+		}
+
+	      /* found first reusable entry - since list is ordered by descending transaction id, entries that follow
+	       * are also reusable */
+	      aval_first = list;
+	      aval_last = list;
+
+	      transported_count++;
 	    }
 	  else
 	    {
@@ -1000,48 +996,58 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	}
       else
 	{
-	  /* continue until we get to tail */
-	  aval_last = list;
-
 	  /* uninit the reusable entry */
 	  if (edesc->f_uninit != NULL)
 	    {
 	      edesc->f_uninit (list);
 	    }
 
+	  /* continue until we get to tail */
+	  aval_last = list;
+
 	  transported_count++;
 	}
+
+      list = list_next;
     }
 
+  /* head of retired_list */
+  if (list_trailer != NULL)
+    {
+      /* unlink found part of list */
+      OF_GET_PTR_DEREF (list_trailer, edesc->of_local_next) = NULL;
+    }
+  else
+    {
+      /* whole list can be reused */
+      tran_entry->retired_list = NULL;
+    }
+
+  /* link part of list to available */
   if (aval_first != NULL)
     {
-      if (list_trailer != NULL)
-	{
-	  /* unlink found part of list */
-	  OF_GET_PTR_DEREF (list_trailer, edesc->of_local_next) = NULL;
-	}
-      else
-	{
-	  /* whole list can be reused */
-	  tran_entry->retired_list = NULL;
-	}
-
-      /* make sure we don't append an unlinked sublist */
-      MEMORY_BARRIER ();
-
-      /* link part of list to available */
       do
 	{
 	  old_head = VOLATILE_ACCESS (freelist->available, void *);
 	  OF_GET_PTR_DEREF (aval_last, edesc->of_local_next) = old_head;
 	}
       while (!ATOMIC_CAS_ADDR (&freelist->available, old_head, aval_first));
+    }
 
-      /* update counters */
+  /* update counters */
+  if (freed_count > 0 || transported_count > 0)
+    {
+      ATOMIC_INC_32 (&freelist->retired_cnt, -(transported_count + freed_count));
+    }
+  if (transported_count > 0)
+    {
       ATOMIC_INC_32 (&freelist->available_cnt, transported_count);
-      ATOMIC_INC_32 (&freelist->retired_cnt, -transported_count);
 
       LF_UNITTEST_INC (&lf_transports, transported_count);
+    }
+  if (freed_count > 0)
+    {
+      ATOMIC_INC_32 (&freelist->alloc_cnt, -freed_count);
     }
 
   /* register cleanup */

@@ -59,6 +59,8 @@
 #include "xasl_to_stream.h"
 #include "parser_support.h"
 #include "dbtype.h"
+#include "jsp_cl.h"
+#include "msgcat_glossary.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -974,7 +976,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      if (error != NO_ERROR)
 		{
 		  if (pt_has_error (parser))
@@ -1051,7 +1053,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      db_value_clear (&src_val);
 	      temp_val->info.value.db_value_is_in_workspace = 0;
 	      parser_free_node (parser, temp_val);
@@ -1749,7 +1751,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
+  PT_NODE *spec_list;
   PT_NODE *entity_list, *entity;
   int grant_option;
   bool set_savepoint = false;
@@ -1791,24 +1793,52 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_grant (user_obj, class_mop, db_auth, grant_option);
+		  error = db_grant_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth, grant_option);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
+		    {
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_grant_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth, grant_option);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
@@ -1871,24 +1901,53 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
 
-	  s_list = spec_list;
-	  for (spec = s_list; spec != NULL; spec = spec->next)
+	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
 	    {
-	      entity_list = spec->info.spec.flat_entity_list;
-	      for (entity = entity_list; entity != NULL; entity = entity->next)
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      PT_NODE *p_list = spec_list;
+	      for (PT_NODE * procs = p_list; procs != NULL; procs = procs->next)
 		{
-		  class_mop = db_find_class (entity->info.name.original);
-		  if (class_mop == NULL)
+		  // [TODO] Resovle user schema name, built-in package name
+		  const char *proc_name = procs->info.name.original;
+
+		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
+		  if (proc_mop == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
 		      goto end;
 		    }
 
-		  error = db_revoke (user_obj, class_mop, db_auth);
+		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
+		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
+		{
+		  entity_list = spec->info.spec.flat_entity_list;
+		  for (entity = entity_list; entity != NULL; entity = entity->next)
+		    {
+		      class_mop = db_find_class (entity->info.name.original);
+		      if (class_mop == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  goto end;
+			}
+
+		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
 		    }
 		}
 	    }
@@ -2258,7 +2317,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       if (!ws_is_same_object (user, Au_user) && !au_is_dba_group_member (Au_user))
 	{
 	  error = ER_AU_NOT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
 	  goto end;
 	}
 
@@ -10114,7 +10173,6 @@ static int
 do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
-  DB_OBJECT *obj = NULL;
   MOP class_mop, user_mop;
   PT_NODE *class_, *user;
   SM_CLASS *sm_class = NULL;
@@ -13041,7 +13099,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
     }
 
   error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					     on_update_expr_type);
+					     on_update_expr_type, true);
 
   if (pt_has_error (parser))
     {
@@ -13209,7 +13267,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       if (def_expr_type == DB_DEFAULT_NONE)
 	{
 	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
@@ -13248,7 +13306,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  db_value_clear (&src);
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);

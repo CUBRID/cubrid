@@ -75,7 +75,7 @@ class print_output;
 #define Au_cache                        au_ctx ()->caches
 
 /* Functions */
-#define au_init                         au_ctx ()->init_ctx
+#define au_init                         au_ctx
 #define au_final                        au_ctx ()->final_ctx
 #define au_install                      au_ctx ()->install
 #define au_start                        au_ctx ()->start
@@ -90,6 +90,10 @@ class print_output;
 
 #define au_check_user                   au_ctx ()->check_user
 #define au_has_user_name                au_ctx ()->has_user_name
+
+// execution rights
+#define au_perform_push_user            au_ctx ()->push_user
+#define au_perform_pop_user             au_ctx ()->pop_user
 
 #define AU_SET_USER                     au_set_user
 
@@ -107,6 +111,7 @@ class print_output;
 #define AU_ENABLE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
@@ -127,6 +132,7 @@ class print_output;
 #define AU_RESTORE(save) \
   do \
     { \
+      assert (save == 0 || save == 1); \
       Au_disable = save; \
     } \
   while (0)
@@ -139,8 +145,8 @@ extern int au_login (const char *name, const char *password, bool ignore_dba_pri
  * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
  */
 
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
+extern int au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
+extern int au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
 
 #if defined (SA_MODE)
 extern int au_force_write_new_auth (void);
@@ -208,6 +214,7 @@ extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
   do \
     { \
       Au_cache.reset_authorization_caches (); \
+      Au_cache.reset_user_cache (); \
     } \
   while (0)
 //
@@ -216,7 +223,7 @@ extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
  * MIGRATION OPERATIONS (authenticate_migration.cpp)
  */
 extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
-extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
+extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop, DB_OBJECT_TYPE obj_type);
 //
 
 /*
@@ -224,11 +231,12 @@ extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, 
  */
 extern int au_check_owner (DB_VALUE * creator_val);
 
-extern int au_change_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop);
 extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern int au_change_sp_owner (MOP sp, MOP owner);
+extern int au_change_sp_owner (PARSER_CONTEXT * parser, MOP sp, MOP owner);
+extern int au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT * parser, MOP sp_mop, MOP owner_mop);
 extern MOP au_get_class_owner (MOP classmop);
 //
 
@@ -239,9 +247,23 @@ extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 extern void au_dump_auth (FILE * fp);
+
+#if defined (SA_MODE)
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void au_disable_passwords ();
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
 //
 
 /*
+ * Etc
  * SET TYPE OPERATIONS
  */
 extern int au_get_set (MOP obj, const char *attname, DB_SET ** set);

@@ -2208,7 +2208,8 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   /* build hash value */
   for (i = 0; i < ckey->val_count; i++)
     {
-      hash_val = hash_val ^ mht_get_hash_number (ht_size, ckey->values[i]);
+      hash_val = ROTL32 (hash_val, 13);
+      hash_val ^= mht_get_hash_number (ht_size, ckey->values[i]);
     }
 
   return hash_val;

@@ -99,7 +99,7 @@ jobs:
           sudo apt-get -yq install astyle
           
           # indent 2.2.11, the lastest version (2.2.12) make a different result
-          wget https://ftp.gnu.org/gnu/indent/indent-2.2.11.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/indent/indent-2.2.11.tar.gz
           tar xf indent-2.2.11.tar.gz
           cd indent-2.2.11
           ./configure
@@ -107,7 +107,7 @@ jobs:
           cd ..
 
           # download google-java-format-1.7-all-deps.jar
-          wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+          wget https://github.com/CUBRID/3rdparty/raw/develop/google-java-format/google-java-format-1.7-all-deps.jar
         working-directory: ${{ env.working-directory }}
       - uses: actions/setup-java@v3
         with:
@@ -140,7 +140,7 @@ jobs:
           # Download cppcheck-2.4.1 source
           wd=`pwd`
           cd ..
-          wget https://github.com/danmar/cppcheck/archive/2.4.1.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.4.1.tar.gz
           tar xf 2.4.1.tar.gz
 
           # build cppcheck-2.4.1
@@ -176,7 +176,14 @@ jobs:
             *) continue ;; # skip others
             esac
 
-            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
+            # cppcheck can use the -i option to ignore files in a specified directory like -iheaplayers.
+            # However, this option may not work correctly for files like malloc_2_8_3.c that are included in lea_heap.c.
+            # So, make sure cppcheck does not check any files under the src/heaplayers directory.
+            if [[ $f =~ ^src/heaplayers/.* ]]; then
+              continue
+            fi
+
+            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning $f 2>>$result_file
           done
 
           echo "errors: `cat $result_file | grep " error: " | wc -l`" > $summary_file
@@ -261,7 +268,7 @@ jobs:
             fi
 
             filename=$(basename $f)
-            check_server_file=$(grep $filename cubrid/CMakeLists.txt)
+            check_server_file=$(grep -E "/$filename\$" cubrid/CMakeLists.txt)
             if [ "$check_server_file" == "" ]; then
               result_for_f="PASS"
             fi

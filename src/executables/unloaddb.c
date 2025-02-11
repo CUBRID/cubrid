@@ -119,7 +119,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   const char *exec_name = arg->command_name;
   char er_msg_file[PATH_MAX];
   int error;
-  int status = 0;
+  int status = 1;
   int i;
   char *user, *password;
   int au_save;
@@ -172,7 +172,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   g_pre_alloc_varchar_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
   if (g_pre_alloc_varchar_size < 0 || g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
     {
-      fprintf (stderr, "\nThe number of '--%s' ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
 	       MAX_PRE_ALLOC_VARCHAR_SIZE);
       goto end;
     }
@@ -213,16 +213,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (sscanf (_pstr, "%d/%d", &g_parallel_process_idx, &g_parallel_process_cnt) != 2)
 	    {
-	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-	      fflush (stderr);
+	      fprintf (stderr, "invalid '--%s' option value: %s\n", UNLOAD_MT_PROCESS_L, _pstr);
 	      goto end;
 	    }
 	  else if ((g_parallel_process_cnt > MAX_PROCESS_COUNT)
 		   || ((g_parallel_process_cnt > 1)
 		       && (g_parallel_process_idx <= 0 || g_parallel_process_idx > g_parallel_process_cnt)))
 	    {
-	      fprintf (stderr, "warning: '--%s' option is ignored.\n", UNLOAD_MT_PROCESS_L);
-	      fflush (stderr);
+	      fprintf (stderr, "invalid '--%s' option value: %s\n", UNLOAD_MT_PROCESS_L, _pstr);
 	      goto end;
 	    }
 	}
@@ -231,6 +229,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
 
+  status = 0;			// success
   if (database_name == NULL)
     {
       status = 1;
@@ -263,8 +262,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
@@ -441,12 +438,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      status = 1;
 	    }
 
-	  if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
+	  if (!status && unload_context.classes &&
+	      extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
 	    {
 	      status = 1;
 	    }
 
-	  if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
+	  if (!status && unload_context.classes
+	      && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
 	    {
 	      status = 1;
 	    }

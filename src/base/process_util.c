@@ -39,9 +39,20 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
+ * create_child_process() - create a child process
+ *   return: process id of the child process, or 1 if failed
+ *   path(in): path to the executable
+ *   argv(in): arguments for the executable
+ *   wait_flag(in): flag to wait for the child process
+ *   stdin_file(in): file name for standard input
+ *   stdout_file(in): file name for standard output
+ *   stderr_file(in): file name for standard error
+ *   exit_status(out): exit status of the child process
+ */
 int
-create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
-		      char *stderr_file, int *exit_status)
+create_child_process (const char *path, const char *const argv[], int wait_flag, const char *stdin_file,
+		      char *stdout_file, char *stderr_file, int *exit_status)
 {
 #if defined(WINDOWS)
   int new_pid;
@@ -78,6 +89,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 
   GetStartupInfo (&start_info);
   start_info.wShowWindow = SW_HIDE;
+  start_info.dwFlags = STARTF_USESTDHANDLES;
 
   if (stdin_file)
     {
@@ -90,9 +102,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	}
 
       SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdInput = hStdIn;
-      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
@@ -104,10 +114,14 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	  return 1;
 	}
       SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdOutput = hStdOut;
-      inherit_flag = TRUE;
     }
+  else
+    {
+      hStdOut = GetStdHandle (STD_OUTPUT_HANDLE);
+      start_info.hStdOutput = hStdOut;
+    }
+
   if (stderr_file)
     {
       hStdErr =
@@ -120,14 +134,18 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	}
 
       SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-      start_info.dwFlags = STARTF_USESTDHANDLES;
       start_info.hStdError = hStdErr;
-      inherit_flag = TRUE;
+    }
+  else
+    {
+      hStdErr = GetStdHandle (STD_ERROR_HANDLE);
+      start_info.hStdError = hStdErr;
     }
 
+  inherit_flag = true;
+
   res =
-    CreateProcess (argv[0], cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info,
-		   &proc_info);
+    CreateProcess (path, cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
   free (cmd_arg_ptr);
 
   if (res == FALSE)
@@ -144,7 +162,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	  return 1;
 	}
     }
-  if (hStdOut != INVALID_HANDLE_VALUE)
+  if (stdout_file && (hStdOut != INVALID_HANDLE_VALUE))
     {
       rc = CloseHandle (hStdOut);
       if (rc == FALSE)
@@ -153,7 +171,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	  return 1;
 	}
     }
-  if (hStdErr != INVALID_HANDLE_VALUE)
+  if (stderr_file && (hStdErr != INVALID_HANDLE_VALUE))
     {
       rc = CloseHandle (hStdErr);
       if (rc == FALSE)
@@ -329,7 +347,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	    }
 	}
 
-      rc = execv ((const char *) argv[0], (char *const *) argv);
+      rc = execv (path, (char *const *) argv);
       assert (false);
       return rc;
     }
@@ -363,3 +381,58 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 }
 #endif
+
+/*
+ * is_terminated_process() - test if the process is terminated
+ *   return: true if the process is terminated, otherwise false
+ *   pid(in): process id
+ */
+bool
+is_terminated_process (const int pid)
+{
+#if defined(WINDOWS)
+  HANDLE h_process;
+
+  h_process = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (h_process == NULL)
+    {
+      return true;
+    }
+  else
+    {
+      CloseHandle (h_process);
+      return false;
+    }
+#else /* WINDOWS */
+  if (kill (pid, 0) == -1)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+#endif /* WINDOWS */
+}
+
+/*
+ * terminate_process() - terminate the process of given pid
+ *   return: void
+ *   pid(in): process id
+ */
+void
+terminate_process (int pid)
+{
+#if defined(WINDOWS)
+  HANDLE phandle;
+
+  phandle = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
+  if (phandle)
+    {
+      TerminateProcess (phandle, 0);
+      CloseHandle (phandle);
+    }
+#else /* ! WINDOWS */
+  kill (pid, SIGTERM);
+#endif /* ! WINDOWS */
+}

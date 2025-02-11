@@ -157,7 +157,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -262,11 +262,9 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 42 인자가 잘못되었습니다.\n
 43 파일(%1$s)을 열지 못했습니다.\n
 44 cubrid 유틸리티, 버전 %1$s\n\
-사용법: %2$s javasp <명령어> [인자]\n\
+사용법: %2$s pl <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       [데이터베이스 이름]\n\
-    stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
 45 cubrid 유틸리티, 버전 %1$s\n\
@@ -558,7 +556,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
       --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
-      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\      
+      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
@@ -646,7 +644,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
   -p, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
-  -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
+  -D, --dereg-process=PID          CUBRID heartbeat에 의해 관리되는 대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %1$s\n

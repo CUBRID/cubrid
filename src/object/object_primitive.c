@@ -15578,7 +15578,12 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  precision = DB_MAX_VARBIT_PRECISION;
 	}
 
-      if (!copy)
+      if (size == 0)
+	{
+	  /* its NULL */
+	  db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	}
+      else if (!copy)
 	{
 	  str_bit_length = or_get_varbit_length (buf, &rc);
 	  if (rc == NO_ERROR)
@@ -15590,13 +15595,74 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	}
       else
 	{
-	  if (size == 0)
+	  if (size == -1)
 	    {
-	      /* its NULL */
-	      db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	      /* Standard packed varbit with a size prefix */
+	      ;			/* do nothing */
 	    }
 	  else
-	    {			/* size != 0 */
+	    {			/* size != -1 */
+	      /* Standard packed varbit within an area of fixed size, usually this means we're looking at the disk
+	       * representation of an attribute. Just like the -1 case except we advance past the additional
+	       * padding. */
+	      start = buf->ptr;
+	    }			/* size != -1 */
+
+	  str_bit_length = or_get_varbit_length (buf, &rc);
+	  if (rc != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  /* get the string byte length */
+	  str_length = BITS_TO_BYTES (str_bit_length);
+
+	  if (copy_buf && copy_buf_len >= str_length + 1)
+	    {
+	      /* read buf image into the copy_buf */
+	      new_ = copy_buf;
+	    }
+	  else
+	    {
+	      /*
+	       * Allocate storage for the string including the kludge NULL
+	       * terminator
+	       */
+	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
+	    }
+
+	  if (new_ == NULL)
+	    {
+	      /* need to be able to return errors ! */
+	      if (domain)
+		{
+		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
+		}
+	      or_abort (buf);
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      /* do not read the kludge NULL terminator */
+	      rc = or_get_data (buf, new_, str_length);
+	      if (rc == NO_ERROR && align == INT_ALIGNMENT)
+		{
+		  /* round up to a word boundary */
+		  rc = or_get_align32 (buf);
+		}
+
+	      if (rc != NO_ERROR)
+		{
+		  if (new_ != copy_buf)
+		    {
+		      db_private_free_and_init (NULL, new_);
+		    }
+		  return ER_FAILED;
+		}
+
+	      new_[str_length] = '\0';	/* append the kludge NULL terminator */
+	      db_make_varbit (value, precision, new_, str_bit_length);
+	      value->need_clear = (new_ != copy_buf) ? true : false;
+
 	      if (size == -1)
 		{
 		  /* Standard packed varbit with a size prefix */
@@ -15604,85 +15670,16 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      else
 		{		/* size != -1 */
-		  /* Standard packed varbit within an area of fixed size, usually this means we're looking at the disk
-		   * representation of an attribute. Just like the -1 case except we advance past the additional
-		   * padding. */
-		  start = buf->ptr;
+		  /* Standard packed varbit within an area of fixed size, usually this means we're looking at the
+		   * disk representation of an attribute. Just like the -1 case except we advance past the
+		   * additional padding. */
+		  pad = size - (int) (buf->ptr - start);
+		  if (pad > 0)
+		    {
+		      rc = or_advance (buf, pad);
+		    }
 		}		/* size != -1 */
-
-	      str_bit_length = or_get_varbit_length (buf, &rc);
-	      if (rc != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	      /* get the string byte length */
-	      str_length = BITS_TO_BYTES (str_bit_length);
-
-	      if (copy_buf && copy_buf_len >= str_length + 1)
-		{
-		  /* read buf image into the copy_buf */
-		  new_ = copy_buf;
-		}
-	      else
-		{
-		  /*
-		   * Allocate storage for the string including the kludge NULL
-		   * terminator
-		   */
-		  new_ = (char *) db_private_alloc (NULL, str_length + 1);
-		}
-
-	      if (new_ == NULL)
-		{
-		  /* need to be able to return errors ! */
-		  if (domain)
-		    {
-		      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-		    }
-		  or_abort (buf);
-		  return ER_FAILED;
-		}
-	      else
-		{
-		  /* do not read the kludge NULL terminator */
-		  rc = or_get_data (buf, new_, str_length);
-		  if (rc == NO_ERROR && align == INT_ALIGNMENT)
-		    {
-		      /* round up to a word boundary */
-		      rc = or_get_align32 (buf);
-		    }
-
-		  if (rc != NO_ERROR)
-		    {
-		      if (new_ != copy_buf)
-			{
-			  db_private_free_and_init (NULL, new_);
-			}
-		      return ER_FAILED;
-		    }
-
-		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
-		  db_make_varbit (value, precision, new_, str_bit_length);
-		  value->need_clear = (new_ != copy_buf) ? true : false;
-
-		  if (size == -1)
-		    {
-		      /* Standard packed varbit with a size prefix */
-		      ;		/* do nothing */
-		    }
-		  else
-		    {		/* size != -1 */
-		      /* Standard packed varbit within an area of fixed size, usually this means we're looking at the
-		       * disk representation of an attribute. Just like the -1 case except we advance past the
-		       * additional padding. */
-		      pad = size - (int) (buf->ptr - start);
-		      if (pad > 0)
-			{
-			  rc = or_advance (buf, pad);
-			}
-		    }		/* size != -1 */
-		}		/* else */
-	    }			/* size != 0 */
+	    }			/* else */
 	}
 
     }

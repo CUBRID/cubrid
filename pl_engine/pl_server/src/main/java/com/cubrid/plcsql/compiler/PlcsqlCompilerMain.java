@@ -46,7 +46,16 @@ import org.antlr.v4.runtime.tree.*;
 
 public class PlcsqlCompilerMain {
 
-    public static CompileInfo compilePLCSQL(String in, boolean verbose) {
+    // temporary code - the owner and revision strings will come from the server
+    private static int revision = 1;
+
+    public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
+        return compilePLCSQL(in, verbose, owner, Integer.toString(revision++));
+    }
+    // end of temporary code
+
+    public static CompileInfo compilePLCSQL(
+            String in, boolean verbose, String owner, String revision) {
 
         // System.out.println("[TEMP] text to the compiler");
         // System.out.println(in);
@@ -54,7 +63,7 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(input, optionFlags);
+            return compileInner(new InstanceStore(), input, optionFlags, owner, revision);
         } catch (SyntaxError e) {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
@@ -84,11 +93,16 @@ public class PlcsqlCompilerMain {
         }
 
         PlcLexerEx lexer = new PlcLexerEx(input);
+
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator();
+        lexer.removeErrorListeners(); // This removes unwanted console output
+        lexer.addErrorListener(lei);
+
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PlcParser parser = new PlcParser(tokens);
 
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
-        parser.removeErrorListeners();
+        parser.removeErrorListeners(); // This removes unwanted console output
         parser.addErrorListener(sei);
 
         if (verbose) {
@@ -101,6 +115,9 @@ public class PlcsqlCompilerMain {
             logElapsedTime(logStore, "  calling parser", t0);
         }
 
+        if (lei.hasError) {
+            throw new SyntaxError(lei.line, lei.column, lei.msg);
+        }
         if (sei.hasError) {
             throw new SyntaxError(sei.line, sei.column, sei.msg);
         }
@@ -132,7 +149,12 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileInfo compileInner(CharStream input, int optionFlags) {
+    private static CompileInfo compileInner(
+            InstanceStore iStore,
+            CharStream input,
+            int optionFlags,
+            String owner,
+            String revision) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
@@ -174,7 +196,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter();
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, revision);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
@@ -195,7 +217,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(converter.symbolStack, converter);
+        TypeChecker typeChecker = new TypeChecker(iStore, converter.symbolStack, converter);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -205,7 +227,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter().buildCodeLines(unit);
+        String javaCode = new JavaCodeWriter(iStore).buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

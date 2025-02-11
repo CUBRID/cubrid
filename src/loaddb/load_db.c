@@ -251,7 +251,11 @@ ldr_check_file (std::string & file_name, int &error_code)
 
   if (!file_name.empty ())
     {
+#if defined(WINDOWS)
+      file_p = fopen (file_name.c_str (), "rb");
+#else
       file_p = fopen (file_name.c_str (), "r");
+#endif
       if (file_p == NULL)
 	{
 	  const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
@@ -564,8 +568,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   /* open loaddb log file */
   sprintf (log_file_name, "%s_%s", args.volume.c_str (), LOADDB_LOG_FILENAME_SUFFIX);
   loaddb_log_file = fopen (log_file_name, "w+");
@@ -742,7 +744,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "%s\n", db_error_string (3));
       util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
-      db_end_session ();
       goto error_return;
     }
 
@@ -814,7 +815,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       if (interrupted || status != 0)
 	{
 	  // failed
-	  db_end_session ();
 	  goto error_return;
 	}
     }
@@ -831,7 +831,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during index loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
-	  db_end_session ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S,
 			 args.index_file.c_str (), index_file_start_line);
 	  logddl_write_end ();
@@ -865,7 +864,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during trigger loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
-	  db_end_session ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '--%s %s:%d' option\n", LOAD_TRIGGER_FILE_L,
 			 args.trigger_file.c_str (), trigger_file_start_line);
 	  logddl_write_end ();
@@ -887,7 +885,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
-  (void) db_end_session ();
   (void) db_shutdown ();
 
   fclose_and_init (loaddb_log_file);
@@ -1608,7 +1605,6 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
       util_log_write_errstr (msg_format);
       status = 3;
-      db_end_session ();
       print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 		     args.schema_file.c_str (), schema_file_start_line);
       logddl_write_end ();
@@ -1634,7 +1630,6 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       if (ldr_compare_storage_order (schema_fp) != NO_ERROR)
 	{
 	  status = 3;
-	  db_end_session ();
 	  print_log_msg (1, "\nAborting current transaction...\n");
 	  return status;
 	}
