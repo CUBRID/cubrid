@@ -48,6 +48,8 @@ namespace cubpl
       int open ();
       void close ();
 
+      bool is_opened () const;
+
       int reset (QMGR_QUERY_ENTRY *query_entry_p);
 
       void change_owner (cubthread::entry *thread_p);

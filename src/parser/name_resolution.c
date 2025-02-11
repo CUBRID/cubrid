@@ -951,6 +951,10 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
+	      if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+		{
+		  er_clear ();
+		}
 
 	      node = pt_parameterize_for_static_sql (parser, in_node);
 	    }

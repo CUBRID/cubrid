@@ -3860,6 +3860,7 @@ struct parser_node
     unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
+    unsigned for_default_func:1;	/* for DEFAULT built-in function */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
