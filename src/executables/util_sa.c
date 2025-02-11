@@ -1748,8 +1748,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else if (class_list_file != NULL)
 	{
-	  FILE *input_file = fopen (class_list_file, "r");
+	  FILE *input_file;
 	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
+
+	  input_file = fopen (class_list_file, "r");
 	  if (input_file == NULL)
 	    {
 	      perror (class_list_file);
@@ -1759,11 +1761,13 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
 	      trim (input_class);
-	      if (utility_check_class_name (input_class) != NO_ERROR)
+
+	      error_code = utility_check_class_name (input_class);
+
+	      if (error_code != NO_ERROR)
 		{
 		  fclose (input_file);
-		  fclose (outfp);
-		  return ER_GENERIC_ERROR;
+		  goto error_exit;
 		}
 
 	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
