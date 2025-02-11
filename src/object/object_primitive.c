@@ -1662,8 +1662,8 @@ PR_TYPE tp_Vector = {
   NULL,
   NULL,
   mr_freemem_set,
-  NULL,
-  NULL
+  mr_data_cmpdisk_sequence,
+  mr_cmpval_sequence
 };
 
 PR_TYPE *tp_Type_vector = &tp_Vector;
@@ -7357,7 +7357,7 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 		  db_make_sequence (value, ref);
 		  break;
 		case DB_TYPE_VECTOR:
-		  db_make_vector(value, ref);
+		  db_make_vector (value, ref);
 		  break;
 		default:
 		  break;
