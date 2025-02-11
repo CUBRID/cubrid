@@ -532,12 +532,12 @@ get_signatures (FUNC_CODE ft)
       return &sig_of_regexp_instr;
     case F_REGEXP_LIKE:
       return &sig_of_regexp_like;
-    case F_L2_DISTANCE:
-      return &sig_of_vector_distance_l2;
     case F_REGEXP_REPLACE:
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:
       return &sig_of_regexp_substr;
+    case F_L2_DISTANCE:
+      return &sig_of_vector_distance_l2;
     default:
       assert (false);
       return nullptr;
@@ -3115,9 +3115,9 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case F_REGEXP_COUNT:
     case F_REGEXP_INSTR:
     case F_REGEXP_LIKE:
-    case F_L2_DISTANCE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
+    case F_L2_DISTANCE:
     // COUNT functions
     case PT_COUNT:
     case PT_COUNT_STAR:
