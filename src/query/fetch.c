@@ -4169,9 +4169,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    case F_REGEXP_COUNT:
 	    case F_REGEXP_INSTR:
 	    case F_REGEXP_LIKE:
-	    case F_L2_DISTANCE:
 	    case F_REGEXP_REPLACE:
 	    case F_REGEXP_SUBSTR:
+	    case F_L2_DISTANCE:
 	      {
 		regu_variable_list_node *operand;
 
@@ -4381,9 +4381,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	case F_REGEXP_COUNT:
 	case F_REGEXP_INSTR:
 	case F_REGEXP_LIKE:
-	case F_L2_DISTANCE:
 	case F_REGEXP_REPLACE:
 	case F_REGEXP_SUBSTR:
+	case F_L2_DISTANCE:
 	  break;
 
 	default:
