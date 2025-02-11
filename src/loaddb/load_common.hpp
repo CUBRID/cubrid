@@ -158,8 +158,9 @@ namespace cubload
     LDR_DATETIMELTZ,
     LDR_DATETIMETZ,
     LDR_JSON,
+    LDR_VECTOR,
 
-    LDR_TYPE_MAX = LDR_JSON
+    LDR_TYPE_MAX = LDR_VECTOR
   };
 
   /*
