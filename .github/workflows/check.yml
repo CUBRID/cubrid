@@ -21,6 +21,7 @@ on:
       - develop
       - 'release/11.**'
       - 'feature/**'
+      - 'cubvec/**'
 jobs:
   license:
     name: license
