@@ -19279,11 +19279,16 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       tree = NULL;
       return tree;
     }
-  /* do constant folding */
-  tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
-  if (pt_has_error (parser))
+
+  /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
+  if (!parser->flag.is_parsing_static_sql)
     {
-      tree = NULL;
+      /* do constant folding */
+      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+      if (pt_has_error (parser))
+	{
+	  tree = NULL;
+	}
     }
 
   return tree;

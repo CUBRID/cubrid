@@ -114,24 +114,32 @@ public class Type {
 
     public static Type BOOLEAN = new Type(IDX_BOOLEAN, "Boolean", "java.lang.Boolean", null);
     // CHAR or VARCHAR with any length
-    public static Type STRING_ANY =
-            new Type(IDX_STRING, "String", "java.lang.String", "cast(? as string)");
+    public static Type STRING_ANY = new Type(IDX_STRING, "String", "java.lang.String", "'xyz'");
     // NUMERIC with any precision and scale
     public static Type NUMERIC_ANY =
-            new Type(IDX_NUMERIC, "Numeric", "java.math.BigDecimal", "cast(? as numeric)");
-    public static Type SHORT = new Type(IDX_SHORT, "Short", "java.lang.Short", "cast(? as short)");
-    public static Type INT = new Type(IDX_INT, "Int", "java.lang.Integer", "cast(? as int)");
+            new Type(IDX_NUMERIC, "Numeric", "java.math.BigDecimal", "0.1");
+    public static Type SHORT = new Type(IDX_SHORT, "Short", "java.lang.Short", "cast(1 as short)");
+    public static Type INT = new Type(IDX_INT, "Int", "java.lang.Integer", "cast(1 as int)");
     public static Type BIGINT =
-            new Type(IDX_BIGINT, "Bigint", "java.lang.Long", "cast(? as bigint)");
-    public static Type FLOAT = new Type(IDX_FLOAT, "Float", "java.lang.Float", "cast(? as float)");
+            new Type(IDX_BIGINT, "Bigint", "java.lang.Long", "cast(1 as bigint)");
+    public static Type FLOAT =
+            new Type(IDX_FLOAT, "Float", "java.lang.Float", "cast(0.1 as float)");
     public static Type DOUBLE =
-            new Type(IDX_DOUBLE, "Double", "java.lang.Double", "cast(? as double)");
-    public static Type DATE = new Type(IDX_DATE, "Date", "java.sql.Date", "cast(? as date)");
-    public static Type TIME = new Type(IDX_TIME, "Time", "java.sql.Time", "cast(? as time)");
+            new Type(IDX_DOUBLE, "Double", "java.lang.Double", "cast(0.1 as double)");
+    public static Type DATE = new Type(IDX_DATE, "Date", "java.sql.Date", "date'2000-10-10'");
+    public static Type TIME = new Type(IDX_TIME, "Time", "java.sql.Time", "time'13:14:15'");
     public static Type TIMESTAMP =
-            new Type(IDX_TIMESTAMP, "Timestamp", "java.sql.Timestamp", "cast(? as timestamp)");
+            new Type(
+                    IDX_TIMESTAMP,
+                    "Timestamp",
+                    "java.sql.Timestamp",
+                    "timestamp'2000-10-10 13:14:15'");
     public static Type DATETIME =
-            new Type(IDX_DATETIME, "Datetime", "java.sql.Timestamp", "cast(? as datetime)");
+            new Type(
+                    IDX_DATETIME,
+                    "Datetime",
+                    "java.sql.Timestamp",
+                    "datetime'2000-10-10 13:14:15.000'");
     public static Type SYS_REFCURSOR =
             new Type(
                     IDX_SYS_REFCURSOR,

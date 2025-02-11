@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprFloat extends Expr {
+public class ExprFloat extends Expr implements SqlLiteral {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
