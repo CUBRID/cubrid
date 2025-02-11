@@ -1786,7 +1786,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      fclose (input_file);
 	      input_file = NULL;
 	    }
-	  memset (input_class, 0, sizeof (input_class));
 	}
       else
 	{
