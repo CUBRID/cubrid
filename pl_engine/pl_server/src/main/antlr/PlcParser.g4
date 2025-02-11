@@ -365,7 +365,7 @@ atom
     | function_call                             # call_exp
     | syntaxed_call                             # syntaxed_call_exp
     | identifier                                # id_exp
-    | keyword_builtin_func                      # builtin_func
+    | reserved_builtin_func                     # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
@@ -388,20 +388,30 @@ func_call_name
 
 func_name
     : identifier
-    | keyword_builtin_func
+    | reserved_builtin_func
     ;
 
-keyword_builtin_func
-    : CURRENT_USER
+reserved_builtin_func   /* those which cannot be an identifier */
+    : CAST
+    | CURRENT_USER
     | DATE
+    | DAY
     | DEFAULT
+    | EXTRACT
+    | HOUR
     | IF
     | INSERT
+    | MINUTE
     | MOD
+    | MONTH
+    | POSITION
     | REPLACE
+    | SECOND
     | TIME
     | TIMESTAMP
+    | TRIM
     | TRUNCATE
+    | YEAR
     ;
 
 syntaxed_call
@@ -415,44 +425,44 @@ syntaxed_call
     ;
 
 time_unit
-    : TU_MILLISECOND
-    | TU_SECOND
-    | TU_MINUTE
-    | TU_HOUR
-    | TU_DAY
-    | TU_WEEK
-    | TU_MONTH
-    | TU_QUARTER
-    | TU_YEAR
-    | TU_SECOND_MILLISECOND
-    | TU_MINUTE_MILLISECOND
-    | TU_MINUTE_SECOND
-    | TU_HOUR_MILLISECOND
-    | TU_HOUR_SECOND
-    | TU_HOUR_MINUTE
-    | TU_DAY_MILLISECOND
-    | TU_DAY_SECOND
-    | TU_DAY_MINUTE
-    | TU_DAY_HOUR
-    | TU_YEAR_MONTH
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    | SECOND_MILLISECOND
+    | MINUTE_MILLISECOND
+    | MINUTE_SECOND
+    | HOUR_MILLISECOND
+    | HOUR_SECOND
+    | HOUR_MINUTE
+    | DAY_MILLISECOND
+    | DAY_SECOND
+    | DAY_MINUTE
+    | DAY_HOUR
+    | YEAR_MONTH
     ;
 
 time_field
-    : TU_MILLISECOND
-    | TU_SECOND
-    | TU_MINUTE
-    | TU_HOUR
-    | TU_DAY
-    | TU_WEEK
-    | TU_MONTH
-    | TU_QUARTER
-    | TU_YEAR
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
     ;
 
 trim_dir
-    : TD_BOTH
-    | TD_LEADING
-    | TD_TRAILING
+    : BOTH
+    | LEADING
+    | TRAILING
     ;
 
 relational_operator
@@ -664,20 +674,36 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-
-    | REVERSE
-
+    // lexer tokens which can be used as an identifier
     | ADDDATE
+    | AUTHID
+    | AUTONOMOUS_TRANSACTION
+    | CALLER
     | CHR
+    | CLOSE
+    | COMMENT
+    | CONSTANT
     | DATE_ADD
     | DATE_SUB
-    | SUBDATE
-
-    | UTF8
+    | DBMS_OUTPUT
+    | DEFINER
+    | DETERMINISTIC
+    | ELSIF
+    | EXIT
     | ISO88591
-
-    | WEEK
+    | OPEN
+    | OR_REPLACE
+    | OWNER
+    | PRAGMA
     | QUARTER
+    | RAISE
+    | RAISE_APPLICATION_ERROR
+    | REVERSE
+    | SQLERRM
+    | SUBDATE
+    | SYS_REFCURSOR
+    | UTF8
+    | WEEK
     ;
 
 

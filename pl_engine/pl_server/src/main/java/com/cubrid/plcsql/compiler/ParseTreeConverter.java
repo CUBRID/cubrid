@@ -1602,7 +1602,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitKeyword_builtin_func(Keyword_builtin_funcContext ctx) {
+    public Expr visitReserved_builtin_func(Reserved_builtin_funcContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
         Decl decl = symbolStack.getDeclForIdExpr(name);
