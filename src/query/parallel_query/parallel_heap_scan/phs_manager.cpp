@@ -24,7 +24,7 @@
 #include "phs_manager.hpp"
 #include "phs_task.hpp"
 
-#define PARALLEL_HEAP_SCAN_LOG 1
+#define PARALLEL_HEAP_SCAN_LOG 0
 
 #if PARALLEL_HEAP_SCAN_LOG
 #include <unistd.h>
@@ -110,7 +110,7 @@ namespace parallel_heap_scan
 
   void manager::reset ()
   {
-#if defined (PARALLEL_HEAP_SCAN_LOG)
+#if (PARALLEL_HEAP_SCAN_LOG)
     er_log_debug (ARG_FILE_LINE, "manager thread : %ld reset'd", syscall (SYS_gettid));
 #endif
     end();
@@ -170,7 +170,7 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   SCAN_CODE ret;
   if (!scan_id->s.phsid.manager->m_is_start_once)
     {
-#if defined (PARALLEL_HEAP_SCAN_LOG)
+#if (PARALLEL_HEAP_SCAN_LOG)
       er_log_debug (ARG_FILE_LINE, "manager thread : %ld", syscall (SYS_gettid));
 #endif
       scan_id->s.phsid.manager->start_tasks();
@@ -179,7 +179,7 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   ret = scan_id->s.phsid.manager->get_result();
   if (scan_id->s.phsid.manager->timeout_occurred)
     {
-#if defined (PARALLEL_HEAP_SCAN_LOG)
+#if (PARALLEL_HEAP_SCAN_LOG)
       er_log_debug (ARG_FILE_LINE, "manager thread : %ld timeout occurred", syscall (SYS_gettid));
 #endif
       return S_ERROR;
