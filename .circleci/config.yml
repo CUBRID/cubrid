@@ -45,13 +45,19 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
+              # Remove unnecessary test cases (test)
               # Handle shell test case location
-              rm -rf cubrid-testcases-private-ex/shell/_06_issues
-              rm -rf cubrid-testcases-private-ex/shell/_25_unstable
-              glob_path="cubrid-testcases-private-ex/shell/_*"
+              cd /home/shell/cubrid-testcases-private-ex/shell && \
+                find . -maxdepth 1 -type d ! -name '.' ! -name '_01_utility' ! -name 'config' -exec rm -rf {} \;
+              
+              glob_path="/home/shell/cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             fi
+
+            # TODO:
+            #if save test_result.xml from previous commit's test, 
+            #'circleci tests split' can be optimized
 
             # CircleCI test splitting
             circleci tests glob "$glob_path" | circleci tests split | tee tc.list
@@ -65,8 +71,10 @@ commands:
           command: |
             mkdir -p /tmp/logs
             mv -f CUBRID/log /tmp/logs/cubrid_log || true
+            if [ "$TEST_SUITE" = "shell" ]; then
+              mv -f /home/shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
+            fi
             mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
-            mv -f /home/shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
 
@@ -102,8 +110,9 @@ executors:
       - image: cubridci/cubridci:develop
     working_directory: /home
 
-  ctp_shell:
+  cubrid-test-shell:
     docker:
+      # - image: cubridci/cubridci:shell
       - image: twkang3219/ctp_image_shell:latest
     working_directory: /home
 
@@ -133,7 +142,6 @@ jobs:
           paths:
             - CUBRID
 
-  # 단일 test_job 정의: job-level 파라미터 test_suite 사용
   test_job:
     parameters:
       e:
@@ -145,24 +153,19 @@ jobs:
       parallel_num:
         type: integer
         default: 1
+
     executor: << parameters.e >>
+    resource_class: medium
+    parallelism: << parameters.parallel_num >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
       RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
       TEST_SUITE: << parameters.test_suite >>
       GITHUB_TOKEN: $GHI_TOKEN
-    resource_class: medium
-    parallelism: << parameters.parallel_num >>
     steps:
       - run:
           name: Setup Environment and Debug Info
           command: |
-            echo "TEST_SUITE: ${TEST_SUITE}"    # Debug: print TEST_SUITE
-            echo "BASELINE: ${BASELINE}"        # Debug: print BASELINE
-            echo "RUN_SHELL_TEST: ${RUN_SHELL_TEST}"  # Debug: print RUN_SHELL_TEST
-            echo "executor: ${executor}"
-            echo "parallel_num: ${parallel_num}"
-            
             if [ "${RUN_SHELL_TEST}" == "true" ]; then
               echo "Setup shell test worker"
               /entrypoint.sh worker
@@ -210,29 +213,30 @@ jobs:
 workflows:
   build_test:
     jobs:
-#      - build
-#       - test_job:
-#           name: test_medium
-#  #         requires: [build]
-#           test_suite: "medium"
+     - build
+      # - test_job:
+      #     name: test_medium
+      #     requires: [build]
+      #     test_suite: "medium"
 
-#       - test_job:
-#           name: test_sql
-#           requires: [build]
-#           test_suite: "sql"
-#           parallel_num: 8
+      # - test_job:
+      #     name: test_sql
+      #     requires: [build]
+      #     test_suite: "sql"
+      #     parallel_num: 8
 
-#       - test_job:
-#           name: test_plcsql
-#           requires: [build]
-#           test_suite: "plcsql"
+      # - test_job:
+      #     name: test_plcsql
+      #     requires: [build]
+      #     test_suite: "plcsql"
 
       - test_job:
           name: test_shell
-          # requires: [build]
+          requires: [build]
           test_suite: "shell"
           e: ctp_shell
-          parallel_num: 1
+          parallel_num: 16
+          # parallel_num: 1
 
       # - build-windows:
       #     requires: [build]
