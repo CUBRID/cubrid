@@ -587,6 +587,9 @@ IDL       [a-zA-Z0-9_]
 [kK][iI][lL][lL]							{ begin_token(yytext);   return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
 [kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
+[lL]2_[dD][iI][sS][tT][aA][nN][cC][eE]  { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return L2_DISTANCE; }
 [lL][aA][gG]								{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LAG; }
@@ -819,9 +822,6 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][gG][eE][xX][pP][_][lL][iI][kK][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REGEXP_LIKE; }
-[lL]2_[dD][iI][sS][tT][aA][nN][cC][eE]  { begin_token(yytext);
-										csql_yylval.cptr = pt_makename(yytext);
-										return L2_DISTANCE; }
 [rR][eE][gG][eE][xX][pP][_][rR][eE][pP][lL][aA][cC][eE]			{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REGEXP_REPLACE; }
