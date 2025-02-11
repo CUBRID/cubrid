@@ -1,6 +1,8 @@
 version: 2.1
 
-# Define pipeline-level parameters to receive values from the CircleCI API (from GitHub Actions)
+# --------------------------------------------------
+# Pipeline-level parameters (values passed from GitHub Actions)
+# --------------------------------------------------
 parameters:
   baseline:
     type: string
@@ -35,7 +37,7 @@ commands:
               echo "TEST_SUITE is none"
               exit 1
             elif [ "$TEST_SUITE" = "plcsql" ]; then
-              # Hack way to run plcsql test without modifying docker
+              # Hack: run plcsql test via sql suite
               TEST_SUITE="sql"
               glob_path="cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}"
             elif [ "$TEST_SUITE" = "sql" ]; then
@@ -43,8 +45,7 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
-              # need to handle shell test case location.
-              # it is in /home/shell/cubrid-testcases-private-ex/shell/_*
+              # Handle shell test case location
               rm -rf cubrid-testcases-private-ex/shell/_06_issues
               rm -rf cubrid-testcases-private-ex/shell/_25_unstable
               glob_path="cubrid-testcases-private-ex/shell/_*"
@@ -56,7 +57,7 @@ commands:
             circleci tests glob "$glob_path" | circleci tests split | tee tc.list
             find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
-            # Run actual test
+            # Run the tests
             /entrypoint.sh test
 
       - run:
@@ -101,17 +102,15 @@ executors:
       - image: cubridci/cubridci:develop
     working_directory: /home
 
-  # 새롭게 추가된 executor (ctp_shell)
   ctp_shell:
     docker:
-      - image: cubridci/ctp_shell:develop
+      - image: twkang3219/ctp_image_shell:latest
     working_directory: /home
 
 # --------------------------------------------------
 # 3. Jobs
 # --------------------------------------------------
 jobs:
-  # 기존 build job
   build:
     executor: cubrid-default
     resource_class: xlarge
@@ -134,45 +133,42 @@ jobs:
           paths:
             - CUBRID
 
+  # 단일 test_job 정의: job-level 파라미터 test_suite 사용
   test_job:
     parameters:
-      my_executor:
+      e:
         type: executor
         default: cubrid-default
       test_suite:
         type: string
         default: "none"
-      run_shell_test:
-        type: boolean
-        default: false
-      baseline:
-        type: string
-        default: "none"
-    executor: << parameters.my_executor >>
-    resource_class: medium
+      parallel_num:
+        type: integer
+        default: 1
+    executor: << parameters.e >>
     environment:
-      # Pass job parameters as environment variables
+      BASELINE: << pipeline.parameters.baseline >>
+      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
       TEST_SUITE: << parameters.test_suite >>
-      BASELINE: << parameters.baseline >>
       GITHUB_TOKEN: $GHI_TOKEN
+    resource_class: medium
+    parallelism: << parameters.parallel_num >>
     steps:
       - run:
-          name: Set TEST_SUITE environment
+          name: Setup Environment and Debug Info
           command: |
-            # Print the received parameters (in English)
-            echo "TEST_SUITE from parameter: << parameters.test_suite >>"
-            echo "BASELINE from parameter: << parameters.baseline >>"
-            echo "run_shell_test from parameter: << parameters.run_shell_test >>"
-
-            exit 1
-            # Example usage: if run_shell_test is true, run additional worker command
-            #if [ "<< parameters.run_shell_test >>" == "true" ]; then
-            #  echo "Running shell test worker"
-            #  /entrypoint.sh worker
-            #fi
+            echo "TEST_SUITE: ${TEST_SUITE}"    # Debug: print TEST_SUITE
+            echo "BASELINE: ${BASELINE}"        # Debug: print BASELINE
+            echo "RUN_SHELL_TEST: ${RUN_SHELL_TEST}"  # Debug: print RUN_SHELL_TEST
+            echo "executor: ${executor}"
+            echo "parallel_num: ${parallel_num}"
+            
+            if [ "${RUN_SHELL_TEST}" == "true" ]; then
+              echo "Setup shell test worker"
+              /entrypoint.sh worker
+            fi
       - attach-and-run-tests
 
-  # Windows build (기존)
   build-windows:
     machine:
       image: "windows-server-2019"
@@ -214,42 +210,29 @@ jobs:
 workflows:
   build_test:
     jobs:
-      - build
+#      - build
+#       - test_job:
+#           name: test_medium
+#  #         requires: [build]
+#           test_suite: "medium"
 
-      # Note: Remove parallelism for parameterized jobs to avoid unexpected argument error
-      - test_job:
-          name: test_medium
-          requires:
-            - build
-          test_suite: "medium"
-          baseline: << pipeline.parameters.baseline >>
-          run_shell_test: << pipeline.parameters.run_shell_test >>
+#       - test_job:
+#           name: test_sql
+#           requires: [build]
+#           test_suite: "sql"
+#           parallel_num: 8
 
-      - test_job:
-          name: test_sql
-          requires:
-            - build
-          test_suite: "sql"
-          baseline: << pipeline.parameters.baseline >>
-          run_shell_test: << pipeline.parameters.run_shell_test >>
-
-      - test_job:
-          name: test_plcsql
-          requires:
-            - build
-          test_suite: "plcsql"
-          baseline: << pipeline.parameters.baseline >>
-          run_shell_test: << pipeline.parameters.run_shell_test >>
+#       - test_job:
+#           name: test_plcsql
+#           requires: [build]
+#           test_suite: "plcsql"
 
       - test_job:
           name: test_shell
-          requires:
-            - build
-          my_executor: ctp_shell
+          # requires: [build]
           test_suite: "shell"
-          baseline: << pipeline.parameters.baseline >>
-          run_shell_test: << pipeline.parameters.run_shell_test >>
+          e: ctp_shell
+          parallel_num: 1
 
-      - build-windows:
-          requires:
-            - build
+      # - build-windows:
+      #     requires: [build]
