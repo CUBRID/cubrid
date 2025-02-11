@@ -8,8 +8,7 @@ jobs:
   run_shell:
     name: Run shell test on CircleCI
     if: |
-      github.event.issue.pull_request != null &&
-      github.event.comment.body =~ '^/run shell [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+$'
+      ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run shell ') }}
     runs-on: ubuntu-latest
     steps:
       - name: Get Branch Name from GitHub API
