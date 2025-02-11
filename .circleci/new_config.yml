@@ -57,6 +57,7 @@ commands:
             mkdir -p /tmp/logs
             mv -f CUBRID/log /tmp/logs/cubrid_log || true
             mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
+            mv -f /home/shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
 
@@ -136,19 +137,29 @@ jobs:
       run_shell_test:
         type: boolean
         default: false
+      baseline:
+        type: string
+        default: "none"
     executor: << parameters.my_executor >>
     resource_class: medium
     environment:
       TEST_SUITE: << parameters.test_suite >>
+      BASELINE: << parameters.baseline >>
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
       - run:
           name: Set TEST_SUITE environment
           command: |
-            if [ "<< parameters.run_shell_test >>" == "true" ]; then
-              /entrypoint.sh worker
-            fi
-            echo "export TEST_SUITE=<< parameters.test_suite >>" >> $BASH_ENV
+            echo "TEST_SUITE=<< parameters.test_suite >>"
+            echo "BASELINE=<< parameters.baseline >>"
+            echo "TEST_SUITE=$TEST_SUITE"
+            echo "BASELINE=$BASELINE"
+            # comment out for debugging
+            # if [ "<< parameters.run_shell_test >>" == "true" ]; then
+            #   /entrypoint.sh worker
+            # fi
+            # echo "export TEST_SUITE=<< parameters.test_suite >>" >> $BASH_ENV
+            # echo "export BASELINE=<< parameters.baseline >>" >> $BASH_ENV
       - attach-and-run-tests
 
   # Windows build (기존)
