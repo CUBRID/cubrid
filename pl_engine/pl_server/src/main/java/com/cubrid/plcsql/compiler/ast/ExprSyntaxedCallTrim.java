@@ -47,7 +47,7 @@ public class ExprSyntaxedCallTrim extends BuiltinFuncCall {
     public ExprSyntaxedCallTrim(ParserRuleContext ctx, String trimDir, Expr trimStr, Expr str) {
         super(ctx);
 
-        this.trimDir = trimDir;
+        this.trimDir = trimDir == null ? "" : trimDir;
         this.trimStr = trimStr;
         this.str = str;
     }
