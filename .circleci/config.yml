@@ -213,7 +213,8 @@ jobs:
 workflows:
   build_test:
     jobs:
-     - build
+      - build
+
       # - test_job:
       #     name: test_medium
       #     requires: [build]
@@ -234,9 +235,9 @@ workflows:
           name: test_shell
           requires: [build]
           test_suite: "shell"
-          e: ctp_shell
-          parallel_num: 16
-          # parallel_num: 1
+          e: cubrid-test-shell
+          #parallel_num: 16
+          parallel_num: 1
 
       # - build-windows:
       #     requires: [build]
