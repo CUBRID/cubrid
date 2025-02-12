@@ -1034,6 +1034,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_cast(Syntaxed_call_castContext ctx) {
 
+        connectionRequired = true;
+
         Expr arg = visitExpression(ctx.argument());
         TypeSpec tySpec = (TypeSpec) visitType_spec(ctx.type_spec());
         return new ExprSyntaxedCallCast(ctx, arg, tySpec);
@@ -1042,6 +1044,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_chr(Syntaxed_call_chrContext ctx) {
 
+        connectionRequired = true;
+
         Expr arg = visitExpression(ctx.argument());
         boolean isUtf8 = ctx.UTF8() != null;
         return new ExprSyntaxedCallChr(ctx, arg, isUtf8);
@@ -1049,6 +1053,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitSyntaxed_call_adddate(Syntaxed_call_adddateContext ctx) {
+
+        connectionRequired = true;
 
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
@@ -1059,6 +1065,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_subdate(Syntaxed_call_subdateContext ctx) {
 
+        connectionRequired = true;
+
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
         String timeUnit = ctx.time_unit().getText();
@@ -1068,6 +1076,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_extract(Syntaxed_call_extractContext ctx) {
 
+        connectionRequired = true;
+
         String timeField = ctx.time_field().getText();
         Expr arg = visitExpression(ctx.argument());
         return new ExprSyntaxedCallExtract(ctx, timeField, arg);
@@ -1076,6 +1086,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitSyntaxed_call_position(Syntaxed_call_positionContext ctx) {
 
+        connectionRequired = true;
+
         Expr sub = visitExpression(ctx.sub);
         Expr whole = visitExpression(ctx.whole);
         return new ExprSyntaxedCallPosition(ctx, sub, whole);
@@ -1083,6 +1095,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitSyntaxed_call_trim(Syntaxed_call_trimContext ctx) {
+
+        connectionRequired = true;
 
         String trimDir = ctx.trim_dir() == null ? null : ctx.trim_dir().getText();
         Expr trimStr = ctx.trim_str == null ? null : visitExpression(ctx.trim_str);

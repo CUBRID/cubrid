@@ -105,7 +105,7 @@ public class Type {
 
     // the following two are not actual Java types but only for internal type checking
     public static Type CURSOR = new Type(IDX_CURSOR, "Cursor", "Cursor", null);
-    public static Type NULL = new Type(IDX_NULL, "Null", "Null", "?");
+    public static Type NULL = new Type(IDX_NULL, "Null", "Null", "null");
     public static Type RECORD_ANY = new Type(IDX_RECORD, "Record", "Record", null);
 
     // (1) used as an argument type of some operators in SpLib

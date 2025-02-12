@@ -681,11 +681,19 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
-        String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
-        String sql =
-                String.format(
-                        "select CAST(%s AS %s) from dual", tvStrOfArg, node.tySpec.ctx.getText());
-        return typeBuiltinFuncCall(node, "CAST", sql);
+        if (node.arg instanceof ExprNull) {
+            // Special case: the argument is NULL
+            //  . in this case, we do not need ask the server of the type
+            //  . moreover, the server returns an unsupported type code 5 (DB_OBJECT) in this case.
+            node.setResultType(node.tySpec.type);
+            return node.resultType;
+        } else {
+            String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+            String sql =
+                    String.format(
+                            "select CAST(%s AS %s) from dual", tvStrOfArg, node.tySpec.type.plcName);
+            return typeBuiltinFuncCall(node, "CAST", sql);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1335,7 +1343,7 @@ public class TypeChecker extends AstVisitor<Type> {
         if (arg instanceof SqlLiteral) {
             if (arg.ctx == null) {
                 // unreachable
-                throw new RuntimeException("a built-in function argument without a context");
+                throw new RuntimeException("unreachable: a built-in function argument without a context");
             } else {
                 ret = arg.ctx.getText();
             }

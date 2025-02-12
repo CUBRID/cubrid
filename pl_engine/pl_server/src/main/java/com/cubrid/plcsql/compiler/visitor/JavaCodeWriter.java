@@ -899,7 +899,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
-        String callStr = String.format("CAST(? as %s)", node.tySpec.ctx.getText());
+        String callStr = String.format("CAST(? as %s)", node.tySpec.type.plcName);
         return genCodeOfSyntaxedCall(callStr, node, node.arg);
     }
 
