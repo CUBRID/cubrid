@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 #define _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
@@ -42,6 +42,8 @@ namespace parallel_heap_scan
 
       std::atomic<bool> m_is_start_once;
       bool timeout_occurred;
+      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
+      std::size_t parallelism;
 
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 	       std::size_t core_count);
@@ -58,10 +60,8 @@ namespace parallel_heap_scan
     private :
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
-      std::size_t parallelism;
       std::shared_ptr<context> m_context;
       std::shared_ptr<result_queue> m_result_queue;
-      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       cubthread::entry_workpool *m_workpool;
   };
 }

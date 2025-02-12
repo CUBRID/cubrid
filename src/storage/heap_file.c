@@ -8191,6 +8191,66 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   return scan;
 }
 
+
+/*
+ * heap_page_next_fix_old () - Fix next page in heap file
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   hfid(in): Heap file identifier
+ *   curr_vpid(in/out): Current page identifier
+ *   scan_cache(in): Scan cache
+ *
+ * Note: Fix the next page in the heap file chain. If curr_vpid is NULL,
+ *       fix the first page of heap file. The fixed page is kept in the
+ *       scan cache page watcher.
+ */
+SCAN_CODE
+heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid, HEAP_SCANCACHE * scan_cache)
+{
+  SCAN_CODE scan_code = S_SUCCESS;
+  /* get next page */
+  if (VPID_ISNULL (curr_vpid))
+    {
+      /* set to first page */
+      curr_vpid->pageid = hfid->hpgid;
+      curr_vpid->volid = hfid->vfid.volid;
+    }
+  else
+    {
+      scan_cache->page_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE, S_LOCK, NULL,
+								    &scan_cache->page_watcher);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  return S_ERROR;
+	}
+      heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, curr_vpid);
+      if (OID_ISNULL (curr_vpid))
+	{
+	  /* no more pages to scan, but do not unfix last page. (unfix at heap_next_1page) */
+	  return S_END;
+	}
+    }
+  return scan_code;
+}
+
+/*
+ * heap_next_1page () - Find next record in current page
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   hfid(in): Heap file identifier
+ *   vpid(in): Current page identifier
+ *   class_oid(in): Class object identifier
+ *   next_oid(in/out): Object identifier of current record
+ *   recdes(in/out): Record descriptor
+ *   scan_cache(in): Scan cache
+ *   ispeeking(in): PEEK when object is peeked, COPY when object is copied
+ *
+ * Note: Find the next record in the current page. If next_oid is NULL,
+ *       find the first record in the page. The record is either peeked
+ *       or copied according to ispeeking parameter.
+ */
 SCAN_CODE
 heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid, OID * next_oid,
 		 RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking)

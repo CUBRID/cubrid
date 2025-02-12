@@ -23,8 +23,9 @@
 #ifndef _PARALLEL_HEAP_SCAN_TASK_HPP_
 #define _PARALLEL_HEAP_SCAN_TASK_HPP_
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include "thread_entry_task.hpp"
+#include "scan_manager.h"
 #include "phs_context.hpp"
 
 namespace parallel_heap_scan
@@ -44,7 +45,7 @@ namespace parallel_heap_scan
       ~task();
 
       virtual void execute (cubthread::entry &thread_ref) override;
-      SCAN_CODE page_next (THREAD_ENTRY *thread_p, HFID *hfid, VPID *vpid);
+      SCAN_CODE page_next (THREAD_ENTRY *thread_p,SCAN_ID *scan_id, HFID *hfid, VPID *vpid);
 
     private:
       std::shared_ptr<context> m_context;
@@ -52,5 +53,5 @@ namespace parallel_heap_scan
       std::shared_ptr<memory_mapper> m_memory_mapper;
   };
 }
-#endif
+#endif /* SERVER_MODE */
 #endif /* _PARALLEL_HEAP_SCAN_TASK_HPP_ */

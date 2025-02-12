@@ -9128,7 +9128,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 	  if (thread_p->private_heap_id != 0 && !mvcc_select_lock_needed
 	      && !oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid))
 	    {
@@ -9140,7 +9140,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		    }
 		}
 	    }
-#endif
+#endif /* SERVER_MODE */
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
@@ -9201,7 +9201,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
-#if defined(SERVER_MODE)
+#if SERVER_MODE
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
 	  error_code =
@@ -9221,7 +9221,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
-#endif
+#endif /* SERVER_MODE */
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
 	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),

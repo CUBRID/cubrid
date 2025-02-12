@@ -378,6 +378,7 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/phs_result_queue.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/phs_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_perf_monitor.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
@@ -388,6 +389,7 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/phs_result_queue.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/phs_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/phs_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/phs_perf_monitor.hpp
   )
 
 set(METHOD_SOURCES

@@ -20,7 +20,7 @@
  * phs_misc.cpp - miscellaneous functions for parallel heap scan
  */
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include "phs_misc.hpp"
 #include "memory_alloc.h"
 #include "fetch.h"

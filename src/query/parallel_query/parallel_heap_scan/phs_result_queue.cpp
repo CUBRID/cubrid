@@ -20,7 +20,7 @@
  * phs_result_queue.cpp - queue for temporarily storing heap scan results
  */
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include "phs_result_queue.hpp"
 #include "dbtype.h"
 #include "regu_var.hpp"

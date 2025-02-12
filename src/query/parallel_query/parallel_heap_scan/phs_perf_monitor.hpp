@@ -17,27 +17,30 @@
  */
 
 /*
- * phs_misc.hpp - miscellaneous functions for parallel heap scan
+ * phs_result_queue.hpp - queue for temporarily storing heap scan results
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_MISC_HPP_
-#define _PARALLEL_HEAP_SCAN_MISC_HPP_
+#ifndef _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
+#define _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
 
 #if SERVER_MODE
-#include "regu_var.hpp"
-#include "xasl_predicate.hpp"
+#include <vector>
+#include <stdio.h>
 #include "scan_manager.h"
-#include "thread_manager.hpp"
-
-
 
 namespace parallel_heap_scan
 {
-  int regu_var_list_len (struct regu_variable_list_node   *list);
-  int regu_var_clear (THREAD_ENTRY *thread_p, REGU_VARIABLE *regu_var);
-  int pred_clear (THREAD_ENTRY *thread_p, PRED_EXPR *pred);
-  int arith_list_clear (THREAD_ENTRY *thread_p, ARITH_TYPE *list);
-  SCAN_CODE scan_next_heap_scan_1page_internal (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, VPID *curr_vpid);
+  class perf_monitor
+  {
+    public:
+      perf_monitor (SCAN_ID *scan_id, std::size_t parallelism);
+      ~perf_monitor();
+      void print_text (FILE *fp, int indent, char *class_name);
+      void print_json (FILE *fp);
+    private:
+      std::vector<SCAN_STATS> m_scan_stats;
+      std::size_t m_parallelism;
+  };
 }
-#endif /* SERVER_MODE */
-#endif /* _PARALLEL_HEAP_SCAN_MISC_HPP_ */
+#endif
+#endif /* _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_ */

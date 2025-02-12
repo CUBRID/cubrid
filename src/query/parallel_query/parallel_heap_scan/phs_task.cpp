@@ -20,13 +20,14 @@
  * phs_task.cpp - derived from cubthread::entry_task
  */
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 
 #include "phs_task.hpp"
 #include "phs_misc.hpp"
 #include "error_context.hpp"
 #include <memory>
 #include "thread_entry.hpp"
+#include "perf_monitor.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
@@ -54,24 +55,30 @@ namespace parallel_heap_scan
 
   }
 
-  SCAN_CODE task::page_next (THREAD_ENTRY *thread_p, HFID *hfid, VPID *vpid)
+  SCAN_CODE task::page_next (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, HFID *hfid, VPID *vpid)
   {
     std::unique_lock<std::mutex> lock (m_context->m_locked_vpid.mutex);
+    HEAP_SCANCACHE *scan_cache = &scan_id->s.hsid.scan_cache;
     if (m_context->m_locked_vpid.is_ended)
       {
 	return S_END;
       }
-    else
+    if (VPID_ISNULL (&m_context->m_locked_vpid.vpid))
       {
-	SCAN_CODE page_scan_code = heap_page_next (thread_p, NULL, hfid, &m_context->m_locked_vpid.vpid, NULL);
-	VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
-	if (page_scan_code == S_END)
-	  {
-	    m_context->m_locked_vpid.is_ended = true;
-	    return S_END;
-	  }
-	return page_scan_code;
+	/* first page, not fixed, set to first page and go to fix */
+	m_context->m_locked_vpid.vpid.pageid = hfid->hpgid;
+	m_context->m_locked_vpid.vpid.volid = hfid->vfid.volid;
       }
+    VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
+    SCAN_CODE page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (page_scan_code == S_END)
+      {
+	m_context->m_locked_vpid.is_ended = true;
+	/* should read this last page (fixed) */
+	page_scan_code = S_SUCCESS;
+      }
+    assert (vpid->pageid != NULL);
+    return page_scan_code;
   }
 
   void
@@ -87,6 +94,11 @@ namespace parallel_heap_scan
     css_conn_entry *orig_conn_entry = thread_p->conn_entry;
     VPID vpid;
     HFID hfid;
+    TSC_TICKS start_tick, end_tick;
+    TSCTIMEVAL tv_diff;
+    UINT64 old_fetches = 0, old_ioreads = 0;
+    bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
+
     if (m_context->has_error())
       {
 	m_context->add_tasks_scan_ended();
@@ -97,7 +109,10 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
-
+    if (on_trace)
+      {
+	tsc_getticks (&start_tick);
+      }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
@@ -120,7 +135,7 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
-	page_scan_code = page_next (thread_p, &hfid, &vpid);
+	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
 
 	if (page_scan_code == S_END)
 	  {
@@ -157,6 +172,12 @@ namespace parallel_heap_scan
 	  }
       }
     m_context->add_tasks_scan_ended();
+    if (on_trace)
+      {
+	tsc_getticks (&end_tick);
+	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
+      }
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);

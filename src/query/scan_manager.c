@@ -4407,7 +4407,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if defined (SERVER_MODE)
+#if SERVER_MODE
       scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
 #endif
       break;
@@ -4730,7 +4730,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if defined (SERVER_MODE)
+#if SERVER_MODE
       scan_end_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;
@@ -4828,7 +4828,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if defined (SERVER_MODE)
+#if SERVER_MODE
       scan_close_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;

@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 #define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include <vector>
 #include "dbtype_def.h"
 #include "scan_manager.h"
@@ -70,5 +70,5 @@ namespace parallel_heap_scan
   };
 
 }
-#endif
+#endif /* SERVER_MODE */
 #endif /* _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_ */

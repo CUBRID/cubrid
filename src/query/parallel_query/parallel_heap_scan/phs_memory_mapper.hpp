@@ -24,7 +24,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
 #define _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 
 #include <unordered_map>
 #include <atomic>
@@ -123,5 +123,5 @@ namespace parallel_heap_scan
   REGU_VARIABLE *memory_mapper::copy_and_map<REGU_VARIABLE> (REGU_VARIABLE *regu_var);
 
 }
-#endif
+#endif /* SERVER_MODE */
 #endif /* _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_ */
