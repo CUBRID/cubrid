@@ -6477,7 +6477,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_stored_procedure_flag,
    (void *) &prm_stored_procedure_default,
