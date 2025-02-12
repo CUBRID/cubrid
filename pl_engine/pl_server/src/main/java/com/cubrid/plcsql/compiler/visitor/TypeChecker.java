@@ -666,32 +666,37 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
         String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
         String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
-        String sql = String.format("select ADDDATE(%s, INTERVAL %s %s) from dual",
-            tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        String sql =
+                String.format(
+                        "select ADDDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
         return typeBuiltinFuncCall(node, "ADDDATE", sql);
     }
 
     @Override
     public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
         String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
-        String sql = String.format("select CAST(%s AS %s) from dual",
-            tvStrOfArg, node.tySpec.ctx.getText());
+        String sql =
+                String.format(
+                        "select CAST(%s AS %s) from dual", tvStrOfArg, node.tySpec.ctx.getText());
         return typeBuiltinFuncCall(node, "CAST", sql);
     }
 
     @Override
     public Type visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
         String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
-        String sql = String.format("select CHR(%s USING %s) from dual",
-            tvStrOfArg, node.isUtf8 ? "utf8" : "iso88591");
+        String sql =
+                String.format(
+                        "select CHR(%s USING %s) from dual",
+                        tvStrOfArg, node.isUtf8 ? "utf8" : "iso88591");
         return typeBuiltinFuncCall(node, "CHR", sql);
     }
 
     @Override
     public Type visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
         String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
-        String sql = String.format("select EXTRACT(%s FROM %s) from dual",
-            node.timeField, tvStrOfArg);
+        String sql =
+                String.format("select EXTRACT(%s FROM %s) from dual", node.timeField, tvStrOfArg);
         return typeBuiltinFuncCall(node, "EXTRACT", sql);
     }
 
@@ -699,8 +704,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
         String tvStrOfSub = checkArgAndGetTypicalValueStr(node.sub);
         String tvStrOfWhole = checkArgAndGetTypicalValueStr(node.whole);
-        String sql = String.format("select POSITION(%s IN %s) from dual",
-            tvStrOfSub, tvStrOfWhole);
+        String sql = String.format("select POSITION(%s IN %s) from dual", tvStrOfSub, tvStrOfWhole);
         return typeBuiltinFuncCall(node, "POSITION", sql);
     }
 
@@ -708,17 +712,22 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
         String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
         String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
-        String sql = String.format("select SUBDATE(%s, INTERVAL %s %s) from dual",
-            tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        String sql =
+                String.format(
+                        "select SUBDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
         return typeBuiltinFuncCall(node, "SUBDATE", sql);
     }
 
     @Override
     public Type visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
-        String tvStrOfTrimStr = node.trimStr == null ? "" : checkArgAndGetTypicalValueStr(node.trimStr);
+        String tvStrOfTrimStr =
+                node.trimStr == null ? "" : checkArgAndGetTypicalValueStr(node.trimStr);
         String tvStrOfStr = checkArgAndGetTypicalValueStr(node.str);
-        String sql = String.format("select TRIM(%s %s FROM %s) from dual",
-            node.trimDir, tvStrOfTrimStr, tvStrOfStr);
+        String sql =
+                String.format(
+                        "select TRIM(%s %s FROM %s) from dual",
+                        node.trimDir, tvStrOfTrimStr, tvStrOfStr);
         return typeBuiltinFuncCall(node, "TRIM", sql);
     }
 
@@ -1331,7 +1340,8 @@ public class TypeChecker extends AstVisitor<Type> {
         for (int i = 0; i < len; i++) {
 
             Expr arg = args.get(i);
-            String typicalValueStr = checkArgAndGetTypicalValueStr(arg);;
+            String typicalValueStr = checkArgAndGetTypicalValueStr(arg);
+            ;
             if (typicalValueStr == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s234

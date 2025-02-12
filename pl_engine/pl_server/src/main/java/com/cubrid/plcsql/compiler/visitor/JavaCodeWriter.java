@@ -810,7 +810,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         } else {
 
             Expr arg0;
-            if (node.args.nodes.size() == 1 && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
+            if (node.args.nodes.size() == 1
+                    && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
                 // cast to Object, a hint for Javac compiler. see CBRD-25168
                 arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
             }
