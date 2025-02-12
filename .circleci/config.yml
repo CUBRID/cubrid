@@ -46,10 +46,9 @@ commands:
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
               # Remove unnecessary test cases (test)
-              # Handle shell test case location
-              cd /home/shell/cubrid-testcases-private-ex/shell && \
+              cd cubrid-testcases-private-ex/shell && \
                 find . -maxdepth 1 -type d ! -name '.' ! -name '_01_utility' ! -name 'config' -exec rm -rf {} \;
-              glob_path="/home/shell/cubrid-testcases-private-ex/$TEST_SUITE/_*"
+              glob_path="cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             fi
@@ -57,7 +56,6 @@ commands:
             # TODO:
             #if save test_result.xml from previous commit's test, 
             #'circleci tests split' can be optimized
-
             # CircleCI test splitting
             circleci tests glob "$glob_path" | circleci tests split | tee tc.list
             find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
@@ -78,7 +76,9 @@ commands:
               mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
+            
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+
           when: on_fail
 
       - store_test_results:
@@ -117,7 +117,7 @@ executors:
     docker:
       # - image: cubridci/cubridci:shell
       - image: twkang3219/ctp_image_shell:latest
-    working_directory: /home
+    working_directory: /home/shell
 
 # --------------------------------------------------
 # 3. Jobs
