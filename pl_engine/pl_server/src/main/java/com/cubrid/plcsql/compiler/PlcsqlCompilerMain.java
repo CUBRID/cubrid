@@ -84,12 +84,15 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
+    private static final String STR_EXPECTING = " expecting ";
+    private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
+
     private static String cutExpectingClause(String errMsg) {
 
         int idx;
-        if (errMsg != null && (idx = errMsg.lastIndexOf(" expecting ")) > 0) {
+        if (errMsg != null && (idx = errMsg.lastIndexOf(STR_EXPECTING)) > 0) {
 
-            String tail = errMsg.substring(idx + 11); // 11: length of " expecting "
+            String tail = errMsg.substring(idx + STR_EXPECTING_LEN);
 
             if (tail.matches("[A-Z0-9_]+") /* single token name */
                     || (tail.startsWith("'")
