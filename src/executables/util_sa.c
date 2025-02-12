@@ -1575,7 +1575,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name && class_list_file)
     {
-      PRINT_AND_LOG_ERR_MSG ("Error: The -n and -i options cannot be used together. Please choose only one option.\n");
+      errno = EINVAL;
+      perror ("The -n and -i options cannot be used together.");
       goto error_exit;
     }
 
