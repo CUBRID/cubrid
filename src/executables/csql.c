@@ -2662,6 +2662,7 @@ signal_stop (int sig_no)
 #endif /* !WINDOWS */
 }
 
+#if !defined(WINDOWS)
 /*
  * crash_handler(): kill the server and spawn the new server process
  *
@@ -2704,6 +2705,7 @@ register_crash_signal_handler (int signo)
   act.sa_flags |= SA_SIGINFO;
   sigaction (signo, &act, NULL);
 }
+#endif
 
 /*
  * csql_exit_session() - handling the default action of the last outstanding
@@ -2976,6 +2978,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       goto error;
     }
 
+#if !defined(WINDOWS)
   /* set signal handler */
   register_crash_signal_handler (SIGABRT);
   register_crash_signal_handler (SIGILL);
@@ -2983,6 +2986,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   register_crash_signal_handler (SIGBUS);
   register_crash_signal_handler (SIGSEGV);
   register_crash_signal_handler (SIGSYS);
+#endif
 
   /*
    * login and restart database
