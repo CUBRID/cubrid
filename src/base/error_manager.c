@@ -3261,11 +3261,6 @@ namespace cuberr
 /* *INDENT-ON* */
 
 #if defined(LINUX)
-
-#include <signal.h>
-#include <sys/time.h>
-#include <time.h>
-
 void
 er_print_crash_callstack (int sig)
 {
