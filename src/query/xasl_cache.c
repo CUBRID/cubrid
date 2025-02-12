@@ -954,6 +954,15 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 
   assert ((*xcache_entry) != NULL);
 
+  /* set xasl_id to tde before getting locks */
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes_p = LOG_FIND_TDES (tran_index);
+  assert (tdes_p != NULL);
+  if (tdes_p != NULL && xid != NULL)
+    {
+      XASL_ID_COPY (&tdes_p->xasl_id, xid);
+    }
+
   /* Get lock on all classes in xasl cache entry. */
   /* The reason we need to do the locking here is to confirm the entry validity. Without the locks, we cannot guarantee
    * the entry will remain valid (somebody holding SCH_M_LOCK may invalidate it). Moreover, in most cases, the
@@ -981,6 +990,11 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 		      XCACHE_LOG_TRAN_TEXT,
 		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
 		      XCACHE_LOG_ENTRY_OBJECT_ARGS (*xcache_entry, oid_index), XCACHE_LOG_TRAN_ARGS (thread_p));
+
+	  if (tdes_p != NULL && xid != NULL)
+	    {
+	      XASL_ID_SET_NULL (&tdes_p->xasl_id);
+	    }
 
 	  return error_code;
 	}

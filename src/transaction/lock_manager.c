@@ -3948,6 +3948,11 @@ end:
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
 
+  if (entry_ptr != NULL && ret_val == LK_GRANTED)
+    {
+      lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
+    }
+
   return ret_val;
 }
 #endif /* SERVER_MODE */
@@ -8566,15 +8571,15 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < ONE_K)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", (unsigned long long) size_alloc);
     }
   else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", (unsigned long long) (size_alloc / ONE_K));
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", (unsigned long long) (size_alloc / ONE_M));
     }
 
   // *INDENT-OFF*
@@ -9512,6 +9517,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
   LK_RES *res_ptr = NULL;
   LOCK_COMPATIBILITY compat1, compat2;
   int rv, indent = 2;
+  bool is_other_waiter = false;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -9554,6 +9560,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
     {
       if (entry == wait_entry)
 	{
+	  is_other_waiter = true;
 	  continue;
 	}
 
@@ -9562,9 +9569,16 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       if (compat1 == LOCK_COMPAT_NO)
 	{
+	  if (is_other_waiter)
+	    {
+	      /* first time for other waiter */
+	      fprintf (log_fp, "other waiters:\n");
+	      is_other_waiter = false;
+	    }
+
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
