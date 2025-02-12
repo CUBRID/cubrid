@@ -173,7 +173,6 @@ jobs:
               echo "Setup shell test worker"
               /entrypoint.sh worker
             fi
-            exit 1
       - attach-and-run-tests
 
   build-windows:
