@@ -1750,6 +1750,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       else if (class_list_file != NULL)
 	{
 	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
+	  int class_len = 0;
 
 	  input_file = fopen (class_list_file, "r");
 	  if (input_file == NULL)
@@ -1761,6 +1762,13 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
 	    {
 	      trim (input_class);
+
+	      class_len = STATIC_CAST (int, strlen (input_class));
+	      if (class_len < 1)
+		{
+		  /* empty string */
+		  continue;
+		}
 
 	      if (!sm_check_system_class_by_name (input_class))
 		{
