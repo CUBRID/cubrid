@@ -1763,12 +1763,13 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      trim (input_class);
 
-	      error_code = utility_check_class_name (input_class);
-
-	      if (error_code != NO_ERROR)
+	      if (!sm_check_system_class_by_name (input_class))
 		{
-		  fclose (input_file);
-		  goto error_exit;
+		  if (utility_check_class_name (input_class) != NO_ERROR)
+		    {
+		      fclose (input_file);
+		      goto error_exit;
+		    }
 		}
 
 	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
