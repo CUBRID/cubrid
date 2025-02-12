@@ -29,6 +29,8 @@
 
 #include "error_manager.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 /*
  * load_open_data.cpp: load routines to read open data and write into loaddb format
  */
