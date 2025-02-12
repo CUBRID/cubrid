@@ -190,6 +190,7 @@ WHEN:                         W H E N ;
 WHILE:                        W H I L E ;
 WORK:                         W O R K ;
 XOR:                          X O R ;
+YEAR:                         Y E A R ;
 YEAR_MONTH:                   Y E A R '_' M O N T H ;
 
 

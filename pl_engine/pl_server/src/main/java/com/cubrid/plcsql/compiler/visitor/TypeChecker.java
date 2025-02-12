@@ -662,6 +662,9 @@ public class TypeChecker extends AstVisitor<Type> {
         return typeBuiltinFuncCall(node, node.name, sql);
     }
 
+    // -------------------------------------------------------------------------
+    //
+
     @Override
     public Type visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
         String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
@@ -673,6 +676,9 @@ public class TypeChecker extends AstVisitor<Type> {
         return typeBuiltinFuncCall(node, "ADDDATE", sql);
     }
 
+    // -------------------------------------------------------------------------
+    //
+
     @Override
     public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
         String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
@@ -681,6 +687,9 @@ public class TypeChecker extends AstVisitor<Type> {
                         "select CAST(%s AS %s) from dual", tvStrOfArg, node.tySpec.ctx.getText());
         return typeBuiltinFuncCall(node, "CAST", sql);
     }
+
+    // -------------------------------------------------------------------------
+    //
 
     @Override
     public Type visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
@@ -692,6 +701,9 @@ public class TypeChecker extends AstVisitor<Type> {
         return typeBuiltinFuncCall(node, "CHR", sql);
     }
 
+    // -------------------------------------------------------------------------
+    //
+
     @Override
     public Type visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
         String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
@@ -700,6 +712,9 @@ public class TypeChecker extends AstVisitor<Type> {
         return typeBuiltinFuncCall(node, "EXTRACT", sql);
     }
 
+    // -------------------------------------------------------------------------
+    //
+
     @Override
     public Type visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
         String tvStrOfSub = checkArgAndGetTypicalValueStr(node.sub);
@@ -707,6 +722,9 @@ public class TypeChecker extends AstVisitor<Type> {
         String sql = String.format("select POSITION(%s IN %s) from dual", tvStrOfSub, tvStrOfWhole);
         return typeBuiltinFuncCall(node, "POSITION", sql);
     }
+
+    // -------------------------------------------------------------------------
+    //
 
     @Override
     public Type visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
@@ -719,6 +737,9 @@ public class TypeChecker extends AstVisitor<Type> {
         return typeBuiltinFuncCall(node, "SUBDATE", sql);
     }
 
+    // -------------------------------------------------------------------------
+    //
+
     @Override
     public Type visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
         String tvStrOfTrimStr =
@@ -730,6 +751,9 @@ public class TypeChecker extends AstVisitor<Type> {
                         node.trimDir, tvStrOfTrimStr, tvStrOfStr);
         return typeBuiltinFuncCall(node, "TRIM", sql);
     }
+
+    // -------------------------------------------------------------------------
+    //
 
     @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {

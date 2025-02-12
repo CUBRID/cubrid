@@ -362,16 +362,16 @@ unary_expression
 atom
     : literal                                   # literal_exp
     | record_field                              # field_exp
-    | function_call                             # call_exp
     | syntaxed_call                             # syntaxed_call_exp
-    | SQLCODE                                   # sqlcode_exp
-    | SQLERRM                                   # sqlerrm_exp
-    | reserved_builtin_func                     # builtin_func
+    | function_call                             # call_exp
     | identifier                                # id_exp
+    | reserved_builtin_func                     # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
     | LPAREN expression RPAREN                  # paren_exp
+    | SQLCODE                                   # sqlcode_exp
+    | SQLERRM                                   # sqlerrm_exp
     ;
 
 record_field
@@ -403,7 +403,7 @@ reserved_builtin_func   /* those which cannot be an identifier */
     | DEFAULT
     | EXTRACT
     | HOUR
-    | IF
+    //| IF  do not include IF: it causes confusion with IF statement on syntax error case
     | INSERT
     | MINUTE
     | MOD
@@ -411,7 +411,6 @@ reserved_builtin_func   /* those which cannot be an identifier */
     | POSITION
     | QUARTER
     | REPLACE
-    | REVERSE
     | SECOND
     | SUBDATE
     | TIME
@@ -682,6 +681,7 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
+    | REVERSE
     ;
 
 

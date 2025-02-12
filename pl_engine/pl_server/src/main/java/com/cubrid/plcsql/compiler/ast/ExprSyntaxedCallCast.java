@@ -46,6 +46,8 @@ public class ExprSyntaxedCallCast extends BuiltinFuncCall {
     public ExprSyntaxedCallCast(ParserRuleContext ctx, Expr arg, TypeSpec tySpec) {
         super(ctx);
 
+        assert tySpec.ctx != null;
+
         this.arg = arg;
         this.tySpec = tySpec;
     }
