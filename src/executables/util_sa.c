@@ -1519,6 +1519,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
+  FILE *input_file = NULL;
   const char *class_name;
   FILE *outfp = NULL;
   bool is_emergency = false;
@@ -1748,7 +1749,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else if (class_list_file != NULL)
 	{
-	  FILE *input_file;
 	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
 
 	  input_file = fopen (class_list_file, "r");
@@ -1766,7 +1766,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		{
 		  if (utility_check_class_name (input_class) != NO_ERROR)
 		    {
-		      fclose (input_file);
 		      goto error_exit;
 		    }
 		}
@@ -1780,17 +1779,9 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		      PRINT_AND_LOG_ERR_MSG (msgcat_message
 					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
 					      DIAGDB_MSG_UNKNOWN_CLASS), input_class);
-
-		      fclose (input_file);
 		    }
 		  goto error_exit;
 		}
-	    }
-
-	  if (input_file != NULL)
-	    {
-	      fclose (input_file);
-	      input_file = NULL;
 	    }
 	}
       else
@@ -1806,6 +1797,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (input_file != NULL)
+    {
+      fclose (input_file);
     }
 
   return EXIT_SUCCESS;
@@ -1824,6 +1819,10 @@ error_exit:
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (input_file != NULL)
+    {
+      fclose (input_file);
     }
 
   return EXIT_FAILURE;
