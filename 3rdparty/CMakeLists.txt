@@ -26,6 +26,8 @@ set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODB
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
+set(WITH_LIBROCKSDB_URL "https://github.com/facebook/rocksdb/archive/refs/tags/v9.10.0.tar.gz")               # rocksdb
+set(WITH_LIBGFLAGS_URL "https://github.com/gflags/gflags/archive/refs/tags/v2.2.2.tar.gz")                    # gflags
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -50,9 +52,10 @@ set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d
 set(WITH_LIBOPENSSL_URL_HASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")                     # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
-set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
 set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")
 set(WITH_LZ4_URL_HASH "SHA256=658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc")
+set(WITH_LIBROCKSDB_URL_HASH "SHA256=fdccab16133c9d927a183c2648bcea8d956fb41eb1df2aacaa73eb0b95e43724")
+set(WITH_LIBGFLAGS_URL_HASH "SHA256=34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf")
 
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
@@ -74,6 +77,8 @@ set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODB
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
 set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
+set(WITH_LIBROCKSDB   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with RocksDB library (default: EXTERNAL)")
+set(WITH_LIBGFLAGS    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gflags library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -84,6 +89,8 @@ message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
 message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
+message(STATUS "Build with RocksDB library: ${WITH_LIBROCKSDB}")
+message(STATUS "Build with gflags library: ${WITH_LIBGFLAGS}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -489,7 +496,6 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
 else(WITH_RE2 STREQUAL "EXTERNAL")
   message(FATAL_ERROR "Invalid WITH_RE2 option value ${WITH_RE2}")
 endif()
-# add to external project targets
 list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
@@ -525,19 +531,80 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
   endif(UNIX)
 endif()
 
+# gflags
+set(LIBGFLAGS_TARGET libgflags)
+if(WITH_LIBGFLAGS STREQUAL "EXTERNAL")
+  if(UNIX)
+    set(LIBGFLAGS_LIBS ${3RDPARTY_LIBS_DIR}/Install/libgflags/lib/libgflags.a)
+    set(LIBGFLAGS_LIBDIR ${3RDPARTY_LIBS_DIR}/Install/libgflags/lib)
+    set(LIBGFLAGS_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/libgflags/include)
+    set(LIBGFLAGS_CONFIGURE -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/libgflags -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_NC_TESTS=OFF -DBUILD_CONFIG_TESTS=OFF -DGFLAGS_NAMESPACE=google)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBGFLAGS" ${LIBGFLAGS_LIBS})
+
+    externalproject_add(${LIBGFLAGS_TARGET}
+      URL                  ${WITH_LIBGFLAGS_URL}
+      URL_HASH             ${WITH_LIBGFLAGS_URL_HASH}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBGFLAGS_CONFIGURE}
+      BUILD_IN_SOURCE      TRUE
+      BUILD_COMMAND        make -j
+      INSTALL_COMMAND      make -j install
+      "${LIBGFLAGS_BYPRODUCTS}"
+    )
+  endif(UNIX)
+endif()
+
+# rocksdb
+set(LIBROCKSDB_TARGET librocksdb)
+if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
+  if(UNIX)
+    set(LIBROCKSDB_LIBS ${3RDPARTY_LIBS_DIR}/Source/librocksdb/librocksdb.a)
+    set(LIBROCKSDB_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/librocksdb/include)
+    set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBROCKSDB" ${LIBROCKSDB_LIBS})
+
+    externalproject_add(${LIBROCKSDB_TARGET}
+      URL                  ${WITH_LIBROCKSDB_URL}
+      URL_HASH             ${WITH_LIBROCKSDB_URL_HASH}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBROCKSDB_CONFIGURE}
+      BUILD_IN_SOURCE      TRUE
+      BUILD_COMMAND        make -j
+      INSTALL_COMMAND      make -j install
+      "${LIBROCKSDB_BYPRODUCTS}"
+    )
+
+    list(APPEND ROCKSDB_TARGETS ${LIBROCKSDB_TARGET})
+    list(APPEND ROCKSDB_INCLUDES ${LIBROCKSDB_INCLUDES})
+    list(APPEND ROCKSDB_LIBS ${LIBROCKSDB_LIBS})
+  endif(UNIX)
+endif()
+add_dependencies(librocksdb libgflags)
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
 
 # TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
-# However, TBB is only required on the server side and should only be linked to libcubrid.so.
-# To achieve this, TBB has been separated into a distinct list to ensure exclusive linking with libcubrid.so.
+# However, TBB and ROCKSDB are only required on the server side and should only be linked to libcubrid.so.
+# To achieve this, TBB and ROCKSDB have been separated into a distinct list to ensure exclusive linking with libcubrid.so.
 # Going forward, directories and libraries strictly used on the server side should be categorized
 # under the EP_SERVER_XXX section.
 set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
 set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
+set (ROCKSDB_TARGETS ${ROCKSDB_TARGETS} PARENT_SCOPE)
+set (ROCKSDB_INCLUDES ${ROCKSDB_INCLUDES} PARENT_SCOPE)
+set (ROCKSDB_LIBS ${ROCKSDB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)
@@ -555,3 +622,4 @@ expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
+expose_3rdparty_variable(LIBROCKSDB)
