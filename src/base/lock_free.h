@@ -209,7 +209,7 @@ extern LF_TRAN_SYSTEM obj_lock_res_Ts;
 extern LF_TRAN_SYSTEM obj_lock_ent_Ts;
 extern LF_TRAN_SYSTEM catalog_Ts;
 extern LF_TRAN_SYSTEM sessions_Ts;
-extern LF_TRAN_SYSTEM free_temp_buffer_Ts;
+extern LF_TRAN_SYSTEM memory_buffer_Ts;
 extern LF_TRAN_SYSTEM free_sort_list_Ts;
 extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 extern LF_TRAN_SYSTEM hfid_table_Ts;

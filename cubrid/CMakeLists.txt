@@ -238,6 +238,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/query_memory_buffer.cpp
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
   ${QUERY_DIR}/regu_var.cpp
@@ -259,6 +260,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_analytic.hpp
+  ${QUERY_DIR}/query_memory_buffer.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp

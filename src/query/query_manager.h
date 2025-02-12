@@ -33,6 +33,7 @@
 #include "dbtype_def.h"
 #include "file_manager.h"
 #include "list_file.h"
+#include "query_memory_buffer.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -72,15 +73,6 @@ typedef enum
   QMGR_TRAN_TERMINATED		/* Terminated transaction */
 } QMGR_TRAN_STATUS;
 
-typedef struct temp_buffer_entry TEMP_BUFFER_ENTRY;
-struct temp_buffer_entry
-{
-  UINT64 del_id;
-  TEMP_BUFFER_ENTRY *local_next;
-  TEMP_BUFFER_ENTRY *next;
-  FILEIO_PAGE *io_page_p;
-};
-
 typedef struct qmgr_temp_file QMGR_TEMP_FILE;
 struct qmgr_temp_file
 {
@@ -88,8 +80,9 @@ struct qmgr_temp_file
   QMGR_TEMP_FILE *prev;
   FILE_TYPE temp_file_type;
   VFID temp_vfid;
-  int membuf_last;
-  TEMP_BUFFER_ENTRY **temp_buffer;
+  /* *INDENT-OFF* */
+  std::vector < MEMORY_BUFFER_ENTRY * >membuf;
+  /* *INDENT-ON* */
   int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
   bool preserved;		/* if temp file is preserved */

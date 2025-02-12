@@ -50,7 +50,7 @@ LF_TRAN_SYSTEM obj_lock_res_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM obj_lock_ent_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM catalog_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM sessions_Ts = LF_TRAN_SYSTEM_INITIALIZER;
-LF_TRAN_SYSTEM free_temp_buffer_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM memory_buffer_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
@@ -476,7 +476,7 @@ lf_initialize_transaction_systems (int max_threads)
     {
       goto error;
     }
-  if (lf_tran_system_init (&free_temp_buffer_Ts, max_threads) != NO_ERROR)
+  if (lf_tran_system_init (&memory_buffer_Ts, max_threads) != NO_ERROR)
     {
       goto error;
     }
@@ -531,7 +531,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&obj_lock_ent_Ts);
   lf_tran_system_destroy (&catalog_Ts);
   lf_tran_system_destroy (&sessions_Ts);
-  lf_tran_system_destroy (&free_temp_buffer_Ts);
+  lf_tran_system_destroy (&memory_buffer_Ts);
   lf_tran_system_destroy (&free_sort_list_Ts);
   lf_tran_system_destroy (&global_unique_stats_Ts);
   lf_tran_system_destroy (&hfid_table_Ts);

@@ -1317,12 +1317,23 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 
   temp_file_p = list_id_p->tfile_vfid;
 
-  if (temp_file_p->temp_buffer && list_id_p->last_vpid.volid == NULL_VOLID)
+  if ((list_id_p->last_vpid.volid == NULL_VOLID) && !temp_file_p->membuf.empty ())
     {
-      /* The last page is in the membuf */
-      assert_release (temp_file_p->membuf_last >= list_id_p->last_vpid.pageid);
       /* The page of last record in the membuf */
-      last_page_ptr = temp_file_p->temp_buffer[list_id_p->last_vpid.pageid]->io_page_p->page;
+      last_page_ptr = qmgr_get_membuf_page (temp_file_p->membuf[list_id_p->last_vpid.pageid]);
+
+#if !defined (NDEBUG)
+      if (last_page_ptr != NULL)
+	{
+	  FILEIO_PAGE *io_page_p;
+	  CAST_PGPTR_TO_IOPGPTR (io_page_p, last_page_ptr);
+	  assert (io_page_p->prv.ptype == PAGE_MEMORY);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+#endif /* !NDEBUG */
     }
   else
     {
@@ -1776,26 +1787,6 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
     {
       return ER_FAILED;
     }
-
-#if !defined (NDEBUG)
-  {
-    TEMP_BUFFER_ENTRY *temp_buffer_entry_p = list_id_p->tfile_vfid->temp_buffer[0];
-
-    for (int i = 0; i <= list_id_p->tfile_vfid->membuf_last; i++)
-      {
-	assert (temp_buffer_entry_p != NULL);
-
-	if (cur_page_p == temp_buffer_entry_p->io_page_p->page)
-	  {
-	    break;
-	  }
-
-	assert (i == list_id_p->tfile_vfid->membuf_last
-		|| list_id_p->tfile_vfid->temp_buffer[i + 1] == temp_buffer_entry_p->next);
-	temp_buffer_entry_p = temp_buffer_entry_p->next;
-      }
-  }
-#endif
 
   page_p = (char *) cur_page_p + list_id_p->last_offset;
   if (qfile_save_tuple (tuple_descr_p, tuple_type, page_p, &tuple_length) != NO_ERROR)
