@@ -233,6 +233,22 @@ css_master_cleanup (int sig)
 }
 
 /*
+ * crash_handler() - print call stack for occurring crash
+ *    return: none
+ *    sig_no(in)
+ */
+static void
+crash_handler (int sig)
+{
+  if (os_set_signal_handler (sig, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  er_print_crash_callstack (sig);
+}
+
+/*
  * css_master_init() - setup the signal handling routines and attempt to
  *                     bind the socket address
  *   return: 1 if success, otherwise 0
@@ -259,6 +275,13 @@ css_master_init (int cport, SOCKET * clientfd)
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
     }
+
+  os_set_signal_handler (SIGABRT, crash_handler);
+  os_set_signal_handler (SIGILL, crash_handler);
+  os_set_signal_handler (SIGFPE, crash_handler);
+  os_set_signal_handler (SIGBUS, crash_handler);
+  os_set_signal_handler (SIGSEGV, crash_handler);
+  os_set_signal_handler (SIGSYS, crash_handler);
 #endif /* ! WINDOWS */
 
 #if !defined(WINDOWS)

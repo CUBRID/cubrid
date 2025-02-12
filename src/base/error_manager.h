@@ -320,6 +320,7 @@ extern "C"
 #if defined (CS_MODE)
   extern void er_set_ignore_uninit (bool ignore);
 #endif
+  extern void er_print_crash_callstack (int sig);
 
 #ifdef __cplusplus
 }
