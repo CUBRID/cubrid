@@ -691,7 +691,8 @@ public class TypeChecker extends AstVisitor<Type> {
             String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
             String sql =
                     String.format(
-                            "select CAST(%s AS %s) from dual", tvStrOfArg, node.tySpec.type.plcName);
+                            "select CAST(%s AS %s) from dual",
+                            tvStrOfArg, node.tySpec.type.plcName);
             return typeBuiltinFuncCall(node, "CAST", sql);
         }
     }
@@ -1343,7 +1344,8 @@ public class TypeChecker extends AstVisitor<Type> {
         if (arg instanceof SqlLiteral) {
             if (arg.ctx == null) {
                 // unreachable
-                throw new RuntimeException("unreachable: a built-in function argument without a context");
+                throw new RuntimeException(
+                        "unreachable: a built-in function argument without a context");
             } else {
                 ret = arg.ctx.getText();
             }

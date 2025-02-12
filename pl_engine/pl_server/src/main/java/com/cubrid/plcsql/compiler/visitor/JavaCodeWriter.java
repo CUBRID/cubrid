@@ -31,9 +31,9 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.Coercion;
-import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
@@ -859,14 +859,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -------------------------------------------------------------------------
     //
 
-    private CodeToResolve genCodeOfSyntaxedCall(String callStr, BuiltinFuncCall node, Expr... args) {
+    private CodeToResolve genCodeOfSyntaxedCall(
+            String callStr, BuiltinFuncCall node, Expr... args) {
 
         assert node.resultType != null;
         String ty = getJavaCodeOfType(node.resultType);
 
         int argsLen = args.length;
         NodeList<Expr> argsList = new NodeList<>();
-        for (Expr arg: args) {
+        for (Expr arg : args) {
             argsList.nodes.add(arg);
         }
 
@@ -944,8 +945,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
-        String callStr = String.format("TRIM(%s %s FROM ?)", node.trimDir, node.trimStr == null ? "" : "?");
-        if (node.trimStr == null){
+        String callStr =
+                String.format("TRIM(%s %s FROM ?)", node.trimDir, node.trimStr == null ? "" : "?");
+        if (node.trimStr == null) {
             return genCodeOfSyntaxedCall(callStr, node, node.str);
         } else {
             return genCodeOfSyntaxedCall(callStr, node, node.trimStr, node.str);

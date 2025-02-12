@@ -483,7 +483,7 @@ public class SymbolStack {
                         "COALESCE",
                         "DECODE",
                         "GREATEST",
-                        //"IF", -- exclude IF for a syntactic reason
+                        // "IF", -- exclude IF for a syntactic reason
                         "IFNULL",
                         "ISNULL",
                         "LEAST",

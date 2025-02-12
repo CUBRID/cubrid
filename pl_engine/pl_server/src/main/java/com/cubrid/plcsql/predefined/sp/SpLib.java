@@ -36,7 +36,6 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
@@ -54,7 +53,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -319,7 +317,7 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    private static final Object[] SINGLE_NULL_ARG = new Object[] { null };
+    private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
     public static Object invokeBuiltinFunc(
             Connection conn, String callStr, int resultTypeCode, Object... args) {
