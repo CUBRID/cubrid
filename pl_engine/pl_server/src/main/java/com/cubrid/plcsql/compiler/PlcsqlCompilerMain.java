@@ -84,6 +84,26 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
+    private static String cutExpectingClause(String errMsg) {
+
+        int idx;
+        if (errMsg != null && (idx = errMsg.lastIndexOf(" expecting ")) > 0) {
+
+            String tail = errMsg.substring(idx + 11); // 11: length of " expecting "
+
+            if (tail.matches("[A-Z0-9_]+") /* single token name */
+                    || (tail.startsWith("'")
+                            && tail.endsWith("'")) /* single token of the form '...' */
+                    || (tail.startsWith("{")
+                            && tail.endsWith("}") /* multiple tokens of the form {...} */)) {
+
+                errMsg = errMsg.substring(0, idx);
+            }
+        }
+
+        return errMsg;
+    }
+
     private static ParseTree parse(
             CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
 
@@ -119,11 +139,7 @@ public class PlcsqlCompilerMain {
             throw new SyntaxError(lei.line, lei.column, lei.msg);
         }
         if (sei.hasError) {
-            int cut;
-            String errMsg = sei.msg;
-            if (errMsg != null && (cut = errMsg.indexOf(" expecting {")) > 0) {
-                errMsg = errMsg.substring(0, cut);
-            }
+            String errMsg = cutExpectingClause(sei.msg);
             throw new SyntaxError(sei.line, sei.column, errMsg);
         }
 
