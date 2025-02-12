@@ -49,7 +49,6 @@ commands:
               # Handle shell test case location
               cd /home/shell/cubrid-testcases-private-ex/shell && \
                 find . -maxdepth 1 -type d ! -name '.' ! -name '_01_utility' ! -name 'config' -exec rm -rf {} \;
-              
               glob_path="/home/shell/cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
@@ -70,11 +69,15 @@ commands:
           name: Collect Logs
           command: |
             mkdir -p /tmp/logs
-            mv -f CUBRID/log /tmp/logs/cubrid_log || true
             if [ "$TEST_SUITE" = "shell" ]; then
-              mv -f /home/shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
+              mv -f shell/CUBRID/log /tmp/logs/cubrid_log
+              mv -f shell/cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+              mv -f shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
+              mv -f /tmp/tests/*.csv /tmp/logs/compare_log
+            else
+              mv -f CUBRID/log /tmp/logs/cubrid_log
+              mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
-            mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
 
@@ -170,6 +173,7 @@ jobs:
               echo "Setup shell test worker"
               /entrypoint.sh worker
             fi
+            exit 1
       - attach-and-run-tests
 
   build-windows:
@@ -213,7 +217,7 @@ jobs:
 workflows:
   build_test:
     jobs:
-      - build
+#      - build
 
       # - test_job:
       #     name: test_medium
@@ -233,7 +237,7 @@ workflows:
 
       - test_job:
           name: test_shell
-          requires: [build]
+ #         requires: [build]
           test_suite: "shell"
           e: cubrid-test-shell
           #parallel_num: 16
