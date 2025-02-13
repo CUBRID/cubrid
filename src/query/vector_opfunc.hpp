@@ -27,7 +27,7 @@
 #include "dbtype_def.h"
 
 int
-vector_l2_distance(DB_VALUE *result, DB_VALUE *args[], int num_args);
+vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
 
 
 #endif /* _VECTOR_OPFUNC_H_ */
