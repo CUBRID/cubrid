@@ -294,25 +294,6 @@ function modify_databases_txt() {
     done < "$file_path"
     mv "$temp_file" "$file_path"
 }
-<<COMMENT
-function modify_databases_txt() {
-    local file_path="$newdb_path/databases.txt"
-    local temp_file=$(mktemp)
-    local lob_base_path="${newdb_path}/lob"
-    local asis_dbname=$asis_dbname
-
-    while IFS=$'\t' read -r dbname volpath dbhost logpath lobpath rest; do
-        if [[ "$dbname" =~ ^#.* ]]; then
-            echo -e "$dbname\t$volpath\t$dbhost\t$logpath\t$lobpath$rest" >> "$temp_file"
-        elif [[ "$dbname" == "$asis_dbname" ]]; then
-            echo -e "$tobe_dbname\t$newdb_path\t$dbhost\t$newdb_path\tfile:$lob_base_path" >> "$temp_file"
-        else
-            echo -e "$dbname\t$volpath\t$dbhost\t$logpath\t$lobpath$rest" >> "$temp_file"
-        fi
-    done < "$file_path"
-    mv "$temp_file" "$file_path"
-}
-COMMENT
 
 # update cubrid_databases environment variable
 function update_cubrid_databases() {
