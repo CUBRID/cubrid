@@ -24,7 +24,7 @@ yum install -y ncurses-devel git which
 yum install -y java-1.8.0-openjdk-devel
 
 # install openblas and lapack (Required to build FAISS)
-yum insall -y openblas lapack opanblas-devel lapack-devel
+yum install -y openblas lapack opanblas-devel lapack-devel
 
 
 # install build tools
