@@ -30,32 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.StaticSql;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.List;
+import java.util.LinkedList;
+import java.sql.PreparedStatement;
 
-public class StmtStaticSql extends StmtSql {
+public abstract class StmtLoop extends Stmt {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtStaticSql(this);
+    public final LoopOptimizable loopOptimizable;
+
+    public StmtLoop(ParserRuleContext ctx, LoopOptimizable loopOptimizable) {
+        super(ctx);
+        this.loopOptimizable = loopOptimizable;
+        if (loopOptimizable != null) {
+            for (StmtSql s: loopOptimizable.sql) {
+                s.outermostLoop = this;
+            }
+        }
     }
 
-    public final StaticSql staticSql;
+    public static class LoopOptimizable {
+        public List<StmtSql> sql = new LinkedList<>();
 
-    public StmtStaticSql(ParserRuleContext ctx, int level, StaticSql staticSql, int sqlSerialNo) {
-
-        super(
-                ctx,
-                false,
-                level,
-                new ExprStr(staticSql.ctx, staticSql.rewritten),
-                staticSql.getColumnTypeList(),
-                staticSql.intoTargetList,
-                new ArrayList(staticSql.hostExprs.keySet()),
-                sqlSerialNo);
-
-        this.staticSql = staticSql;
+        public boolean isEmpty() {
+            return sql.isEmpty();
+        }
     }
+
 }

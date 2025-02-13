@@ -4531,12 +4531,18 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("AUTHID OWNER ");
 	}
 
+      // dtrm_type
+      if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
+	{
+	  output_ctx ("DETERMINISTIC ");
+	}
+
       int sp_lang = db_get_int (&lang_val);
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
 	  output_ctx
-	    ("RAISE_APPLICATION_ERROR(1000, '%s%s%s%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
+	    ("RAISE_APPLICATION_ERROR(1001, '%s%s%s%s: incomplete during loaddb'); /* __CUBRID_NO_BODY__ */",
 	     output_owner, PRINT_IDENTIFIER (sp_name));
 	  output_ctx (" END;\n");
 	}

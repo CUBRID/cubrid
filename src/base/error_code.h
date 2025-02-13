@@ -1132,7 +1132,7 @@
 #define ER_SP_INVALID_NAME                          -904
 #define ER_SP_NETWORK_ERROR                         -905
 #define ER_SP_INVAILD_JAVA_METHOD                   -906
-#define ER_SP_DROP_NOT_ALLOWED_PRIVILEGES           -907
+#define ER_SP_DDL_NOT_ALLOWED_PRIVILEGES            -907
 #define ER_SP_TOO_MANY_ARG_COUNT                    -908
 
 #define ER_BO_MISSING_OR_INVALID_CATALOG            -909
@@ -1744,10 +1744,11 @@
 #define ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED     -1363
 #define ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED         -1364
 
-
 #define ER_AU_OWNER_ONLY_GRANT_PRIVILEGE            -1365
 
-#define ER_LAST_ERROR                               -1366
+#define ER_SP_PARAM_DEFAULT_STR_TOO_BIG             -1366
+
+#define ER_LAST_ERROR                               -1367
 
 
 

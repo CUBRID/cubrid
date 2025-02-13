@@ -7655,6 +7655,11 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " AUTHID CALLER");
 	}
+
+      if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
+	{
+	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
+	}
     }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);
@@ -11218,10 +11223,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_DEFAULTF:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      q = pt_append_nulstring (parser, q, " default(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
+      if (parser->flag.is_parsing_static_sql && !p->flag.for_default_func)
+	{
+	  q = pt_append_nulstring (parser, q, " default");
+	}
+      else
+	{
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_nulstring (parser, q, " default(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_OID_OF_DUPLICATE_KEY:
@@ -11663,6 +11675,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  if (parser->flag.is_parsing_trigger && p->info.expr.flag)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
+
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -12937,17 +12955,34 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, p->info.host_var.str);
-  /* for internal print, print a host variable with its index */
-  if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+
+  if (parser->flag.is_parsing_static_sql == 1 && pt_has_error (parser))
     {
-      sprintf (s, " ");
+      /*
+       * To avoid the following error message:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  ?:0 ='ttt' where  id =1
+       * we need to print the host variable name as it is.
+
+       * The following error message is expected:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  s ='ttt' where  id =1
+       */
+      q = pt_append_nulstring (parser, q, p->info.host_var.label);
     }
   else
     {
-      sprintf (s, ":%d", p->info.host_var.index);
+      q = pt_append_nulstring (parser, q, p->info.host_var.str);
+      /* for internal print, print a host variable with its index */
+      if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+	{
+	  sprintf (s, " ");
+	}
+      else
+	{
+	  sprintf (s, ":%d", p->info.host_var.index);
+	}
+      q = pt_append_nulstring (parser, q, s);
     }
-  q = pt_append_nulstring (parser, q, s);
+
   q = pt_append_nulstring (parser, q, " ");
 
   for (t = p->or_next; t; t = t->or_next)
@@ -13020,7 +13055,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql || parser->flag.is_parsing_trigger)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
@@ -13575,8 +13610,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
-
-  char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 

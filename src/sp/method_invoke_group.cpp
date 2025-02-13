@@ -198,17 +198,10 @@ exit:
   {
     int error = NO_ERROR;
 
-// TODO
-#if 0
     if (!is_end_query)
       {
-	cubmethod::header header (get_session_id(), METHOD_REQUEST_END, get_and_increment_request_id ());
-	std::vector<int> handler_vec (m_handler_set.begin (), m_handler_set.end ());
-	error = xs_callback_send_args (m_thread_p, header, handler_vec);
-	m_handler_set.clear ();
+	m_stack->reset_query_handlers ();
       }
-
-#endif
 
     return error;
   }

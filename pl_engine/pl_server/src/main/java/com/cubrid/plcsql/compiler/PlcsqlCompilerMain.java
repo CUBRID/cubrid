@@ -84,6 +84,29 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
+    private static final String STR_EXPECTING = " expecting ";
+    private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
+
+    private static String cutExpectingClause(String errMsg) {
+
+        int idx;
+        if (errMsg != null && (idx = errMsg.lastIndexOf(STR_EXPECTING)) > 0) {
+
+            String tail = errMsg.substring(idx + STR_EXPECTING_LEN);
+
+            if (tail.matches("[A-Z0-9_]+") /* single token name */
+                    || (tail.startsWith("'")
+                            && tail.endsWith("'")) /* single token of the form '...' */
+                    || (tail.startsWith("{")
+                            && tail.endsWith("}") /* multiple tokens of the form {...} */)) {
+
+                errMsg = errMsg.substring(0, idx);
+            }
+        }
+
+        return errMsg;
+    }
+
     private static ParseTree parse(
             CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
 
@@ -94,19 +117,15 @@ public class PlcsqlCompilerMain {
 
         PlcLexerEx lexer = new PlcLexerEx(input);
 
-        LexerErrorIndicator lei = new LexerErrorIndicator();
-        lexer.removeErrorListeners();
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator();
+        lexer.removeErrorListeners(); // This removes unwanted console output
         lexer.addErrorListener(lei);
-
-        if (lei.hasError) {
-            throw new SyntaxError(lei.line, lei.column, lei.msg);
-        }
 
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PlcParser parser = new PlcParser(tokens);
 
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
-        parser.removeErrorListeners();
+        parser.removeErrorListeners(); // This removes unwanted console output
         parser.addErrorListener(sei);
 
         if (verbose) {
@@ -119,8 +138,12 @@ public class PlcsqlCompilerMain {
             logElapsedTime(logStore, "  calling parser", t0);
         }
 
+        if (lei.hasError) {
+            throw new SyntaxError(lei.line, lei.column, lei.msg);
+        }
         if (sei.hasError) {
-            throw new SyntaxError(sei.line, sei.column, sei.msg);
+            String errMsg = cutExpectingClause(sei.msg);
+            throw new SyntaxError(sei.line, sei.column, errMsg);
         }
 
         sqlTemplate[0] = lexer.getCreateSqlTemplate();
@@ -248,31 +271,6 @@ public class PlcsqlCompilerMain {
                         unit.getClassName(),
                         javaSig);
         return info;
-    }
-
-    private static class LexerErrorIndicator extends BaseErrorListener {
-
-        boolean hasError;
-        int line;
-        int column;
-        String msg;
-
-        @Override
-        public void syntaxError(
-                Recognizer<?, ?> recognizer,
-                Object offendingSymbol,
-                int line,
-                int charPositionInLine,
-                String msg,
-                RecognitionException e) {
-
-            if (msg.startsWith("token recognition error")) {
-                this.hasError = true;
-                this.line = line;
-                this.column = charPositionInLine + 1; // charPositionInLine starts from 0
-                this.msg = msg;
-            }
-        }
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

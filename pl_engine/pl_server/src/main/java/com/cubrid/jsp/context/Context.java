@@ -161,7 +161,10 @@ public class Context {
                                                     ClassLoaderManager.getDynamicPath()))
                             != 0) {
                 oldClassLoader = new ContextClassLoader();
-                methodCache.clear();
+
+                if (methodCache != null) {
+                    methodCache.clear();
+                }
             }
             clear();
             tranactionId = tid;
@@ -179,6 +182,27 @@ public class Context {
             // ignore
         } finally {
             connection = null;
+        }
+    }
+
+    public void destroy() {
+        clear();
+        if (sessionClassLoaderManager != null) {
+            sessionClassLoaderManager.clear();
+            sessionClassLoaderManager = null;
+        }
+
+        if (oldClassLoader != null) {
+            oldClassLoader = null;
+        }
+
+        if (methodCache != null) {
+            methodCache.clear();
+            methodCache = null;
+        }
+
+        if (messageBuffer != null) {
+            messageBuffer.clear();
         }
     }
 

@@ -46,18 +46,22 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
 
     public StmtForStaticSqlLoop(
             ParserRuleContext ctx,
+            StmtLoop.LoopOptimizable loopOptimizable,
             String label,
             DeclVar record,
             StaticSql staticSql,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
         super(
                 ctx,
+                loopOptimizable,
                 false,
                 label,
                 record,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
                 new ArrayList(staticSql.hostExprs.keySet()),
-                stmts);
+                stmts,
+                sqlSerialNo);
 
         this.staticSql = staticSql;
     }

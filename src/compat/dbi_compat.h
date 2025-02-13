@@ -150,6 +150,8 @@ extern "C"
 			    const char *preferred_hosts, int client_type);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
+  extern bool db_get_keep_session (void);
+  extern void db_set_keep_session (const bool keep_session);
   extern int db_find_or_create_session (const char *db_user, const char *program_name);
   extern int db_get_row_count_cache (void);
   extern void db_update_row_count_cache (const int row_count);

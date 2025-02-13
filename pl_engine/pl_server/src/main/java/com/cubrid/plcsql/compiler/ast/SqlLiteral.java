@@ -30,30 +30,5 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
-
-public class StmtForDynamicSqlLoop extends StmtForSqlLoop {
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForDynamicSqlLoop(this);
-    }
-
-    public StmtForDynamicSqlLoop(
-            ParserRuleContext ctx,
-            String label,
-            DeclDynamicRecord record,
-            Expr dynamicSql,
-            NodeList<? extends Expr> usedExprList,
-            NodeList<Stmt> stmts) {
-        super(
-                ctx,
-                true,
-                label,
-                record,
-                dynamicSql,
-                usedExprList == null ? null : usedExprList.nodes,
-                stmts);
-    }
-}
+// marker interface
+public interface SqlLiteral {}

@@ -203,7 +203,8 @@ extern "C"
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op,
-					   const char *name1, const char *name2);
+					   const char *name1, const char *name2, char **new_trigger_stmt,
+					   int with_evaluate);
   extern int pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1,
 				   DB_OBJECT * object2, DB_VALUE * result);
 
@@ -234,9 +235,11 @@ extern "C"
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  extern int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+				       PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
   extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
-						DB_DEFAULT_EXPR_TYPE default_expr_type);
+						DB_DEFAULT_EXPR_TYPE default_expr_type, bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,

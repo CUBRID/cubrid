@@ -351,6 +351,7 @@ namespace cubpl
     , precision (0)
     , scale (0)
     , charset (0)
+    , has_default (0)
   {
     db_make_null (&value);
   }
@@ -372,6 +373,7 @@ namespace cubpl
     serializator.pack_int (precision);
     serializator.pack_int (scale);
     serializator.pack_int (charset);
+    serializator.pack_int (has_default);
 
     if (!DB_IS_NULL (&value))
       {
@@ -397,6 +399,7 @@ namespace cubpl
     size += serializator.get_packed_int_size (size); // precision
     size += serializator.get_packed_int_size (size); // scale
     size += serializator.get_packed_int_size (size); // charset
+    size += serializator.get_packed_int_size (size); // has_default
 
     size += serializator.get_packed_int_size (size); // value is null
     if (!DB_IS_NULL (&value))
@@ -420,6 +423,7 @@ namespace cubpl
     deserializator.unpack_int (precision);
     deserializator.unpack_int (scale);
     deserializator.unpack_int (charset);
+    deserializator.unpack_int (has_default);
 
     int value_is_null;
     deserializator.unpack_int (value_is_null);
