@@ -1375,7 +1375,7 @@ public class TypeChecker extends AstVisitor<Type> {
 
             Expr arg = args.get(i);
             String typicalValueStr = checkArgAndGetTypicalValueStr(arg);
-            ;
+
             if (typicalValueStr == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s234

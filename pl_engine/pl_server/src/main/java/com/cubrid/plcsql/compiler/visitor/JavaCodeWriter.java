@@ -852,7 +852,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         } else {
             String[] arr = new String[len];
             Arrays.fill(arr, "?");
-            return "(" + String.join(", ", arr) + ")";
+            return String.format("(%s)", String.join(", ", arr));
         }
     }
 
