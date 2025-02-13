@@ -5019,10 +5019,11 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   DB_SET *vec = NULL;
   DB_VALUE e_val;
 
-  int error = db_string_to_vector(p, db_get_string_size(src), float_array, &count);
-  if (error != NO_ERROR) {
+  int error = db_string_to_vector (p, db_get_string_size (src), float_array, &count);
+  if (error != NO_ERROR)
+    {
       return ER_FAILED;
-  }
+    }
 
   // Create vector and populate it
   vec = db_vec_create (NULL, NULL, 0);
@@ -9605,6 +9606,76 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	  }
 	  break;
+
+
+	case DB_TYPE_VECTOR:
+	  {
+	    DB_VALUE element;
+	    SETREF *setref = db_get_set (src);
+	    if (setref)
+	      {
+		DB_VALUE str;
+		db_value_domain_init (&str, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+
+		std::ostringstream oss;
+
+		oss << "[";
+
+		int cardinality = db_set_size (setref);
+		for (int i = 0; i < cardinality; i++)
+		  {
+		    if (db_set_get (setref, i, &element) != NO_ERROR)
+		      {
+			status = DOMAIN_ERROR;
+			break;
+		      }
+
+		    tp_ftoa (&element, &str);
+
+		    if (DB_IS_NULL (&str))
+		      {
+			status = DOMAIN_ERROR;
+			break;
+		      }
+
+		    oss << db_get_string (&str);
+		    if (i < cardinality - 1)
+		      {
+			oss << ",";
+		      }
+		    db_value_clear (&str);
+		  }
+		oss << "]";
+
+		char *new_string = db_private_strdup (NULL, oss.str ().c_str ());
+		if (!new_string)
+		  {
+		    status = DOMAIN_ERROR;
+		    break;
+		  }
+
+		int new_string_len = oss.str ().size ();
+
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < new_string_len)
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status,
+						  &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	  }
+	  break;
+
 
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
