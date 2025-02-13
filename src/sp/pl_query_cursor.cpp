@@ -37,7 +37,6 @@ namespace cubpl
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
     , m_query_id (qid)
     , m_query_entry (nullptr)
-    , m_list_id (nullptr)
     , m_current_row_index (0)
   {
     //
@@ -53,11 +52,10 @@ namespace cubpl
   {
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
     m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-    if (m_query_entry != NULL)
+    if (m_query_entry != NULL && m_query_entry->list_id != NULL)
       {
-	m_list_id = m_query_entry->list_id;
 	m_current_row_index = 0;
-	m_current_tuple.resize (m_list_id->type_list.type_cnt);
+	m_current_tuple.resize (m_query_entry->list_id->type_list.type_cnt);
 	for (DB_VALUE &val : m_current_tuple)
 	  {
 	    db_make_null (&val);
@@ -75,7 +73,7 @@ namespace cubpl
     if (m_is_opened == false)
       {
 	reset ();
-	qfile_open_list_scan (m_list_id, &m_scan_id);
+	qfile_open_list_scan (m_query_entry->list_id, &m_scan_id);
 	m_is_opened = true;
       }
     return m_is_opened ? NO_ERROR : ER_FAILED;
@@ -87,9 +85,9 @@ namespace cubpl
     if (m_is_opened)
       {
 	qfile_close_scan (m_thread, &m_scan_id);
-	if (m_list_id)
+	if (m_query_entry->list_id)
 	  {
-	    qfile_close_list (m_thread, m_list_id);
+	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
 	clear ();
 	m_is_opened = false;
@@ -106,7 +104,6 @@ namespace cubpl
   query_cursor::clear ()
   {
     m_query_entry = nullptr;
-    m_list_id = nullptr;
     m_current_tuple.clear ();
     m_current_row_index = 0;
     m_fetch_count = 0;
@@ -129,12 +126,13 @@ namespace cubpl
 	int length;
 	OR_BUF buf;
 
-	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
+	QFILE_LIST_ID *list_id = m_query_entry->list_id;
+	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value_r (tuple_record.tpl, i, &ptr, &length);
 	    or_init (&buf, ptr, length);
 
-	    TP_DOMAIN *domain = m_list_id->type_list.domp[i];
+	    TP_DOMAIN *domain = list_id->type_list.domp[i];
 	    if (domain == NULL || domain->type == NULL)
 	      {
 		scan_code = S_ERROR;
@@ -186,13 +184,14 @@ namespace cubpl
 	int length;
 	OR_BUF buf;
 
-	for (int i = 0; i < m_list_id->type_list.type_cnt; i++)
+	QFILE_LIST_ID *list_id = m_query_entry->list_id;
+	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
 	    DB_VALUE *value = &m_current_tuple[i];
 	    QFILE_TUPLE_VALUE_FLAG flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tuple_record.tpl, i, &ptr, &length);
 	    if (flag == V_BOUND)
 	      {
-		TP_DOMAIN *domain = m_list_id->type_list.domp[i];
+		TP_DOMAIN *domain = list_id->type_list.domp[i];
 		if (domain == NULL || domain->type == NULL)
 		  {
 		    scan_code = S_ERROR;

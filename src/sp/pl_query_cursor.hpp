@@ -81,7 +81,6 @@ namespace cubpl
 
       QUERY_ID m_query_id;		/* Query id for this cursor */
       QMGR_QUERY_ENTRY *m_query_entry; /* Query entry for this cursor */
-      QFILE_LIST_ID *m_list_id;	/* List file identifier */
       QFILE_LIST_SCAN_ID m_scan_id;	/* scan on list_id */
 
       std::vector<DB_VALUE> m_current_tuple;
