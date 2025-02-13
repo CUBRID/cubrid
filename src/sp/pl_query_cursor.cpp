@@ -30,14 +30,16 @@
 
 namespace cubpl
 {
-  query_cursor::query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool oid_included)
+  query_cursor::query_cursor (cubthread::entry *thread_p, QUERY_ID qid, bool oid_included)
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
-    , m_query_id (0)
+    , m_query_id (qid)
+    , m_list_id (nullptr)
+    , m_current_row_index (0)
   {
-    reset (query_entry_p);
+    //
   }
 
   query_cursor::~query_cursor ()
@@ -46,29 +48,33 @@ namespace cubpl
   }
 
   int
-  query_cursor::reset (QMGR_QUERY_ENTRY *query_entry_p)
+  query_cursor::reset ()
   {
-    assert (query_entry_p != NULL);
-
-    m_query_id = query_entry_p->query_id;
-    m_list_id = query_entry_p->list_id;
-    m_current_row_index = 0;
-    m_current_tuple.resize (m_list_id->type_list.type_cnt);
-    for (DB_VALUE &val : m_current_tuple)
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+    QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+    if (query_entry_p != NULL)
       {
-	db_make_null (&val);
+	m_list_id = query_entry_p->list_id;
+	m_current_row_index = 0;
+	m_current_tuple.resize (m_list_id->type_list.type_cnt);
+	for (DB_VALUE &val : m_current_tuple)
+	  {
+	    db_make_null (&val);
+	  }
+
+	return NO_ERROR;
       }
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   query_cursor::open ()
   {
-    if (m_is_opened == false && m_list_id != NULL && m_list_id->tuple_cnt != 0)
+    if (m_is_opened == false)
       {
+	reset ();
 	qfile_open_list_scan (m_list_id, &m_scan_id);
-
 	m_is_opened = true;
       }
     return m_is_opened ? NO_ERROR : ER_FAILED;

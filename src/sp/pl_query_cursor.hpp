@@ -42,7 +42,7 @@ namespace cubpl
   class query_cursor
   {
     public:
-      query_cursor (cubthread::entry *thread_p, QMGR_QUERY_ENTRY *query_entry_p, bool is_oid_included = false);
+      query_cursor (cubthread::entry *thread_p, QUERY_ID qid, bool is_oid_included = false);
       ~query_cursor ();
 
       int open ();
@@ -50,7 +50,7 @@ namespace cubpl
 
       bool is_opened () const;
 
-      int reset (QMGR_QUERY_ENTRY *query_entry_p);
+      int reset ();
 
       void change_owner (cubthread::entry *thread_p);
 
