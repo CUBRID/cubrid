@@ -129,8 +129,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    } catch (ClassCastException e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw new PROGRAM_ERROR(\"type of a value differs from the one known at compile time" +
-                        " (hint: try recompiling this stored procedure)\").setPlcLineColumn(pos);",
+                "      throw new PROGRAM_ERROR(\"type of a value differs from the one known at compile time"
+                        + " (hint: try recompiling this stored procedure)\").setPlcLineColumn(pos);",
                 "    } catch (Throwable e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
