@@ -56,7 +56,7 @@ static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 /**
 * Computes the L2 distance between two Vector DB_VALUE objects.
 */
-int vector_l2_distance (DB_VALUE* result, DB_VALUE* args[], int num_args)
+int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
 
   assert (num_args == 2);
