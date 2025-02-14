@@ -20,6 +20,7 @@
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include "set_object.h"
 
 /**
  * Computes the L2 distance between two string representations.
@@ -55,6 +56,10 @@ vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   printf ("arg 2: ");
   db_value_print (arg1);
   printf ("\n");
+
+  DB_SET *set0 = db_get_set (arg0);
+  set_size(set0);
+  // printf ("size: %d\n", size);
 
   // TODO: Replace this constant with a real computation using the Faiss library.
   db_make_double (result, 9999999.99999999);
