@@ -6,7 +6,7 @@ public class RequestCode {
     public static final int ERROR = 0x04;
     public static final int INTERNAL_JDBC = 0x08;
 
-    // private static final int DESTROY = 0x10;
+    public static final int DESTROY = 0x10;
     // private static final int END = 0x20;
 
     public static final int PREPARE_ARGS = 0x40;

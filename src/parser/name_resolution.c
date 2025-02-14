@@ -951,6 +951,10 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
+	      if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+		{
+		  er_clear ();
+		}
 
 	      node = pt_parameterize_for_static_sql (parser, in_node);
 	    }
@@ -1988,12 +1992,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   PT_NODE *method_name_node = NULL;
   const char *method_name;
 
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!node || !parser)
+  if (!node || !parser || pt_has_error (parser))
     {
       return node;
     }
+
+  *continue_walk = PT_CONTINUE_WALK;
 
   /* treat scopes as the next outermost scope */
   scopestack.next = bind_arg->scopes;
@@ -3618,6 +3622,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_SINGLE_TABLE_IN,
 			      pt_short_print (parser, node));
 		}
+	    }
+
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
       break;
@@ -7946,19 +7956,55 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (hint & PT_HINT_NO_USE_HASH)
+  if ((hint & PT_HINT_NO_USE_HASH) && (*no_use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+      if (*no_use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
+	}
     }
 
-  if (hint & PT_HINT_USE_HASH)
+  if ((hint & PT_HINT_USE_HASH) && (*use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+      if (*use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -8025,8 +8071,8 @@ exit_on_error:
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
-      node->info.delete_.no_use_hash_hint = NULL;
-      node->info.delete_.use_hash_hint = NULL;
+      node->info.update.no_use_hash_hint = NULL;
+      node->info.update.use_hash_hint = NULL;
       break;
     default:
       break;

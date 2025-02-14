@@ -98,6 +98,8 @@ namespace cubpl
 
       int change_exec_rights (const char *auth_name);
 
+      void handle_type_resultset (DB_VALUE &returnval);
+
       // command handling
       int request_invoke_command ();
       int response_invoke_command (DB_VALUE &value);

@@ -28,6 +28,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include <unordered_set>
+#include <map>
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -63,9 +64,11 @@ namespace cubpl
       session *m_session;
 
       /* resources */
+      connection_view m_connection;
+
       std::unordered_set <int> m_stack_handler_id;
       std::unordered_set <std::uint64_t> m_stack_cursor_id;
-      connection_view m_connection;
+      std::map <std::uint64_t, int> m_stack_cursor_map;
 
       /* error */
       std::string m_error_message;
@@ -98,15 +101,16 @@ namespace cubpl
       std::queue<cubmem::block> &get_data_queue ();
 
       /* resource management */
-      int add_cursor (QUERY_ID query_id, bool oid_included);
+      int add_cursor (int handler_id, QUERY_ID query_id, bool oid_included);
       void remove_cursor (QUERY_ID query_id);
       query_cursor *get_cursor (QUERY_ID query_id);
       void promote_to_session_cursor (QUERY_ID query_id);
-      void destory_all_cursors ();
+      void destory_all_cursors (session *sess);
 
       /* query handler */
       void add_query_handler (int handler_id);
       void remove_query_handler (int handler_id);
+      void reset_query_handlers ();
 
       const std::unordered_set <int> *get_stack_query_handler () const;
       const std::unordered_set <std::uint64_t> *get_stack_cursor () const;
@@ -119,7 +123,13 @@ namespace cubpl
       bool m_transaction_control;
 
       template <typename ... Args>
-      int send_data_to_client (const xs_callback_func &func, Args &&... args)
+      int send_data_to_client (Args &&... args)
+      {
+	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
+      }
+
+      template <typename ... Args>
+      int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
       {
 	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
       }
@@ -131,8 +141,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
 	  }
 
 	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
@@ -144,8 +154,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    assert (er_errid () != NO_ERROR);
-	    return er_errid (); // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
 	  }
 
 	pl_callback_func interrupt_func = [this]()
@@ -157,7 +167,13 @@ namespace cubpl
       }
 
       void
-      set_command (int command)
+      set_cs_command (int command)
+      {
+	m_client_header.command = command;
+      }
+
+      void
+      set_java_command (int command)
       {
 	m_java_header.command = command;
       }
@@ -176,6 +192,10 @@ namespace cubpl
 
       std::string get_error_message ()
       {
+	if (m_error_message.empty () && er_errid () != NO_ERROR)
+	  {
+	    m_error_message = er_msg ();
+	  }
 	return m_error_message;
       }
 

@@ -164,9 +164,6 @@ extern LOCK_COMPATIBILITY lock_Comp[12][12];
     } \
    while (0)
 
-#define OF_GET_LK_ENTRY_DEREF(p,o) \
-    (*((LK_ENTRY * volatile *) (((char *) (p)) + (o))))
-
 #endif /* SERVER_MODE */
 
 #define RESOURCE_ALLOC_WAIT_TIME 10	/* 10 msec */
@@ -288,8 +285,10 @@ struct lk_deadlock_victim
   TRANID tranid;		/* Transaction identifier */
   bool can_timeout;		/* Is abort or timeout */
 
-  LK_ENTRY *holder;		/* holder entries that cause deadlock */
-  LK_ENTRY *waiter;		/* waiter entries that cause deadlock */
+  /* for event log */
+  bool log_trunc;
+  int log_num_entries;		/* # of entries */
+  LK_ENTRY **log_entries;	/* entries that cause deadlock */
 };
 
 /*
@@ -547,8 +546,8 @@ static void lock_decrement_class_granules (LK_ENTRY * class_entry);
 static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid);
 
 static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
-static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, LK_ENTRY * holder,
-					   LK_ENTRY * waiter);
+static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, bool log_trunc,
+					   int log_num_entries, LK_ENTRY ** log_entries);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
 static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
@@ -4863,6 +4862,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   const char *client_prog_name, *client_user_name, *client_host_name;
   int client_pid;
   int next_node;
+  int log_max_entries, log_num_entries;
+  LK_ENTRY **log_entries;
   LK_ENTRY *holder, *waiter;
   int victim_tran_index;
   int tran_log_count, victim_tran_log_count;
@@ -5142,28 +5143,43 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  er_log_debug (ARG_FILE_LINE, "victim(index=%d) is old in deadlock cycle\n", victims[victim_count].tran_index);
 	}
 #endif /* CUBRID_DEBUG */
-      victims[victim_count].waiter = NULL;
-      victims[victim_count].holder = NULL;
-      for (v = s;;)
+
+      victims[victim_count].log_trunc = false;
+
+      log_max_entries = num_tran_in_cycle * 2;
+      if (log_max_entries > MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG)
 	{
-	  holder = TWFG_edge[TWFG_node[v].current].holder;
-	  waiter = TWFG_edge[TWFG_node[v].current].waiter;
-
-	  assert (holder != NULL && waiter != NULL);
-
-	  /* In this case, entry is not on any stack (global or local). */
-	  /* we can link the lock lists using member accessible via of_local_next. */
-	  OF_GET_LK_ENTRY_DEREF (holder, obj_lock_entry_desc.of_local_next) = victims[victim_count].holder;
-	  victims[victim_count].holder = holder;
-
-	  OF_GET_LK_ENTRY_DEREF (waiter, obj_lock_entry_desc.of_local_next) = victims[victim_count].waiter;
-	  victims[victim_count].waiter = waiter;
-
-	  if (v == t)
-	    break;
-
-	  v = TWFG_node[v].ancestor;
+	  log_max_entries =
+	    MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG % 2 ? MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG - 1 : MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
+	  victims[victim_count].log_trunc = true;
 	}
+
+      log_num_entries = 0;
+      log_entries = (LK_ENTRY **) malloc (sizeof (LK_ENTRY *) * log_max_entries);
+
+      if (log_entries != NULL)
+	{
+	  for (v = s;;)
+	    {
+	      holder = TWFG_edge[TWFG_node[v].current].holder;
+	      waiter = TWFG_edge[TWFG_node[v].current].waiter;
+
+	      assert (holder != NULL && waiter != NULL);
+
+	      log_entries[log_num_entries++] = holder;
+	      log_entries[log_num_entries++] = waiter;
+
+	      if (v == t || log_num_entries >= log_max_entries)
+		break;
+
+	      v = TWFG_node[v].ancestor;
+	    }
+
+	  assert (log_num_entries == log_max_entries);
+	}
+
+      victims[victim_count].log_num_entries = log_num_entries;
+      victims[victim_count].log_entries = log_entries;
 
       TWFG_node[victims[victim_count].tran_index].current = -1;
       victim_count++;
@@ -8011,17 +8027,20 @@ final_:
   /* dump deadlock cycle to event log file */
   for (k = 0; k < victim_count; k++)
     {
-      if (victims[k].holder == NULL && victims[k].waiter == NULL)
-	{
-	  continue;
-	}
-
       log_fp = event_log_start (thread_p, "DEADLOCK");
       if (log_fp != NULL)
 	{
-	  lock_event_log_deadlock_locks (thread_p, log_fp, victims[k].tran_index, victims[k].holder, victims[k].waiter);
+	  if (victims[k].log_entries == NULL)
+	    {
+	      event_log_end (thread_p);
+	      continue;
+	    }
+	  lock_event_log_deadlock_locks (thread_p, log_fp, victims[k].tran_index, victims[k].log_trunc,
+					 victims[k].log_num_entries, victims[k].log_entries);
 	  event_log_end (thread_p);
 	}
+
+      free_and_init (victims[k].log_entries);
     }
 
   /* Now solve the deadlocks (cycles) by executing the cycle resolution function (e.g., aborting victim) */
@@ -9377,14 +9396,15 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
  *   thread_p(in): thread
  *   log_fp(in): file pointer (log)
  *   tran_index(in): transaction index selected as victim
- *   holder(in): holder list
- *   waiter(in): waiter list
+ *   log_trunc(in): is the entries truncated
+ *   log_num_entries(in): number of the entries
+ *   log_entries(in): entries
  *
  *   note: for deadlock
  */
 static void
-lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, LK_ENTRY * holder,
-			       LK_ENTRY * waiter)
+lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, bool log_trunc,
+			       int log_num_entries, LK_ENTRY ** log_entries)
 {
   const char *prog, *user, *host;
   int pid;
@@ -9395,12 +9415,13 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
   LK_ENTRY *entry;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
+  assert (log_num_entries && !(log_num_entries % 2));
+  assert (log_entries != NULL);
 
-  max_num_locks =
-    (MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG % 2) ? MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG + 1 : MAX_NUM_LOCKS_DUMP_TO_EVENT_LOG;
-  entry = holder;
-  for (i = 0; entry != NULL && i < max_num_locks; i++)
+  for (i = 0; i < log_num_entries; i++)
     {
+      entry = log_entries[i];
+
       /* holder and waiter are printed alternately */
       fprintf (log_fp, i % 2 ? "\nwait:\n" : "hold:\n");
 
@@ -9435,26 +9456,11 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
       pthread_mutex_unlock (&tran_lock->hold_mutex);
 
       fprintf (log_fp, i % 2 ? "\n" : "");
-
-      if (i % 2)
-	{
-	  /* waiter to holder */
-	  entry = holder;
-	  waiter = OF_GET_LK_ENTRY_DEREF (waiter, obj_lock_entry_desc.of_local_next);
-	}
-      else
-	{
-	  /* holder to waiter */
-	  entry = waiter;
-	  holder = OF_GET_LK_ENTRY_DEREF (holder, obj_lock_entry_desc.of_local_next);
-	}
     }
 
-  assert ((holder == NULL && waiter == NULL) || (holder != NULL && waiter != NULL));
-
-  if (holder != NULL && waiter != NULL)
+  if (log_trunc)
     {
-      fprintf (log_fp, "%*c...\n", indent, ' ');
+      fprintf (log_fp, "%*c...\n\n", indent, ' ');
     }
 }
 

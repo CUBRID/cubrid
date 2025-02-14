@@ -1473,6 +1473,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
+  bool is_unset_hidden_col;
 
   assert (PT_IS_SELECT (statement));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
@@ -1583,6 +1584,27 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
       if (tmp_query == NULL)
 	{
 	  goto exit_on_error;
+	}
+    }
+
+  /* check whether to unset hidden col. If no hidden column in original, remove hidden settings */
+  is_unset_hidden_col = true;
+  for (col = subquery->info.query.q.select.list; col; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  is_unset_hidden_col = false;
+	  break;
+	}
+    }
+  if (is_unset_hidden_col)
+    {
+      for (col = tmp_query->info.query.q.select.list; col; col = col->next)
+	{
+	  if (col->flag.is_hidden_column)
+	    {
+	      col->flag.is_hidden_column = 0;
+	    }
 	}
     }
 
@@ -1891,8 +1913,9 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && pt_has_inst_num (parser, pred)) || pt_has_analytic (parser, mainquery)
-	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
+      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
+	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
+	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -7285,6 +7308,8 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 {
   short *locp = (short *) arg;
 
+  *continue_walk = PT_CONTINUE_WALK;
+
   if (!locp && node->node_type == PT_SELECT)
     {
       short location = 0;
@@ -7332,6 +7357,11 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		}
 	    }
 	}
+    }
+  else if (node->node_type == PT_SELECT)
+    {
+      /* don't walk into subqueries */
+      *continue_walk = PT_LIST_WALK;
     }
   else if (locp)
     {
@@ -7630,7 +7660,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       mq_bump_order_dep_corr_lvl (parser, node);
 
-      node = parser_walk_tree (parser, node, mq_mark_location, NULL, mq_check_non_updatable_vclass_oid, &strict);
+      node = parser_walk_tree (parser, node, mq_mark_location, NULL, NULL, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_check_non_updatable_vclass_oid, &strict);
 
       if (pt_has_error (parser))
 	{

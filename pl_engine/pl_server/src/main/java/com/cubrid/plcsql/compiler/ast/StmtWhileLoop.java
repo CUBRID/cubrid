@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtWhileLoop extends Stmt {
+public class StmtWhileLoop extends StmtLoop {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -45,8 +45,12 @@ public class StmtWhileLoop extends Stmt {
     public final NodeList<Stmt> stmts;
 
     public StmtWhileLoop(
-            ParserRuleContext ctx, DeclLabel declLabel, Expr cond, NodeList<Stmt> stmts) {
-        super(ctx);
+            ParserRuleContext ctx,
+            StmtLoop.LoopOptimizable loopOptimizable,
+            DeclLabel declLabel,
+            Expr cond,
+            NodeList<Stmt> stmts) {
+        super(ctx, loopOptimizable);
 
         this.declLabel = declLabel;
         this.cond = cond;

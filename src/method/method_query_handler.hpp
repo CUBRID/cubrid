@@ -94,6 +94,7 @@ namespace cubmethod
       int get_id () const;
       std::string get_sql_stmt () const;
       int get_statement_type () const;
+      std::string get_user_name () const;
 
       uint64_t get_query_id () const;
 
@@ -153,6 +154,9 @@ namespace cubmethod
     private:
       int m_id;
       TRANID m_tid;
+
+      /* user */
+      std::string m_user;
 
       /* error */
       error_context &m_error_ctx;
