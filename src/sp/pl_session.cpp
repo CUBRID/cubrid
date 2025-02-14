@@ -578,19 +578,15 @@ namespace cubpl
   {
     std::vector<sys_param> changed_sys_params;
     SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
-    while (session_params != NULL)
+    SYSPRM_ASSIGN_VALUE *next_param = session_params;
+    while (next_param != NULL)
       {
-	if (m_session_param_changed_ids.find (session_params->prm_id) == m_session_param_changed_ids.end ())
+	if (m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ())
 	  {
-	    session_params = session_params->next;
-	    continue;
+	    changed_sys_params.emplace_back (next_param);
 	  }
 
-	{
-	  changed_sys_params.emplace_back (session_params);
-	}
-
-	session_params = session_params->next;
+	next_param = next_param->next;
       }
 
     if (session_params)
