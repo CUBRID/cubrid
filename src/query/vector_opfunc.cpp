@@ -32,7 +32,7 @@
  * @param value A pointer to a DB_VALUE object that holds a vector.
  * @return std::vector<float> A vector containing the float elements extracted from the DB_VALUE.
  */
-static std::vector<float> db_value_get_stdvector_float (const DB_VALUE* value)
+static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 {
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
