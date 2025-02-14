@@ -69,7 +69,7 @@ static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
  * @param num_args The number of arguments provided in the args array; should be 2.
  * @return int NO_ERROR if the computation is successful.
  */
-int vector_l2_distance (DB_VALUE* result, DB_VALUE* args[], int num_args)
+int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
   assert (num_args == 2);
 
