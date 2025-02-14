@@ -1317,23 +1317,11 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 
   temp_file_p = list_id_p->tfile_vfid;
 
-  if ((list_id_p->last_vpid.volid == NULL_VOLID) && !temp_file_p->membuf.empty ())
+  if (list_id_p->last_vpid.volid == NULL_VOLID)
     {
       /* The page of last record in the membuf */
-      last_page_ptr = qmgr_get_membuf_page (temp_file_p->membuf[list_id_p->last_vpid.pageid]);
-
-#if !defined (NDEBUG)
-      if (last_page_ptr != NULL)
-	{
-	  FILEIO_PAGE *io_page_p;
-	  CAST_PGPTR_TO_IOPGPTR (io_page_p, last_page_ptr);
-	  assert (io_page_p->prv.ptype == PAGE_MEMORY);
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	}
-#endif /* !NDEBUG */
+      last_page_ptr = qmgr_get_memory_buffer_page (temp_file_p->membuf_helper, list_id_p->last_vpid.pageid);
+      assert (last_page_ptr != NULL);
     }
   else
     {

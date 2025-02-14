@@ -760,7 +760,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    */
   if (max_key_len > 0)
     {
-      int page_count = indx_cov->list_id->tfile_vfid->membuf_npages;
+      int page_count = indx_cov->list_id->tfile_vfid->membuf_helper->m_max_size;
       int value_count = indx_cov->output_val_list->valptr_cnt;
       int header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
       int tuple_size, tuple_count;
