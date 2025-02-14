@@ -50,11 +50,11 @@ namespace cubpl
   int
   query_cursor::reset ()
   {
+    m_current_row_index = 0;
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
     m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
     if (m_query_entry != NULL && m_query_entry->list_id != NULL)
       {
-	m_current_row_index = 0;
 	m_current_tuple.resize (m_query_entry->list_id->type_list.type_cnt);
 	for (DB_VALUE &val : m_current_tuple)
 	  {
@@ -72,9 +72,10 @@ namespace cubpl
   {
     if (m_is_opened == false)
       {
-	reset ();
-	qfile_open_list_scan (m_query_entry->list_id, &m_scan_id);
-	m_is_opened = true;
+	if (reset () && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
+	  {
+	    m_is_opened = true;
+	  }
       }
     return m_is_opened ? NO_ERROR : ER_FAILED;
   }
