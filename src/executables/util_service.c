@@ -2860,6 +2860,13 @@ process_pl_restart (const char *db_name, bool suppress_message)
 	}
     }
 
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
+  if (is_sp_on == false)
+    {
+      status = ER_GENERIC_ERROR;
+    }
+
   if (status == NO_ERROR)
     {
       PL_SERVER_INFO pl_old = PL_SERVER_INFO_INITIALIZER;
@@ -2921,6 +2928,9 @@ process_pl_status (const char *db_name)
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
+
   do
     {
       if (!is_server_running (CHECK_SERVER, db_name, 0))
@@ -2930,6 +2940,11 @@ process_pl_status (const char *db_name)
 	  return status;
 	}
 
+      if (is_sp_on == false)
+	{
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
 
       pl_status = is_pl_running (db_name);
       if (pl_status == PL_SERVER_RUNNING)
