@@ -223,30 +223,11 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
       char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
       void *libVM = NULL;
 
-      jvm_path = getenv ("CUBRID_JVM_PATH");
       java_home = getenv ("CUBRID_JAVA_HOME");
       if (java_home == NULL)
 	{
 	  envvar_vmdir_file (java_home_path, PATH_MAX, "jdk8");
 	  java_home = java_home_path;
-	}
-
-      if (jvm_path)
-	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'CUBRID_JVM_PATH' environment variable: ");
-	  err_msgs.append ("\n\t\t");
-	  err_msgs.append (jvm_path);
-
-	  libVM = LoadLibrary (jvm_path);
-	  if (libVM)
-	    {
-	      fp = (FARPROC) (HMODULE) libVM;
-	      return fp;
-	    }
-	}
-      else
-	{
-	  err_msgs.append ("\n\tFailed to get 'CUBRID_JVM_PATH' environment variable");
 	}
 
       tail = JVM_LIB_PATH_JDK;
@@ -350,27 +331,6 @@ static void *
 pl_get_create_java_vm_function_ptr ()
 {
   void *libVM_p = NULL;
-
-  char *jvm_path = getenv ("CUBRID_JVM_PATH");
-  if (jvm_path != NULL)
-    {
-      libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
-      if (libVM_p != NULL)
-	{
-	  return dlsym (libVM_p, "JNI_CreateJavaVM");
-	}
-      else
-	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'CUBRID_JVM_PATH' environment variable: ");
-	  err_msgs.append ("\n\t\t");
-	  err_msgs.append (dlerror ());
-	}
-    }
-  else
-    {
-      err_msgs.append ("\n\tFailed to get 'CUBRID_JVM_PATH' environment variable");
-    }
-
   char java_home_path[PATH_MAX];
   char *java_home = getenv ("CUBRID_JAVA_HOME");
   if (java_home == NULL)
