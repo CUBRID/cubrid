@@ -127,8 +127,8 @@ namespace cubpl
 	int length;
 	OR_BUF buf;
 
-        assert (m_query_entry != NULL);
-        assert (m_query_entry->list_id != NULL);
+	assert (m_query_entry != NULL);
+	assert (m_query_entry->list_id != NULL);
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
@@ -187,8 +187,8 @@ namespace cubpl
 	int length;
 	OR_BUF buf;
 
-        assert (m_query_entry != NULL);
-        assert (m_query_entry->list_id != NULL);
+	assert (m_query_entry != NULL);
+	assert (m_query_entry->list_id != NULL);
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
