@@ -9654,6 +9654,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    break;
 		  }
 
+                // check varchar's precision e.g.) 'select cast (vec as varchar (1)) from tbl;'
 		int new_string_len = oss.str ().size ();
 
 		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
