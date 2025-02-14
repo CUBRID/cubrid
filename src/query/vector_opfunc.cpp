@@ -22,7 +22,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
+/**
+ * @brief Converts a DB_VALUE vector of floats into a std::vector<float>.
+ *
+ * This function extracts a set of float elements from the given DB_VALUE object,
+ * which is expected to be of type DB_TYPE_VECTOR. It then constructs and returns
+ * a std::vector<float> containing these elements.
+ *
+ * @param value A pointer to a DB_VALUE object that holds a vector.
+ * @return std::vector<float> A vector containing the float elements extracted from the DB_VALUE.
+ */
+static std::vector<float> db_value_get_stdvector_float (const DB_VALUE* value)
 {
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
@@ -40,28 +50,29 @@ static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 	{
 	  assert (false);
 	}
-      result.push_back ((db_get_float (&element)));
+      result.push_back (db_get_float (&element));
     }
-
-  for (auto i : result)
-    {
-      printf ("%f\n", i);
-    }
-
 
   return result;
 }
 
 
 /**
-* Computes the L2 distance between two Vector DB_VALUE objects.
-*/
-int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+ * @brief Computes the squared L2 distance between two vector DB_VALUE objects.
+ *
+ * This function extracts two std::vector<float> from the provided DB_VALUE objects,
+ * computes the squared Euclidean (L2) distance between them using the faiss::fvec_L2sqr function,
+ * and stores the result in the provided DB_VALUE result.
+ *
+ * @param result A pointer to a DB_VALUE where the computed distance will be stored.
+ * @param args An array of pointers to DB_VALUE objects; expects exactly two vectors.
+ * @param num_args The number of arguments provided in the args array; should be 2.
+ * @return int NO_ERROR if the computation is successful.
+ */
+int vector_l2_distance (DB_VALUE* result, DB_VALUE* args[], int num_args)
 {
-
   assert (num_args == 2);
 
-  // Extract float vectors from the provided DB_VALUE objects.
   const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
   const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
 
@@ -69,8 +80,6 @@ int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 
   const float distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
 
-  // Store the result.
   db_make_double (result, distance);
   return NO_ERROR;
 }
-
