@@ -378,7 +378,8 @@ exit:
     const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig, prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
+    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig,
+			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
     return error;

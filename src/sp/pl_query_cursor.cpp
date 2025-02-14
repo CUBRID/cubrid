@@ -23,6 +23,7 @@
 #include "list_file.h"
 #include "log_impl.h"
 #include "object_representation.h"
+#include "xserver_interface.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -64,7 +65,7 @@ namespace cubpl
   int
   query_cursor::open ()
   {
-    if (m_is_opened == false)
+    if (m_is_opened == false && m_list_id != NULL && m_list_id->tuple_cnt != 0)
       {
 	qfile_open_list_scan (m_list_id, &m_scan_id);
 
@@ -79,9 +80,15 @@ namespace cubpl
     if (m_is_opened)
       {
 	clear ();
-	qfile_close_scan (m_thread, &m_scan_id);
+	xqmgr_end_query (m_thread, m_query_id);
 	m_is_opened = false;
       }
+  }
+
+  bool
+  query_cursor::is_opened () const
+  {
+    return m_is_opened;
   }
 
   void
@@ -94,6 +101,11 @@ namespace cubpl
   SCAN_CODE
   query_cursor::prev_row ()
   {
+    if (m_is_opened == false)
+      {
+	return S_END;
+      }
+
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_prev (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)
@@ -145,6 +157,11 @@ namespace cubpl
   SCAN_CODE
   query_cursor::next_row ()
   {
+    if (m_is_opened == false)
+      {
+	return S_END;
+      }
+
     QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
     SCAN_CODE scan_code = qfile_scan_list_next (m_thread, &m_scan_id, &tuple_record, PEEK);
     if (scan_code == S_SUCCESS)
@@ -165,27 +182,28 @@ namespace cubpl
 		if (domain == NULL || domain->type == NULL)
 		  {
 		    scan_code = S_ERROR;
-		    qfile_close_scan (m_thread, &m_scan_id);
 		    break;
 		  }
 
 		PR_TYPE *pr_type = domain->type;
 		if (pr_type == NULL)
 		  {
-		    return S_ERROR;
+		    scan_code = S_ERROR;
+		    break;
 		  }
 
 		or_init (&buf, ptr, length);
 
 		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
 		  {
-		    qfile_close_scan (m_thread, &m_scan_id);
-		    return S_ERROR;
+		    scan_code = S_ERROR;
+		    break;
 		  }
 	      }
 	  }
       }
-    else if (scan_code == S_END)
+
+    if (scan_code == S_END || scan_code == S_ERROR)
       {
 	close ();
       }
@@ -196,14 +214,6 @@ namespace cubpl
   void
   query_cursor::change_owner (cubthread::entry *thread_p)
   {
-    if (thread_p == nullptr)
-      {
-	close ();
-	// qfile_update_qlist_count (m_thread, m_list_id, -1);
-	m_thread = nullptr;
-	return;
-      }
-
     if (m_thread != nullptr && m_thread->get_id () == thread_p->get_id ())
       {
 	return;
@@ -213,9 +223,6 @@ namespace cubpl
 
     // change owner thread
     m_thread = thread_p;
-
-    // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-    // qfile_update_qlist_count (thread_p, m_list_id, 1);
   }
 
   cubthread::entry *
