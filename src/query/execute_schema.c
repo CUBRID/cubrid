@@ -61,7 +61,6 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
-#include "authenticate_access_auth.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10174,11 +10173,9 @@ static int
 do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
-  DB_OBJECT *obj = NULL;
-  MOP class_mop, user_mop, save_user, owner;
+  MOP class_mop, user_mop;
   PT_NODE *class_, *user;
   SM_CLASS *sm_class = NULL;
-  const char *table_name;
 
   assert (alter != NULL);
 
@@ -10202,41 +10199,12 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
       return error;
     }
 
-  table_name = sm_get_ch_name (class_mop);
-  if (table_name == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
   /* To change the owner of a system class is not allowed. */
   if (sm_issystem (sm_class))
     {
       ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
       return error;
     }
-
-  /* when changing the owner, all privileges are revoked */
-  owner = au_get_class_owner (class_mop);
-  if (owner == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      return error;
-    }
-
-  save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
-    {
-      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
-      if (error != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  return error;
-	}
-    }
-
-  AU_SET_USER (save_user);
 
   user_mop = au_find_user (user->info.name.original);
   if (user_mop == NULL)

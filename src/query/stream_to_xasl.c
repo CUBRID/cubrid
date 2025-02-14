@@ -1750,7 +1750,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->flag);
 
   /* initialize xasl status */
-  xasl->status = XASL_INITIALIZED;
+  xasl->status = XASL_BUILD;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

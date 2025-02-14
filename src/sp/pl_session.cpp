@@ -97,6 +97,7 @@ namespace cubpl
 	thread_p = thread_get_thread_entry_info ();
       }
 
+
     std::unique_lock<std::mutex> lock (m_mutex);
 
     if (m_stack_idx >= METHOD_MAX_RECURSION_DEPTH)
@@ -105,6 +106,12 @@ namespace cubpl
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
 	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
 	return nullptr;
+      }
+
+    if (m_is_running == false && m_stack_idx == -1)
+      {
+	// clear previous interrupt state
+	clear_interrupt ();
       }
 
     // check interrupt
@@ -181,9 +188,7 @@ namespace cubpl
 	m_is_running = false;
 
 	// clear interrupt
-	m_is_interrupted = false;
-	m_interrupt_id = NO_ERROR;
-	m_interrupt_msg.clear ();
+	clear_interrupt ();
       }
   }
 
@@ -359,6 +364,14 @@ namespace cubpl
   }
 
   void
+  session::clear_interrupt ()
+  {
+    m_is_interrupted = false;
+    m_interrupt_id = NO_ERROR;
+    m_interrupt_msg.clear ();
+  }
+
+  void
   session::wait_for_interrupt ()
   {
     auto pred = [this] () -> bool
@@ -447,9 +460,6 @@ namespace cubpl
 	QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
 	if (query_entry_p != NULL)
 	  {
-	    // m_list_id is going to be destoryed on server-side, so that qlist_count has to be updated
-	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
-
 	    // store a new cursor in map
 	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
@@ -484,11 +494,8 @@ namespace cubpl
 	query_cursor *cursor = search->second;
 	if (cursor)
 	  {
+	    // close the cursor, if it is opened
 	    cursor->close ();
-	    if (query_id > 0)
-	      {
-		(void) xqmgr_end_query (thread_p, query_id);
-	      }
 	    delete cursor;
 	  }
 
@@ -571,19 +578,15 @@ namespace cubpl
   {
     std::vector<sys_param> changed_sys_params;
     SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
-    while (session_params != NULL)
+    SYSPRM_ASSIGN_VALUE *next_param = session_params;
+    while (next_param != NULL)
       {
-	if (m_session_param_changed_ids.find (session_params->prm_id) == m_session_param_changed_ids.end ())
+	if (m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ())
 	  {
-	    session_params = session_params->next;
-	    continue;
+	    changed_sys_params.emplace_back (next_param);
 	  }
 
-	{
-	  changed_sys_params.emplace_back (session_params);
-	}
-
-	session_params = session_params->next;
+	next_param = next_param->next;
       }
 
     if (session_params)

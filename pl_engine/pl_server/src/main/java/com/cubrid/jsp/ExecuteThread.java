@@ -460,10 +460,13 @@ public class ExecuteThread extends Thread {
                 info.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
+            boolean hasExceptionMessage = (e.getMessage() != null && !e.getMessage().isEmpty());
             info =
                     new CompileInfo(
-                            -1, 0, 0, e.getMessage().isEmpty() ? "unknown error" : e.getMessage());
-            throw new RuntimeException(e);
+                            -1,
+                            0,
+                            0,
+                            hasExceptionMessage ? e.getMessage() : "unknown compile error");
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
 
