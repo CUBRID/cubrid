@@ -350,15 +350,6 @@ namespace cubpl
   {
     (void) do_check_state (false);
 
-#if defined(SA_MODE)
-    constexpr int MAX_FAIL_COUNT = 10;
-    int error = do_check_connection (MAX_FAIL_COUNT);
-    if (error == NO_ERROR)
-      {
-	m_state = SERVER_MONITOR_STATE_RUNNING;
-      }
-#endif
-
     if (m_state == SERVER_MONITOR_STATE_STOPPED || m_state == SERVER_MONITOR_STATE_FAILED_TO_FORK)
       {
 	int status;
@@ -476,7 +467,14 @@ namespace cubpl
     switch (m_state)
       {
       case SERVER_MONITOR_STATE_STOPPED:
+#if defined(SA_MODE)
+	if (do_check_connection (1) == NO_ERROR)
+	  {
+	    m_state = SERVER_MONITOR_STATE_RUNNING;
+	  }
+#else
 	/* do nothing */
+#endif
 	break;
       case SERVER_MONITOR_STATE_RUNNING:
       case SERVER_MONITOR_STATE_READY_TO_INITIALIZE:
@@ -537,24 +535,22 @@ namespace cubpl
   {
     int error = NO_ERROR;
     int c = 0;
-    while (c < fail_cnt)
+    do
       {
 	error = do_ping_connection ();
-	if (error != NO_ERROR)
-	  {
-	    c++;
-
-	    /* The contents of the pl file may have changed, so set it to read again. */
-	    assert (m_sys_conn_pool);
-	    m_sys_conn_pool->set_port_disabled();
-
-	    thread_sleep (1000);	/* 1000 msec */
-	  }
-	else
+	if (error == NO_ERROR || ++c < fail_cnt)
 	  {
 	    break;
 	  }
+
+	/* The contents of the pl file may have changed, so set it to read again. */
+	assert (m_sys_conn_pool);
+	m_sys_conn_pool->set_port_disabled();
+
+	thread_sleep (1000);	/* 1000 msec */
       }
+    while (c < fail_cnt);
+
     return error;
   }
 
