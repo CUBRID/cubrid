@@ -72,7 +72,7 @@ namespace cubpl
   {
     if (m_is_opened == false)
       {
-	if (reset () && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
+	if (reset () == NO_ERROR && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
 	  {
 	    m_is_opened = true;
 	  }
