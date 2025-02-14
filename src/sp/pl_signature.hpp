@@ -132,4 +132,9 @@ using PL_SIGNATURE_TYPE = cubpl::pl_signature;
 using PL_SIGNATURE_ARG_TYPE = cubpl::pl_arg;
 using PL_SIGNATURE_ARRAY_TYPE = cubpl::pl_signature_array;
 
+#if defined(SERVER_MODE)
+void pl_sig_placement_new (PL_SIGNATURE_TYPE *sig);
+void pl_sig_array_placement_new (PL_SIGNATURE_ARRAY_TYPE *sig_arr);
+#endif
+
 #endif // _PL_SIGNATURE_HPP_
