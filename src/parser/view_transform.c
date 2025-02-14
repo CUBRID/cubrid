@@ -4958,161 +4958,7 @@ mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *with_clause = NULL, *pointer_list = NULL;
   PT_NODE *pointer, *cte_definition_list, *prev, *curr, *next;
-  CTE_INFO *info = NULL;
-
-  (void) parser_walk_tree (parser, node, mq_find_with_clause, &with_clause, NULL, NULL);
-  if (with_clause == NULL)
-    {
-      return node;
-    }
-
-  cte_definition_list = with_clause->info.with_clause.cte_definition_list;
-
-  (void) parser_walk_tree (parser, node, mq_count_cte_references, &info, NULL, NULL);
-
-  node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, info, NULL, NULL);
-
-  prev = NULL;
-  curr = cte_definition_list;
-
-  /* TODO: This is a temporary implementation that needs to be rewritten later */
-  while (info)
-    {
-      CTE_INFO *curr_info;
-      curr_info = info;
-      info = info->next;
-
-      if (curr_info->count < 2)
-	{
-	  curr = cte_definition_list;
-
-	  while (curr)
-	    {
-	      if (curr_info->cte == curr)
-		{
-		  if (prev == NULL)
-		    {
-		      cte_definition_list = curr->next;
-		    }
-		  else
-		    {
-		      prev->next = curr->next;
-		    }
-		  parser_free_node (parser, curr);
-		  break;
-		}
-
-	      prev = curr;
-	      curr = curr->next;
-	    }
-
-	  free_and_init (curr_info);
-	}
-    }
-
-  if (cte_definition_list != NULL)
-    {
-      with_clause->info.with_clause.cte_definition_list = cte_definition_list;
-    }
-  else
-    {
-      parser_free_node (parser, with_clause);
-    }
-
-  return node;
-}
-
-
-static PT_NODE *
-mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  CTE_INFO **info = (CTE_INFO **) arg;
-  CTE_INFO *prev, *curr;
-
-  PT_NODE *node_pointer;
-
-
-  switch (node->node_type)
-    {
-    case PT_WITH_CLAUSE:
-//       *continue_walk = PT_LIST_WALK;
-      break;
-
-    case PT_SPEC:
-      if (PT_SPEC_IS_CTE (node))
-	{
-	  node_pointer = PT_SPEC_CTE_POINTER (node);
-	  // cte_list = parser_copy_tree (parser, node_pointer);
-	  CAST_POINTER_TO_NODE (node_pointer);
-
-
-	  if (node_pointer->info.cte.non_recursive_part->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
-	    {
-	      //       *continue_walk = PT_LIST_WALK;
-	      return node;
-	    }
-
-	  curr = *info;
-
-	  while (curr)
-	    {
-	      if (node_pointer == curr->cte)
-		{
-		  if (!(node_pointer->info.cte.non_recursive_part->info.query.q.select.hint & PT_HINT_INLINE_CTE))
-		    {
-		      curr->count++;
-		    }
-		  break;
-		}
-	      prev = curr;
-	      curr = curr->next;
-	    }
-
-	  if (curr == NULL)
-	    {
-	      CTE_INFO *new_info = (CTE_INFO *) malloc (sizeof (CTE_INFO));
-
-	      new_info->cte = node_pointer;
-
-	      if (node_pointer->info.cte.non_recursive_part->info.query.q.select.hint & PT_HINT_INLINE_CTE)
-		{
-		  //       *continue_walk = PT_LIST_WALK;
-		  new_info->count = -1;
-		}
-	      else
-		{
-		  new_info->count = 1;
-		}
-	      new_info->next = NULL;
-
-	      if (*info == NULL)
-		{
-		  *info = new_info;
-		}
-	      else
-		{
-		  prev->next = new_info;
-		}
-	    }
-
-	}
-      break;
-    default:
-      break;
-    }
-
-  return node;
-}
-
-static PT_NODE *
-mq_find_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE **with_clause = (PT_NODE **) arg;
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
+  CTE_INFO *info = NULL, *temp;
 
   switch (node->node_type)
     {
@@ -5122,29 +4968,140 @@ mq_find_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     case PT_INTERSECTION:
       if (node->info.query.with != NULL)
 	{
-	  *with_clause = node->info.query.with;
-	  //   node->info.query.with = NULL;
-	  *continue_walk = PT_STOP_WALK;
+	  with_clause = node->info.query.with;
 	}
       break;
 
     case PT_DELETE:
       if (node->info.delete_.with != NULL)
 	{
-	  *with_clause = node->info.delete_.with;
-	  //   node->info.delete_.with = NULL;
-	  *continue_walk = PT_STOP_WALK;
+	  with_clause = node->info.delete_.with;
 	}
       break;
     case PT_UPDATE:
       if (node->info.update.with != NULL)
 	{
-	  *with_clause = node->info.update.with;
-	  //   node->info.update.with = NULL;
-	  *continue_walk = PT_STOP_WALK;
+	  with_clause = node->info.update.with;
 	}
       break;
 
+    default:
+      break;
+    }
+
+  if (with_clause == NULL)
+    {
+      return node;
+    }
+
+  with_clause = parser_walk_tree (parser, with_clause, mq_rewrite_cte_pre, info, NULL, NULL);
+
+  (void) parser_walk_tree (parser, node, mq_count_cte_references, &info, pt_continue_walk, NULL);
+
+  node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, info, NULL, NULL);
+
+
+  cte_definition_list = with_clause->info.with_clause.cte_definition_list;
+  while (info)
+    {
+      temp = info;
+      info = info->next;
+      if (temp->count < 2)
+	{
+	  cte_definition_list = pt_remove_from_list (parser, temp->cte, cte_definition_list);
+	}
+      free_and_init (temp);
+    }
+
+  if (cte_definition_list != NULL)
+    {
+      with_clause->info.with_clause.cte_definition_list = cte_definition_list;
+    }
+  else
+    {
+      parser_free_tree (parser, with_clause);
+    }
+
+  return node;
+}
+
+static PT_HINT_ENUM
+mq_find_hint (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      return node->info.query.q.select.hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_INLINE_CTE);
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      return mq_find_hint (parser, node->info.query.q.union_.arg1);
+
+    default:
+      return PT_HINT_NONE;
+
+    }
+}
+
+static PT_NODE *
+mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  CTE_INFO **info = (CTE_INFO **) arg;
+  CTE_INFO *prev, *curr = NULL;
+  PT_NODE *node_pointer, *cte;
+  PT_HINT_ENUM hint;
+
+  switch (node->node_type)
+    {
+    case PT_WITH_CLAUSE:
+      cte = node->info.with_clause.cte_definition_list;
+      while (cte)
+	{
+	  hint = mq_find_hint (parser, cte->info.cte.non_recursive_part);
+	  CTE_INFO *new_info = (CTE_INFO *) malloc (sizeof (CTE_INFO));
+	  new_info->cte = cte;
+	  new_info->count = (hint & PT_HINT_MATERIALIZE_CTE) ? 2 : 0;
+	  new_info->next = NULL;
+
+	  if (*info == NULL)
+	    {
+	      *info = new_info;
+	    }
+	  else
+	    {
+	      prev->next = new_info;
+	    }
+
+	  prev = new_info;
+	  cte = cte->next;
+	}
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_SPEC:
+      if (PT_SPEC_IS_CTE (node))
+	{
+	  node_pointer = PT_SPEC_CTE_POINTER (node);
+	  CAST_POINTER_TO_NODE (node_pointer);
+
+	  hint = mq_find_hint (parser, node_pointer->info.cte.non_recursive_part);
+	  curr = *info;
+	  while (curr)
+	    {
+	      if (node_pointer == curr->cte)
+		{
+		  if (hint & ~PT_HINT_INLINE_CTE)
+		    {
+		      curr->count++;
+		    }
+		  break;
+		}
+	      prev = curr;
+	      curr = curr->next;
+	    }
+	}
+      break;
     default:
       break;
     }
@@ -5166,12 +5123,24 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   switch (node->node_type)
     {
+    case PT_WITH_CLAUSE:
+      break;
     case PT_SPEC:
       if (PT_SPEC_IS_CTE (node))
 	{
 	  node_pointer = PT_SPEC_CTE_POINTER (node);
 	  cte_list = parser_copy_tree (parser, node_pointer);
 	  CAST_POINTER_TO_NODE (cte_list);
+
+	  PT_HINT_ENUM hint;
+	  if (cte_info == NULL)
+	    {
+	      hint = mq_find_hint (parser, cte_list->info.cte.non_recursive_part);
+	      if (hint & PT_HINT_MATERIALIZE_CTE)
+		{
+		  return node;
+		}
+	    }
 
 	  while (cte_info)
 	    {
@@ -5181,15 +5150,11 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 		    {
 		      return node;
 		    }
+		  *continue_walk = PT_LIST_WALK;
+
 		  break;
 		}
 	      cte_info = cte_info->next;
-	    }
-
-	  if (cte_list->info.cte.non_recursive_part->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
-	    {
-	      // *continue_walk = PT_LIST_WALK;
-	      return node;
 	    }
 
 	  attributes = parser_copy_tree_list (parser, cte_list->info.cte.as_attr_list);
