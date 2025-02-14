@@ -18,53 +18,59 @@
 
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
+#include "faiss/utils/distances.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "set_object.h"
 
-/**
- * Computes the L2 distance between two string representations.
- *
- * Note: This is a temporary implementation. A constant value is returned,
- * and the Faiss library will be used for an actual calculation soon.
- *
- * @param result  Pointer to the DB_VALUE that will hold the result.
- * @param args    Array of DB_VALUE pointers; expects exactly two string values.
- * @param num_args The number of arguments provided.
- *
- * @return 0 on success; a non-zero error code otherwise.
- */
-int
-vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+static std::vector<float> db_value_get_stdvector_float (const DB_VALUE* value)
 {
-  // Validate the number of arguments.
-  if (num_args != 2)
+  assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
+
+  DB_SET* set_ref = db_get_set (value);
+
+  int size = db_set_size (set_ref);
+
+  std::vector<float> result;
+  result.reserve (static_cast<size_t> (size));
+
+  DB_VALUE element;
+  for (int i = 0; i < size; ++i)
     {
-      fprintf (stderr, "vector_l2_distance error: expected 2 arguments, but received %d.\n", num_args);
-      return ER_OBJ_INVALID_ARGUMENTS;
+      if (db_set_get (set_ref, i, &element) != NO_ERROR)
+	{
+	  assert (false);
+	}
+      result.push_back ((db_get_float (&element)));
     }
 
-  // Log the input arguments for debugging purposes.
-  // Using a conditional operator to handle potential NULL values.
-  DB_VALUE *arg0 = args[0];
-  DB_VALUE *arg1 = args[1];
+  for (auto i : result)
+    {
+      printf ("%f\n", i);
+    }
 
-  printf ("Computing L2 distance between two vectors:\n");
-  printf ("arg 1: ");
-  db_value_print (arg0);
-  printf ("\n");
-  printf ("arg 2: ");
-  db_value_print (arg1);
-  printf ("\n");
 
-  DB_SET *set0 = db_get_set (arg0);
-  set_size(set0);
-  // printf ("size: %d\n", size);
-
-  // TODO: Replace this constant with a real computation using the Faiss library.
-  db_make_double (result, 9999999.99999999);
-
-  return 0;
+  return result;
 }
 
+
+/**
+* Computes the L2 distance between two Vector DB_VALUE objects.
+*/
+int vector_l2_distance (DB_VALUE* result, DB_VALUE* args[], int num_args)
+{
+
+  assert (num_args == 2);
+
+  // Extract float vectors from the provided DB_VALUE objects.
+  const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
+  const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
+
+  assert (vec1.size() == vec2.size());
+
+  const float distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
+
+  // Store the result.
+  db_make_double (result, distance);
+  return NO_ERROR;
+}
 

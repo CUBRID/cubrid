@@ -366,9 +366,6 @@ func_all_signatures sig_of_regexp_like =
 func_all_signatures sig_of_vector_distance_l2 =
 {
   {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING, PT_TYPE_VECTOR}, {}},
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 func_all_signatures sig_of_regexp_replace =
@@ -693,6 +690,8 @@ namespace func_type
 	    return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
 		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
+	  case PT_TYPE_VECTOR:
+	    return PT_IS_STRING_TYPE (type_enum);
 	  default:
 	    return type.val.type == type_enum;
 	  }
