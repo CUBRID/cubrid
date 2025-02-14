@@ -286,7 +286,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
   else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
     {
-      assert (qmgr_max_query_entry_per_tran >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -387,6 +386,7 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
   pthread_mutex_lock (&tran_entry_p->mutex);
   query_p->next = tran_entry_p->free_query_entry_list_p;
   tran_entry_p->free_query_entry_list_p = query_p;
+  tran_entry_p->num_query_entries--;
   pthread_mutex_unlock (&tran_entry_p->mutex);
 }
 
@@ -1876,6 +1876,11 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+  if (query_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
+      goto exit_on_error;
+    }
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
@@ -2220,7 +2225,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   /* if the transaction is aborting, clear relative cache entries */
   if (tran_entry_p->modified_classes_p)
     {
-      if (!QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
+      if (!is_abort && !QFILE_IS_LIST_CACHE_DISABLED && !qfile_has_no_cache_entries ())
 	{
 	  qmgr_clear_relative_cache_entries (thread_p, tran_entry_p);
 	}
@@ -2233,10 +2238,13 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
 #if defined (SERVER_MODE) && !defined (NDEBUG)
-  /* there should be no active query */
-  for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
+  if (!session_has_pl_session (thread_p))
     {
-      assert (query_p->query_status == QUERY_COMPLETED);
+      /* there should be no active query */
+      for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
+	{
+	  assert (query_p->query_status == QUERY_COMPLETED);
+	}
     }
 #endif
 
@@ -2344,9 +2352,11 @@ qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block_p)
 {
   OID_BLOCK_LIST *p;
 
-  for (p = oid_block_p; p; p = p->next)
+  while (oid_block_p)
     {
-      p->last_oid_idx = 0;
+      p = oid_block_p;
+      oid_block_p = p->next;
+      free (p);
     }
 }
 
@@ -3165,7 +3175,12 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      return true;
+      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
+	{
+	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
+	  // And this routine is called in the middle of processing the root query.
+	  return true;
+	}
     }
 
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));

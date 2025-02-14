@@ -507,11 +507,11 @@ authenticate_context::install (void)
 
   set_user (dba_user);
 
-  au_change_owner (root_cls, current_user);
-  au_change_owner (old_cls, current_user);
-  au_change_owner (user_cls, current_user);
-  au_change_owner (pass_cls, current_user);
-  au_change_owner (auth_cls, current_user);
+  au_change_class_owner_including_partitions (root_cls, current_user);
+  au_change_class_owner_including_partitions (old_cls, current_user);
+  au_change_class_owner_including_partitions (user_cls, current_user);
+  au_change_class_owner_including_partitions (pass_cls, current_user);
+  au_change_class_owner_including_partitions (auth_cls, current_user);
 
   /* create the PUBLIC user */
   public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);

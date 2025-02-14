@@ -74,6 +74,7 @@ DECIMAL:                      D E C I M A L ;
 DECLARE:                      D E C L A R E ;
 DEFAULT:                      D E F A U L T ;
 DEFINER:                      D E F I N E R ;
+DETERMINISTIC:                D E T E R M I N I S T I C;
 DIV:                          D I V ;
 DOUBLE:                       D O U B L E ;
 ELSE:                         E L S E ;
@@ -266,7 +267,7 @@ SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
 // Fragment rules
 // ************************
 
-fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+ | BASIC_UINT '.') ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
+fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+) ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
 fragment FPNUM_WO_POINT : BASIC_UINT [eE] ('+'|'-')? BASIC_UINT [fF]?;
 fragment BASIC_UINT     : '0'|[1-9][0-9]*;
 fragment NEWLINE_EOF    : NEWLINE | EOF;

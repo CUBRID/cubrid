@@ -61,7 +61,6 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
-#include "authenticate_access_auth.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -977,7 +976,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      if (error != NO_ERROR)
 		{
 		  if (pt_has_error (parser))
@@ -1054,7 +1053,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type);
+							 d->info.data_default.default_expr_type, true);
 	      db_value_clear (&src_val);
 	      temp_val->info.value.db_value_is_in_workspace = 0;
 	      parser_free_node (parser, temp_val);
@@ -10174,11 +10173,9 @@ static int
 do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
-  DB_OBJECT *obj = NULL;
-  MOP class_mop, user_mop, save_user, owner;
+  MOP class_mop, user_mop;
   PT_NODE *class_, *user;
   SM_CLASS *sm_class = NULL;
-  const char *table_name;
 
   assert (alter != NULL);
 
@@ -10202,41 +10199,12 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
       return error;
     }
 
-  table_name = sm_get_ch_name (class_mop);
-  if (table_name == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
   /* To change the owner of a system class is not allowed. */
   if (sm_issystem (sm_class))
     {
       ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
       return error;
     }
-
-  /* when changing the owner, all privileges are revoked */
-  owner = au_get_class_owner (class_mop);
-  if (owner == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      return error;
-    }
-
-  save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
-    {
-      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
-      if (error != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  return error;
-	}
-    }
-
-  AU_SET_USER (save_user);
 
   user_mop = au_find_user (user->info.name.original);
   if (user_mop == NULL)
@@ -13131,7 +13099,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
     }
 
   error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					     on_update_expr_type);
+					     on_update_expr_type, true);
 
   if (pt_has_error (parser))
     {
@@ -13299,7 +13267,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       if (def_expr_type == DB_DEFAULT_NONE)
 	{
 	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
@@ -13338,7 +13306,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
-						     def_expr_type);
+						     def_expr_type, true);
 	  db_value_clear (&src);
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);

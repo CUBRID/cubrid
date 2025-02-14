@@ -573,7 +573,6 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
     res = pl_create_java_vm (&env_p, &vm_arguments);
     delete[] options;
 
-#if !defined(WINDOWS)
     if (er_has_error ())
       {
 	if (locale != NULL)
@@ -582,7 +581,6 @@ pl_start_jvm_server (const char *db_name, const char *path, int port)
 	  }
 	return er_errid ();
       }
-#endif
 
     setlocale (LC_TIME, locale);
     if (locale != NULL)
@@ -731,7 +729,6 @@ pl_server_port (void)
 int
 pl_server_port_from_info (void)
 {
-#if defined (SERVER_MODE)
   // check $CUBRID/var/pl_<db_name>.info
   if (sp_port != PL_PORT_DISABLED)
     {
@@ -739,7 +736,7 @@ pl_server_port_from_info (void)
       pl_read_info (boot_db_name (), pl_info);
       sp_port = pl_info.port;
     }
-#endif
+
   return sp_port;
 }
 
