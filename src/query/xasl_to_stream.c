@@ -7777,12 +7777,7 @@ xts_get_offset_visited_ptr (const void *ptr)
 static void
 xts_free_visited_ptrs (void)
 {
-  size_t i;
-
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
-    {
-      xts_Ptr_lwm[i] = 0;
-    }
+  memset (xts_Ptr_lwm, 0x00, sizeof (xts_Ptr_lwm));
 }
 
 /*
