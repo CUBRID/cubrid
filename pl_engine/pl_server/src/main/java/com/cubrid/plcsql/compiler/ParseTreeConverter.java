@@ -204,14 +204,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
-                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
-                        || (tsp.typeVisitMode == TYPE_VISIT_RETURN
-                                && ct.colType.type == DBType.DB_NUMERIC)) {
+                if (tsp.typeVisitMode != TYPE_VISIT_NORMAL) {
+                    // Visiting a parameter type or return type.
+                    // Ignore specified precision and scale.
+                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
+                } else {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
                                     iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
-                } else {
-                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 }
             } else {
                 assert false : "unreachable";
