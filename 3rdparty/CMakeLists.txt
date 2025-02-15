@@ -538,7 +538,7 @@ if(WITH_LIBGFLAGS STREQUAL "EXTERNAL")
     set(LIBGFLAGS_LIBS ${3RDPARTY_LIBS_DIR}/Install/libgflags/lib/libgflags.a)
     set(LIBGFLAGS_LIBDIR ${3RDPARTY_LIBS_DIR}/Install/libgflags/lib)
     set(LIBGFLAGS_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/libgflags/include)
-    set(LIBGFLAGS_CONFIGURE -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/libgflags -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_NC_TESTS=OFF -DBUILD_CONFIG_TESTS=OFF -DGFLAGS_NAMESPACE=google)
+    set(LIBGFLAGS_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/libgflags -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_NC_TESTS=OFF -DBUILD_CONFIG_TESTS=OFF -DGFLAGS_NAMESPACE=google)
     ADD_BY_PRODUCTS_VARIABLE ("LIBGFLAGS" ${LIBGFLAGS_LIBS})
 
     externalproject_add(${LIBGFLAGS_TARGET}
@@ -555,8 +555,13 @@ if(WITH_LIBGFLAGS STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j install
       "${LIBGFLAGS_BYPRODUCTS}"
     )
+  else(WIN32)
+    message(FATAL_ERROR "Building gflags library from URL is not supported")
   endif(UNIX)
 endif()
+list(APPEND EP_TARGETS ${LIBGFLAGS_TARGET})
+list(APPEND EP_LIBS ${LIBGFLAGS_LIBS})
+list(APPEND EP_INCLUDES ${LIBGFLAGS_INCLUDES})
 
 # rocksdb
 set(LIBROCKSDB_TARGET librocksdb)
@@ -564,7 +569,7 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBROCKSDB_LIBS ${3RDPARTY_LIBS_DIR}/Install/librocksdb/lib64/librocksdb.a)
     set(LIBROCKSDB_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/librocksdb/include)
-    set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
+    set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags -lrt" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
     ADD_BY_PRODUCTS_VARIABLE ("LIBROCKSDB" ${LIBROCKSDB_LIBS})
 
     externalproject_add(${LIBROCKSDB_TARGET}
@@ -581,13 +586,15 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j install
       "${LIBROCKSDB_BYPRODUCTS}"
     )
-
-    list(APPEND ROCKSDB_TARGETS ${LIBROCKSDB_TARGET})
-    list(APPEND ROCKSDB_INCLUDES ${LIBROCKSDB_INCLUDES})
-    list(APPEND ROCKSDB_LIBS ${LIBROCKSDB_LIBS})
+  else(WIN32)
+    message(FATAL_ERROR "Building rocksdb library from URL is not supported")
   endif(UNIX)
 endif()
-add_dependencies(librocksdb libgflags)
+add_dependencies(${LIBROCKSDB_TARGET} ${LIBGFLAGS_TARGET})
+
+list(APPEND EP_TARGETS ${LIBROCKSDB_TARGET})
+list(APPEND EP_LIBS ${LIBROCKSDB_LIBS})
+list(APPEND EP_INCLUDES ${LIBROCKSDB_INCLUDES})
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
@@ -595,16 +602,13 @@ set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
 
 # TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
-# However, TBB and ROCKSDB are only required on the server side and should only be linked to libcubrid.so.
-# To achieve this, TBB and ROCKSDB have been separated into a distinct list to ensure exclusive linking with libcubrid.so.
+# However, TBB is only required on the server side and should only be linked to libcubrid.so.
+# To achieve this, TBB has been separated into a distinct list to ensure exclusive linking with libcubrid.so.
 # Going forward, directories and libraries strictly used on the server side should be categorized
 # under the EP_SERVER_XXX section.
 set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
 set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
-set (ROCKSDB_TARGETS ${ROCKSDB_TARGETS} PARENT_SCOPE)
-set (ROCKSDB_INCLUDES ${ROCKSDB_INCLUDES} PARENT_SCOPE)
-set (ROCKSDB_LIBS ${ROCKSDB_LIBS} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)

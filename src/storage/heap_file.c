@@ -74,6 +74,8 @@
 #include "string_buffer.hpp"
 #include "tde.h"
 
+#include "rocksdb/version.h"
+
 #include <set>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -5165,10 +5167,14 @@ heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
  * maximum size of an object that can be inserted in the heap.
  * Objects that overpass this size are stored in overflow.
  */
+#include <iostream>
 int
 heap_manager_initialize (void)
 {
   int ret;
+
+  /* check */
+  std::cout << "RocksDB version: " << ROCKSDB_MAJOR << "." << ROCKSDB_MINOR << "." << ROCKSDB_PATCH << std::endl;
 
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
 

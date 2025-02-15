@@ -707,6 +707,7 @@ target_external_dependencies(cubridsa
   LZ4
   RAPIDJSON
   RE2
+  LIBROCKSDB
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
