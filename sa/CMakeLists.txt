@@ -476,6 +476,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/cubrocks.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -707,6 +708,7 @@ target_external_dependencies(cubridsa
   LZ4
   RAPIDJSON
   RE2
+  LIBGFLAGS
   LIBROCKSDB
   )
 target_include_directories(cubridsa PRIVATE
