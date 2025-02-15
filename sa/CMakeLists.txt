@@ -709,7 +709,6 @@ target_external_dependencies(cubridsa
   RAPIDJSON
   RE2
   LIBGFLAGS
-  LIBROCKSDB
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

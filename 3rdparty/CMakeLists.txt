@@ -592,9 +592,6 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
 endif()
 add_dependencies(${LIBROCKSDB_TARGET} ${LIBGFLAGS_TARGET})
 
-list(APPEND EP_TARGETS ${LIBROCKSDB_TARGET})
-list(APPEND EP_LIBS ${LIBROCKSDB_LIBS})
-list(APPEND EP_INCLUDES ${LIBROCKSDB_INCLUDES})
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
@@ -627,4 +624,3 @@ expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
 expose_3rdparty_variable(LIBGFLAGS)
-expose_3rdparty_variable(LIBROCKSDB)
