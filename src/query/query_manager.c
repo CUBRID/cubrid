@@ -2238,10 +2238,13 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
 #if defined (SERVER_MODE) && !defined (NDEBUG)
-  /* there should be no active query */
-  for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
+  if (!session_has_pl_session (thread_p))
     {
-      assert (query_p->query_status == QUERY_COMPLETED);
+      /* there should be no active query */
+      for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
+	{
+	  assert (query_p->query_status == QUERY_COMPLETED);
+	}
     }
 #endif
 
@@ -3172,7 +3175,12 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      return true;
+      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
+	{
+	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
+	  // And this routine is called in the middle of processing the root query.
+	  return true;
+	}
     }
 
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
