@@ -28,6 +28,5 @@
 void
 cubrocks::version (void)
 {
-  std::cout << "RocksDB version: " << ROCKSDB_MAJOR << "." << ROCKSDB_MINOR << "." << ROCKSDB_PATCH << std::endl;
 }
 

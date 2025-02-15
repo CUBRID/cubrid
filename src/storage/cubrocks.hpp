@@ -23,8 +23,6 @@
 #ifndef _CUBROCKS_HPP_
 #define _CUBROCKS_HPP_
 
-#include "rocksdb/version.h"
-
 namespace cubrocks
 {
 
