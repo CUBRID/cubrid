@@ -456,16 +456,12 @@ namespace cubpl
     else
       {
 	// not found, create a new server-side cursor
-	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	QMGR_QUERY_ENTRY *query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
-	if (query_entry_p != NULL)
-	  {
-	    // store a new cursor in map
-	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
-	    m_cursor_map [query_id] = cursor;
+	cursor = new query_cursor (thread_p, query_id, is_oid_included);
 
-	    assert (cursor != nullptr);
-	  }
+	// store a new cursor in map
+	m_cursor_map [query_id] = cursor;
+
+	assert (cursor != nullptr);
       }
 
     return cursor;
@@ -495,7 +491,6 @@ namespace cubpl
 	if (cursor)
 	  {
 	    // close the cursor, if it is opened
-	    cursor->close ();
 	    delete cursor;
 	  }
 
