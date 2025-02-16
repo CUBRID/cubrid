@@ -582,8 +582,8 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBROCKSDB_CONFIGURE}
       BUILD_IN_SOURCE      TRUE
-      BUILD_COMMAND        make -j
-      INSTALL_COMMAND      make -j install
+      BUILD_COMMAND        make
+      INSTALL_COMMAND      make install
       "${LIBROCKSDB_BYPRODUCTS}"
     )
   else(WIN32)
