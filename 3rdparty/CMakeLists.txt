@@ -564,33 +564,33 @@ list(APPEND EP_LIBS ${LIBGFLAGS_LIBS})
 list(APPEND EP_INCLUDES ${LIBGFLAGS_INCLUDES})
 
 # rocksdb
-#set(LIBROCKSDB_TARGET librocksdb)
-#if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
-#  if(UNIX)
-#    set(LIBROCKSDB_LIBS ${3RDPARTY_LIBS_DIR}/Install/librocksdb/lib64/librocksdb.a)
-#    set(LIBROCKSDB_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/librocksdb/include)
-#    set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags -lrt" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
-#    ADD_BY_PRODUCTS_VARIABLE ("LIBROCKSDB" ${LIBROCKSDB_LIBS})
+set(LIBROCKSDB_TARGET librocksdb)
+if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
+  if(UNIX)
+    set(LIBROCKSDB_LIBS ${3RDPARTY_LIBS_DIR}/Install/librocksdb/lib64/librocksdb.a)
+    set(LIBROCKSDB_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/librocksdb/include)
+    set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags -lrt" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
+    ADD_BY_PRODUCTS_VARIABLE ("LIBROCKSDB" ${LIBROCKSDB_LIBS})
 
-#    externalproject_add(${LIBROCKSDB_TARGET}
-#      URL                  ${WITH_LIBROCKSDB_URL}
-#      URL_HASH             ${WITH_LIBROCKSDB_URL_HASH}
-#      LOG_CONFIGURE        TRUE
-#      LOG_BUILD            TRUE
-#      LOG_INSTALL          TRUE
-#      TIMEOUT              600
-#      DOWNLOAD_NO_PROGRESS 1
-#      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBROCKSDB_CONFIGURE}
-#      BUILD_IN_SOURCE      TRUE
-#      BUILD_COMMAND        make
-#      INSTALL_COMMAND      make install
-#      "${LIBROCKSDB_BYPRODUCTS}"
-#    )
-#  else(WIN32)
-#    message(FATAL_ERROR "Building rocksdb library from URL is not supported")
-#  endif(UNIX)
-#endif()
-#add_dependencies(${LIBROCKSDB_TARGET} ${LIBGFLAGS_TARGET})
+    externalproject_add(${LIBROCKSDB_TARGET}
+      URL                  ${WITH_LIBROCKSDB_URL}
+      URL_HASH             ${WITH_LIBROCKSDB_URL_HASH}
+      LOG_CONFIGURE        TRUE
+      LOG_BUILD            TRUE
+      LOG_INSTALL          TRUE
+      TIMEOUT              600
+      DOWNLOAD_NO_PROGRESS 1
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBROCKSDB_CONFIGURE}
+      BUILD_IN_SOURCE      TRUE
+      BUILD_COMMAND        make
+      INSTALL_COMMAND      make install
+      "${LIBROCKSDB_BYPRODUCTS}"
+    )
+  else(WIN32)
+    message(FATAL_ERROR "Building rocksdb library from URL is not supported")
+  endif(UNIX)
+endif()
+add_dependencies(${LIBROCKSDB_TARGET} ${LIBGFLAGS_TARGET})
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
