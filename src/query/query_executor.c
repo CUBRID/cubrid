@@ -2112,11 +2112,13 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
+#if !defined(SERVER_MODE)
 	  if (is_final)
 	    {
 	      delete p->s.method_node.sig_array;
 	      p->s.method_node.sig_array = NULL;
 	    }
+#endif
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
