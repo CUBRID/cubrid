@@ -416,14 +416,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   MOP save_user, owner;
   const char *table_name;
 
-  /* when changing the owner, all privileges are revoked */
-  owner = au_get_class_owner (class_mop);
-  if (owner == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
+  /* when changing the owner,  all rights are transferred to the new owner. */
   table_name = sm_get_ch_name (class_mop);
   if (table_name == NULL)
     {
@@ -431,22 +424,12 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
       return error;
     }
 
-  save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
+  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, owner_mop, table_name);
+  if (error != NO_ERROR)
     {
-      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
-      if (error != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  return error;
-	}
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
-  else
-    {
-      AU_SET_USER (save_user);
-      return ER_FAILED;
-    }
-  AU_SET_USER (save_user);
 
   /* change the owner of a partition */
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
@@ -606,14 +589,14 @@ end:
 }
 
 /*
- * au_change_sp_owner_with_privilege_cleanup -
+ * au_change_sp_owner_with_transfer_privileges -
  *   return: error code
  *   parser(in):
  *   sp_mop(in):
  *   owner_mop(in):
  */
 int
-au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
+au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
   MOP owner_mop = NULL, save_user = NULL;
@@ -630,6 +613,20 @@ au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, M
       goto end;
     }
 
+  /* when changing the owner,  all rights are transferred to the new owner. */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
   /* create dummy parser of change_sp_owner_method */
   if (parser == NULL)
     {
@@ -642,38 +639,6 @@ au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, M
 
       parser = dummy_parser;
     }
-
-  /* when changing the owner, all privileges are revoked */
-  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  owner_mop = jsp_get_owner (sp_mop);
-  if (owner_mop == NULL)
-    {
-      error = ER_FAILED;
-      goto end;
-    }
-
-  save_user = Au_user;
-  if (AU_SET_USER (owner_mop) == NO_ERROR)
-    {
-      error = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
-      if (error != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  goto end;
-	}
-    }
-  else
-    {
-      AU_SET_USER (save_user);
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-  AU_SET_USER (save_user);
 
   /* change the owner of a sp */
   error = au_change_sp_owner (parser, sp_mop, new_owner_mop);

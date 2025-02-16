@@ -34,6 +34,48 @@
 
 #include "jsp_cl.h"
 
+static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name,
+    int *row_count);
+static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name);
+
+struct authorization_keyhash
+{
+  std::size_t operator() (const std::tuple<MOP, MOP> &k) const
+  {
+    return std::hash<MOP>() (std::get<0> (k)) ^
+	   std::hash<MOP>() (std::get<1> (k));
+  }
+};
+
+struct authorization_keyequal
+{
+  bool operator() (const std::tuple<MOP, MOP> &lhs,
+		   const std::tuple<MOP, MOP> &rhs) const
+  {
+    return lhs == rhs;
+  }
+};
+
+struct auth_keyhash
+{
+  std::size_t operator() (const std::tuple<MOP, MOP, MOP, DB_AUTH> &k) const
+  {
+    return std::hash<MOP>() (std::get<0> (k)) ^
+	   std::hash<MOP>() (std::get<1> (k)) ^
+	   std::hash<MOP>() (std::get<2> (k)) ^
+	   std::hash<DB_AUTH>() (std::get<3> (k));
+  }
+};
+
+struct auth_keyequal
+{
+  bool operator() (const std::tuple<MOP, MOP, MOP, DB_AUTH> &lhs,
+		   const std::tuple<MOP, MOP, MOP, DB_AUTH> &rhs) const
+  {
+    return lhs == rhs;
+  }
+};
+
 const char *AU_TYPE_SET[] =
 {
   "SELECT",			/* DB_AUTH_SELECT */
@@ -665,16 +707,16 @@ exit:
 }
 
 /*
- * au_object_revoke_all_privileges - drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
+ * au_object_revoke_all_privileges - drop a class, virtual class and procedure all privileges are revoked.
  *   return: error code
- *   obj_mop(in): a class/stored procedure object
- *   grantor_mop(in): a class/stored procedure owner
+ *   obj_type(in) : objcet type
+ *   grantor_mop(in): grantor user
+ *   unique_name(in): class/stored procedure unique_name
  */
 int
 au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save, len, i = 0;
-  const char *auth;
+  int error = NO_ERROR, save, i = 0;
   DB_AUTH db_auth;
   MOP grantee_mop, object_of_mop;
   DB_VALUE val[2];
@@ -806,12 +848,13 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
       if (db_query_get_tuple_value (result, 2, &auth_type_value) == NO_ERROR)
 	{
-	  auth = NULL;
+	  const char *auth_type_char = NULL;
+	  int len;
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth = db_get_char (&auth_type_value, &len);
+	      auth_type_char = db_get_char (&auth_type_value, &len);
 
-	      switch (auth[0])
+	      switch (auth_type_char[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -826,11 +869,11 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 		  break;
 
 		case 'I':
-		  if (auth[2] == 'D')
+		  if (auth_type_char[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth[2] == 'S')
+		  else if (auth_type_char[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }
@@ -859,9 +902,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 	    }
 	}
 
-      assert (grantee_mop != NULL);
-      assert (object_of_mop != NULL);
-      assert (db_auth != DB_AUTH_NONE);
+      assert (grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE);
 
       error = au_revoke (obj_type, grantee_mop, object_of_mop, db_auth, NULL);
       if (error != NO_ERROR)
@@ -893,7 +934,7 @@ exit:
     }
 
   if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || object_of_mop == NULL
-      || auth == NULL || db_auth == DB_AUTH_NONE))
+      || db_auth == DB_AUTH_NONE))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
@@ -910,10 +951,9 @@ exit:
 int
 au_user_revoke_all_privileges (MOP user_mop)
 {
-  int error = NO_ERROR, save, len;
+  int error = NO_ERROR, save;
   int object_type;
   DB_OBJECT_TYPE obj_type;
-  const char *auth;
   DB_AUTH db_auth;
   MOP grantee_mop, obj_mop;
   DB_VALUE name;
@@ -1053,12 +1093,13 @@ au_user_revoke_all_privileges (MOP user_mop)
 
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
-	  auth = NULL;
+	  const char *auth_type_char = NULL;
+	  int len;
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth = db_get_char (&auth_type_value, &len);
+	      auth_type_char = db_get_char (&auth_type_value, &len);
 
-	      switch (auth[0])
+	      switch (auth_type_char[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -1073,11 +1114,11 @@ au_user_revoke_all_privileges (MOP user_mop)
 		  break;
 
 		case 'I':
-		  if (auth[2] == 'D')
+		  if (auth_type_char[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth[2] == 'S')
+		  else if (auth_type_char[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }
@@ -1106,9 +1147,7 @@ au_user_revoke_all_privileges (MOP user_mop)
 	    }
 	}
 
-      assert (grantee_mop != NULL);
-      assert (obj_mop != NULL);
-      assert (db_auth != DB_AUTH_NONE);
+      assert (grantee_mop != NULL && obj_mop != NULL && db_auth != DB_AUTH_NONE);
 
       error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
       if (error != NO_ERROR)
@@ -1136,8 +1175,638 @@ exit:
   db_value_clear (&auth_type_value);
   db_value_clear (&name);
 
-  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL || auth == NULL
+  if (row_count < 0 && er_errid () == NO_ERROR && (grantee_mop == NULL || obj_mop == NULL
       || db_auth == DB_AUTH_NONE || (object_type != 0 && object_type != 5)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+    }
+
+  return (error);
+}
+
+/*
+ * au_object_owner_change_privileges
+ *   return: error code
+ *   obj_type(in): the object type
+ *   new_owner_mop(in): class/stored procedure new owner
+ *   unique_name(in):
+ * NOTE
+ * When the owner of a class, virtual class, or procedure is changed, the previous owner's privileges are transferred to the new owner.
+ *
+ * However, if the new owner already possesses the privileges granted by the previous owner, those privileges are removed.
+ * Reason: The REVOKE statement cannot revoke privileges from the owner.
+ */
+int
+au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
+{
+  int error = NO_ERROR;
+  int update_count_db_authorization = 0;
+
+  assert (new_owner_mop != NULL && unique_name != NULL);
+
+  // 1. db_authorization 카탈로그 수정
+  error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+  // 2. _db_auth 카탈로그 수정
+  if (update_count_db_authorization)
+    {
+      // 2. _db_auth 카탈로그 삭제 & 기록
+      error = update_auth_for_new_owner (obj_type, new_owner_mop, unique_name);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
+	}
+    }
+
+exit:
+
+  return (error);
+}
+
+static int
+update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
+{
+  int error = NO_ERROR, save;
+  char obj_fetch_query[256];
+  const char *sql_query =
+	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[object_of] = (%s)"
+	  " GROUP BY [au].grantee";
+  DB_VALUE val;
+  DB_SESSION *session = NULL;
+  int stmt_id;
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE grantee_value, object_of_value;
+  MOP grantee_mop, object_of_mop, auth, new_auth;
+  DB_SET *grants = NULL, *new_grants = NULL;
+  int gindex, gsize, new_gindex;
+  std::unordered_map<std::tuple<MOP, MOP>, int, authorization_keyhash, authorization_keyequal>
+  authorization_unordered_map;
+
+  assert (new_owner_mop != NULL && unique_name != NULL);
+
+  db_make_null (&val);
+  db_make_null (&grantee_value);
+  db_make_null (&object_of_value);
+
+  AU_DISABLE (save);
+
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PROCEDURE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  /* 1. 쿼리 조회 */
+  session = db_open_buffer_local (obj_fetch_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  /* Prepare DB_VALUEs for host variables */
+  db_make_string (&val, unique_name);
+
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+
+  /* The error value is row count if it's not negative value. */
+  if (error == 0)
+    {
+      *row_count = error;
+      goto release;
+    }
+  else if (error < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  *row_count = error;
+  error = NO_ERROR;
+
+  /* 2. 결과 값을 가지고 _db_auth와 db_authorization 카탈로그 수정 */
+  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
+	{
+	  grantee_mop = NULL;
+	  if (!DB_IS_NULL (&grantee_value))
+	    {
+	      grantee_mop = db_get_object (&grantee_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
+	{
+	  object_of_mop = NULL;
+	  if (!DB_IS_NULL (&object_of_value))
+	    {
+	      object_of_mop = db_get_object (&object_of_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      assert (grantee_mop != NULL && object_of_mop != NULL);
+
+      /* 3. db_authorization 카탈로그의 값을 수정하는 로직 */
+      if (au_get_object (grantee_mop, "authorization", &auth) != NO_ERROR)
+	{
+	  error = ER_AU_ACCESS_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	  goto release; //break;
+	}
+      else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
+	// 오브젝트(Instance)를 가져오는 핵심 함수, 메모리에서 먼저 찾고, 없으면 데이터베이스에서 가져옴
+	{
+	  error = ER_AU_CANT_UPDATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto release; //break;
+	}
+      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
+	{
+	  gsize = set_size (grants);
+	  for (gindex = 0; gindex < gsize && error == NO_ERROR; gindex += GRANT_ENTRY_LENGTH)
+	    {
+	      if (set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &val))
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  goto release;
+		}
+
+	      if (db_get_object (&val) == object_of_mop)
+		{
+		  /*
+		   * grantee가 새로운 소유자가될 때, 이전에 부여받은 권한은 삭제
+		   * 이유 : 소유자의 권한을 revoke 할 수 없기 때문
+		   * grantee_mop : grantee_user
+		   * new_owner_mop : grnator_user
+		   *
+		   * ex) SELECT * FROM db_authorization;
+		   *   owner            grants
+		   * ================================
+		   *   grantee         {..,unique_name, grantor, ..}
+		   */
+		  if (ws_is_same_object (grantee_mop, new_owner_mop))
+		    {
+		      // 4-1. db_authorization 카탈로그의 grants 삭제 (grentee == new_owner)
+		      drop_grant_entry (grants, gindex);
+		      gindex -= GRANT_ENTRY_LENGTH;
+		      gsize -= GRANT_ENTRY_LENGTH;
+		    }
+		  else
+		    {
+		      // 4-2. db_authorization 카탈로그의 grants 변경 (grentee != new_owner)
+		      int current_cache;
+
+		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &val);
+		      current_cache = db_get_int (&val);
+
+		      //기록, mask를 합쳐야하고, 지워야하고
+		      auto key = std::make_tuple (grantee_mop, object_of_mop);
+		      if (authorization_unordered_map.find (key) == authorization_unordered_map.end())
+			{
+			  authorization_unordered_map[key] = current_cache;  // 첫 번째 값 저장
+			}
+		      else
+			{
+			  authorization_unordered_map[key] |= current_cache;  // 기존 값과 bitwise OR 수행
+			}
+
+		      drop_grant_entry (grants, gindex);
+		      gindex -= GRANT_ENTRY_LENGTH;
+		      gsize -= GRANT_ENTRY_LENGTH;
+		    }
+		}
+	    }
+	}
+    }
+
+  // bit 값을 or 수행한거 다시 삽입
+  for (const auto &entry : authorization_unordered_map)
+    {
+      const auto &key = entry.first;
+      int current_cache = entry.second;
+
+      if (au_get_object (std::get<0> (key), "authorization", &new_auth) != NO_ERROR)
+	{
+	  error = ER_AU_ACCESS_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
+	  goto release; //break;
+	}
+      else if ((error = obj_inst_lock (new_auth, 1)) == NO_ERROR
+	       && (error = get_grants (new_auth, &new_grants, 1)) == NO_ERROR)
+	{
+	  new_gindex = add_grant_entry (new_grants, obj_type, std::get<1> (key), new_owner_mop);
+	  db_make_int (&val, current_cache);
+	  set_put_element (new_grants, GRANT_ENTRY_CACHE (new_gindex), &val);
+
+	  /* Fail to insert/update, never change the grant entry set. */
+	  if (error != NO_ERROR)
+	    {
+	      goto release;
+	    }
+	}
+    }
+
+  if (obj_type == DB_OBJECT_CLASS)
+    {
+      SM_CLASS *classobj;
+
+      if ((error = au_fetch_class_force (object_of_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
+	{
+	  /*
+	   * clear the cache for this user/class pair to make sure we
+	   * recalculate it the next time it is referenced
+	   */
+	  Au_cache.reset_cache_for_user_and_class (classobj);
+	}
+    }
+
+  /*
+   * Make sure any cached parse trees are rebuild.  This proabably
+   * isn't necessary for GRANT, only REVOKE.
+   */
+  sm_bump_local_schema_version ();
+
+release:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  pr_clear_value (&val);
+  pr_clear_value (&grantee_value);
+  pr_clear_value (&object_of_value);
+
+  if (grants != NULL)
+    {
+      set_free (grants);
+    }
+
+  if (new_grants != NULL)
+    {
+      set_free (new_grants);
+    }
+
+  if (grantee_mop == NULL && object_of_mop == NULL && er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+    }
+
+  return (error);
+
+}
+
+static int
+update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
+{
+  int error = NO_ERROR, save;
+  char obj_fetch_query[256];
+  const char *sql_query =
+	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[object_of] = (%s)";
+  DB_SESSION *session = NULL;
+  int stmt_id;
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE val, db_auth_object_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
+  MOP db_auth_object_mop, grantee_mop, object_of_mop;
+  DB_AUTH db_auth;
+  int is_grantable;
+  MOP auth;
+  size_t au_db_auth_size;
+  au_auth_accessor accessor;
+  std::unordered_map<std::tuple<MOP, MOP, MOP, DB_AUTH>, int, auth_keyhash, auth_keyequal> auth_unordered_map;
+
+  assert (new_owner_mop != NULL && unique_name != NULL);
+
+  db_make_null (&val);
+  db_make_null (&db_auth_object_value);
+  db_make_null (&grantee_value);
+  db_make_null (&object_of_value);
+  db_make_null (&auth_type_value);
+  db_make_null (&is_grantable_value);
+
+  AU_DISABLE (save);
+
+  switch (obj_type)
+    {
+    case DB_OBJECT_CLASS:
+      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PROCEDURE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    default:
+      assert (false);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  /* 1. 쿼리 조회 */
+  session = db_open_buffer_local (obj_fetch_query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto release;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  /* Prepare DB_VALUEs for host variables */
+  db_make_string (&val, unique_name);
+
+  error = db_push_values (session, 1, &val);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &result);
+
+  /* The error value is row count if it's not negative value. */
+  if (error == 0)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto release;
+    }
+  else if (error < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto release;
+    }
+
+  error = NO_ERROR;
+  while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      /* 2-1. [au].object */
+      if (db_query_get_tuple_value (result, 0, &db_auth_object_value) == NO_ERROR)
+	{
+	  db_auth_object_mop = NULL;
+	  if (!DB_IS_NULL (&db_auth_object_value))
+	    {
+	      db_auth_object_mop = db_get_object (&db_auth_object_value);
+	    }
+	}
+
+      /* 2-2. [au].grnatee */
+      if (db_query_get_tuple_value (result, 1, &grantee_value) == NO_ERROR)
+	{
+	  grantee_mop = NULL;
+	  if (!DB_IS_NULL (&grantee_value))
+	    {
+	      grantee_mop = db_get_object (&grantee_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      /* 2-3. [au].object_of */
+      if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
+	{
+	  object_of_mop = NULL;
+	  if (!DB_IS_NULL (&object_of_value))
+	    {
+	      object_of_mop = db_get_object (&object_of_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      /* 2-4. [au].auth_type */
+      if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
+	{
+	  const char *auth_type_char = NULL;
+	  int len;
+	  if (!DB_IS_NULL (&auth_type_value))
+	    {
+	      auth_type_char = db_get_char (&auth_type_value, &len);
+
+	      switch (auth_type_char[0])
+		{
+		case 'A':
+		  db_auth = DB_AUTH_ALTER;
+		  break;
+
+		case 'D':
+		  db_auth = DB_AUTH_DELETE;
+		  break;
+
+		case 'E':
+		  db_auth = DB_AUTH_EXECUTE;
+		  break;
+
+		case 'I':
+		  if (auth_type_char[2] == 'D')
+		    {
+		      db_auth = DB_AUTH_INDEX;
+		    }
+		  else if (auth_type_char[2] == 'S')
+		    {
+		      db_auth = DB_AUTH_INSERT;
+		    }
+		  else
+		    {
+		      db_auth = DB_AUTH_NONE;
+		    }
+		  break;
+
+		case 'S':
+		  db_auth = DB_AUTH_SELECT;
+		  break;
+
+		case 'U':
+		  db_auth = DB_AUTH_UPDATE;
+		  break;
+
+		default:
+		  db_auth = DB_AUTH_NONE;
+		  break;
+		}
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      /* 2-5. [au].is_grantable */
+      if (db_query_get_tuple_value (result, 4, &is_grantable_value) == NO_ERROR)
+	{
+	  is_grantable = -1;
+	  if (!DB_IS_NULL (&is_grantable_value))
+	    {
+	      is_grantable = db_get_int (&is_grantable_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      assert (db_auth_object_mop != NULL && grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE
+	      && is_grantable != -1 );
+
+      /*
+       * grantee가 새로운 소유자가될 때, 이전에 부여받은 권한은 삭제
+       * 이유 : 소유자의 권한을 revoke 할 수 없기 때문
+       * grantee_mop : grantee_user
+       * new_owner_mop : grnator_user
+       *
+       * ex) SELECT * FROM db_authorization;
+       *   owner            grants
+       * ================================
+       *   grantee         {..,unique_name, grantor, ..}
+       */
+      if (ws_is_same_object (grantee_mop, new_owner_mop))
+	{
+	  /* 5-1. db_auth 카탈로그 삭제 */
+	  //삭제 (accessor.delete_auth)
+	  error = obj_inst_lock (db_auth_object_mop, 1);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto release; //break;
+	    }
+
+	  error = obj_delete (db_auth_object_mop);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto release; //break;
+	    }
+	}
+      else
+	{
+	  /* 5-2. db_auth 카탈로그 기록 및 삭제 */
+	  //기록 및 병합
+	  auto key = std::make_tuple (new_owner_mop, grantee_mop, object_of_mop, db_auth);
+
+	  printf ("row : %d \n", is_grantable);
+
+	  // 중복된 키가 있으면 grant_option을 업데이트 (더 큰 값 유지)
+	  if (auth_unordered_map.find (key) == auth_unordered_map.end() || auth_unordered_map[key] < is_grantable)
+	    {
+	      auth_unordered_map[key] = is_grantable;
+	    }
+
+	  //삭제 (accessor.delete_auth)
+	  error = obj_inst_lock (db_auth_object_mop, 1);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto release; //break;
+	    }
+
+	  error = obj_delete (db_auth_object_mop);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto release; //break;
+	    }
+	}
+    }
+
+  // 병합해서 기록한거 다시 추가
+  for (const auto &entry : auth_unordered_map)
+    {
+      const auto &key = entry.first;
+      int map_grant_option = entry.second;
+
+      error =
+	      accessor.insert_auth (obj_type, std::get<0> (key), std::get<1> (key), std::get<2> (key), std::get<3> (key),
+				    (map_grant_option) ? std::get<3> (key) : DB_AUTH_NONE);
+    }
+
+
+release:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+exit:
+  AU_ENABLE (save);
+
+  db_value_clear (&val);
+  db_value_clear (&db_auth_object_value);
+  db_value_clear (&grantee_value);
+  db_value_clear (&object_of_value);
+  db_value_clear (&auth_type_value);
+  db_value_clear (&is_grantable_value);
+
+  if (db_auth_object_mop == NULL && grantee_mop == NULL && object_of_mop == NULL &&
+      db_auth == DB_AUTH_NONE && is_grantable == -1 && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
