@@ -46,6 +46,7 @@ namespace parallel_heap_scan
 
       void enqueue (std::shared_ptr<entry> entry);
       bool dequeue_timeout (std::shared_ptr<entry> &entry, int milliseconds);
+      bool try_dequeue (std::shared_ptr<entry> &entry);
       void clear();
       size_t size();
 
