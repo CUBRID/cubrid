@@ -555,8 +555,6 @@ if(WITH_LIBGFLAGS STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j install
       "${LIBGFLAGS_BYPRODUCTS}"
     )
-  else(WIN32)
-    message(FATAL_ERROR "Building gflags library from URL is not supported")
   endif(UNIX)
 endif()
 list(APPEND EP_TARGETS ${LIBGFLAGS_TARGET})
@@ -592,8 +590,6 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
       INSTALL_COMMAND      make -j${NUM_CORES} install
       "${LIBROCKSDB_BYPRODUCTS}"
     )
-  else(WIN32)
-    message(FATAL_ERROR "Building rocksdb library from URL is not supported")
   endif(UNIX)
 endif()
 add_dependencies(${LIBROCKSDB_TARGET} ${LIBGFLAGS_TARGET})
