@@ -33,7 +33,7 @@
 namespace parallel_heap_scan
 {
   template<>
-  void memory_mapper::clear_and_free<heap_cache_attrinfo> (heap_cache_attrinfo *ptr)
+  void memory_mapper::clear_and_free (heap_cache_attrinfo *ptr)
   {
     heap_attrinfo_end (NULL, ptr);
     memset (ptr, 0, sizeof (heap_cache_attrinfo));
@@ -42,7 +42,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  void memory_mapper::clear_and_free<PRED_EXPR> (PRED_EXPR *ptr)
+  void memory_mapper::clear_and_free (PRED_EXPR *ptr)
   {
     if (ptr->type == T_EVAL_TERM && ptr->pe.m_eval_term.et_type == T_RLIKE_EVAL_TERM)
       {
@@ -58,7 +58,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  void memory_mapper::clear_and_free<DB_VALUE> (DB_VALUE *ptr)
+  void memory_mapper::clear_and_free (DB_VALUE *ptr)
   {
     pr_clear_value (ptr);
     free (ptr);
@@ -66,7 +66,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  void memory_mapper::clear_and_free<ARITH_TYPE> (ARITH_TYPE *ptr)
+  void memory_mapper::clear_and_free (ARITH_TYPE *ptr)
   {
     if (ptr->rand_seed)
       {
@@ -78,7 +78,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  void memory_mapper::clear_and_free<val_descr> (val_descr *ptr)
+  void memory_mapper::clear_and_free (val_descr *ptr)
   {
     if (!ptr)
       {
@@ -103,7 +103,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  val_descr *memory_mapper::copy_and_map<val_descr> (val_descr *vd)
+  val_descr *memory_mapper::copy_and_map (val_descr *vd)
   {
     val_descr *dest = nullptr;
     if (!vd)
@@ -136,7 +136,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  struct function_node *memory_mapper::copy_and_map<struct function_node> (struct function_node *func)
+  struct function_node *memory_mapper::copy_and_map (struct function_node *func)
   {
     struct function_node *dest = nullptr;
     if (!func)
@@ -165,7 +165,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  PRED_EXPR *memory_mapper::copy_and_map<PRED_EXPR> (PRED_EXPR *src)
+  PRED_EXPR *memory_mapper::copy_and_map (PRED_EXPR *src)
   {
     PRED_EXPR *dest = nullptr;
     typed_memory tm;
@@ -210,7 +210,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  PRED *memory_mapper::copy_and_map<PRED> (PRED *dest)
+  PRED *memory_mapper::copy_and_map (PRED *dest)
   {
     if (!dest)
       {
@@ -222,7 +222,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  EVAL_TERM *memory_mapper::copy_and_map<EVAL_TERM> (EVAL_TERM *dest)
+  EVAL_TERM *memory_mapper::copy_and_map (EVAL_TERM *dest)
   {
     if (!dest)
       {
@@ -256,8 +256,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  struct regu_variable_list_node *memory_mapper::copy_and_map<struct regu_variable_list_node>
-  (struct regu_variable_list_node *src_list)
+  struct regu_variable_list_node *memory_mapper::copy_and_map (struct regu_variable_list_node *src_list)
   {
     if (!src_list)
       {
@@ -327,7 +326,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  DB_VALUE *memory_mapper::copy_and_map<DB_VALUE> (DB_VALUE *src)
+  DB_VALUE *memory_mapper::copy_and_map (DB_VALUE *src)
   {
     DB_VALUE *dest = nullptr;
     if (!src)
@@ -354,7 +353,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  ARITH_TYPE *memory_mapper::copy_and_map<ARITH_TYPE> (ARITH_TYPE *src)
+  ARITH_TYPE *memory_mapper::copy_and_map (ARITH_TYPE *src)
   {
     ARITH_TYPE *dest = nullptr;
     if (!src)
@@ -391,7 +390,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  SP_TYPE *memory_mapper::copy_and_map<SP_TYPE> (SP_TYPE *src)
+  SP_TYPE *memory_mapper::copy_and_map (SP_TYPE *src)
   {
     SP_TYPE *dest = nullptr;
     if (!src)
@@ -420,7 +419,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  heap_cache_attrinfo *memory_mapper::copy_and_map<heap_cache_attrinfo> (heap_cache_attrinfo *src)
+  heap_cache_attrinfo *memory_mapper::copy_and_map (heap_cache_attrinfo *src)
   {
     heap_cache_attrinfo *dest = nullptr;
     if (!src)
@@ -447,7 +446,7 @@ namespace parallel_heap_scan
   }
 
   template<>
-  REGU_VARIABLE *memory_mapper::copy_and_map<REGU_VARIABLE> (REGU_VARIABLE *regu_var)
+  REGU_VARIABLE *memory_mapper::copy_and_map (REGU_VARIABLE *regu_var)
   {
     REGU_VARIABLE *src = regu_var, *dest = nullptr;
     if (!regu_var)

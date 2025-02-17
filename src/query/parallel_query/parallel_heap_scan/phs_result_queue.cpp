@@ -106,7 +106,7 @@ namespace parallel_heap_scan
 	  {
 	    pr_clear_value (&pred);
 	  }
-      }	
+      }
     for (auto &rest : rests)
       {
 	if (DB_NEED_CLEAR (&rest))
