@@ -716,7 +716,8 @@ exit:
 int
 au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save, i = 0;
+  int error = NO_ERROR, save, len, i = 0;
+  const char *auth;
   DB_AUTH db_auth;
   MOP grantee_mop, object_of_mop;
   DB_VALUE val[2];
@@ -848,13 +849,12 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
       if (db_query_get_tuple_value (result, 2, &auth_type_value) == NO_ERROR)
 	{
-	  const char *auth_type_char = NULL;
-	  int len;
+	  auth = NULL;
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth_type_char = db_get_char (&auth_type_value, &len);
+	      auth = db_get_char (&auth_type_value, &len);
 
-	      switch (auth_type_char[0])
+	      switch (auth[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -869,11 +869,11 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 		  break;
 
 		case 'I':
-		  if (auth_type_char[2] == 'D')
+		  if (auth[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth_type_char[2] == 'S')
+		  else if (auth[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }
@@ -951,9 +951,10 @@ exit:
 int
 au_user_revoke_all_privileges (MOP user_mop)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR, save, len;
   int object_type;
   DB_OBJECT_TYPE obj_type;
+  const char *auth;
   DB_AUTH db_auth;
   MOP grantee_mop, obj_mop;
   DB_VALUE name;
@@ -1093,13 +1094,12 @@ au_user_revoke_all_privileges (MOP user_mop)
 
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
-	  const char *auth_type_char = NULL;
-	  int len;
+	  auth = NULL;
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth_type_char = db_get_char (&auth_type_value, &len);
+	      auth = db_get_char (&auth_type_value, &len);
 
-	      switch (auth_type_char[0])
+	      switch (auth[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -1114,11 +1114,11 @@ au_user_revoke_all_privileges (MOP user_mop)
 		  break;
 
 		case 'I':
-		  if (auth_type_char[2] == 'D')
+		  if (auth[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth_type_char[2] == 'S')
+		  else if (auth[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }

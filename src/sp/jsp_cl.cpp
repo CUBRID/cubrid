@@ -1336,7 +1336,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  goto error;
 	}
 
-      err = au_change_sp_owner_with_transfer_privileges (parser, sp_mop, new_owner_mop);
+      err = au_change_sp_owner_with_privilege_cleanup (parser, sp_mop, new_owner_mop);
       if (err != NO_ERROR)
 	{
 	  goto error;
