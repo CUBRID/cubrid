@@ -9621,8 +9621,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 		oss << "[";
 
-		int cardinality = db_set_size (setref);
-		for (int i = 0; i < cardinality; i++)
+		int vector_dim = db_set_size (setref);
+		for (int i = 0; i < vector_dim; i++)
 		  {
 		    if (db_set_get (setref, i, &element) != NO_ERROR)
 		      {
@@ -9639,9 +9639,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      }
 
 		    oss << db_get_string (&str);
-		    if (i < cardinality - 1)
+		    if (i < vector_dim - 1)
 		      {
-			oss << ",";
+			oss << ", ";
 		      }
 		    db_value_clear (&str);
 		  }
