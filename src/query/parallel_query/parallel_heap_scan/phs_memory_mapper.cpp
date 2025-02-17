@@ -512,6 +512,9 @@ namespace parallel_heap_scan
     hsid->rest_regu_list = copy_and_map (phsid->rest_regu_list);
     hsid->scan_pred.pred_expr = copy_and_map (phsid->scan_pred.pred_expr);
     hsid->caches_inited = false;
+    stats.elapsed_scan = {0, 0};
+    stats.elapsed_page_lock = {0, 0};
+    stats.elapsed_enqueue = {0, 0};
   }
 
   memory_mapper::~memory_mapper()

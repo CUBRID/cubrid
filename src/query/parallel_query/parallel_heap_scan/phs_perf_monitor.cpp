@@ -21,7 +21,6 @@
  */
 #if SERVER_MODE && !WINDOWS
 #include "phs_perf_monitor.hpp"
-#include "phs_memory_mapper.hpp"
 #include "phs_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -33,9 +32,11 @@ namespace parallel_heap_scan
     : m_parallelism (parallelism)
   {
     m_scan_stats.resize (parallelism);
+    m_memory_mapper_stats.resize (parallelism);
     for (std::size_t i = 0; i < parallelism; ++i)
       {
 	m_scan_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->get_scan_id()->scan_stats;
+	m_memory_mapper_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->stats;
       }
   }
 
@@ -54,6 +55,9 @@ namespace parallel_heap_scan
 	fprintf (fp, " time: %d", TO_MSEC (m_scan_stats[i].elapsed_scan));
 	fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) m_scan_stats[i].read_rows,
 		 (unsigned long long int) m_scan_stats[i].qualified_rows);
+	fprintf (fp, ", row scan time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_scan));
+	fprintf (fp, ", page lock time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock));
+	fprintf (fp, ", enqueue time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue));
 	fprintf (fp, ")");
       }
   }

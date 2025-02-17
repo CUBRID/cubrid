@@ -44,12 +44,12 @@ namespace parallel_heap_scan
 
   void result_queue::enqueue (std::shared_ptr<result_queue::entry> entry)
   {
+    if (m_queue.size() >= m_queue.capacity() - 2)
+      {
+	std::unique_lock<std::mutex> lock (full_mutex);
+	full_cv.wait (lock, [this] { return m_queue.size() < m_queue.capacity() - 2; });
+      }
     m_queue.push (entry);
-  }
-
-  bool result_queue::try_enqueue (std::shared_ptr<result_queue::entry> entry)
-  {
-    return m_queue.try_push (entry);
   }
 
   bool result_queue::dequeue_timeout (std::shared_ptr<result_queue::entry> &entry, int milliseconds)
@@ -59,23 +59,15 @@ namespace parallel_heap_scan
       {
 	if (m_queue.try_pop (entry))
 	  {
+	    if (m_queue.size() * 2 < m_queue.capacity())
+	      {
+		full_cv.notify_one();
+	      }
 	    return true;
 	  }
 	std::this_thread::sleep_for (std::chrono::milliseconds (1));
       }
     return false;
-  }
-
-  std::shared_ptr<result_queue::entry> result_queue::dequeue ()
-  {
-    std::shared_ptr<entry> entry;
-    m_queue.pop (entry);
-    return entry;
-  }
-
-  bool result_queue::try_dequeue (std::shared_ptr<entry> &entry)
-  {
-    return m_queue.try_pop (entry);
   }
 
   void result_queue::clear()

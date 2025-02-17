@@ -56,6 +56,13 @@ namespace parallel_heap_scan
 	  void *ptr;
       };
 
+      struct phs_stats
+      {
+	struct timeval elapsed_scan;
+	struct timeval elapsed_page_lock;
+	struct timeval elapsed_enqueue;
+      } stats;
+
       memory_mapper() = default;
       ~memory_mapper();
 

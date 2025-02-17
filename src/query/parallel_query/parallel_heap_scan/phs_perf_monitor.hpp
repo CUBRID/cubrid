@@ -27,7 +27,7 @@
 #include <vector>
 #include <stdio.h>
 #include "scan_manager.h"
-
+#include "phs_memory_mapper.hpp"
 namespace parallel_heap_scan
 {
   class perf_monitor
@@ -39,6 +39,7 @@ namespace parallel_heap_scan
       void print_json (FILE *fp);
     private:
       std::vector<SCAN_STATS> m_scan_stats;
+      std::vector<memory_mapper::phs_stats> m_memory_mapper_stats;
       std::size_t m_parallelism;
   };
 }

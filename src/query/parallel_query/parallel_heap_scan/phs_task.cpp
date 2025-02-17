@@ -95,8 +95,10 @@ namespace parallel_heap_scan
     VPID vpid;
     HFID hfid;
     TSC_TICKS start_tick, end_tick;
+    TSC_TICKS t1, t2;
     TSCTIMEVAL tv_diff;
     UINT64 old_fetches = 0, old_ioreads = 0;
+    memory_mapper::phs_stats *stats = &m_memory_mapper->stats;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
 
     if (m_context->has_error())
@@ -135,7 +137,17 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+	if (on_trace)
+	  {
+	    tsc_getticks (&t2);
+	  }
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
+	if (on_trace)
+	  {
+	    tsc_getticks (&t1);
+	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
+	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
+	  }
 
 	if (page_scan_code == S_END)
 	  {
@@ -149,7 +161,17 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
+	    if (on_trace)
+	      {
+		tsc_getticks (&t2);
+	      }
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
+	    if (on_trace)
+	      {
+		tsc_getticks (&t1);
+		tsc_elapsed_time_usec (&tv_diff, t1, t2);
+		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
+	      }
 	    if (rec_scan_code == S_ERROR)
 	      {
 		if (m_context->has_error())
@@ -166,8 +188,18 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
+		if (on_trace)
+		  {
+		    tsc_getticks (&t1);
+		  }
 		auto entry = std::make_shared<result_queue::entry> (scan_id, rec_scan_code);
 		m_result_queue->enqueue (entry);
+		if (on_trace)
+		  {
+		    tsc_getticks (&t2);
+		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
+		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
+		  }
 	      }
 	  }
       }
