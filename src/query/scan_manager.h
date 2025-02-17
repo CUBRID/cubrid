@@ -145,8 +145,10 @@ struct parallel_heap_scan_id
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
   sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
+  #if !WINDOWS
   parallel_heap_scan::manager * manager;
   parallel_heap_scan::perf_monitor * perf_monitor;
+  #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
 

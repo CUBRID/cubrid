@@ -20,7 +20,7 @@
  * phs_context.cpp - derived from cubthread::entry_manager
  */
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 
 #include "phs_context.hpp"
 #include "error_context.hpp"

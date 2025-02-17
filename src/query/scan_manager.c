@@ -4160,7 +4160,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       break;
     case S_PARALLEL_HEAP_SCAN:
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
       scan_start_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;
@@ -4409,7 +4409,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
       scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
 #endif
       break;
@@ -4732,7 +4732,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
       scan_end_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;
@@ -4830,7 +4830,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_PARALLEL_HEAP_SCAN:
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
       scan_close_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;
@@ -5135,7 +5135,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
     case S_PARALLEL_HEAP_SCAN:
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;

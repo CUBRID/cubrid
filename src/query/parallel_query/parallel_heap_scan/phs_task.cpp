@@ -20,7 +20,7 @@
  * phs_task.cpp - derived from cubthread::entry_task
  */
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 
 #include "phs_task.hpp"
 #include "phs_misc.hpp"

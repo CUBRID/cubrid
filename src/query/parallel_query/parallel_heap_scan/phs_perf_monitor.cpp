@@ -19,7 +19,7 @@
 /*
  * phs_perf_monitor.cpp - performance monitor for parallel heap scan
  */
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "phs_perf_monitor.hpp"
 #include "phs_memory_mapper.hpp"
 #include "phs_manager.hpp"

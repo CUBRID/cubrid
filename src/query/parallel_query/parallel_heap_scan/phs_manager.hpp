@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 #define _PARALLEL_HEAP_SCAN_MANAGER_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"

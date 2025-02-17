@@ -24,7 +24,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
 #define _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 
 #include <unordered_map>
 #include <atomic>

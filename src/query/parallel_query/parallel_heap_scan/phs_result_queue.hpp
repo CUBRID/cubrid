@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 #define _PARALLEL_HEAP_SCAN_RESULT_QUEUE_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include <vector>
 #include "dbtype_def.h"
 #include "scan_manager.h"

@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_TASK_HPP_
 #define _PARALLEL_HEAP_SCAN_TASK_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "thread_entry_task.hpp"
 #include "scan_manager.h"
 #include "phs_context.hpp"

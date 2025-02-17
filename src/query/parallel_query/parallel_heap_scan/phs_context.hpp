@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_CONTEXT_HPP_
 #define _PARALLEL_HEAP_SCAN_CONTEXT_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "scan_manager.h"
 #include "phs_memory_mapper.hpp"
 #include "phs_result_queue.hpp"

@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_MISC_HPP_
 #define _PARALLEL_HEAP_SCAN_MISC_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
 #include "scan_manager.h"

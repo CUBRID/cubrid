@@ -21,7 +21,7 @@
  * heap scan-related information from the XASL structure.
  */
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include "phs_memory_mapper.hpp"
 #include "regu_var.hpp"
 #include "query_executor.h"

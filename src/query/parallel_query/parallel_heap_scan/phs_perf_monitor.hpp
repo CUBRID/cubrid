@@ -23,7 +23,7 @@
 #ifndef _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
 #define _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
 
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 #include <vector>
 #include <stdio.h>
 #include "scan_manager.h"
