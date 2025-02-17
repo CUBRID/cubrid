@@ -1209,13 +1209,14 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
 
   AU_DISABLE (save);
 
-  // 1. db_authorization 카탈로그 수정
+  /* 1. db_authorization 카탈로그 수정
   error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
+  */
   // 2. _db_auth 카탈로그 수정
   if (update_count_db_authorization)
     {
