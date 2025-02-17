@@ -3418,13 +3418,14 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 
 	  scan_print_stats_text (fp, &spec->s_id);
+#if !WINDOWS
 	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
 	    {
 	      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name);
 	      delete spec->s_id.s.phsid.perf_monitor;
 	      spec->s_id.s.phsid.perf_monitor = NULL;
 	    }
-
+#endif
 	  if (class_name != NULL)
 	    {
 	      free_and_init (class_name);
