@@ -4689,6 +4689,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
   THREAD_ENTRY *thread_p = NULL;
+  bool status;
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -4808,6 +4809,10 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       cfg_free_directory (dir);
       dir = NULL;
     }
+
+  /* RocksDB */
+  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
+  assert (status);
 
   /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
