@@ -12219,7 +12219,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
   OUTPTR_LIST *output_val_list = NULL;
   REGU_VARIABLE_LIST regu_var_list = NULL;
   DB_VALUE **db_values_array_p = NULL;
-  bool is_parallel_heap_scan_callable = true;
 
   assert (parser != NULL);
 
