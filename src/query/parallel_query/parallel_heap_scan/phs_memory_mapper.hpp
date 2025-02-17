@@ -81,6 +81,26 @@ namespace parallel_heap_scan
 	free (src);
 	m_obj_cnt--;
       }
+
+      // 특수화된 함수들의 선언
+      void clear_and_free (heap_cache_attrinfo *ptr);
+      void clear_and_free (PRED_EXPR *ptr);
+      void clear_and_free (DB_VALUE *ptr);
+      void clear_and_free (ARITH_TYPE *ptr);
+      void clear_and_free (val_descr *ptr);
+
+      val_descr *copy_and_map (val_descr *vd);
+      FUNCTION_TYPE *copy_and_map (FUNCTION_TYPE *func);
+      PRED_EXPR *copy_and_map (PRED_EXPR *src);
+      PRED *copy_and_map (PRED *dest);
+      EVAL_TERM *copy_and_map (EVAL_TERM *dest);
+      regu_variable_list_node *copy_and_map (regu_variable_list_node *src_list);
+      DB_VALUE *copy_and_map (DB_VALUE *src);
+      ARITH_TYPE *copy_and_map (ARITH_TYPE *src);
+      SP_TYPE *copy_and_map (SP_TYPE *src);
+      heap_cache_attrinfo *copy_and_map (heap_cache_attrinfo *src);
+      REGU_VARIABLE *copy_and_map (REGU_VARIABLE *regu_var);
+
     private:
       void *val_descr_ptr;
       void *orig_val_descr_ptr;
@@ -88,39 +108,6 @@ namespace parallel_heap_scan
       std::unordered_map<void *, typed_memory> m_map;
       std::atomic<int> m_obj_cnt;
   };
-  template<>
-  void memory_mapper::clear_and_free (heap_cache_attrinfo *ptr);
-  template<>
-  void memory_mapper::clear_and_free (PRED_EXPR *ptr);
-  template<>
-  void memory_mapper::clear_and_free (DB_VALUE *ptr);
-  template<>
-  void memory_mapper::clear_and_free (ARITH_TYPE *ptr);
-  template<>
-  void memory_mapper::clear_and_free (val_descr *ptr);
-  template<>
-  val_descr *memory_mapper::copy_and_map (val_descr *vd);
-  template<>
-  struct function_node *memory_mapper::copy_and_map (struct function_node *func);
-  template<>
-  PRED_EXPR *memory_mapper::copy_and_map (PRED_EXPR *src);
-  template<>
-  PRED *memory_mapper::copy_and_map (PRED *dest);
-  template<>
-  EVAL_TERM *memory_mapper::copy_and_map (EVAL_TERM *dest);
-  template<>
-  struct regu_variable_list_node *memory_mapper::copy_and_map (struct regu_variable_list_node *src_list);
-  template<>
-  DB_VALUE *memory_mapper::copy_and_map (DB_VALUE *src);
-  template<>
-  ARITH_TYPE *memory_mapper::copy_and_map (ARITH_TYPE *src);
-  template<>
-  SP_TYPE *memory_mapper::copy_and_map (SP_TYPE *src);
-  template<>
-  heap_cache_attrinfo *memory_mapper::copy_and_map (heap_cache_attrinfo *src);
-  template<>
-  REGU_VARIABLE *memory_mapper::copy_and_map (REGU_VARIABLE *regu_var);
-
 }
 #endif /* SERVER_MODE */
 #endif /* _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_ */

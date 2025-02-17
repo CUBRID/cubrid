@@ -32,7 +32,6 @@
 
 namespace parallel_heap_scan
 {
-  template<>
   void memory_mapper::clear_and_free (heap_cache_attrinfo *ptr)
   {
     heap_attrinfo_end (NULL, ptr);
@@ -41,7 +40,6 @@ namespace parallel_heap_scan
     m_obj_cnt--;
   }
 
-  template<>
   void memory_mapper::clear_and_free (PRED_EXPR *ptr)
   {
     if (ptr->type == T_EVAL_TERM && ptr->pe.m_eval_term.et_type == T_RLIKE_EVAL_TERM)
@@ -57,7 +55,6 @@ namespace parallel_heap_scan
     m_obj_cnt--;
   }
 
-  template<>
   void memory_mapper::clear_and_free (DB_VALUE *ptr)
   {
     pr_clear_value (ptr);
@@ -65,7 +62,6 @@ namespace parallel_heap_scan
     m_obj_cnt--;
   }
 
-  template<>
   void memory_mapper::clear_and_free (ARITH_TYPE *ptr)
   {
     if (ptr->rand_seed)
@@ -77,7 +73,6 @@ namespace parallel_heap_scan
     m_obj_cnt--;
   }
 
-  template<>
   void memory_mapper::clear_and_free (val_descr *ptr)
   {
     if (!ptr)
@@ -102,7 +97,6 @@ namespace parallel_heap_scan
     val_descr_ptr = nullptr;
   }
 
-  template<>
   val_descr *memory_mapper::copy_and_map (val_descr *vd)
   {
     val_descr *dest = nullptr;
@@ -135,10 +129,9 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
-  struct function_node *memory_mapper::copy_and_map (struct function_node *func)
+  FUNCTION_TYPE *memory_mapper::copy_and_map (FUNCTION_TYPE *func)
   {
-    struct function_node *dest = nullptr;
+    FUNCTION_TYPE *dest = nullptr;
     if (!func)
       {
 	return NULL;
@@ -147,13 +140,13 @@ namespace parallel_heap_scan
     if (it != m_map.end())
       {
 	assert (it->second.type == Type::FUNCTION_NODE);
-	dest = (struct function_node *) it->second.ptr;
+	dest = (FUNCTION_TYPE *) it->second.ptr;
       }
     else
       {
 	typed_memory tm;
 	tm.type = Type::FUNCTION_NODE;
-	dest = (struct function_node *) malloc (sizeof (struct function_node));
+	dest = (FUNCTION_TYPE *) malloc (sizeof (FUNCTION_TYPE));
 	*dest = *func;
 	dest->value = copy_and_map (func->value);
 	dest->operand = copy_and_map (func->operand);
@@ -164,7 +157,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   PRED_EXPR *memory_mapper::copy_and_map (PRED_EXPR *src)
   {
     PRED_EXPR *dest = nullptr;
@@ -209,7 +201,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   PRED *memory_mapper::copy_and_map (PRED *dest)
   {
     if (!dest)
@@ -221,7 +212,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   EVAL_TERM *memory_mapper::copy_and_map (EVAL_TERM *dest)
   {
     if (!dest)
@@ -255,8 +245,7 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
-  struct regu_variable_list_node *memory_mapper::copy_and_map (struct regu_variable_list_node *src_list)
+  regu_variable_list_node *memory_mapper::copy_and_map (regu_variable_list_node *src_list)
   {
     if (!src_list)
       {
@@ -325,7 +314,6 @@ namespace parallel_heap_scan
     return dest_list;
   }
 
-  template<>
   DB_VALUE *memory_mapper::copy_and_map (DB_VALUE *src)
   {
     DB_VALUE *dest = nullptr;
@@ -352,7 +340,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   ARITH_TYPE *memory_mapper::copy_and_map (ARITH_TYPE *src)
   {
     ARITH_TYPE *dest = nullptr;
@@ -389,7 +376,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   SP_TYPE *memory_mapper::copy_and_map (SP_TYPE *src)
   {
     SP_TYPE *dest = nullptr;
@@ -418,7 +404,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   heap_cache_attrinfo *memory_mapper::copy_and_map (heap_cache_attrinfo *src)
   {
     heap_cache_attrinfo *dest = nullptr;
@@ -445,7 +430,6 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  template<>
   REGU_VARIABLE *memory_mapper::copy_and_map (REGU_VARIABLE *regu_var)
   {
     REGU_VARIABLE *src = regu_var, *dest = nullptr;
