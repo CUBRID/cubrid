@@ -476,6 +476,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/cubrocks.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -697,6 +698,8 @@ if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
   LIBEDIT
+  LIBGFLAGS
+  LIBROCKSDB
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
