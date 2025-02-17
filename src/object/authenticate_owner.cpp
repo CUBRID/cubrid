@@ -599,7 +599,6 @@ int
 au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
-  MOP owner_mop = NULL, save_user = NULL;
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
   PARSER_CONTEXT *dummy_parser = NULL;
@@ -620,7 +619,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
       goto end;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, new_owner_mop, unique_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
