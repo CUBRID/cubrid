@@ -211,6 +211,7 @@ namespace parallel_heap_scan
     for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
+	cnt++;
       }
     /* dptr : cannot parallel heap scan */
     for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
@@ -221,6 +222,7 @@ namespace parallel_heap_scan
     for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
+	cnt++;
       }
     /* scan_ptr : cannot parallel heap scan */
     for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
@@ -231,6 +233,7 @@ namespace parallel_heap_scan
     for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
 	cnt += set_impossible_recursively (xaslp);
+	cnt++;
       }
 
     /* this xasl's spec list search */

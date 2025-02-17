@@ -82,7 +82,7 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 
-#if defined (SERVER_MODE)
+#if SERVER_MODE
 #include "phs_checker.hpp"
 #include "phs_manager.hpp"
 #endif

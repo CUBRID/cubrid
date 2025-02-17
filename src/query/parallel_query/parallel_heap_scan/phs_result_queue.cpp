@@ -24,6 +24,7 @@
 #include "phs_result_queue.hpp"
 #include "dbtype.h"
 #include "regu_var.hpp"
+#include "thread_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -97,6 +98,23 @@ namespace parallel_heap_scan
 
   result_queue::entry::~entry()
   {
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+    HL_HEAPID orig_heap_id = db_change_private_heap (thread_p, 0);
+    for (auto &pred : preds)
+      {
+	if (DB_NEED_CLEAR (&pred))
+	  {
+	    pr_clear_value (&pred);
+	  }
+      }	
+    for (auto &rest : rests)
+      {
+	if (DB_NEED_CLEAR (&rest))
+	  {
+	    pr_clear_value (&rest);
+	  }
+      }
+    db_change_private_heap (thread_p, orig_heap_id);
   }
 
   void

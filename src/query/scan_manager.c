@@ -4160,7 +4160,9 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       break;
     case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE
       scan_start_parallel_heap_scan (thread_p, scan_id);
+#endif
       break;
     case S_HEAP_PAGE_SCAN:
       VPID_SET_NULL (&scan_id->s.hpsid.curr_vpid);
@@ -5133,7 +5135,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
     case S_PARALLEL_HEAP_SCAN:
-#if defined (SERVER_MODE)
+#if SERVER_MODE
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
 #endif
       break;
