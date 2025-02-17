@@ -717,7 +717,7 @@ int
 au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name)
 {
   int error = NO_ERROR, save, len, i = 0;
-  const char *auth;
+  const char *auth_type_char;
   DB_AUTH db_auth;
   MOP grantee_mop, object_of_mop;
   DB_VALUE val[2];
@@ -849,12 +849,13 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
       if (db_query_get_tuple_value (result, 2, &auth_type_value) == NO_ERROR)
 	{
-	  auth = NULL;
+	  auth_type_char = NULL;
+
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth = db_get_char (&auth_type_value, &len);
+	      auth_type_char = db_get_char (&auth_type_value, &len);
 
-	      switch (auth[0])
+	      switch (auth_type_char[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -869,11 +870,11 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 		  break;
 
 		case 'I':
-		  if (auth[2] == 'D')
+		  if (auth_type_char[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth[2] == 'S')
+		  else if (auth_type_char[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }
@@ -954,7 +955,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   int error = NO_ERROR, save, len;
   int object_type;
   DB_OBJECT_TYPE obj_type;
-  const char *auth;
+  const char *auth_type_char;
   DB_AUTH db_auth;
   MOP grantee_mop, obj_mop;
   DB_VALUE name;
@@ -1094,12 +1095,13 @@ au_user_revoke_all_privileges (MOP user_mop)
 
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
-	  auth = NULL;
+	  auth_type_char = NULL;
+
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
-	      auth = db_get_char (&auth_type_value, &len);
+	      auth_type_char = db_get_char (&auth_type_value, &len);
 
-	      switch (auth[0])
+	      switch (auth_type_char[0])
 		{
 		case 'A':
 		  db_auth = DB_AUTH_ALTER;
@@ -1114,11 +1116,11 @@ au_user_revoke_all_privileges (MOP user_mop)
 		  break;
 
 		case 'I':
-		  if (auth[2] == 'D')
+		  if (auth_type_char[2] == 'D')
 		    {
 		      db_auth = DB_AUTH_INDEX;
 		    }
-		  else if (auth[2] == 'S')
+		  else if (auth_type_char[2] == 'S')
 		    {
 		      db_auth = DB_AUTH_INSERT;
 		    }
@@ -1520,6 +1522,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE val, db_auth_object_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
   MOP db_auth_object_mop, grantee_mop, object_of_mop;
+  const char *auth_type_char;
+  int len;
   DB_AUTH db_auth;
   int is_grantable;
   MOP auth;
@@ -1642,8 +1646,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
       /* 2-4. [au].auth_type */
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
-	  const char *auth_type_char = NULL;
-	  int len;
+	  auth_type_char = NULL;
+
 	  if (!DB_IS_NULL (&auth_type_value))
 	    {
 	      auth_type_char = db_get_char (&auth_type_value, &len);

@@ -589,14 +589,14 @@ end:
 }
 
 /*
- * au_change_sp_owner_with_privilege_cleanup -
+ * au_change_sp_owner_with_transfer_privileges -
  *   return: error code
  *   parser(in):
  *   sp_mop(in):
  *   owner_mop(in):
  */
 int
-au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
+au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
 {
   int error = NO_ERROR;
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
