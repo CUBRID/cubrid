@@ -90,16 +90,6 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 
-#else /* !SERVER_MODE */
-
-#include "thread_compat.hpp"
-extern int
-scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
-{
-  assert (false);
-  return 0;
-}
-
 #endif /* SERVER_MODE */
 
 #endif /* _PARALLEL_HEAP_SCAN_MANAGER_HPP_ */
