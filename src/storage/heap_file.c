@@ -33,6 +33,7 @@
 #include <string.h>
 #include <errno.h>
 
+#include "cubrocks.hpp"
 #include "heap_file.h"
 
 #include "deduplicate_key.h"
@@ -5169,8 +5170,9 @@ int
 heap_manager_initialize (void)
 {
   int ret;
-
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
+
+  cubrocks::version ();
 
   heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;
