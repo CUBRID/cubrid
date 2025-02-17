@@ -23,7 +23,11 @@
 #ident "$Id$"
 
 #include <iostream>
+#include "rocksdb/version.h"
 #include "cubrocks.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 void
 cubrocks::version (void)

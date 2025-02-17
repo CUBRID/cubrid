@@ -496,6 +496,7 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
 else(WITH_RE2 STREQUAL "EXTERNAL")
   message(FATAL_ERROR "Invalid WITH_RE2 option value ${WITH_RE2}")
 endif()
+# add to external project targets
 list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
@@ -570,12 +571,6 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
     set(LIBROCKSDB_CONFIGURE "-DCMAKE_CXX_FLAGS=-fPIC -O2 -std=c++17 -I${LIBGFLAGS_INCLUDES} -L${LIBGFLAGS_LIBDIR} -lgflags -lrt" -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/Install/librocksdb -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DROCKSDB_BUILD_SHARED=0)
     ADD_BY_PRODUCTS_VARIABLE ("LIBROCKSDB" ${LIBROCKSDB_LIBS})
 
-    execute_process(
-      COMMAND nproc
-      OUTPUT_VARIABLE NUM_CORES
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
     externalproject_add(${LIBROCKSDB_TARGET}
       URL                  ${WITH_LIBROCKSDB_URL}
       URL_HASH             ${WITH_LIBROCKSDB_URL_HASH}
@@ -586,8 +581,10 @@ if(WITH_LIBROCKSDB STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBROCKSDB_CONFIGURE}
       BUILD_IN_SOURCE      TRUE
-      BUILD_COMMAND        make -j8
-      INSTALL_COMMAND      make -j8 install
+      # Currently, "make" follows the rules of MAKEFLAGS, so there is no need to specify the number of jobs.
+      # In CircleCI, MAKEFLAGS is set to "-j8".
+      BUILD_COMMAND        make
+      INSTALL_COMMAND      make install
       "${LIBROCKSDB_BYPRODUCTS}"
     )
   endif(UNIX)

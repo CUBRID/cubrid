@@ -698,6 +698,8 @@ if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
   LIBEDIT
+  LIBGFLAGS
+  LIBROCKSDB
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
@@ -708,8 +710,6 @@ target_external_dependencies(cubridsa
   LZ4
   RAPIDJSON
   RE2
-  LIBGFLAGS
-  LIBROCKSDB
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
