@@ -23,14 +23,42 @@
 #ifndef _CUBROCKS_HPP_
 #define _CUBROCKS_HPP_
 
+#include "rocksdb/db.h"
+#include "rocksdb/options.h"
+#include "rocksdb/table.h"
+#include "rocksdb/utilities/transaction.h"
+#include "rocksdb/utilities/transaction_db.h"
+
 namespace cubrocks
 {
+  void kv_version (void);
+  std::string kv_postfix (char *path);
 
-  class rocksdb
+  class context
   {
+    public:
+      context ();
+
+      void kv_config ();
+
+      bool kv_create (std::string path);
+
+    private:
+      struct
+      {
+	rocksdb::DBOptions db;
+	rocksdb::TransactionDBOptions txndb;
+	rocksdb::ColumnFamilyOptions cf;
+	rocksdb::BlockBasedTableOptions table;
+	std::vector<rocksdb::ColumnFamilyDescriptor> cf_descriptor;
+	std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
+      } opt;
+
+      rocksdb::TransactionDB *db;
+      bool alive;
   };
 
-  void version (void);
+  extern context *ctx;
 }
 
 #endif // _CUBROCKS_HPP_
