@@ -1455,20 +1455,21 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	    }
 	}
     }
-
+  /*
   if (obj_type == DB_OBJECT_CLASS)
     {
       SM_CLASS *classobj;
 
       if ((error = au_fetch_class_force (object_of_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
-	{
-	  /*
-	   * clear the cache for this user/class pair to make sure we
-	   * recalculate it the next time it is referenced
-	   */
-	  Au_cache.reset_cache_for_user_and_class (classobj);
-	}
+  {
+    //
+     * clear the cache for this user/class pair to make sure we
+     * recalculate it the next time it is referenced
+     //
+    Au_cache.reset_cache_for_user_and_class (classobj);
+  }
     }
+  */
 
   /*
    * Make sure any cached parse trees are rebuild.  This proabably
