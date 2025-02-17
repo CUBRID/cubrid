@@ -1202,10 +1202,12 @@ exit:
 int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, save;
   int update_count_db_authorization = 0;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
+
+  AU_DISABLE (save);
 
   // 1. db_authorization 카탈로그 수정
   error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
@@ -1227,6 +1229,7 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
     }
 
 exit:
+  AU_ENABLE (save);
 
   return (error);
 }
@@ -1257,7 +1260,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
 
-  AU_DISABLE (save);
+  //AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1483,7 +1486,7 @@ release:
     }
 
 exit:
-  AU_ENABLE (save);
+  //AU_ENABLE (save);
 
   pr_clear_value (&val);
   pr_clear_value (&grantee_value);
@@ -1506,7 +1509,6 @@ exit:
     }
 
   return (error);
-
 }
 
 static int
@@ -1540,7 +1542,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   db_make_null (&auth_type_value);
   db_make_null (&is_grantable_value);
 
-  AU_DISABLE (save);
+  //AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1800,7 +1802,7 @@ release:
     }
 
 exit:
-  AU_ENABLE (save);
+  //AU_ENABLE (save);
 
   db_value_clear (&val);
   db_value_clear (&db_auth_object_value);

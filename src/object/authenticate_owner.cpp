@@ -423,14 +423,14 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
-  /*
+
   error = au_object_owner_change_privileges (DB_OBJECT_CLASS, owner_mop, table_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
-  */
+
   /* change the owner of a partition */
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
@@ -618,14 +618,14 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
-  /*
+
   error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, new_owner_mop, unique_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
-  */
+
   /* create dummy parser of change_sp_owner_method */
   if (parser == NULL)
     {
