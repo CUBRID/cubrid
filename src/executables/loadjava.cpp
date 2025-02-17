@@ -183,7 +183,7 @@ copy_file (const fs::path &java_dir_path)
       fs::path src_path = fs::path (Src_class);
       if (fs::exists (src_path) == false)
 	{
-	  fprintf (stderr, "loadjava fail: '%s' does not exisit.\n", src_path.c_str ());
+	  fprintf (stderr, "loadjava fail: '%s' does not exist.\n", src_path.c_str ());
 	  return ER_FAILED;
 	}
 

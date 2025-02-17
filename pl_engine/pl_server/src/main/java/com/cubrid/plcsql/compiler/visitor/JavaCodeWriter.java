@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler.visitor;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.InstanceStore;
 import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
@@ -785,7 +786,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBuiltinFuncCall =
             new String[] {
-                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'NAME'%\", %'RESULT-TYPE-CODE'%,",
+                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'CALL-STR'%\", %'RESULT-TYPE-CODE'%,",
                 "  %'+ARGS'%",
                 ")"
             };
@@ -799,24 +800,29 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         CodeTemplate tmpl;
 
-        if (node.args.nodes.size() == 0) {
+        int argsLen = node.args.nodes.size();
+        String callStr = getNormalCallStr(node.name, argsLen);
+
+        if (argsLen == 0) {
+
             tmpl =
                     new CodeTemplate(
-                            "ExprBuiltinFuncCall",
+                            "ExprBuiltinFuncCall without arguments",
                             Misc.getLineColumnOf(node.ctx),
                             String.format(
                                     "(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
-                                    ty, node.name, node.resultType.idx));
+                                    ty, callStr, node.resultType.idx));
         } else {
+
             tmpl =
                     new CodeTemplate(
-                            "ExprBuiltinFuncCall",
+                            "ExprBuiltinFuncCall with arguments",
                             Misc.getLineColumnOf(node.ctx),
                             tmplExprBuiltinFuncCall,
                             "%'RESULT-TYPE'%",
                             ty,
-                            "%'NAME'%",
-                            node.name,
+                            "%'CALL-STR'%",
+                            callStr,
                             "%'RESULT-TYPE-CODE'%",
                             Integer.toString(node.resultType.idx),
                             // assumption: built-in functions do not have OUT parameters
@@ -825,6 +831,127 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
+    }
+
+    private static String getNormalCallStr(String funcName, int argsLen) {
+
+        String hostVarStr;
+        if (SymbolStack.noParenBuiltInFunc.indexOf(funcName) >= 0) {
+            assert argsLen == 0;
+            hostVarStr = "";
+        } else {
+            hostVarStr = getHostVarsStr(argsLen);
+        }
+
+        return funcName + hostVarStr;
+    }
+
+    private static String getHostVarsStr(int len) {
+        if (len == 0) {
+            return "()";
+        } else {
+            String[] arr = new String[len];
+            Arrays.fill(arr, "?");
+            return String.format("(%s)", String.join(", ", arr));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    private CodeToResolve genCodeOfSyntaxedCall(
+            String callStr, BuiltinFuncCall node, Expr... args) {
+
+        assert node.resultType != null;
+        String ty = getJavaCodeOfType(node.resultType);
+
+        int argsLen = args.length;
+        NodeList<Expr> argsList = new NodeList<>();
+        for (Expr arg : args) {
+            argsList.nodes.add(arg);
+        }
+
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprSyntaxedCall",
+                        Misc.getLineColumnOf(node.ctx),
+                        tmplExprBuiltinFuncCall,
+                        "%'RESULT-TYPE'%",
+                        ty,
+                        "%'CALL-STR'%",
+                        callStr,
+                        "%'RESULT-TYPE-CODE'%",
+                        Integer.toString(node.resultType.idx),
+                        // assumption: built-in functions do not have OUT parameters
+                        "%'+ARGS'%",
+                        visitNodeList(argsList).setDelimiter(","));
+
+        return applyCoercion(node.coercion, tmpl, node.ctx);
+    }
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
+        String callStr = String.format("ADDDATE(?, INTERVAL ? %s)", node.timeUnit);
+        return genCodeOfSyntaxedCall(callStr, node, node.date, node.delta);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
+        String callStr = String.format("CAST(? as %s)", node.tySpec.type.plcName);
+        return genCodeOfSyntaxedCall(callStr, node, node.arg);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
+        String callStr = String.format("CHR(? USING %s)", node.isUtf8 ? "utf8" : "iso88591");
+        return genCodeOfSyntaxedCall(callStr, node, node.arg);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
+        String callStr = String.format("EXTRACT(%s FROM ?)", node.timeField);
+        return genCodeOfSyntaxedCall(callStr, node, node.arg);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
+        String callStr = "POSITION(? IN ?)";
+        return genCodeOfSyntaxedCall(callStr, node, node.sub, node.whole);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
+        String callStr = String.format("SUBDATE(?, INTERVAL ? %s)", node.timeUnit);
+        return genCodeOfSyntaxedCall(callStr, node, node.date, node.delta);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public CodeToResolve visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
+        String callStr =
+                String.format("TRIM(%s %s FROM ?)", node.trimDir, node.trimStr == null ? "" : "?");
+        if (node.trimStr == null) {
+            return genCodeOfSyntaxedCall(callStr, node, node.str);
+        } else {
+            return genCodeOfSyntaxedCall(callStr, node, node.trimStr, node.str);
+        }
     }
 
     // -------------------------------------------------------------------------

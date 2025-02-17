@@ -4025,6 +4025,7 @@ struct parser_context
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
+    unsigned is_parsing_trigger:1;
   } flag;
 };
 

@@ -100,6 +100,20 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExprStr(ExprStr node);
 
+    public abstract R visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node);
+
+    public abstract R visitExprSyntaxedCallCast(ExprSyntaxedCallCast node);
+
+    public abstract R visitExprSyntaxedCallChr(ExprSyntaxedCallChr node);
+
+    public abstract R visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node);
+
+    public abstract R visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node);
+
+    public abstract R visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node);
+
+    public abstract R visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node);
+
     public abstract R visitExprTime(ExprTime node);
 
     public abstract R visitExprTrue(ExprTrue node);
