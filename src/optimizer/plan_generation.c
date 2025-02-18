@@ -577,8 +577,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   assert (inner_xasl != NULL);
   assert (projection_info != NULL);
 
-  assert (outer_info->expr_name_list != NULL);
-  assert (inner_info->expr_name_list != NULL);
+  assert (projection_info->outer.expr_name_list != NULL);
+  assert (projection_info->inner.expr_name_list != NULL);
 
   parser = QO_ENV_PARSER (env);
   if (parser == NULL)

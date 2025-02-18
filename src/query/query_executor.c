@@ -531,7 +531,7 @@ static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
  */
 
 static int qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-					 HASHJOIN_PROC_NODE * proc, HASHJOIN_MANAGER * manager);
+					 HASHJOIN_PROC_NODE * proc, HASHJOIN_MANAGER * manager, HASHJOIN_STATS * stats);
 static int qexec_hash_join_init_context (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, HASHJOIN_MANAGER * manager,
 					 HASHJOIN_CONTEXT * context);
 static void qexec_hash_join_clear (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
@@ -6556,7 +6556,7 @@ exit_on_error:
 
 static int
 qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			      HASHJOIN_PROC_NODE * proc, HASHJOIN_MANAGER * manager)
+			      HASHJOIN_PROC_NODE * proc, HASHJOIN_MANAGER * manager, HASHJOIN_STATS * stats)
 {
   XASL_NODE *outer_xasl, *inner_xasl;
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
@@ -6575,6 +6575,11 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   int part_cnt, part_index, part_id;
 
   int error = NO_ERROR;
+
+  bool on_trace = (stats != NULL) ? true : false;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
 
   assert (thread_p != NULL);
   assert (xasl != NULL);
@@ -6690,6 +6695,15 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
       GOTO_EXIT_ON_ERROR;
     }
 
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
+    }
+
   while (qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK) == S_SUCCESS)
     {
       error =
@@ -6727,14 +6741,35 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
     }
 
+  if (on_trace)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (stats->part.elapsed_time, tv_diff);
+
+      stats->part.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->part.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->part.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
+    }
+
   qfile_close_scan (thread_p, &list_scan_id);
   qfile_destroy_list (thread_p, outer_list_id);
-  free_and_init (outer_xasl->list_id);
 
   error = qfile_open_list_scan (inner_list_id, &list_scan_id);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
+    }
+
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   while (qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK) == S_SUCCESS)
@@ -6774,11 +6809,28 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
     }
 
+  if (on_trace)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (stats->part.elapsed_time, tv_diff);
+
+      stats->part.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      stats->part.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      stats->part.fetch_time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
+		   old_fetch_time) / 1000);
+    }
+
   qfile_close_scan (thread_p, &list_scan_id);
   qfile_destroy_list (thread_p, inner_list_id);
-  free_and_init (inner_xasl->list_id);
 
   manager->part_cnt = part_cnt;
+
+  if (on_trace)
+    {
+      stats->part.part_cnt = part_cnt;
+    }
 
 exit_on_end:
   if (part_key != NULL)
@@ -7239,7 +7291,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       }
   }
 
-  error = qexec_hash_join_init_manager (thread_p, xasl, xasl_state, proc, &manager);
+  error = qexec_hash_join_init_manager (thread_p, xasl, xasl_state, proc, &manager, stats);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -7293,6 +7345,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (on_trace)
+	{
+	  stats->use_outer_for_build = manager.single_context.use_outer_for_build;
 	}
 
       if (IS_OUTER_JOIN_TYPE (merge_info->join_type))
@@ -7405,6 +7462,38 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
 	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 	      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+	    }
+
+	  if (on_trace && current_stats != NULL)
+	    {
+	      TSC_ADD_TIMEVAL (stats->build.elapsed_time, current_stats->build.elapsed_time);
+	      TSC_ADD_TIMEVAL (stats->build.build_time, current_stats->build.build_time);
+	      stats->build.fetches += current_stats->build.fetches;
+	      stats->build.fetch_time += current_stats->build.fetch_time;
+	      stats->build.ioreads += current_stats->build.ioreads;
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	      TSC_ADD_TIMEVAL (stats->build.profile.fetch, current_stats->build.profile.fetch);
+	      TSC_ADD_TIMEVAL (stats->build.profile.hash, current_stats->build.profile.hash);
+	      TSC_ADD_TIMEVAL (stats->build.profile.insert, current_stats->build.profile.insert);
+#endif
+
+	      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, current_stats->probe.elapsed_time);
+	      TSC_ADD_TIMEVAL (stats->probe.probe_time, current_stats->probe.probe_time);
+	      stats->probe.fetches += current_stats->probe.fetches;
+	      stats->probe.fetch_time += current_stats->probe.fetch_time;
+	      stats->probe.ioreads += current_stats->probe.ioreads;
+	      stats->probe.readkeys += current_stats->probe.readkeys;
+	      stats->probe.rows += current_stats->probe.rows;
+	      stats->probe.max_collisions = MAX (stats->probe.max_collisions, current_stats->probe.max_collisions);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	      TSC_ADD_TIMEVAL (stats->probe.profile.fetch, current_stats->probe.profile.fetch);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.hash, current_stats->probe.profile.hash);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.search, current_stats->probe.profile.search);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.match, current_stats->probe.profile.match);
+	      TSC_ADD_TIMEVAL (stats->probe.profile.add, current_stats->probe.profile.add);
+#endif
 	    }
 	}
     }
@@ -7526,7 +7615,6 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, HASH
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (stats->build.build_time, tv_diff);
       TSC_ADD_TIMEVAL (stats->build.elapsed_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
 
       stats->build.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       stats->build.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -7568,7 +7656,6 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, HASH
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
 
       stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -7706,7 +7793,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (stats->build.build_time, tv_diff);
       TSC_ADD_TIMEVAL (stats->build.elapsed_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+      // TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
 
       stats->build.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       stats->build.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -7757,7 +7844,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+      // TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
 
       stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -7890,7 +7977,7 @@ qexec_hash_outer_join_fill_outer (THREAD_ENTRY * thread_p, XASL_STATE * xasl_sta
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (stats->probe.probe_time, tv_diff);
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, tv_diff);
-      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, fill_outer_xasl->xasl_stats.elapsed_time);
+      // TSC_ADD_TIMEVAL (stats->probe.elapsed_time, fill_outer_xasl->xasl_stats.elapsed_time);
 
       stats->probe.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
@@ -8068,7 +8155,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, HASHJOI
     XASL_NODE *build_xasl = (context->use_outer_for_build) ? manager->outer->xasl : manager->inner->xasl;
     assert (build_xasl != NULL);
 
-    QFILE_LIST_ID *build_list_id = list_scan_id->list_id;
+    QFILE_LIST_ID *build_list_id = &(list_scan_id->list_id);
     assert (build_list_id != NULL);
 
     if (build_list_id->tuple_cnt <= 100)

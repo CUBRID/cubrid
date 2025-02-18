@@ -385,6 +385,16 @@ typedef struct hashjoin_stats HASHJOIN_STATS;
 struct hashjoin_stats
 {
   HASH_METHOD hash_method;
+  bool use_outer_for_build;
+
+  struct
+  {
+    struct timeval elapsed_time;
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
+    UINT32 part_cnt;
+  } part;
 
   struct
   {

@@ -119,6 +119,8 @@ static QDUMP_XASL_CHECK_NODE *qdump_find_check_node_for (XASL_NODE * xasl,
 static void qdump_check_node (XASL_NODE * xasl, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
 static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
 #endif /* CUBRID_DEBUG */
+static const char *qdump_hashjoin_type_string (HASH_METHOD hash_method);
+static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 
 /*
  * qdump_print_xasl_type () -
@@ -3472,98 +3474,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
-      {
-	HASHJOIN_PROC_NODE *hashjoin_proc;
-	const char *hash_method_string;
-
-	assert (xasl_p->aptr_list != NULL /* outer */ );
-	assert (xasl_p->aptr_list->next != NULL /* inner */ );
-	assert (xasl_p->aptr_list->next->next == NULL);
-
-	hashjoin_proc = &(xasl_p->proc.hashjoin);
-
-	switch (hashjoin_proc->stats.hash_method)
-	  {
-	  case HASH_METH_IN_MEM:
-	    hash_method_string = "memory";
-	    break;
-
-	  case HASH_METH_HYBRID:
-	    hash_method_string = "hybrid";
-	    break;
-
-	  case HASH_METH_HASH_FILE:
-	    hash_method_string = "file";
-	    break;
-
-	  default:
-	    {
-	      hash_method_string = "skip";
-
-	      //hashjoin_proc->build = &(hashjoin_proc->inner);
-	      //hashjoin_proc->probe = &(hashjoin_proc->outer);
-
-	      break;
-	    }
-	  }
-
-	// assert (hashjoin_proc->build != NULL);
-	// assert (hashjoin_proc->probe != NULL);
-
-	fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		 qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
-		 (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
-		 (long long int) xasl_p->xasl_stats.ioreads);
-
-	indent += 2;
-
-	fprintf (fp,
-		 "%*cBUILD (time: %d, build_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, hash_method: %s)",
-		 indent, ' ', TO_MSEC (hashjoin_proc->stats.build.elapsed_time),
-		 TO_MSEC (hashjoin_proc->stats.build.build_time),
-		 (long long int) hashjoin_proc->stats.build.fetches,
-		 (long long int) hashjoin_proc->stats.build.fetch_time,
-		 (long long int) hashjoin_proc->stats.build.ioreads, hash_method_string);
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-	fprintf (fp,
-		 ", (F: %d, H: %d, I: %d)",
-		 TO_MSEC (hashjoin_proc->stats.build.profile.fetch),
-		 TO_MSEC (hashjoin_proc->stats.build.profile.hash),
-		 TO_MSEC (hashjoin_proc->stats.build.profile.insert));
-#endif
-
-	fprintf (fp, "\n");
-
-	// qdump_print_stats_text (fp, hashjoin_proc->build->xasl, indent);
-
-	fprintf (fp,
-		 "%*cPROBE (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, readkeys: %lld, rows: %lld, max_collisions: %d)",
-		 indent, ' ', TO_MSEC (hashjoin_proc->stats.probe.elapsed_time),
-		 TO_MSEC (hashjoin_proc->stats.probe.probe_time),
-		 (long long int) hashjoin_proc->stats.probe.fetches,
-		 (long long int) hashjoin_proc->stats.probe.fetch_time,
-		 (long long int) hashjoin_proc->stats.probe.ioreads,
-		 (long long int) hashjoin_proc->stats.probe.readkeys, (long long int) hashjoin_proc->stats.probe.rows,
-		 (unsigned int) hashjoin_proc->stats.probe.max_collisions);
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-	fprintf (fp,
-		 ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
-		 TO_MSEC (hashjoin_proc->stats.probe.profile.fetch),
-		 TO_MSEC (hashjoin_proc->stats.probe.profile.hash),
-		 TO_MSEC (hashjoin_proc->stats.probe.profile.search),
-		 TO_MSEC (hashjoin_proc->stats.probe.profile.match), TO_MSEC (hashjoin_proc->stats.probe.profile.add));
-#endif
-
-	fprintf (fp, "\n");
-
-	// qdump_print_stats_text (fp, hashjoin_proc->probe->xasl, indent);
-
-	indent -= 2;
-
-	break;
-      }
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+	       qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
+	       (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
+	       (long long int) xasl_p->xasl_stats.ioreads);
+      qdump_print_hashjoin_stats_text (fp, xasl_p, indent);
+      break;
 
     case MERGE_PROC:
       fprintf (fp, "MERGE\n");
@@ -3691,6 +3607,197 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  qdump_print_stats_text (fp, xptr, indent);
 	}
+    }
+}
+
+static const char *
+qdump_hashjoin_type_string (HASH_METHOD hash_method)
+{
+  switch (hash_method)
+    {
+    case HASH_METH_IN_MEM:
+      return "memory";
+
+    case HASH_METH_HYBRID:
+      return "hybrid";
+
+    case HASH_METH_HASH_FILE:
+      return "file";
+
+    case HASH_METH_NOT_USE:
+    default:
+      return "skip";
+    }
+}
+
+void
+qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
+{
+  XASL_NODE *outer_xasl, *inner_xasl;
+  XASL_NODE *build_xasl, *probe_xasl;
+
+  HASHJOIN_PROC_NODE *proc;
+  HASHJOIN_STATS *stats, *part_stats, *current_stats;
+  int part_cnt, part_index;
+
+  assert (fp != NULL);
+  assert (xasl_p != NULL);
+
+  proc = &(xasl_p->proc.hashjoin);
+  stats = &(proc->stats);
+  part_stats = proc->part_stats;
+  part_cnt = stats->part.part_cnt;
+  assert (part_stats == NULL || part_cnt > 1);
+
+  outer_xasl = proc->outer.xasl;
+  inner_xasl = proc->inner.xasl;
+  assert (outer_xasl != NULL);
+  assert (inner_xasl != NULL);
+
+  indent += 2;
+
+  if (part_cnt <= 1)
+    {
+      build_xasl = (stats->use_outer_for_build) ? outer_xasl : inner_xasl;
+      probe_xasl = (stats->use_outer_for_build) ? inner_xasl : outer_xasl;
+      assert (build_xasl != NULL);
+      assert (probe_xasl != NULL);
+
+      TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+    }
+  else
+    {
+      TSC_ADD_TIMEVAL (stats->part.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->part.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+
+      fprintf (fp, "%*cPARTITIONING (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, partitions: %d)\n",
+	       indent, ' ', TO_MSEC (stats->part.elapsed_time),
+	       (long long int) stats->part.fetches,
+	       (long long int) stats->part.fetch_time, (long long int) stats->part.ioreads, part_cnt);
+      qdump_print_stats_text (fp, outer_xasl, indent);
+      qdump_print_stats_text (fp, inner_xasl, indent);
+    }
+
+  fprintf (fp,
+	   "%*cBUILD (time: %d, build_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld",
+	   indent, ' ', TO_MSEC (stats->build.elapsed_time),
+	   TO_MSEC (stats->build.build_time),
+	   (long long int) stats->build.fetches,
+	   (long long int) stats->build.fetch_time, (long long int) stats->build.ioreads);
+
+  if (part_cnt > 1)
+    {
+      fprintf (fp, ")");
+    }
+  else
+    {
+      fprintf (fp, ", hash_method: %s)", qdump_hashjoin_type_string (stats->hash_method));
+    }
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+  fprintf (fp,
+	   ", (F: %d, H: %d, I: %d)",
+	   TO_MSEC (stats->build.profile.fetch),
+	   TO_MSEC (stats->build.profile.hash), TO_MSEC (stats->build.profile.insert));
+#endif
+
+  fprintf (fp, "\n");
+
+  if (part_cnt > 1)
+    {
+      indent += 2;
+
+      for (part_index = 0; part_index < part_cnt; part_index++)
+	{
+	  current_stats = &(part_stats[part_index]);
+
+	  fprintf (fp,
+		   "%*cP%d (time: %d, build_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, hash_method: %s)",
+		   indent, ' ', part_index, TO_MSEC (current_stats->build.elapsed_time),
+		   TO_MSEC (current_stats->build.build_time), (long long int) current_stats->build.fetches,
+		   (long long int) current_stats->build.fetch_time, (long long int) current_stats->build.ioreads,
+		   qdump_hashjoin_type_string (current_stats->hash_method));
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  fprintf (fp,
+		   ", (F: %d, H: %d, I: %d)",
+		   TO_MSEC (current_stats->build.profile.fetch),
+		   TO_MSEC (current_stats->build.profile.hash), TO_MSEC (current_stats->build.profile.insert));
+#endif
+
+	  fprintf (fp, "\n");
+	}
+
+      indent -= 2;
+    }
+  else
+    {
+      qdump_print_stats_text (fp, build_xasl, indent);
+    }
+
+  fprintf (fp,
+	   "%*cPROBE (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, readkeys: %lld, rows: %lld",
+	   indent, ' ', TO_MSEC (stats->probe.elapsed_time),
+	   TO_MSEC (stats->probe.probe_time),
+	   (long long int) stats->probe.fetches,
+	   (long long int) stats->probe.fetch_time,
+	   (long long int) stats->probe.ioreads,
+	   (long long int) stats->probe.readkeys, (long long int) stats->probe.rows);
+
+  if (part_cnt > 1)
+    {
+      fprintf (fp, ")");
+    }
+  else
+    {
+      fprintf (fp, ", max_collisions: %d)", (unsigned int) stats->probe.max_collisions);
+    }
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+  fprintf (fp,
+	   ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
+	   TO_MSEC (stats->probe.profile.fetch),
+	   TO_MSEC (stats->probe.profile.hash),
+	   TO_MSEC (stats->probe.profile.search),
+	   TO_MSEC (stats->probe.profile.match), TO_MSEC (stats->probe.profile.add));
+#endif
+
+  fprintf (fp, "\n");
+
+  if (part_cnt > 1)
+    {
+      indent += 2;
+
+      for (part_index = 0; part_index < part_cnt; part_index++)
+	{
+	  current_stats = &(part_stats[part_index]);
+
+	  fprintf (fp,
+		   "%*cP%d (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, readkeys: %lld, rows: %lld, max_collisions: %d)",
+		   indent, ' ', part_index, TO_MSEC (current_stats->probe.elapsed_time),
+		   TO_MSEC (current_stats->probe.probe_time), (long long int) current_stats->probe.fetches,
+		   (long long int) current_stats->probe.fetch_time, (long long int) current_stats->probe.ioreads,
+		   (long long int) current_stats->probe.readkeys, (long long int) current_stats->probe.rows,
+		   (unsigned int) current_stats->probe.max_collisions);
+
+#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+	  fprintf (fp,
+		   ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
+		   TO_MSEC (current_stats->probe.profile.fetch),
+		   TO_MSEC (current_stats->probe.profile.hash),
+		   TO_MSEC (current_stats->probe.profile.search),
+		   TO_MSEC (current_stats->probe.profile.match), TO_MSEC (current_stats->probe.profile.add));
+#endif
+
+	  fprintf (fp, "\n");
+	}
+
+      indent -= 2;
+    }
+  else
+    {
+      qdump_print_stats_text (fp, probe_xasl, indent);
     }
 }
 #endif /* SERVER_MODE */
