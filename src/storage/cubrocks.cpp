@@ -22,8 +22,9 @@
 
 #ident "$Id$"
 
-#include <string>
+#include "dbtype_def.h"
 
+#include <string>
 #include <iostream>
 #include <assert.h>
 
@@ -44,7 +45,8 @@ namespace cubrocks
 void
 cubrocks::kv_version (void)
 {
-  std::cout << "RocksDB version: " << ROCKSDB_MAJOR << "." << ROCKSDB_MINOR << "." << ROCKSDB_PATCH << std::endl;
+  std::cout << std::endl << "RocksDB version: " << ROCKSDB_MAJOR << "." << ROCKSDB_MINOR << "." << ROCKSDB_PATCH <<
+	    std::endl;
 }
 
 std::string
@@ -93,10 +95,31 @@ cubrocks::context::kv_config (void)
 }
 
 bool
+cubrocks::context::is_alive (void)
+{
+  return alive;
+}
+
+bool
 cubrocks::context::kv_create (std::string path)
 {
+  assert (!alive);
+
   opt.db.create_if_missing = true;
   opt.db.error_if_exists = true;
+
+  /* db will be closed in context::close ( ... ) that is called from boot_.._finalize */
+  alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
+  return alive;
+}
+
+bool
+cubrocks::context::kv_open (std::string path)
+{
+  assert (!alive);
+
+  opt.db.create_if_missing = false;
+  opt.db.error_if_exists = false;
 
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
   return alive;
@@ -111,3 +134,4 @@ cubrocks::context::kv_destroy (std::string path)
 
   return rocksdb::DestroyDB (path, options).ok();
 }
+

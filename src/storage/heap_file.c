@@ -23039,6 +23039,9 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
   LOG_TDES *tdes = NULL;
 
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+
   /* check required input */
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);

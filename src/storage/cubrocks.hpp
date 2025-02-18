@@ -23,6 +23,7 @@
 #ifndef _CUBROCKS_HPP_
 #define _CUBROCKS_HPP_
 
+#include "dbtype_def.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
@@ -41,8 +42,12 @@ namespace cubrocks
 
       void kv_config ();
 
+      /* basic */
       bool kv_create (std::string path);
+      bool kv_open (std::string path);
       bool kv_destroy (std::string path);
+
+      bool is_alive ();
 
     private:
       struct
