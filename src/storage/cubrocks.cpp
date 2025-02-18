@@ -124,6 +124,35 @@ cubrocks::context::kv_open (std::string path)
 }
 
 bool
+cubrocks::context::kv_close ()
+{
+  /* it is not clear whether "Flush -> WaitForCompact" should be called in that order.
+   * also, check if DestroyColumnFamilyHandle should be called. */
+  assert (alive);
+
+  rocksdb::WaitForCompactOptions opt_compact;
+  rocksdb::FlushOptions opt_flush;
+
+  opt_flush.wait = true;
+  if (!db->Flush (opt_flush, opt.cf_handles).ok ())
+    {
+      return false;
+    }
+
+  opt_compact.close_db = true;
+  if (!db->WaitForCompact (opt_compact).ok ())
+    {
+      return false;
+    }
+
+  delete db;
+
+  alive = false;
+
+  return true;
+}
+
+bool
 cubrocks::context::kv_destroy (std::string path)
 {
   assert (!alive);

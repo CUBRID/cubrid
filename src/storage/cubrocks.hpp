@@ -44,6 +44,7 @@ namespace cubrocks
       /* basic */
       bool kv_create (std::string path);
       bool kv_open (std::string path);
+      bool kv_close ();
       bool kv_destroy (std::string path);
 
       bool is_alive ();
