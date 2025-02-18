@@ -153,7 +153,6 @@ static void qmgr_deallocate_query_entries (QMGR_QUERY_ENTRY * q_ptr);
 static void qmgr_deallocate_oid_blocks (OID_BLOCK_LIST * oid_block);
 static void qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * q_ptr, int trans_ind);
 static QMGR_QUERY_ENTRY *qmgr_find_query_entry (QMGR_QUERY_ENTRY * query_list_p, QUERY_ID query_id);
-static void qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
 static void qmgr_free_tran_entries (void);
 
 static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
@@ -386,7 +385,6 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
   pthread_mutex_lock (&tran_entry_p->mutex);
   query_p->next = tran_entry_p->free_query_entry_list_p;
   tran_entry_p->free_query_entry_list_p = query_p;
-  tran_entry_p->num_query_entries--;
   pthread_mutex_unlock (&tran_entry_p->mutex);
 }
 
