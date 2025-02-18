@@ -1202,12 +1202,10 @@ exit:
 int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR;
   int update_count_db_authorization = 0;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
-
-  AU_DISABLE (save);
 
   /* modify db_authorization catalog */
   error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
@@ -1227,23 +1225,16 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
 	  ASSERT_ERROR_AND_SET (error);
 	  goto exit;
 	}
-
-      /*
-       * Make sure any cached parse trees are rebuild.  This proabably
-       * isn't necessary for GRANT, only REVOKE.
-       */
-      sm_bump_local_schema_version ();
     }
 
 exit:
-  AU_ENABLE (save);
   return (error);
 }
 
 static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, save;
   char obj_fetch_query[256];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
@@ -1261,6 +1252,8 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
       authorization_keyhash, authorization_keyequal> authorization_unordered_map;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
+
+  AU_DISABLE (save);
 
   db_make_null (&val);
   db_make_null (&grantee_value);
@@ -1428,6 +1421,16 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	}
     }
 
+  /*
+   * The following comment was present in au_grnat(), au_revoke().
+   * However, since both REVOKE and GRANT operations are performed during ownership changes, I considered it necessary and added it.
+   *
+   * Original comment:
+   * Make sure any cached parse trees are rebuild. This proabably
+   * isn't necessary for GRANT, only REVOKE.
+   */
+  sm_bump_local_schema_version ();
+
   /* reinsert the merged temp data */
   for (const auto &entry : authorization_unordered_map)
     {
@@ -1486,13 +1489,15 @@ exit:
       error = ER_GENERIC_ERROR;
     }
 
+  AU_ENABLE (save);
+
   return (error);
 }
 
 static int
 update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, save;
   char obj_fetch_query[256];
   const char *sql_query =
 	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
@@ -1512,6 +1517,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   std::unordered_map<std::tuple<MOP, MOP, MOP, DB_AUTH>, int, auth_keyhash, auth_keyequal> auth_unordered_map;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
+
+  AU_DISABLE (save);
 
   db_make_null (&val);
   db_make_null (&db_auth_object_value);
@@ -1741,6 +1748,16 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	}
     }
 
+  /*
+   * The following comment was present in au_grnat(), au_revoke().
+   * However, since both REVOKE and GRANT operations are performed during ownership changes, I considered it necessary and added it.
+   *
+   * Original comment:
+   * Make sure any cached parse trees are rebuild. This proabably
+   * isn't necessary for GRANT, only REVOKE.
+   */
+  sm_bump_local_schema_version ();
+
   /* reinsert the merged temp data */
   for (const auto &entry : auth_unordered_map)
     {
@@ -1777,6 +1794,8 @@ exit:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
     }
+
+  AU_ENABLE (save);
 
   return (error);
 }
