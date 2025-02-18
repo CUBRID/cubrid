@@ -1255,11 +1255,7 @@ static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
 {
   int error = NO_ERROR, save, current_cache;
-  char obj_fetch_query[256];
-  const char *sql_query =
-	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[object_of] = (%s)"
-	  " GROUP BY [au].grantee";
+  const char *sql_query;
   DB_VALUE val, element;
   DB_SESSION *session = NULL;
   int stmt_id;
@@ -1283,10 +1279,18 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
+      sql_query =
+	      "SELECT [au].grantee, [au].object_of"
+	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_CLASS_NAME "] [c]"
+	      " WHERE [au].[object_of] = [c].[class_of] AND [c].[unique_name] LIKE CONCAT(?,'%')"
+	      " GROUP BY [au].grantee, [au].object_of";
       break;
     case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      sql_query =
+	      "SELECT [au].grantee, [au].object_of"
+	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_STORED_PROC_NAME "] [sp]"
+	      " WHERE [au].[object_of] = [sp] AND [sp].[unique_name] = ?"
+	      " GROUP BY [au].grantee";
       break;
     default:
       assert (false);
@@ -1294,7 +1298,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1503,10 +1507,7 @@ static int
 update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR, save;
-  char obj_fetch_query[256];
-  const char *sql_query =
-	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
-	  " WHERE [au].[object_of] = (%s)";
+  const char *sql_query;
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
@@ -1535,10 +1536,16 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c] WHERE [unique_name] = ?");
+      sql_query =
+	      "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable"
+	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_CLASS_NAME "] [c]"
+	      " WHERE [au].[object_of] = [c].[class_of] AND [c].[unique_name] LIKE CONCAT(?,'%')";
       break;
     case DB_OBJECT_PROCEDURE:
-      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      sql_query =
+	      "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable"
+	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_STORED_PROC_NAME "] [sp]"
+	      " WHERE [au].[object_of] = [sp] AND [sp].[unique_name] = ?";
       break;
     default:
       assert (false);
@@ -1546,7 +1553,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
       goto exit;
     }
 
-  session = db_open_buffer_local (obj_fetch_query);
+  session = db_open_buffer_local (sql_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
