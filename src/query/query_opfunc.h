@@ -123,7 +123,4 @@ extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, qfi
 extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE * dest_val,
 							     tp_domain ** domain);
 
-DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, regu_variable_node * regu_var,
-						       val_descr * val_desc_p);
-
 #endif /* _QUERY_OPFUNC_H_ */

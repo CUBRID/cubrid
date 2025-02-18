@@ -3639,7 +3639,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      ptr = or_pack_domain (ptr, node_p->outer.domains[i], 0, 0);
+      ptr = or_pack_domain (ptr, node_p->join_pred_info.outer.domains[i], 0, 0);
     }
 
   /**
@@ -3677,18 +3677,18 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      ptr = or_pack_domain (ptr, node_p->inner.domains[i], 0, 0);
+      ptr = or_pack_domain (ptr, node_p->join_pred_info.inner.domains[i], 0, 0);
     }
 
   /**
-   * coerce_domains
+   * need_coerce_domains, coerce_domains
    */
-  ptr = or_pack_int (ptr, node_p->need_coerce_domains);
-  if (node_p->need_coerce_domains)
+  ptr = or_pack_int (ptr, node_p->join_pred_info.need_coerce_domains);
+  if (node_p->join_pred_info.need_coerce_domains)
     {
       for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
 	{
-	  ptr = or_pack_domain (ptr, node_p->coerce_domains[i], 0, 0);
+	  ptr = or_pack_domain (ptr, node_p->join_pred_info.coerce_domains[i], 0, 0);
 	}
     }
 
@@ -6398,7 +6398,7 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      tmp_size = or_packed_domain_size (node_p->outer.domains[i], 0);
+      tmp_size = or_packed_domain_size (node_p->join_pred_info.outer.domains[i], 0);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6425,7 +6425,7 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      tmp_size = or_packed_domain_size (node_p->inner.domains[i], 0);
+      tmp_size = or_packed_domain_size (node_p->join_pred_info.inner.domains[i], 0);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6434,14 +6434,14 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
     }
 
   /**
-   * coerce_domains
+   * need_coerce_domains, coerce_domains
    */
   size += OR_INT_SIZE;		/* Whether there is a need to use the coerce domain. */
-  if (node_p->need_coerce_domains)
+  if (node_p->join_pred_info.need_coerce_domains)
     {
       for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
 	{
-	  tmp_size = or_packed_domain_size (node_p->coerce_domains[i], 0);
+	  tmp_size = or_packed_domain_size (node_p->join_pred_info.coerce_domains[i], 0);
 	  if (tmp_size == ER_FAILED)
 	    {
 	      return ER_FAILED;

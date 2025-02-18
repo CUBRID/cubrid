@@ -198,6 +198,8 @@ static int qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbv
 static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 
+static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
+							      VAL_DESCR * val_desc_p);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
@@ -6473,9 +6475,9 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
  *
  * Note: Regulator variable should point to only constant values.
  */
-DB_VALUE *
-qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, regu_variable_node * regu_var_p,
-					     val_descr * val_desc_p)
+static DB_VALUE *
+qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
+					     VAL_DESCR * val_desc_p)
 {
   DB_VALUE *peek_value_p;
   DB_TYPE dom_type, val_type;

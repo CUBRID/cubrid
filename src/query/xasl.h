@@ -378,8 +378,6 @@ struct hashjoin_input
   XASL_NODE *xasl;
   ACCESS_SPEC_TYPE *spec_list;
   VAL_LIST *val_list;
-  TP_DOMAIN **domains;
-  int *value_indexes;
 };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -431,22 +429,18 @@ struct hashjoin_stats
 };
 #endif
 
-typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
-struct hashjoin_proc_node
+typedef struct hashjoin_domain_info HASHJOIN_DOMAIN_INFO;
+struct hashjoin_domain_info
 {
-  HASHJOIN_INPUT outer;
-  HASHJOIN_INPUT inner;
+  TP_DOMAIN **domains;
+  int *value_indexes;
+};
 
-  QFILE_LIST_MERGE_INFO merge_info;
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  HASHJOIN_STATS stats;
-
-  HASH_LIST_SCAN hash_scan;
-
-  HASHJOIN_INPUT *build;
-  HASHJOIN_INPUT *probe;
-#endif
+typedef struct hashjoin_pred_info HASHJOIN_PRED_INFO;
+struct hashjoin_pred_info
+{
+  HASHJOIN_DOMAIN_INFO outer;
+  HASHJOIN_DOMAIN_INFO inner;
 
   /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
@@ -454,8 +448,21 @@ struct hashjoin_proc_node
   /* Whether there is a need to use the coerce domain. */
   bool need_coerce_domains;
 
-  bool enable_partiton;
-  int curr_part_id;
+  PRED_EXPR *during_join_pred;
+};
+
+typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
+struct hashjoin_proc_node
+{
+  HASHJOIN_INPUT outer;
+  HASHJOIN_INPUT inner;
+  HASHJOIN_PRED_INFO join_pred_info;
+  QFILE_LIST_MERGE_INFO merge_info;
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  HASHJOIN_STATS stats;
+  HASHJOIN_STATS *part_stats;
+#endif
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
@@ -1100,7 +1107,8 @@ struct xasl_node
   PROC_TYPE type;		/* XASL type */
   int flag;			/* flags */
   QFILE_LIST_ID *list_id;	/* list file identifier */
-  QFILE_PARTITION_LIST_ID *part_list_id;
+  QFILE_LIST_ID **part_list_id;
+  int part_cnt;
   SORT_LIST *after_iscan_list;	/* sorting fields */
   SORT_LIST *orderby_list;	/* sorting fields */
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */

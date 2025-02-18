@@ -1766,7 +1766,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
   xasl->part_list_id = NULL;
+  xasl->part_cnt = 0;
+#endif
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3170,12 +3173,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
-  assert (node_p->build == NULL);
-  assert (node_p->probe == NULL);
-
-  assert (node_p->enable_partiton == false);
-  node_p->curr_part_id = -1;
-
   /**
    * merge_info
    */
@@ -3196,27 +3193,25 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   else
     {
-      node_p->outer.domains =
+      node_p->join_pred_info.outer.domains =
 	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->outer.domains == NULL)
+      if (node_p->join_pred_info.outer.domains == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  stx_set_xasl_errcode (thread_p, error);
 	  return NULL;
 	}
+      node_p->join_pred_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
 
-      node_p->outer.value_indexes = node_p->merge_info.ls_outer_column;
-
-      node_p->inner.domains =
+      node_p->join_pred_info.inner.domains =
 	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->inner.domains == NULL)
+      if (node_p->join_pred_info.inner.domains == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  stx_set_xasl_errcode (thread_p, error);
 	  return NULL;
 	}
-
-      node_p->inner.value_indexes = node_p->merge_info.ls_inner_column;
+      node_p->join_pred_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
     }
 
   /**
@@ -3260,7 +3255,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      ptr = or_unpack_domain (ptr, &node_p->outer.domains[i], 0);
+      ptr = or_unpack_domain (ptr, &node_p->join_pred_info.outer.domains[i], 0);
     }
 
   /**
@@ -3304,19 +3299,19 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
     {
-      ptr = or_unpack_domain (ptr, &node_p->inner.domains[i], NULL);
+      ptr = or_unpack_domain (ptr, &node_p->join_pred_info.inner.domains[i], NULL);
     }
 
   /**
-   * need_coerce_domains
+   * need_coerce_domains, coerce_domains
    */
   ptr = or_unpack_int (ptr, &need_coerce_domains);
-  node_p->need_coerce_domains = need_coerce_domains;
-  if (node_p->need_coerce_domains)
+  node_p->join_pred_info.need_coerce_domains = need_coerce_domains;
+  if (node_p->join_pred_info.need_coerce_domains)
     {
-      node_p->coerce_domains =
+      node_p->join_pred_info.coerce_domains =
 	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->coerce_domains == NULL)
+      if (node_p->join_pred_info.coerce_domains == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  stx_set_xasl_errcode (thread_p, error);
@@ -3325,7 +3320,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
       for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
 	{
-	  ptr = or_unpack_domain (ptr, &node_p->coerce_domains[i], 0);
+	  ptr = or_unpack_domain (ptr, &node_p->join_pred_info.coerce_domains[i], 0);
 	}
     }
 
