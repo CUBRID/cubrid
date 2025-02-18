@@ -362,9 +362,10 @@ unary_expression
 atom
     : literal                                   # literal_exp
     | record_field                              # field_exp
+    | syntaxed_call                             # syntaxed_call_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
-    | keyword_builtin_func                      # builtin_func
+    | reserved_builtin_func                     # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
@@ -387,20 +388,88 @@ func_call_name
 
 func_name
     : identifier
-    | keyword_builtin_func
+    | reserved_builtin_func
     ;
 
-keyword_builtin_func
-    : CURRENT_USER
+reserved_builtin_func   /* those which cannot be an identifier */
+    : ADDDATE
+    | CAST
+    | CHR
+    | CURRENT_USER
     | DATE
+    | DATE_ADD
+    | DATE_SUB
+    | DAY
     | DEFAULT
-    | IF
+    | EXTRACT
+    | HOUR
+    //| IF  do not include IF: it causes confusion with IF statement on syntax error case
     | INSERT
+    | MINUTE
     | MOD
+    | MONTH
+    | POSITION
+    | QUARTER
     | REPLACE
+    | SECOND
+    | SUBDATE
     | TIME
     | TIMESTAMP
+    | TRIM
     | TRUNCATE
+    | WEEK
+    | YEAR
+    ;
+
+syntaxed_call
+    : CAST LPAREN argument AS type_spec RPAREN                                                # syntaxed_call_cast
+    | CHR LPAREN  argument USING ( UTF8 | ISO88591 ) RPAREN                                   # syntaxed_call_chr
+    | (DATE_ADD | ADDDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_adddate
+    | (DATE_SUB | SUBDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_subdate
+    | EXTRACT LPAREN time_field FROM argument RPAREN                                          # syntaxed_call_extract
+    | POSITION LPAREN sub=argument IN whole=argument RPAREN                                   # syntaxed_call_position
+    | TRIM LPAREN trim_dir? trim_str=argument? FROM str=argument RPAREN                       # syntaxed_call_trim
+    ;
+
+time_unit
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    | SECOND_MILLISECOND
+    | MINUTE_MILLISECOND
+    | MINUTE_SECOND
+    | HOUR_MILLISECOND
+    | HOUR_SECOND
+    | HOUR_MINUTE
+    | DAY_MILLISECOND
+    | DAY_SECOND
+    | DAY_MINUTE
+    | DAY_HOUR
+    | YEAR_MONTH
+    ;
+
+time_field
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    ;
+
+trim_dir
+    : BOTH
+    | LEADING
+    | TRAILING
     ;
 
 relational_operator

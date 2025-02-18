@@ -3,7 +3,7 @@ EXPORTS
 ;
 ; functions
 ;
-    au_change_owner
+    au_change_class_owner_including_partitions
     au_grant
     cfg_free_directory
     cfg_find_db

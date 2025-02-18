@@ -28,44 +28,25 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.type;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.InstanceStore;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class TypeChar extends Type {
+public class ExprSyntaxedCallChr extends BuiltinFuncCall {
 
-    public static final int MAX_LEN = 268435455;
-    public static final int DEFAULT_LEN = 1;
-
-    public final int length;
-
-    public static TypeChar getInstance(InstanceStore iStore, int length) {
-
-        assert length <= MAX_LEN && length >= 1;
-
-        TypeChar ret = iStore.typeChar.get(length);
-        if (ret == null) {
-            ret = new TypeChar(length);
-            iStore.typeChar.put(length, ret);
-        }
-
-        return ret;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprSyntaxedCallChr(this);
     }
 
-    // ---------------------------------------------------------------------------
-    // Private
-    // ---------------------------------------------------------------------------
+    public Expr arg;
+    public boolean isUtf8;
 
-    private static String getPlcName(int length) {
-        return String.format("Char(%d)", length);
-    }
+    public ExprSyntaxedCallChr(ParserRuleContext ctx, Expr arg, boolean isUtf8) {
+        super(ctx);
 
-    private static String getTypicalValueStr(int length) {
-        return String.format("cast('a' as char(%d))", length);
-    }
-
-    private TypeChar(int length) {
-        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
-        this.length = length;
+        this.arg = arg;
+        this.isUtf8 = isUtf8;
     }
 }

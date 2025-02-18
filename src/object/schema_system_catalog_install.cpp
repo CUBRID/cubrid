@@ -872,7 +872,6 @@ namespace cubschema
 		   // columns
     {
       {"sp_of", CT_STORED_PROC_NAME},
-      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
       {"is_system_generated", "integer"},
       {"arg_name", format_varchar (255)},
