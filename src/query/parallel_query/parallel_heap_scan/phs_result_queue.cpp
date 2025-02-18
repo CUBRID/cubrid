@@ -29,13 +29,17 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define PHS_INFINITE_QUEUE 0
+
 namespace parallel_heap_scan
 {
   result_queue::result_queue (size_t size)
     : is_scan_internal_ended (false)
     , is_scan_external_ended (false)
   {
+#if !PHS_INFINITE_QUEUE
     m_queue.set_capacity (size);
+#endif
   }
 
   result_queue::~result_queue()
@@ -44,11 +48,13 @@ namespace parallel_heap_scan
 
   void result_queue::enqueue (std::shared_ptr<result_queue::entry> entry)
   {
+#if !PHS_INFINITE_QUEUE
     if (m_queue.size() >= m_queue.capacity() - 2)
       {
 	std::unique_lock<std::mutex> lock (full_mutex);
-	full_cv.wait (lock, [this] { return m_queue.size() < m_queue.capacity() - 2; });
+	full_cv.wait (lock, [this] { return m_queue.size() * 2 < m_queue.capacity();});
       }
+#endif
     m_queue.push (entry);
   }
 
@@ -59,10 +65,12 @@ namespace parallel_heap_scan
       {
 	if (m_queue.try_pop (entry))
 	  {
+#if !PHS_INFINITE_QUEUE
 	    if (m_queue.size() * 2 < m_queue.capacity())
 	      {
 		full_cv.notify_one();
 	      }
+#endif
 	    return true;
 	  }
 	std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -72,7 +80,9 @@ namespace parallel_heap_scan
 
   bool result_queue::try_dequeue (std::shared_ptr<entry> &entry)
   {
+#if !PHS_INFINITE_QUEUE
     full_cv.notify_one();
+#endif
     return m_queue.try_pop (entry);
   }
 

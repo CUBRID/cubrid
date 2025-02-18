@@ -216,6 +216,7 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
     {
       std::size_t parallelism = scan_id->s.phsid.manager->parallelism;
       scan_id->s.phsid.perf_monitor = new parallel_heap_scan::perf_monitor (scan_id, parallelism);
+      /* should be deleted in qdump_print_access_specs_text or json */
     }
   orig_heap_id = db_change_private_heap (thread_p, 0);
   delete scan_id->s.phsid.manager;

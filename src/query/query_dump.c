@@ -2999,6 +2999,14 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
       scan_print_stats_json (&spec->s_id, scan);
 
+#if !WINDOWS
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+	{
+	  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name);
+	  delete spec->s_id.s.phsid.perf_monitor;
+	  spec->s_id.s.phsid.perf_monitor = NULL;
+	}
+#endif
       if (scan_array != NULL)
 	{
 	  json_array_append_new (scan_array, scan);

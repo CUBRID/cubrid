@@ -26,6 +26,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define PARALLEL_HEAP_SCAN_TRACE_DETAIL 0
 namespace parallel_heap_scan
 {
   perf_monitor::perf_monitor (SCAN_ID *scan_id, std::size_t parallelism)
@@ -55,15 +56,31 @@ namespace parallel_heap_scan
 	fprintf (fp, " time: %d", TO_MSEC (m_scan_stats[i].elapsed_scan));
 	fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) m_scan_stats[i].read_rows,
 		 (unsigned long long int) m_scan_stats[i].qualified_rows);
+#if PARALLEL_HEAP_SCAN_TRACE_DETAIL
 	fprintf (fp, ", row scan time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_scan));
 	fprintf (fp, ", page lock time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock));
 	fprintf (fp, ", enqueue time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue));
+#endif
 	fprintf (fp, ")");
       }
   }
 
-  void perf_monitor::print_json (FILE *fp)
+  void perf_monitor::print_json (json_t *scan, char *class_name)
   {
+    json_t *parallel_array = json_array();
+    for (std::size_t i = 0; i < m_parallelism; i++)
+      {
+	json_t *parallel_obj  = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (m_scan_stats[i].elapsed_scan), "readrows",
+					   m_scan_stats[i].read_rows, "rows", m_scan_stats[i].qualified_rows);
+#if PARALLEL_HEAP_SCAN_TRACE_DETAIL
+	json_object_set_new (parallel_obj, "row scan time", json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_scan)));
+	json_object_set_new (parallel_obj, "page lock time",
+			     json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock)));
+	json_object_set_new (parallel_obj, "enqueue time", json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue)));
+#endif
+	json_array_append_new (parallel_array, parallel_obj);
+      }
+    json_object_set_new (scan, "parallel heap", parallel_array);
   }
 
 
