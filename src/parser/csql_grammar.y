@@ -24659,6 +24659,23 @@ execute_using_list
 	| execute_using_list ',' signed_literal_
 		{{ DBG_TRACE_GRAMMAR(execute_using_list, | execute_using_list ',' signed_literal_);
 
+                        int arg[2];
+                        arg[0] = PT_EXPR;
+                        arg[1] = 0;
+
+			PT_NODE *node = $3;
+
+                        (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                        if(arg[1] == 1)
+                        {
+                                PT_ERRORf (this_parser, node,
+				"check syntax at %s, expressions are not allowed in the using clause.",
+				pt_short_print (this_parser, node));
+
+				break;
+                        }
+
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -24672,6 +24689,23 @@ execute_using_list
 		DBG_PRINT}}
 	| signed_literal_
 		{{ DBG_TRACE_GRAMMAR(execute_using_list, | signed_literal_);
+
+                        int arg[2];
+                        arg[0] = PT_EXPR;
+                        arg[1] = 0;
+
+			PT_NODE *node = $1;
+
+                        (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                        if(arg[1] == 1)
+                        {
+                                PT_ERRORf (this_parser, node,
+				"check syntax at %s, expressions are not allowed in the using clause.",
+				pt_short_print (this_parser, node));
+
+				break;
+                        }
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
