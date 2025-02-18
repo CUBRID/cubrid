@@ -414,21 +414,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
   const char *table_name;
-
-  /* when changing the owner,  all rights are transferred to the new owner. */
-  table_name = sm_get_ch_name (class_mop);
-  if (table_name == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
-  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner_mop, table_name);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
+  const char *partition_table_name;
 
   /* change the owner of a partition */
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
@@ -457,6 +443,20 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
+	  partition_table_name = sm_get_ch_name (sub_partitions[i]);
+	  if (partition_table_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto end;
+	    }
+
+	  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, sub_partitions[i], owner_mop, partition_table_name);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto end;
+	    }
+
 	  error = au_change_class_owner_including_partitions (sub_partitions[i], owner_mop);
 	  if (error != NO_ERROR)
 	    {
@@ -464,6 +464,21 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	      goto end;
 	    }
 	}
+    }
+
+  /* when changing the owner,  all rights are transferred to the new owner. */
+  table_name = sm_get_ch_name (class_mop);
+  if (table_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner_mop, table_name);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
 
   /* change the owner of a class */

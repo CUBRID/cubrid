@@ -1255,7 +1255,11 @@ static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
 {
   int error = NO_ERROR, save, current_cache;
-  const char *sql_query;
+  char obj_fetch_query[256];
+  const char *sql_query =
+	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[object_of] = (%s)"
+	  " GROUP BY [au].grantee";
   DB_VALUE val, element;
   DB_SESSION *session = NULL;
   int stmt_id;
@@ -1279,26 +1283,18 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sql_query =
-	      "SELECT [au].grantee, [au].object_of"
-	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_CLASS_NAME "] [c]"
-	      " WHERE [au].[object_of] = [c].[class_of] AND [c].[unique_name] LIKE CONCAT(?,'%')"
-	      " GROUP BY [au].grantee, [au].object_of";
+      sprintf (obj_fetch_query, sql_query, "SELECT [cl].[class_of] FROM " CT_CLASS_NAME "[cl] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sql_query =
-	      "SELECT [au].grantee, [au].object_of"
-	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_STORED_PROC_NAME "] [sp]"
-	      " WHERE [au].[object_of] = [sp] AND [sp].[unique_name] = ?"
-	      " GROUP BY [au].grantee";
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
     default:
-      assert (false);
       error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
 
-  session = db_open_buffer_local (sql_query);
+  session = db_open_buffer_local (obj_fetch_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1507,12 +1503,15 @@ static int
 update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR, save;
-  const char *sql_query;
+  char obj_fetch_query[256];
+  const char *sql_query =
+	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  " WHERE [au].[object_of] = (%s)";
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE val, db_auth_object_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
-  MOP db_auth_object_mop, grantee_mop, object_of_mop;
+  MOP db_auth_object_mop = nullptr, grantee_mop = nullptr, object_of_mop = nullptr;
   const char *auth_type_char;
   int len;
   DB_AUTH db_auth;
@@ -1536,24 +1535,18 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   switch (obj_type)
     {
     case DB_OBJECT_CLASS:
-      sql_query =
-	      "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable"
-	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_CLASS_NAME "] [c]"
-	      " WHERE [au].[object_of] = [c].[class_of] AND [c].[unique_name] LIKE CONCAT(?,'%')";
+      sprintf (obj_fetch_query, sql_query, "SELECT [c].[class_of] FROM " CT_CLASS_NAME "[c] WHERE [unique_name] = ?");
       break;
     case DB_OBJECT_PROCEDURE:
-      sql_query =
-	      "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable"
-	      " FROM [" CT_CLASSAUTH_NAME "] [au], [" CT_STORED_PROC_NAME "] [sp]"
-	      " WHERE [au].[object_of] = [sp] AND [sp].[unique_name] = ?";
+      sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
     default:
-      assert (false);
       error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
 
-  session = db_open_buffer_local (sql_query);
+  session = db_open_buffer_local (obj_fetch_query);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1603,16 +1596,20 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
     {
       if (db_query_get_tuple_value (result, 0, &db_auth_object_value) == NO_ERROR)
 	{
-	  db_auth_object_mop = NULL;
+	  //db_auth_object_mop = NULL;
 	  if (!DB_IS_NULL (&db_auth_object_value))
 	    {
 	      db_auth_object_mop = db_get_object (&db_auth_object_value);
+	    }
+	  else
+	    {
+	      goto release;
 	    }
 	}
 
       if (db_query_get_tuple_value (result, 1, &grantee_value) == NO_ERROR)
 	{
-	  grantee_mop = NULL;
+	  //grantee_mop = NULL;
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
 	      grantee_mop = db_get_object (&grantee_value);
@@ -1625,7 +1622,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 
       if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
 	{
-	  object_of_mop = NULL;
+	  //object_of_mop = NULL;
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
 	      object_of_mop = db_get_object (&object_of_value);
@@ -1670,6 +1667,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 		  else
 		    {
 		      db_auth = DB_AUTH_NONE;
+		      goto release;
 		    }
 		  break;
 
@@ -1683,11 +1681,14 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 
 		default:
 		  db_auth = DB_AUTH_NONE;
+		  goto release;
 		  break;
 		}
 	    }
 	  else
 	    {
+	      error = ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error);
 	      goto release;
 	    }
 	}
@@ -1705,7 +1706,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      assert (db_auth_object_mop != NULL && grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE
+      assert (db_auth_object_mop != nullptr && grantee_mop != nullptr && object_of_mop != nullptr && db_auth != DB_AUTH_NONE
 	      && is_grantable != -1 );
 
       /*
@@ -1790,7 +1791,7 @@ exit:
   db_value_clear (&auth_type_value);
   db_value_clear (&is_grantable_value);
 
-  if (db_auth_object_mop == NULL && grantee_mop == NULL && object_of_mop == NULL &&
+  if (db_auth_object_mop == nullptr && grantee_mop == nullptr && object_of_mop == nullptr &&
       db_auth == DB_AUTH_NONE && is_grantable == -1 && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
