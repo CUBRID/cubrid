@@ -1202,25 +1202,23 @@ exit:
 int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR;
   int update_count_db_authorization = 0;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
 
-  AU_DISABLE (save);
-
-  /* 1. db_authorization 카탈로그 수정
+  /* modify db_authorization catalog */
   error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       goto exit;
     }
-  */
-  // 2. _db_auth 카탈로그 수정
+
+  /* if there are no results from querying the db authorization catalog, there is no need to check db_auth. */
   if (update_count_db_authorization)
     {
-      // 2. _db_auth 카탈로그 삭제 & 기록
+      /* modify db_auth catalog */
       error = update_auth_for_new_owner (obj_type, new_owner_mop, unique_name);
       if (error != NO_ERROR)
 	{
@@ -1230,7 +1228,6 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
     }
 
 exit:
-  AU_ENABLE (save);
 
   return (error);
 }
@@ -1252,8 +1249,8 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   MOP grantee_mop, object_of_mop, auth, new_auth;
   DB_SET *grants = NULL, *new_grants = NULL;
   int gindex, gsize, new_gindex;
-  std::unordered_map<std::tuple<MOP, MOP>, int, authorization_keyhash, authorization_keyequal>
-  authorization_unordered_map;
+  std::unordered_map<std::tuple<MOP, MOP>, int,
+      authorization_keyhash, authorization_keyequal> authorization_unordered_map;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
 
@@ -1261,7 +1258,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
 
-  //AU_DISABLE (save);
+  AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1277,7 +1274,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
       goto exit;
     }
 
-  /* 1. 쿼리 조회 */
   session = db_open_buffer_local (obj_fetch_query);
   if (session == NULL)
     {
@@ -1325,7 +1321,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   *row_count = error;
   error = NO_ERROR;
 
-  /* 2. 결과 값을 가지고 _db_auth와 db_authorization 카탈로그 수정 */
   while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
@@ -1356,19 +1351,17 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 
       assert (grantee_mop != NULL && object_of_mop != NULL);
 
-      /* 3. db_authorization 카탈로그의 값을 수정하는 로직 */
       if (au_get_object (grantee_mop, "authorization", &auth) != NO_ERROR)
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto release; //break;
+	  goto release;
 	}
       else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
-	// 오브젝트(Instance)를 가져오는 핵심 함수, 메모리에서 먼저 찾고, 없으면 데이터베이스에서 가져옴
 	{
 	  error = ER_AU_CANT_UPDATE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto release; //break;
+	  goto release;
 	}
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
@@ -1384,8 +1377,8 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	      if (db_get_object (&val) == object_of_mop)
 		{
 		  /*
-		   * grantee가 새로운 소유자가될 때, 이전에 부여받은 권한은 삭제
-		   * 이유 : 소유자의 권한을 revoke 할 수 없기 때문
+		   * when the grantee becomes the new owner, previously granted privileges are removed.
+		   * reason: privileges of the owner cannot be revoked.
 		   * grantee_mop : grantee_user
 		   * new_owner_mop : grnator_user
 		   *
@@ -1396,28 +1389,28 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 		   */
 		  if (ws_is_same_object (grantee_mop, new_owner_mop))
 		    {
-		      // 4-1. db_authorization 카탈로그의 grants 삭제 (grentee == new_owner)
 		      drop_grant_entry (grants, gindex);
 		      gindex -= GRANT_ENTRY_LENGTH;
 		      gsize -= GRANT_ENTRY_LENGTH;
 		    }
 		  else
 		    {
-		      // 4-2. db_authorization 카탈로그의 grants 변경 (grentee != new_owner)
 		      int current_cache;
 
 		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &val);
 		      current_cache = db_get_int (&val);
 
-		      //기록, mask를 합쳐야하고, 지워야하고
+		      /* before deleting the data in db_authorization, merge the data and temp store it. */
 		      auto key = std::make_tuple (grantee_mop, object_of_mop);
 		      if (authorization_unordered_map.find (key) == authorization_unordered_map.end())
 			{
-			  authorization_unordered_map[key] = current_cache;  // 첫 번째 값 저장
+			  /* storing unique data */
+			  authorization_unordered_map[key] = current_cache;
 			}
 		      else
 			{
-			  authorization_unordered_map[key] |= current_cache;  // 기존 값과 bitwise OR 수행
+			  /* update the mask value of duplicated data. */
+			  authorization_unordered_map[key] |= current_cache;
 			}
 
 		      drop_grant_entry (grants, gindex);
@@ -1429,7 +1422,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	}
     }
 
-  // bit 값을 or 수행한거 다시 삽입
+  /* reinsert the merged temp data */
   for (const auto &entry : authorization_unordered_map)
     {
       const auto &key = entry.first;
@@ -1439,7 +1432,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto release; //break;
+	  goto release;
 	}
       else if ((error = obj_inst_lock (new_auth, 1)) == NO_ERROR
 	       && (error = get_grants (new_auth, &new_grants, 1)) == NO_ERROR)
@@ -1455,21 +1448,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	    }
 	}
     }
-  /*
-  if (obj_type == DB_OBJECT_CLASS)
-    {
-      SM_CLASS *classobj;
-
-      if ((error = au_fetch_class_force (object_of_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
-  {
-    //
-     * clear the cache for this user/class pair to make sure we
-     * recalculate it the next time it is referenced
-     //
-    Au_cache.reset_cache_for_user_and_class (classobj);
-  }
-    }
-  */
 
   /*
    * Make sure any cached parse trees are rebuild.  This proabably
@@ -1488,7 +1466,7 @@ release:
     }
 
 exit:
-  //AU_ENABLE (save);
+  AU_ENABLE (save);
 
   pr_clear_value (&val);
   pr_clear_value (&grantee_value);
@@ -1544,7 +1522,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   db_make_null (&auth_type_value);
   db_make_null (&is_grantable_value);
 
-  //AU_DISABLE (save);
+  AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1560,7 +1538,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
       goto exit;
     }
 
-  /* 1. 쿼리 조회 */
   session = db_open_buffer_local (obj_fetch_query);
   if (session == NULL)
     {
@@ -1609,7 +1586,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   error = NO_ERROR;
   while (db_query_next_tuple (result) == DB_CURSOR_SUCCESS)
     {
-      /* 2-1. [au].object */
       if (db_query_get_tuple_value (result, 0, &db_auth_object_value) == NO_ERROR)
 	{
 	  db_auth_object_mop = NULL;
@@ -1619,7 +1595,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      /* 2-2. [au].grnatee */
       if (db_query_get_tuple_value (result, 1, &grantee_value) == NO_ERROR)
 	{
 	  grantee_mop = NULL;
@@ -1633,7 +1608,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      /* 2-3. [au].object_of */
       if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
 	{
 	  object_of_mop = NULL;
@@ -1647,7 +1621,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      /* 2-4. [au].auth_type */
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
 	  auth_type_char = NULL;
@@ -1704,7 +1677,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      /* 2-5. [au].is_grantable */
       if (db_query_get_tuple_value (result, 4, &is_grantable_value) == NO_ERROR)
 	{
 	  is_grantable = -1;
@@ -1722,8 +1694,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	      && is_grantable != -1 );
 
       /*
-       * grantee가 새로운 소유자가될 때, 이전에 부여받은 권한은 삭제
-       * 이유 : 소유자의 권한을 revoke 할 수 없기 때문
+       * when the grantee becomes the new owner, previously granted privileges are removed.
+       * reason: privileges of the owner cannot be revoked.
        * grantee_mop : grantee_user
        * new_owner_mop : grnator_user
        *
@@ -1734,54 +1706,46 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
        */
       if (ws_is_same_object (grantee_mop, new_owner_mop))
 	{
-	  /* 5-1. db_auth 카탈로그 삭제 */
-	  //삭제 (accessor.delete_auth)
 	  error = obj_inst_lock (db_auth_object_mop, 1);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release; //break;
+	      goto release;
 	    }
 
 	  error = obj_delete (db_auth_object_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release; //break;
+	      goto release;
 	    }
 	}
       else
 	{
-	  /* 5-2. db_auth 카탈로그 기록 및 삭제 */
-	  //기록 및 병합
+	  /* before deleting the data in db_auth, merge the data and temp store it. */
 	  auto key = std::make_tuple (new_owner_mop, grantee_mop, object_of_mop, db_auth);
-
-	  printf ("row : %d \n", is_grantable);
-
-	  // 중복된 키가 있으면 grant_option을 업데이트 (더 큰 값 유지)
 	  if (auth_unordered_map.find (key) == auth_unordered_map.end() || auth_unordered_map[key] < is_grantable)
 	    {
 	      auth_unordered_map[key] = is_grantable;
 	    }
 
-	  //삭제 (accessor.delete_auth)
 	  error = obj_inst_lock (db_auth_object_mop, 1);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release; //break;
+	      goto release;
 	    }
 
 	  error = obj_delete (db_auth_object_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release; //break;
+	      goto release;
 	    }
 	}
     }
 
-  // 병합해서 기록한거 다시 추가
+  /* reinsert the merged temp data */
   for (const auto &entry : auth_unordered_map)
     {
       const auto &key = entry.first;
@@ -1804,7 +1768,7 @@ release:
     }
 
 exit:
-  //AU_ENABLE (save);
+  AU_ENABLE (save);
 
   db_value_clear (&val);
   db_value_clear (&db_auth_object_value);
