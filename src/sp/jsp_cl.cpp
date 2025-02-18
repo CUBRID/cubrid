@@ -1055,7 +1055,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   param_list = PT_NODE_SP_ARGS (statement);
   for (p = param_list; p != NULL; p = p->next)
     {
-      SP_ARG_INFO arg_info (sp_info.unique_name, sp_info.pkg_name);
+      SP_ARG_INFO arg_info (sp_info.unique_name);
 
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);

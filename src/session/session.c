@@ -3277,7 +3277,7 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 	  state_p->pl_session_p = new PL_SESSION (state_p->id);
 	  er_log_debug (ARG_FILE_LINE, "pl_session (create): %d\n", state_p->id);
 	}
-      else if (state_p->pl_session_p->is_interrupted ())
+      else if (state_p->pl_session_p->is_running () == true && state_p->pl_session_p->is_interrupted ())
 	{
 	  pl_session_ref_ptr = nullptr;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
