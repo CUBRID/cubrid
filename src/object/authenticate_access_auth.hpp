@@ -109,6 +109,7 @@ extern int au_user_revoke_all_privileges (MOP user_mop);
 /*
 * when the owner of a class, virtual class, or procedure is changed, the previous owner's privileges are transferred to the new owner.
 */
-extern int au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name);
+extern int au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP new_owner_mop,
+    const char *unique_name);
 
 #endif // _authenticate_access_auth_HPP_

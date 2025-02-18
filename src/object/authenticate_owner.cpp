@@ -413,7 +413,6 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   MOP *sub_partitions = NULL;
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
-  MOP save_user, owner;
   const char *table_name;
 
   /* when changing the owner,  all rights are transferred to the new owner. */
@@ -424,7 +423,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
       return error;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, owner_mop, table_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner_mop, table_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -619,7 +618,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
       goto end;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, new_owner_mop, unique_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, sp_mop, new_owner_mop, unique_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);

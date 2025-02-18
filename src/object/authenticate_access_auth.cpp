@@ -1200,7 +1200,7 @@ exit:
  * Reason: The REVOKE statement cannot revoke privileges from the owner.
  */
 int
-au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
+au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR;
   int update_count_db_authorization = 0;
@@ -1225,6 +1225,26 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
 	  ASSERT_ERROR_AND_SET (error);
 	  goto exit;
 	}
+
+      if (obj_type == DB_OBJECT_CLASS)
+	{
+	  SM_CLASS *classobj;
+	  if ((error = au_fetch_class_force (object_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
+	    {
+	      /*
+	       * clear the cache for this user/class pair to make sure we
+	       * recalculate it the next time it is referenced
+	       */
+	      Au_cache.reset_cache_for_user_and_class (classobj);
+	    }
+	}
+
+      /*
+       * Make sure that we don't keep any parse trees
+       * around that rely on obsolete authorization.
+       * This may not be necessary.
+       */
+      sm_bump_local_schema_version ();
     }
 
 exit:
@@ -1234,20 +1254,20 @@ exit:
 static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR, save, current_cache;
   char obj_fetch_query[256];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[object_of] = (%s)"
 	  " GROUP BY [au].grantee";
-  DB_VALUE val;
+  DB_VALUE val, element;
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE grantee_value, object_of_value;
-  MOP grantee_mop, object_of_mop, auth, new_auth;
-  DB_SET *grants = NULL, *new_grants = NULL;
-  int gindex, gsize, new_gindex;
+  MOP grantee_mop, object_of_mop, auth;
+  DB_SET *grants = NULL;
+  int gindex, gsize;
   std::unordered_map<std::tuple<MOP, MOP>, int,
       authorization_keyhash, authorization_keyequal> authorization_unordered_map;
 
@@ -1256,6 +1276,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   AU_DISABLE (save);
 
   db_make_null (&val);
+  db_make_null (&element);
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
 
@@ -1367,13 +1388,13 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	  gsize = set_size (grants);
 	  for (gindex = 0; gindex < gsize && error == NO_ERROR; gindex += GRANT_ENTRY_LENGTH)
 	    {
-	      if (set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &val))
+	      if (set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &element))
 		{
 		  ASSERT_ERROR_AND_SET (error);
 		  goto release;
 		}
 
-	      if (db_get_object (&val) == object_of_mop)
+	      if (db_get_object (&element) == object_of_mop)
 		{
 		  /*
 		   * when the grantee becomes the new owner, previously granted privileges are removed.
@@ -1394,10 +1415,8 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 		    }
 		  else
 		    {
-		      int current_cache;
-
-		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &val);
-		      current_cache = db_get_int (&val);
+		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
+		      current_cache = db_get_int (&element);
 
 		      /* before deleting the data in db_authorization, merge the data and temp store it. */
 		      auto key = std::make_tuple (grantee_mop, object_of_mop);
@@ -1421,34 +1440,24 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	}
     }
 
-  /*
-   * The following comment was present in au_grnat(), au_revoke().
-   * However, since both REVOKE and GRANT operations are performed during ownership changes, I considered it necessary and added it.
-   *
-   * Original comment:
-   * Make sure any cached parse trees are rebuild. This proabably
-   * isn't necessary for GRANT, only REVOKE.
-   */
-  sm_bump_local_schema_version ();
-
   /* reinsert the merged temp data */
   for (const auto &entry : authorization_unordered_map)
     {
       const auto &key = entry.first;
-      int current_cache = entry.second;
+      current_cache = entry.second;
 
-      if (au_get_object (std::get<0> (key), "authorization", &new_auth) != NO_ERROR)
+      if (au_get_object (std::get<0> (key), "authorization", &auth) != NO_ERROR)
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
 	  goto release;
 	}
-      else if ((error = obj_inst_lock (new_auth, 1)) == NO_ERROR
-	       && (error = get_grants (new_auth, &new_grants, 1)) == NO_ERROR)
+      else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR
+	       && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  new_gindex = add_grant_entry (new_grants, obj_type, std::get<1> (key), new_owner_mop);
-	  db_make_int (&val, current_cache);
-	  set_put_element (new_grants, GRANT_ENTRY_CACHE (new_gindex), &val);
+	  gindex = add_grant_entry (grants, obj_type, std::get<1> (key), new_owner_mop);
+	  db_make_int (&element, current_cache);
+	  set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
 
 	  /* Fail to insert/update, never change the grant entry set. */
 	  if (error != NO_ERROR)
@@ -1470,17 +1479,13 @@ release:
 
 exit:
   pr_clear_value (&val);
+  pr_clear_value (&element);
   pr_clear_value (&grantee_value);
   pr_clear_value (&object_of_value);
 
   if (grants != NULL)
     {
       set_free (grants);
-    }
-
-  if (new_grants != NULL)
-    {
-      set_free (new_grants);
     }
 
   if (grantee_mop == NULL && object_of_mop == NULL && er_errid () == NO_ERROR)
@@ -1748,25 +1753,15 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	}
     }
 
-  /*
-   * The following comment was present in au_grnat(), au_revoke().
-   * However, since both REVOKE and GRANT operations are performed during ownership changes, I considered it necessary and added it.
-   *
-   * Original comment:
-   * Make sure any cached parse trees are rebuild. This proabably
-   * isn't necessary for GRANT, only REVOKE.
-   */
-  sm_bump_local_schema_version ();
-
   /* reinsert the merged temp data */
   for (const auto &entry : auth_unordered_map)
     {
       const auto &key = entry.first;
-      int map_grant_option = entry.second;
+      is_grantable = entry.second;
 
       error =
 	      accessor.insert_auth (obj_type, std::get<0> (key), std::get<1> (key), std::get<2> (key), std::get<3> (key),
-				    (map_grant_option) ? std::get<3> (key) : DB_AUTH_NONE);
+				    (is_grantable) ? std::get<3> (key) : DB_AUTH_NONE);
     }
 
 
