@@ -1202,10 +1202,12 @@ exit:
 int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, save;
   int update_count_db_authorization = 0;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
+
+  AU_DISABLE (save);
 
   /* modify db_authorization catalog */
   error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
@@ -1225,17 +1227,23 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, c
 	  ASSERT_ERROR_AND_SET (error);
 	  goto exit;
 	}
+
+      /*
+       * Make sure any cached parse trees are rebuild.  This proabably
+       * isn't necessary for GRANT, only REVOKE.
+       */
+      sm_bump_local_schema_version ();
     }
 
 exit:
-
+  AU_ENABLE (save);
   return (error);
 }
 
 static int
 update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR;
   char obj_fetch_query[256];
   const char *sql_query =
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
@@ -1257,8 +1265,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   db_make_null (&val);
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
-
-  AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1449,12 +1455,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 	}
     }
 
-  /*
-   * Make sure any cached parse trees are rebuild.  This proabably
-   * isn't necessary for GRANT, only REVOKE.
-   */
-  sm_bump_local_schema_version ();
-
 release:
   if (result != NULL)
     {
@@ -1466,8 +1466,6 @@ release:
     }
 
 exit:
-  AU_ENABLE (save);
-
   pr_clear_value (&val);
   pr_clear_value (&grantee_value);
   pr_clear_value (&object_of_value);
@@ -1494,7 +1492,7 @@ exit:
 static int
 update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
 {
-  int error = NO_ERROR, save;
+  int error = NO_ERROR;
   char obj_fetch_query[256];
   const char *sql_query =
 	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
@@ -1521,8 +1519,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   db_make_null (&object_of_value);
   db_make_null (&auth_type_value);
   db_make_null (&is_grantable_value);
-
-  AU_DISABLE (save);
 
   switch (obj_type)
     {
@@ -1768,8 +1764,6 @@ release:
     }
 
 exit:
-  AU_ENABLE (save);
-
   db_value_clear (&val);
   db_value_clear (&db_auth_object_value);
   db_value_clear (&grantee_value);
