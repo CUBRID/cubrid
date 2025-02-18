@@ -159,6 +159,10 @@ regu_variable_node::clear_xasl_local ()
     case TYPE_SP:
       assert (value.sp_ptr != NULL);
       pr_clear_value (value.sp_ptr->value);
+#if !defined(SERVER_MODE)
+      delete value.sp_ptr->sig;
+      value.sp_ptr->sig = nullptr;
+#endif
       break;
 
     case TYPE_FUNC:
