@@ -168,7 +168,6 @@ jobs:
           command: |
             if [ "${TEST_SUITE}" = "shell" ] && [ "${RUN_SHELL_TEST}" != "true" ]; then
               echo "Skipping shell tests because RUN_SHELL_TEST is false"
-              echo "GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
               circleci-agent step halt
             fi
       - attach-and-run-tests
