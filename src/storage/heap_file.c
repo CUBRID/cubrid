@@ -5172,7 +5172,7 @@ heap_manager_initialize (void)
   int ret;
 #define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
 
-  cubrocks::version ();
+  cubrocks::kv_version ();
 
   heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;

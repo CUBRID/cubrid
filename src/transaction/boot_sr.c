@@ -53,6 +53,7 @@
 #include "system_parameter.h"
 #include "object_primitive.h"
 #include "locator_sr.h"
+#include "cubrocks.hpp"
 #include "heap_file.h"
 #include "system_catalog.h"
 #include "transform.h"
@@ -1493,6 +1494,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   const char *db_path, *log_path, *lob_path;
   char *p;
   THREAD_ENTRY *thread_p = NULL;
+  bool status;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -1847,6 +1849,10 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (!boot_Init_server_is_canceled)
     {
+      /* RocksDB */
+      status = cubrocks::ctx->kv_create (cubrocks::kv_postfix (boot_Db_full_name));
+      assert (status);
+
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
 				 log_pathbuf, (const char *) log_prefix, log_npages, client_lock_wait,
