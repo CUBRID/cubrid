@@ -167,10 +167,10 @@ jobs:
           command: |
             if [ "${RUN_SHELL_TEST}" == "true" ]; then
               echo "Setup shell test worker"
-              /entrypoint.sh worker
+              /entrypoint.sh worker echo $PWD;cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
               #test code:
               echo $PWD
-              cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+              
             fi
       - attach-and-run-tests
 
