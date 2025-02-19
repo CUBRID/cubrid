@@ -133,15 +133,6 @@ cubrocks::context::kv_destroy (std::string path)
   return rocksdb::DestroyDB (path, options).ok();
 }
 
-std::string
-cubrocks::kv_postfix (char *path)
-{
-  std::string str (path);
-
-  str += "_rocksdb";
-  return str;
-}
-
 cubrocks::context::context ()
 {
   kv_config ();
