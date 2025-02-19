@@ -1964,8 +1964,12 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 			  error = appropriate_error (cache, mask);
 			  if (error)
 			    {
-			      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-			      break;
+			      /*
+			       * To verify all SEQUENCE values stored in the grants column of the db_authorization catalog for the corresponding row, the process continues checking the next SEQUENCE even if an error occurs.
+			       * If, after checking all SEQUENCE values, no valid permission is found, the error is revalidated under the following conditions before being output.
+			       */
+			      error = NO_ERROR;
+			      continue;
 			    }
 			}
 		      else
