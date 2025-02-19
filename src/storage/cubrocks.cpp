@@ -22,16 +22,83 @@
 
 #ident "$Id$"
 
+#include <string>
+
 #include <iostream>
+#include <assert.h>
+
 #include "rocksdb/version.h"
+#include "rocksdb/slice_transform.h"
+
 #include "cubrocks.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+namespace cubrocks
+{
+  context _ctx;
+  context *ctx = &_ctx;
+}
+
 void
-cubrocks::version (void)
+cubrocks::kv_version (void)
 {
   std::cout << "RocksDB version: " << ROCKSDB_MAJOR << "." << ROCKSDB_MINOR << "." << ROCKSDB_PATCH << std::endl;
+}
+
+std::string
+cubrocks::kv_postfix (char *path)
+{
+  std::string str (path);
+
+  str += "_rocksdb";
+  return str;
+}
+
+cubrocks::context::context ()
+{
+  kv_config ();
+
+  alive = false;
+}
+
+void
+cubrocks::context::kv_config (void)
+{
+  opt.db.bytes_per_sync = 1048576;
+  opt.db.max_background_jobs = 6;
+
+  opt.cf.level_compaction_dynamic_level_bytes = true;
+  opt.cf.compaction_pri = ROCKSDB_NAMESPACE::kMinOverlappingRatio;
+  opt.cf.compaction_style = ROCKSDB_NAMESPACE::kCompactionStyleLevel;
+  opt.cf.write_buffer_size = 67108864;           // 64MB
+  opt.cf.max_write_buffer_number = 3;
+  opt.cf.target_file_size_base = 67108864;         // 64MB
+  opt.cf.level0_file_num_compaction_trigger = 8;
+  opt.cf.level0_slowdown_writes_trigger = 17;
+  opt.cf.level0_stop_writes_trigger = 24;
+  opt.cf.num_levels = 4;
+  opt.cf.max_bytes_for_level_base = 536870912;      // 512MB
+  opt.cf.max_bytes_for_level_multiplier = 8;
+
+  opt.table.block_size = 16 * 1024;
+  opt.table.cache_index_and_filter_blocks = true;
+  opt.table.pin_l0_filter_and_index_blocks_in_cache = true;
+  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 8);
+  opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
+  opt.cf.prefix_extractor.reset (rocksdb::NewCappedPrefixTransform (4));
+
+  opt.cf_descriptor.push_back (rocksdb::ColumnFamilyDescriptor ("default", opt.cf));
+}
+
+bool
+cubrocks::context::kv_create (std::string path)
+{
+  opt.db.create_if_missing = true;
+  opt.db.error_if_exists = true;
+
+  alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
+  return alive;
 }
 
