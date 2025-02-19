@@ -54,8 +54,9 @@ commands:
             #circleci tests glob $glob_path | circleci tests split | tee tc.list
             echo "cubrid-testcases-private-ex/shell/_01_utility" | tee tc.list
             find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+            ls -l cubrid-testcases-private-ex/shell/
 
-            sudo -E -u shell "/home/shell/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh"
+            sudo -E -u shell bash -c "/home/shell/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh"
             # Run the tests
             /entrypoint.sh test
 
