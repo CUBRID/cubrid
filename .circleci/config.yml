@@ -30,8 +30,7 @@ commands:
             ulimit -c 1
 
             # Check out code (uses custom entrypoint script)
-            /entrypoint.sh checkout 
-            cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+            /entrypoint.sh checkout
 
             # Handle specific cases for TEST_SUITE
             if [ "$TEST_SUITE" = "none" ]; then
@@ -46,6 +45,8 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
+              echo $PWD
+              find . -name "cubrid-testcases-private-ex"
               glob_path="cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
@@ -57,6 +58,7 @@ commands:
             find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 echo "will delete:"
             exit 1
 
+            cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
             # Run the tests
             /entrypoint.sh test
 
@@ -65,9 +67,9 @@ commands:
           command: |
             mkdir -p /tmp/logs
             if [ "$TEST_SUITE" = "shell" ]; then
-              mv -f shell/CUBRID/log /tmp/logs/cubrid_log
-              mv -f shell/cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
-              mv -f shell/cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
+              mv -f CUBRID/log /tmp/logs/cubrid_log
+              mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+              mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
               mv -f /tmp/tests/*.csv /tmp/logs/compare_log
             else
               mv -f CUBRID/log /tmp/logs/cubrid_log
