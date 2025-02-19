@@ -79,6 +79,7 @@
 #include "xasl_cache.h"
 #include "session.h"
 #include "pl_session.hpp"
+#include "cubrocks.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -822,6 +823,7 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
     }
 
+  cubrocks::ctx->kv_tran_activate (tran_index);
   return tran_index;
 }
 

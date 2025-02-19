@@ -31,6 +31,12 @@
 
 namespace cubrocks
 {
+  struct kv_session
+  {
+    bool active;
+    rocksdb::Transaction *txn;
+  };
+
   void kv_version (void);
   std::string kv_postfix (char *path);
 
@@ -41,13 +47,18 @@ namespace cubrocks
 
       void kv_config ();
 
+      bool is_alive ();
+
+      /* transaction */
+      void kv_tran_activate (int tran_index);
+
+      bool kv_tran_start (int tran_index);
+
       /* basic */
       bool kv_create (std::string path);
       bool kv_open (std::string path);
       bool kv_close ();
       bool kv_destroy (std::string path);
-
-      bool is_alive ();
 
     private:
       struct
@@ -61,7 +72,11 @@ namespace cubrocks
       } opt;
 
       rocksdb::TransactionDB *db;
+      kv_session *sessions;
+
       bool alive;
+
+      bool sessions_initialize ();
   };
 
   extern context *ctx;

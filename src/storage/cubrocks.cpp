@@ -30,6 +30,7 @@
 #include "rocksdb/slice_transform.h"
 
 #include "cubrocks.hpp"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -59,6 +60,7 @@ cubrocks::kv_postfix (char *path)
 cubrocks::context::context ()
 {
   kv_config ();
+  sessions_initialize ();
 
   alive = false;
 }
@@ -96,6 +98,32 @@ bool
 cubrocks::context::is_alive (void)
 {
   return alive;
+}
+
+void
+cubrocks::context::kv_tran_activate (int tran_index)
+{
+  assert (tran_index < MAX_NTRANS);
+  assert (!sessions[tran_index].active);
+
+  sessions[tran_index].active = true;
+}
+
+bool
+cubrocks::context::kv_tran_start (int tran_index)
+{
+  rocksdb::WriteOptions write_options;
+
+  assert (tran_index < MAX_NTRANS);
+  assert (sessions[tran_index].active);
+
+  sessions[tran_index].txn = db->BeginTransaction (write_options);
+  if (sessions[tran_index].txn == nullptr)
+    {
+      return false;
+    }
+
+  return true;
 }
 
 bool
@@ -161,3 +189,23 @@ cubrocks::context::kv_destroy (std::string path)
 
   return rocksdb::DestroyDB (path, options).ok();
 }
+
+bool
+cubrocks::context::sessions_initialize (void)
+{
+  int i;
+
+  if ((sessions = new kv_session[MAX_NTRANS]) == nullptr)
+    {
+      return false;
+    }
+
+  for (i = 0; i < MAX_NTRANS; i++)
+    {
+      sessions[i].active = false;
+      sessions[i].txn = nullptr;
+    }
+
+  return true;
+}
+
