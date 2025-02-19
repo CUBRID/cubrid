@@ -23,7 +23,6 @@
 #ifndef _CUBROCKS_HPP_
 #define _CUBROCKS_HPP_
 
-#include "dbtype_def.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
