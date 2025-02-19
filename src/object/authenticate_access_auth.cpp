@@ -718,8 +718,8 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 {
   int error = NO_ERROR, save, len, i = 0;
   const char *auth_type_char;
-  DB_AUTH db_auth;
-  MOP grantee_mop, object_of_mop;
+  DB_AUTH db_auth = DB_AUTH_NONE;
+  MOP grantee_mop = NULL, object_of_mop = NULL;
   DB_VALUE val[2];
   DB_VALUE grantee_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
@@ -823,7 +823,6 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  grantee_mop = NULL;
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
 	      grantee_mop = db_get_object (&grantee_value);
@@ -836,7 +835,6 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
       if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
 	{
-	  object_of_mop = NULL;
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
 	      object_of_mop = db_get_object (&object_of_value);
@@ -953,11 +951,11 @@ int
 au_user_revoke_all_privileges (MOP user_mop)
 {
   int error = NO_ERROR, save, len;
-  int object_type;
-  DB_OBJECT_TYPE obj_type;
+  int object_type = 0;
+  DB_OBJECT_TYPE obj_type = DB_OBJECT_UNKNOWN;
   const char *auth_type_char;
-  DB_AUTH db_auth;
-  MOP grantee_mop, obj_mop;
+  DB_AUTH db_auth = DB_AUTH_NONE;
+  MOP grantee_mop = NULL, obj_mop = NULL;
   DB_VALUE name;
   DB_VALUE grantee_value, object_type_value, object_of_value, auth_type_value;
   DB_QUERY_RESULT *result = NULL;
@@ -1042,7 +1040,6 @@ au_user_revoke_all_privileges (MOP user_mop)
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  grantee_mop = NULL;
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
 	      grantee_mop = db_get_object (&grantee_value);
@@ -1055,7 +1052,6 @@ au_user_revoke_all_privileges (MOP user_mop)
 
       if (db_query_get_tuple_value (result, 1, &object_type_value) == NO_ERROR)
 	{
-	  object_type = 0;
 	  if (!DB_IS_NULL (&object_type_value))
 	    {
 	      object_type = db_get_int (&object_type_value);
@@ -1082,7 +1078,6 @@ au_user_revoke_all_privileges (MOP user_mop)
 
       if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
 	{
-	  obj_mop = NULL;
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
 	      obj_mop = db_get_object (&object_of_value);
@@ -1149,7 +1144,7 @@ au_user_revoke_all_privileges (MOP user_mop)
 	    }
 	}
 
-      assert (grantee_mop != NULL && obj_mop != NULL && db_auth != DB_AUTH_NONE);
+      assert (grantee_mop != NULL && obj_type != DB_OBJECT_UNKNOWN && obj_mop != NULL && db_auth != DB_AUTH_NONE);
 
       error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
       if (error != NO_ERROR)
@@ -1203,7 +1198,7 @@ int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR;
-  int update_count_db_authorization = 0;
+  int update_count_db_authorization = -1;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
 
@@ -1265,7 +1260,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE grantee_value, object_of_value;
-  MOP grantee_mop, object_of_mop, auth;
+  MOP grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
   DB_SET *grants = NULL;
   int gindex, gsize;
   std::unordered_map<std::tuple<MOP, MOP>, int,
@@ -1345,7 +1340,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  grantee_mop = NULL;
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
 	      grantee_mop = db_get_object (&grantee_value);
@@ -1358,7 +1352,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 
       if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
 	{
-	  object_of_mop = NULL;
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
 	      object_of_mop = db_get_object (&object_of_value);
@@ -1488,7 +1481,7 @@ exit:
       set_free (grants);
     }
 
-  if (grantee_mop == NULL && object_of_mop == NULL && er_errid () == NO_ERROR)
+  if (*row_count < 0 && grantee_mop == NULL && object_of_mop == NULL && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
@@ -1511,11 +1504,11 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE val, db_auth_object_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
-  MOP db_auth_object_mop = nullptr, grantee_mop = nullptr, object_of_mop = nullptr;
+  MOP db_auth_object_mop = NULL, grantee_mop = NULL, object_of_mop = NULL;
   const char *auth_type_char;
   int len;
-  DB_AUTH db_auth;
-  int is_grantable;
+  DB_AUTH db_auth = DB_AUTH_NONE;
+  int is_grantable = -1;
   MOP auth;
   size_t au_db_auth_size;
   au_auth_accessor accessor;
@@ -1596,7 +1589,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
     {
       if (db_query_get_tuple_value (result, 0, &db_auth_object_value) == NO_ERROR)
 	{
-	  //db_auth_object_mop = NULL;
 	  if (!DB_IS_NULL (&db_auth_object_value))
 	    {
 	      db_auth_object_mop = db_get_object (&db_auth_object_value);
@@ -1609,7 +1601,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 
       if (db_query_get_tuple_value (result, 1, &grantee_value) == NO_ERROR)
 	{
-	  //grantee_mop = NULL;
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
 	      grantee_mop = db_get_object (&grantee_value);
@@ -1622,7 +1613,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 
       if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
 	{
-	  //object_of_mop = NULL;
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
 	      object_of_mop = db_get_object (&object_of_value);
@@ -1695,7 +1685,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 
       if (db_query_get_tuple_value (result, 4, &is_grantable_value) == NO_ERROR)
 	{
-	  is_grantable = -1;
 	  if (!DB_IS_NULL (&is_grantable_value))
 	    {
 	      is_grantable = db_get_int (&is_grantable_value);
@@ -1706,7 +1695,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      assert (db_auth_object_mop != nullptr && grantee_mop != nullptr && object_of_mop != nullptr && db_auth != DB_AUTH_NONE
+      assert (db_auth_object_mop != NULL && grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE
 	      && is_grantable != -1 );
 
       /*
@@ -1791,7 +1780,7 @@ exit:
   db_value_clear (&auth_type_value);
   db_value_clear (&is_grantable_value);
 
-  if (db_auth_object_mop == nullptr && grantee_mop == nullptr && object_of_mop == nullptr &&
+  if (db_auth_object_mop == NULL && grantee_mop == NULL && object_of_mop == NULL &&
       db_auth == DB_AUTH_NONE && is_grantable == -1 && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
