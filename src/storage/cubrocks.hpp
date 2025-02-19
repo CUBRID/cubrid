@@ -42,6 +42,7 @@ namespace cubrocks
       void kv_config ();
 
       bool kv_create (std::string path);
+      bool kv_destroy (std::string path);
 
     private:
       struct
