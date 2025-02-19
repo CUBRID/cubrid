@@ -102,3 +102,12 @@ cubrocks::context::kv_create (std::string path)
   return alive;
 }
 
+bool
+cubrocks::context::kv_destroy (std::string path)
+{
+  assert (!alive);
+
+  rocksdb::Options options;
+
+  return rocksdb::DestroyDB (path, options).ok();
+}
