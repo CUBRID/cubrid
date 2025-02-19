@@ -33,20 +33,20 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprBuiltinFuncCall extends BuiltinFuncCall {
+public class ExprSyntaxedCallPosition extends BuiltinFuncCall {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprBuiltinFuncCall(this);
+        return visitor.visitExprSyntaxedCallPosition(this);
     }
 
-    public final String name;
-    public final NodeList<Expr> args;
+    public Expr sub;
+    public Expr whole;
 
-    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
+    public ExprSyntaxedCallPosition(ParserRuleContext ctx, Expr sub, Expr whole) {
         super(ctx);
 
-        this.name = name;
-        this.args = args;
+        this.sub = sub;
+        this.whole = whole;
     }
 }
