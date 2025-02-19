@@ -86,7 +86,7 @@ int tm_Tran_latest_query_status;
  *
  * 0 means "unlimited", and negative value means "do not calculate timeout".
  *
- * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (Java SP)
+ * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
