@@ -3320,6 +3320,7 @@ er_print_crash_callstack (int sig)
 	{
 	  if (mkdir (logdir, 0777) < 0)
 	    {
+	      chdir (cdir);
 	      return;
 	    }
 	}
@@ -3348,6 +3349,7 @@ er_print_crash_callstack (int sig)
   fp = fopen (filename, "w+");
   if (!fp)
     {
+      chdir (cdir);
       return;
     }
 
@@ -3364,6 +3366,7 @@ er_print_crash_callstack (int sig)
       if (er_call_stack_init () == ER_FAILED)
 	{
 	  fclose (fp);
+	  chdir (cdir);
 	  return;
 	}
       er_dump_call_stack (fp);
@@ -3377,6 +3380,8 @@ er_print_crash_callstack (int sig)
 
   /* chdir orignal path */
   chdir (cdir);
+
+  return;
 }
 #else
 void
