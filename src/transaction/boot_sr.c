@@ -1849,7 +1849,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (!boot_Init_server_is_canceled)
     {
-      /* RocksDB */
+      /* create the rocksdb dir and files */
       status = cubrocks::ctx->kv_create (cubrocks::kv_postfix (boot_Db_full_name));
       assert (status);
 
@@ -2079,6 +2079,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
+  bool status;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2402,6 +2403,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+
+  /* open the rocksdb storage layer */
+  status = cubrocks::ctx->kv_open (cubrocks::kv_postfix (boot_Db_full_name));
+  assert (status);
 
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
@@ -4810,7 +4815,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       dir = NULL;
     }
 
-  /* RocksDB */
+  /* destroy the rocksdb dir and files in the directory */
   status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
   assert (status);
 
