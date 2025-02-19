@@ -5318,10 +5318,6 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  goto error_rem_allvols;
 	}
 
-      /* open the rocksdb storage layer */
-      status = cubrocks::ctx->kv_open (cubrocks::kv_postfix (const_cast < char *>(db_fullname)));
-      assert (status);
-
       if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
 	{
 	  goto error_rem_allvols;
