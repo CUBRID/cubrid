@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include <math.h>
 #include <stdio.h>
 
 #include "jansson.h"
@@ -3640,6 +3641,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   int part_cnt, part_index;
 
+  int max_digits;
+
   assert (fp != NULL);
   assert (xasl_p != NULL);
 
@@ -3677,6 +3680,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	       (long long int) stats->part.fetch_time, (long long int) stats->part.ioreads, part_cnt);
       qdump_print_stats_text (fp, outer_xasl, indent);
       qdump_print_stats_text (fp, inner_xasl, indent);
+
+      max_digits = (int) log10 (part_cnt) + 1;
     }
 
   fprintf (fp,
@@ -3713,8 +3718,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  current_stats = &(part_stats[part_index]);
 
 	  fprintf (fp,
-		   "%*cP%d (time: %d, build_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, hash_method: %s)",
-		   indent, ' ', part_index, TO_MSEC (current_stats->build.elapsed_time),
+		   "%*cP%*d (time: %d, build_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, hash_method: %s)",
+		   indent, ' ', max_digits, part_index + 1, TO_MSEC (current_stats->build.elapsed_time),
 		   TO_MSEC (current_stats->build.build_time), (long long int) current_stats->build.fetches,
 		   (long long int) current_stats->build.fetch_time, (long long int) current_stats->build.ioreads,
 		   qdump_hashjoin_type_string (current_stats->hash_method));
@@ -3774,8 +3779,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  current_stats = &(part_stats[part_index]);
 
 	  fprintf (fp,
-		   "%*cP%d (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, readkeys: %lld, rows: %lld, max_collisions: %d)",
-		   indent, ' ', part_index, TO_MSEC (current_stats->probe.elapsed_time),
+		   "%*cP%*d (time: %d, probe_time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, readkeys: %lld, rows: %lld, max_collisions: %d)",
+		   indent, ' ', max_digits, part_index + 1, TO_MSEC (current_stats->probe.elapsed_time),
 		   TO_MSEC (current_stats->probe.probe_time), (long long int) current_stats->probe.fetches,
 		   (long long int) current_stats->probe.fetch_time, (long long int) current_stats->probe.ioreads,
 		   (long long int) current_stats->probe.readkeys, (long long int) current_stats->probe.rows,

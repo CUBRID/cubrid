@@ -2710,6 +2710,15 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	}
       break;
 
+    case HASHJOIN_PROC:
+      {
+	if (xasl->proc.hashjoin.part_stats != NULL)
+	  {
+	    db_private_free_and_init (thread_p, xasl->proc.hashjoin.part_stats);
+	  }
+	break;
+      }
+
     default:
       break;
     }				/* switch */
@@ -6568,6 +6577,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   HASHJOIN_PRED_INFO *join_pred_info;
   QFILE_LIST_MERGE_INFO *merge_info;
   int value_count;
+  bool is_outer_join = false;
 
   INT64 max_tuple_cnt;
   HASH_SCAN_KEY *part_key = NULL;
@@ -6619,7 +6629,8 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   max_tuple_cnt =
     (outer_list_id->tuple_cnt > inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
 
-  part_cnt = CEIL_PTVDIV (max_tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)), manager->mem_limit);
+  part_cnt =
+    CEIL_PTVDIV (max_tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)), manager->mem_limit * 0.8);
 
   if (part_cnt <= 1)
     {
@@ -6631,7 +6642,11 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
     }
 
   /* Add a partition to store tuples with NULL in the join predicate. */
-  part_cnt += 1;
+  if (merge_info->join_type == JOIN_LEFT || merge_info->join_type == JOIN_RIGHT)
+    {
+      is_outer_join = true;
+      part_cnt += 1;
+    }
 
   manager->context = (HASHJOIN_CONTEXT *) db_private_alloc (thread_p, sizeof (HASHJOIN_CONTEXT) * part_cnt);
   if (manager->context == NULL)
@@ -6717,11 +6732,18 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
       else if (exit_on_next == true)
 	{
-	  /* The last partition stores tuples with NULL in the join predicate. */
-	  error = qfile_add_tuple_to_list (thread_p, outer_xasl->part_list_id[part_cnt], tuple_record.tpl);
-	  if (error != NO_ERROR)
+	  if (is_outer_join)
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      /* The last partition stores tuples with NULL in the join predicate. */
+	      error = qfile_add_tuple_to_list (thread_p, outer_xasl->part_list_id[part_cnt], tuple_record.tpl);
+	      if (error != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  else
+	    {
+	      /* Give up and read the next tuple. */
 	    }
 
 	  continue;
@@ -6732,7 +6754,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
 
       part_hash_key = qdata_hash_scan_key (part_key, UINT_MAX, HASH_METH_HYBRID);
-      part_id = part_hash_key % (part_cnt - 1);
+      part_id = (is_outer_join) ? part_hash_key % (part_cnt - 1) : part_hash_key % (part_cnt);
 
       error = qfile_add_tuple_to_list (thread_p, outer_xasl->part_list_id[part_id], tuple_record.tpl);
       if (error != NO_ERROR)
@@ -6800,7 +6822,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
 
       part_hash_key = qdata_hash_scan_key (part_key, UINT_MAX, HASH_METH_HYBRID);
-      part_id = part_hash_key % (part_cnt - 1);
+      part_id = (is_outer_join) ? part_hash_key % (part_cnt - 1) : part_hash_key % (part_cnt);
 
       error = qfile_add_tuple_to_list (thread_p, inner_xasl->part_list_id[part_id], tuple_record.tpl);
       if (error != NO_ERROR)
@@ -7195,7 +7217,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 
   HASHJOIN_PROC_NODE *proc;
   QFILE_LIST_MERGE_INFO *merge_info;
-  bool is_outer_join;
 
   HASHJOIN_MANAGER manager;
   HASHJOIN_CONTEXT *current_context;
