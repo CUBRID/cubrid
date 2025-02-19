@@ -415,7 +415,7 @@ namespace cubpl
     int error = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port (), m_socket);
     if (error != NO_ERROR && !m_pool->is_system_pool ())
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_PL_SERVER, 1, "connect()");
       }
 
     if (m_socket != INVALID_SOCKET)
