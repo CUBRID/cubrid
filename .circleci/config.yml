@@ -29,6 +29,11 @@ commands:
             # Limit core files
             ulimit -c 1
 
+            if [ "${RUN_SHELL_TEST}" == "true" ]; then
+              echo "Setup shell test worker"
+              /entrypoint.sh worker
+            fi
+
             # Check out code (uses custom entrypoint script)
             /entrypoint.sh checkout cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
 
@@ -162,13 +167,13 @@ jobs:
       TEST_SUITE: << parameters.test_suite >>
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
-      - run:
-          name: Setup Environment and Debug Info
-          command: |
-            if [ "${RUN_SHELL_TEST}" == "true" ]; then
-              echo "Setup shell test worker"
-              /entrypoint.sh worker
-            fi
+      # - run:
+          # name: Setup Environment and Debug Info
+          # command: |
+          #   if [ "${RUN_SHELL_TEST}" == "true" ]; then
+          #     echo "Setup shell test worker"
+          #     /entrypoint.sh worker
+          #   fi
       - attach-and-run-tests
 
   build-windows:
