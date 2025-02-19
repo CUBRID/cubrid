@@ -363,11 +363,6 @@ func_all_signatures sig_of_regexp_like =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_CHAR}, {}},
 };
 
-func_all_signatures sig_of_vector_distance_l2 =
-{
-  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
-};
-
 func_all_signatures sig_of_regexp_replace =
 {
 // all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
@@ -392,6 +387,11 @@ func_all_signatures sig_of_regexp_substr =
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+};
+
+func_all_signatures sig_of_vector_distance_l2 =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
 };
 
 func_all_signatures *
