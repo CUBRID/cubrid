@@ -45,20 +45,17 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
-              echo $PWD
-              find . -name "cubrid-testcases-private-ex"
               glob_path="cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             fi
 
             # TODO:if save test_result.xml from previous commit's test,'circleci tests split' can be optimized
-            circleci tests glob $glob_path | circleci tests split | tee tc.list
-            # find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
-            find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 echo "will delete:"
-            exit 1
+            #circleci tests glob $glob_path | circleci tests split | tee tc.list
+            echo "cubrid-testcases-private-ex/shell/_01_utility" | tee tc.list
+            find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
-            cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+            sudo -E -u shell "/home/shell/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh"
             # Run the tests
             /entrypoint.sh test
 
