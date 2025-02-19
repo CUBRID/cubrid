@@ -30,7 +30,8 @@ commands:
             ulimit -c 1
 
             # Check out code (uses custom entrypoint script)
-            sudo -u "shell" bash -c "git clone -q --depth 1 --branch develop https://tw-kang:$GHI_TOKEN\@github.com/tw-kang/cubrid-testcases-private-ex.git /home/shell/cubrid-testcases-private-ex"
+            env | grep GITHUB_TOKEN
+            sudo -u "shell" bash -c "git clone -q --depth 1 --branch develop https://tw-kang:$GHI_TOKEN\@github.com/tw-kang/cubrid-testcases-private-ex.git /home/shell/cubrid-testcases-private-ex && ls -al /home/shell/cubrid-testcases-private-ex/"
             exit 1
             # /entrypoint.sh checkout 
             cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
