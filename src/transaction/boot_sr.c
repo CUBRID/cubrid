@@ -5257,7 +5257,6 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 			 bool dirty_rem, bool force_delete)
 {
   int error_code = NO_ERROR;
-  bool status;
 
   if (dirty_rem)
     {
@@ -5317,7 +5316,6 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  goto error_rem_allvols;
 	}
-
       if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
 	{
 	  goto error_rem_allvols;
