@@ -30,7 +30,7 @@ commands:
             ulimit -c 1
 
             # Check out code (uses custom entrypoint script)
-            /entrypoint.sh checkout
+            /entrypoint.sh checkout cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
 
             # Handle specific cases for TEST_SUITE
             if [ "$TEST_SUITE" = "none" ]; then
@@ -167,10 +167,7 @@ jobs:
           command: |
             if [ "${RUN_SHELL_TEST}" == "true" ]; then
               echo "Setup shell test worker"
-              /entrypoint.sh worker echo $PWD;cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
-              #test code:
-              echo $PWD
-              
+              /entrypoint.sh worker
             fi
       - attach-and-run-tests
 
