@@ -309,7 +309,7 @@ namespace cubpl
       case ER_INTERRUPTED:
       case ER_SP_TOO_MANY_NESTED_CALL:
       case ER_NET_SERVER_SHUTDOWN:
-      case ER_SP_NOT_RUNNING_JVM:
+      case ER_SP_NOT_RUNNING_PL_SERVER:
       case ER_SES_SESSION_EXPIRED:
 	m_is_interrupted = true;
 	m_interrupt_id = reason;
@@ -317,7 +317,7 @@ namespace cubpl
 	break;
 
       /* 1 arg */
-      case ER_SP_CANNOT_CONNECT_JVM:
+      case ER_SP_CANNOT_CONNECT_PL_SERVER:
       case ER_SP_NETWORK_ERROR:
       case ER_OUT_OF_VIRTUAL_MEMORY:
 	m_is_interrupted = true;

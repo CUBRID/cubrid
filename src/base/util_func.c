@@ -537,27 +537,85 @@ util_log_write_warnstr (const char *format, ...)
  *
  * argc (in) :
  * argv (in) :
+ * util_name_pos (in) : This is the position information that specifies the tool name in the argv[] array.
+ *                      If the tool does not take a password as an argument, specify 0 or less.
  */
 int
-util_log_write_command (int argc, char *argv[])
+util_log_write_command (int argc, char *argv[], int util_name_pos)
 {
-  int i;
+  int i, long_pwd_arg_len;
   size_t remained_buf_length, str_len;
   char command_buf[UTIL_LOG_MAX_MSG_SIZE];
   char *p;
+  const char *argv_str;
+  const char *util_pwd_1 = NULL;
+  const char *util_pwd_2 = NULL;
 
   memset (command_buf, '\0', UTIL_LOG_MAX_MSG_SIZE);
   p = command_buf;
   remained_buf_length = UTIL_LOG_MAX_MSG_SIZE - 1;
 
+  long_pwd_arg_len = 0;
+  if (util_name_pos > 0)
+    {
+      if ((strcasecmp ("unloaddb", argv[util_name_pos]) == 0) || (strcasecmp ("loaddb", argv[util_name_pos]) == 0))
+	{
+	  long_pwd_arg_len = strlen ("--password");
+	  util_pwd_1 = "--password=****";
+	  util_pwd_2 = "--password ****";
+	}
+      else if ((strcasecmp ("tde", argv[util_name_pos]) == 0)
+	       || (strcasecmp ("killtran", argv[util_name_pos]) == 0)
+	       || (strcasecmp ("flashback", argv[util_name_pos]) == 0))
+	{
+	  long_pwd_arg_len = strlen ("--dba-password");
+	  util_pwd_1 = "--dba-password=****";
+	  util_pwd_2 = "--dba-password ****";
+	}
+    }
+
   for (i = 0; i < argc && remained_buf_length > 0; i++)
     {
-      str_len = strlen (argv[i]);
+      argv_str = argv[i];
+
+      if ((long_pwd_arg_len > 0) && (i > util_name_pos))
+	{
+	  // check patterns that can be extracted normally using utility_get_option_string_value()      
+	  if (memcmp ("-p", argv_str, 2) == 0)
+	    {
+	      // -p <pwd>, -p<pwd>
+	      if (argv_str[2] == '\0')
+		{
+		  i++;		// skip next argument
+		  argv_str = "-p ****";
+		}
+	      else
+		{
+		  argv_str = "-p****";
+		}
+	    }
+	  else if (memcmp (util_pwd_1, argv_str, long_pwd_arg_len) == 0)
+	    {
+	      // --password <pwd>, --password=<pwd>, --password=
+	      if (argv_str[long_pwd_arg_len] == '\0')
+		{
+		  i++;		// skip next argument
+		  argv_str = util_pwd_2;
+		}
+	      else if (argv_str[long_pwd_arg_len] == '=')
+		{
+		  argv_str = util_pwd_1;
+		}
+	    }
+	}
+
+      str_len = strlen (argv_str);
       if (str_len > remained_buf_length)
 	{
 	  break;
 	}
-      strcpy (p, argv[i]);
+
+      strcpy (p, argv_str);
       remained_buf_length -= str_len;
       p += str_len;
       if (i < argc - 1 && remained_buf_length > 0)
