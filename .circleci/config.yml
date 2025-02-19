@@ -45,20 +45,16 @@ commands:
               rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             elif [ "$TEST_SUITE" = "shell" ]; then
-              # Remove unnecessary test cases (test)
-              cd cubrid-testcases-private-ex/shell && \
-                find . -maxdepth 1 -type d ! -name '.' ! -name '_01_utility' ! -name 'config' -exec rm -rf {} \;
               glob_path="cubrid-testcases-private-ex/$TEST_SUITE/_*"
             else
               glob_path="cubrid-testcases/$TEST_SUITE/_*"
             fi
 
-            # TODO:
-            #if save test_result.xml from previous commit's test, 
-            #'circleci tests split' can be optimized
-            # CircleCI test splitting
+            # TODO:if save test_result.xml from previous commit's test,'circleci tests split' can be optimized
             circleci tests glob "$glob_path" | circleci tests split | tee tc.list
-            find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+            # find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+            find "$glob_path" -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 echo "will delete:"
+            exit 1
 
             # Run the tests
             /entrypoint.sh test
@@ -172,6 +168,8 @@ jobs:
             if [ "${RUN_SHELL_TEST}" == "true" ]; then
               echo "Setup shell test worker"
               /entrypoint.sh worker
+              #test code:
+              cubrid-testtools/CTP/common/script/run_cubrid_install http://192.168.1.91:8080/REPO_ROOT/store_01/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
             fi
       - attach-and-run-tests
 
