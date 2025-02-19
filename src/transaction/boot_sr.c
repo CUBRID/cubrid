@@ -3919,11 +3919,20 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+  bool status;
+
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);
   catalog_finalize ();
   qmgr_finalize (thread_p);
+
+  if (cubrocks::ctx->is_alive ())
+    {
+      status = cubrocks::ctx->kv_close ();
+      assert (status);
+    }
+
   (void) heap_manager_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
@@ -4815,10 +4824,6 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       dir = NULL;
     }
 
-  /* destroy the rocksdb dir and files in the directory */
-  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
-  assert (status);
-
   /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
@@ -4891,6 +4896,10 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       er_stack_pop ();
     }
 
+  /* destroy the rocksdb dir and files in the directory */
+  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
+  assert (status);
+
 #if defined (SA_MODE)
   cubthread::finalize ();
   thread_p = NULL;
@@ -4910,6 +4919,10 @@ error_dirty_delete:
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, shutdown_common_modules);
 #endif
   er_stack_pop ();
+
+  /* destroy the rocksdb dir and files in the directory */
+  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
+  assert (status);
 
 #if defined (SA_MODE)
   cubthread::finalize ();

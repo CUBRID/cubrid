@@ -19000,6 +19000,9 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
 
@@ -23255,6 +23258,9 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
 
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+
   /*
    * Check input
    */
@@ -23446,6 +23452,9 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
+
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
 
   /*
    * Check input
