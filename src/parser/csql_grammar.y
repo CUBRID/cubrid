@@ -18262,7 +18262,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-    | L2_DISTANCE '(' expression_list ')'
+	| L2_DISTANCE '(' expression_list ')'
         {{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
