@@ -71,7 +71,7 @@ public class ServerConfig {
         this.dbPath = dbPath;
 
         this.logPath =
-                rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_java.log";
+                rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_pl.log";
 
         String cubridTmpEnv = System.getenv("CUBRID_TMP");
         this.tmpPath =

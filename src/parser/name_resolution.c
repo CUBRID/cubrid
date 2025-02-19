@@ -3324,7 +3324,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /*
 	       * When using a session variable in the first arg_list,
 	       * It is unknown whether the session variable contains a class, object, or constant value.
-	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
 	       * 
 	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
 	       *     insert into x values (4, 'string 4');

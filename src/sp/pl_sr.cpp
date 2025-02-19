@@ -174,7 +174,9 @@ namespace cubpl
 
       // check functions for PL server state
       void do_check_state (bool hang_check);
-      int do_check_connection ();
+
+      int do_check_connection (int fail_cnt);
+      int do_ping_connection ();
 
       /*
       * do_bootstrap_request() - send a bootstrap request to PL server
@@ -272,7 +274,7 @@ namespace cubpl
       }
     else
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 		m_db_name.c_str ());
 	return er_errid ();
       }
@@ -351,6 +353,7 @@ namespace cubpl
     if (m_state == SERVER_MONITOR_STATE_STOPPED || m_state == SERVER_MONITOR_STATE_FAILED_TO_FORK)
       {
 	int status;
+
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
 	if (pid > 1) // parent
@@ -424,25 +427,7 @@ namespace cubpl
 
     // TODO: parameterize this
     constexpr int MAX_FAIL_COUNT = 10;
-    int fail_count = 0;
-    while (fail_count < MAX_FAIL_COUNT)
-      {
-	error = do_check_connection ();
-	if (error != NO_ERROR)
-	  {
-	    fail_count++;
-
-	    /* The contents of the pl file may have changed, so set it to read again. */
-	    assert (m_sys_conn_pool);
-	    m_sys_conn_pool->set_port_disabled();
-
-	    thread_sleep (1000);	/* 1000 msec */
-	  }
-	else
-	  {
-	    break;
-	  }
-      }
+    error = do_check_connection (MAX_FAIL_COUNT);
 
     // set unknown state here
 #if defined (SERVER_MODE)
@@ -482,7 +467,14 @@ namespace cubpl
     switch (m_state)
       {
       case SERVER_MONITOR_STATE_STOPPED:
+#if defined(SA_MODE)
+	if (do_check_connection (1) == NO_ERROR)
+	  {
+	    m_state = SERVER_MONITOR_STATE_RUNNING;
+	  }
+#else
 	/* do nothing */
+#endif
 	break;
       case SERVER_MONITOR_STATE_RUNNING:
       case SERVER_MONITOR_STATE_READY_TO_INITIALIZE:
@@ -503,7 +495,7 @@ namespace cubpl
 	  {
 	    // After several failed attempts, we should consider the PL server is not able to start
 	    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 		    "Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
 	    m_monitor_cv.notify_all ();
 	  }
@@ -525,7 +517,7 @@ namespace cubpl
 	      {
 		// After several failed attempts, we should consider the PL server is not able to start
 		m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 			"Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
 		m_monitor_cv.notify_all ();
 	      }
@@ -539,7 +531,31 @@ namespace cubpl
   }
 
   int
-  server_monitor_task::do_check_connection ()
+  server_monitor_task::do_check_connection (int fail_cnt)
+  {
+    int error = NO_ERROR;
+    int c = 0;
+    do
+      {
+	error = do_ping_connection ();
+	if (error == NO_ERROR || ++c < fail_cnt)
+	  {
+	    break;
+	  }
+
+	/* The contents of the pl file may have changed, so set it to read again. */
+	assert (m_sys_conn_pool);
+	m_sys_conn_pool->set_port_disabled();
+
+	thread_sleep (1000);	/* 1000 msec */
+      }
+    while (c < fail_cnt);
+
+    return error;
+  }
+
+  int
+  server_monitor_task::do_ping_connection ()
   {
     int error = NO_ERROR;
 
@@ -695,7 +711,7 @@ PL_CONNECTION_POOL *get_connection_pool ()
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_PL_SERVER, 0);
       return nullptr;
     }
 }
