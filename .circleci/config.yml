@@ -169,7 +169,8 @@ jobs:
               echo "Setup shell test worker"
               /entrypoint.sh worker
               #test code:
-              cubrid-testtools/CTP/common/script/run_cubrid_install http://192.168.1.91:8080/REPO_ROOT/store_01/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+              echo $PWD
+              cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
             fi
       - attach-and-run-tests
 
