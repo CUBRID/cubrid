@@ -80,12 +80,15 @@ int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   assert (vec1.size() == vec2.size());
 
   float distance;
-  try {
-    distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
-  } catch (const std::exception &e) {
-    fprintf(stderr, "faiss error: %s\n", e.what());
-    std::abort();
-  }
+  try
+    {
+      distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
+    }
+  catch (const std::exception &e)
+    {
+      fprintf (stderr, "faiss error: %s\n", e.what());
+      std::abort();
+    }
 
   db_make_double (result, distance);
   return NO_ERROR;
