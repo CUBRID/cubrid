@@ -3260,7 +3260,7 @@ namespace cuberr
 } // namespace cuberr
 /* *INDENT-ON* */
 
-#if defined(LINUX)
+#if !defined(WINDOWS)
 void
 er_print_crash_callstack (int sig)
 {
@@ -3309,7 +3309,7 @@ er_print_crash_callstack (int sig)
     {
       return;
     }
-  sprintf (logdir, "log/coredump", env);
+  sprintf (logdir, "log/coredump");
 
   while (p != NULL)
     {
