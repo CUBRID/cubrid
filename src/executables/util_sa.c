@@ -1527,6 +1527,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   const char *db_name;
   const char *output_file = NULL;
   const char *class_name;
+  FILE *infp = NULL;
   FILE *outfp = NULL;
   bool is_emergency = false;
   bool need_db_shutdown = false;
@@ -1582,7 +1583,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name && class_list_file)
     {
-      goto print_diag_usage;
+      fprintf (stderr, "The -n and -i options cannot be used together.\n");
+      goto error_exit;
     }
 
   if (check_database_name (db_name))
@@ -1823,6 +1825,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       fclose (outfp);
     }
+  if (infp != NULL)
+    {
+      fclose (infp);
+    }
 
   return EXIT_SUCCESS;
 
@@ -1840,6 +1846,10 @@ error_exit:
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (infp != NULL)
+    {
+      fclose (infp);
     }
 
   return EXIT_FAILURE;
