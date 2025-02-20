@@ -11381,7 +11381,7 @@ error:
       if (compile_response.err_code == NO_ERROR)
 	{
 	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
-	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
 	}
     }
 
@@ -11416,7 +11416,7 @@ error:
   else
     {
       compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
-      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
     }
 
   return success;

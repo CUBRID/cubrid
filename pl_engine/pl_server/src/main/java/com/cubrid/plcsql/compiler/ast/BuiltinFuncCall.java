@@ -28,44 +28,20 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.type;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.InstanceStore;
+import com.cubrid.plcsql.compiler.type.Type;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class TypeChar extends Type {
+public abstract class BuiltinFuncCall extends Expr {
 
-    public static final int MAX_LEN = 268435455;
-    public static final int DEFAULT_LEN = 1;
+    public Type resultType;
 
-    public final int length;
-
-    public static TypeChar getInstance(InstanceStore iStore, int length) {
-
-        assert length <= MAX_LEN && length >= 1;
-
-        TypeChar ret = iStore.typeChar.get(length);
-        if (ret == null) {
-            ret = new TypeChar(length);
-            iStore.typeChar.put(length, ret);
-        }
-
-        return ret;
+    public void setResultType(Type resultType) {
+        this.resultType = resultType;
     }
 
-    // ---------------------------------------------------------------------------
-    // Private
-    // ---------------------------------------------------------------------------
-
-    private static String getPlcName(int length) {
-        return String.format("Char(%d)", length);
-    }
-
-    private static String getTypicalValueStr(int length) {
-        return String.format("cast('a' as char(%d))", length);
-    }
-
-    private TypeChar(int length) {
-        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
-        this.length = length;
+    public BuiltinFuncCall(ParserRuleContext ctx) {
+        super(ctx);
     }
 }

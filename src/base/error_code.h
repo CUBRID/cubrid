@@ -1125,14 +1125,14 @@
 
 #define ER_INVALID_PARTITION_REQUEST                -899
 
-#define ER_SP_JVM_LIB_NOT_FOUND                     -900
-#define ER_SP_CANNOT_START_JVM                      -901
-#define ER_SP_NOT_RUNNING_JVM                       -902
-#define ER_SP_CANNOT_CONNECT_JVM                    -903
+#define ER_SP_VM_LIB_NOT_FOUND                      -900
+#define ER_SP_CANNOT_START_PL_SERVER                -901
+#define ER_SP_NOT_RUNNING_PL_SERVER                 -902
+#define ER_SP_CANNOT_CONNECT_PL_SERVER              -903
 #define ER_SP_INVALID_NAME                          -904
 #define ER_SP_NETWORK_ERROR                         -905
 #define ER_SP_INVAILD_JAVA_METHOD                   -906
-#define ER_SP_DROP_NOT_ALLOWED_PRIVILEGES           -907
+#define ER_SP_DDL_NOT_ALLOWED_PRIVILEGES            -907
 #define ER_SP_TOO_MANY_ARG_COUNT                    -908
 
 #define ER_BO_MISSING_OR_INVALID_CATALOG            -909
@@ -1736,7 +1736,7 @@
 #define ER_CGW_SQL_CONV_ERROR                       -1357
 #define ER_CGW_UNKNOWN_AFFECTED_ROWS                -1358
 
-#define ER_SP_SERVER_CRASHED                        -1359
+#define ER_SP_PL_SERVER_CRASHED                     -1359
 #define ER_SP_COMPILE_ERROR                         -1360
 #define ER_QPROC_RESULT_CACHE_INVALID		        -1361
 

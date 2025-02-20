@@ -28,44 +28,27 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.type;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.InstanceStore;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class TypeChar extends Type {
+public class ExprSyntaxedCallAdddate extends BuiltinFuncCall {
 
-    public static final int MAX_LEN = 268435455;
-    public static final int DEFAULT_LEN = 1;
-
-    public final int length;
-
-    public static TypeChar getInstance(InstanceStore iStore, int length) {
-
-        assert length <= MAX_LEN && length >= 1;
-
-        TypeChar ret = iStore.typeChar.get(length);
-        if (ret == null) {
-            ret = new TypeChar(length);
-            iStore.typeChar.put(length, ret);
-        }
-
-        return ret;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprSyntaxedCallAdddate(this);
     }
 
-    // ---------------------------------------------------------------------------
-    // Private
-    // ---------------------------------------------------------------------------
+    public Expr date;
+    public Expr delta;
+    public String timeUnit;
 
-    private static String getPlcName(int length) {
-        return String.format("Char(%d)", length);
-    }
+    public ExprSyntaxedCallAdddate(ParserRuleContext ctx, Expr date, Expr delta, String timeUnit) {
+        super(ctx);
 
-    private static String getTypicalValueStr(int length) {
-        return String.format("cast('a' as char(%d))", length);
-    }
-
-    private TypeChar(int length) {
-        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
-        this.length = length;
+        this.date = date;
+        this.delta = delta;
+        this.timeUnit = timeUnit;
     }
 }
