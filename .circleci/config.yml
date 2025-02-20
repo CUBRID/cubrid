@@ -60,10 +60,8 @@ commands:
             #test code
             find cubrid-testcases-private-ex/shell/_01_utility -maxdepth 1 -type d ! -name "_01_sqlx" ! -name "_01_utility" ! -name "config" | xargs rm -rf
             rm -rf cubrid-testcases-private-ex/shell/_01_utility/_01_sqlx/bug_*
-            ls -l $PWD
-            ls -l cubrid-testcases-private-ex/shell/_01_utility/_01_sqlx/
 
-            /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
             # Run the tests
             /entrypoint.sh test
 
