@@ -827,7 +827,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
-        //     else if (node->node_type == PT_U)
 	  break;
 
         case PT_HINT_MATERIALIZE_CTE:
