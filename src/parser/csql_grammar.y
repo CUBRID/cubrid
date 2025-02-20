@@ -843,6 +843,7 @@ static int g_plcsql_text_pos;
 %type <node> alias_enabled_expression_list
 %type <node> alias_enabled_expression_
 %type <node> expression_list
+%type <node> vector_distance_arguments
 %type <node> expression_list_for_call
 %type <node> to_param_list
 %type <node> to_param
@@ -1622,6 +1623,7 @@ static int g_plcsql_text_pos;
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> VECTOR_DISTANCE
 %token <cptr> L2_DISTANCE
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -18268,11 +18270,9 @@ reserved_func
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
         DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_list ',' EUCLIDEAN ')'
-		{{ DBG_TRACE_GRAMMAR(reserved_func, | VECTOR_DISTANCE '(' expression_list ')' );
-
-			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
-
+	| VECTOR_DISTANCE '(' expression_list ')'
+		{{
+			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, $3, 2, 3);
 		DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
@@ -25453,6 +25453,8 @@ opt_alter_synonym
 		DBG_PRINT}}
 
 %%
+
+extern int yydebug = 1;
 
 
 extern FILE *yyin;

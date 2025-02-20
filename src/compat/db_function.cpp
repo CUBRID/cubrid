@@ -338,6 +338,8 @@ fcode_get_lowercase_name (FUNC_CODE ftype)
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
       return "regexp_substr";
+    case F_VECTOR_DISTANCE:
+      return "vector_distance";
     case F_L2_DISTANCE:
       return "l2_distance";
     default:

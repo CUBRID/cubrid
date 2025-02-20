@@ -394,6 +394,11 @@ func_all_signatures sig_of_vector_distance_l2 =
   {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
 };
 
+func_all_signatures sig_of_vector_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR, PT_GENERIC_TYPE_STRING}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_CODE ft)
 {
@@ -533,6 +538,8 @@ get_signatures (FUNC_CODE ft)
       return &sig_of_regexp_replace;
     case F_REGEXP_SUBSTR:
       return &sig_of_regexp_substr;
+    case F_VECTOR_DISTANCE:
+      return &sig_of_vector_distance;
     case F_L2_DISTANCE:
       return &sig_of_vector_distance_l2;
     default:
@@ -3116,6 +3123,7 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case F_REGEXP_LIKE:
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
+    case F_VECTOR_DISTANCE:
     case F_L2_DISTANCE:
     // COUNT functions
     case PT_COUNT:

@@ -65,6 +65,7 @@ typedef enum
   F_REGEXP_COUNT, F_REGEXP_INSTR, F_REGEXP_LIKE, F_REGEXP_REPLACE, F_REGEXP_SUBSTR,
 
   /* vector distance functions */
+  F_VECTOR_DISTANCE,
   F_L2_DISTANCE,
 
   F_BENCHMARK,
