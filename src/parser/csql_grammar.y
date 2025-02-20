@@ -18266,13 +18266,22 @@ reserved_func
 
 		DBG_PRINT}}
 	| L2_DISTANCE '(' expression_list ')'
-		{{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
+		{{ DBG_TRACE_GRAMMAR(reserved_func,  | L2_DISTANCE '(' expression_list ')' );
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
         DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_list ')'
-		{{
-			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, $3, 2, 3);
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN ')' );
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+			PT_NODE *arg3 = pt_create_string_literal_node_w_charset_coll("EUCLIDEAN", -1);
+
+			arg1->next = arg2;
+			arg2->next = arg3;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
+
 		DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
@@ -25454,7 +25463,6 @@ opt_alter_synonym
 
 %%
 
-extern int yydebug = 1;
 
 
 extern FILE *yyin;
