@@ -1519,8 +1519,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
-  FILE *input_file = NULL;
   const char *class_name;
+  FILE *infp = NULL;
   FILE *outfp = NULL;
   bool is_emergency = false;
   bool need_db_shutdown = false;
@@ -1751,14 +1751,14 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
 
-	  input_file = fopen (class_list_file, "r");
-	  if (input_file == NULL)
+	  infp = fopen (class_list_file, "r");
+	  if (infp == NULL)
 	    {
 	      perror (class_list_file);
 	      goto error_exit;
 	    }
 
-	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, infp) != NULL)
 	    {
 	      trim (input_class);
 
@@ -1804,9 +1804,9 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     {
       fclose (outfp);
     }
-  if (input_file != NULL)
+  if (infp != NULL)
     {
-      fclose (input_file);
+      fclose (infp);
     }
 
   return EXIT_SUCCESS;
@@ -1826,9 +1826,9 @@ error_exit:
     {
       fclose (outfp);
     }
-  if (input_file != NULL)
+  if (infp != NULL)
     {
-      fclose (input_file);
+      fclose (infp);
     }
 
   return EXIT_FAILURE;
