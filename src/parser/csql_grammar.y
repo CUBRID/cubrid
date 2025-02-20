@@ -1228,6 +1228,7 @@ static int g_plcsql_text_pos;
 %token ENUM
 %token EQUALS
 %token ESCAPE
+%token EUCLIDEAN
 %token EVALUATE
 %token EXCEPT
 %token EXCEPTION
@@ -18264,6 +18265,11 @@ reserved_func
 		DBG_PRINT}}
 	| L2_DISTANCE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
+
+			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
+        DBG_PRINT}}
+	| VECTOR_DISTANCE '(' expression_list ',' EUCLIDEAN ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func, | VECTOR_DISTANCE '(' expression_list ')' );
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
 
