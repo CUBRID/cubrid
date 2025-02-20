@@ -521,12 +521,13 @@ namespace parallel_heap_scan
      * heap_cache_attrinfo : 56
      * regu_variable_list_node : 120
      * PRED_EXPR : 48
+     * when you change the size of the structure, please update the phs modules to scan properly.
      */
-    static_assert (sizeof (SCAN_ID) == 2176, "SCAN_ID size is not 2176, please check phs.");
-    static_assert (sizeof (val_descr) == 48, "val_descr size is not 48, please check phs.");
-    static_assert (sizeof (heap_cache_attrinfo) == 56, "heap_cache_attrinfo size is not 56, please check phs.");
-    static_assert (sizeof (regu_variable_list_node) == 120, "regu_variable_list_node size is not 120, please check phs.");
-    static_assert (sizeof (PRED_EXPR) == 48, "PRED_EXPR size is not 48, please check phs.");
+    assert (sizeof (SCAN_ID) == 2176);
+    assert (sizeof (val_descr) == 48);
+    assert (sizeof (heap_cache_attrinfo) == 56);
+    assert (sizeof (regu_variable_list_node) == 120);
+    assert (sizeof (PRED_EXPR) == 48);
     m_obj_cnt = 0;
     val_descr_ptr = nullptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_idp->s.phsid;
