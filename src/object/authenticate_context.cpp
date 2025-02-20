@@ -256,6 +256,10 @@ authenticate_context::login (const char *name, const char *password, bool ignore
 	    }
 	  strcpy (user_name, name);
 	}
+      else
+	{
+	  strcpy (user_name, "");
+	}
 
       if (password == NULL || strlen (password) == 0)
 	{
