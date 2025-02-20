@@ -198,12 +198,6 @@ namespace parallel_heap_scan
 
     return pg_cnt;
   }
-  typedef enum
-  {
-    OBJ_GET_WITHOUT_LOCK = 0,
-    OBJ_REPEAT_GET_WITH_LOCK = 1,
-    OBJ_GET_WITH_LOCK_COMPLETE = 2
-  } OBJECT_GET_STATUS;
 
   SCAN_CODE scan_next_heap_scan_1page_internal (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, VPID *curr_vpid)
   {
@@ -219,7 +213,6 @@ namespace parallel_heap_scan
     OID retry_oid;
     LOG_LSA ref_lsa;
     bool is_peeking;
-    OBJECT_GET_STATUS object_get_status;
     struct regu_variable_list_node *p;
 
     hsidp = &scan_id->s.hsid;
@@ -257,7 +250,6 @@ namespace parallel_heap_scan
     while (1)
       {
 	COPY_OID (&retry_oid, &hsidp->curr_oid);
-	object_get_status = OBJ_GET_WITHOUT_LOCK;
 restart_scan_oid:
 
 	/* get next object */
@@ -343,109 +335,7 @@ restart_scan_oid:
 
 	/* Data filter passed. If object should be locked and is not locked yet, lock it. */
 	assert (!scan_id->mvcc_select_lock_needed);
-
-	if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))
-	  {
-	    LOCK lock = NULL_LOCK;
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
-
-	    if (scan_id->scan_op_type == S_DELETE || scan_id->scan_op_type == S_UPDATE)
-	      {
-		lock = X_LOCK;
-	      }
-	    else if (oid_is_serial (&hsidp->cls_oid))
-	      {
-		/* S_SELECT is currently handled only for serial, but may be extended to the other non-MVCC classes
-		 * if needed */
-		lock = S_LOCK;
-	      }
-
-	    if (lock != NULL_LOCK && hsidp->scan_cache.page_watcher.pgptr != NULL)
-	      {
-		if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
-		  {
-		    if (lock_hold_object_instant (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock) == LK_GRANTED)
-		      {
-			lock = NULL_LOCK;
-			/* object_need_rescan needs to be kept false (page is still fixed, no other transaction could
-			 * have change it) */
-		      }
-		  }
-		else
-		  {
-		    if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock, LK_COND_LOCK) == LK_GRANTED)
-		      {
-			/* successfully locked */
-			lock = NULL_LOCK;
-			/* object_need_rescan needs to be kept false (page is still fixed, no other transaction could
-			 * have change it) */
-		      }
-		  }
-	      }
-
-	    if (lock != NULL_LOCK)
-	      {
-		VPID curr_vpid;
-
-		VPID_SET_NULL (&curr_vpid);
-
-		if (hsidp->scan_cache.page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_get_vpid (hsidp->scan_cache.page_watcher.pgptr, &curr_vpid);
-		    pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
-		  }
-		else
-		  {
-		    if (object_get_status == OBJ_GET_WITHOUT_LOCK)
-		      {
-			/* page not fixed, recdes was read without lock, object may have changed */
-			object_get_status = OBJ_REPEAT_GET_WITH_LOCK;
-		      }
-		    else if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK)
-		      {
-			/* already read with lock, set flag to continue scanning next object */
-			object_get_status = OBJ_GET_WITH_LOCK_COMPLETE;
-		      }
-		  }
-
-		if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
-		  {
-		    return S_ERROR;
-		  }
-
-		if (!heap_does_exist (thread_p, NULL, &hsidp->curr_oid))
-		  {
-		    /* not qualified, continue to the next tuple */
-		    lock_unlock_object_donot_move_to_non2pl (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock);
-		    continue;
-		  }
-
-		if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
-		  {
-		    /* release acquired lock in RC */
-		    lock_unlock_object_donot_move_to_non2pl (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock);
-		  }
-
-		assert (hsidp->scan_cache.page_watcher.pgptr == NULL);
-
-		if (!VPID_ISNULL (&curr_vpid)
-		    && pgbuf_ordered_fix (thread_p, &curr_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-					  &hsidp->scan_cache.page_watcher) != NO_ERROR)
-		  {
-		    return S_ERROR;
-		  }
-
-		if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK
-		    || (hsidp->scan_cache.page_watcher.pgptr != NULL
-			&& PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
-		  {
-		    is_peeking = COPY;
-		    COPY_OID (&hsidp->curr_oid, &retry_oid);
-		    goto restart_scan_oid;
-		  }
-	      }
-	  }
+	assert (!mvcc_is_mvcc_disabled_class (&hsidp->cls_oid));
 
 	scan_id->scan_stats.qualified_rows++;
 

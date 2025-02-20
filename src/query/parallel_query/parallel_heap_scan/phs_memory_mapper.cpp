@@ -113,7 +113,6 @@ namespace parallel_heap_scan
     if (vd->dbval_ptr && vd->dbval_cnt > 0)
       {
 	dest->dbval_ptr = (DB_VALUE *) malloc (sizeof (DB_VALUE) * vd->dbval_cnt);
-	memset (dest->dbval_ptr, 0, sizeof (DB_VALUE) * vd->dbval_cnt);
 	for (int i = 0; i < vd->dbval_cnt; i++)
 	  {
 	    typed_memory tm;
@@ -539,7 +538,7 @@ namespace parallel_heap_scan
     scan_id->vd = copy_and_map (scan_idp->vd);
     /* WHY COPY AND MAP VD?
      * vd is a struct containing host variables, so it must be const.
-     * However, tp_value_coerce and tp_value_cast include routines that clear the original dbvalue. 
+     * However, tp_value_coerce and tp_value_cast include routines that clear the original dbvalue.
      * To prevent execution across different threads, COPY AND MAP must be executed.
      */
     hsid->pred_attrs.attr_cache = copy_and_map (phsid->pred_attrs.attr_cache);

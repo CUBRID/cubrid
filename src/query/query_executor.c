@@ -9130,7 +9130,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  indx_info = NULL;
 #if SERVER_MODE && !WINDOWS
 	  if (thread_p->private_heap_id != 0 && !mvcc_select_lock_needed
-	      && !oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid))
+	      && !oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid)
+	      && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid))
 	    {
 	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))	/* Only for User table */
 		{
