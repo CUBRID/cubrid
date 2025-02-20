@@ -60,23 +60,19 @@ commands:
             #test code
             find cubrid-testcases-private-ex/shell/_01_utility -maxdepth 1 -type d ! -name "_01_sqlx" ! -name "_01_utility" ! -name "config" | xargs rm -rf
             rm -rf cubrid-testcases-private-ex/shell/_01_utility/_01_sqlx/bug_*
-
             HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
-            ls -la $CUBRID
+            
             # Run the tests
             /entrypoint.sh test
-
       - run:
           name: Collect Logs
           command: |
             mkdir -p /tmp/logs
+            mv -f CUBRID/log /tmp/logs/cubrid_log
             if [ "$TEST_SUITE" = "shell" ]; then
-              mv -f CUBRID/log /tmp/logs/cubrid_log
-              mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
-              mv -f /tmp/tests/*.csv /tmp/logs/compare_log
+              mv -f /tmp/tests/* /tmp/logs/compare_log
             else
-              mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
@@ -93,7 +89,7 @@ commands:
           name: Store Build Logs
           command: |
             mkdir -p /tmp/build_logs
-            mv -f build.log /tmp/build_logs || true
+            mv -f build.log /tmp/build_logs
       - run:
           name: Store Commits
           command: |
@@ -115,7 +111,7 @@ executors:
   cubrid-test-shell:
     docker:
       # - image: cubridci/cubridci:shell
-      - image: twkang3219/ctp_image_shell:with_root
+      - image: twkang3219/ctp_image_shell:latest
     working_directory: /home
 
 # --------------------------------------------------
@@ -155,7 +151,6 @@ jobs:
       parallel_num:
         type: integer
         default: 1
-
     executor: << parameters.e >>
     resource_class: medium
     parallelism: << parameters.parallel_num >>
