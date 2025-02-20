@@ -62,7 +62,7 @@ commands:
             rm -rf cubrid-testcases-private-ex/shell/_01_utility/_01_sqlx/bug_*
             ls -l cubrid-testcases-private-ex/shell/_01_utility/_01_sqlx/
 
-            sudo -E -u shell bash -c "/home/shell/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh"
+            /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh"
             # Run the tests
             /entrypoint.sh test
 
@@ -115,8 +115,8 @@ executors:
   cubrid-test-shell:
     docker:
       # - image: cubridci/cubridci:shell
-      - image: twkang3219/ctp_image_shell:latest
-    working_directory: /home/shell
+      - image: twkang3219/ctp_image_shell:with_root
+    working_directory: /home
 
 # --------------------------------------------------
 # 3. Jobs
