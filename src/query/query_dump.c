@@ -120,9 +120,12 @@ static void qdump_check_node (XASL_NODE * xasl, QDUMP_XASL_CHECK_NODE * chk_node
 static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
 #endif /* CUBRID_DEBUG */
 
+static void qdump_print_regu_var_in_agg_list_text (FILE * fp, AGGREGATE_TYPE * agg, int indent);
 static void qdump_print_regu_var_in_pred_expr_text (FILE * fp, PRED_EXPR * pred_p, int indent);
 static void qdump_print_regu_var_in_term_text (FILE * fp, PRED_EXPR * pred_p, int indent);
 static void qdump_print_regu_var_in_eval_term_text (FILE * fp, EVAL_TERM * term_p, int indent);
+static void qdump_print_regu_var_in_outptr_list_text (FILE * fp, OUTPTR_LIST * regu_var, int indent);
+
 static void qdump_print_regu_var_text (FILE * fp, REGU_VARIABLE * regu_var, int indent);
 static void qdump_print_regu_var_text (FILE * fp, REGU_VARIABLE_LIST regu_var_list, int indent);
 
@@ -3349,6 +3352,17 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 }
 
 static void
+qdump_print_regu_var_in_outptr_list_text (FILE * fp, OUTPTR_LIST * ptr, int indent)
+{
+  if (ptr == NULL)
+    {
+      return;
+    }
+
+  qdump_print_regu_var_text (fp, ptr->valptrp, indent);
+}
+
+static void
 qdump_print_regu_var_text (FILE * fp, REGU_VARIABLE * regu_var, int indent)
 {
   if (regu_var == NULL)
@@ -3356,13 +3370,59 @@ qdump_print_regu_var_text (FILE * fp, REGU_VARIABLE * regu_var, int indent)
       return;
     }
 
-  if (regu_var->type == TYPE_SP)
+  switch (regu_var->type)
     {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu_var->value.arithptr == NULL)
+	{
+	  return;
+	}
+      qdump_print_regu_var_text (fp, regu_var->value.arithptr->leftptr, indent);
+      qdump_print_regu_var_text (fp, regu_var->value.arithptr->rightptr, indent);
+      break;
+
+    case TYPE_SP:
+      if (regu_var->value.sp_ptr == NULL)
+	{
+	  return;
+	}
+
       fprintf (fp, "%*cSP (procedure: %s)", indent, ' ', regu_var->value.sp_ptr->sig->name);
       fprintf (fp, ", (time: %d, cnt: %lld, read: %lld, write: %lld)\n", TO_MSEC (regu_var->regu_stats.sp.elapsed_time),
 	       (unsigned long long int) regu_var->regu_stats.sp.cnt,
 	       (unsigned long long int) regu_var->regu_stats.sp.num_read,
 	       (unsigned long long int) regu_var->regu_stats.sp.num_write);
+      break;
+
+    case TYPE_FUNC:
+      if (regu_var->value.funcp == NULL)
+	{
+	  return;
+	}
+
+      qdump_print_regu_var_text (fp, regu_var->value.funcp->operand, indent);
+      break;
+
+    case TYPE_REGUVAL_LIST:
+      if (regu_var->value.reguval_list == NULL)
+	{
+	  return;
+	}
+
+      for (regu_value_item * item = regu_var->value.reguval_list->regu_list; item != NULL; item = item->next)
+	{
+	  qdump_print_regu_var_text (fp, item->value, indent);
+	}
+      break;
+
+    case TYPE_REGU_VAR_LIST:
+      qdump_print_regu_var_text (fp, regu_var->value.regu_var_list, indent);
+      break;
+
+    default:
+      // nothing
+      return;
     }
 }
 
@@ -3455,6 +3515,22 @@ qdump_print_regu_var_in_term_text (FILE * fp, PRED_EXPR * pred_p, int indent)
 }
 
 static void
+qdump_print_regu_var_in_agg_list_text (FILE * fp, AGGREGATE_TYPE * ptr, int indent)
+{
+  if (ptr == NULL)
+    {
+      return;
+    }
+
+  qdump_print_regu_var_text (fp, ptr->operands, indent);
+
+  if (ptr->next)
+    {
+      qdump_print_regu_var_in_agg_list_text (fp, ptr->next, indent);
+    }
+}
+
+static void
 qdump_print_regu_var_in_pred_expr_text (FILE * fp, PRED_EXPR * pred_p, int indent)
 {
   if (pred_p == NULL)
@@ -3520,7 +3596,7 @@ qdump_print_regu_var_in_scan_text (FILE * fp, SCAN_ID * s_id, int indent)
 
       if (s_id->s.isid.indx_cov.output_val_list != NULL)
 	{
-	  qdump_print_regu_var_text (fp, s_id->s.isid.indx_cov.output_val_list->valptrp, indent);
+	  qdump_print_regu_var_in_outptr_list_text (fp, s_id->s.isid.indx_cov.output_val_list, indent);
 	}
       break;
 
@@ -3533,6 +3609,118 @@ qdump_print_regu_var_in_scan_text (FILE * fp, SCAN_ID * s_id, int indent)
 
     case S_SET_SCAN:
       qdump_print_regu_var_text (fp, s_id->s.ssid.scan_pred.regu_list, indent);
+      break;
+
+    default:
+      break;
+    }
+}
+
+static void
+qdump_print_regu_var_in_xasl_text (FILE * fp, XASL_NODE * xasl_p, int indent)
+{
+  if (xasl_p == NULL)
+    {
+      return;
+    }
+
+  if (xasl_p->ordbynum_pred)
+    {
+      qdump_print_regu_var_in_pred_expr_text (fp, xasl_p->ordbynum_pred, indent);
+    }
+
+  if (xasl_p->orderby_limit)
+    {
+      qdump_print_regu_var_text (fp, xasl_p->orderby_limit, indent);
+    }
+
+  if (xasl_p->outptr_list != NULL)
+    {
+      qdump_print_regu_var_in_outptr_list_text (fp, xasl_p->outptr_list, indent);
+    }
+
+  if (xasl_p->during_join_pred)
+    {
+      qdump_print_regu_var_in_pred_expr_text (fp, xasl_p->during_join_pred, indent);
+    }
+
+  if (xasl_p->after_join_pred)
+    {
+      qdump_print_regu_var_in_pred_expr_text (fp, xasl_p->after_join_pred, indent);
+    }
+
+  if (xasl_p->if_pred)
+    {
+      qdump_print_regu_var_in_pred_expr_text (fp, xasl_p->if_pred, indent);
+    }
+
+  if (xasl_p->instnum_pred)
+    {
+      qdump_print_regu_var_in_pred_expr_text (fp, xasl_p->instnum_pred, indent);
+    }
+
+  if (xasl_p->level_regu)
+    {
+      qdump_print_regu_var_text (fp, xasl_p->level_regu, indent);
+    }
+
+  if (xasl_p->isleaf_regu)
+    {
+      qdump_print_regu_var_text (fp, xasl_p->isleaf_regu, indent);
+    }
+
+  if (xasl_p->iscycle_regu)
+    {
+      qdump_print_regu_var_text (fp, xasl_p->iscycle_regu, indent);
+    }
+
+  switch (xasl_p->type)
+    {
+    case OBJFETCH_PROC:
+      {
+	FETCH_PROC_NODE *node_p = &xasl_p->proc.fetch;
+	qdump_print_regu_var_in_pred_expr_text (fp, node_p->set_pred, indent);
+      }
+      break;
+
+    case BUILDLIST_PROC:
+      {
+	BUILDLIST_PROC_NODE *node_p = &xasl_p->proc.buildlist;
+	qdump_print_regu_var_in_outptr_list_text (fp, node_p->g_outptr_list, indent);
+	qdump_print_regu_var_text (fp, node_p->g_regu_list, indent);
+
+	qdump_print_regu_var_in_pred_expr_text (fp, node_p->g_grbynum_pred, indent);
+
+	qdump_print_regu_var_in_agg_list_text (fp, node_p->g_agg_list, indent);
+      }
+      break;
+
+    case BUILDVALUE_PROC:
+      {
+	BUILDVALUE_PROC_NODE *node_p = &xasl_p->proc.buildvalue;
+	qdump_print_regu_var_in_pred_expr_text (fp, node_p->having_pred, indent);
+	qdump_print_regu_var_in_agg_list_text (fp, node_p->agg_list, indent);
+	if (node_p->outarith_list)
+	  {
+	    ARITH_TYPE *arith_p = node_p->outarith_list;
+	    qdump_print_regu_var_text (fp, arith_p->leftptr, indent);
+	    qdump_print_regu_var_text (fp, arith_p->rightptr, indent);
+	  }
+      }
+      break;
+
+    case CONNECTBY_PROC:
+      {
+	CONNECTBY_PROC_NODE *node_p = &xasl_p->proc.connect_by;
+	qdump_print_regu_var_in_pred_expr_text (fp, node_p->start_with_pred, indent);
+	qdump_print_regu_var_in_pred_expr_text (fp, node_p->after_connect_by_pred, indent);
+	qdump_print_regu_var_text (fp, node_p->regu_list_pred, indent);
+	qdump_print_regu_var_text (fp, node_p->regu_list_rest, indent);
+	qdump_print_regu_var_in_outptr_list_text (fp, node_p->prior_outptr_list, indent);
+	qdump_print_regu_var_text (fp, node_p->prior_regu_list_pred, indent);
+	qdump_print_regu_var_text (fp, node_p->prior_regu_list_rest, indent);
+	qdump_print_regu_var_text (fp, node_p->after_cb_regu_list_rest, indent);
+      }
       break;
 
     default:
@@ -3820,10 +4008,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
     }
 
-  if (xasl_p->outptr_list != NULL)
-    {
-      qdump_print_regu_var_text (fp, xasl_p->outptr_list->valptrp, indent);
-    }
+  qdump_print_regu_var_in_xasl_text (fp, xasl_p, indent);
 
   if (xasl_p->sub_xasl_id && xasl_p->sub_cache_ref_count > 0)
     {
