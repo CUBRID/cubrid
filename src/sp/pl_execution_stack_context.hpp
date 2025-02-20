@@ -122,6 +122,16 @@ namespace cubpl
       cubmethod::header m_java_header; // header sending to cub_javasp
       bool m_transaction_control;
 
+      UINT64 get_num_read () const
+      {
+	return m_connection ? m_connection->m_read : 0;
+      }
+
+      UINT64 get_num_write () const
+      {
+	return m_connection ? m_connection->m_write : 0;
+      }
+
       template <typename ... Args>
       int send_data_to_client (Args &&... args)
       {

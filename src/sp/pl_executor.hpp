@@ -85,6 +85,10 @@ namespace cubpl
       std::vector <DB_VALUE> &get_out_args ();
       execution_stack *get_stack ();
 
+      // trace
+      UINT64 m_num_read;
+      UINT64 m_num_write;
+
     private:
       execution_stack *m_stack;
       pl_signature &m_sig;

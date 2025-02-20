@@ -182,6 +182,10 @@ namespace cubpl
 
     m_queue.push (conn->get_index ());
 
+    // for trace
+    conn->m_read = 0;
+    conn->m_write = 0;
+
     er_log_debug (ARG_FILE_LINE, "pl_connection_pool: connection retire (%d)\n", conn->get_index ());
   }
 
@@ -247,6 +251,9 @@ namespace cubpl
   {
     //
     do_reconnect ();
+
+    m_read = 0;
+    m_write = 0;
   }
 
   connection::~connection ()
@@ -306,6 +313,8 @@ namespace cubpl
       {
 	return do_handle_network_error (nbytes);
       }
+
+    m_write += blk.dim + OR_INT_SIZE;
 
     return NO_ERROR;
   }
@@ -393,6 +402,9 @@ namespace cubpl
     // Step 5: Move the data into the block
     cubmem::block blk (res_size, ext_blk.release_ptr());
     b = std::move (blk);
+
+    // for trace
+    m_read += res_size;
 
     return NO_ERROR; // Successfully received the buffer
   }

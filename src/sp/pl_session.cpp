@@ -237,6 +237,10 @@ namespace cubpl
 
     if (conn != nullptr)
       {
+	// for trace
+	conn->m_read = 0;
+	conn->m_write = 0;
+
 	m_session_connections.emplace_back (std::move (conn));
       }
   }

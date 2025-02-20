@@ -326,6 +326,11 @@ exit:
       {
 	error = er_errid ();
       }
+
+    // for trace
+    m_num_read = m_stack->get_num_read ();
+    m_num_write = m_stack->get_num_write ();
+
     return error;
   }
 

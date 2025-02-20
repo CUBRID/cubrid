@@ -152,6 +152,9 @@ namespace cubpl
 
       void invalidate ();
 
+      UINT64 m_read;
+      UINT64 m_write;
+
     private:
       explicit connection (connection_pool *pool, int index);
 
