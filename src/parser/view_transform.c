@@ -5170,10 +5170,15 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  cte = parser_copy_tree (parser, cte_pointer);
 	  CAST_POINTER_TO_NODE (cte);
 
-	  /* If the referenced count is -1, ... */
+	  /* If the referenced count is -1, the current spec node is placed in the WITH clause.
+	   * In the WITH clause, always rewrite CTE as a derived table, except when the CTE has a MATERIALIZE hint. */
 	  if (cte->info.cte.referenced_count == -1)
 	    {
-	      ;
+	      hint = mq_find_cte_hint (parser, cte->info.cte.non_recursive_part);
+	      if (hint & PT_HINT_MATERIALIZE_CTE)
+		{
+		  return node;
+		}
 	    }
 	  else if (cte->info.cte.referenced_count >= 2)
 	    {
