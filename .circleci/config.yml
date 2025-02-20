@@ -29,6 +29,10 @@ commands:
             # Limit core files
             ulimit -c 1
 
+            echo "ENV: $ENV"
+
+            exit 1
+
             # Check out code (uses custom entrypoint script)
             /entrypoint.sh checkout
 
