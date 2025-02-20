@@ -17,12 +17,12 @@
  */
 
 /*
- * phs_context.cpp - derived from cubthread::entry_manager
+ * px_context.cpp - derived from cubthread::entry_manager
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "phs_context.hpp"
+#include "px_context.hpp"
 #include "error_context.hpp"
 
 
@@ -69,4 +69,4 @@ namespace parallel_heap_scan
   }
 }
 
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */

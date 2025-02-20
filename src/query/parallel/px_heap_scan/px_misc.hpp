@@ -17,13 +17,14 @@
  */
 
 /*
- * phs_misc.hpp - miscellaneous functions for parallel heap scan
+ * px_misc.hpp - miscellaneous functions for parallel heap scan
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_MISC_HPP_
-#define _PARALLEL_HEAP_SCAN_MISC_HPP_
+#ifndef _PX_HEAP_SCAN_MISC_HPP_
+#define _PX_HEAP_SCAN_MISC_HPP_
 
 #if SERVER_MODE && !WINDOWS
+
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
 #include "scan_manager.h"
@@ -39,5 +40,5 @@ namespace parallel_heap_scan
   int arith_list_clear (THREAD_ENTRY *thread_p, ARITH_TYPE *list);
   SCAN_CODE scan_next_heap_scan_1page_internal (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, VPID *curr_vpid);
 }
-#endif /* SERVER_MODE */
-#endif /* _PARALLEL_HEAP_SCAN_MISC_HPP_ */
+#endif /* SERVER_MODE && !WINDOWS */
+#endif /*_PX_HEAP_SCAN_MISC_HPP_ */

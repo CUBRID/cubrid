@@ -82,10 +82,9 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 
-#if SERVER_MODE
-#include "phs_checker.hpp"
-#include "phs_manager.hpp"
-#endif
+#if SERVER_MODE && !WINDOWS
+#include "px_manager.hpp"
+#endif /* SERVER_MODE && !WINDOWS */
 
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -9129,19 +9128,20 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 #if SERVER_MODE && !WINDOWS
-	  if (thread_p->private_heap_id != 0 && !mvcc_select_lock_needed
-	      && !oid_is_cached_class_oid (&curr_spec->s.cls_node.cls_oid)
-	      && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid))
+	  if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) && prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)	/* Only for User table */
 	    {
-	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN))	/* Only for User table */
+	      if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid)
+		  && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid)
+		  && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)
 		{
-		  if (prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)
-		    {
-		      scan_type = S_PARALLEL_HEAP_SCAN;
-		    }
+		  /* Why thread_p->private_heap_id != 0? 
+		   * Because, if it is 0, it means that the scan is not executed in main thread.
+		   * So, we can't use parallel heap scan.
+		   */
+		  scan_type = S_PARALLEL_HEAP_SCAN;
 		}
 	    }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
@@ -9222,7 +9222,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
 	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),

@@ -17,12 +17,13 @@
  */
 
 /*
- * phs_memory_mapper.cpp - module created to perform deep copying of
+ * px_memory_mapper.cpp - module created to perform deep copying of
  * heap scan-related information from the XASL structure.
  */
 
 #if SERVER_MODE && !WINDOWS
-#include "phs_memory_mapper.hpp"
+
+#include "px_memory_mapper.hpp"
 #include "regu_var.hpp"
 #include "query_executor.h"
 #include "xasl_predicate.hpp"
@@ -602,4 +603,4 @@ namespace parallel_heap_scan
 
 }
 
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */

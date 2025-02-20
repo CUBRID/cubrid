@@ -37,7 +37,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "phs_perf_monitor.hpp"
+#include "px_perf_monitor.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -553,7 +553,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 
   fprintf (foutput, ",%s", qdump_access_method_string (spec_list_p->access));
 
-  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN)
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN)
     {
       fprintf (foutput, ",NOT_FOR_PARALLEL_HEAP_SCAN");
     }

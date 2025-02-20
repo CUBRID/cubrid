@@ -17,13 +17,13 @@
  */
 
 /*
- * phs_task.cpp - derived from cubthread::entry_task
+ * px_task.cpp - derived from cubthread::entry_task
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "phs_task.hpp"
-#include "phs_misc.hpp"
+#include "px_task.hpp"
+#include "px_misc.hpp"
 #include "error_context.hpp"
 #include <memory>
 #include "thread_entry.hpp"
@@ -98,7 +98,7 @@ namespace parallel_heap_scan
     TSC_TICKS t1, t2;
     TSCTIMEVAL tv_diff;
     UINT64 old_fetches = 0, old_ioreads = 0;
-    memory_mapper::phs_stats *stats = &m_memory_mapper->stats;
+    memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
 
     if (m_context->has_error())
@@ -225,4 +225,4 @@ namespace parallel_heap_scan
     m_context->add_tasks_executed();
   }
 }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */

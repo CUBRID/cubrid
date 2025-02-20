@@ -17,12 +17,12 @@
  */
 
 /*
- * phs_memory_mapper.hpp - module created to perform deep copying of
+ * px_memory_mapper.hpp - module created to perform deep copying of
  * heap scan-related information from the XASL structure.
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
-#define _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_
+#ifndef _PX_HEAP_SCAN_MEMORY_MAPPER_HPP_
+#define _PX_HEAP_SCAN_MEMORY_MAPPER_HPP_
 
 #if SERVER_MODE && !WINDOWS
 
@@ -56,7 +56,7 @@ namespace parallel_heap_scan
 	  void *ptr;
       };
 
-      struct phs_stats
+      struct px_stats
       {
 	struct timeval elapsed_scan;
 	struct timeval elapsed_page_lock;
@@ -116,5 +116,5 @@ namespace parallel_heap_scan
       std::atomic<int> m_obj_cnt;
   };
 }
-#endif /* SERVER_MODE */
-#endif /* _PARALLEL_HEAP_SCAN_MEMORY_MAPPER_HPP_ */
+#endif /* SERVER_MODE && !WINDOWS */
+#endif /*_PX_HEAP_SCAN_MEMORY_MAPPER_HPP_ */

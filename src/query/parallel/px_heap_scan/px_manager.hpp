@@ -17,17 +17,18 @@
  */
 
 /*
- * phs_manager.hpp - manager for parallel heap scans executed within a single XASL
+ * px_manager.hpp - manager for parallel heap scans executed within a single XASL
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_MANAGER_HPP_
-#define _PARALLEL_HEAP_SCAN_MANAGER_HPP_
+#ifndef _PX_HEAP_SCAN_MANAGER_HPP_
+#define _PX_HEAP_SCAN_MANAGER_HPP_
 
 #if SERVER_MODE && !WINDOWS
+
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
-#include "phs_context.hpp"
+#include "px_context.hpp"
 
 namespace parallel_heap_scan
 {
@@ -90,6 +91,6 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */
 
-#endif /* _PARALLEL_HEAP_SCAN_MANAGER_HPP_ */
+#endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */

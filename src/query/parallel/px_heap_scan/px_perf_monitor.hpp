@@ -17,17 +17,18 @@
  */
 
 /*
- * phs_result_queue.hpp - queue for temporarily storing heap scan results
+ * px_result_queue.hpp - queue for temporarily storing heap scan results
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
-#define _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_
+#ifndef _PX_HEAP_SCAN_PERF_MONITOR_HPP_
+#define _PX_HEAP_SCAN_PERF_MONITOR_HPP_
 
 #if SERVER_MODE && !WINDOWS
+
 #include <vector>
 #include <stdio.h>
 #include "scan_manager.h"
-#include "phs_memory_mapper.hpp"
+#include "px_memory_mapper.hpp"
 namespace parallel_heap_scan
 {
   class perf_monitor
@@ -39,9 +40,9 @@ namespace parallel_heap_scan
       void print_json (json_t *scan, char *class_name);
     private:
       std::vector<SCAN_STATS> m_scan_stats;
-      std::vector<memory_mapper::phs_stats> m_memory_mapper_stats;
+      std::vector<memory_mapper::px_stats> m_memory_mapper_stats;
       std::size_t m_parallelism;
   };
 }
-#endif
-#endif /* _PARALLEL_HEAP_SCAN_PERF_MONITOR_HPP_ */
+#endif /* SERVER_MODE && !WINDOWS */
+#endif /*_PX_HEAP_SCAN_PERF_MONITOR_HPP_ */

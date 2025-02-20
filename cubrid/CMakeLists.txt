@@ -303,23 +303,23 @@ set(SP_HEADERS
   ${SP_DIR}/pl_struct_compile.cpp
 )
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_misc.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_result_queue.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_task.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_result_queue.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_task.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_perf_monitor.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_misc.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_result_queue.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_task.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/phs_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_result_queue.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_task.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_perf_monitor.hpp
   )
 
 set(METHOD_SOURCES

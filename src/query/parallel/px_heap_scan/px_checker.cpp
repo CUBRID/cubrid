@@ -17,10 +17,10 @@
  */
 
 /*
- * phs_checker.cpp - module that checks whether parallel heap scan is possible.
+ * px_checker.cpp - module that checks whether parallel heap scan is possible.
  */
 
-#include "phs_checker.hpp"
+#include "px_checker.hpp"
 
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
@@ -71,11 +71,11 @@ namespace parallel_heap_scan
 
     for (specp = xasl->spec_list; specp; specp = specp->next)
       {
-	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
       }
     for (specp = xasl->merge_spec; specp; specp = specp->next)
       {
-	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NOT_FOR_PARALLEL_HEAP_SCAN);
+	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
       }
     for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
       {

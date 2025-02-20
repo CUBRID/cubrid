@@ -17,16 +17,17 @@
  */
 
 /*
- * phs_task.hpp - derived from cubthread::entry_task
+ * px_task.hpp - derived from cubthread::entry_task
  */
 
-#ifndef _PARALLEL_HEAP_SCAN_TASK_HPP_
-#define _PARALLEL_HEAP_SCAN_TASK_HPP_
+#ifndef _PX_HEAP_SCAN_TASK_HPP_
+#define _PX_HEAP_SCAN_TASK_HPP_
 
 #if SERVER_MODE && !WINDOWS
+
 #include "thread_entry_task.hpp"
 #include "scan_manager.h"
-#include "phs_context.hpp"
+#include "px_context.hpp"
 
 namespace parallel_heap_scan
 {
@@ -53,5 +54,5 @@ namespace parallel_heap_scan
       std::shared_ptr<memory_mapper> m_memory_mapper;
   };
 }
-#endif /* SERVER_MODE */
-#endif /* _PARALLEL_HEAP_SCAN_TASK_HPP_ */
+#endif /* SERVER_MODE && !WINDOWS */
+#endif /*_PX_HEAP_SCAN_TASK_HPP_ */

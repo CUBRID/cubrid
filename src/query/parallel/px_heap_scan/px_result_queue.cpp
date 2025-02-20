@@ -17,11 +17,12 @@
  */
 
 /*
- * phs_result_queue.cpp - queue for temporarily storing heap scan results
+ * px_result_queue.cpp - queue for temporarily storing heap scan results
  */
 
 #if SERVER_MODE && !WINDOWS
-#include "phs_result_queue.hpp"
+
+#include "px_result_queue.hpp"
 #include "dbtype.h"
 #include "regu_var.hpp"
 #include "thread_manager.hpp"
@@ -173,4 +174,4 @@ namespace parallel_heap_scan
   }
 }
 
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */
