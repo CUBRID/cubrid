@@ -99,8 +99,8 @@ const int AU_TYPE_SET_LEN[] =
 };
 
 au_auth_accessor::au_auth_accessor ()
-  : m_au_obj (nullptr)
-  , m_au_class_mop (nullptr)
+  : m_au_class_mop (nullptr)
+  , m_au_obj (nullptr)
 {}
 
 int
@@ -1198,7 +1198,7 @@ int
 au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR;
-  int update_count_db_authorization = -1;
+  int update_count_db_authorization = 0;
 
   assert (new_owner_mop != NULL && unique_name != NULL);
 
@@ -1329,6 +1329,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
     }
   else if (error < 0)
     {
+      *row_count = error;
       ASSERT_ERROR_AND_SET (error);
       goto release;
     }

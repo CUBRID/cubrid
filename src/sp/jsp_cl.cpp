@@ -1491,7 +1491,7 @@ jsp_check_stored_procedure_name (const char *str)
   static int dbms_output_len = strlen ("dbms_output.");
 
 
-  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
+  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0 && strlen (str) > (size_t) dbms_output_len)
     {
       sprintf (buffer, "public.dbms_output.%s",
 	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
@@ -2026,7 +2026,7 @@ pt_to_method_arglist (PARSER_CONTEXT *parser, PT_NODE *target, PT_NODE *node_lis
 int
 jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_as_attr_list, cubpl::pl_signature &sig)
 {
-  int save;
+  int save = 0;
   int error = NO_ERROR;
   char user_name_buffer [DB_MAX_USER_LENGTH + 1];
   DB_OBJECT *mop_p = NULL;
