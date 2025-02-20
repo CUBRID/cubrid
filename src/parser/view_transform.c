@@ -178,14 +178,6 @@ struct set_names_info
   UINTPTR id;
 };
 
-typedef struct cte_info CTE_INFO;
-struct cte_info
-{
-  struct cte_info *next;
-  PT_NODE *cte;
-  int count;
-};
-
 enum pushable_type
 {
   HAS_ERROR = 0,
@@ -420,9 +412,7 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_rewrite_cte_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *mq_find_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /*
@@ -4953,12 +4943,18 @@ exit_on_error:
   return NULL;
 }
 
+/*
+ * mq_rewrite_cte_as_derived () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ * 
+ * Note: This function is used to rewrite CTE as a derived table.
+ */
 static PT_NODE *
-mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *with_clause = NULL, *pointer_list = NULL;
-  PT_NODE *pointer, *cte_definition_list, *prev, *curr, *next;
-  CTE_INFO *info = NULL, *temp;
+  PT_NODE *with_clause, *cte_definition_list, *curr, *next;
 
   switch (node->node_type)
     {
@@ -4994,23 +4990,27 @@ mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  with_clause = parser_walk_tree (parser, with_clause, mq_rewrite_cte_pre, info, NULL, NULL);
+  /* Recursive CTE */
+  if (with_clause->info.with_clause.recursive != 0)
+    {
+      return node;
+    }
 
-  (void) parser_walk_tree (parser, node, mq_count_cte_references, &info, pt_continue_walk, NULL);
-
-  node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, info, NULL, NULL);
-
+  /* Rewrite the main query considering the reference count. */
+  node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
 
   cte_definition_list = with_clause->info.with_clause.cte_definition_list;
-  while (info)
+  curr = cte_definition_list;
+  while (curr)
     {
-      temp = info;
-      info = info->next;
-      if (temp->count < 2)
+      if (curr->info.cte.referenced_count < 2)
 	{
-	  cte_definition_list = pt_remove_from_list (parser, temp->cte, cte_definition_list);
+	  next = curr->next;
+	  cte_definition_list = pt_remove_from_list (parser, curr, cte_definition_list);
+	  curr = next;
+	  continue;
 	}
-      free_and_init (temp);
+      curr = curr->next;
     }
 
   if (cte_definition_list != NULL)
@@ -5025,8 +5025,15 @@ mq_rewrite_materialized_cte (PARSER_CONTEXT * parser, PT_NODE * node)
   return node;
 }
 
+/*
+ * mq_find_cte_hint () - This function is used to find the hint of the CTE.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ */
 static PT_HINT_ENUM
-mq_find_hint (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   switch (node->node_type)
     {
@@ -5036,19 +5043,27 @@ mq_find_hint (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
     case PT_UNION:
-      return mq_find_hint (parser, node->info.query.q.union_.arg1);
+      return mq_find_cte_hint (parser, node->info.query.q.union_.arg1);
 
     default:
-      return PT_HINT_NONE;
-
+      break;
     }
+
+  return PT_HINT_NONE;
 }
 
+/*
+ * mq_count_cte_references () - 
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ * Note: If the reference count is 2 or more, it is treated as a materialized CTE.
+ *       If the reference count is less than 2, it is treated as a inline CTE.
+ */
 static PT_NODE *
 mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  CTE_INFO **info = (CTE_INFO **) arg;
-  CTE_INFO *prev, *curr = NULL;
   PT_NODE *node_pointer, *cte;
   PT_HINT_ENUM hint;
 
@@ -5058,22 +5073,9 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       cte = node->info.with_clause.cte_definition_list;
       while (cte)
 	{
-	  hint = mq_find_hint (parser, cte->info.cte.non_recursive_part);
-	  CTE_INFO *new_info = (CTE_INFO *) malloc (sizeof (CTE_INFO));
-	  new_info->cte = cte;
-	  new_info->count = (hint & PT_HINT_MATERIALIZE_CTE) ? 2 : 0;
-	  new_info->next = NULL;
+	  hint = mq_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
-	  if (*info == NULL)
-	    {
-	      *info = new_info;
-	    }
-	  else
-	    {
-	      prev->next = new_info;
-	    }
-
-	  prev = new_info;
+	  cte->info.cte.referenced_count = hint & PT_HINT_MATERIALIZE_CTE ? 2 : 0;
 	  cte = cte->next;
 	}
       *continue_walk = PT_LIST_WALK;
@@ -5085,20 +5087,11 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node_pointer = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (node_pointer);
 
-	  hint = mq_find_hint (parser, node_pointer->info.cte.non_recursive_part);
-	  curr = *info;
-	  while (curr)
+	  hint = mq_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
+
+	  if (!(hint & PT_HINT_INLINE_CTE))
 	    {
-	      if (node_pointer == curr->cte)
-		{
-		  if (hint & ~PT_HINT_INLINE_CTE)
-		    {
-		      curr->count++;
-		    }
-		  break;
-		}
-	      prev = curr;
-	      curr = curr->next;
+	      node_pointer->info.cte.referenced_count++;
 	    }
 	}
       break;
@@ -5109,12 +5102,18 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+/*
+ * mq_rewrite_cte_pre () - This function is used to rewrite the CTE.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ */
 static PT_NODE *
 mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-//   PT_NODE **pointer_list = (PT_NODE **) arg;
-  CTE_INFO *cte_info = (CTE_INFO *) arg;
-  PT_NODE *derived, *cte_list, *tbl_name, *attributes, *spec, *attr, *node_pointer;
+  PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte, *cte_pointer;
+  PT_HINT_ENUM hint;
 
   if (node == NULL)
     {
@@ -5123,44 +5122,74 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   switch (node->node_type)
     {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.with != NULL)
+	{
+	  /* Rewrite the CTEs in the WITH clause.
+	   * When rewriting subqueries within WITH clause, subqueries with MATERIALIZE hint can reference other subqueries, 
+	   * but subqueries without MATERIALIZE hint cannot reference subqueries that have MATERIALIZE hint. */
+	  node->info.query.with =
+	    parser_walk_tree (parser, node->info.query.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
+
+	  /* Count the number of CTE references, except for the with clause. */
+	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.with != NULL)
+	{
+	  node->info.delete_.with =
+	    parser_walk_tree (parser, node->info.delete_.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
+	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+
+	}
+      break;
+
+    case PT_UPDATE:
+      if (node->info.update.with != NULL)
+	{
+	  node->info.update.with =
+	    parser_walk_tree (parser, node->info.update.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
+	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+
+	}
+      break;
+
     case PT_WITH_CLAUSE:
       break;
+
     case PT_SPEC:
       if (PT_SPEC_IS_CTE (node))
 	{
-	  node_pointer = PT_SPEC_CTE_POINTER (node);
-	  cte_list = parser_copy_tree (parser, node_pointer);
-	  CAST_POINTER_TO_NODE (cte_list);
+	  cte_pointer = PT_SPEC_CTE_POINTER (node);
+	  cte = parser_copy_tree (parser, cte_pointer);
+	  CAST_POINTER_TO_NODE (cte);
 
-	  PT_HINT_ENUM hint;
-	  if (cte_info == NULL)
+	  /* If the referenced count is -1, ... */
+	  if (cte->info.cte.referenced_count == -1)
 	    {
-	      hint = mq_find_hint (parser, cte_list->info.cte.non_recursive_part);
-	      if (hint & PT_HINT_MATERIALIZE_CTE)
-		{
-		  return node;
-		}
+	      ;
+	    }
+	  else if (cte->info.cte.referenced_count >= 2)
+	    {
+	      /* If the referenced count is 2 or more, it is treated as a materialized CTE. */
+	      return node;
+	    }
+	  else
+	    {
+	      /* If the referenced count is less than 2, it is treated as a inline CTE. */
+	      ;
 	    }
 
-	  while (cte_info)
-	    {
-	      if (cte_info->cte == cte_list)
-		{
-		  if (cte_info->count > 1)
-		    {
-		      return node;
-		    }
-		  *continue_walk = PT_LIST_WALK;
+	  attributes = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
+	  derived = parser_copy_tree (parser, cte->info.cte.non_recursive_part);
 
-		  break;
-		}
-	      cte_info = cte_info->next;
-	    }
-
-	  attributes = parser_copy_tree_list (parser, cte_list->info.cte.as_attr_list);
-	  derived = parser_copy_tree (parser, cte_list->info.cte.non_recursive_part);
-
-	  tbl_name = parser_copy_tree (parser, cte_list->info.cte.name);
+	  tbl_name = parser_copy_tree (parser, cte->info.cte.name);
 	  tbl_name->info.name.spec_id = node->info.spec.id;
 
 	  for (attr = attributes; attr; attr = attr->next)
@@ -7908,7 +7937,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      node = mq_rewrite_materialized_cte (parser, node);
+      node = mq_rewrite_cte_as_derived (parser, node);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
@@ -7961,7 +7990,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
-      node = mq_rewrite_materialized_cte (parser, node);
+      node = mq_rewrite_cte_as_derived (parser, node);
 
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
