@@ -283,7 +283,9 @@ main (int argc, char *argv[])
     /* pl command main routine */
     if (command.compare ("start") == 0)
       {
+#if !defined (WINDOWS)
 	pid_t ppid = getppid ();
+#endif
 	(void) pl_start_server (pl_info, db_name, pathname);
 
 	command = "running";
