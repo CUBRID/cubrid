@@ -19,9 +19,9 @@
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "faiss/utils/distances.h"
+#include <stdexcept>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include <stdexcept>
 
 /**
  * @brief Converts a DB_VALUE vector of floats into a std::vector<float>.
