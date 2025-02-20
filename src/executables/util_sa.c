@@ -1520,6 +1520,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   const char *db_name;
   const char *output_file = NULL;
   const char *class_name;
+  FILE *infp = NULL;
   FILE *outfp = NULL;
   bool is_emergency = false;
   bool need_db_shutdown = false;
@@ -1575,7 +1576,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 
   if (class_name && class_list_file)
     {
-      goto print_diag_usage;
+      fprintf (stderr, "The -n and -i options cannot be used together.\n");
+      goto error_exit;
     }
 
   if (check_database_name (db_name))
@@ -1724,12 +1726,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       bool dump_records;
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
 
-      if (class_name == NULL && class_list_file == NULL)
-	{
-	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
-	}
-      else if (class_name != NULL)
+      if (class_name != NULL)
 	{
 	  if (!sm_check_system_class_by_name (class_name))
 	    {
@@ -1750,6 +1747,54 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 	}
+      else if (class_list_file != NULL)
+	{
+	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
+
+	  infp = fopen (class_list_file, "r");
+	  if (infp == NULL)
+	    {
+	      perror (class_list_file);
+	      goto error_exit;
+	    }
+
+	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, infp) != NULL)
+	    {
+	      trim (input_class);
+
+	      if (strlen (input_class) < 1)
+		{
+		  /* empty string */
+		  continue;
+		}
+
+	      if (!sm_check_system_class_by_name (input_class))
+		{
+		  if (utility_check_class_name (input_class) != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		}
+
+	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
+
+	      if (error_code != NO_ERROR)
+		{
+		  if (error_code == ER_LC_UNKNOWN_CLASSNAME)
+		    {
+		      PRINT_AND_LOG_ERR_MSG (msgcat_message
+					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
+					      DIAGDB_MSG_UNKNOWN_CLASS), input_class);
+		    }
+		  goto error_exit;
+		}
+	    }
+	}
+      else
+	{
+	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
+	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+	}
     }
 
   db_shutdown ();
@@ -1758,6 +1803,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (infp != NULL)
+    {
+      fclose (infp);
     }
 
   return EXIT_SUCCESS;
@@ -1776,6 +1825,10 @@ error_exit:
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (infp != NULL)
+    {
+      fclose (infp);
     }
 
   return EXIT_FAILURE;
