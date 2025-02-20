@@ -1938,7 +1938,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	  if (gsize)
 	    {
 	      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
-	      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
+	      for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
 		{
 		  if (set_get_element (grants, GRANT_ENTRY_CLASS (j), &element))
 		    {
