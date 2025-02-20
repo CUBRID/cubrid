@@ -412,7 +412,7 @@ namespace cubpl
 	  {
 	    do_monitor ();
 	  }
-	while (try_count < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
+	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
       }
 #endif
   }
