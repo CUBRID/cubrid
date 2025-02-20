@@ -210,6 +210,10 @@ namespace parallel_heap_scan
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
       }
+    if (hsidp->scan_cache.page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+      }
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);

@@ -35,7 +35,6 @@ namespace parallel_heap_scan
   void memory_mapper::clear_and_free (heap_cache_attrinfo *ptr)
   {
     heap_attrinfo_end (NULL, ptr);
-    memset (ptr, 0, sizeof (heap_cache_attrinfo));
     free (ptr);
     m_obj_cnt--;
   }
@@ -290,7 +289,17 @@ namespace parallel_heap_scan
 	  case TYPE_REGU_VAR_LIST:
 	    dest->value.regu_var_list = copy_and_map (src->value.regu_var_list);
 	    break;
+	  case TYPE_ORDERBY_NUM:
+	  case TYPE_POSITION:
+	  case TYPE_LIST_ID:
+	  case TYPE_POS_VALUE:
+	  case TYPE_OID:
+	  case TYPE_CLASSOID:
+	  case TYPE_REGUVAL_LIST:
+	    /* not to do anything */
+	    break;
 	  default:
+	    assert (false);
 	    break;
 	  }
 	if (src->vfetch_to != NULL)
@@ -483,7 +492,16 @@ namespace parallel_heap_scan
 	  case TYPE_REGU_VAR_LIST:
 	    dest->value.regu_var_list = copy_and_map (src->value.regu_var_list);
 	    break;
+	  case TYPE_ORDERBY_NUM:
+	  case TYPE_POSITION:
+	  case TYPE_LIST_ID:
+	  case TYPE_POS_VALUE:
+	  case TYPE_OID:
+	  case TYPE_CLASSOID:
+	    /* not to do anything */
+	    break;
 	  default:
+	    assert (false);
 	    break;
 	  }
 
@@ -497,6 +515,18 @@ namespace parallel_heap_scan
 
   memory_mapper::memory_mapper (SCAN_ID *scan_idp)
   {
+    /* Structure sizes
+     * SCAN_ID : 2176
+     * val_descr : 48
+     * heap_cache_attrinfo : 56
+     * regu_variable_list_node : 120
+     * PRED_EXPR : 48
+     */
+    static_assert (sizeof (SCAN_ID) == 2176, "SCAN_ID size is not 2176, please check phs.");
+    static_assert (sizeof (val_descr) == 48, "val_descr size is not 48, please check phs.");
+    static_assert (sizeof (heap_cache_attrinfo) == 56, "heap_cache_attrinfo size is not 56, please check phs.");
+    static_assert (sizeof (regu_variable_list_node) == 120, "regu_variable_list_node size is not 120, please check phs.");
+    static_assert (sizeof (PRED_EXPR) == 48, "PRED_EXPR size is not 48, please check phs.");
     m_obj_cnt = 0;
     val_descr_ptr = nullptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_idp->s.phsid;

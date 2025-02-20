@@ -18298,7 +18298,10 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  if (prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)
+    {
+      scan_check_parallel_heap_scan_possible (xasl);
+    }
 
   if (pt_has_error (parser))
     {
@@ -22091,7 +22094,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  if (prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)
+    {
+      scan_check_parallel_heap_scan_possible (xasl);
+    }
 
   /* fill in XASL cache related information */
   if (xasl)
