@@ -40,7 +40,7 @@ namespace parallel_heap_scan
       manager (manager &&) = delete;
       manager &operator= (manager &&) = delete;
 
-      std::atomic<bool> m_is_start_once;
+      bool m_is_start_once;
       bool timeout_occurred;
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       std::size_t parallelism;
