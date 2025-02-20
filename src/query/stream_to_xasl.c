@@ -5550,6 +5550,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
 
+  memset (&regu_var->regu_stats, 0, sizeof (regu_var->regu_stats));
+
   return ptr;
 
 error:

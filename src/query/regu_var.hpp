@@ -170,6 +170,18 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 
+typedef union regu_variable_stats REGU_VARIABLE_STATS;
+union regu_variable_stats
+{
+  struct
+  {
+    struct timeval elapsed_time;
+    UINT64 cnt;
+    UINT64 num_read;
+    UINT64 num_write;
+  } sp;
+};
+
 class regu_variable_node
 {
   public:
@@ -196,6 +208,8 @@ class regu_variable_node
       REGU_VARIABLE_LIST regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
       cubxasl::sp_node *sp_ptr; /* stored procedure */
     } value;
+
+    REGU_VARIABLE_STATS regu_stats;
 
     regu_variable_node () = default;
 

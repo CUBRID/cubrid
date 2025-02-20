@@ -200,6 +200,8 @@ regu_variable_node::clear_xasl_local ()
     }
 
   pr_clear_value (vfetch_to);
+
+  memset (&regu_stats, 0, sizeof (REGU_VARIABLE_STATS));
 }
 
 void

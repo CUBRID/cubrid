@@ -1670,6 +1670,8 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
       pr_clear_value (regu_var->vfetch_to);
     }
 
+  memset (&regu_var->regu_stats, 0, sizeof (REGU_VARIABLE_STATS));
+
   return pg_cnt;
 }
 
