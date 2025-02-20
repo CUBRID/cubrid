@@ -21,10 +21,16 @@ test_defaults: &test_defaults
             # Hack way to run plcsql test without modifying CUBRID CI docker
             TEST_SUITE="sql"
             glob_path=cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}
+          elif [ $TEST_SUITE = "cubvec" ]
+          then
+            # Hack way to run cubvec test without modifying CUBRID CI docker
+            TEST_SUITE="sql"
+            glob_path=cubrid-testcases/sql/_36_cubvec
           elif [ $TEST_SUITE = "sql" ] 
           then
             rm -rf cubrid-testcases/$TEST_SUITE/_05_plcsql
             rm -rf cubrid-testcases/$TEST_SUITE/_35_fig_cake/plcsql
+            rm -rf cubrid-testcases/$TEST_SUITE/_36_cubvec
             glob_path="cubrid-testcases/$TEST_SUITE/_*"
           else
             glob_path="cubrid-testcases/$TEST_SUITE/_*"
@@ -78,6 +84,14 @@ jobs:
             - CUBRID
       - store_artifacts:
           path: /tmp/build_logs
+
+  test_cubvec:
+    <<: *defaults
+    environment:
+      TEST_SUITE: cubvec
+    resource_class: medium
+    <<: *test_defaults
+
   test_medium:
     <<: *defaults
     environment:
