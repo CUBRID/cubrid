@@ -537,6 +537,11 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsid = (HEAP_SCAN_ID *) &scan_id->s.hsid;
     orig_val_descr_ptr = scan_idp->vd;
     scan_id->vd = copy_and_map (scan_idp->vd);
+    /* WHY COPY AND MAP VD?
+     * vd is a struct containing host variables, so it must be const.
+     * However, tp_value_coerce and tp_value_cast include routines that clear the original dbvalue. 
+     * To prevent execution across different threads, COPY AND MAP must be executed.
+     */
     hsid->pred_attrs.attr_cache = copy_and_map (phsid->pred_attrs.attr_cache);
     hsid->rest_attrs.attr_cache = copy_and_map (phsid->rest_attrs.attr_cache);
     hsid->scan_pred.regu_list = copy_and_map (phsid->scan_pred.regu_list);
