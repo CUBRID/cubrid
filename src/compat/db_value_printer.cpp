@@ -527,6 +527,7 @@ void db_value_printer::describe_data (const db_value *value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
       set = db_get_set (value);
       if (set != NULL)
 	{
