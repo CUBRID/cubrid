@@ -32,6 +32,8 @@
 #include "trigger_manager.h"
 #include "transaction_cl.h"
 #include "schema_manager.h" /* sm_downcase_name */
+#include "object_primitive.h" /* pr_clear_value */
+#include "authenticate_access_auth.hpp" /* au_object_revoke_all_privileges */
 
 int
 au_check_owner (DB_VALUE *creator_val)
@@ -411,7 +413,42 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   MOP *sub_partitions = NULL;
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
+  MOP save_user, owner;
+  const char *table_name;
 
+  /* when changing the owner, all privileges are revoked */
+  owner = au_get_class_owner (class_mop);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  table_name = sm_get_ch_name (class_mop);
+  if (table_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
+    {
+      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
+      if (error != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  return error;
+	}
+    }
+  else
+    {
+      AU_SET_USER (save_user);
+      return ER_FAILED;
+    }
+  AU_SET_USER (save_user);
+
+  /* change the owner of a partition */
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
     {
@@ -438,7 +475,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  error = au_change_owner (sub_partitions[i], owner_mop);
+	  error = au_change_class_owner_including_partitions (sub_partitions[i], owner_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -447,7 +484,8 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	}
     }
 
-  error = au_change_owner (class_mop, owner_mop);
+  /* change the owner of a class */
+  error = au_change_class_owner_including_partitions (class_mop, owner_mop);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -470,67 +508,183 @@ end:
 /*
  * au_change_sp_owner -
  *   return: error code
+ *   parser(in):
  *   sp(in):
  *   owner(in):
  */
 int
-au_change_sp_owner (MOP sp, MOP owner)
+au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 {
   int error = NO_ERROR;
-  int save;
-  const char *name_str = NULL, *owner_str = NULL;
+  int save, lang;
+  const char *name_str = NULL, *owner_str = NULL, *target_cls = NULL;
   char new_name_str[DB_MAX_IDENTIFIER_LENGTH];
   new_name_str[0]= '\0';
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
-  DB_VALUE value, name_value, owner_value;
+  DB_VALUE value, name_value, owner_value, sp_lang_val, target_cls_val;
 
   db_make_null (&value);
   db_make_null (&name_value);
   db_make_null (&owner_value);
+  db_make_null (&sp_lang_val);
+  db_make_null (&target_cls_val);
+
+  assert (sp != NULL && owner != NULL);
 
   AU_DISABLE (save);
-  if (!au_is_dba_group_member (Au_user))
+
+  /* change _db_stored_procedure */
+  error = obj_get (sp, SP_ATTR_NAME, &name_value);
+  if (error != NO_ERROR)
     {
-      error = ER_AU_DBA_ONLY;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "change_sp_owner");
+      goto end;
     }
-  else
+  error = obj_get (owner, "name", &owner_value);
+  if (error != NO_ERROR)
     {
-      error = obj_get (sp, "sp_name", &name_value);
+      goto end;
+    }
+
+  name_str = db_get_string (&name_value);
+  owner_str = db_get_string (&owner_value);
+
+  sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
+  sprintf (new_name_str, "%s.%s", downcase_owner_name, name_str);
+
+  /* change the unique_name */
+  db_make_string (&value, new_name_str);
+  error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  /* change the owner */
+  db_make_object (&value, owner);
+  error = obj_set (sp, SP_ATTR_OWNER, &value);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  /* check lang */
+  error = db_get (sp, SP_ATTR_LANG, &sp_lang_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  lang = db_get_int (&sp_lang_val);
+  if (lang == SP_LANG_PLCSQL)
+    {
+      error = db_get (sp, SP_ATTR_TARGET_CLASS, &target_cls_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      error = obj_get (owner, "name", &owner_value);
+      target_cls = db_get_string (&target_cls_val);
+
+      /* change _db_stored_procedure_code */
+      error = alter_stored_procedure_code (parser, sp, target_cls, owner_str, 0);
       if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      name_str = db_get_string (&name_value);
-      owner_str = db_get_string (&owner_value);
-
-      sm_downcase_name (owner_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-      sprintf (new_name_str, "%s.%s", downcase_owner_name, name_str);
-
-      /* change the unique_name */
-      db_make_string (&value, new_name_str);
-      error = obj_set (sp, SP_ATTR_UNIQUE_NAME, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-
-      db_make_object (&value, owner);
-      error = obj_set (sp, SP_ATTR_OWNER, &value);
-      if (error < 0)
 	{
 	  goto end;
 	}
     }
 
 end:
+
   AU_ENABLE (save);
+  pr_clear_value (&value);
+  pr_clear_value (&name_value);
+  pr_clear_value (&owner_value);
+  pr_clear_value (&sp_lang_val);
+  pr_clear_value (&target_cls_val);
+
   return (error);
+}
+
+/*
+ * au_change_sp_owner_with_privilege_cleanup -
+ *   return: error code
+ *   parser(in):
+ *   sp_mop(in):
+ *   owner_mop(in):
+ */
+int
+au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT *parser, MOP sp_mop, MOP new_owner_mop)
+{
+  int error = NO_ERROR;
+  MOP owner_mop = NULL, save_user = NULL;
+  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  unique_name[0] = '\0';
+  PARSER_CONTEXT *dummy_parser = NULL;
+
+  assert (sp_mop != NULL && new_owner_mop != NULL);
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "change_sp_owner");
+      goto end;
+    }
+
+  /* create dummy parser of change_sp_owner_method */
+  if (parser == NULL)
+    {
+      dummy_parser = parser_create_parser ();
+      if (dummy_parser == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      parser = dummy_parser;
+    }
+
+  /* when changing the owner, all privileges are revoked */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  owner_mop = jsp_get_owner (sp_mop);
+  if (owner_mop == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner_mop) == NO_ERROR)
+    {
+      error = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner_mop, unique_name);
+      if (error != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto end;
+	}
+    }
+  else
+    {
+      AU_SET_USER (save_user);
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  AU_SET_USER (save_user);
+
+  /* change the owner of a sp */
+  error = au_change_sp_owner (parser, sp_mop, new_owner_mop);
+
+end:
+
+  if (dummy_parser != NULL)
+    {
+      parser_free_parser (dummy_parser);
+      parser = NULL;
+    }
+
+  return error;
 }

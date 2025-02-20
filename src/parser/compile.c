@@ -83,6 +83,7 @@ static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NO
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
+static char *change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int with_evaluate);
 
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -1044,6 +1045,55 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
 }
 
 /*
+ * change_trigger_action_query () - remove appended trigger info
+ *   parser(in):
+ *   action_stmt(in):
+ *   with_evaluate(in):
+ */
+static char *
+change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * statement, int with_evaluate)
+{
+  int result_len = 0;
+  char *result = NULL;
+  char *new_trigger_stmt_str = NULL;
+  unsigned int save_custom;
+
+  assert (parser != NULL || statement != NULL);
+
+  save_custom = parser->custom_print;
+  parser->flag.is_parsing_trigger = 1;
+
+  result = parser_print_tree_with_quotes (parser, statement);
+
+  parser->flag.is_parsing_trigger = 0;
+  parser->custom_print = save_custom;
+
+  /* remove appended trigger evaluate info */
+  result = remove_appended_trigger_evaluate (result, with_evaluate);
+  if (result == NULL)
+    {
+      return NULL;
+    }
+
+  result_len = strlen (result) + 1;
+  if (result_len < 0)
+    {
+      return NULL;
+    }
+
+  new_trigger_stmt_str = (char *) malloc (result_len);
+  if (new_trigger_stmt_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) result_len);
+      return NULL;
+    }
+
+  snprintf (new_trigger_stmt_str, result_len, "%s", result);
+
+  return new_trigger_stmt_str;
+}
+
+/*
  * pt_compile_trigger_stmt () - Compiles the trigger_stmt so that it can be
  * 	executed by pt_exec_trigger_stmt
  *   return:
@@ -1052,21 +1102,22 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
  *   class_op(in): class name to resolve name1 and name2 to
  *   name1(in): name to resolve
  *   name2(in): name to resolve
+ *   new_trigger_stmt(in):
+ *   with_evaluate(in):
  *
  */
 
 PT_NODE *
 pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op, const char *name1,
-			 const char *name2)
+			 const char *name2, char **new_trigger_stmt, int with_evaluate)
 {
   char *stmt_str = NULL;
   const char *class_name;
   PT_NODE **statement_p, *statement;
   int is_update_object;
   PT_NODE *err_node;
-  int with_evaluate;
 
-  assert (parser != NULL);
+  assert (parser != NULL && new_trigger_stmt != NULL);
 
   if (!trigger_stmt)
     return NULL;
@@ -1160,13 +1211,17 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       upd->info.update.spec = entity;
     }
 
+  /* prevents forced cast() within the code. (parser->flag.is_parsing_trigger == 1 && p->info.expr.flag != 0) */
+  parser->flag.is_parsing_trigger = 1;
+
   statement = pt_compile (parser, statement);
+
+  parser->flag.is_parsing_trigger = 0;
 
   /* Remove those info we append, which users can't understand them */
   if (pt_has_error (parser))
     {
       err_node = pt_get_errors (parser);
-      with_evaluate = strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
       while (err_node)
 	{
 	  remove_appended_trigger_info (err_node->info.error_msg.error_message, with_evaluate);
@@ -1177,6 +1232,18 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
   /* We need to do view translation here on the expression to be executed. */
   if (statement)
     {
+      char *new_trigger_stmt_str = NULL;
+
+      new_trigger_stmt_str =
+	change_trigger_action_query (parser, statement->info.scope.stmt->info.trigger_action.expression, with_evaluate);
+      if (new_trigger_stmt_str == NULL)
+	{
+	  assert (false);
+	  return NULL;
+	}
+
+      *new_trigger_stmt = new_trigger_stmt_str;
+
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
       /*
