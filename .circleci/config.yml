@@ -29,7 +29,7 @@ commands:
             # Limit core files
             ulimit -c 1
 
-            echo "ENV: $ENV"
+            echo "`set`"
 
             exit 1
 
