@@ -28,6 +28,7 @@
 
 #include "transaction_sr.h"
 
+#include "cubrocks.hpp"
 #include "locator_sr.h"
 #include "log_2pc.h"
 #include "log_lsa.hpp"
@@ -82,6 +83,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   state = log_commit (thread_p, tran_index, retain_lock);
 
+  cubrocks::ctx->kv_tran_commit (tran_index);
+
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
@@ -121,6 +124,8 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   state = log_abort (thread_p, tran_index);
+
+  cubrocks::ctx->kv_tran_abort (tran_index);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_TRAN_ABORT (tran_index, state);

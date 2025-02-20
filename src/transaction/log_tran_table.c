@@ -823,7 +823,6 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
     }
 
-  cubrocks::ctx->kv_tran_activate (tran_index);
   return tran_index;
 }
 
@@ -1015,6 +1014,8 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE stat
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
 
       tdes->tran_abort_reason = TRAN_NORMAL;
+
+      cubrocks::ctx->kv_tran_activate (tran_index);
     }
 
   return tran_index;
@@ -1263,6 +1264,7 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
 	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, log_tran_index);
 	}
+      cubrocks::ctx->kv_tran_deactivate (tran_index);
     }
 }
 

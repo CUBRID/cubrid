@@ -27,7 +27,6 @@
 #include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#include "cubrocks.hpp"
 #include "vacuum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1622,9 +1621,6 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
        */
       if (LSA_ISNULL (&tdes->head_lsa))
 	{
-	  /* start the transaction */
-	  cubrocks::ctx->kv_tran_start (tdes->tran_index);
-
 	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
 	}
 

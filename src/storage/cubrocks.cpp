@@ -60,7 +60,7 @@ cubrocks::kv_postfix (char *path)
 cubrocks::context::context ()
 {
   kv_config ();
-  sessions_initialize ();
+  transactions_initialize ();
 
   alive = false;
 }
@@ -100,13 +100,35 @@ cubrocks::context::is_alive (void)
   return alive;
 }
 
+bool
+cubrocks::context::is_tran_active (int tran_index)
+{
+  return tran_index == LOG_SYSTEM_TRAN_INDEX || transactions[tran_index].active;
+}
+
+bool
+cubrocks::context::is_tran_started (int tran_index)
+{
+  return transactions[tran_index].txn != nullptr;
+}
+
 void
 cubrocks::context::kv_tran_activate (int tran_index)
 {
   assert (tran_index < MAX_NTRANS);
-  assert (!sessions[tran_index].active);
+  assert (tran_index == LOG_SYSTEM_TRAN_INDEX || !transactions[tran_index].active);
 
-  sessions[tran_index].active = true;
+  transactions[tran_index].active = true;
+}
+
+void
+cubrocks::context::kv_tran_deactivate (int tran_index)
+{
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].active);
+  assert (transactions[tran_index].txn == nullptr);
+
+  transactions[tran_index].active = false;
 }
 
 bool
@@ -115,15 +137,52 @@ cubrocks::context::kv_tran_start (int tran_index)
   rocksdb::WriteOptions write_options;
 
   assert (tran_index < MAX_NTRANS);
-  assert (sessions[tran_index].active);
+  assert (transactions[tran_index].active);
+  assert (transactions[tran_index].txn == nullptr);
 
-  sessions[tran_index].txn = db->BeginTransaction (write_options);
-  if (sessions[tran_index].txn == nullptr)
+  transactions[tran_index].txn = db->BeginTransaction (write_options);
+
+  return (transactions[tran_index].txn != nullptr);
+}
+
+bool
+cubrocks::context::kv_tran_commit (int tran_index)
+{
+  bool status;
+
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].active);
+
+  if (transactions[tran_index].txn == nullptr)
     {
-      return false;
+      return true;
     }
 
-  return true;
+  status = transactions[tran_index].txn->Commit ().ok ();
+  delete transactions[tran_index].txn;
+  transactions[tran_index].txn = nullptr;
+
+  return status;
+}
+
+bool
+cubrocks::context::kv_tran_abort (int tran_index)
+{
+  bool status;
+
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].active);
+
+  if (transactions[tran_index].txn == nullptr)
+    {
+      return true;
+    }
+
+  status = transactions[tran_index].txn->Rollback ().ok ();
+  delete transactions[tran_index].txn;
+  transactions[tran_index].txn = nullptr;
+
+  return status;
 }
 
 bool
@@ -191,20 +250,23 @@ cubrocks::context::kv_destroy (std::string path)
 }
 
 bool
-cubrocks::context::sessions_initialize (void)
+cubrocks::context::transactions_initialize (void)
 {
   int i;
 
-  if ((sessions = new kv_session[MAX_NTRANS]) == nullptr)
+  if ((transactions = new kv_transaction[MAX_NTRANS]) == nullptr)
     {
       return false;
     }
 
   for (i = 0; i < MAX_NTRANS; i++)
     {
-      sessions[i].active = false;
-      sessions[i].txn = nullptr;
+      transactions[i].active = false;
+      transactions[i].txn = nullptr;
     }
+
+  /* system transaction */
+  kv_tran_activate (LOG_SYSTEM_TRAN_INDEX);
 
   return true;
 }
