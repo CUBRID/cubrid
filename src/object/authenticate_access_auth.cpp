@@ -1426,7 +1426,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		      /* before deleting the data in db_authorization, merge the data and temp store it. */
 		      if (ws_is_same_object (grantor_mop, old_owner_mop))
 			{
-			  //auto key = std::make_tuple (grantee_mop, object_of_mop);
 			  std::get<0> (key) = new_owner_mop;
 			  std::get<1> (key) = grantee_mop;
 			  std::get<2> (key) = object_of_mop;
@@ -1771,7 +1770,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	  /* before deleting the data in db_auth, merge the data and temp store it. */
 	  if (ws_is_same_object (grantor_mop, old_owner_mop))
 	    {
-	      //auto key = std::make_tuple (new_owner_mop, grantee_mop, object_of_mop, db_auth);
 	      std::get<0> (key) = new_owner_mop;
 	      std::get<1> (key) = grantee_mop;
 	      std::get<2> (key) = object_of_mop;
