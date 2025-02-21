@@ -116,7 +116,7 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   try
     {
       // Use an if-else to check the type string.
-      if (std::string (type) == "euclidean")
+      if (std::string (type) == "EUCLIDEAN")
 	{
 	  distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
 	}
