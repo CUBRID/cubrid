@@ -591,7 +591,7 @@ IDL       [a-zA-Z0-9_]
 [kK][iI][lL][lL]							{ begin_token(yytext);   return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
 [kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
-(vector|VECTOR)_[dD][iI][sS][tT][aA][nN][cC][eE]			{ begin_token(yytext);
+[vV][eE][cC][tT][oO][rR]_[dD][iI][sS][tT][aA][nN][cC][eE]		{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return VECTOR_DISTANCE; }
 [lL]2_[dD][iI][sS][tT][aA][nN][cC][eE]					{ begin_token(yytext);
