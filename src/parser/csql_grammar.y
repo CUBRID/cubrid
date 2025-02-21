@@ -843,7 +843,6 @@ static int g_plcsql_text_pos;
 %type <node> alias_enabled_expression_list
 %type <node> alias_enabled_expression_
 %type <node> expression_list
-%type <node> vector_distance_arguments
 %type <node> expression_list_for_call
 %type <node> to_param_list
 %type <node> to_param
@@ -18266,7 +18265,7 @@ reserved_func
 
 		DBG_PRINT}}
 	| L2_DISTANCE '(' expression_list ')'
-		{{ DBG_TRACE_GRAMMAR(reserved_func,  | L2_DISTANCE '(' expression_list ')' );
+		{{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
         DBG_PRINT}}
