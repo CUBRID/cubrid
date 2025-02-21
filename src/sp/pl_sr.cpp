@@ -196,8 +196,10 @@ namespace cubpl
       connection_pool *m_sys_conn_pool;
       bootstrap_request *m_bootstrap_request;
 
+#if defined (SERVER_MODE)
       std::mutex m_monitor_mutex;
       std::condition_variable m_monitor_cv;
+#endif
   };
 
   struct bootstrap_request : public cubpacking::packable_object
@@ -314,8 +316,10 @@ namespace cubpl
     , m_failure_count (0)
     , m_sys_conn_pool {nullptr}
     , m_bootstrap_request {nullptr}
+#if defined (SERVER_MODE)
     , m_monitor_mutex {}
     , m_monitor_cv {}
+#endif
   {
     char executable_path[PATH_MAX];
     (void) envvar_bindir_file (executable_path, PATH_MAX, m_binary_name.c_str ());
@@ -396,12 +400,21 @@ namespace cubpl
     auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING ||
 					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE);
 				  };
-#else
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING || m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE; };
-#endif
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
     m_monitor_cv.wait (ulock, pred);
+#else
+    if (m_state != SERVER_MONITOR_STATE_RUNNING)
+      {
+	// retry starting pl server
+	int try_count = 0;
+	do
+	  {
+	    do_monitor ();
+	  }
+	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
+      }
+#endif
   }
 
   bool
@@ -421,7 +434,9 @@ namespace cubpl
 	return error;
       }
 
+#if defined (SERVER_MODE)
     std::lock_guard<std::mutex> lock (m_monitor_mutex);
+#endif
 
     // wait PL server is ready to accept connection (polling)
 
@@ -455,7 +470,9 @@ namespace cubpl
       }
     m_manager->get_connection_pool ()->increment_epoch ();
 
+#if defined (SERVER_MODE)
     m_monitor_cv.notify_all();
+#endif
 
     return error;
   }
@@ -470,7 +487,8 @@ namespace cubpl
 #if defined(SA_MODE)
 	if (do_check_connection (1) == NO_ERROR)
 	  {
-	    m_state = SERVER_MONITOR_STATE_RUNNING;
+	    // Waiting for PL server in shutdown state
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
 	  }
 #else
 	/* do nothing */
@@ -497,7 +515,9 @@ namespace cubpl
 	    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 		    "Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
 	    m_monitor_cv.notify_all ();
+#endif
 	  }
       }
       break;
@@ -519,7 +539,9 @@ namespace cubpl
 		m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 			"Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
 		m_monitor_cv.notify_all ();
+#endif
 	      }
 	    else
 	      {
