@@ -527,6 +527,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
   ${LOADDB_DIR}/load_object_table.c
+  ${LOADDB_DIR}/load_open_data.cpp
   ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   )
@@ -699,6 +700,9 @@ if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
   LIBEDIT
+  HDF
+  ZLIB
+  HIGHFIVE
   )
 endif(UNIX)
 target_external_dependencies(cubridsa

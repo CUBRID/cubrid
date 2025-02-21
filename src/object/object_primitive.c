@@ -1662,8 +1662,8 @@ PR_TYPE tp_Vector = {
   NULL,
   NULL,
   mr_freemem_set,
-  NULL,
-  NULL
+  mr_data_cmpdisk_sequence,
+  mr_cmpval_sequence
 };
 
 PR_TYPE *tp_Type_vector = &tp_Vector;

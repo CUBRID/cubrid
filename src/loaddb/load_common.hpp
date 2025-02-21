@@ -117,6 +117,7 @@ namespace cubload
     bool no_user_specified_name;
     std::string schema_file_list;
     bool cs_mode;
+    std::string hdf5_file;
   };
 
   /*
@@ -157,8 +158,9 @@ namespace cubload
     LDR_DATETIMELTZ,
     LDR_DATETIMETZ,
     LDR_JSON,
+    LDR_VECTOR,
 
-    LDR_TYPE_MAX = LDR_JSON
+    LDR_TYPE_MAX = LDR_VECTOR
   };
 
   /*
