@@ -106,8 +106,9 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
 
   DB_VECTOR_DISTANCE_METRIC metric = DB_VECTOR_DISTANCE_METRIC::COSINE; // default
-  if (num_args == 3) {
-      assert(args[2] != nullptr && (DB_VALUE_TYPE(args[2]) == DB_TYPE_INTEGER));
+  if (num_args == 3)
+    {
+      assert (args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
       metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
     }
 
