@@ -30,11 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForCursorLoop extends StmtLoop {
+public class StmtForCursorLoop extends StmtLoop implements SqlUse {
+
+    public StmtLoop containerLoop;
+
+    @Override
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+    }
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+    @Override
+    public boolean ofRef() {
+        return true;
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -47,18 +67,20 @@ public class StmtForCursorLoop extends StmtLoop {
     public final String record;
     public final TypeRecord recordType;
     public final NodeList<Stmt> stmts;
+    public int sqlSerialNo;
 
     public StmtForCursorLoop(
             ParserRuleContext ctx,
-            StmtLoop.LoopOptimizable loopOptimizable,
+            StmtLoop.LoopOptimizables loopOptimizables,
             ExprId cursor,
             NodeList<Expr> cursorArgs,
             String label,
             String record,
             TypeRecord recordType,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
 
-        super(ctx, loopOptimizable);
+        super(ctx, loopOptimizables);
 
         assert cursor.decl instanceof DeclCursor;
         assert cursorArgs != null;
@@ -69,5 +91,6 @@ public class StmtForCursorLoop extends StmtLoop {
         this.record = record;
         this.recordType = recordType;
         this.stmts = stmts;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }

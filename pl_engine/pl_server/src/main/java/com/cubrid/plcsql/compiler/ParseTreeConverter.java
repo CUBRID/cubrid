@@ -41,6 +41,7 @@ import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.ast.loopOpt.*;
 import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
@@ -946,13 +947,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 String recordText = Misc.getNormalizedText(ctx.record);
                 // do not push a symbol table: no nested structure
-                Expr ret =
+                ExprSerialVal ret =
                         new ExprSerialVal(
                                 ctx,
                                 recordText,
                                 (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
                                         ? ExprSerialVal.SerialVal.CURR_VAL
-                                        : ExprSerialVal.SerialVal.NEXT_VAL);
+                                        : ExprSerialVal.SerialVal.NEXT_VAL, getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
                 return ret;
             } else {
@@ -982,7 +984,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 connectionRequired = true;
 
                 String uniqName = owner + '.' + name;
-                ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, uniqName, args);
+                ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.FunctionSignature(uniqName));
 
                 return ret; // done
@@ -994,7 +997,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args);
+            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
+            addToSqlUses(ret);
             semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
 
             return ret;
@@ -1007,7 +1011,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 connectionRequired = true;
-                return new ExprBuiltinFuncCall(ctx, name, args);
+                ExprBuiltinFuncCall ret = new ExprBuiltinFuncCall(ctx, name, args, getSqlSerialNo());
+                addToSqlUses(ret);
+                return ret;
             } else {
                 int res = checkArguments(args, decl.paramList);
                 if (res < 0) {
@@ -1038,7 +1044,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr arg = visitExpression(ctx.argument());
         TypeSpec tySpec = (TypeSpec) visitType_spec(ctx.type_spec());
-        return new ExprSyntaxedCallCast(ctx, arg, tySpec);
+        ExprSyntaxedCallCast ret = new ExprSyntaxedCallCast(ctx, arg, tySpec, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1048,7 +1056,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr arg = visitExpression(ctx.argument());
         boolean isUtf8 = ctx.UTF8() != null;
-        return new ExprSyntaxedCallChr(ctx, arg, isUtf8);
+        ExprSyntaxedCallChr ret = new ExprSyntaxedCallChr(ctx, arg, isUtf8, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1059,7 +1069,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
         String timeUnit = ctx.time_unit().getText();
-        return new ExprSyntaxedCallAdddate(ctx, date, delta, timeUnit);
+        ExprSyntaxedCallAdddate ret = new ExprSyntaxedCallAdddate(ctx, date, delta, timeUnit, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1070,7 +1082,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
         String timeUnit = ctx.time_unit().getText();
-        return new ExprSyntaxedCallSubdate(ctx, date, delta, timeUnit);
+        ExprSyntaxedCallSubdate ret = new ExprSyntaxedCallSubdate(ctx, date, delta, timeUnit, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1080,7 +1094,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String timeField = ctx.time_field().getText();
         Expr arg = visitExpression(ctx.argument());
-        return new ExprSyntaxedCallExtract(ctx, timeField, arg);
+        ExprSyntaxedCallExtract ret = new ExprSyntaxedCallExtract(ctx, timeField, arg, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1090,7 +1106,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr sub = visitExpression(ctx.sub);
         Expr whole = visitExpression(ctx.whole);
-        return new ExprSyntaxedCallPosition(ctx, sub, whole);
+        ExprSyntaxedCallPosition ret = new ExprSyntaxedCallPosition(ctx, sub, whole, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1101,7 +1119,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String trimDir = ctx.trim_dir() == null ? null : ctx.trim_dir().getText();
         Expr trimStr = ctx.trim_str == null ? null : visitExpression(ctx.trim_str);
         Expr str = visitExpression(ctx.str);
-        return new ExprSyntaxedCallTrim(ctx, trimDir, trimStr, str);
+        ExprSyntaxedCallTrim ret = new ExprSyntaxedCallTrim(ctx, trimDir, trimStr, str, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1414,12 +1434,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        StmtLoop.LoopOptimizable loopOptimizableSaved = null;
+        StmtLoop.LoopOptimizables loopOptimizableSaved = null;
         try {
-            if (loopOptimizable != null) {
+            if (loopOptimizables != null) {
                 // save the current one
-                loopOptimizableSaved = loopOptimizable;
-                loopOptimizable = null;
+                loopOptimizableSaved = loopOptimizables;
+                loopOptimizables = null;
             }
 
             boolean allFlowsBlocked;
@@ -1446,7 +1466,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } finally {
             if (loopOptimizableSaved != null) {
                 // restore
-                loopOptimizable = loopOptimizableSaved;
+                loopOptimizables = loopOptimizableSaved;
             }
         }
     }
@@ -1578,7 +1598,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                     Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
+                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                    addToSqlUses(egfc);
                     egfc.decl =
                             new DeclFunc(
                                     null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
@@ -1604,7 +1625,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (decl instanceof DeclFunc) {
                 if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
                     connectionRequired = true;
-                    return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                    ExprBuiltinFuncCall ret = new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                    addToSqlUses(ret);
+                    return ret;
                 } else {
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
                 }
@@ -1631,7 +1654,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } else if (decl instanceof DeclFunc) {
             if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
                 connectionRequired = true;
-                return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                ExprBuiltinFuncCall ret = new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                addToSqlUses(ret);
+                return ret;
             } else {
                 return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
             }
@@ -1743,9 +1768,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtBasicLoop visitStmt_basic_loop(Stmt_basic_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         symbolStack.pushSymbolTable("loop", null);
@@ -1762,9 +1787,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
 
         StmtBasicLoop ret =
-                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
+                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizables : null, declLabel, stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
@@ -1784,9 +1809,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtWhileLoop visitStmt_while_loop(Stmt_while_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         symbolStack.pushSymbolTable("while", null);
@@ -1805,20 +1830,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         StmtWhileLoop ret =
                 new StmtWhileLoop(
-                        ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
+                        ctx, outermostLoop ? loopOptimizables : null, declLabel, cond, stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
 
     @Override
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
-
-        boolean outermostLoop = (loopOptimizable == null);
-        if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
-        }
 
         symbolStack.pushSymbolTable("for_iter", null);
 
@@ -1830,6 +1850,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr lowerBound = visitLower_bound(ctx.iterator().lower_bound());
         Expr upperBound = visitUpper_bound(ctx.iterator().upper_bound());
         Expr step = visitStep(ctx.iterator().step());
+
+        // NOTE: loopOptimizables must be set after visiting lower bound, upper bound, and step
+        // because they are calculated only once for the loop
+        boolean outermostLoop = (loopOptimizables == null);
+        if (outermostLoop) {
+            loopOptimizables = new StmtLoop.LoopOptimizables();
+        }
 
         DeclForIter iterDecl = new DeclForIter(ctx.iterator().index_name(), iter);
         symbolStack.putDecl(iter, iterDecl);
@@ -1848,7 +1875,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         StmtForIterLoop ret =
                 new StmtForIterLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         declLabel,
                         iterDecl,
                         reverse,
@@ -1857,7 +1884,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         step,
                         stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
@@ -1884,9 +1911,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtForCursorLoop visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         connectionRequired = true;
@@ -1944,25 +1971,27 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         StmtForCursorLoop ret =
                 new StmtForCursorLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         cursor,
                         args,
                         label,
                         record,
                         recTy,
-                        stmts);
+                        stmts,
+                        getSqlSerialNo());
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
+        addToSqlUses(ret);
         return ret;
     }
 
     @Override
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         connectionRequired = true;
@@ -2003,23 +2032,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        controlFlowBlocked =
-                false; // every loop is assumed not to block control flow in generated Java code
+
+        // every loop is assumed not to block control flow in generated Java code
+        controlFlowBlocked = false;
 
         symbolStack.popSymbolTable();
 
         StmtForStaticSqlLoop ret =
                 new StmtForStaticSqlLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         label,
                         declForRecord,
                         staticSql,
                         stmts,
                         getSqlSerialNo());
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
+        addToSqlUses(ret);
         return ret;
     }
 
@@ -2182,9 +2213,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         int level = symbolStack.getCurrentScope().level + 1;
         StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql, getSqlSerialNo());
-        if (loopOptimizable != null) {
-            loopOptimizable.sql.add(ret);
-        }
+        addToSqlUses(ret);
         return ret;
     }
 
@@ -2358,7 +2387,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 connectionRequired = true;
 
                 String uniqName = owner + '.' + name;
-                StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, uniqName, args);
+                StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(uniqName));
 
                 return ret; // done
@@ -2377,7 +2407,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args);
+            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
+            addToSqlUses(ret);
             semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
 
             return ret;
@@ -2427,13 +2458,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
+
         StmtExecImme ret =
                 new StmtExecImme(
                         ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
-        if (loopOptimizable != null) {
+        if (loopOptimizables != null) {
             if (dynSql instanceof ExprStr) {
                 // only when it is a fixed string.
-                loopOptimizable.sql.add(ret);
+                loopOptimizables.sqlUses.add(ret);
             }
         }
         return ret;
@@ -2628,7 +2660,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String spRevision;
 
-    private StmtLoop.LoopOptimizable loopOptimizable = null;
+    private StmtLoop.LoopOptimizables loopOptimizables = null;
 
     private String spName;
     private boolean isSpFunc;
@@ -2641,7 +2673,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean controlFlowBlocked;
 
     private int sqlSerialNo;
-
     private int getSqlSerialNo() {
         return sqlSerialNo++;
     }
@@ -3301,5 +3332,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable(); // pop the temporary symbol table
 
         return ret;
+    }
+
+    private void addToSqlUses(SqlUse node) {
+
+        if (loopOptimizables != null) {
+            loopOptimizables.sqlUses.add(node);
+        }
     }
 }

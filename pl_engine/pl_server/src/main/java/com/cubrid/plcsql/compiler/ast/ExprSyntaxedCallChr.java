@@ -43,8 +43,8 @@ public class ExprSyntaxedCallChr extends BuiltinFuncCall {
     public Expr arg;
     public boolean isUtf8;
 
-    public ExprSyntaxedCallChr(ParserRuleContext ctx, Expr arg, boolean isUtf8) {
-        super(ctx);
+    public ExprSyntaxedCallChr(ParserRuleContext ctx, Expr arg, boolean isUtf8, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         this.arg = arg;
         this.isUtf8 = isUtf8;

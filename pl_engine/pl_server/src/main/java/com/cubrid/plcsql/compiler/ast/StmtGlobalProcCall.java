@@ -30,26 +30,48 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtGlobalProcCall extends Stmt {
+public class StmtGlobalProcCall extends Stmt implements SqlUse {
+
+    public StmtLoop containerLoop;
 
     @Override
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+    }
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+    @Override
+    public boolean ofCallableStmt() {
+        return true;
+    }
+    @Override
+    public boolean ofRef() {
+        return true;
+    }
+
+   @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtGlobalProcCall(this);
     }
 
     public final String name;
     public final NodeList<Expr> args;
+    public int sqlSerialNo;
 
     public DeclProc decl;
 
-    public StmtGlobalProcCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
+    public StmtGlobalProcCall(ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
         super(ctx);
 
         assert args != null;
         this.name = name;
         this.args = args;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }
