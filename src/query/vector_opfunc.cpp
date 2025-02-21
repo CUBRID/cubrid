@@ -96,25 +96,35 @@ int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   return NO_ERROR;
 }
 
+
+/**
+ * @brief Computes the distance between two vector DB_VALUE objects using a specified metric.
+ *
+ * This function extracts two std::vector<float> from the provided DB_VALUE objects,
+ * computes the distance between them based on the specified metric (default is cosine, though currently only
+ * the Euclidean metric is supported), and stores the result in the provided DB_VALUE result.
+ * If a third argument is provided, it is used to select the distance metric.
+ *
+ * @param result A pointer to a DB_VALUE where the computed distance will be stored.
+ * @param args An array of pointers to DB_VALUE objects; expects at least two vectors and an optional metric specifier.
+ * @param num_args The number of arguments provided in the args array; should be 3.
+ * @return int NO_ERROR if the computation is successful.
+ */
 int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
   // Ensure we have the correct number of arguments.
-  assert (num_args >= 2 && num_args <= 3);
+  assert(num_args == 3);
 
   // Extract vectors from the arguments.
   const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
   const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
-
-  DB_VECTOR_DISTANCE_METRIC metric = DB_VECTOR_DISTANCE_METRIC::COSINE; // default
-  if (num_args == 3)
-    {
-      assert (args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
-      metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
-    }
-
   // Check that vectors are non-empty and of equal size.
   assert (!vec1.empty() && !vec2.empty());
   assert (vec1.size() == vec2.size());
+
+  DB_VECTOR_DISTANCE_METRIC metric = DB_VECTOR_DISTANCE_METRIC::COSINE; // default
+  assert (args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
+  metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
 
   float distance = 0.0f;
 
