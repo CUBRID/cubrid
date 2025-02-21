@@ -352,7 +352,7 @@ IDL       [a-zA-Z0-9_]
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ERROR_; }
 [eE][sS][cC][aA][pP][eE]						{ begin_token(yytext);   return ESCAPE; }
-[eE][uU][cC][lL][iI][dD][eE][aA][nN]					{ begin_token(yytext);   return EUCLIDEAN; }
+[eE][uU][cC][lL][iI][dD][eE][aA][nN]					{ begin_token(yytext);   return EUCLIDEAN_; }
 [eE][vV][aA][lL][uU][aA][tT][eE]					{ begin_token(yytext);   return EVALUATE; }
 [eE][xX][cC][eE][pP][tT]						{ begin_token(yytext);   return EXCEPT; }
 [eE][xX][cC][eE][pP][tT][iI][oO][nN]					{ begin_token(yytext);   return EXCEPTION; }

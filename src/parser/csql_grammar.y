@@ -168,6 +168,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "storage_common.h"
 #include "sp_constants.hpp"
 #include "db_function.hpp"
+#include "vector_distance_enum.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1228,7 +1229,7 @@ static int g_plcsql_text_pos;
 %token ENUM
 %token EQUALS
 %token ESCAPE
-%token EUCLIDEAN
+%token EUCLIDEAN_
 %token EVALUATE
 %token EXCEPT
 %token EXCEPTION
@@ -18269,18 +18270,25 @@ reserved_func
 
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
         DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN ')'
-		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN ')' );
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN_ ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' EUCLIDEAN_ ')' );
 			PT_NODE *arg1 = $3;
 			PT_NODE *arg2 = $5;
-			PT_NODE *arg3 = pt_create_string_literal_node_w_charset_coll("EUCLIDEAN", -1);
+			PT_NODE *arg3 = parser_new_node (this_parser, PT_VALUE);
+
+			enum DB_VECTOR_DISTANCE_METRIC metric = EUCLIDEAN;
+			if (arg3)
+			  {
+			    arg3->type_enum = PT_TYPE_INTEGER;
+			    arg3->info.value.data_value.i = metric;
+			  }
 
 			arg1->next = arg2;
 			arg2->next = arg3;
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
-
+			PT_NODE *node = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
+			$$ = node;
 		DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }

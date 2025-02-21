@@ -396,7 +396,7 @@ func_all_signatures sig_of_vector_distance_l2 =
 
 func_all_signatures sig_of_vector_distance =
 {
-  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR, PT_TYPE_INTEGER}, {}},
 };
 
 func_all_signatures *

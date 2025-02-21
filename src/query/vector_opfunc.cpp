@@ -16,10 +16,11 @@
  *
  */
 
+#include <stdexcept>
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "faiss/utils/distances.h"
-#include <stdexcept>
+#include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -104,8 +105,11 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
   const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
 
-  // Get the type string (if provided)
-  DB_CONST_C_CHAR type = (num_args == 3) ? db_get_string (args[2]) : "cosine";
+  DB_VECTOR_DISTANCE_METRIC metric = DB_VECTOR_DISTANCE_METRIC::COSINE; // default
+  if (num_args == 3) {
+      assert(args[2] != nullptr && (DB_VALUE_TYPE(args[2]) == DB_TYPE_INTEGER));
+      metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
+  }
 
   // Check that vectors are non-empty and of equal size.
   assert (!vec1.empty() && !vec2.empty());
@@ -115,14 +119,13 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 
   try
     {
-      // Use an if-else to check the type string.
-      if (std::string (type) == "EUCLIDEAN")
+      if (metric == DB_VECTOR_DISTANCE_METRIC::EUCLIDEAN)
 	{
 	  distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
 	}
       else
 	{
-	  throw std::runtime_error (std::string ("Unknown distance type: ") + std::string (type));
+	  throw std::runtime_error ("Unsupported distance metric.");
 	}
     }
   catch (const std::exception &e)
