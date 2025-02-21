@@ -25463,7 +25463,6 @@ opt_alter_synonym
 %%
 
 
-
 extern FILE *yyin;
 
 void
