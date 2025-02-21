@@ -73,7 +73,6 @@
 #include "utility.h"
 #include "work_space.h"
 #include "schema_system_catalog_constants.h"
-#include "pl_sr.h"
 
 using namespace cubload;
 
@@ -6553,8 +6552,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 exit:
 
   ldr_final ();
-
-  pl_server_destroy ();
 
   if (ldr_Driver != NULL)
     {

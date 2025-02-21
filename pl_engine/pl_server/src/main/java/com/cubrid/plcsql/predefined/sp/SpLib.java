@@ -36,7 +36,6 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
@@ -54,7 +53,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -319,20 +317,18 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(
-            Connection conn, String name, int resultTypeCode, Object... args) {
+    private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
-        assert args != null;
+    public static Object invokeBuiltinFunc(
+            Connection conn, String callStr, int resultTypeCode, Object... args) {
+
+        if (args == null) {
+            args = SINGLE_NULL_ARG;
+        }
 
         int argsLen = args.length;
-        String hostVars;
-        if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
-            assert argsLen == 0;
-            hostVars = "";
-        } else {
-            hostVars = getHostVarsStr(argsLen);
-        }
-        String query = String.format("select %s%s from dual", name, hostVars);
+        String query = String.format("select %s from dual", callStr);
+
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);
             for (int i = 0; i < argsLen; i++) {
@@ -6541,16 +6537,6 @@ public class SpLib {
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);
-        }
-    }
-
-    private static String getHostVarsStr(int len) {
-        if (len == 0) {
-            return "()";
-        } else {
-            String[] arr = new String[len];
-            Arrays.fill(arr, "?");
-            return "(" + String.join(", ", arr) + ")";
         }
     }
 

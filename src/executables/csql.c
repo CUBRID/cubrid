@@ -1834,8 +1834,8 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
       return;
     }
 
-  int errors = csql_execute_query ("SELECT '' INTO :pl_output_str");
-  errors += csql_execute_query ("SELECT 1 INTO :pl_output_status");
+  int errors = csql_execute_query ("EVALUATE '' INTO :pl_output_str");
+  errors += csql_execute_query ("EVALUATE 1 INTO :pl_output_status");
   if (errors != 0)
     {
       return;
