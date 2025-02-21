@@ -410,11 +410,10 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 {
   int error = NO_ERROR;
   int i;
-  MOP *sub_partitions = NULL;
+  MOP *sub_partitions = NULL, owner = NULL;
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
   const char *table_name;
-  const char *partition_table_name;
 
   /* change the owner of a partition */
   error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
@@ -443,14 +442,21 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  partition_table_name = sm_get_ch_name (sub_partitions[i]);
-	  if (partition_table_name == NULL)
+	  owner = au_get_class_owner (class_mop);
+	  if (owner == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+
+	  table_name = sm_get_ch_name (sub_partitions[i]);
+	  if (table_name == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
 	      goto end;
 	    }
 
-	  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, sub_partitions[i], owner_mop, partition_table_name);
+	  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, sub_partitions[i], owner, owner_mop, table_name);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
@@ -467,6 +473,13 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
     }
 
   /* when changing the owner,  all rights are transferred to the new owner. */
+  owner = au_get_class_owner (class_mop);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
   table_name = sm_get_ch_name (class_mop);
   if (table_name == NULL)
     {
@@ -474,7 +487,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
       return error;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner_mop, table_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner, owner_mop, table_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -616,6 +629,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
   PARSER_CONTEXT *dummy_parser = NULL;
+  MOP owner = NULL;
 
   assert (sp_mop != NULL && new_owner_mop != NULL);
 
@@ -627,13 +641,21 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
     }
 
   /* when changing the owner,  all rights are transferred to the new owner. */
+  owner = jsp_get_owner (sp_mop);
+  if (owner == NULL)
+    {
+      error = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
   if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
-  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, sp_mop, new_owner_mop, unique_name);
+  error = au_object_owner_change_privileges (DB_OBJECT_PROCEDURE, sp_mop, owner, new_owner_mop, unique_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);

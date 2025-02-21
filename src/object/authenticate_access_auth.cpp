@@ -34,23 +34,26 @@
 
 #include "jsp_cl.h"
 
-static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name,
+static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
+    const char *unique_name,
     int *row_count);
-static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name);
+static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
+				      const char *unique_name);
 
 struct authorization_keyhash
 {
-  std::size_t operator() (const std::tuple<MOP, MOP> &k) const
+  std::size_t operator() (const std::tuple<MOP, MOP, MOP> &k) const
   {
     return std::hash<MOP>() (std::get<0> (k)) ^
-	   std::hash<MOP>() (std::get<1> (k));
+	   std::hash<MOP>() (std::get<1> (k)) ^
+	   std::hash<MOP>() (std::get<2> (k));
   }
 };
 
 struct authorization_keyequal
 {
-  bool operator() (const std::tuple<MOP, MOP> &lhs,
-		   const std::tuple<MOP, MOP> &rhs) const
+  bool operator() (const std::tuple<MOP, MOP, MOP> &lhs,
+		   const std::tuple<MOP, MOP, MOP> &rhs) const
   {
     return lhs == rhs;
   }
@@ -1186,6 +1189,7 @@ exit:
  * au_object_owner_change_privileges
  *   return: error code
  *   obj_type(in): the object type
+ *   old_owner_mop(in): class/stored procedure old owner
  *   new_owner_mop(in): class/stored procedure new owner
  *   unique_name(in):
  * NOTE
@@ -1195,15 +1199,17 @@ exit:
  * Reason: The REVOKE statement cannot revoke privileges from the owner.
  */
 int
-au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP new_owner_mop, const char *unique_name)
+au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP old_owner_mop, MOP new_owner_mop,
+				   const char *unique_name)
 {
   int error = NO_ERROR;
   int update_count_db_authorization = 0;
 
-  assert (new_owner_mop != NULL && unique_name != NULL);
+  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
   /* modify db_authorization catalog */
-  error = update_authorization_for_new_owner (obj_type, new_owner_mop, unique_name, &update_count_db_authorization);
+  error = update_authorization_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name,
+	  &update_count_db_authorization);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1214,7 +1220,7 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
   if (update_count_db_authorization)
     {
       /* modify db_auth catalog */
-      error = update_auth_for_new_owner (obj_type, new_owner_mop, unique_name);
+      error = update_auth_for_new_owner (obj_type, old_owner_mop, new_owner_mop, unique_name);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1247,7 +1253,8 @@ exit:
 }
 
 static int
-update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name, int *row_count)
+update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
+				    const char *unique_name, int *row_count)
 {
   int error = NO_ERROR, save, current_cache;
   char obj_fetch_query[256];
@@ -1260,13 +1267,14 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE grantee_value, object_of_value;
-  MOP grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
+  MOP grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
   DB_SET *grants = NULL;
   int gindex, gsize;
-  std::unordered_map<std::tuple<MOP, MOP>, int,
+  std::unordered_map<std::tuple<MOP, MOP, MOP>, int,
       authorization_keyhash, authorization_keyequal> authorization_unordered_map;
+  std::tuple<MOP, MOP, MOP> key;
 
-  assert (new_owner_mop != NULL && unique_name != NULL);
+  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
   AU_DISABLE (save);
 
@@ -1409,11 +1417,27 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
 		    }
 		  else
 		    {
+		      error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &element);
+		      grantor_mop = db_get_object (&element);
+
 		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
 		      current_cache = db_get_int (&element);
 
 		      /* before deleting the data in db_authorization, merge the data and temp store it. */
-		      auto key = std::make_tuple (grantee_mop, object_of_mop);
+		      if (ws_is_same_object (grantor_mop, old_owner_mop))
+			{
+			  //auto key = std::make_tuple (grantee_mop, object_of_mop);
+			  std::get<0> (key) = new_owner_mop;
+			  std::get<1> (key) = grantee_mop;
+			  std::get<2> (key) = object_of_mop;
+			}
+		      else
+			{
+			  std::get<0> (key) = grantor_mop;
+			  std::get<1> (key) = grantee_mop;
+			  std::get<2> (key) = object_of_mop;
+			}
+
 		      if (authorization_unordered_map.find (key) == authorization_unordered_map.end())
 			{
 			  /* storing unique data */
@@ -1440,7 +1464,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
       const auto &key = entry.first;
       current_cache = entry.second;
 
-      if (au_get_object (std::get<0> (key), "authorization", &auth) != NO_ERROR)
+      if (au_get_object (std::get<1> (key), "authorization", &auth) != NO_ERROR)
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
@@ -1449,7 +1473,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, 
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR
 	       && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
-	  gindex = add_grant_entry (grants, obj_type, std::get<1> (key), new_owner_mop);
+	  gindex = add_grant_entry (grants, obj_type, std::get<2> (key), std::get<0> (key));
 	  db_make_int (&element, current_cache);
 	  set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
 
@@ -1482,7 +1506,8 @@ exit:
       set_free (grants);
     }
 
-  if (*row_count < 0 && grantee_mop == NULL && object_of_mop == NULL && er_errid () == NO_ERROR)
+  if (*row_count < 0 && grantor_mop == NULL && grantee_mop == NULL && object_of_mop == NULL
+      && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
@@ -1494,18 +1519,19 @@ exit:
 }
 
 static int
-update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const char *unique_name)
+update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop, const char *unique_name)
 {
   int error = NO_ERROR, save;
   char obj_fetch_query[256];
   const char *sql_query =
-	  "SELECT [au].object, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM [" CT_CLASSAUTH_NAME "] [au]"
+	  "SELECT [au].object, [au].grantor, [au].grantee, [au].object_of, [au].auth_type, [au].is_grantable FROM ["
+	  CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[object_of] = (%s)";
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
-  DB_VALUE val, db_auth_object_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
-  MOP db_auth_object_mop = NULL, grantee_mop = NULL, object_of_mop = NULL;
+  DB_VALUE val, db_auth_object_value, grantor_value, grantee_value, object_of_value, auth_type_value, is_grantable_value;
+  MOP db_auth_object_mop = NULL, grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL;
   const char *auth_type_char;
   int len;
   DB_AUTH db_auth = DB_AUTH_NONE;
@@ -1514,13 +1540,15 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
   size_t au_db_auth_size;
   au_auth_accessor accessor;
   std::unordered_map<std::tuple<MOP, MOP, MOP, DB_AUTH>, int, auth_keyhash, auth_keyequal> auth_unordered_map;
+  std::tuple<MOP, MOP, MOP, DB_AUTH> key;
 
-  assert (new_owner_mop != NULL && unique_name != NULL);
+  assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
   AU_DISABLE (save);
 
   db_make_null (&val);
   db_make_null (&db_auth_object_value);
+  db_make_null (&grantor_value);
   db_make_null (&grantee_value);
   db_make_null (&object_of_value);
   db_make_null (&auth_type_value);
@@ -1600,7 +1628,19 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      if (db_query_get_tuple_value (result, 1, &grantee_value) == NO_ERROR)
+      if (db_query_get_tuple_value (result, 1, &grantor_value) == NO_ERROR)
+	{
+	  if (!DB_IS_NULL (&grantor_value))
+	    {
+	      grantor_mop = db_get_object (&grantor_value);
+	    }
+	  else
+	    {
+	      goto release;
+	    }
+	}
+
+      if (db_query_get_tuple_value (result, 2, &grantee_value) == NO_ERROR)
 	{
 	  if (!DB_IS_NULL (&grantee_value))
 	    {
@@ -1612,7 +1652,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
+      if (db_query_get_tuple_value (result, 3, &object_of_value) == NO_ERROR)
 	{
 	  if (!DB_IS_NULL (&object_of_value))
 	    {
@@ -1624,7 +1664,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
+      if (db_query_get_tuple_value (result, 4, &auth_type_value) == NO_ERROR)
 	{
 	  auth_type_char = NULL;
 
@@ -1684,7 +1724,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      if (db_query_get_tuple_value (result, 4, &is_grantable_value) == NO_ERROR)
+      if (db_query_get_tuple_value (result, 5, &is_grantable_value) == NO_ERROR)
 	{
 	  if (!DB_IS_NULL (&is_grantable_value))
 	    {
@@ -1696,8 +1736,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
 	    }
 	}
 
-      assert (db_auth_object_mop != NULL && grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE
-	      && is_grantable != -1 );
+      assert (db_auth_object_mop != NULL && grantor_mop != NULL && grantee_mop != NULL && object_of_mop != NULL
+	      && db_auth != DB_AUTH_NONE && is_grantable != -1 );
 
       /*
        * when the grantee becomes the new owner, previously granted privileges are removed.
@@ -1729,7 +1769,22 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP new_owner_mop, const cha
       else
 	{
 	  /* before deleting the data in db_auth, merge the data and temp store it. */
-	  auto key = std::make_tuple (new_owner_mop, grantee_mop, object_of_mop, db_auth);
+	  if (ws_is_same_object (grantor_mop, old_owner_mop))
+	    {
+	      //auto key = std::make_tuple (new_owner_mop, grantee_mop, object_of_mop, db_auth);
+	      std::get<0> (key) = new_owner_mop;
+	      std::get<1> (key) = grantee_mop;
+	      std::get<2> (key) = object_of_mop;
+	      std::get<3> (key) = db_auth;
+	    }
+	  else
+	    {
+	      std::get<0> (key) = grantor_mop;
+	      std::get<1> (key) = grantee_mop;
+	      std::get<2> (key) = object_of_mop;
+	      std::get<3> (key) = db_auth;
+	    }
+
 	  if (auth_unordered_map.find (key) == auth_unordered_map.end() || auth_unordered_map[key] < is_grantable)
 	    {
 	      auth_unordered_map[key] = is_grantable;
@@ -1776,12 +1831,13 @@ release:
 exit:
   db_value_clear (&val);
   db_value_clear (&db_auth_object_value);
+  db_value_clear (&grantor_value);
   db_value_clear (&grantee_value);
   db_value_clear (&object_of_value);
   db_value_clear (&auth_type_value);
   db_value_clear (&is_grantable_value);
 
-  if (db_auth_object_mop == NULL && grantee_mop == NULL && object_of_mop == NULL &&
+  if (db_auth_object_mop == NULL && grantor_mop == NULL && grantee_mop == NULL && object_of_mop == NULL &&
       db_auth == DB_AUTH_NONE && is_grantable == -1 && er_errid () == NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
