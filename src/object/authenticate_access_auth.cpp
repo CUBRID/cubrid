@@ -1273,6 +1273,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   std::unordered_map<std::tuple<MOP, MOP, MOP>, int,
       authorization_keyhash, authorization_keyequal> authorization_unordered_map;
   std::tuple<MOP, MOP, MOP> key;
+  *row_count = -1;
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
@@ -1337,7 +1338,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
     }
   else if (error < 0)
     {
-      *row_count = error;
       ASSERT_ERROR_AND_SET (error);
       goto release;
     }
@@ -1487,7 +1487,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	  db_make_int (&element, current_cache);
 	  set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
 
-	  /* Fail to insert/update, never change the grant entry set. */
+	  /* Fail to insert, never change the grant entry set. */
 	  if (error != NO_ERROR)
 	    {
 	      goto release;
@@ -1824,6 +1824,12 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
       error =
 	      accessor.insert_auth (obj_type, std::get<0> (key), std::get<1> (key), std::get<2> (key), std::get<3> (key),
 				    (is_grantable) ? std::get<3> (key) : DB_AUTH_NONE);
+
+      /* Fail to insert, do not add data to the _auth catalog. */
+      if (error != NO_ERROR)
+	{
+	  goto release;
+	}
     }
 
 
