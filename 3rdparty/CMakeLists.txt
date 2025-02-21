@@ -640,7 +640,7 @@ endif()
 
 # libFaiss
 set(LIBFAISS_TARGET libfaiss)
-set(LIBFAISS_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/libfaiss/faiss)
+set(LIBFAISS_INCLUDES ${3RDPARTY_LIBS_DIR}/faiss/include)
 set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss.a)
 ADD_BY_PRODUCTS_VARIABLE ("LIBFAISS" ${LIBFAISS_LIBS})
 if(WITH_FAISS STREQUAL "EXTERNAL")

@@ -287,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -712,6 +713,7 @@ target_external_dependencies(cubridsa
   LZ4
   RAPIDJSON
   RE2
+  LIBFAISS
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

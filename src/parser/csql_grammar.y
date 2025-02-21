@@ -1621,6 +1621,7 @@ static int g_plcsql_text_pos;
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> L2_DISTANCE
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -18259,6 +18260,12 @@ reserved_func
 
 			$$ = parser_make_expression (this_parser, PT_ISNULL, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| L2_DISTANCE '(' expression_list ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func, | L2_DISTANCE '(' expression_list ')' );
+
+			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, $3, 2, 2);
 
 		DBG_PRINT}}
 	| LEFT
