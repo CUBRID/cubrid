@@ -681,7 +681,6 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    | REVERSE
     ;
 
 
