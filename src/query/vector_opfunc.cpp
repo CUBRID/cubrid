@@ -84,9 +84,8 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   assert (!vec1.empty() && !vec2.empty());
   assert (vec1.size() == vec2.size());
 
-  DB_VECTOR_DISTANCE_METRIC metric = DB_VECTOR_DISTANCE_METRIC::COSINE; // default
   assert (args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
-  metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
+  DB_VECTOR_DISTANCE_METRIC metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
 
   float distance = 0.0f;
 
