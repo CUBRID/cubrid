@@ -226,7 +226,7 @@ namespace cubload
 
 	std::filesystem::path schema_file_path = std::filesystem::absolute (schema_file_name);
 	std::filesystem::path object_file_path = std::filesystem::absolute (object_file_name);
-	fprintf (stdout, "completed:\nschema file: %s\nobject file: %s\n", schema_file_path.string().c_str (),
+	fprintf (stdout, "\n[completed]\nschema file: %s\nobject file: %s\n", schema_file_path.string().c_str (),
 		 object_file_path.string().c_str ());
       }
     catch (const HighFive::Exception &e)
