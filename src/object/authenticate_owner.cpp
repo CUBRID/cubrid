@@ -442,7 +442,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 
       for (i = 0; sub_partitions[i]; i++)
 	{
-	  owner = au_get_class_owner (class_mop);
+	  owner = au_get_class_owner (sub_partitions[i]);
 	  if (owner == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
