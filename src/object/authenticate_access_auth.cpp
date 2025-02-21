@@ -1390,7 +1390,8 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	  gsize = set_size (grants);
 	  for (gindex = 0; gindex < gsize && error == NO_ERROR; gindex += GRANT_ENTRY_LENGTH)
 	    {
-	      if (set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &element))
+	      error = set_get_element (grants, GRANT_ENTRY_CLASS (gindex), &element);
+	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR_AND_SET (error);
 		  goto release;
@@ -1418,9 +1419,19 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		  else
 		    {
 		      error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &element);
+		      if (error != NO_ERROR)
+			{
+			  ASSERT_ERROR_AND_SET (error);
+			  goto release;
+			}
 		      grantor_mop = db_get_object (&element);
 
 		      error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
+		      if (error != NO_ERROR)
+			{
+			  ASSERT_ERROR_AND_SET (error);
+			  goto release;
+			}
 		      current_cache = db_get_int (&element);
 
 		      /* before deleting the data in db_authorization, merge the data and temp store it. */
