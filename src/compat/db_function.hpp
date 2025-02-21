@@ -66,7 +66,6 @@ typedef enum
 
   /* vector distance functions */
   F_VECTOR_DISTANCE,
-  F_L2_DISTANCE,
 
   F_BENCHMARK,
 
