@@ -745,6 +745,8 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   MOP owner_mop = NULL;
   const char *class_name = NULL;
   const char *owner_name = NULL;
+  char new_class_name[DB_MAX_IDENTIFIER_LENGTH];
+  new_class_name[0] = '\0';
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
   int i;
@@ -769,6 +771,52 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       ERROR_SET_WARNING_1ARG (error, ER_AU_INVALID_USER, "");
       db_make_error (return_val, error);
       return;
+    }
+
+  /* We cannot change the schema of a class by using synonym names. */
+  snprintf (new_class_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, sm_remove_qualifier_name (class_name));
+
+  if (sm_find_synonym (new_class_name) != NULL)
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, new_class_name);
+      db_make_error (return_val, error);
+      return;
+    }
+  else
+    {
+      /* sm_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  return;
+	}
+
+      /* Check if class exists by name. */
+      if (sm_find_class (new_class_name) != NULL)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_CLASSNAME_EXIST, new_class_name);
+	  db_make_error (return_val, error);
+	  return;
+	}
+      else
+	{
+	  /* sm_find_class () == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      return;
+	    }
+	}
     }
 
   class_mop = sm_find_class (class_name);

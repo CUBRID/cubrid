@@ -4779,7 +4779,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
   PT_NODE *name, *sup, *att, *qry, *attr;
-  const char *cls_nam, *sup_nam, *att_nam;
+  const char *cls_nam, *sup_nam, *att_nam, *new_owner;
+  char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
+  new_cls_nam[0] = '\0';
   DB_ATTRIBUTE *db_att;
   DB_METHOD *db_mthd;
   int is_meta;
@@ -4796,6 +4798,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* look up the class */
   name = alter->info.alter.entity_name;
   cls_nam = name->info.name.original;
+  new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
 
   if (alter->info.alter.code == PT_CHANGE_ATTR || alter->info.alter.code == PT_ADD_INDEX_CLAUSE)
     {
@@ -4807,10 +4810,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* We cannot change the schema of a class by using synonym names. */
-  if (db_find_synonym (cls_nam) != NULL)
+  snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+
+  if (db_find_synonym (new_cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, new_cls_nam);
       return;
     }
   else
@@ -4826,13 +4830,33 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  return;
 	}
+
+      /* Check if class exists by name. */
+      if (db_find_class (new_cls_nam) != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
+	  return;
+	}
+      else
+	{
+	  /* db_find_class () == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      return;
+	    }
+	}
     }
 
   db = pt_find_class (parser, name, for_update);
   if (!db)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
 
