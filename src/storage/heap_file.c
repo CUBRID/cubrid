@@ -19006,10 +19006,10 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_active (thread_p->tran_index));
   if (!cubrocks::ctx->is_tran_started (thread_p->tran_index))
-  {
-    status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
-    assert (status);
-  }
+    {
+      status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
+      assert (status);
+    }
 
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
@@ -23055,10 +23055,10 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_active (thread_p->tran_index));
   if (!cubrocks::ctx->is_tran_started (thread_p->tran_index))
-  {
-    status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
-    assert (status);
-  }
+    {
+      status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
+      assert (status);
+    }
 
   /* check required input */
   assert (context != NULL);
@@ -23278,10 +23278,10 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_active (thread_p->tran_index));
   if (!cubrocks::ctx->is_tran_started (thread_p->tran_index))
-  {
-    status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
-    assert (status);
-  }
+    {
+      status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
+      assert (status);
+    }
 
   /*
    * Check input
@@ -23480,10 +23480,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_active (thread_p->tran_index));
   if (!cubrocks::ctx->is_tran_started (thread_p->tran_index))
-  {
-    status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
-    assert (status);
-  }
+    {
+      status = cubrocks::ctx->kv_tran_start (thread_p->tran_index);
+      assert (status);
+    }
 
   /*
    * Check input
