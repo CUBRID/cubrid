@@ -414,7 +414,6 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_HINT_ENUM mq_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5027,33 +5026,6 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * mq_find_cte_hint () - This function is used to find the hint of the CTE.
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- */
-static PT_HINT_ENUM
-mq_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  switch (node->node_type)
-    {
-    case PT_SELECT:
-      return node->info.query.q.select.hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_INLINE_CTE);
-
-    case PT_INTERSECTION:
-    case PT_DIFFERENCE:
-    case PT_UNION:
-      return mq_find_cte_hint (parser, node->info.query.q.union_.arg1);
-
-    default:
-      break;
-    }
-
-  return PT_HINT_NONE;
-}
-
-/*
  * mq_count_cte_references () - 
  *   return:
  *   parser(in):
@@ -5074,7 +5046,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       cte = node->info.with_clause.cte_definition_list;
       while (cte)
 	{
-	  hint = mq_find_cte_hint (parser, cte->info.cte.non_recursive_part);
+	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
 	  cte->info.cte.referenced_count = hint & PT_HINT_MATERIALIZE_CTE ? 2 : 0;
 	  cte = cte->next;
@@ -5088,7 +5060,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node_pointer = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (node_pointer);
 
-	  hint = mq_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
+	  hint = pt_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
 
 	  if (!(hint & PT_HINT_INLINE_CTE))
 	    {
@@ -5180,7 +5152,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	   * In the WITH clause, always rewrite CTE as a derived table, except when the CTE has a MATERIALIZE hint. */
 	  if (cte->info.cte.referenced_count == -1)
 	    {
-	      hint = mq_find_cte_hint (parser, cte->info.cte.non_recursive_part);
+	      hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 	      if (hint & PT_HINT_MATERIALIZE_CTE)
 		{
 		  return node;

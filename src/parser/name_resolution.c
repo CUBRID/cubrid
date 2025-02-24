@@ -11171,6 +11171,7 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
   PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
   bool save_donot_fold;
+  PT_HINT_ENUM hint;
 
   assert (cte_def->node_type == PT_CTE);
 
@@ -11179,6 +11180,16 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       /* something went wrong, this shouldn't be possible */
       assert (0);
       return;
+    }
+
+  hint = pt_find_cte_hint (parser, non_recursive_cte);
+  if (hint & PT_HINT_MATERIALIZE_CTE)
+    {
+      PT_CTE_INFO_SET_FLAG (cte_def, PT_CTE_INFO_MATERIALIZED);
+    }
+  else
+    {
+      PT_CTE_INFO_SET_FLAG (cte_def, PT_CTE_INFO_INLINE);
     }
 
   /* Evaluate the non-recursive part:
@@ -12071,4 +12082,24 @@ pt_free_dblink_remote_cols (PARSER_CONTEXT * parser)
       delete (S_REMOTE_TBL_COLS *) remote->cols;
       remote = remote->next;
     }
+}
+
+PT_HINT_ENUM
+pt_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      return node->info.query.q.select.hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_INLINE_CTE);
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      return pt_find_cte_hint (parser, node->info.query.q.union_.arg1);
+
+    default:
+      break;
+    }
+
+  return PT_HINT_NONE;
 }
