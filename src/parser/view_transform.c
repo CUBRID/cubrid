@@ -414,6 +414,7 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_HINT_ENUM mq_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
