@@ -68,7 +68,7 @@ static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
  * If a third argument is provided, it is used to select the distance metric.
  *
  * @param result A pointer to a DB_VALUE where the computed distance will be stored.
- * @param args An array of pointers to DB_VALUE objects; expects at least two vectors and an optional metric specifier.
+ * @param args An array of pointers to DB_VALUE objects; expects exactly two vectors and a metric specifier.
  * @param num_args The number of arguments provided in the args array; should be 3.
  * @return int NO_ERROR if the computation is successful.
  */
