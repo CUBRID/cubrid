@@ -5169,6 +5169,11 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	{
 	  cte_pointer = PT_SPEC_CTE_POINTER (node);
 	  cte = parser_copy_tree (parser, cte_pointer);
+	  if (cte == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
+	      return NULL;
+	    }
 	  CAST_POINTER_TO_NODE (cte);
 
 	  /* If the referenced count is -1, the current spec node is placed in the WITH clause.
@@ -5200,10 +5205,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	  for (attr = attributes; attr; attr = attr->next)
 	    {
-	      /* TODO: if inline cte merged, mq_lambda() -> pt_name_equal() function check meta_class. 
-	       * need to inspect the code. */
-
-	      attr->info.name.meta_class = PT_NORMAL;
+	      attr->info.name.meta_class = node->info.spec.meta_class;
 	      attr->info.name.spec_id = node->info.spec.id;
 
 	      /* no need to copy data_type, because it is already created. */
