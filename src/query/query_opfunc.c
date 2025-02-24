@@ -8652,18 +8652,16 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
 
     assert (index == no_args);
 
-    // *INDENT-OFF*
     std::function<int(DB_VALUE*, DB_VALUE*[], const int)> distance_func;
     switch (function_p->ftype)
-    {
-      case F_VECTOR_DISTANCE:
-        distance_func = vector_distance;
-	break;
-      default:
-        assert (false);
-        break;
-    }
-    // *INDENT-ON*
+      {
+	case F_VECTOR_DISTANCE:
+	  distance_func = vector_distance;
+	  break;
+	default:
+	  assert (false);
+	  break;
+      }
 
 
     error_status = distance_func (function_p->value, args, no_args);
