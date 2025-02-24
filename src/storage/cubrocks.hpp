@@ -29,8 +29,6 @@
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 
-//#define KV_TRANSACTION_
-
 namespace cubrocks
 {
   struct kv_transaction
