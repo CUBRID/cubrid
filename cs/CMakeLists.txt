@@ -562,7 +562,7 @@ if(UNIX)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS} ${JVM_LIBS})
+  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridcs PUBLIC cascci)

@@ -584,7 +584,7 @@ endif(UNIX)
 # for dblink
 target_link_libraries(cubrid PUBLIC cascci)
 
-add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
+add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer pl_build)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)
