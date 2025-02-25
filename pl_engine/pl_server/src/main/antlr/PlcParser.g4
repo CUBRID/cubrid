@@ -411,6 +411,7 @@ reserved_builtin_func   /* those which cannot be an identifier */
     | POSITION
     | QUARTER
     | REPLACE
+    | REVERSE
     | SECOND
     | SUBDATE
     | TIME
