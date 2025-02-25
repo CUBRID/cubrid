@@ -10680,7 +10680,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     }
   else				/* if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX) */
     {
-      reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
+      reverse = (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX) ? false : true;
     }
 
   /* Count the attributes */
@@ -10812,9 +10812,16 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error =
-	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+      if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
+	{
+	  error = hnsw_add_index (index);
+	}
+      else
+	{
+	  error =
+	    btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
+			     dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+	}
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -14768,6 +14775,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
+    case DB_CONSTRAINT_VECTOR_INDEX:
       DB_AUTH auth;
       bool is_secondary_index;
 

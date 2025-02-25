@@ -90,7 +90,7 @@
 
 typedef enum
 {
-  DO_INDEX_CREATE, DO_INDEX_DROP
+  DO_INDEX_CREATE, DO_INDEX_DROP, DO_VECTOR_INDEX_CREATE
 } DO_INDEX;
 
 typedef enum
@@ -2892,10 +2892,17 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
     }
 
-  ctype = get_reverse_unique_index_type (is_reverse, is_unique);
+  if (do_index != DO_VECTOR_INDEX_CREATE)
+    {
+      ctype = get_reverse_unique_index_type (is_reverse, is_unique);
+    }
+  else
+    {
+      ctype = DB_CONSTRAINT_VECTOR_INDEX;
+    }
 
   char *attname_tmp = NULL;
-  if (do_index != DO_INDEX_CREATE)
+  if (do_index != DO_INDEX_CREATE && do_index != DO_VECTOR_INDEX_CREATE)
     {
       assert (constraint_name != NULL);
       nnames = 0;
@@ -2924,7 +2931,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 
       // Class or shared attributes are not considered. These are not indexed columns.
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
-      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_VECTOR_INDEX)
 	{
 	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
 	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
@@ -3017,7 +3024,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       if (has_deduplicate_key_col)
 	{
 	  SM_CLASS *class_ = NULL;
-	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
+	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX)
+		  || (ctype == DB_CONSTRAINT_VECTOR_INDEX));
 
 	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
 	  if (error != NO_ERROR)
@@ -3040,7 +3048,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
-  else if (do_index == DO_INDEX_CREATE)
+  else if (do_index == DO_INDEX_CREATE || do_index == DO_VECTOR_INDEX_CREATE)
     {
       if (idx_info->where)
 	{
@@ -3196,6 +3204,41 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				       &statement->info.index, obj, DO_INDEX_CREATE);
+  return error;
+}
+
+/*
+ * do_create_vector_index() - Creates a vector index
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in) : Parse tree of a create index statement
+ */
+int
+do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  const char *index_name = NULL;
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  /* class should be already available */
+  assert (statement->info.index.indexed_class);
+
+  cls = statement->info.index.indexed_class->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
+				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);
   return error;
 }
 
