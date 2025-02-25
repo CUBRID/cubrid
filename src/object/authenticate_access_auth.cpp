@@ -40,40 +40,50 @@ static int update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_
 static int update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_owner_mop,
 				      const char *unique_name);
 
-struct authorization_keyhash
+using AuthorizationKey = std::tuple<MOP, MOP, MOP>;
+using AuthKey = std::tuple<MOP, MOP, MOP, DB_AUTH>;
+
+inline void hash_combine (std::size_t &seed, std::size_t hash)
 {
-  std::size_t operator() (const std::tuple<MOP, MOP, MOP> &k) const
+  /* referenced boost::hash_combine. */
+  seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+template <typename Tuple, std::size_t Index>
+struct TupleHashHelper
+{
+  static std::size_t hash (const Tuple &t)
   {
-    return std::hash<MOP>() (std::get<0> (k)) ^
-	   std::hash<MOP>() (std::get<1> (k)) ^
-	   std::hash<MOP>() (std::get<2> (k));
+    std::size_t seed = TupleHashHelper<Tuple, Index - 1>::hash (t);
+    std::size_t element_hash = std::hash<typename std::tuple_element<Index - 1, Tuple>::type>() (std::get<Index - 1> (t));
+
+    hash_combine (seed, element_hash);
+    return seed;
   }
 };
 
-struct authorization_keyequal
+template <typename Tuple>
+struct TupleHashHelper<Tuple, 0>
 {
-  bool operator() (const std::tuple<MOP, MOP, MOP> &lhs,
-		   const std::tuple<MOP, MOP, MOP> &rhs) const
+  static std::size_t hash (const Tuple &)
   {
-    return lhs == rhs;
+    return 0;
   }
 };
 
-struct auth_keyhash
+template<typename Tuple>
+struct tuple_hash
 {
-  std::size_t operator() (const std::tuple<MOP, MOP, MOP, DB_AUTH> &k) const
+  std::size_t operator() (const Tuple &t) const
   {
-    return std::hash<MOP>() (std::get<0> (k)) ^
-	   std::hash<MOP>() (std::get<1> (k)) ^
-	   std::hash<MOP>() (std::get<2> (k)) ^
-	   std::hash<DB_AUTH>() (std::get<3> (k));
+    return TupleHashHelper<Tuple, std::tuple_size<Tuple>::value>::hash (t);
   }
 };
 
-struct auth_keyequal
+template <typename Tuple>
+struct tuple_equal
 {
-  bool operator() (const std::tuple<MOP, MOP, MOP, DB_AUTH> &lhs,
-		   const std::tuple<MOP, MOP, MOP, DB_AUTH> &rhs) const
+  bool operator() (const Tuple &lhs, const Tuple &rhs) const
   {
     return lhs == rhs;
   }
@@ -1253,9 +1263,10 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   MOP grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
   DB_SET *grants = NULL;
   int gindex, gsize;
-  std::unordered_map<std::tuple<MOP, MOP, MOP>, int,
-      authorization_keyhash, authorization_keyequal> authorization_unordered_map;
-  std::tuple<MOP, MOP, MOP> key;
+  std::unordered_map<AuthorizationKey, int,
+      tuple_hash<AuthorizationKey>, tuple_equal<AuthorizationKey>> authorization_unordered_map;
+  AuthorizationKey key;
+
   *row_count = -1;
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
@@ -1512,8 +1523,8 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   MOP auth;
   size_t au_db_auth_size;
   au_auth_accessor accessor;
-  std::unordered_map<std::tuple<MOP, MOP, MOP, DB_AUTH>, int, auth_keyhash, auth_keyequal> auth_unordered_map;
-  std::tuple<MOP, MOP, MOP, DB_AUTH> key;
+  std::unordered_map<AuthKey, int, tuple_hash<AuthKey>, tuple_equal<AuthKey>> auth_unordered_map;
+  AuthKey key;
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
