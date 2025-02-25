@@ -1752,7 +1752,12 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->flag);
 
   /* initialize xasl status */
-  xasl->status = XASL_BUILD;	//XASL_INITIALIZED;
+  xasl->status = XASL_BUILD;
+  /* **************************************************************************
+   *  === Status transition diagram   
+   *  XASL_BUILD -> XASL_SUCCESS/XASL_FAILURE -> XASL_INITIALIZED/XASL_CLEARED  
+   *                            |--------------<-----------------|
+   ************************************************************************** */
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
