@@ -709,7 +709,6 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
-  ${JAVA_INC}
   )
 if(UNIX)
   # find out what this means:
