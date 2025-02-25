@@ -17,16 +17,21 @@
 
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
-set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.2.5.tar.bz2")             # expat library sources URL
+#set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.2.5.tar.bz2")             # expat library sources URL
 set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1f.tar.gz")       # openssl library sources URL
+#set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1f.tar.gz")       # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
-set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
+#set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
+
+set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_6_4/expat-2.6.4.tar.gz")             # expat library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz")       # openssl library sources URL
+set(WITH_LZ4_URL "https://github.com/lz4/lz4/releases/download/v1.9.4/lz4-1.9.4.tar.gz")                          # LZ4
+#set(WITH_LZ4_URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz")                          # LZ4
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -188,7 +193,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBEXPAT" ${LIBEXPAT_LIBS})
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
-      URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
+#      URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -333,7 +338,7 @@ else()
   ADD_BY_PRODUCTS_VARIABLE ("LZ4" ${LZ4_LIBS})
   externalproject_add(${LZ4_TARGET}
     URL                  ${WITH_LZ4_URL}
-    URL_HASH             ${WITH_LZ4_URL_HASH}
+#    URL_HASH             ${WITH_LZ4_URL_HASH}
     TIMEOUT              600
     LOG_BUILD            TRUE
     DOWNLOAD_NO_PROGRESS 1
@@ -369,7 +374,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
-      URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
+#      URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
