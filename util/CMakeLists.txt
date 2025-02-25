@@ -240,7 +240,7 @@ target_link_libraries(cub_pl LINK_PRIVATE cubridsa ${JVM_LIBS})
 else(WIN32)
 target_link_libraries(cub_pl LINK_PRIVATE cubridsa)
 endif(WIN32)
-add_dependencies(cub_pl pl_build)
+add_dependencies(cub_pl pl_install_jdk)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c

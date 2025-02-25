@@ -609,7 +609,6 @@ if(AT_LEAST_ONE_UNIT_TEST)
     )
 
   target_include_directories(cubrid-win-lib PRIVATE
-    ${JAVA_INC}
     ${EP_INCLUDES}
     ${FLEX_INCLUDE_DIRS}
     )

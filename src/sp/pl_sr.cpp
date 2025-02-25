@@ -410,6 +410,7 @@ namespace cubpl
 	int try_count = 0;
 	do
 	  {
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
 	    do_monitor ();
 	  }
 	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
@@ -755,7 +756,7 @@ int
 pl_server_port_from_info (void)
 {
   // check $CUBRID/var/pl_<db_name>.info
-  if (sp_port != PL_PORT_DISABLED)
+  if (sp_port == PL_PORT_DISABLED)
     {
       PL_SERVER_INFO pl_info {-1, -1};
       pl_read_info (boot_db_name (), pl_info);
