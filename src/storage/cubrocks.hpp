@@ -29,6 +29,14 @@
 #include "rocksdb/utilities/transaction.h"
 #include "rocksdb/utilities/transaction_db.h"
 
+#include "dbtype_def.h"
+#include "heap_file.h"
+
+#define is_user_class_oid(oid) \
+  ((oid)->volid == 0 && (((oid)->pageid == 210 && (oid)->slotid >= 2) || ((oid)->pageid > 210 && (oid)->pageid <= 255)))
+
+#define is_user_oid(oid) ((oid)->volid == 10)
+
 namespace cubrocks
 {
   struct kv_transaction
@@ -47,17 +55,45 @@ namespace cubrocks
 
       void kv_config ();
 
-      /* for debug */
+      /* ================================================================== */
+      /* debug                                                              */
+      /* ================================================================== */
+
       bool is_alive ();
       bool is_tran_started (int tran_index);
 
-      /* transaction */
+      /* ================================================================== */
+      /* virtual (for key)                                                  */
+      /* ================================================================== */
+
+      /* counter for oid */
+      OID kv_get_virtual_count (void);
+
+      /* ================================================================== */
+      /* transaction                                                        */
+      /* ================================================================== */
+
       void kv_tran_start (int tran_index);
 
       void kv_tran_commit (int tran_index);
       void kv_tran_abort (int tran_index);
 
-      /* basic */
+      /* ================================================================== */
+      /* operation                                                          */
+      /* ================================================================== */
+
+      /* insert */
+      int kv_logical_insert (int tran_index, HEAP_OPERATION_CONTEXT * context);
+
+      /* scan */
+      void kv_scan_start (HEAP_SCANCACHE * scan_cache);
+      void kv_scan_end (HEAP_SCANCACHE * scan_cache);
+      SCAN_CODE kv_logical_scan (int tran_index, OID * class_oid, OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+
+      /* ================================================================== */
+      /* basic                                                              */
+      /* ================================================================== */
+
       void kv_create (std::string path);
       void kv_open (std::string path);
       void kv_close ();
@@ -78,6 +114,8 @@ namespace cubrocks
       kv_transaction *transactions;
 
       bool alive;
+
+      OID virtual_counter;
 
       bool transactions_initialize ();
       void transactions_finalize ();

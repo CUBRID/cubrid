@@ -6893,6 +6893,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
+  
+  cubrocks::ctx->kv_scan_start (scan_cache);
 
   return ret;
 
@@ -7192,6 +7194,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
+  
+  cubrocks::ctx->kv_scan_start (scan_cache);
 
   return NO_ERROR;
 }
@@ -7256,6 +7260,8 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
+
+  cubrocks::ctx->kv_scan_end (scan_cache);
 
   return ret;
 }
@@ -19004,6 +19010,11 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
+  /* if class is user defined or oid is in the user defined class */
+  if (class_oid != NULL && (is_user_class_oid (class_oid) || is_user_oid (next_oid)))
+    return cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
+
+  /* general */
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
 
@@ -23034,7 +23045,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *         moment.
  */
 int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
+heap_insert_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -23042,10 +23053,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   bool is_mvcc_class;
 
   LOG_TDES *tdes = NULL;
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /* check required input */
   assert (context != NULL);
@@ -23241,6 +23248,21 @@ error:
 
   /* all ok */
   return rc;
+}
+
+int
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
+{
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+  /* if class is user defined */
+  if (is_user_class_oid (&context->class_oid))
+    return cubrocks::ctx->kv_logical_insert (thread_p->tran_index, context);
+
+  /* general */
+  return heap_insert_logical_internal (thread_p, context, home_hint_p);
 }
 
 /*
