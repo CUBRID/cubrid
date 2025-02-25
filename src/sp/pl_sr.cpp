@@ -737,3 +737,30 @@ PL_CONNECTION_POOL *get_connection_pool ()
       return nullptr;
     }
 }
+
+
+/*
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ *
+ *
+ * Note:
+ */
+
+static int sp_port = PL_PORT_DISABLED;
+
+int
+pl_server_port_from_info (void)
+{
+  // check $CUBRID/var/pl_<db_name>.info
+  if (sp_port != PL_PORT_DISABLED)
+    {
+      PL_SERVER_INFO pl_info {-1, -1};
+      pl_read_info (boot_db_name (), pl_info);
+      sp_port = pl_info.port;
+    }
+
+  return sp_port;
+}

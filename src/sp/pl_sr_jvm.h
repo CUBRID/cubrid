@@ -22,27 +22,12 @@
  *
  * Note:
  */
-
-#ifndef _PL_SR_H_
-#define _PL_SR_H_
-
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs to server module
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-
-#include <mutex>
-#include <condition_variable>
+#ifndef _PL_SR_JVM_H_
+#define _PL_SR_JVM_H_
 
 #include "porting.h"
-#include "thread_compat.hpp"
-#include "pl_connection.hpp"
 
-extern EXPORT_IMPORT int pl_server_init (const char *db_name);
-extern EXPORT_IMPORT void pl_server_destroy ();
-extern EXPORT_IMPORT int pl_server_wait_for_ready ();
+extern EXPORT_IMPORT int pl_start_jvm_server (const char *server_name, const char *path, int port_number);
+extern EXPORT_IMPORT int pl_server_port (void);
 
-extern EXPORT_IMPORT PL_CONNECTION_POOL *get_connection_pool ();
-
-extern EXPORT_IMPORT int pl_server_port_from_info (void);
-
-#endif /* _PL_SR_H_ */
+#endif // _PL_SR_JVM_H_
