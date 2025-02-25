@@ -772,28 +772,28 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   error = db_set_system_generated_statement (session);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
 
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (grantor_mop, "name", &val[0]);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
   else if (!DB_IS_STRING (&val[0]) || DB_IS_NULL (&val[0])
 	   || db_get_string (&val[0]) == NULL)
     {
       error = ER_AU_MISSING_OR_INVALID_USER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto release;
+      goto exit;
     }
 
   db_make_string (&val[1], unique_name);
@@ -802,7 +802,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   if (error != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
-      goto release;
+      goto exit;
     }
 
   error = db_execute_statement_local (session, stmt_id, &result);
@@ -811,12 +811,12 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   if (error == 0)
     {
       row_count = error;
-      goto release;
+      goto exit;
     }
   else if (error < 0)
     {
       assert (er_errid () != NO_ERROR);
-      goto release;
+      goto exit;
     }
 
   row_count = error;
@@ -826,81 +826,75 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&grantee_value))
+	  if (DB_IS_NULL (&grantee_value))
 	    {
-	      grantee_mop = db_get_object (&grantee_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  grantee_mop = db_get_object (&grantee_value);
 	}
 
       if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&object_of_value))
+	  if (DB_IS_NULL (&object_of_value))
 	    {
-	      object_of_mop = db_get_object (&object_of_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  object_of_mop = db_get_object (&object_of_value);
 	}
 
       if (db_query_get_tuple_value (result, 2, &auth_type_value) == NO_ERROR)
 	{
 	  auth_type_char = NULL;
 
-	  if (!DB_IS_NULL (&auth_type_value))
+	  if (DB_IS_NULL (&auth_type_value))
 	    {
-	      auth_type_char = db_get_char (&auth_type_value, &len);
-
-	      switch (auth_type_char[0])
-		{
-		case 'A':
-		  db_auth = DB_AUTH_ALTER;
-		  break;
-
-		case 'D':
-		  db_auth = DB_AUTH_DELETE;
-		  break;
-
-		case 'E':
-		  db_auth = DB_AUTH_EXECUTE;
-		  break;
-
-		case 'I':
-		  if (auth_type_char[2] == 'D')
-		    {
-		      db_auth = DB_AUTH_INDEX;
-		    }
-		  else if (auth_type_char[2] == 'S')
-		    {
-		      db_auth = DB_AUTH_INSERT;
-		    }
-		  else
-		    {
-		      db_auth = DB_AUTH_NONE;
-		    }
-		  break;
-
-		case 'S':
-		  db_auth = DB_AUTH_SELECT;
-		  break;
-
-		case 'U':
-		  db_auth = DB_AUTH_UPDATE;
-		  break;
-
-		default:
-		  db_auth = DB_AUTH_NONE;
-		  break;
-		}
+	      goto exit;
 	    }
-	  else
+
+	  auth_type_char = db_get_char (&auth_type_value, &len);
+
+	  switch (auth_type_char[0])
 	    {
-	      goto release;
+	    case 'A':
+	      db_auth = DB_AUTH_ALTER;
+	      break;
+
+	    case 'D':
+	      db_auth = DB_AUTH_DELETE;
+	      break;
+
+	    case 'E':
+	      db_auth = DB_AUTH_EXECUTE;
+	      break;
+
+	    case 'I':
+	      if (auth_type_char[2] == 'D')
+		{
+		  db_auth = DB_AUTH_INDEX;
+		}
+	      else if (auth_type_char[2] == 'S')
+		{
+		  db_auth = DB_AUTH_INSERT;
+		}
+	      else
+		{
+		  db_auth = DB_AUTH_NONE;
+		}
+	      break;
+
+	    case 'S':
+	      db_auth = DB_AUTH_SELECT;
+	      break;
+
+	    case 'U':
+	      db_auth = DB_AUTH_UPDATE;
+	      break;
+
+	    default:
+	      db_auth = DB_AUTH_NONE;
+	      break;
 	    }
 	}
 
@@ -909,11 +903,11 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
       error = au_revoke (obj_type, grantee_mop, object_of_mop, db_auth, NULL);
       if (error != NO_ERROR)
 	{
-	  goto release;
+	  goto exit;
 	}
     }
 
-release:
+exit:
   if (result != NULL)
     {
       db_query_end (result);
@@ -923,7 +917,6 @@ release:
       db_close_session (session);
     }
 
-exit:
   AU_ENABLE (save);
 
   db_value_clear (&grantee_value);
@@ -991,35 +984,35 @@ au_user_revoke_all_privileges (MOP user_mop)
   error = db_set_system_generated_statement (session);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
 
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   /* Prepare DB_VALUEs for host variables */
   error = obj_get (user_mop, "name", &name);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
   else if (!DB_IS_STRING (&name) || DB_IS_NULL (&name)
 	   || db_get_string (&name) == NULL)
     {
       error = ER_AU_MISSING_OR_INVALID_USER;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto release;
+      goto exit;
     }
 
   error = db_push_values (session, 1, &name);
   if (error != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
-      goto release;
+      goto exit;
     }
 
   error = db_execute_statement_local (session, stmt_id, &result);
@@ -1028,12 +1021,12 @@ au_user_revoke_all_privileges (MOP user_mop)
   if (error == 0)
     {
       row_count = error;
-      goto release;
+      goto exit;
     }
   else if (error < 0)
     {
       assert (er_errid () != NO_ERROR);
-      goto release;
+      goto exit;
     }
 
   row_count = error;
@@ -1043,107 +1036,99 @@ au_user_revoke_all_privileges (MOP user_mop)
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&grantee_value))
+	  if (DB_IS_NULL (&grantee_value))
 	    {
-	      grantee_mop = db_get_object (&grantee_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  grantee_mop = db_get_object (&grantee_value);
 	}
 
       if (db_query_get_tuple_value (result, 1, &object_type_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&object_type_value))
+	  if (DB_IS_NULL (&object_type_value))
 	    {
-	      object_type = db_get_int (&object_type_value);
-	      switch (object_type)
-		{
-		case 0:
-		  obj_type = DB_OBJECT_CLASS;
-		  break;
-
-		case 5:
-		  obj_type = DB_OBJECT_PROCEDURE;
-		  break;
-
-		default:
-		  assert (object_type == 0 || object_type == 5);
-		  goto release;
-		}
+	      goto exit;
 	    }
-	  else
+
+	  object_type = db_get_int (&object_type_value);
+	  switch (object_type)
 	    {
-	      goto release;
+	    case 0:
+	      obj_type = DB_OBJECT_CLASS;
+	      break;
+
+	    case 5:
+	      obj_type = DB_OBJECT_PROCEDURE;
+	      break;
+
+	    default:
+	      assert (object_type == 0 || object_type == 5);
+	      goto exit;
 	    }
 	}
 
       if (db_query_get_tuple_value (result, 2, &object_of_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&object_of_value))
+	  if (DB_IS_NULL (&object_of_value))
 	    {
-	      obj_mop = db_get_object (&object_of_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  obj_mop = db_get_object (&object_of_value);
 	}
 
       if (db_query_get_tuple_value (result, 3, &auth_type_value) == NO_ERROR)
 	{
 	  auth_type_char = NULL;
 
-	  if (!DB_IS_NULL (&auth_type_value))
+	  if (DB_IS_NULL (&auth_type_value))
 	    {
-	      auth_type_char = db_get_char (&auth_type_value, &len);
-
-	      switch (auth_type_char[0])
-		{
-		case 'A':
-		  db_auth = DB_AUTH_ALTER;
-		  break;
-
-		case 'D':
-		  db_auth = DB_AUTH_DELETE;
-		  break;
-
-		case 'E':
-		  db_auth = DB_AUTH_EXECUTE;
-		  break;
-
-		case 'I':
-		  if (auth_type_char[2] == 'D')
-		    {
-		      db_auth = DB_AUTH_INDEX;
-		    }
-		  else if (auth_type_char[2] == 'S')
-		    {
-		      db_auth = DB_AUTH_INSERT;
-		    }
-		  else
-		    {
-		      db_auth = DB_AUTH_NONE;
-		    }
-		  break;
-
-		case 'S':
-		  db_auth = DB_AUTH_SELECT;
-		  break;
-
-		case 'U':
-		  db_auth = DB_AUTH_UPDATE;
-		  break;
-
-		default:
-		  db_auth = DB_AUTH_NONE;
-		  break;
-		}
+	      goto exit;
 	    }
-	  else
+
+	  auth_type_char = db_get_char (&auth_type_value, &len);
+
+	  switch (auth_type_char[0])
 	    {
-	      goto release;
+	    case 'A':
+	      db_auth = DB_AUTH_ALTER;
+	      break;
+
+	    case 'D':
+	      db_auth = DB_AUTH_DELETE;
+	      break;
+
+	    case 'E':
+	      db_auth = DB_AUTH_EXECUTE;
+	      break;
+
+	    case 'I':
+	      if (auth_type_char[2] == 'D')
+		{
+		  db_auth = DB_AUTH_INDEX;
+		}
+	      else if (auth_type_char[2] == 'S')
+		{
+		  db_auth = DB_AUTH_INSERT;
+		}
+	      else
+		{
+		  db_auth = DB_AUTH_NONE;
+		}
+	      break;
+
+	    case 'S':
+	      db_auth = DB_AUTH_SELECT;
+	      break;
+
+	    case 'U':
+	      db_auth = DB_AUTH_UPDATE;
+	      break;
+
+	    default:
+	      db_auth = DB_AUTH_NONE;
+	      break;
 	    }
 	}
 
@@ -1152,11 +1137,11 @@ au_user_revoke_all_privileges (MOP user_mop)
       error = au_revoke (obj_type, grantee_mop, obj_mop, db_auth, user_mop);
       if (error != NO_ERROR)
 	{
-	  goto release;
+	  goto exit;
 	}
     }
 
-release:
+exit:
   if (result != NULL)
     {
       db_query_end (result);
@@ -1166,7 +1151,6 @@ release:
       db_close_session (session);
     }
 
-exit:
   AU_ENABLE (save);
 
   db_value_clear (&grantee_value);
@@ -1262,11 +1246,10 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	  "SELECT [au].grantee, [au].object_of FROM [" CT_CLASSAUTH_NAME "] [au]"
 	  " WHERE [au].[object_of] = (%s)"
 	  " GROUP BY [au].grantee";
-  DB_VALUE val, element;
+  DB_VALUE val, element, grantee_value, object_of_value;
   DB_SESSION *session = NULL;
   int stmt_id;
   DB_QUERY_RESULT *result = NULL;
-  DB_VALUE grantee_value, object_of_value;
   MOP grantor_mop = NULL, grantee_mop = NULL, object_of_mop = NULL, auth = NULL;
   DB_SET *grants = NULL;
   int gindex, gsize;
@@ -1308,14 +1291,14 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   error = db_set_system_generated_statement (session);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
 
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   /* Prepare DB_VALUEs for host variables */
@@ -1325,7 +1308,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   error = db_execute_statement_local (session, stmt_id, &result);
@@ -1334,12 +1317,12 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   if (error == 0)
     {
       *row_count = error;
-      goto release;
+      goto exit;
     }
   else if (error < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   *row_count = error;
@@ -1349,26 +1332,22 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
     {
       if (db_query_get_tuple_value (result, 0, &grantee_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&grantee_value))
+	  if (DB_IS_NULL (&grantee_value))
 	    {
-	      grantee_mop = db_get_object (&grantee_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  grantee_mop = db_get_object (&grantee_value);
 	}
 
       if (db_query_get_tuple_value (result, 1, &object_of_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&object_of_value))
+	  if (DB_IS_NULL (&object_of_value))
 	    {
-	      object_of_mop = db_get_object (&object_of_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  object_of_mop = db_get_object (&object_of_value);
 	}
 
       assert (grantee_mop != NULL && object_of_mop != NULL);
@@ -1377,13 +1356,13 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto release;
+	  goto exit;
 	}
       else if (au_fetch_instance (auth, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE) != NO_ERROR)
 	{
 	  error = ER_AU_CANT_UPDATE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto release;
+	  goto exit;
 	}
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
@@ -1394,10 +1373,10 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR_AND_SET (error);
-		  goto release;
+		  goto exit;
 		}
 
-	      if (db_get_object (&element) == object_of_mop)
+	      if (ws_is_same_object (db_get_object (&element), object_of_mop))
 		{
 		  /*
 		   * when the grantee becomes the new owner, previously granted privileges are removed.
@@ -1410,19 +1389,13 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		   * ================================
 		   *   grantee         {..,unique_name, grantor, ..}
 		   */
-		  if (ws_is_same_object (grantee_mop, new_owner_mop))
-		    {
-		      drop_grant_entry (grants, gindex);
-		      gindex -= GRANT_ENTRY_LENGTH;
-		      gsize -= GRANT_ENTRY_LENGTH;
-		    }
-		  else
+		  if (!ws_is_same_object (grantee_mop, new_owner_mop))
 		    {
 		      error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &element);
 		      if (error != NO_ERROR)
 			{
 			  ASSERT_ERROR_AND_SET (error);
-			  goto release;
+			  goto exit;
 			}
 		      grantor_mop = db_get_object (&element);
 
@@ -1430,23 +1403,14 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		      if (error != NO_ERROR)
 			{
 			  ASSERT_ERROR_AND_SET (error);
-			  goto release;
+			  goto exit;
 			}
 		      current_cache = db_get_int (&element);
 
 		      /* before deleting the data in db_authorization, merge the data and temp store it. */
-		      if (ws_is_same_object (grantor_mop, old_owner_mop))
-			{
-			  std::get<0> (key) = new_owner_mop;
-			  std::get<1> (key) = grantee_mop;
-			  std::get<2> (key) = object_of_mop;
-			}
-		      else
-			{
-			  std::get<0> (key) = grantor_mop;
-			  std::get<1> (key) = grantee_mop;
-			  std::get<2> (key) = object_of_mop;
-			}
+		      std::get<0> (key) = ws_is_same_object (grantor_mop, old_owner_mop) ? new_owner_mop : grantor_mop;
+		      std::get<1> (key) = grantee_mop;
+		      std::get<2> (key) = object_of_mop;
 
 		      if (authorization_unordered_map.find (key) == authorization_unordered_map.end())
 			{
@@ -1458,11 +1422,11 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 			  /* update the mask value of duplicated data. */
 			  authorization_unordered_map[key] |= current_cache;
 			}
-
-		      drop_grant_entry (grants, gindex);
-		      gindex -= GRANT_ENTRY_LENGTH;
-		      gsize -= GRANT_ENTRY_LENGTH;
 		    }
+
+		  drop_grant_entry (grants, gindex);
+		  gindex -= GRANT_ENTRY_LENGTH;
+		  gsize -= GRANT_ENTRY_LENGTH;
 		}
 	    }
 	}
@@ -1478,24 +1442,24 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 	{
 	  error = ER_AU_ACCESS_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, AU_USER_CLASS_NAME, "authorization");
-	  goto release;
+	  goto exit;
 	}
       else if ((error = obj_inst_lock (auth, 1)) == NO_ERROR
 	       && (error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	{
 	  gindex = add_grant_entry (grants, obj_type, std::get<2> (key), std::get<0> (key));
 	  db_make_int (&element, current_cache);
-	  set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
+	  error = set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &element);
 
 	  /* Fail to insert, never change the grant entry set. */
 	  if (error != NO_ERROR)
 	    {
-	      goto release;
+	      goto exit;
 	    }
 	}
     }
 
-release:
+exit:
   if (result != NULL)
     {
       db_query_end (result);
@@ -1505,7 +1469,6 @@ release:
       db_close_session (session);
     }
 
-exit:
   pr_clear_value (&val);
   pr_clear_value (&element);
   pr_clear_value (&grantee_value);
@@ -1588,14 +1551,14 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   error = db_set_system_generated_statement (session);
   if (error != NO_ERROR)
     {
-      goto release;
+      goto exit;
     }
 
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   /* Prepare DB_VALUEs for host variables */
@@ -1605,7 +1568,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   error = db_execute_statement_local (session, stmt_id, &result);
@@ -1615,12 +1578,12 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
     {
       error = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto release;
+      goto exit;
     }
   else if (error < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto release;
+      goto exit;
     }
 
   error = NO_ERROR;
@@ -1628,126 +1591,114 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
     {
       if (db_query_get_tuple_value (result, 0, &db_auth_object_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&db_auth_object_value))
+	  if (DB_IS_NULL (&db_auth_object_value))
 	    {
-	      db_auth_object_mop = db_get_object (&db_auth_object_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  db_auth_object_mop = db_get_object (&db_auth_object_value);
 	}
 
       if (db_query_get_tuple_value (result, 1, &grantor_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&grantor_value))
+	  if (DB_IS_NULL (&grantor_value))
 	    {
-	      grantor_mop = db_get_object (&grantor_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  grantor_mop = db_get_object (&grantor_value);
 	}
 
       if (db_query_get_tuple_value (result, 2, &grantee_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&grantee_value))
+	  if (DB_IS_NULL (&grantee_value))
 	    {
-	      grantee_mop = db_get_object (&grantee_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  grantee_mop = db_get_object (&grantee_value);
 	}
 
       if (db_query_get_tuple_value (result, 3, &object_of_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&object_of_value))
+	  if (DB_IS_NULL (&object_of_value))
 	    {
-	      object_of_mop = db_get_object (&object_of_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  object_of_mop = db_get_object (&object_of_value);
 	}
 
       if (db_query_get_tuple_value (result, 4, &auth_type_value) == NO_ERROR)
 	{
 	  auth_type_char = NULL;
 
-	  if (!DB_IS_NULL (&auth_type_value))
-	    {
-	      auth_type_char = db_get_char (&auth_type_value, &len);
-
-	      switch (auth_type_char[0])
-		{
-		case 'A':
-		  db_auth = DB_AUTH_ALTER;
-		  break;
-
-		case 'D':
-		  db_auth = DB_AUTH_DELETE;
-		  break;
-
-		case 'E':
-		  db_auth = DB_AUTH_EXECUTE;
-		  break;
-
-		case 'I':
-		  if (auth_type_char[2] == 'D')
-		    {
-		      db_auth = DB_AUTH_INDEX;
-		    }
-		  else if (auth_type_char[2] == 'S')
-		    {
-		      db_auth = DB_AUTH_INSERT;
-		    }
-		  else
-		    {
-		      db_auth = DB_AUTH_NONE;
-		      goto release;
-		    }
-		  break;
-
-		case 'S':
-		  db_auth = DB_AUTH_SELECT;
-		  break;
-
-		case 'U':
-		  db_auth = DB_AUTH_UPDATE;
-		  break;
-
-		default:
-		  db_auth = DB_AUTH_NONE;
-		  goto release;
-		  break;
-		}
-	    }
-	  else
+	  if (DB_IS_NULL (&auth_type_value))
 	    {
 	      error = ER_FAILED;
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release;
+	      goto exit;
+	    }
+
+	  auth_type_char = db_get_char (&auth_type_value, &len);
+
+	  switch (auth_type_char[0])
+	    {
+	    case 'A':
+	      db_auth = DB_AUTH_ALTER;
+	      break;
+
+	    case 'D':
+	      db_auth = DB_AUTH_DELETE;
+	      break;
+
+	    case 'E':
+	      db_auth = DB_AUTH_EXECUTE;
+	      break;
+
+	    case 'I':
+	      if (auth_type_char[2] == 'D')
+		{
+		  db_auth = DB_AUTH_INDEX;
+		}
+	      else if (auth_type_char[2] == 'S')
+		{
+		  db_auth = DB_AUTH_INSERT;
+		}
+	      else
+		{
+		  db_auth = DB_AUTH_NONE;
+		  goto exit;
+		}
+	      break;
+
+	    case 'S':
+	      db_auth = DB_AUTH_SELECT;
+	      break;
+
+	    case 'U':
+	      db_auth = DB_AUTH_UPDATE;
+	      break;
+
+	    default:
+	      db_auth = DB_AUTH_NONE;
+	      goto exit;
+	      break;
 	    }
 	}
 
       if (db_query_get_tuple_value (result, 5, &is_grantable_value) == NO_ERROR)
 	{
-	  if (!DB_IS_NULL (&is_grantable_value))
+	  if (DB_IS_NULL (&is_grantable_value))
 	    {
-	      is_grantable = db_get_int (&is_grantable_value);
+	      goto exit;
 	    }
-	  else
-	    {
-	      goto release;
-	    }
+
+	  is_grantable = db_get_int (&is_grantable_value);
 	}
 
       assert (db_auth_object_mop != NULL && grantor_mop != NULL && grantee_mop != NULL && object_of_mop != NULL
-	      && db_auth != DB_AUTH_NONE && is_grantable != -1 );
+	      && db_auth != DB_AUTH_NONE && is_grantable != -1);
 
       /*
        * when the grantee becomes the new owner, previously granted privileges are removed.
@@ -1766,33 +1717,23 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release;
+	      goto exit;
 	    }
 
 	  error = obj_delete (db_auth_object_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release;
+	      goto exit;
 	    }
 	}
       else
 	{
 	  /* before deleting the data in db_auth, merge the data and temp store it. */
-	  if (ws_is_same_object (grantor_mop, old_owner_mop))
-	    {
-	      std::get<0> (key) = new_owner_mop;
-	      std::get<1> (key) = grantee_mop;
-	      std::get<2> (key) = object_of_mop;
-	      std::get<3> (key) = db_auth;
-	    }
-	  else
-	    {
-	      std::get<0> (key) = grantor_mop;
-	      std::get<1> (key) = grantee_mop;
-	      std::get<2> (key) = object_of_mop;
-	      std::get<3> (key) = db_auth;
-	    }
+	  std::get<0> (key) = ws_is_same_object (grantor_mop, old_owner_mop) ? new_owner_mop : grantor_mop;
+	  std::get<1> (key) = grantee_mop;
+	  std::get<2> (key) = object_of_mop;
+	  std::get<3> (key) = db_auth;
 
 	  if (auth_unordered_map.find (key) == auth_unordered_map.end() || auth_unordered_map[key] < is_grantable)
 	    {
@@ -1803,14 +1744,14 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release;
+	      goto exit;
 	    }
 
 	  error = obj_delete (db_auth_object_mop);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      goto release;
+	      goto exit;
 	    }
 	}
     }
@@ -1828,12 +1769,12 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
       /* Fail to insert, do not add data to the _auth catalog. */
       if (error != NO_ERROR)
 	{
-	  goto release;
+	  goto exit;
 	}
     }
 
 
-release:
+exit:
   if (result != NULL)
     {
       db_query_end (result);
@@ -1843,7 +1784,6 @@ release:
       db_close_session (session);
     }
 
-exit:
   db_value_clear (&val);
   db_value_clear (&db_auth_object_value);
   db_value_clear (&grantor_value);
