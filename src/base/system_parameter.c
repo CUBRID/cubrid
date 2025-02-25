@@ -759,8 +759,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
-#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
-
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
 #define PRM_NAME_ENABLE_MEMORY_MONITORING "enable_memory_monitoring"
@@ -768,6 +766,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
 
 #define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
+
+#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -6483,18 +6483,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
-   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
-   PRM_INTEGER,
-   &prm_parallel_heap_scan_threads_flag,
-   (void *) &prm_parallel_heap_scan_threads_default,
-   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
-   (void *) &prm_parallel_heap_scan_threads_upper,
-   (void *) &prm_parallel_heap_scan_threads_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE,
    PRM_NAME_STORED_PROCEDURE,
    (PRM_FOR_SERVER | PRM_FORCE_SERVER),
@@ -6569,6 +6557,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_stored_procedure_return_numeric_size_default,
    (void *) &PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
+   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_parallel_heap_scan_threads_flag,
+   (void *) &prm_parallel_heap_scan_threads_default,
+   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
+   (void *) &prm_parallel_heap_scan_threads_upper,
+   (void *) &prm_parallel_heap_scan_threads_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
