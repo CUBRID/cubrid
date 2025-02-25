@@ -71,7 +71,10 @@ cubrocks::context::context ()
 
 cubrocks::context::~context ()
 {
-  transactions_finalize ();
+  if (alive)
+    {
+      kv_close ();
+    }
 }
 
 void
@@ -206,6 +209,8 @@ cubrocks::context::kv_close ()
    * also, check if DestroyColumnFamilyHandle should be called. */
   assert (alive);
 
+  transactions_finalize ();
+
   rocksdb::WaitForCompactOptions opt_compact;
   rocksdb::FlushOptions opt_flush;
 
@@ -260,13 +265,24 @@ cubrocks::context::transactions_initialize (void)
 void
 cubrocks::context::transactions_finalize (void)
 {
+  bool status;
   int i;
+
+  if (!alive)
+    {
+      return ;
+    }
 
   for (i = 0; i < MAX_NTRANS; i++)
     {
       if (transactions[i].txn != nullptr)
 	{
+	  status = transactions[i].txn->Rollback ().ok ();
+	  assert (status);
 	  delete transactions[i].txn;
+	  transactions[i].txn = nullptr;
 	}
     }
+
+  delete[] transactions;
 }
