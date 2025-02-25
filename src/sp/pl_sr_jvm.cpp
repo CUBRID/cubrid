@@ -219,28 +219,15 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
     {
     case dliFailLoadLib:
     {
+      char java_home_path[PATH_MAX];
       char *java_home = NULL, *jvm_path = NULL, *tmp = NULL, *tail;
       void *libVM = NULL;
 
-      jvm_path = getenv ("JVM_PATH");
-      java_home = getenv ("JAVA_HOME");
-
-      if (jvm_path)
+      java_home = getenv ("CUBRID_JAVA_HOME");
+      if (java_home == NULL)
 	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
-	  err_msgs.append ("\n\t\t");
-	  err_msgs.append (jvm_path);
-
-	  libVM = LoadLibrary (jvm_path);
-	  if (libVM)
-	    {
-	      fp = (FARPROC) (HMODULE) libVM;
-	      return fp;
-	    }
-	}
-      else
-	{
-	  err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
+	  envvar_vmdir_file (java_home_path, PATH_MAX, "jdk8");
+	  java_home = java_home_path;
 	}
 
       tail = JVM_LIB_PATH_JDK;
@@ -259,7 +246,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
       if (java_home)
 	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
+	  err_msgs.append ("\n\tFailed to load libjvm from 'CUBRID_JAVA_HOME' environment variable: ");
 
 	  char jvm_lib_path[BUF_SIZE];
 	  sprintf (jvm_lib_path, "%s\\%s\\jvm.dll", java_home, tail);
@@ -289,7 +276,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 	}
       else
 	{
-	  err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
+	  err_msgs.append ("\n\tFailed to get 'CUBRID_JAVA_HOME' environment variable");
 	}
 
       if (tmp)
@@ -344,32 +331,18 @@ static void *
 pl_get_create_java_vm_function_ptr ()
 {
   void *libVM_p = NULL;
-
-  char *jvm_path = getenv ("JVM_PATH");
-  if (jvm_path != NULL)
+  char java_home_path[PATH_MAX];
+  char *java_home = getenv ("CUBRID_JAVA_HOME");
+  if (java_home == NULL)
     {
-      libVM_p = dlopen (jvm_path, RTLD_NOW | RTLD_LOCAL);
-      if (libVM_p != NULL)
-	{
-	  return dlsym (libVM_p, "JNI_CreateJavaVM");
-	}
-      else
-	{
-	  err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
-	  err_msgs.append ("\n\t\t");
-	  err_msgs.append (dlerror ());
-	}
-    }
-  else
-    {
-      err_msgs.append ("\n\tFailed to get 'JVM_PATH' environment variable");
+      envvar_vmdir_file (java_home_path, PATH_MAX, "jdk8");
+      java_home = java_home_path;
     }
 
-  char *java_home = getenv ("JAVA_HOME");
   if (java_home != NULL)
     {
       char jvm_library_path[PATH_MAX];
-      err_msgs.append ("\n\tFailed to load libjvm from 'JAVA_HOME' environment variable: ");
+      err_msgs.append ("\n\tFailed to load libjvm from 'CUBRID_JAVA_HOME' environment variable: ");
 
       // under jdk 11
       snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
@@ -399,7 +372,7 @@ pl_get_create_java_vm_function_ptr ()
     }
   else
     {
-      err_msgs.append ("\n\tFailed to get 'JAVA_HOME' environment variable");
+      err_msgs.append ("\n\tFailed to get 'CUBRID_JAVA_HOME' environment variable");
     }
 
   return NULL;
@@ -469,7 +442,7 @@ pl_jvm_options ()
 {
   char buffer[PATH_MAX];
 
-  envvar_javadir_file (buffer, PATH_MAX, "");
+  envvar_vmdir_file (buffer, PATH_MAX, "");
   std::string pl_file_path (buffer);
 
   std::vector <std::string> options;

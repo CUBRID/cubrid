@@ -35,7 +35,7 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.context.Context;
-import java.nio.file.Path;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -47,6 +47,8 @@ import javax.tools.ToolProvider;
 
 public class MemoryJavaCompiler {
 
+    private static String PL_SERVER_PATH = null;
+
     private JavaCompiler compiler;
     private List<String> options = new ArrayList<>();
 
@@ -57,9 +59,12 @@ public class MemoryJavaCompiler {
                     "Cannot find the system Java compiler. Check that your class path includes tools.jar");
         }
 
-        Path cubrid_env_root = Server.getServer().getRootPath();
+        if (PL_SERVER_PATH == null) {
+            PL_SERVER_PATH = Server.getConfig().getVmPath() + File.separator + "pl_server.jar";
+        }
+
         useOptions("-encoding", Context.getSessionCharset().toString());
-        useOptions("-classpath", cubrid_env_root + "/java/pl_server.jar");
+        useOptions("-classpath", PL_SERVER_PATH);
     }
 
     public synchronized void useOptions(String... options) {

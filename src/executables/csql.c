@@ -102,7 +102,8 @@ enum
 {
   DO_CMD_SUCCESS = 0,
   DO_CMD_FAILURE = 1,
-  DO_CMD_EXIT = 2
+  DO_CMD_CONNECT = 2,
+  DO_CMD_EXIT = 3
 };
 
 #define CSQL_SESSION_COMMAND_PREFIX(C)	(((C) == ';') || ((C) == '!'))
@@ -228,7 +229,7 @@ static void csql_exit_init (void);
 static void csql_exit_cleanup (void);
 static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
-static void csql_exit_session (int error);
+static void csql_exit_session (int error, bool exit_flag);
 
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
 
@@ -534,12 +535,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_arg->command)
     {
       /* command input */
-      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1), true);
     }
 
   if (!csql_Is_interactive && !csql_arg->single_line_execution)
     {
-      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1), true);
     }
 
   /* Start interactive conversation or single line execution */
@@ -643,7 +644,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      line_read_alloced = NULL;
 	    }
 	  csql_edit_contents_finalize ();
-	  csql_exit_session (0);
+	  csql_exit_session (0, true);
 	}
 
       line_length = strlen (line_read);
@@ -700,7 +701,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
-	  if (ret == DO_CMD_EXIT)
+	  if (ret == DO_CMD_EXIT || ret == DO_CMD_CONNECT)
 	    {
 	      if (line_read_alloced != NULL)
 		{
@@ -708,7 +709,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		  line_read_alloced = NULL;
 		}
 	      csql_edit_contents_finalize ();
-	      csql_exit_session (0);
+	      if (ret == DO_CMD_EXIT)
+		{
+		  csql_exit_session (0, true);
+		}
 	    }
 	  else if (ret == DO_CMD_FAILURE)
 	    {
@@ -1485,6 +1489,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_CONNECT:
       if (csql_arg->sysadm != true)
 	{
+	  csql_exit_session (0, false);
 	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
 	  if (error_code != NO_ERROR)
 	    {
@@ -1495,7 +1500,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
-      break;
+      return DO_CMD_CONNECT;
 
     case S_CMD_MIDXKEY:
       if (!strcasecmp (argument, "on"))
@@ -1834,8 +1839,8 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
       return;
     }
 
-  int errors = csql_execute_query ("SELECT '' INTO :pl_output_str");
-  errors += csql_execute_query ("SELECT 1 INTO :pl_output_status");
+  int errors = csql_execute_query ("EVALUATE '' INTO :pl_output_str");
+  errors += csql_execute_query ("EVALUATE 1 INTO :pl_output_status");
   if (errors != 0)
     {
       return;
@@ -2671,7 +2676,7 @@ signal_stop (int sig_no)
  * Note: this function never return.
  */
 static void
-csql_exit_session (int error)
+csql_exit_session (int error, bool exit_flag)
 {
   char line_buf[LINE_BUFFER_SIZE];
   bool commit_on_shutdown = false;
@@ -2734,12 +2739,18 @@ csql_exit_session (int error)
     {
       csql_Database_connected = false;
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-      csql_exit (EXIT_FAILURE);
+      if (exit_flag)
+	{
+	  csql_exit (EXIT_FAILURE);
+	}
     }
   else
     {
       csql_Database_connected = false;
-      csql_exit (error ? EXIT_FAILURE : EXIT_SUCCESS);
+      if (exit_flag)
+	{
+	  csql_exit (error ? EXIT_FAILURE : EXIT_SUCCESS);
+	}
     }
 }
 

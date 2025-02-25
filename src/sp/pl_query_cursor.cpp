@@ -86,10 +86,18 @@ namespace cubpl
     if (m_is_opened)
       {
 	qfile_close_scan (m_thread, &m_scan_id);
+
 	if (m_query_entry->list_id)
 	  {
+	    // Since the list was not created in this thread, incrementing the count of the list (m_qlist_count) is required
+	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+
 	    qfile_close_list (m_thread, m_query_entry->list_id);
+	    qfile_destroy_list (m_thread, m_query_entry->list_id);
 	  }
+
+	// clear query entry
+	xqmgr_end_query (m_thread, m_query_id);
 	clear ();
 	m_is_opened = false;
       }

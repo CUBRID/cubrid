@@ -367,13 +367,6 @@ add_flex_bison_dependency(esql_lexer esql_grammar)
 add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
 add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
-# For java stored procedure server
-include(FindJNI)
-find_package(JNI 1.5)
-if(JNI_FOUND)
-  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-endif(JNI_FOUND)
-
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++17 -D_GCOV"
@@ -708,6 +701,7 @@ endif(USE_DUMA)
 if(USE_CUBRID_ENV)
   message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
   set(CUBRID_PREFIXDIR .)
+  set(CUBRID_3RDPARTYDIR 3rdparty)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
   set(CUBRID_SRCDIR src)
@@ -715,7 +709,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
   set(CUBRID_CONFDIR conf)
-  set(CUBRID_JAVADIR java)
+  set(CUBRID_VMDIR vm)
   set(CUBRID_LOCALEDIR msg)
   set(CUBRID_LOGDIR log)
   set(CUBRID_TMPDIR tmp)
@@ -732,6 +726,8 @@ else(USE_CUBRID_ENV)
 
   set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
   list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
+  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
+  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
   set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
   if(IS_ABSOLUTE ${CUBRID_BINDIR})
     list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
@@ -768,11 +764,11 @@ else(USE_CUBRID_ENV)
   else()
     list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_PREFIXDIR}/${CUBRID_CONFDIR}")
   endif()
-  set(CUBRID_JAVADIR java CACHE STRING "The directory for JSP file")
-  if(IS_ABSOLUTE ${CUBRID_JAVADIR})
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_JAVADIR}")
+  set(CUBRID_VMDIR vm CACHE STRING "The directory for PL file")
+  if(IS_ABSOLUTE ${CUBRID_VMDIR})
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_VMDIR}")
   else()
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_PREFIXDIR}/${CUBRID_JAVADIR}")
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_PREFIXDIR}/${CUBRID_VMDIR}")
   endif()
   set(CUBRID_LOCALEDIR msg CACHE STRING "The directory for message files")
   if(IS_ABSOLUTE ${CUBRID_LOCALEDIR})
@@ -806,10 +802,10 @@ else(USE_CUBRID_ENV)
 endif(USE_CUBRID_ENV)
 
 # For JVM libraries
-if(WIN32)
-    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
-  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
-endif(WIN32)
+# if(WIN32)
+#    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
+#  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
+# endif(WIN32)
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
@@ -834,6 +830,30 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   )
 endif()
 
+# include pl subdirectories
+add_subdirectory(pl_engine)
+
+set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+set(ENV{PATH} "$ENV{JAVA_HOME}/bin:$ENV{PATH}")
+
+# For PL server
+find_package(Java REQUIRED)
+find_package(JNI REQUIRED)
+
+if(JNI_FOUND)
+   set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+endif(JNI_FOUND)
+
+message(STATUS "Found Java: ${Java_JAVA_EXECUTABLE}")
+message(STATUS "Found JNI: ${JNI_INCLUDE_DIRS}")
+
+# For JVM libraries
+if(WIN32)
+    set(JVM_LIBS ${JAVA_HOME}/lib/jvm.lib)
+    list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
+endif(WIN32)
+
 # include subdirectories
 add_subdirectory(sa)
 add_subdirectory(cs)
@@ -850,7 +870,6 @@ add_subdirectory(demo)
 add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-add_subdirectory(pl_engine)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()
@@ -910,12 +929,16 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
 endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 # create empty directories
+install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+    DESTINATION ${CUBRID_3RDPARTYDIR}
+    FILES_MATCHING PATTERN "*_license.txt")
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
