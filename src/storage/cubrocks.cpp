@@ -59,10 +59,19 @@ cubrocks::kv_postfix (char *path)
 
 cubrocks::context::context ()
 {
+  bool status;
+
   kv_config ();
-  transactions_initialize ();
+
+  status = transactions_initialize ();
+  assert (status);
 
   alive = false;
+}
+
+cubrocks::context::~context ()
+{
+  transactions_finalize ();
 }
 
 void
@@ -101,91 +110,65 @@ cubrocks::context::is_alive (void)
 }
 
 bool
-cubrocks::context::is_tran_active (int tran_index)
-{
-  return tran_index == LOG_SYSTEM_TRAN_INDEX || transactions[tran_index].active;
-}
-
-bool
 cubrocks::context::is_tran_started (int tran_index)
 {
   return transactions[tran_index].txn != nullptr;
 }
 
 void
-cubrocks::context::kv_tran_activate (int tran_index)
-{
-  assert (tran_index < MAX_NTRANS);
-  assert (tran_index == LOG_SYSTEM_TRAN_INDEX || !transactions[tran_index].active);
-
-  transactions[tran_index].active = true;
-}
-
-void
-cubrocks::context::kv_tran_deactivate (int tran_index)
-{
-  assert (tran_index < MAX_NTRANS);
-  assert (transactions[tran_index].active);
-  assert (transactions[tran_index].txn == nullptr);
-
-  transactions[tran_index].active = false;
-}
-
-bool
 cubrocks::context::kv_tran_start (int tran_index)
 {
   rocksdb::WriteOptions write_options;
 
+  assert (alive);
   assert (tran_index < MAX_NTRANS);
-  assert (transactions[tran_index].active);
   assert (transactions[tran_index].txn == nullptr);
 
   transactions[tran_index].txn = db->BeginTransaction (write_options);
-
-  return (transactions[tran_index].txn != nullptr);
+  assert (transactions[tran_index].txn != nullptr);
 }
 
-bool
+void
 cubrocks::context::kv_tran_commit (int tran_index)
 {
   bool status;
 
+  assert (alive);
   assert (tran_index < MAX_NTRANS);
-  assert (transactions[tran_index].active);
 
   if (transactions[tran_index].txn == nullptr)
     {
-      return true;
+      return ;
     }
 
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
   transactions[tran_index].txn = nullptr;
 
-  return status;
+  assert (status);
 }
 
-bool
+void
 cubrocks::context::kv_tran_abort (int tran_index)
 {
   bool status;
 
+  assert (alive);
   assert (tran_index < MAX_NTRANS);
-  assert (transactions[tran_index].active);
 
   if (transactions[tran_index].txn == nullptr)
     {
-      return true;
+      return ;
     }
 
   status = transactions[tran_index].txn->Rollback ().ok ();
   delete transactions[tran_index].txn;
   transactions[tran_index].txn = nullptr;
 
-  return status;
+  assert (status);
 }
 
-bool
+void
 cubrocks::context::kv_create (std::string path)
 {
   assert (!alive);
@@ -195,10 +178,13 @@ cubrocks::context::kv_create (std::string path)
 
   /* db will be closed in context::close ( ... ) that is called from boot_.._finalize */
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
-  return alive;
+  assert (alive);
+
+  /* exception for SYSTEM TRANSACTION */
+  kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 }
 
-bool
+void
 cubrocks::context::kv_open (std::string path)
 {
   assert (!alive);
@@ -207,10 +193,13 @@ cubrocks::context::kv_open (std::string path)
   opt.db.error_if_exists = false;
 
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
-  return alive;
+  assert (alive);
+
+  /* exception for SYSTEM TRANSACTION */
+  kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 }
 
-bool
+void
 cubrocks::context::kv_close ()
 {
   /* it is not clear whether "Flush -> WaitForCompact" should be called in that order.
@@ -223,30 +212,31 @@ cubrocks::context::kv_close ()
   opt_flush.wait = true;
   if (!db->Flush (opt_flush, opt.cf_handles).ok ())
     {
-      return false;
+      assert (false);
     }
 
   opt_compact.close_db = true;
   if (!db->WaitForCompact (opt_compact).ok ())
     {
-      return false;
+      assert (false);
     }
 
   delete db;
 
   alive = false;
-
-  return true;
 }
 
-bool
+void
 cubrocks::context::kv_destroy (std::string path)
 {
   assert (!alive);
 
   rocksdb::Options options;
 
-  return rocksdb::DestroyDB (path, options).ok();
+  if (!rocksdb::DestroyDB (path, options).ok())
+    {
+      assert (false);
+    }
 }
 
 bool
@@ -261,13 +251,22 @@ cubrocks::context::transactions_initialize (void)
 
   for (i = 0; i < MAX_NTRANS; i++)
     {
-      transactions[i].active = false;
       transactions[i].txn = nullptr;
     }
-
-  /* system transaction */
-  kv_tran_activate (LOG_SYSTEM_TRAN_INDEX);
 
   return true;
 }
 
+void
+cubrocks::context::transactions_finalize (void)
+{
+  int i;
+
+  for (i = 0; i < MAX_NTRANS; i++)
+    {
+      if (transactions[i].txn != nullptr)
+	{
+	  delete transactions[i].txn;
+	}
+    }
+}

@@ -1014,8 +1014,6 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE stat
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, tran_index);
 
       tdes->tran_abort_reason = TRAN_NORMAL;
-
-      cubrocks::ctx->kv_tran_activate (tran_index);
     }
 
   return tran_index;
@@ -1264,7 +1262,6 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
 	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, log_tran_index);
 	}
-      cubrocks::ctx->kv_tran_deactivate (tran_index);
     }
 }
 
@@ -1759,6 +1756,9 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= DB_INT32_MAX);
 
   tdes->trid = trid;
+
+  cubrocks::ctx->kv_tran_start (tdes->trid);
+
   return trid;
 #else
   TR_TABLE_CS_ENTER (thread_p);
@@ -1775,6 +1775,8 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   TR_TABLE_CS_EXIT (thread_p);
+
+  cubrocks::ctx->kv_tran_start (tdes->trid);
 
   return tdes->trid;
 #endif

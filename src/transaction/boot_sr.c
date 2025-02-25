@@ -1494,7 +1494,6 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   const char *db_path, *log_path, *lob_path;
   char *p;
   THREAD_ENTRY *thread_p = NULL;
-  bool status;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -1850,8 +1849,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if (!boot_Init_server_is_canceled)
     {
       /* create the rocksdb dir and files */
-      status = cubrocks::ctx->kv_create (cubrocks::kv_postfix (boot_Db_full_name));
-      assert (status);
+      cubrocks::ctx->kv_create (cubrocks::kv_postfix (boot_Db_full_name));
 
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
@@ -2079,7 +2077,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  bool status;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2405,8 +2402,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* open the rocksdb storage layer */
-  status = cubrocks::ctx->kv_open (cubrocks::kv_postfix (boot_Db_full_name));
-  assert (status);
+  cubrocks::ctx->kv_open (cubrocks::kv_postfix (boot_Db_full_name));
 
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
@@ -3929,8 +3925,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (cubrocks::ctx->is_alive ())
     {
-      status = cubrocks::ctx->kv_close ();
-      assert (status);
+      cubrocks::ctx->kv_close ();
     }
 
   (void) heap_manager_finalize ();
@@ -4897,8 +4892,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
     }
 
   /* destroy the rocksdb dir and files in the directory */
-  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
-  assert (status);
+  cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
 
 #if defined (SA_MODE)
   cubthread::finalize ();
@@ -4921,8 +4915,7 @@ error_dirty_delete:
   er_stack_pop ();
 
   /* destroy the rocksdb dir and files in the directory */
-  status = cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
-  assert (status);
+  cubrocks::ctx->kv_destroy (cubrocks::kv_postfix (boot_Db_full_name));
 
 #if defined (SA_MODE)
   cubthread::finalize ();

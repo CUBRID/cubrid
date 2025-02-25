@@ -72,6 +72,7 @@ TRAN_STATE
 xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 {
   TRAN_STATE state;
+  LOG_TDES *tdes;
   int tran_index;
 
   /*
@@ -81,9 +82,12 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  state = log_commit (thread_p, tran_index, retain_lock);
+  tdes = LOG_FIND_TDES (tran_index);
+  assert (tdes);
 
-  cubrocks::ctx->kv_tran_commit (tran_index);
+  cubrocks::ctx->kv_tran_commit (tdes->trid);
+
+  state = log_commit (thread_p, tran_index, retain_lock);
 
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -118,14 +122,18 @@ TRAN_STATE
 xtran_server_abort (THREAD_ENTRY * thread_p)
 {
   TRAN_STATE state;
+  LOG_TDES *tdes;
   int tran_index;
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  state = log_abort (thread_p, tran_index);
+  tdes = LOG_FIND_TDES (tran_index);
+  assert (tdes);
 
-  cubrocks::ctx->kv_tran_abort (tran_index);
+  cubrocks::ctx->kv_tran_abort (tdes->trid);
+
+  state = log_abort (thread_p, tran_index);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_TRAN_ABORT (tran_index, state);
