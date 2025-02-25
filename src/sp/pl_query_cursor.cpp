@@ -93,6 +93,7 @@ namespace cubpl
 	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 
 	    qfile_close_list (m_thread, m_query_entry->list_id);
+	    qfile_destroy_list (m_thread, m_query_entry->list_id);
 	  }
 
 	// clear query entry
