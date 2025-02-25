@@ -72,7 +72,6 @@ TRAN_STATE
 xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 {
   TRAN_STATE state;
-  LOG_TDES *tdes;
   int tran_index;
 
   /*
@@ -82,10 +81,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  tdes = LOG_FIND_TDES (tran_index);
-  assert (tdes);
-
-  cubrocks::ctx->kv_tran_commit (tdes->trid);
+  cubrocks::ctx->kv_tran_commit (tran_index);
 
   state = log_commit (thread_p, tran_index, retain_lock);
 
@@ -122,16 +118,12 @@ TRAN_STATE
 xtran_server_abort (THREAD_ENTRY * thread_p)
 {
   TRAN_STATE state;
-  LOG_TDES *tdes;
   int tran_index;
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  tdes = LOG_FIND_TDES (tran_index);
-  assert (tdes);
-
-  cubrocks::ctx->kv_tran_abort (tdes->trid);
+  cubrocks::ctx->kv_tran_abort (tran_index);
 
   state = log_abort (thread_p, tran_index);
 

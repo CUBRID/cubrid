@@ -1850,6 +1850,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       /* create the rocksdb dir and files */
       cubrocks::ctx->kv_create (cubrocks::kv_postfix (boot_Db_full_name));
+      cubrocks::ctx->kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
@@ -2403,6 +2404,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* open the rocksdb storage layer */
   cubrocks::ctx->kv_open (cubrocks::kv_postfix (boot_Db_full_name));
+  cubrocks::ctx->kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)

@@ -121,19 +121,24 @@ cubrocks::context::is_tran_started (int tran_index)
 void
 cubrocks::context::kv_tran_start (int tran_index)
 {
+  std::cout << "[kv_tran_start: " << tran_index << std::endl;
   rocksdb::WriteOptions write_options;
 
   assert (alive);
   assert (tran_index < MAX_NTRANS);
-  assert (transactions[tran_index].txn == nullptr);
+  assert (tran_index == LOG_SYSTEM_TRAN_INDEX || transactions[tran_index].txn == nullptr);
 
-  transactions[tran_index].txn = db->BeginTransaction (write_options);
-  assert (transactions[tran_index].txn != nullptr);
+  if (transactions[tran_index].txn == nullptr)
+    {
+      transactions[tran_index].txn = db->BeginTransaction (write_options);
+      assert (transactions[tran_index].txn != nullptr);
+    }
 }
 
 void
 cubrocks::context::kv_tran_commit (int tran_index)
 {
+  std::cout << "[kv_tran_commit: " << tran_index << std::endl;
   bool status;
 
   assert (alive);
@@ -154,6 +159,7 @@ cubrocks::context::kv_tran_commit (int tran_index)
 void
 cubrocks::context::kv_tran_abort (int tran_index)
 {
+  std::cout << "[kv_tran_abort: " << tran_index << std::endl;
   bool status;
 
   assert (alive);
@@ -182,9 +188,6 @@ cubrocks::context::kv_create (std::string path)
   /* db will be closed in context::close ( ... ) that is called from boot_.._finalize */
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
   assert (alive);
-
-  /* exception for SYSTEM TRANSACTION */
-  kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 }
 
 void
@@ -197,9 +200,6 @@ cubrocks::context::kv_open (std::string path)
 
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
   assert (alive);
-
-  /* exception for SYSTEM TRANSACTION */
-  kv_tran_start (LOG_SYSTEM_TRAN_INDEX);
 }
 
 void
