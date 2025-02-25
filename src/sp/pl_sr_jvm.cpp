@@ -114,11 +114,11 @@ static std::string err_msgs;
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
-FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
+static FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
 LONG WINAPI delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep);
 
-extern PfnDliHook __pfnDliNotifyHook2 = delay_load_hook;
-extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
+PfnDliHook __pfnDliNotifyHook2 = delay_load_hook;
+PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 
 #else /* WINDOWS */
 static void *pl_get_create_java_vm_function_ptr (void);
@@ -205,7 +205,7 @@ get_java_root_path (char *path)
  * Note:
  */
 
-FARPROC WINAPI
+static FARPROC WINAPI
 delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 {
   FARPROC fp = NULL;
