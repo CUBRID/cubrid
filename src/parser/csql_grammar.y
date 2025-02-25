@@ -18268,20 +18268,11 @@ reserved_func
 		{{ DBG_TRACE_GRAMMAR(reserved_func,  | L2_DISTANCE '(' expression_ ',' expression_ ')' );
 			PT_NODE *arg1 = $3;
 			PT_NODE *arg2 = $5;
-			PT_NODE *arg3 = parser_new_node (this_parser, PT_VALUE);
-
-			if (arg3)
-			  {
-			    arg3->type_enum = PT_TYPE_INTEGER;
-			    enum DB_VECTOR_DISTANCE_METRIC metric = EUCLIDEAN;
-			    arg3->info.value.data_value.i = metric;
-			  }
 
 			arg1->next = arg2;
-			arg2->next = arg3;
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 3, 3);
+			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 2, 2);
         DBG_PRINT}}
 	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')' );

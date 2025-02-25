@@ -18970,7 +18970,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
       break;
 
     case F_L2_DISTANCE:
-      error = vector_distance (result, args, num_args);
+      error = vector_l2_distance (result, args, num_args);
       break;
 
     default:

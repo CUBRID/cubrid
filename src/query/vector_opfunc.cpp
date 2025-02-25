@@ -109,3 +109,30 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   db_make_double (result, static_cast<double> (distance));
   return NO_ERROR;
 }
+
+int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  // Ensure we have the correct number of arguments.
+  assert (num_args == 2);
+
+  // Extract vectors from the arguments.
+  const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
+  const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
+  // Check that vectors are non-empty and of equal size.
+  assert (!vec1.empty() && !vec2.empty());
+  assert (vec1.size() == vec2.size());
+
+  float distance = 0.0f;
+  try
+    {
+      distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
+    }
+  catch (const std::exception &e)
+    {
+      std::fprintf (stderr, "faiss error: %s\n", e.what());
+      std::abort();
+    }
+
+  db_make_double (result, static_cast<double> (distance));
+  return NO_ERROR;
+}

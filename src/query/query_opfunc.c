@@ -8659,8 +8659,10 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
     switch (function_p->ftype)
       {
 	case F_VECTOR_DISTANCE:
-	case F_L2_DISTANCE:
 	  distance_func = vector_distance;
+	  break;
+	case F_L2_DISTANCE:
+	  distance_func = vector_l2_distance;
 	  break;
 	default:
 	  assert (false);
