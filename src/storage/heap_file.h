@@ -30,6 +30,10 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include "rocksdb/db.h"
+#include "rocksdb/options.h"
+#include "rocksdb/utilities/transaction.h"
+
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
@@ -158,6 +162,8 @@ struct heap_scancache
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
 
+    rocksdb::Iterator* kv_iter;
+    rocksdb::ReadOptions kv_readopt;
 
     void start_area ();
     void end_area ();

@@ -23,12 +23,24 @@
 #ident "$Id$"
 
 #include <string>
+#include <memory>
 #include <iostream>
 #include <assert.h>
 
-#include "rocksdb/version.h"
-#include "rocksdb/slice_transform.h"
+#include <arpa/inet.h>
 
+#include "rocksdb/version.h"
+#include "rocksdb/iterator.h"
+#include "rocksdb/options.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/slice_transform.h"
+#include "rocksdb/filter_policy.h"
+
+#include "rocksdb/memtablerep.h"
+#include "rocksdb/db.h"
+
+#include "dbtype_def.h"
+#include "heap_file.h"
 #include "cubrocks.hpp"
 #include "log_impl.h"
 
@@ -67,6 +79,9 @@ cubrocks::context::context ()
   assert (status);
 
   alive = false;
+
+  /* set virtual counter */
+  SET_OID (&virtual_counter, /* volid */ 10, /* page id */ 0, /* slot id */ 0);
 }
 
 cubrocks::context::~context ()
@@ -80,28 +95,43 @@ cubrocks::context::~context ()
 void
 cubrocks::context::kv_config (void)
 {
-  opt.db.bytes_per_sync = 1048576;
+  opt.db.bytes_per_sync = 512 * 1024;
   opt.db.max_background_jobs = 6;
+  opt.db.max_background_compactions = 2;
+  opt.db.max_background_flushes = 2;
+  opt.db.max_open_files = -1;
+  opt.db.allow_mmap_reads = true;
 
-  opt.cf.level_compaction_dynamic_level_bytes = true;
-  opt.cf.compaction_pri = ROCKSDB_NAMESPACE::kMinOverlappingRatio;
-  opt.cf.compaction_style = ROCKSDB_NAMESPACE::kCompactionStyleLevel;
-  opt.cf.write_buffer_size = 67108864;           // 64MB
-  opt.cf.max_write_buffer_number = 3;
-  opt.cf.target_file_size_base = 67108864;         // 64MB
-  opt.cf.level0_file_num_compaction_trigger = 8;
-  opt.cf.level0_slowdown_writes_trigger = 17;
-  opt.cf.level0_stop_writes_trigger = 24;
-  opt.cf.num_levels = 4;
-  opt.cf.max_bytes_for_level_base = 536870912;      // 512MB
-  opt.cf.max_bytes_for_level_multiplier = 8;
 
-  opt.table.block_size = 16 * 1024;
+
+  opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10, false));
+  opt.table.index_type = rocksdb::BlockBasedTableOptions::kHashSearch;
+  opt.table.block_size = 4 * 1024;
   opt.table.cache_index_and_filter_blocks = true;
   opt.table.pin_l0_filter_and_index_blocks_in_cache = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 8);
+  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024);
+  opt.table.use_delta_encoding = false;
+  opt.table.whole_key_filtering = false;
+
+
+
+  opt.cf.level_compaction_dynamic_level_bytes = true;
+  opt.cf.compaction_pri = rocksdb::kMinOverlappingRatio;
+  opt.cf.compaction_style = rocksdb::kCompactionStyleLevel;
+  opt.cf.write_buffer_size = 64 << 20;
+  opt.cf.max_write_buffer_number = 4;
+  opt.cf.num_levels = 4;
+  opt.cf.level0_file_num_compaction_trigger = 2;
+  opt.cf.level0_slowdown_writes_trigger = 4;
+  opt.cf.level0_stop_writes_trigger = 8;
+  opt.cf.target_file_size_base = 64 * 1024 * 1024;
+  opt.cf.max_bytes_for_level_base = 512 * 1024 * 1024;
+  opt.cf.max_bytes_for_level_multiplier = 8;
+  opt.cf.memtable_huge_page_size = true;
+  opt.cf.memtable_prefix_bloom_size_ratio = 0.1;
+
   opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
-  opt.cf.prefix_extractor.reset (rocksdb::NewCappedPrefixTransform (4));
+  opt.cf.prefix_extractor.reset (rocksdb::NewFixedPrefixTransform (8));
 
   opt.cf_descriptor.push_back (rocksdb::ColumnFamilyDescriptor ("default", opt.cf));
 }
@@ -116,6 +146,20 @@ bool
 cubrocks::context::is_tran_started (int tran_index)
 {
   return transactions[tran_index].txn != nullptr;
+}
+
+OID
+cubrocks::context::kv_get_virtual_count (void)
+{
+  OID oid = virtual_counter;
+
+  virtual_counter.slotid++;
+  if (virtual_counter.slotid >= 127)
+    {
+      virtual_counter.pageid++;
+      virtual_counter.slotid = 0;
+    }
+  return oid;
 }
 
 void
@@ -176,6 +220,182 @@ cubrocks::context::kv_tran_abort (int tran_index)
   assert (status);
 }
 
+int
+cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *context)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE
+	  || context->type == HEAP_OPERATION_DELETE);
+  assert ((context->recdes_p != NULL && context->recdes_p->data != NULL) || context->type == HEAP_OPERATION_DELETE);
+  assert (!OID_ISNULL (&context->class_oid));
+
+  /* This operation should be insert for instance. */
+
+  bool status;
+  OID oid;
+  char virtual_key[16];
+  rocksdb::Slice key (virtual_key, 16);
+  rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
+
+  if (context->type == HEAP_OPERATION_INSERT)
+    {
+      oid = cubrocks::ctx->kv_get_virtual_count ();
+    }
+  else
+    {
+      oid = context->oid;
+    }
+
+  /* memory ordering */
+  * ((short *) virtual_key) = context->class_oid.volid;
+  * ((int *) (virtual_key + 2)) = context->class_oid.pageid;
+  * ((short *) (virtual_key + 6)) = context->class_oid.slotid;
+
+  * ((short *) (virtual_key + 8)) = htons (oid.volid);
+  * ((int *) (virtual_key + 10)) = htonl (oid.pageid);
+  * ((short *) (virtual_key + 14)) = htons (oid.slotid);
+
+  if (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE)
+    {
+      status = transactions[tran_index].txn->Put (key, value).ok ();
+    }
+  else
+    {
+      /* range removal or table drop should be handled at a higher level. */
+      status = transactions[tran_index].txn->Delete (key).ok ();
+    }
+  assert (status);
+
+  COPY_OID (&context->res_oid, &oid);
+
+  return NO_ERROR;
+}
+
+void
+cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
+{
+  assert (alive);
+
+  assert (scan_cache != NULL);
+
+  /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
+  /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
+
+  scan_cache->kv_readopt.prefix_same_as_start = true;
+  scan_cache->kv_readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
+  scan_cache->kv_readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
+
+  scan_cache->kv_readopt.snapshot = db->GetSnapshot ();
+  assert (scan_cache->kv_readopt.snapshot != nullptr);
+
+  scan_cache->kv_readopt.pin_data = true;
+  scan_cache->kv_readopt.fill_cache = false;
+  scan_cache->kv_readopt.async_io = true;
+  scan_cache->kv_readopt.readahead_size = 2 * 1024 * 1024;
+
+  scan_cache->kv_iter = db->NewIterator (scan_cache->kv_readopt);
+  assert (scan_cache->kv_iter != nullptr);
+}
+
+void
+cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
+{
+  assert (alive);
+
+  assert (scan_cache != NULL);
+  assert (scan_cache->kv_iter != nullptr);
+  assert (scan_cache->kv_readopt.snapshot != nullptr);
+
+  delete scan_cache->kv_iter;
+  db->ReleaseSnapshot (scan_cache->kv_readopt.snapshot);
+
+  scan_cache->kv_iter = nullptr;
+  scan_cache->kv_readopt.snapshot = nullptr;
+}
+
+SCAN_CODE
+cubrocks::context::kv_logical_scan (int tran_index, OID *class_oid, OID *next_oid, RECDES *recdes,
+				    HEAP_SCANCACHE *scan_cache, int ispeeking)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (scan_cache != NULL);
+  assert (scan_cache->kv_iter != nullptr);
+  assert (scan_cache->kv_readopt.snapshot != nullptr);
+
+  /* I think the caller should not use PEEK for ispeeking at this function.
+   * However, even if it is called with PEEK, it may not be a matter
+   * as the data update must be performed by heap_update_logical. */
+  assert (ispeeking == PEEK || ispeeking == COPY);
+
+  char prefix_buf[8];
+  rocksdb::Slice prefix (prefix_buf, 8);
+  SCAN_CODE scan = S_SUCCESS;
+
+  if (OID_ISNULL (next_oid))
+    {
+      if (!OID_ISNULL (&scan_cache->node.class_oid))
+	{
+	  class_oid = &scan_cache->node.class_oid;
+	}
+
+      /* memory ordering */
+      * ((short *) prefix_buf) = class_oid->volid;
+      * ((int *) (prefix_buf + 2)) = class_oid->pageid;
+      * ((short *) (prefix_buf + 6)) = class_oid->slotid;
+
+      scan_cache->kv_iter->Seek (prefix);
+    }
+  else
+    {
+      scan_cache->kv_iter->Next ();
+    }
+
+  if (scan_cache->kv_iter->Valid ())
+    {
+      /* simpler expression is possible using C-style type casts. */
+      *next_oid = *reinterpret_cast<OID *> (const_cast<char *> (&scan_cache->kv_iter->key ().data ()[8]));
+
+      recdes->type = REC_HOME;
+      recdes->length = scan_cache->kv_iter->value ().size ();
+
+      /* NOTE: using PinnableSlice can reduce the latency by skipping the process of allocating the heap and copying data into the heap. */
+      if (ispeeking == COPY)
+	{
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+
+	  memcpy (recdes->data, scan_cache->kv_iter->value ().data (), recdes->length);
+	}
+      else
+	{
+	  recdes->data = const_cast<char *> (scan_cache->kv_iter->value ().data ());
+	  recdes->area_size = recdes->length;
+	}
+    }
+  else
+    {
+      if (!scan_cache->kv_iter->status ().ok ())
+	{
+	  assert (false);
+	}
+
+      OID_SET_NULL (next_oid);
+      recdes->data = NULL;
+      recdes->length = 0;
+      recdes->area_size = 0;
+
+      scan = S_END;
+    }
+
+  return scan;
+}
+
 void
 cubrocks::context::kv_create (std::string path)
 {
@@ -226,6 +446,7 @@ cubrocks::context::kv_close ()
     }
 
   delete db;
+  db = nullptr;
 
   alive = false;
 }
@@ -241,6 +462,10 @@ cubrocks::context::kv_destroy (std::string path)
     {
       assert (false);
     }
+
+  db = nullptr;
+
+  alive = false;
 }
 
 bool
