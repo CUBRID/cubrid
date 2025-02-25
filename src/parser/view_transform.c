@@ -4954,7 +4954,8 @@ exit_on_error:
 static PT_NODE *
 mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *with_clause, *cte_definition_list, *curr, *next;
+  PT_NODE *with_clause = NULL;
+  PT_NODE *cte_definition_list, *curr, *next;
 
   switch (node->node_type)
     {

@@ -11171,7 +11171,6 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
   PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
   bool save_donot_fold;
-  PT_HINT_ENUM hint;
 
   assert (cte_def->node_type == PT_CTE);
 
@@ -11180,16 +11179,6 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       /* something went wrong, this shouldn't be possible */
       assert (0);
       return;
-    }
-
-  hint = pt_find_cte_hint (parser, non_recursive_cte);
-  if (hint & PT_HINT_MATERIALIZE_CTE)
-    {
-      PT_CTE_INFO_SET_FLAG (cte_def, PT_CTE_INFO_MATERIALIZED);
-    }
-  else
-    {
-      PT_CTE_INFO_SET_FLAG (cte_def, PT_CTE_INFO_INLINE);
     }
 
   /* Evaluate the non-recursive part:

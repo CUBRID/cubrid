@@ -2203,20 +2203,8 @@ struct pt_cte_info
   PT_NODE *recursive_part;	/* a recursive subquery */
   PT_MISC_TYPE only_all;	/* Type of UNION between non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */
-
-#define PT_CTE_INFO_INLINE	     0x01	/* is inline CTE? */
-#define PT_CTE_INFO_MATERIALIZED	     0x02	/* is materialized CTE? */
-
-  short flag;			/* flag for CTE */
-
-#define PT_CTE_INFO_IS_FLAGED(s, f) ((s)->info.cte.flag & (f))
-#define PT_CTE_INFO_SET_FLAG(s, f) (s)->info.cte.flag |= (f)
-#define PT_CTE_INFO_CLEAR_FLAG(s, f) (s)->info.cte.flag &= ~(f)
-
   int referenced_count;		/* The number of times the CTE is referenced */
 };
-
-
 
 /* CREATE SERIAL INFO */
 struct pt_serial_info
