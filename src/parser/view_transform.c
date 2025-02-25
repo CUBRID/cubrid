@@ -5177,7 +5177,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	  for (attr = attributes; attr; attr = attr->next)
 	    {
-	      attr->info.name.meta_class = node->info.spec.meta_class;
+	      attr->info.name.meta_class = PT_NORMAL;
 	      attr->info.name.spec_id = node->info.spec.id;
 
 	      /* no need to copy data_type, because it is already created. */
