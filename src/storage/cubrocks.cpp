@@ -121,7 +121,6 @@ cubrocks::context::is_tran_started (int tran_index)
 void
 cubrocks::context::kv_tran_start (int tran_index)
 {
-  std::cout << "[kv_tran_start: " << tran_index << std::endl;
   rocksdb::WriteOptions write_options;
 
   assert (alive);
@@ -138,7 +137,6 @@ cubrocks::context::kv_tran_start (int tran_index)
 void
 cubrocks::context::kv_tran_commit (int tran_index)
 {
-  std::cout << "[kv_tran_commit: " << tran_index << std::endl;
   bool status;
 
   assert (alive);
@@ -159,7 +157,6 @@ cubrocks::context::kv_tran_commit (int tran_index)
 void
 cubrocks::context::kv_tran_abort (int tran_index)
 {
-  std::cout << "[kv_tran_abort: " << tran_index << std::endl;
   bool status;
 
   assert (alive);
