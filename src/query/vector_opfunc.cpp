@@ -99,6 +99,7 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
     }
   catch (const std::exception &e)
     {
+      // TODO: handle this error with CUBRID error code.
       std::fprintf (stderr, "faiss error: %s\n", e.what());
       std::abort();
     }
