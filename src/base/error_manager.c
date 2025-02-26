@@ -3316,7 +3316,9 @@ er_print_crash_callstack (int sig)
     {
       p = strchr (p, '/');
       if (p != NULL)
-	*p = '\0';
+	{
+	  *p = '\0';
+	}
       if (access (logdir, F_OK) < 0)
 	{
 	  if (mkdir (logdir, 0777) < 0)
