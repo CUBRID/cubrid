@@ -5004,7 +5004,7 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
   curr = cte_definition_list;
   while (curr)
     {
-      if (curr->info.cte.referenced_count < 2)
+      if (curr->info.cte.recursive_part == NULL && curr->info.cte.referenced_count < 2)
 	{
 	  next = curr->next;
 	  cte_definition_list = pt_remove_from_list (parser, curr, cte_definition_list);
@@ -5148,6 +5148,11 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      return NULL;
 	    }
 	  CAST_POINTER_TO_NODE (cte);
+
+	  if (cte->info.cte.recursive_part != NULL)
+	    {
+	      return node;
+	    }
 
 	  /* If the referenced count is -1, the current spec node is placed in the WITH clause.
 	   * In the WITH clause, always rewrite CTE as a derived table, except when the CTE has a MATERIALIZE hint. */
