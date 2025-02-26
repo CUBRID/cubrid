@@ -22059,25 +22059,26 @@ check_datetime_maybe_included (const DB_VALUE * value_ptr)
   char *ps = (char *) db_get_string (value_ptr);
 #define LEAST_DATE_FORMAT_CHECK_LENGTH (26)	// "09:10:15.359 am 2011-04-20"
   char *pe = ps + ((len < LEAST_DATE_FORMAT_CHECK_LENGTH) ? len : LEAST_DATE_FORMAT_CHECK_LENGTH);
-  int flag = 0x00;
+  int df = 0;
+  int tf = 0;
 
   while (ps < pe)
     {
       if (*ps == '-' || *ps == '/')
 	{
-	  if (flag == 0x01)
+	  if (tf)
 	    {
 	      return true;
 	    }
-	  flag = 0x02;
+	  df++;
 	}
       else if (*ps == ':')
 	{
-	  if (flag == 0x02)
+	  if (df)
 	    {
 	      return true;
 	    }
-	  flag = 0x01;
+	  tf++;
 	}
       ps++;
     }
