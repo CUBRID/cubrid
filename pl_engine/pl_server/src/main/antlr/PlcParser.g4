@@ -411,6 +411,7 @@ reserved_builtin_func   /* those which cannot be an identifier */
     | POSITION
     | QUARTER
     | REPLACE
+    | REVERSE
     | SECOND
     | SUBDATE
     | TIME
@@ -681,7 +682,6 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    | REVERSE
     ;
 
 

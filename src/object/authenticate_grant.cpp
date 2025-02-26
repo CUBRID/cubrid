@@ -1937,9 +1937,9 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	  gsize = set_size (grants);
 	  if (gsize)
 	    {
-	      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
+	      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
+	      for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
 		{
-		  cache = AU_NO_AUTHORIZATION;
 		  if (set_get_element (grants, GRANT_ENTRY_CLASS (j), &element))
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -1949,7 +1949,6 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 
 		  if (db_get_object (&element) == obj_mop)
 		    {
-		      cache = AU_NO_AUTHORIZATION;
 		      if (set_get_element (grants, GRANT_ENTRY_CACHE (j), &element))
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -1958,17 +1957,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 			}
 
 		      cache = db_get_int (&element);
-		      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
-		      if ((cache & mask) != mask)
-			{
-			  error = appropriate_error (cache, mask);
-			  if (error)
-			    {
-			      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-			      break;
-			    }
-			}
-		      else
+		      if ((cache & mask) == mask)
 			{
 			  *grantor = login_user;
 			  break;
