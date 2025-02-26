@@ -3296,6 +3296,7 @@ er_print_crash_callstack (int sig)
   size_t byteRead = fread (buffer, 1, sizeof (buffer) - 1, fp);
   if (byteRead <= 0)
     {
+      fclose (fp);
       return;
     }
   buffer[byteRead] = '\0';
