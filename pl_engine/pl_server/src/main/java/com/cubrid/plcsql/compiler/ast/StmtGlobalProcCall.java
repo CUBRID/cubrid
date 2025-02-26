@@ -42,20 +42,23 @@ public class StmtGlobalProcCall extends Stmt implements SqlUse {
     public void setContainerLoop(StmtLoop containerLoop) {
         this.containerLoop = containerLoop;
     }
+
     @Override
     public int getSqlSerialNo() {
         return sqlSerialNo;
     }
+
     @Override
     public boolean ofCallableStmt() {
         return true;
     }
+
     @Override
     public boolean ofRef() {
         return true;
     }
 
-   @Override
+    @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtGlobalProcCall(this);
     }
@@ -66,7 +69,8 @@ public class StmtGlobalProcCall extends Stmt implements SqlUse {
 
     public DeclProc decl;
 
-    public StmtGlobalProcCall(ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
+    public StmtGlobalProcCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
         super(ctx);
 
         assert args != null;

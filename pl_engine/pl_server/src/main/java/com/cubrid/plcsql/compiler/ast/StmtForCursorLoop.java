@@ -43,14 +43,17 @@ public class StmtForCursorLoop extends StmtLoop implements SqlUse {
     public void setContainerLoop(StmtLoop containerLoop) {
         this.containerLoop = containerLoop;
     }
+
     @Override
     public int getSqlSerialNo() {
         return sqlSerialNo;
     }
+
     @Override
     public boolean ofCallableStmt() {
         return false;
     }
+
     @Override
     public boolean ofRef() {
         return true;

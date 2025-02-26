@@ -30,8 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -44,14 +44,17 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop implements SqlUse {
     public void setContainerLoop(StmtLoop containerLoop) {
         this.containerLoop = containerLoop;
     }
+
     @Override
     public int getSqlSerialNo() {
         return sqlSerialNo;
     }
+
     @Override
     public boolean ofCallableStmt() {
         return false;
     }
+
     @Override
     public boolean ofRef() {
         return false;

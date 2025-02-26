@@ -320,7 +320,11 @@ public class SpLib {
     private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
     public static Object invokeBuiltinFunc(
-            Connection conn, String callStr, int resultTypeCode, PreparedStatement[] pstmtRef, Object... args) {
+            Connection conn,
+            String callStr,
+            int resultTypeCode,
+            PreparedStatement[] pstmtRef,
+            Object... args) {
 
         if (args == null) {
             args = SINGLE_NULL_ARG;
@@ -341,7 +345,7 @@ public class SpLib {
                 // Check if it is null in order to call prepareStatement only once in the loop
                 if (pstmt == null) {
                     pstmt = conn.prepareStatement(query);
-                    pstmtRef[0] = pstmt;    // save it for the later iterations
+                    pstmtRef[0] = pstmt; // save it for the later iterations
                 }
             }
 
@@ -635,7 +639,7 @@ public class SpLib {
                     pstmt = pstmtRef[0];
                     if (pstmt == null) {
                         pstmt = conn.prepareStatement(query);
-                        pstmtRef[0] = pstmt;    // store it for the later loop iterations
+                        pstmtRef[0] = pstmt; // store it for the later loop iterations
                     }
                 }
 
@@ -655,12 +659,14 @@ public class SpLib {
                     throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
                 if (myStmt == null) {
-                    // no need to close the statement because it was declared and is closed outside of this Query
+                    // no need to close the statement because it was declared and is closed outside
+                    // of this Query
                     // close only the result set.
                     rs.close();
                     rs = null;
                 } else {
-                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc on Statement.close()
+                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
+                    // on Statement.close()
                     myStmt = null;
                     rs = null;
                 }

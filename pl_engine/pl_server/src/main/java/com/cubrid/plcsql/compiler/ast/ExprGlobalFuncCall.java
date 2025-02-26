@@ -42,14 +42,17 @@ public class ExprGlobalFuncCall extends Expr implements SqlUse {
     public void setContainerLoop(StmtLoop containerLoop) {
         this.containerLoop = containerLoop;
     }
+
     @Override
     public int getSqlSerialNo() {
         return sqlSerialNo;
     }
+
     @Override
     public boolean ofCallableStmt() {
         return true;
     }
+
     @Override
     public boolean ofRef() {
         return true;
@@ -66,7 +69,8 @@ public class ExprGlobalFuncCall extends Expr implements SqlUse {
 
     public DeclFunc decl;
 
-    public ExprGlobalFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
+    public ExprGlobalFuncCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
         super(ctx);
 
         assert args != null;

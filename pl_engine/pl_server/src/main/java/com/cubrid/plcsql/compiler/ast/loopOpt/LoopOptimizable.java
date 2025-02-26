@@ -35,4 +35,3 @@ import com.cubrid.plcsql.compiler.ast.StmtLoop;
 public interface LoopOptimizable {
     void setContainerLoop(StmtLoop containerLoop);
 }
-

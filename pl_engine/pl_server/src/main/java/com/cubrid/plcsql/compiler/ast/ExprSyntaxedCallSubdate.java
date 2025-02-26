@@ -44,7 +44,8 @@ public class ExprSyntaxedCallSubdate extends BuiltinFuncCall {
     public Expr delta;
     public String timeUnit;
 
-    public ExprSyntaxedCallSubdate(ParserRuleContext ctx, Expr date, Expr delta, String timeUnit, int sqlSerialNo) {
+    public ExprSyntaxedCallSubdate(
+            ParserRuleContext ctx, Expr date, Expr delta, String timeUnit, int sqlSerialNo) {
         super(ctx, sqlSerialNo);
 
         this.date = date;

@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -44,7 +43,8 @@ public class ExprBuiltinFuncCall extends BuiltinFuncCall {
     public final String name;
     public final NodeList<Expr> args;
 
-    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
+    public ExprBuiltinFuncCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
         super(ctx, sqlSerialNo);
 
         this.name = name;

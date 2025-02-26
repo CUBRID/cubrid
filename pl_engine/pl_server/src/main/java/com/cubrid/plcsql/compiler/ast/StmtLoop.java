@@ -31,11 +31,9 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
-import com.cubrid.plcsql.compiler.ast.loopOpt.CursorUse;
-import org.antlr.v4.runtime.ParserRuleContext;
-import java.util.List;
 import java.util.LinkedList;
-import java.sql.PreparedStatement;
+import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtLoop extends Stmt {
 
@@ -46,7 +44,7 @@ public abstract class StmtLoop extends Stmt {
 
         this.loopOptimizables = loopOptimizables;
         if (loopOptimizables != null) {
-            for (SqlUse n: loopOptimizables.sqlUses) {
+            for (SqlUse n : loopOptimizables.sqlUses) {
                 n.setContainerLoop(this);
             }
         }

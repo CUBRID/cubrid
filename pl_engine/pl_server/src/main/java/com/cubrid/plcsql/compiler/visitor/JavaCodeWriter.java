@@ -719,7 +719,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
-                // no Statement.close() call in a finally clause: it is done right after the outermost loop
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
                 "    }",
                 "  }",
                 "}.invoke(",
@@ -738,26 +739,29 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         GlobalCallCodeSnippets code =
                 getGlobalCallCodeSnippets(argSize, 2, node.args, node.decl.paramList);
 
-        CodeTemplate tmpl = new CodeTemplate(
-            "ExprGlobalFuncCall",
-            Misc.getLineColumnOf(node.ctx),
-            node.containerLoop == null ? tmplExprGlobalFuncCall_notInLoop : tmplExprGlobalFuncCall_inLoop,
-            "%'FUNC-NAME'%",
-            node.name,
-            "%'DYNAMIC-SQL'%",
-            dynSql,
-            "%'RETURN-TYPE'%",
-            getJavaCodeOfType(node.decl.retTypeSpec),
-            "%'PARAMETERS'%",
-            wrapperParam,
-            "%'+SET-GLOBAL-FUNC-ARGS'%",
-            code.setArgs,
-            "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
-            code.updateOutArgs,
-            "%'SQL-SERIAL-NO'%",
-            Integer.toString(node.sqlSerialNo),
-            "%'+ARGUMENTS'%",
-            visitArguments(node.args, node.decl.paramList, false));
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprGlobalFuncCall",
+                        Misc.getLineColumnOf(node.ctx),
+                        node.containerLoop == null
+                                ? tmplExprGlobalFuncCall_notInLoop
+                                : tmplExprGlobalFuncCall_inLoop,
+                        "%'FUNC-NAME'%",
+                        node.name,
+                        "%'DYNAMIC-SQL'%",
+                        dynSql,
+                        "%'RETURN-TYPE'%",
+                        getJavaCodeOfType(node.decl.retTypeSpec),
+                        "%'PARAMETERS'%",
+                        wrapperParam,
+                        "%'+SET-GLOBAL-FUNC-ARGS'%",
+                        code.setArgs,
+                        "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
+                        code.updateOutArgs,
+                        "%'SQL-SERIAL-NO'%",
+                        Integer.toString(node.sqlSerialNo),
+                        "%'+ARGUMENTS'%",
+                        visitArguments(node.args, node.decl.paramList, false));
 
         return applyCoercion(node.coercion, tmpl, node.ctx);
     }
@@ -845,7 +849,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argsLen = node.args.nodes.size();
         String callStr = getNormalCallStr(node.name, argsLen);
-        String pstmtRefStr = node.containerLoop == null ? "null" : String.format("pstmtRef_%d", node.sqlSerialNo);
+        String pstmtRefStr =
+                node.containerLoop == null
+                        ? "null"
+                        : String.format("pstmtRef_%d", node.sqlSerialNo);
 
         if (argsLen == 0) {
 
@@ -917,7 +924,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             argsList.nodes.add(arg);
         }
 
-        String pstmtRefStr = node.containerLoop == null ? "null" : String.format("pstmtRef_%d", node.sqlSerialNo);
+        String pstmtRefStr =
+                node.containerLoop == null
+                        ? "null"
+                        : String.format("pstmtRef_%d", node.sqlSerialNo);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -1146,7 +1156,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
-                // no Statement.close() call in a finally clause: it is done right after the outermost loop
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
                 "    }",
                 "  }",
                 "}.getSerialVal())"
@@ -1159,7 +1170,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 new CodeTemplate(
                         "ExprSerialVal",
                         Misc.getLineColumnOf(node.ctx),
-                        node.containerLoop == null ? tmplExprSerialVal_notInLoop : tmplExprSerialVal_inLoop,
+                        node.containerLoop == null
+                                ? tmplExprSerialVal_notInLoop
+                                : tmplExprSerialVal_inLoop,
                         "%'SQL-SERIAL-NO'%",
                         Integer.toString(node.sqlSerialNo),
                         "%'SERIAL-NAME'%",
@@ -1679,7 +1692,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  } catch (SQLException e) {",
                 "    Server.log(e);",
                 "    throw new SQL_ERROR(e.getMessage());",
-                // no Statement.close() call in a finally clause: it is done right after the outermost loop
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
                 "  }",
                 "}"
             };
@@ -1893,7 +1907,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         DeclCursor decl = (DeclCursor) node.cursor.decl;
 
-        String pstmtRefStr = node.containerLoop == null ? "null" : String.format("pstmtRef_%d", node.sqlSerialNo);
+        String pstmtRefStr =
+                node.containerLoop == null
+                        ? "null"
+                        : String.format("pstmtRef_%d", node.sqlSerialNo);
 
         CodeTemplate ret;
         if (decl.paramNumOfHostExpr.length == 0) {
@@ -2090,7 +2107,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  } catch (SQLException e) {",
                 "    Server.log(e);",
                 "    throw new SQL_ERROR(e.getMessage());",
-                // no Statement.close() call in a finally clause: it is done right after the outermost loop
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
                 "  }",
                 "}"
             };
@@ -2105,28 +2123,31 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 getRecordSetArgs(node.record.name(), (TypeRecord) recTy, node.record.scope.level);
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
-        CodeTemplate ret = new CodeTemplate(
-            "StmtForSqlLoop",
-            Misc.getLineColumnOf(node.ctx),
-            node.containerLoop == null ? tmplStmtForStaticSqlLoop_notInLoop : tmplStmtForStaticSqlLoop_inLoop,
-            "%'SQL-SERIAL-NO'%",
-            Integer.toString(node.sqlSerialNo),
-            "%'RECORD-CLASS'%",
-            node.record.type().javaCode,
-            "%'+SQL'%",
-            visit(node.sql),
-            "%'+SET-USED-EXPR'%",
-            setUsedExpr,
-            "%'RECORD'%",
-            node.record.name(),
-            "%'LABEL'%",
-            node.label == null ? "" : node.label + "_%'LEVEL'%:",
-            "%'+RECORD-FIELD-VALUES'%",
-            recordSetArgs,
-            "%'LEVEL'%",
-            Integer.toString(node.record.scope.level),
-            "%'+STATEMENTS'%",
-            visitNodeList(node.stmts));
+        CodeTemplate ret =
+                new CodeTemplate(
+                        "StmtForSqlLoop",
+                        Misc.getLineColumnOf(node.ctx),
+                        node.containerLoop == null
+                                ? tmplStmtForStaticSqlLoop_notInLoop
+                                : tmplStmtForStaticSqlLoop_inLoop,
+                        "%'SQL-SERIAL-NO'%",
+                        Integer.toString(node.sqlSerialNo),
+                        "%'RECORD-CLASS'%",
+                        node.record.type().javaCode,
+                        "%'+SQL'%",
+                        visit(node.sql),
+                        "%'+SET-USED-EXPR'%",
+                        setUsedExpr,
+                        "%'RECORD'%",
+                        node.record.name(),
+                        "%'LABEL'%",
+                        node.label == null ? "" : node.label + "_%'LEVEL'%:",
+                        "%'+RECORD-FIELD-VALUES'%",
+                        recordSetArgs,
+                        "%'LEVEL'%",
+                        Integer.toString(node.record.scope.level),
+                        "%'+STATEMENTS'%",
+                        visitNodeList(node.stmts));
         if (node.loopOptimizables == null || node.loopOptimizables.isEmpty()) {
             return ret;
         } else {
@@ -2180,7 +2201,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
-                // no Statement.close() call in a finally clause: it is done right after the outermost loop
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
                 "    }",
                 "  }",
                 "}.invoke(",
@@ -2202,7 +2224,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return new CodeTemplate(
                 "StmtGlobalProcCall",
                 Misc.getLineColumnOf(node.ctx),
-                node.containerLoop == null ? tmplStmtGlobalProcCall_notInLoop : tmplStmtGlobalProcCall_inLoop,
+                node.containerLoop == null
+                        ? tmplStmtGlobalProcCall_notInLoop
+                        : tmplStmtGlobalProcCall_inLoop,
                 "%'PROC-NAME'%",
                 node.name,
                 "%'DYNAMIC-SQL'%",
@@ -3572,7 +3596,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             String decl;
             if (u.ofRef()) {
-                decl = String.format("%1$s[] pstmtRef_%2$d = new %1$s[1];", klass, u.getSqlSerialNo());
+                decl =
+                        String.format(
+                                "%1$s[] pstmtRef_%2$d = new %1$s[1];", klass, u.getSqlSerialNo());
             } else {
                 decl = String.format("%s pstmt_%d = null;", klass, u.getSqlSerialNo());
             }
@@ -3581,9 +3607,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             String close;
             if (u.ofRef()) {
-                close = String.format("if (pstmtRef_%1$d[0] != null) { pstmtRef_%1$d[0].close(); }", u.getSqlSerialNo());
+                close =
+                        String.format(
+                                "if (pstmtRef_%1$d[0] != null) { pstmtRef_%1$d[0].close(); }",
+                                u.getSqlSerialNo());
             } else {
-                close = String.format("if (pstmt_%1$d != null) { pstmt_%1$d.close(); }", u.getSqlSerialNo());
+                close =
+                        String.format(
+                                "if (pstmt_%1$d != null) { pstmt_%1$d.close(); }",
+                                u.getSqlSerialNo());
             }
             closes.addElement(
                     new CodeTemplate("StatementCloseMoved", Misc.UNKNOWN_LINE_COLUMN, close));
