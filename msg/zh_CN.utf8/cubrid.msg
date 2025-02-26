@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Checkpoint 开始 (前一个检查点页id: %1$lld, 前一个redo页id: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop 在用户数据中.
-980 一个线程在 %1$s 中等待超过了 %2$d msec.
+980 一个线程在 %1$s 中等待超过了 %2$d msec(%3$d msec).
 981 事务 %1$d 已经达到了监视统计信息的阈值%2$s.
 982 为事务 %1$d 设置中断.
 983 可重用 OID 类的实例是 non-referable 的. 这项操作在 non-referable 的实例上不被允许.

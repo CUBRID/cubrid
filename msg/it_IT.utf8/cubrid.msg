@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Checkpoint ha iniziato (id della pagina precedente di checkpoint: %1$lld, id della pagina REDO precedente: %2$lld).
 978 Checkpoint finito (ID pagine del checkpoint: %1$lld, ID pagine del checkpoint REDO: %2$lld, conteggio delle pagine flushed: %3$d).
 979 Ciclo CONNECT BY nelle dati dell'utente.
-980 Un thread è in attesa nel %1$s più di %2$d msec.
+980 Un thread è in attesa nel %1$s più di %2$d msec(%3$d msec).
 981 Transazione %1$d ha raggiunto alla soglia di statistiche di monitoraggio %2$s.
 982 Impostare l'interruzione alla transazione %1$d.
 983 Le istanze di una classe OID riutilizzabile non sono riferibili. Questa operazione non è permessa sulle istanze non riferibile.
