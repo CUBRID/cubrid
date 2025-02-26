@@ -37,7 +37,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "px_perf_monitor.hpp"
+#include "px_heap_scan_perf_monitor.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

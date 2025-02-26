@@ -17,14 +17,14 @@
  */
 
 /*
- * px_manager.cpp - manager for parallel heap scans executed within a single XASL
+ * px_heap_scan_manager.cpp - manager for parallel heap scans executed within a single XASL
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "px_manager.hpp"
-#include "px_task.hpp"
-#include "px_perf_monitor.hpp"
+#include "px_heap_scan_manager.hpp"
+#include "px_heap_scan_task.hpp"
+#include "px_heap_scan_perf_monitor.hpp"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 

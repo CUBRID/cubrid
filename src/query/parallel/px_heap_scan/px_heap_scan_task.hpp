@@ -17,7 +17,7 @@
  */
 
 /*
- * px_task.hpp - derived from cubthread::entry_task
+ * px_heap_scan_task.hpp - derived from cubthread::entry_task
  */
 
 #ifndef _PX_HEAP_SCAN_TASK_HPP_
@@ -27,7 +27,7 @@
 
 #include "thread_entry_task.hpp"
 #include "scan_manager.h"
-#include "px_context.hpp"
+#include "px_heap_scan_context.hpp"
 
 namespace parallel_heap_scan
 {

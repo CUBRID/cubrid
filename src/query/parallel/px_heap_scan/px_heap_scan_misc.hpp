@@ -17,7 +17,7 @@
  */
 
 /*
- * px_misc.hpp - miscellaneous functions for parallel heap scan
+ * px_heap_scan_misc.hpp - miscellaneous functions for parallel heap scan
  */
 
 #ifndef _PX_HEAP_SCAN_MISC_HPP_

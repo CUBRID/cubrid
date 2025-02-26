@@ -83,7 +83,7 @@
 #include "subquery_cache.h"
 
 #if SERVER_MODE && !WINDOWS
-#include "px_manager.hpp"
+#include "px_heap_scan_manager.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 
 #include <vector>

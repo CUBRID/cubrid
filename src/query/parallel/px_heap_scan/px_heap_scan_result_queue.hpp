@@ -17,7 +17,7 @@
  */
 
 /*
- * px_result_queue.hpp - queue for temporarily storing heap scan results
+ * px_heap_scan_result_queue.hpp - queue for temporarily storing heap scan results
  */
 
 #ifndef _PX_HEAP_SCAN_RESULT_QUEUE_HPP_

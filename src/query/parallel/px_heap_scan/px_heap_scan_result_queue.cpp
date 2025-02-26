@@ -17,12 +17,12 @@
  */
 
 /*
- * px_result_queue.cpp - queue for temporarily storing heap scan results
+ * px_heap_scan_result_queue.cpp - queue for temporarily storing heap scan results
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "px_result_queue.hpp"
+#include "px_heap_scan_result_queue.hpp"
 #include "dbtype.h"
 #include "regu_var.hpp"
 #include "thread_manager.hpp"

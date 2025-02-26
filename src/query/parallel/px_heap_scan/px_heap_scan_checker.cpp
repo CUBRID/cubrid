@@ -17,10 +17,10 @@
  */
 
 /*
- * px_checker.cpp - module that checks whether parallel heap scan is possible.
+ * px_heap_scan_checker.cpp - module that checks whether parallel heap scan is possible.
  */
 
-#include "px_checker.hpp"
+#include "px_heap_scan_checker.hpp"
 
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"

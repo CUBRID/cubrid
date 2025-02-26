@@ -17,13 +17,13 @@
  */
 
 /*
- * px_task.cpp - derived from cubthread::entry_task
+ * px_heap_scan_task.cpp - derived from cubthread::entry_task
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "px_task.hpp"
-#include "px_misc.hpp"
+#include "px_heap_scan_task.hpp"
+#include "px_heap_scan_misc.hpp"
 #include "error_context.hpp"
 #include <memory>
 #include "thread_entry.hpp"

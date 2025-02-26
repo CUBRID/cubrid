@@ -17,7 +17,7 @@
  */
 
 /*
- * px_checker.hpp - module that checks whether parallel heap scan is possible.
+ * px_heap_scan_checker.hpp - module that checks whether parallel heap scan is possible.
  */
 
 #ifndef _PX_HEAP_SCAN_CHECKER_HPP_

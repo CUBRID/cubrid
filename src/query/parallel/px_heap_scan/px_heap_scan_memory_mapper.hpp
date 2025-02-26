@@ -17,7 +17,7 @@
  */
 
 /*
- * px_memory_mapper.hpp - module created to perform deep copying of
+ * px_heap_scan_memory_mapper.hpp - module created to perform deep copying of
  * heap scan-related information from the XASL structure.
  */
 

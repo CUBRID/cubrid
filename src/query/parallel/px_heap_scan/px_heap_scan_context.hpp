@@ -17,7 +17,7 @@
  */
 
 /*
- * px_context.hpp - derived from cubthread::entry_manager
+ * px_heap_scan_context.hpp - derived from cubthread::entry_manager
  */
 
 #ifndef _PX_HEAP_SCAN_CONTEXT_HPP_
@@ -26,8 +26,8 @@
 #if SERVER_MODE && !WINDOWS
 
 #include "scan_manager.h"
-#include "px_memory_mapper.hpp"
-#include "px_result_queue.hpp"
+#include "px_heap_scan_memory_mapper.hpp"
+#include "px_heap_scan_result_queue.hpp"
 #include "thread_entry_task.hpp"
 #include "dbtype_def.h"
 #include <vector>

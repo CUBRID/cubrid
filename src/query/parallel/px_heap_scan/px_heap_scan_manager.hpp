@@ -17,7 +17,7 @@
  */
 
 /*
- * px_manager.hpp - manager for parallel heap scans executed within a single XASL
+ * px_heap_scan_manager.hpp - manager for parallel heap scans executed within a single XASL
  */
 
 #ifndef _PX_HEAP_SCAN_MANAGER_HPP_
@@ -28,7 +28,7 @@
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
-#include "px_context.hpp"
+#include "px_heap_scan_context.hpp"
 
 namespace parallel_heap_scan
 {

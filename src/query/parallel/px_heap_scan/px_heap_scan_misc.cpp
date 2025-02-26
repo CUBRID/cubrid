@@ -17,12 +17,12 @@
  */
 
 /*
- * px_misc.cpp - miscellaneous functions for parallel heap scan
+ * px_heap_scan_misc.cpp - miscellaneous functions for parallel heap scan
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "px_misc.hpp"
+#include "px_heap_scan_misc.hpp"
 #include "memory_alloc.h"
 #include "fetch.h"
 #include "query_reevaluation.hpp"

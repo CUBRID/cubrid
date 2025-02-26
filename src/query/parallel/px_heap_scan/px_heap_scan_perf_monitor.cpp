@@ -17,12 +17,12 @@
  */
 
 /*
- * px_perf_monitor.cpp - performance monitor for parallel heap scan
+ * px_heap_scan_perf_monitor.cpp - performance monitor for parallel heap scan
  */
 #if SERVER_MODE && !WINDOWS
 
-#include "px_perf_monitor.hpp"
-#include "px_manager.hpp"
+#include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

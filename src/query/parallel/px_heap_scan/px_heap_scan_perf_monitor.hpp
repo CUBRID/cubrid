@@ -17,7 +17,7 @@
  */
 
 /*
- * px_result_queue.hpp - queue for temporarily storing heap scan results
+ * px_heap_scan_result_queue.hpp - queue for temporarily storing heap scan results
  */
 
 #ifndef _PX_HEAP_SCAN_PERF_MONITOR_HPP_
@@ -28,7 +28,7 @@
 #include <vector>
 #include <stdio.h>
 #include "scan_manager.h"
-#include "px_memory_mapper.hpp"
+#include "px_heap_scan_memory_mapper.hpp"
 namespace parallel_heap_scan
 {
   class perf_monitor

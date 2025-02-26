@@ -407,11 +407,11 @@ set(API_HEADERS
   )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

@@ -17,12 +17,12 @@
  */
 
 /*
- * px_context.cpp - derived from cubthread::entry_manager
+ * px_heap_scan_context.cpp - derived from cubthread::entry_manager
  */
 
 #if SERVER_MODE && !WINDOWS
 
-#include "px_context.hpp"
+#include "px_heap_scan_context.hpp"
 #include "error_context.hpp"
 
 
