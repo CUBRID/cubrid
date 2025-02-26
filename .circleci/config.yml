@@ -71,7 +71,7 @@ commands:
             mv -f CUBRID/log /tmp/logs/cubrid_log
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
-              mv -f /tmp/tests/*.csv /tmp/logs/compare_log
+              mv -f /tmp/tests /tmp/logs/compare_log
             else
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
