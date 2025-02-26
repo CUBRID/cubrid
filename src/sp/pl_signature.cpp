@@ -165,35 +165,11 @@ namespace cubpl
 	arg_default_value_size = (int *) stx_alloc_struct (owner, (num_args) * sizeof (int));
 	arg_default_value = (char **) stx_alloc_struct (owner, (num_args) * sizeof (char *));
 #endif
-	if (arg_mode)
+	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
 	  {
 	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
-	  }
-	else
-	  {
-	    assert_release (false);
-	  }
-
-	if (arg_type)
-	  {
 	    memset (arg_type, 0x00, (num_args * sizeof (int)));
-	  }
-	else
-	  {
-	    assert_release (false);
-	  }
-
-	if (arg_default_value_size)
-	  {
 	    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
-	  }
-	else
-	  {
-	    assert_release (false);
-	  }
-
-	if (arg_default_value)
-	  {
 	    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
 	  }
 	else
