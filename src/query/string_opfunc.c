@@ -22053,7 +22053,7 @@ db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
 }
 
 static bool
-check_datetime_maybe_included (DB_TYPE res_type, const DB_VALUE * value_ptr)
+check_datetime_maybe_included (const DB_VALUE * value_ptr)
 {
   int len = db_get_string_size (value_ptr);
   char *ps = (char *) db_get_string (value_ptr);
@@ -22225,7 +22225,11 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 
 	if (dateformat == false)
 	  {
-	    if (check_datetime_maybe_included (res_type, value_ptr))
+	    if (res_type == DB_TYPE_NCHAR || res_type == DB_TYPE_VARNCHAR)
+	      {
+		;		// ignore
+	      }
+	    else if (check_datetime_maybe_included (value_ptr))
 	      {
 		check_has_date = true;
 	      }
