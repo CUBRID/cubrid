@@ -144,6 +144,7 @@ cubrocks::context::kv_tran_commit (int tran_index)
 
   if (transactions[tran_index].txn == nullptr)
     {
+      assert (tran_index == LOG_SYSTEM_TRAN_INDEX);
       return ;
     }
 
@@ -164,6 +165,7 @@ cubrocks::context::kv_tran_abort (int tran_index)
 
   if (transactions[tran_index].txn == nullptr)
     {
+      assert (tran_index == LOG_SYSTEM_TRAN_INDEX);
       return ;
     }
 
