@@ -24,8 +24,8 @@ commands:
           name: Test
           shell: /bin/bash
           no_output_timeout: 20m
-          environment:
-            _JAVA_OPTIONS: -Xmx1g
+          # environment:
+          #   _JAVA_OPTIONS: -Xmx1g
           command: |
             # Limit core files
             ulimit -c 1
