@@ -18286,7 +18286,7 @@ reserved_func
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 2, 2);
-		DBG_PRINT}}
+        DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
 	  '(' expression_ ',' expression_ ')'
