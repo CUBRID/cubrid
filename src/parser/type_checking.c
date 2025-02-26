@@ -18969,6 +18969,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
       error = vector_distance (result, args, num_args);
       break;
 
+    case F_L1_DISTANCE:
+      error = vector_l1_distance (result, args, num_args);
+      break;
+
     case F_L2_DISTANCE:
       error = vector_l2_distance (result, args, num_args);
       break;

@@ -1624,6 +1624,7 @@ static int g_plcsql_text_pos;
 %token <cptr> JSON_UNQUOTE
 %token <cptr> JSON_VALID
 %token <cptr> JOB
+%token <cptr> L1_DISTANCE
 %token <cptr> L2_DISTANCE
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -18266,6 +18267,16 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| L1_DISTANCE '(' expression_ ',' expression_ ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func,  | L1_DISTANCE '(' expression_ ',' expression_ ')' );
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+
+			arg1->next = arg2;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_L1_DISTANCE, arg1, 2, 2);
+		DBG_PRINT}}
 	| L2_DISTANCE '(' expression_ ',' expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func,  | L2_DISTANCE '(' expression_ ',' expression_ ')' );
 			PT_NODE *arg1 = $3;
@@ -18275,7 +18286,7 @@ reserved_func
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 2, 2);
-        DBG_PRINT}}
+		DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
 	  '(' expression_ ',' expression_ ')'

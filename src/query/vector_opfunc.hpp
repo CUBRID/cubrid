@@ -30,6 +30,9 @@ int
 vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
 
 int
+vector_l1_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
+
+int
 vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
 
 
