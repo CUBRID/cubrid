@@ -109,7 +109,7 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 }
 
 static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num_args,
-				     float (*distance_calculation) (const float*, const float*, size_t))
+				     float (*distance_calculation) (const float *, const float *, size_t))
 {
   // Ensure we have the correct number of arguments.
   assert (num_args == 2);
