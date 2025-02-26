@@ -801,12 +801,6 @@ else(USE_CUBRID_ENV)
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
 
-# For JVM libraries
-# if(WIN32)
-#    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
-#  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
-# endif(WIN32)
-
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
 
@@ -938,7 +932,7 @@ install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
     DESTINATION ${CUBRID_3RDPARTYDIR}
-    FILES_MATCHING PATTERN "*_license.txt")
+    FILES_MATCHING PATTERN "*.txt")
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS

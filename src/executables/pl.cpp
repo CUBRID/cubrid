@@ -68,7 +68,7 @@
 #include "pl_connection.hpp"
 #include "pl_comm.h"
 #include "pl_file.h"
-#include "pl_sr.h"
+#include "pl_sr_jvm.h"
 
 #include "packer.hpp"
 
