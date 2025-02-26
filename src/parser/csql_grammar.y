@@ -1043,6 +1043,8 @@ static int g_plcsql_text_pos;
 %type <node> opt_sp_default_value
 %type <node> table_column
 
+%type <node> vector_distance_metric
+
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -18607,44 +18609,15 @@ reserved_func
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_SUBSTR, $3, 2, 5);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')'
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' vector_distance_metric ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')' );
 			PT_NODE *arg1 = $3;
 			PT_NODE *arg2 = $5;
-			PT_NODE *identifier = $7;
-
-			if (identifier == NULL) {
-			    assert(false);
-			}
-
-			// Convert identifier (PT_NAME) to arg3 (PT_VALUE) manually.
-			// This is a hack to map vector metric name to an ENUM value.
-			// Conversion starts.
-
-			enum DB_VECTOR_DISTANCE_METRIC metric = 0;
-			const char* metric_name = identifier->info.name.original;
-			assert(metric_name != NULL);
-			if (strcmp(metric_name, "euclidean")) {
-			    metric = EUCLIDEAN;
-			} else if (strcmp(metric_name, "cosine")) {
-			} else {
-			    assert(false);
-			}
-
-
-			PT_NODE *arg3 = parser_new_node (this_parser, PT_VALUE);
-			if (arg3)
-			  {
-			    arg3->type_enum = PT_TYPE_INTEGER;
-			    arg3->info.value.data_value.i = metric;
-			  }
-
-			parser_free_node (this_parser, identifier);
-			// Conversion ends.
+			PT_NODE *metric = $7;
 
 			// Connect arguments as linked list.
 			arg1->next = arg2;
-			arg2->next = arg3;
+			arg2->next = metric;
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
@@ -25493,6 +25466,47 @@ opt_alter_synonym
 			$$ = $2;
 
 		DBG_PRINT}}
+
+vector_distance_metric
+	: identifier
+		{{ DBG_TRACE_GRAMMAR(vector_distance_metric,  : identifier );
+
+			PT_NODE *identifier = $1;
+			if (identifier == NULL) 
+			  {
+			    assert(false);
+			  }
+
+			// Convert identifier (PT_NAME) to PT_VALUE manually.
+			// This is a hack to map vector metric name to an ENUM value.
+			// Conversion starts.
+
+			enum DB_VECTOR_DISTANCE_METRIC metric = 0;
+			const char* metric_name = identifier->info.name.original;
+			assert(metric_name != NULL);
+			if (strcmp(metric_name, "euclidean")) 
+			  {
+			    metric = EUCLIDEAN;
+			  } 
+			else 
+			  {
+			    assert(false);
+			  }
+
+
+			PT_NODE *ret = parser_new_node (this_parser, PT_VALUE);
+			if (ret)
+			  {
+			    ret->type_enum = PT_TYPE_INTEGER;
+			    ret->info.value.data_value.i = metric;
+			  }
+
+			parser_free_node (this_parser, identifier);
+			// Conversion ends.
+			$$ = ret;
+
+		DBG_PRINT}}
+	;
 
 %%
 
