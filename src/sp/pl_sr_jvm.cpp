@@ -40,19 +40,14 @@
 #include <sstream>
 #include <iterator>
 
-#include "pl_sr.h"
 #include "pl_file.h"
 #include "pl_comm.h"
 
-#include "boot_sr.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
-
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
 #if defined(WINDOWS)
 #if __WORDSIZE == 32
@@ -119,11 +114,11 @@ static std::string err_msgs;
 
 #if defined(WINDOWS)
 int get_java_root_path (char *path);
-FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
+static FARPROC WINAPI delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli);
 LONG WINAPI delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep);
 
-extern PfnDliHook __pfnDliNotifyHook2 = delay_load_hook;
-extern PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
+PfnDliHook __pfnDliNotifyHook2 = delay_load_hook;
+PfnDliHook __pfnDliFailureHook2 = delay_load_hook;
 
 #else /* WINDOWS */
 static void *pl_get_create_java_vm_function_ptr (void);
@@ -210,7 +205,7 @@ get_java_root_path (char *path)
  * Note:
  */
 
-FARPROC WINAPI
+static FARPROC WINAPI
 delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 {
   FARPROC fp = NULL;
@@ -674,55 +669,8 @@ exit:
   return er_errid ();
 }
 
-/*
- * pl_server_port
- *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
- *           else if jsp is UDS mode return -1
- *           else return a port (TCP mode)
- *
- * Note:
- */
-
 int
 pl_server_port (void)
 {
   return sp_port;
-}
-
-/*
- * pl_server_port_from_info
- *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
- *           else if jsp is UDS mode return -1
- *           else return a port (TCP mode)
- *
- *
- * Note:
- */
-
-int
-pl_server_port_from_info (void)
-{
-  // check $CUBRID/var/pl_<db_name>.info
-  if (sp_port != PL_PORT_DISABLED)
-    {
-      PL_SERVER_INFO pl_info {-1, -1};
-      pl_read_info (boot_db_name (), pl_info);
-      sp_port = pl_info.port;
-    }
-
-  return sp_port;
-}
-
-/*
- * pl_jvm_is_loaded
- *   return: if disable jsp function and return false
- *              enable jsp function and return not false
- *
- * Note:
- */
-
-int
-pl_jvm_is_loaded (void)
-{
-  return jvm != NULL;
 }

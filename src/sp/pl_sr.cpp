@@ -410,6 +410,7 @@ namespace cubpl
 	int try_count = 0;
 	do
 	  {
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
 	    do_monitor ();
 	  }
 	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
@@ -736,4 +737,28 @@ PL_CONNECTION_POOL *get_connection_pool ()
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_PL_SERVER, 0);
       return nullptr;
     }
+}
+
+
+/*
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ *
+ *
+ * Note:
+ */
+
+static int sp_port = PL_PORT_DISABLED;
+
+int
+pl_server_port_from_info (void)
+{
+  // check $CUBRID/var/pl_<db_name>.info
+  PL_SERVER_INFO pl_info {-1, -1};
+  pl_read_info (boot_db_name (), pl_info);
+  sp_port = pl_info.port;
+
+  return sp_port;
 }
