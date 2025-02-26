@@ -512,7 +512,7 @@ function show_usage ()
   echo "  -a      Run autogen.sh before build; [default: yes]"
   echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
   echo "  -c opts Set configure options; [default: NONE]"
-  echo "  -C opts Specify compiler (available options: gcc, clang); [default: system default]"
+  echo "  -C opts Specify compiler (available options: gcc, clang). If not specified, it uses system default compiler; [default: none]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
   echo "  -p path Set prefix path; [default: <build_path>/_install/$product_name]"
