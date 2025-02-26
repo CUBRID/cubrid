@@ -53,7 +53,7 @@ commands:
             # TODO:if save test_result.xml from previous commit's test,'circleci tests split' can be optimized
             #circleci tests glob $glob_path | circleci tests split | tee tc.list
             #test code
-            echo "cubrid-testcases-private-ex/shell/_38_fig" | tee tc.list
+            echo "cubrid-testcases-private-ex/shell/_10_plcsql" | tee tc.list
             
             find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
