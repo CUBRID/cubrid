@@ -18274,48 +18274,6 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			$$ = parser_make_func_with_arg_count (this_parser, F_L2_DISTANCE, arg1, 2, 2);
         DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')'
-		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')' );
-			PT_NODE *arg1 = $3;
-			PT_NODE *arg2 = $5;
-			PT_NODE *identifier = $7;
-
-			if (identifier == NULL) {
-			    assert(false);
-			}
-
-			// Convert identifier (PT_NAME) to arg3 (PT_VALUE) manually.
-			// This is a hack to map vector metric name to an ENUM value.
-			// Conversion starts.
-
-			enum DB_VECTOR_DISTANCE_METRIC metric = 0;
-			const char* metric_name = identifier->info.name.original;
-			assert(metric_name != NULL);
-			if (strcmp(metric_name, "euclidean")) {
-			    metric = EUCLIDEAN;
-			} else if (strcmp(metric_name, "cosine")) {
-			} else {
-			    assert(false);
-			}
-
-
-			PT_NODE *arg3 = parser_new_node (this_parser, PT_VALUE);
-			if (arg3)
-			  {
-			    arg3->type_enum = PT_TYPE_INTEGER;
-			    arg3->info.value.data_value.i = metric;
-			  }
-
-			parser_free_node (this_parser, identifier);
-			// Conversion ends.
-
-			// Connect arguments as linked list.
-			arg1->next = arg2;
-			arg2->next = arg3;
-
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
-		DBG_PRINT}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
 	  '(' expression_ ',' expression_ ')'
@@ -18648,6 +18606,48 @@ reserved_func
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_SUBSTR '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_SUBSTR, $3, 2, 5);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')'
+		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')' );
+			PT_NODE *arg1 = $3;
+			PT_NODE *arg2 = $5;
+			PT_NODE *identifier = $7;
+
+			if (identifier == NULL) {
+			    assert(false);
+			}
+
+			// Convert identifier (PT_NAME) to arg3 (PT_VALUE) manually.
+			// This is a hack to map vector metric name to an ENUM value.
+			// Conversion starts.
+
+			enum DB_VECTOR_DISTANCE_METRIC metric = 0;
+			const char* metric_name = identifier->info.name.original;
+			assert(metric_name != NULL);
+			if (strcmp(metric_name, "euclidean")) {
+			    metric = EUCLIDEAN;
+			} else if (strcmp(metric_name, "cosine")) {
+			} else {
+			    assert(false);
+			}
+
+
+			PT_NODE *arg3 = parser_new_node (this_parser, PT_VALUE);
+			if (arg3)
+			  {
+			    arg3->type_enum = PT_TYPE_INTEGER;
+			    arg3->info.value.data_value.i = metric;
+			  }
+
+			parser_free_node (this_parser, identifier);
+			// Conversion ends.
+
+			// Connect arguments as linked list.
+			arg1->next = arg2;
+			arg2->next = arg3;
+
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
 		DBG_PRINT}}
 	;
 
