@@ -954,11 +954,11 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 
   assert ((*xcache_entry) != NULL);
 
-  /* set xasl_id to tde before getting locks */
+  /* set xasl_id to tdes before getting locks */
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes_p = LOG_FIND_TDES (tran_index);
   assert (tdes_p != NULL);
-  if (tdes_p != NULL && xid != NULL)
+  if (tdes_p != NULL)
     {
       XASL_ID_COPY (&tdes_p->xasl_id, xid);
     }
