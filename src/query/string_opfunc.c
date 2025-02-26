@@ -22222,7 +22222,7 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
     case DB_TYPE_NCHAR:
       {
 	bool check_has_date = false;
-#if 1
+
 	if (dateformat == false)
 	  {
 	    if (check_datetime_maybe_included (res_type, value_ptr))
@@ -22230,7 +22230,7 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 		check_has_date = true;
 	      }
 	  }
-#endif
+
 	if (dateformat || check_has_date)
 	  {
 	    DB_VALUE dt;
@@ -22239,9 +22239,8 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 
 	    if (tp_value_cast (value_ptr, &dt, tp_datetime, false) == DOMAIN_COMPATIBLE)
 	      {
-		int xi =
-		  db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
-				      &dtzi->s, &dtzi->ms);
+		db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
+				    &dtzi->s, &dtzi->ms);
 
 		if (tp_value_cast (value_ptr, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
 		  {
@@ -22250,6 +22249,11 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 		    dt_tz = *db_get_datetimetz (&dt);
 		    dtzi->tz_id = dt_tz.tz_id;
 		    dtzi->is_valid_tz = true;
+		  }
+
+		if (check_has_date)
+		  {
+		    dtzi->ms = 0;
 		  }
 
 		break;
