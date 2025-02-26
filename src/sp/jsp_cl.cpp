@@ -1491,10 +1491,17 @@ jsp_check_stored_procedure_name (const char *str)
   static int dbms_output_len = strlen ("dbms_output.");
 
 
-  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0 && strlen (str) > (size_t) dbms_output_len)
+  if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
     {
+      const int str_len = strlen (str);
+
+      if (str_len < dbms_output_len)
+	{
+	  return name;
+	}
+
       sprintf (buffer, "public.dbms_output.%s",
-	       sm_downcase_name (str + dbms_output_len, tmp, strlen (str + dbms_output_len) + 1));
+	       sm_downcase_name (str + dbms_output_len, tmp, (str_len + dbms_output_len + 1)));
     }
   else
     {
