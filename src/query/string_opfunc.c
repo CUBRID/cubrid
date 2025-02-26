@@ -22052,6 +22052,28 @@ db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
   return db_date_add_sub_interval_expr (result, date, expr, unit, 0);
 }
 
+static bool
+check_date_maybe_included (DB_TYPE res_type, const DB_VALUE * value_ptr)
+{
+  int len = db_get_string_size (value_ptr);
+  char *ps = (char *) db_get_string (value_ptr);
+#define LEAST_DATE_FORMAT_CHECK_LENGTH (26)	// "09:10:15.359 am 2011-04-20"
+  char *pe = ps + ((len < LEAST_DATE_FORMAT_CHECK_LENGTH) ? len : LEAST_DATE_FORMAT_CHECK_LENGTH);
+
+  while (ps < pe)
+    {
+      if (*ps == '-' || *ps == '/')
+	{
+	  return true;
+	}
+
+      ps++;
+    }
+
+  return false;
+}
+
+
 static int
 get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * value_ptr, bool dateformat)
 {
@@ -22188,15 +22210,15 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
     case DB_TYPE_NCHAR:
       {
 	bool check_has_date = false;
+#if 1
 	if (dateformat == false)
 	  {
-	    assert (strlen (db_get_string (value_ptr)) == value_ptr->data.ch.medium.size);
-	    if (strlen (db_get_string (value_ptr)) >= 17)	// '10:30:45 12/31/25'
+	    if (check_date_maybe_included (res_type, value_ptr))
 	      {
 		check_has_date = true;
 	      }
 	  }
-
+#endif
 	if (dateformat || check_has_date)
 	  {
 	    DB_VALUE dt;
@@ -22205,8 +22227,9 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 
 	    if (tp_value_cast (value_ptr, &dt, tp_datetime, false) == DOMAIN_COMPATIBLE)
 	      {
-		db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
-				    &dtzi->s, &dtzi->ms);
+		int xi =
+		  db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
+				      &dtzi->s, &dtzi->ms);
 
 		if (tp_value_cast (value_ptr, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
 		  {
