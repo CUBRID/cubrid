@@ -6073,6 +6073,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target)
 		      status = execute_activity (trigger, TR_TIME_DEFERRED, t->target, NULL, &rejected);
 
 		      /* execute_activity() maybe include trigger and change the next pointer. we need get it again. */
+		      assert (next == NULL || next == t->next);
 		      next = t->next;
 		      if (status == TR_RETURN_TRUE)
 			{
