@@ -113,6 +113,16 @@ static std::string command;
 static std::string db_name;
 static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
 
+static int
+unmask_signal (int signo)
+{
+  sigset_t sigset;
+
+  sigemptyset (&sigset);
+  sigaddset (&sigset, signo);
+  return sigprocmask (SIG_UNBLOCK, &sigset, NULL);
+}
+
 /*
  * main() - javasp main function
  */
@@ -131,13 +141,26 @@ main (int argc, char *argv[])
       return ER_GENERIC_ERROR;
     }
 
+  if (os_set_signal_handler (SIGTRAP, SIG_IGN) == SIG_ERR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
+  if (os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
   os_set_signal_handler (SIGABRT, javasp_signal_handler);
+
+  os_set_signal_handler (SIGTERM, javasp_signal_handler);
+
   os_set_signal_handler (SIGILL, javasp_signal_handler);
   os_set_signal_handler (SIGFPE, javasp_signal_handler);
   os_set_signal_handler (SIGBUS, javasp_signal_handler);
   os_set_signal_handler (SIGSEGV, javasp_signal_handler);
   os_set_signal_handler (SIGSYS, javasp_signal_handler);
-
+  os_set_signal_handler (SIGTERM, javasp_signal_handler);
 #endif /* WINDOWS */
   {
     /*
@@ -313,7 +336,7 @@ static void javasp_signal_handler (int sig)
 {
   JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
 
-  if (os_set_signal_handler (sig, SIG_DFL) == SIG_ERR)
+  if (os_set_signal_handler (sig, SIG_IGN) == SIG_ERR)
     {
       return;
     }
@@ -327,6 +350,7 @@ static void javasp_signal_handler (int sig)
   if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
     {
       (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
+
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
@@ -344,8 +368,30 @@ static void javasp_signal_handler (int sig)
       int pid = fork ();
       if (pid == 0) // child
 	{
-	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
-	  exit (0);
+	  pid_t ppid_begin = getppid ();
+	  do
+	    {
+	      // wait until parent process is terminated
+	      SLEEP_MILISEC (0, 100);
+	      pid_t ppid = getppid ();
+	      if (ppid == 1 || ppid != ppid_begin)
+		{
+		  break;
+		}
+	    }
+	  while (true);
+
+	  unmask_signal (sig);
+
+	  char *argvp[] = { UTIL_JAVASP_NAME, (char *) db_name.c_str (), NULL };
+	  execv (executable_path, argvp);
+	  perror ("execl failed");
+	  exit (1);
+	}
+      else if (pid < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, "fork failed");
+	  exit (1);
 	}
       else
 	{
@@ -357,7 +403,7 @@ static void javasp_signal_handler (int sig)
 	  char **symbols = backtrace_symbols (addresses, nn_addresses);
 
 	  err_msg += "pid (";
-	  err_msg += std::to_string (pid);
+	  err_msg += std::to_string (getpid ());
 	  err_msg += ")\n";
 
 	  for (int i = 0; i < nn_addresses; i++)
@@ -371,16 +417,13 @@ static void javasp_signal_handler (int sig)
 	  free (symbols);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
-
 	  exit (1);
 	}
     }
-  else
-    {
-      // resume signal hanlding
-      os_set_signal_handler (sig, javasp_signal_handler);
-      is_signal_handling = false;
-    }
+
+  // resume signal hanlding
+  os_set_signal_handler (sig, javasp_signal_handler);
+  is_signal_handling = false;
 }
 #endif
 
