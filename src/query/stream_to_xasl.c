@@ -1753,10 +1753,18 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_BUILD;
-  /* **************************************************************************
+  /* ************************************************************************** 
    *  === Status transition diagram   
+   *       |------------------>----------------------------------|
    *  XASL_BUILD -> XASL_SUCCESS/XASL_FAILURE -> XASL_INITIALIZED/XASL_CLEARED  
    *                            |--------------<-----------------|
+   *  
+   * 1. When you first create an XASL, it starts with the XASL_BUILD status.
+   * 2. If the created XASL is executed successfully, it becomes XASL_SUCCESS, and if an error occurs, it becomes XASL_FAILURE.
+   *    When an error occurs, the status of XASLs that have not yet been executed does not change.
+   * 3. When the task execution is completed, whether successful or failed, 
+   *    it changes to XASL_INITIALIZED or XASL_CLEARED through qexec_clear_xasl().
+   * 4. If the XASL is cached and reused, steps 2 and 3 are repeated.
    ************************************************************************** */
 
   ptr = or_unpack_int (ptr, &offset);
