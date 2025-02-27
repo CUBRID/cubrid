@@ -17,7 +17,7 @@
  */
 
 /*
- * cubrocks.cpp - rocksdb for cubrid
+ * cubrocks.hpp - rocksdb for cubrid
  */
 
 #ifndef _CUBROCKS_HPP_
@@ -31,9 +31,8 @@
 
 namespace cubrocks
 {
-  struct kv_session
+  struct kv_transaction
   {
-    bool active;
     rocksdb::Transaction *txn;
   };
 
@@ -44,21 +43,25 @@ namespace cubrocks
   {
     public:
       context ();
+      ~context ();
 
       void kv_config ();
 
+      /* for debug */
       bool is_alive ();
+      bool is_tran_started (int tran_index);
 
       /* transaction */
-      void kv_tran_activate (int tran_index);
+      void kv_tran_start (int tran_index);
 
-      bool kv_tran_start (int tran_index);
+      void kv_tran_commit (int tran_index);
+      void kv_tran_abort (int tran_index);
 
       /* basic */
-      bool kv_create (std::string path);
-      bool kv_open (std::string path);
-      bool kv_close ();
-      bool kv_destroy (std::string path);
+      void kv_create (std::string path);
+      void kv_open (std::string path);
+      void kv_close ();
+      void kv_destroy (std::string path);
 
     private:
       struct
@@ -72,11 +75,12 @@ namespace cubrocks
       } opt;
 
       rocksdb::TransactionDB *db;
-      kv_session *sessions;
+      kv_transaction *transactions;
 
       bool alive;
 
-      bool sessions_initialize ();
+      bool transactions_initialize ();
+      void transactions_finalize ();
   };
 
   extern context *ctx;

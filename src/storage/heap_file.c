@@ -19002,6 +19002,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
 {
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
@@ -23044,6 +23045,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /* check required input */
   assert (context != NULL);
@@ -23260,6 +23262,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /*
    * Check input
@@ -23455,6 +23458,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /*
    * Check input
