@@ -50,7 +50,7 @@ public class ListenerThread extends Thread {
     static {
         long initialDelay = 100; // 100ms
         for (int i = 0; i < MAX_RETRIES; i++) {
-            backoff_times[i] = initialDelay * (1L << i); // 2의 i 제곱에 초기 지연 값을 곱한다
+            backoff_times[i] = initialDelay * (1L << i);
         }
     }
 
@@ -104,20 +104,19 @@ public class ListenerThread extends Thread {
         String jvmName = runtimeMXBean.getName();
         long pid = Long.parseLong(jvmName.split("@")[0]);
 
-        Runtime.getRuntime().exec("kill -SIGABORT " + pid);
         String command = null;
         if (OSValidator.IS_UNIX) {
             command = "kill -SIGABRT " + pid;
         } else {
             command = "taskkill /F /PID " + pid;
         }
+        Server.log("Command: " + command);
+        Server.log("Process " + pid + " is going to be terminated");
 
-        Process process = Runtime.getRuntime().exec(command);
-        int exitValue = process.waitFor();
-        if (exitValue == 0) {
-            Server.log("Process " + pid + " has been terminated successfully.");
-        } else {
-            Server.log("Failed to terminate process " + pid + ".");
-        }
+        Server.flushLog();
+
+        Thread.sleep(1000);
+
+        Runtime.getRuntime().exec(command);
     }
 }
