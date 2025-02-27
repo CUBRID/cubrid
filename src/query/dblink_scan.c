@@ -548,6 +548,9 @@ dblink_end_tran (int conn_handle, bool is_abort)
   int rc;
   T_CCI_ERROR err_buf;
 
+  if (is_abort == false && (conn_handle % 2))
+    conn_handle = -1;
+
   if (is_abort)
     {
       rc = cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);

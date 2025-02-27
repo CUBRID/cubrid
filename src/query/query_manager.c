@@ -2218,14 +2218,20 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
 		      status = QMGR_TRAN_DBLINK_ABORTED;
 		      er_log_debug (ARG_FILE_LINE, "dblink query %d not completed !\n", query_p->query_id);
 		    }
-
-		  spec->s.dblink_node.conn_handle = -1;	/* no more check the dblink */
-		  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
 		}
 	    }
 	}
 
       query_p = query_p->next;
+    }
+
+  if (is_abort)
+    {
+      query_p = tran_entry_p->query_entry_list_p;
+      if (query_p)
+	{
+	  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
+	}
     }
 
   return status;

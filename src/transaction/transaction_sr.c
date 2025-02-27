@@ -86,7 +86,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
     {
       /* transaction is aborted for dblink commit fail */
-      return xtran_server_abort (thread_p);
+      state = xtran_server_abort (thread_p);
+      return TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
     }
 
   state = log_commit (thread_p, tran_index, retain_lock);
