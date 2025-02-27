@@ -22053,14 +22053,21 @@ db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
 }
 
 static bool
-check_datetime_maybe_included (const DB_VALUE * value_ptr)
+db_check_datetime_format (const DB_VALUE * value_ptr)
 {
   int len = db_get_string_size (value_ptr);
   char *ps = (char *) db_get_string (value_ptr);
 #define LEAST_DATE_FORMAT_CHECK_LENGTH (26)	// "09:10:15.359 am 2011-04-20"
-  char *pe = ps + ((len < LEAST_DATE_FORMAT_CHECK_LENGTH) ? len : LEAST_DATE_FORMAT_CHECK_LENGTH);
+  char *pe;
   int df = 0;
   int tf = 0;
+
+  if (*ps == '\0' || len <= 8 /* "12:34:56", "1:1:1 1-1-1" */ )
+    {
+      return false;
+    }
+
+  pe = ps + ((len < LEAST_DATE_FORMAT_CHECK_LENGTH) ? len : LEAST_DATE_FORMAT_CHECK_LENGTH);
 
   while (ps < pe)
     {
@@ -22230,7 +22237,7 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 	      {
 		;		// ignore
 	      }
-	    else if (check_datetime_maybe_included (value_ptr))
+	    else if (db_check_datetime_format (value_ptr))
 	      {
 		check_has_date = true;
 	      }
