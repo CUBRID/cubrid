@@ -27,6 +27,8 @@
 #include <iostream>
 #include <assert.h>
 
+#include <arpa/inet.h>
+
 #include "rocksdb/version.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/options.h"
@@ -96,7 +98,7 @@ cubrocks::context::kv_config (void)
   opt.cf.compaction_pri = ROCKSDB_NAMESPACE::kMinOverlappingRatio;
   opt.cf.compaction_style = ROCKSDB_NAMESPACE::kCompactionStyleLevel;
   opt.cf.write_buffer_size = 67108864;           // 64MB
-  opt.cf.max_write_buffer_number = 3;
+  opt.cf.max_write_buffer_number = 4;
   opt.cf.target_file_size_base = 67108864;         // 64MB
   opt.cf.level0_file_num_compaction_trigger = 8;
   opt.cf.level0_slowdown_writes_trigger = 17;
@@ -108,7 +110,7 @@ cubrocks::context::kv_config (void)
   opt.table.block_size = 16 * 1024;
   opt.table.cache_index_and_filter_blocks = true;
   opt.table.pin_l0_filter_and_index_blocks_in_cache = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 8);
+  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 4);
   opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
   opt.cf.prefix_extractor.reset (rocksdb::NewCappedPrefixTransform (8));
 
@@ -133,7 +135,7 @@ cubrocks::context::kv_get_virtual_count (void)
   OID oid = virtual_counter;
 
   virtual_counter.slotid++;
-  if (virtual_counter.slotid >= 30)
+  if (virtual_counter.slotid >= 127)
   {
     virtual_counter.pageid++;
     virtual_counter.slotid = 0;
@@ -200,15 +202,15 @@ cubrocks::context::kv_tran_abort (int tran_index)
 }
 
 int
-cubrocks::context::kv_logical_insert (int tran_index, HEAP_OPERATION_CONTEXT * context)
+cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT * context)
 {
   assert (alive);
   assert (tran_index < MAX_NTRANS);
   assert (transactions[tran_index].txn != nullptr);
 
   assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_INSERT);
-  assert (context->recdes_p != NULL && context->recdes_p->data != NULL);
+  assert (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE || context->type == HEAP_OPERATION_DELETE);
+  assert ((context->recdes_p != NULL && context->recdes_p->data != NULL) || context->type == HEAP_OPERATION_DELETE);
   assert (!OID_ISNULL (&context->class_oid));
 
   /* This operation should be insert for instance. */
@@ -219,18 +221,33 @@ cubrocks::context::kv_logical_insert (int tran_index, HEAP_OPERATION_CONTEXT * c
   rocksdb::Slice key (virtual_key, 16);
   rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
 
-  oid = cubrocks::ctx->kv_get_virtual_count ();
+  if (context->type == HEAP_OPERATION_INSERT)
+  {
+    oid = cubrocks::ctx->kv_get_virtual_count ();
+  }
+  else
+  {
+    oid = context->oid;
+  }
 
   /* memory ordering */
   *((short *) virtual_key) = context->class_oid.volid;
   *((int *) (virtual_key + 2)) = context->class_oid.pageid;
   *((short *) (virtual_key + 6)) = context->class_oid.slotid;
 
-  *((short *) (virtual_key + 8)) = oid.volid;
-  *((int *) (virtual_key + 10)) = oid.pageid;
-  *((short *) (virtual_key + 14)) = oid.slotid;
+  *((short *) (virtual_key + 8)) = htons (oid.volid);
+  *((int *) (virtual_key + 10)) = htonl (oid.pageid);
+  *((short *) (virtual_key + 14)) = htons (oid.slotid);
 
-  status = transactions[tran_index].txn->Put (key, value).ok ();
+  if (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE)
+  {
+    status = transactions[tran_index].txn->Put (key, value).ok ();
+  }
+  else
+  {
+    /* range removal or table drop should be handled at a higher level. */
+    status = transactions[tran_index].txn->Delete (key).ok ();
+  }
   assert (status);
   
   COPY_OID (&context->res_oid, &oid);

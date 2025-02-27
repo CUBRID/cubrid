@@ -82,8 +82,8 @@ namespace cubrocks
       /* operation                                                          */
       /* ================================================================== */
 
-      /* insert */
-      int kv_logical_insert (int tran_index, HEAP_OPERATION_CONTEXT * context);
+      /* insert, update, delete */
+      int kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT * context);
 
       /* scan */
       void kv_scan_start (HEAP_SCANCACHE * scan_cache);

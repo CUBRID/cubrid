@@ -23253,13 +23253,15 @@ error:
 int
 heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
+  assert (context != NULL);
+
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /* if class is user defined */
   if (is_user_class_oid (&context->class_oid))
-    return cubrocks::ctx->kv_logical_insert (thread_p->tran_index, context);
+    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
 
   /* general */
   return heap_insert_logical_internal (thread_p, context, home_hint_p);
@@ -23276,15 +23278,11 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
  * overflow, both the relocation and the relocated record are deleted.
  */
 int
-heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_delete_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /*
    * Check input
@@ -23464,23 +23462,38 @@ error:
   return rc;
 }
 
+int
+heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  assert (context != NULL);
+
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+  /* if class is user defined or oid is in the user defined class */
+  if (!OID_ISNULL (&context->class_oid) && (is_user_class_oid (&context->class_oid) || is_user_oid (&context->oid)))
+  {
+    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
+  }
+
+  /* general */
+  return heap_delete_logical_internal (thread_p, context);
+}
+
 /*
  * heap_update_logical () - update a record in a heap file
  *   thread_p(in): thread entry
  *   context(in): operation context
  *   return: error code or NO_ERROR
  */
-extern int
-heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+int
+heap_update_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /*
    * Check input
@@ -23707,6 +23720,36 @@ exit:
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
+}
+
+int
+heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_UPDATE);
+
+  /* in this scope, rocksdb must works. */
+  assert (cubrocks::ctx->is_alive ());
+  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+  /* if class is user defined or oid is in the user defined class */
+  if (!OID_ISNULL (&context->class_oid) && (is_user_class_oid (&context->class_oid) || is_user_oid (&context->oid)))
+  {
+    context->is_logical_old = true;
+
+    /* it may be unnecessary. */
+    /*
+    if (heap_update_adjust_recdes_header (thread_p, context, !mvcc_is_mvcc_disabled_class (&context->class_oid)) != NO_ERROR)
+    {
+      assert (false);
+    }
+    */
+
+    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
+  }
+
+  /* general */
+  return heap_update_logical_internal (thread_p, context);
 }
 
 /*
