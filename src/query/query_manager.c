@@ -2072,6 +2072,15 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   XASL_ID_SET_NULL (&query_p->xasl_id);
 
+  /* the dblink's query entry has to be deleted at commit or rollback */
+  if (query_p->xasl_ent && query_p->xasl_ent->one_clone.xasl && query_p->xasl_ent->one_clone.xasl->spec_list)
+    {
+      if (query_p->xasl_ent->one_clone.xasl->spec_list->type == TARGET_DBLINK)
+	{
+	  return rc;
+	}
+    }
+
   qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
   return rc;
 }
@@ -2211,6 +2220,7 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
 		    }
 
 		  spec->s.dblink_node.conn_handle = -1;	/* no more check the dblink */
+		  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
 		}
 	    }
 	}
