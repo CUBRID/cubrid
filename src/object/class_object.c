@@ -524,6 +524,9 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
     case SM_CONSTRAINT_FOREIGN_KEY:
       property_type = SM_PROPERTY_FOREIGN_KEY;
       break;
+    case SM_CONSTRAINT_VECTOR_INDEX:
+      property_type = SM_PROPERTY_VECTOR_INDEX;
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CONSTRAINT, 0);
       break;
@@ -981,7 +984,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
   char buf[128], *pbuf;
   int constraint_seq_index;
   int num_attrs = 0;
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   db_make_null (&pvalue);
   db_make_null (&value);
 
@@ -998,7 +1001,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 
       is_new_created = true;
     }
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /*
    *  Get a copy of the existing UNIQUE property value.  If one
    *  doesn't exist, create a new one.
@@ -1007,17 +1010,19 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 
   if (found)
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       unique_property = db_get_set (&pvalue);
     }
   else
     {
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       unique_property = set_create_sequence (0);
       if (unique_property == NULL)
 	{
 	  goto error;
 	}
     }
-
+fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* Create a sequence that will hold a constraint instance
    *    i.e. constraint_name {unique BTID, attribute_name(s)} */
   constraint = set_create_sequence (2);
@@ -1025,12 +1030,13 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
     {
       goto error;
     }
-
+fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   constraint_seq_index = 0;	/* init */
 
   /* Fill the BTID into the sequence */
   if ((id == NULL || BTID_IS_NULL (id)) && shared_cons_name != NULL)
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       size_t len = strlen (shared_cons_name) + 10;
 
       pbuf = (char *) malloc (len);
@@ -1040,19 +1046,23 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 	}
       else
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
 	  goto error;
 	}
     }
   else
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       pbuf = &(buf[0]);
       if (id != NULL)
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  sprintf (pbuf, "%d|%d|%d", (int) id->vfid.volid, (int) id->vfid.fileid, (int) id->root_pageid);
 	}
       else
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  sprintf (pbuf, "%d|%d|%d", (int) NULL_VOLID, (int) NULL_FILEID, (int) NULL_PAGEID);
 	}
     }
@@ -1062,19 +1072,23 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 
   if (pbuf && pbuf != &(buf[0]))
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       free_and_init (pbuf);
     }
 
   /* Fill the indexed attributes into the sequence */
   for (i = 0, num_attrs = 0; con->attributes[i] != NULL; i++, num_attrs++)
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       if (attr_name_instead_of_id)
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  /* name */
 	  db_make_string (&value, con->attributes[i]->header.name);
 	}
       else
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  /* id */
 	  db_make_int (&value, con->attributes[i]->id);
 	}
@@ -1144,34 +1158,41 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
     }
   else
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       int *attr_prefix_length = con->attrs_prefix_length;
 
       if (con->filter_predicate == NULL && con->func_index_info == NULL)
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  /* prefix length */
 	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index,
 					    classobj_make_index_attr_prefix_seq (num_attrs,
 										 attr_prefix_length)) != NO_ERROR)
 	    {
+              fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	      goto error;
 	    }
 	}
       else
 	{
+          fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	  int seq_index = 0;
 	  DB_SEQ *seq = set_create_sequence (0);
 
 	  if (seq == NULL)
 	    {
+              fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	      goto error;
 	    }
 
 	  if (con->filter_predicate != NULL)
 	    {
+              fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FILTER_INDEX_ID,
 							  classobj_make_index_filter_pred_seq (con->filter_predicate))
 		  != NO_ERROR)
 		{
+                  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 		  set_free (seq);
 		  goto error;
 		}
@@ -1181,6 +1202,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 											       attr_prefix_length)) !=
 		  NO_ERROR)
 		{
+                  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 		  set_free (seq);
 		  goto error;
 		}
@@ -1188,10 +1210,12 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 
 	  if (con->func_index_info != NULL)
 	    {
+              fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FUNCTION_INDEX_ID,
 							  classobj_make_function_index_info_seq (con->func_index_info))
 		  != NO_ERROR)
 		{
+                  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 		  set_free (seq);
 		  goto error;
 		}
@@ -1200,37 +1224,39 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 	  // now put seq into constraint
 	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, seq) != NO_ERROR)
 	    {
+              fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
 	      set_free (seq);
 	      goto error;
 	    }
 	}
     }
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* add index status. */
   db_make_int (&value, con->index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* comment */
   db_make_string (&value, con->comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* Append the constraint to the unique property sequence */
   db_make_sequence (&value, constraint);
   constraint = NULL;
   classobj_put_prop (unique_property, con->name, &value);
   pr_clear_value (&value);
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* Put/Replace the unique property */
   db_make_sequence (&value, unique_property);
   unique_property = NULL;
   classobj_put_prop (*properties, prop_name, &value);
   pr_clear_value (&value);
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   if (found)
     {
+      fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
       pr_clear_value (&pvalue);
     }
-
+  fprintf (stdout, "%s:%d\n", __FILE__, __LINE__);
   /* Just to be sure. */
   pr_clear_value (&value);
 
@@ -8176,7 +8202,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}

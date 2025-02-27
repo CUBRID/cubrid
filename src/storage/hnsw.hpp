@@ -26,8 +26,8 @@
 #include <bits/stdc++.h>
 #include "storage_common.h"
 
-int hnsw_index_id = 0;
+int hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction);
 
-int hnsw_add_index (BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction);
+extern int hnsw_index_id;
 
 #endif

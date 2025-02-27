@@ -269,6 +269,7 @@ int
 locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oid, int class_chn,
 	       int prefetch, LC_COPYAREA ** fetch_copyarea)
 {
+  assert (false);
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;

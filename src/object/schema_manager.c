@@ -77,6 +77,7 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
+#include "hnsw.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -10814,7 +10815,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     {
       if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
-	  error = hnsw_add_index (index);
+	  error = hnsw_add_index (index, 10, 32, 100);
 	}
       else
 	{
@@ -11363,6 +11364,7 @@ static int
 allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses,
 				SM_TEMPLATE * template_)
 {
+  assert (false);
   int error = NO_ERROR;
 
   if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
@@ -11377,7 +11379,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	{
 	  error = allocate_unique_constraint (classop, class_, con, subclasses, template_);
 	}
-      else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
+      else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  error = allocate_index (classop, class_, NULL, con);
 	}
@@ -11431,28 +11433,31 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
   bool dont_decache_and_flush = false;
   SM_ATTRIBUTE **att, **new_attributes;
   int att_count;
-
+  int const_count = 0;
   assert (classop != NULL);
 
   if (classop == NULL)
     {
       return ER_FAILED;
     }
-
+  fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
   /* Allocate_disk_structures may be called twice on the call-stack. Make sure constraints are not decached or recached
    * while they are processed. */
   dont_decache_and_flush = class_->dont_decache_constraints_or_flush;
 
   if (!dont_decache_and_flush)
     {
+      fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
       if (classobj_cache_class_constraints (class_) != NO_ERROR)
 	{
 	  goto structure_error;
 	}
+  fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
       /* be sure that constraints attributes are not decached. This may happen for foreign key, when
        * allocate_disk_structures function may be called second time. */
       for (con = class_->constraints; con != NULL; con = con->next)
 	{
+    fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY && con->attributes[0] != NULL)
 	    {
 	      /* we are sure that con->attributes points to class attributes */
@@ -11461,42 +11466,55 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 		{
 		  att_count++;
 		}
-
+fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	      new_attributes = (SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) * (att_count + 1));
 	      if (new_attributes == NULL)
 		{
+      fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 		  assert (er_errid () != NO_ERROR);
 		  goto structure_error;
 		}
-
+fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	      att_count = 0;
 	      for (att = con->attributes; *att; att++)
 		{
 		  new_attributes[att_count++] = classobj_copy_attribute (*att, NULL);
 		}
-
+fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	      new_attributes[att_count] = NULL;
 	      con->attributes = new_attributes;
 	    }
 	}
     }
+    fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
   class_->dont_decache_constraints_or_flush = 1;
 
   if (OID_ISTEMP (ws_oid (classop)))
     {
+      fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
       if (locator_assign_permanent_oid (classop) == NULL)
 	{
 	  if (er_errid () == NO_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
 	    }
-
+        fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  goto structure_error;
 	}
     }
-
   for (con = class_->constraints; con != NULL; con = con->next)
     {
+      const_count++;
+    }
+  fprintf (stdout, "const_count is %d\n", const_count);
+  for (con = class_->constraints; con != NULL; con = con->next)
+    {
+      if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
+      {
+        fprintf (stdout, "con->type is SM_CONSTRAINT_VECTOR_INDEX\n");
+        if (con->attributes[0] == NULL) fprintf (stdout, "con->attributes[0] is NULL\n");
+        if (con->shared_cons_name == NULL) fprintf (stdout, "con->shared_cons_name is NULL\n");
+      }
       /* check for non-shared indexes */
       if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type) && con->attributes[0] != NULL && con->shared_cons_name == NULL)
 	{
@@ -11508,7 +11526,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	  num_indexes++;
 	}
     }
-
+  
   for (con = class_->constraints; con != NULL; con = con->next)
     {
       /* check for shared indexes */
@@ -14786,7 +14804,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
       set_savepoint = true;
 
-      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
+      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX || constraint_type == DB_CONSTRAINT_VECTOR_INDEX);
 
       if (is_secondary_index)
 	{
@@ -14917,21 +14935,23 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
 				  class_attributes, NULL, filter_index, function_index, comment, index_status);
+      fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
 	  goto error_exit;
 	}
-
+      fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
       needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
       /* This one frees the template inside!!! */
       error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
       if (error != NO_ERROR)
 	{
+          fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  smt_quit (def);
 	  goto error_exit;
 	}
-
+      
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
@@ -14940,27 +14960,27 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    {
 	      goto error_exit;
 	    }
-
+            fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  error = sm_update_statistics_without_gathering_stats (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
-
+            fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
 	      goto error_exit;
 	    }
-
+            fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
 	      goto error_exit;
 	    }
-
+            fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	  /* Update the class now. */
 	  /* This one frees the template inside!!! */
 	  error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
@@ -14969,6 +14989,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      smt_quit (def);
 	      goto error_exit;
 	    }
+          fprintf (stdout, "__%s__%d__\n", __FILE__, __LINE__);
 	}
       break;
 

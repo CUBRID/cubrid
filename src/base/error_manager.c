@@ -1451,7 +1451,10 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 
   /* Initialize the area... */
   crt_error.set_error (err_id, severity, file_name, line_no);
-
+  if (err_id == -247)
+  {
+    assert (false);
+  }
   /*
    * Get hold of the compiled format string for this message and get an
    * estimate of the size of the buffer required to print it.
@@ -1482,6 +1485,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 
   /* Do any necessary allocation for the buffer. */
   crt_error.reserve_message_area (new_size + 1);
+  printf("%d %s %d %d %s\n", severity, file_name, line_no, err_id, crt_error.msg_area);
 
   /* And now format the silly thing. */
   if (er_vsprintf (&crt_error, er_fmt, ap_ptr) == ER_FAILED)
