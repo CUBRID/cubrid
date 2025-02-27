@@ -200,7 +200,7 @@ $ csql help messages
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 
-233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
+233 Info {schema|trigger|deferred|workspace|lock|stats|trantable|logstat|csstat|plan|qcache|ndv}\n\
 \tschema [class-name]    - schema information\n\
 \ttrigger [trigger-name] - trigger information\n\
 \tdeferred               - deferred trigger information\n\
@@ -211,7 +211,8 @@ $ csql help messages
 \tlogstat                - log information\n\
 \tcsstat                 - critical section information\n\
 \tplan                   - plan cache information\n\
-\tqcache                 - query cache information\n
+\tqcache                 - query cache information\n\
+\tndv                    - NDV information for columns of a class\n
 235 <Partitions>
 236 A class name is required.
 237 <Comment>
