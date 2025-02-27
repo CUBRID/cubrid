@@ -68,21 +68,15 @@ public class ListenerThread extends Thread {
                 client.setTcpNoDelay(true);
                 Thread execThread = new ExecuteThread(client);
                 execThread.start();
-
-                if (attempt++ > 3) {
-                    throw new OutOfMemoryError();
-                }
-                // attempt = 0;
+                attempt = 0;
             } catch (Throwable e) {
                 Server.log(e);
                 try {
-                    Thread.sleep(1);
+                    Thread.sleep(backoff_times[attempt]);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
                 attempt++;
-
-                break;
             }
         }
 
