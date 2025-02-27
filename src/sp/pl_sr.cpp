@@ -37,6 +37,7 @@
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
 #include "thread_daemon.hpp"
+#include "boot_sr.h"
 #else
 #include "dbi.h"
 #include "boot.h"
@@ -72,7 +73,7 @@ namespace cubpl
   class server_manager final
   {
     public:
-      static constexpr std::size_t CONNECTION_POOL_SIZE = 100;
+      static constexpr std::size_t CONNECTION_POOL_SIZE = 10;
 
       explicit server_manager (const char *db_name);
 
@@ -92,7 +93,7 @@ namespace cubpl
       /*
       * wait_for_server_ready() - check if the server is ready to accept connection
       */
-      void wait_for_server_ready ();
+      int wait_for_server_ready ();
 
       /*
       * get_connection_pool() - get the connection pool
@@ -102,10 +103,18 @@ namespace cubpl
       /*
       * get_pl_ctx_params() - get the PL context parameters
       */
-      SYSPRM_ASSIGN_VALUE *get_pl_ctx_params () const;
+      SYSPRM_ASSIGN_VALUE *get_pl_ctx_params ();
+
+      /*
+      * get_db_name () - get the database name
+      */
+      std::string get_db_name () const
+      {
+	return m_db_name;
+      }
 
     private:
-
+      std::string m_db_name;
       server_monitor_task *m_server_monitor_task;
       connection_pool *m_connection_pool;
 
@@ -129,14 +138,15 @@ namespace cubpl
     public:
       enum server_monitor_state
       {
-	SERVER_MONITOR_STATE_INIT,
 	SERVER_MONITOR_STATE_RUNNING,
 	SERVER_MONITOR_STATE_STOPPED,
-	SERVER_MONITOR_STATE_HANG,
+	SERVER_MONITOR_STATE_READY_TO_INITIALIZE,
+	SERVER_MONITOR_STATE_FAILED_TO_FORK,
+	SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE,
 	SERVER_MONITOR_STATE_UNKNOWN
       };
 
-      server_monitor_task (server_manager *manager, const char *db_name);
+      server_monitor_task (server_manager *manager, std::string db_name);
       ~server_monitor_task ();
 
       server_monitor_task (const server_monitor_task &copy) = delete;	// Not CopyConstructible
@@ -157,12 +167,16 @@ namespace cubpl
       // wait until PL server is initialized
       void wait_for_ready ();
 
+      bool is_running () const;
+
     private:
-      void do_initialize ();
+      int do_initialize ();
 
       // check functions for PL server state
       void do_check_state (bool hang_check);
-      int do_check_connection ();
+
+      int do_check_connection (int fail_cnt);
+      int do_ping_connection ();
 
       /*
       * do_bootstrap_request() - send a bootstrap request to PL server
@@ -177,12 +191,15 @@ namespace cubpl
       std::string m_binary_name;
       std::string m_executable_path;
       const char *m_argv[3];
+      int m_failure_count;
 
       connection_pool *m_sys_conn_pool;
       bootstrap_request *m_bootstrap_request;
 
+#if defined (SERVER_MODE)
       std::mutex m_monitor_mutex;
       std::condition_variable m_monitor_cv;
+#endif
   };
 
   struct bootstrap_request : public cubpacking::packable_object
@@ -205,15 +222,15 @@ namespace cubpl
    * server_manager - definition
    *********************************************************************/
   server_manager::server_manager (const char *db_name)
+    : m_db_name (db_name)
   {
-    m_server_monitor_task = new server_monitor_task (this, db_name);
+    m_server_monitor_task = new server_monitor_task (this, m_db_name);
 #if defined (SERVER_MODE)
     m_monitor_helper_daemon = nullptr;
 #endif
     m_connection_pool = new connection_pool (server_manager::CONNECTION_POOL_SIZE, db_name);
 
-    m_pl_ctx_params = xsysprm_get_pl_context_parameters (PRM_ALL_FLAGS);
-    assert (m_pl_ctx_params != nullptr);
+    m_pl_ctx_params = nullptr;
   }
 
   server_manager::~server_manager ()
@@ -222,6 +239,7 @@ namespace cubpl
     if (m_monitor_helper_daemon)
       {
 	cubthread::get_manager ()->destroy_daemon (m_monitor_helper_daemon);
+	m_monitor_helper_daemon = nullptr;
       }
 
     if (m_connection_pool)
@@ -248,10 +266,20 @@ namespace cubpl
 #endif
   }
 
-  void
+  int
   server_manager::wait_for_server_ready ()
   {
     m_server_monitor_task->wait_for_ready ();
+    if (m_server_monitor_task->is_running ())
+      {
+	return NO_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
+		m_db_name.c_str ());
+	return er_errid ();
+      }
   }
 
   connection_pool *
@@ -261,25 +289,37 @@ namespace cubpl
   }
 
   SYSPRM_ASSIGN_VALUE *
-  server_manager::get_pl_ctx_params () const
+  server_manager::get_pl_ctx_params ()
   {
+    if (m_pl_ctx_params == nullptr)
+      {
+	/* late initialization */
+	m_pl_ctx_params = xsysprm_get_pl_context_parameters (PRM_ALL_FLAGS);
+      }
     return m_pl_ctx_params;
   }
 
   /*********************************************************************
    * server_monitor_task - definition
    *********************************************************************/
-  server_monitor_task::server_monitor_task (server_manager *manager, const char *db_name)
+  server_monitor_task::server_monitor_task (server_manager *manager, std::string db_name)
     : m_manager (manager)
     , m_pid (-1)
-    , m_state (SERVER_MONITOR_STATE_INIT)
+    , m_state (SERVER_MONITOR_STATE_STOPPED)
     , m_db_name (db_name)
+#if defined(WINDOWS)
+    , m_binary_name ("cub_pl.exe")
+#else
     , m_binary_name ("cub_pl")
+#endif
     , m_argv {m_binary_name.c_str (), m_db_name.c_str (), 0}
+    , m_failure_count (0)
     , m_sys_conn_pool {nullptr}
     , m_bootstrap_request {nullptr}
+#if defined (SERVER_MODE)
     , m_monitor_mutex {}
     , m_monitor_cv {}
+#endif
   {
     char executable_path[PATH_MAX];
     (void) envvar_bindir_file (executable_path, PATH_MAX, m_binary_name.c_str ());
@@ -291,6 +331,13 @@ namespace cubpl
     if (m_bootstrap_request != nullptr)
       {
 	delete m_bootstrap_request;
+	m_bootstrap_request = nullptr;
+      }
+
+    if (m_sys_conn_pool != nullptr)
+      {
+	delete m_sys_conn_pool;
+	m_sys_conn_pool = nullptr;
       }
   }
 
@@ -298,12 +345,6 @@ namespace cubpl
   void
   server_monitor_task::execute (context_type &thread_ref)
   {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	// wait for boot to finish
-	return;
-      }
-
     do_monitor ();
   }
 #endif
@@ -313,108 +354,231 @@ namespace cubpl
   {
     (void) do_check_state (false);
 
-    if (m_state == SERVER_MONITOR_STATE_HANG)
-      {
-	terminate_process (m_pid);
-      }
-
-    if (m_state != SERVER_MONITOR_STATE_RUNNING)
+    if (m_state == SERVER_MONITOR_STATE_STOPPED || m_state == SERVER_MONITOR_STATE_FAILED_TO_FORK)
       {
 	int status;
+
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
-	if (pid <= 0)
-	  {
-	    // do nothing
-	  }
-	else // parent
+	if (pid > 1) // parent
 	  {
 	    m_pid = pid;
-	    do_initialize ();
+	    sleep (1);
+	    m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE;
 	  }
+	else if (pid == 1) // fork error
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
+	    m_state = SERVER_MONITOR_STATE_FAILED_TO_FORK;
+	    m_failure_count++;
+	  }
+	else
+	  {
+	    // wait flag is not set, never reach here
+	    assert (false);
+	  }
+      }
+
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
+      {
+	do_initialize ();
       }
   }
 
   void
   server_monitor_task::wait_for_ready ()
   {
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING; };
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
+      {
+#if defined (SA_MODE)
+	assert (lang_is_all_initialized ());
+#endif
+	do_initialize ();
+      }
+
+#if defined (SERVER_MODE)
+    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING ||
+					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE);
+				  };
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
     m_monitor_cv.wait (ulock, pred);
+#else
+    if (m_state != SERVER_MONITOR_STATE_RUNNING)
+      {
+	// retry starting pl server
+	int try_count = 0;
+	do
+	  {
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
+	    do_monitor ();
+	  }
+	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
+      }
+#endif
   }
 
-  void
+  bool
+  server_monitor_task::is_running () const
+  {
+    return m_state == SERVER_MONITOR_STATE_RUNNING;
+  }
+
+  int
   server_monitor_task::do_initialize ()
   {
     int error = ER_FAILED;
+
+    assert (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE);
+    if (!lang_is_all_initialized ())
+      {
+	return error;
+      }
+
+#if defined (SERVER_MODE)
     std::lock_guard<std::mutex> lock (m_monitor_mutex);
+#endif
+
     // wait PL server is ready to accept connection (polling)
 
+    // TODO: parameterize this
     constexpr int MAX_FAIL_COUNT = 10;
-    int fail_count = 0;
-    while (fail_count < MAX_FAIL_COUNT)
-      {
-	error = do_check_connection ();
-	if (error != NO_ERROR)
-	  {
-	    fail_count++;
-	    (void) sleep (1);
-	  }
-	else
-	  {
-	    break;
-	  }
-      }
+    error = do_check_connection (MAX_FAIL_COUNT);
+
+    // set unknown state here
+#if defined (SERVER_MODE)
+    m_state = SERVER_MONITOR_STATE_UNKNOWN;
+#else
+    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
+#endif
 
     if (error == NO_ERROR)
       {
 	error = do_bootstrap_request ();
+	if (error == NO_ERROR)
+	  {
+	    // notify server is ready
+	    m_state = SERVER_MONITOR_STATE_RUNNING;
+	    m_failure_count = 0;
+	  }
       }
 
-    if (error != NO_ERROR)
+    // re-initialize connection pool
+    if (m_manager->get_connection_pool ()->get_db_port () != PL_PORT_UDS_MODE)
       {
-	m_state = SERVER_MONITOR_STATE_UNKNOWN;
-	terminate_process (m_pid);
+	// set the port number possibly randomly assigned in TCP mode
+	m_manager->get_connection_pool ()->set_db_port (pl_server_port_from_info ());
       }
-    else
-      {
-	// re-initialize connection pool
-	m_manager->get_connection_pool ()->increment_epoch ();
+    m_manager->get_connection_pool ()->increment_epoch ();
 
-	// notify server is ready
-	m_state = SERVER_MONITOR_STATE_RUNNING;
-      }
-
+#if defined (SERVER_MODE)
     m_monitor_cv.notify_all();
+#endif
+
+    return error;
   }
 
   void
   server_monitor_task::do_check_state (bool hang_check)
   {
-    if (m_pid > 0)
+    /* state transition */
+    switch (m_state)
       {
-	if (!is_terminated_process (m_pid))
+      case SERVER_MONITOR_STATE_STOPPED:
+#if defined(SA_MODE)
+	if (do_check_connection (1) == NO_ERROR)
 	  {
-	    // If process is running but ping command through UDS (TCP) does not respond, then it is considered as hang
-	    if (hang_check && do_check_connection () != NO_ERROR)
-	      {
-		m_state = SERVER_MONITOR_STATE_HANG;
-	      }
-	    else
-	      {
-		m_state = SERVER_MONITOR_STATE_RUNNING;
-	      }
+	    // Waiting for PL server in shutdown state
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
+	  }
+#else
+	/* do nothing */
+#endif
+	break;
+      case SERVER_MONITOR_STATE_RUNNING:
+      case SERVER_MONITOR_STATE_READY_TO_INITIALIZE:
+	if (m_pid > 0 && !is_terminated_process (m_pid))
+	  {
+	    // stay in the same state
 	  }
 	else
 	  {
+	    er_log_debug (ARG_FILE_LINE, "PL server is terminated. pid=%d\n", m_pid);
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
 	  }
+	break;
+
+      case SERVER_MONITOR_STATE_FAILED_TO_FORK:
+      {
+	if (m_failure_count > 10)
+	  {
+	    // After several failed attempts, we should consider the PL server is not able to start
+	    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
+		    "Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
+	    m_monitor_cv.notify_all ();
+#endif
+	  }
+      }
+      break;
+
+      case SERVER_MONITOR_STATE_UNKNOWN:
+      case SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE:
+	if (m_pid == -1 || (m_pid > 0 && is_terminated_process (m_pid)))
+	  {
+	    // PL server is terminated by user (cubrid pl restart)
+	    m_state = SERVER_MONITOR_STATE_STOPPED;
+	  }
+
+	if (m_state == SERVER_MONITOR_STATE_UNKNOWN)
+	  {
+	    m_failure_count++;
+	    if (m_failure_count > 10)
+	      {
+		// After several failed attempts, we should consider the PL server is not able to start
+		m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
+			"Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
+		m_monitor_cv.notify_all ();
+#endif
+	      }
+	    else
+	      {
+		m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE; // retry initialization
+	      }
+	  }
+	break;
       }
   }
 
   int
-  server_monitor_task::do_check_connection ()
+  server_monitor_task::do_check_connection (int fail_cnt)
+  {
+    int error = NO_ERROR;
+    int c = 0;
+    do
+      {
+	error = do_ping_connection ();
+	if (error == NO_ERROR || ++c < fail_cnt)
+	  {
+	    break;
+	  }
+
+	/* The contents of the pl file may have changed, so set it to read again. */
+	assert (m_sys_conn_pool);
+	m_sys_conn_pool->set_port_disabled();
+
+	thread_sleep (1000);	/* 1000 msec */
+      }
+    while (c < fail_cnt);
+
+    return error;
+  }
+
+  int
+  server_monitor_task::do_ping_connection ()
   {
     int error = NO_ERROR;
 
@@ -445,12 +609,7 @@ namespace cubpl
       }
 
 exit:
-    if (ping_response.is_valid ())
-      {
-	delete [] ping_response.ptr;
-	ping_response.ptr = NULL;
-	ping_response.dim = 0;
-      }
+    ping_response.freemem ();
 
     cv.reset ();
 
@@ -480,6 +639,8 @@ exit:
       {
 	packing_unpacker deserializator (bootstrap_response);
 	deserializator.unpack_int (error);
+
+	bootstrap_response.freemem ();
       }
 
     return error;
@@ -523,23 +684,25 @@ exit:
 
 static cubpl::server_manager *pl_server_manager = nullptr;
 
-void
+int
 pl_server_init (const char *db_name)
 {
   if (pl_server_manager != nullptr || prm_get_bool_value (PRM_ID_STORED_PROCEDURE) == false)
     {
-      return;
+      return NO_ERROR;
     }
 
 #if defined (SA_MODE)
   if (!BOOT_NORMAL_CLIENT_TYPE (db_get_client_type ()))
     {
-      return;
+      return NO_ERROR;
     }
 #endif
 
   pl_server_manager = new cubpl::server_manager (db_name);
   pl_server_manager->start ();
+
+  return NO_ERROR;
 }
 
 void
@@ -552,13 +715,15 @@ pl_server_destroy ()
     }
 }
 
-void
+int
 pl_server_wait_for_ready ()
 {
   if (pl_server_manager)
     {
-      pl_server_manager->wait_for_server_ready ();
+      return pl_server_manager->wait_for_server_ready ();
     }
+
+  return NO_ERROR;
 }
 
 PL_CONNECTION_POOL *get_connection_pool ()
@@ -569,7 +734,31 @@ PL_CONNECTION_POOL *get_connection_pool ()
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_PL_SERVER, 0);
       return nullptr;
     }
+}
+
+
+/*
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ *
+ *
+ * Note:
+ */
+
+static int sp_port = PL_PORT_DISABLED;
+
+int
+pl_server_port_from_info (void)
+{
+  // check $CUBRID/var/pl_<db_name>.info
+  PL_SERVER_INFO pl_info {-1, -1};
+  pl_read_info (boot_db_name (), pl_info);
+  sp_port = pl_info.port;
+
+  return sp_port;
 }

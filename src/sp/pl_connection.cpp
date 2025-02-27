@@ -20,8 +20,11 @@
 
 #include <algorithm> /* std::count_if */
 #include <memory> /* std::unique_ptr */
+#include <cmath>
 
 #include "boot_sr.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 #include "pl_sr.h" /* pl_server_port(), pl_connect_server() */
 #include "pl_comm.h" /* pl_disconnect_server (), pl_ping () */
 #include "object_representation.h" /* OR_ */
@@ -41,6 +44,7 @@ namespace cubpl
 
   constexpr int SYSTEM_REVISION = -1;
   constexpr int INITIAL_REVISION = 0;
+  constexpr float INCREMENT_FACTOR = 1.5;
 
   connection_pool::connection_pool (int pool_size)
     : m_pool (pool_size, nullptr)
@@ -49,9 +53,6 @@ namespace cubpl
     , m_mutex ()
   {
     assert (pool_size > 0);
-    // TODO: make it configurable
-    m_min_conn_size = 3;
-    m_inc_conn_size = 5;
 
     initialize_pool ();
   }
@@ -77,7 +78,10 @@ namespace cubpl
   {
     if (!is_system_pool ())
       {
-	pl_server_wait_for_ready ();
+	if (pl_server_wait_for_ready () != NO_ERROR)
+	  {
+	    return nullptr;
+	  }
       }
     if (m_db_port == PL_PORT_DISABLED)
       {
@@ -87,30 +91,42 @@ namespace cubpl
     std::lock_guard<std::mutex> lock (m_mutex);
 
     // Check if a connection is available in the queue
-    if (!m_queue.empty())
+    auto get_connection_from_queue = [this]() -> connection_view
+    {
+      if (!m_queue.empty())
+	{
+	  int index = m_queue.front();
+	  m_queue.pop();
+
+	  if (m_pool[index] == nullptr)
+	    {
+	      create_new_connection (index);
+	    }
+
+	  return get_connection_view (index);
+	}
+      return nullptr;
+    };
+
+    connection_view conn_view = get_connection_from_queue();
+    if (conn_view != nullptr)
       {
-	int index = m_queue.front();
-	m_queue.pop();
-
-	if (m_pool[index] == nullptr)
-	  {
-	    create_new_connection (index);
-	  }
-
-	return get_connection_view (index);
+	return conn_view;
       }
 
-    // If no connections are available, find a slot for a new connection
-    for (size_t i = 0; i < m_pool.size(); ++i)
+    // If no slots are available, increase the pool size
+    size_t currentSize = m_pool.size();
+    size_t newSize = static_cast<size_t> (std::ceil (currentSize * 1.5));
+    m_pool.resize (newSize, nullptr);
+    er_log_debug (ARG_FILE_LINE, "pl_connection_pool extended: %lld to %lld\n", currentSize, newSize);
+
+    // Create the new connection
+    for (int i = currentSize; i < newSize; ++i)
       {
-	if (m_pool[i] == nullptr)
-	  {
-	    create_new_connection (i);
-	    return get_connection_view (i);
-	  }
+	m_queue.push (i);
       }
 
-    return nullptr;
+    return get_connection_from_queue();
   }
 
   void
@@ -146,6 +162,12 @@ namespace cubpl
     return m_db_port;
   }
 
+  void
+  connection_pool::set_db_port (int port)
+  {
+    m_db_port = port;
+  }
+
   bool
   connection_pool::is_system_pool () const
   {
@@ -159,13 +181,16 @@ namespace cubpl
     std::lock_guard<std::mutex> lock (m_mutex);
 
     m_queue.push (conn->get_index ());
+
+    er_log_debug (ARG_FILE_LINE, "pl_connection_pool: connection retire (%d)\n", conn->get_index ());
   }
 
   void
   connection_pool::initialize_pool()
   {
-    for (int i = 0; i < m_min_conn_size && i < m_pool.size (); ++i)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
       {
+	m_pool[i] = nullptr;
 	m_queue.push (i); // Pre-fill the queue with indices
       }
   }
@@ -175,12 +200,12 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    for (connection *&conn : m_pool)
+    for (int i = 0; i < (int) m_pool.size (); ++i)
       {
-	if (conn)
+	if (m_pool[i])
 	  {
-	    delete conn;
-	    conn = nullptr;
+	    delete m_pool[i];
+	    m_pool[i] = nullptr;
 	  }
       }
 
@@ -259,7 +284,7 @@ namespace cubpl
   int
   connection::send_buffer (const cubmem::block &blk)
   {
-    if (!is_valid ())
+    if (!is_valid () || m_pool->is_system_pool ())
       {
 	do_reconnect ();
       }
@@ -387,7 +412,12 @@ namespace cubpl
 	pl_disconnect_server (m_socket);
       }
 
-    m_socket = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port ());
+    int error = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port (), m_socket);
+    if (error != NO_ERROR && !m_pool->is_system_pool ())
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_PL_SERVER, 1, "connect()");
+      }
+
     if (m_socket != INVALID_SOCKET)
       {
 	m_epoch = m_pool->get_epoch ();
@@ -398,8 +428,18 @@ namespace cubpl
   connection::do_handle_network_error (int nbytes)
   {
     (void) invalidate ();
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-    return er_errid ();
+
+    if (m_pool->is_system_pool ())
+      {
+	// Do not set error message for system pool
+	// To avoid noise in the error log
+	return ER_SP_NETWORK_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+	return er_errid ();
+      }
   }
 
 } // namespace cubpl

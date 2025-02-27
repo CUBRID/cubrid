@@ -192,4 +192,7 @@ extern void css_set_user_access_status (const char *db_user, const char *host, c
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
 
+extern void css_set_exec_path (char *exec_path);
+extern void css_set_argv (char **argv);
+
 #endif /* _CONNECTION_SR_H_ */

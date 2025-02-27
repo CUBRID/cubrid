@@ -18,7 +18,7 @@
 
 
 /*
- * pl_file.h - Functions to manage files related to Java Stored Procedure Server
+ * pl_file.h - Functions to manage files related to Procedure Language Server
  *
  * Note:
  */
@@ -55,7 +55,7 @@ extern "C"
   extern EXPORT_IMPORT void pl_unlink_info (const char *db_name);
 
   extern EXPORT_IMPORT bool pl_read_info (const char *db_name, PL_SERVER_INFO & info);
-  extern EXPORT_IMPORT bool pl_write_info (const char *db_name, PL_SERVER_INFO info);
+  extern EXPORT_IMPORT bool pl_write_info (const char *db_name, PL_SERVER_INFO * info);
   extern EXPORT_IMPORT bool pl_reset_info (const char *db_name);
 
   extern EXPORT_IMPORT bool pl_get_info_file (char *buf, size_t len, const char *db_name);

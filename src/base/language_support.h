@@ -282,6 +282,7 @@ extern "C"
   extern int lang_set_charset (const INTL_CODESET codeset);
   extern int lang_set_language (const char *lang_str);
   extern void lang_final (void);
+  extern bool lang_is_all_initialized (void);
   extern int lang_locales_count (bool check_codeset);
   extern const char *lang_get_msg_Loc_name (void);
   extern const char *lang_get_Lang_name (void);

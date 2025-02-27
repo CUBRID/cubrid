@@ -64,7 +64,6 @@ static const std::vector<std::string> sp_entry_names
 static const std::vector<std::string> sp_args_entry_names
 {
   SP_ATTR_SP_OF,
-  SP_ATTR_PKG,
   SP_ATTR_INDEX_OF_NAME,
   SP_ATTR_IS_SYSTEM_GENERATED,
   SP_ATTR_ARG_NAME,
@@ -110,14 +109,15 @@ static int sp_builtin_init ()
 
   // arg(0) of enable
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "s";
   a.data_type = DB_TYPE_INTEGER;
   a.mode = SP_MODE_IN;
+  db_make_int (&a.default_value, 20000); // Oracle compatibility
   a.comment  = "";
 
   v.args.push_back (a);
+  pr_clear_value (&a.default_value);
 
   //
   sp_builtin_definition.push_back (v);
@@ -147,7 +147,6 @@ static int sp_builtin_init ()
 
   // arg(0) of put
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "str";
   a.data_type = DB_TYPE_STRING;
@@ -171,7 +170,6 @@ static int sp_builtin_init ()
 
   // arg(0) of put_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "str";
   a.data_type = DB_TYPE_STRING;
@@ -208,7 +206,6 @@ static int sp_builtin_init ()
 
   // arg(0) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "line";
   a.data_type = DB_TYPE_STRING;
@@ -219,7 +216,6 @@ static int sp_builtin_init ()
 
   // arg(1) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 1;
   a.arg_name = "status";
   a.data_type = DB_TYPE_INTEGER;
@@ -243,7 +239,6 @@ static int sp_builtin_init ()
 
   // arg(0) of get_lines
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "lines";
   a.data_type = DB_TYPE_STRING;
@@ -254,7 +249,6 @@ static int sp_builtin_init ()
 
   // arg(1) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 1;
   a.arg_name = "cnt";
   a.data_type = DB_TYPE_INTEGER;
@@ -485,7 +479,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
 
 	arg.sp_name = info.sp_name;
-	arg.pkg_name = info.pkg_name;
 
 	err = sp_add_stored_procedure_argument (&mop_list[i], arg);
 	if (err != NO_ERROR)
@@ -671,18 +664,6 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      goto error;
-    }
-
-  if (!info.pkg_name.empty ())
-    {
-      db_make_string (&value, info.pkg_name.data ());
-    }
-  err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
-  pr_clear_value (&value);
-
-  if (err != NO_ERROR)
-    {
       goto error;
     }
 
@@ -988,8 +969,8 @@ void sp_normalize_name (std::string &s)
 void
 sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {
-  auto pos = s.find_last_of ('(');
-  if (pos == std::string::npos)
+  auto pos1 = s.find_last_of ('(');
+  if (pos1 == std::string::npos)
     {
       // handle the case where '(' is not found, if necessary
       target_cls.clear();
@@ -997,8 +978,12 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  pos = s.substr (0, pos).find_last_of ('.');
-  if (pos == std::string::npos)
+  std::string tmp = s.substr (0, pos1);
+  tmp.erase (tmp.find_last_not_of (" ") + 1); // rtrim
+  tmp.erase (0, tmp.find_first_not_of (" ")); // ltrim
+
+  auto pos2 = tmp.find_last_of ('.');
+  if (pos2 == std::string::npos)
     {
       // handle the case where '.' is not found, if necessary
       target_cls.clear();
@@ -1006,8 +991,8 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  target_cls = s.substr (0, pos);
-  target_mth = s.substr (pos + 1); // +1 to skip the '.'
+  target_cls = tmp.substr (0, pos2);
+  target_mth = tmp.substr (pos2 + 1) + s.substr (pos1); // remove spaces between method and (
 }
 
 std::string

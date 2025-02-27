@@ -33,27 +33,20 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForDynamicSqlLoop extends StmtForSqlLoop {
+public class ExprSyntaxedCallChr extends BuiltinFuncCall {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtForDynamicSqlLoop(this);
+        return visitor.visitExprSyntaxedCallChr(this);
     }
 
-    public StmtForDynamicSqlLoop(
-            ParserRuleContext ctx,
-            String label,
-            DeclDynamicRecord record,
-            Expr dynamicSql,
-            NodeList<? extends Expr> usedExprList,
-            NodeList<Stmt> stmts) {
-        super(
-                ctx,
-                true,
-                label,
-                record,
-                dynamicSql,
-                usedExprList == null ? null : usedExprList.nodes,
-                stmts);
+    public Expr arg;
+    public boolean isUtf8;
+
+    public ExprSyntaxedCallChr(ParserRuleContext ctx, Expr arg, boolean isUtf8) {
+        super(ctx);
+
+        this.arg = arg;
+        this.isUtf8 = isUtf8;
     }
 }

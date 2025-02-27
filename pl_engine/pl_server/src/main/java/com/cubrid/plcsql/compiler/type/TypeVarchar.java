@@ -35,6 +35,7 @@ import com.cubrid.plcsql.compiler.InstanceStore;
 public class TypeVarchar extends Type {
 
     public static final int MAX_LEN = 1073741823;
+    public static final int DEFAULT_LEN = MAX_LEN;
 
     public final int length;
 
@@ -60,7 +61,7 @@ public class TypeVarchar extends Type {
     }
 
     private static String getTypicalValueStr(int length) {
-        return String.format("cast(? as varchar(%d))", length);
+        return String.format("cast('a' as varchar(%d))", length);
     }
 
     private TypeVarchar(int length) {

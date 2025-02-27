@@ -53,6 +53,7 @@
 #include "dynamic_array.h"
 #include "heartbeat.h"
 #include "process_util.h"
+#include "pl_file.h"
 
 #include <string>
 
@@ -223,8 +224,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
-  {START, COMMAND_TYPE_START, MASK_ALL},
-  {STOP, COMMAND_TYPE_STOP, MASK_ALL},
+  {START, COMMAND_TYPE_START, MASK_ALL & ~MASK_PL},
+  {STOP, COMMAND_TYPE_STOP, MASK_ALL & ~MASK_PL},
   {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_PL},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
@@ -298,6 +299,7 @@ static void print_result (const char *util_name, int status, int command_type);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
 static bool is_server_running (const char *type, const char *server_name, int pid);
+static int shutdown_reviving_server (const char *server_name);
 static int is_broker_running (void);
 static int is_gateway_running (void);
 static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
@@ -535,6 +537,7 @@ main (int argc, char *argv[])
   bool process_window_service = false;
   pid_t pid = getpid ();
   char env_buf[16];
+  int util_name_pos = 0;
 
 #if defined (DO_NOT_USE_CUBRIDENV)
   char *envval;
@@ -589,13 +592,21 @@ main (int argc, char *argv[])
 	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME, argv[1]);
 	  goto error;
 	}
+      if (util_type == ADMIN)
+	{
+	  util_name_pos = 2;
+	}
+    }
+  else if (util_type == ADMIN)
+    {
+      util_name_pos = 1;
     }
 
   if (load_properties () != NO_ERROR)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
       return EXIT_FAILURE;
@@ -605,7 +616,7 @@ main (int argc, char *argv[])
 
   if (util_type == ADMIN)
     {
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       status = process_admin (argc, argv);
       util_log_write_result (status);
 
@@ -645,7 +656,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  util_log_write_command (argc, argv);
+  util_log_write_command (argc, argv, util_name_pos);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1607,6 +1618,22 @@ is_server_running (const char *type, const char *server_name, int pid)
 }
 
 /*
+ * shutdown_reviving_server -
+ *
+ * return:
+ *
+ *      type(in):
+ *      server_name(in):
+ *      pid(in):
+ */
+static int
+shutdown_reviving_server (const char *server_name)
+{
+  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SHUTDOWN_REVIVING_SERVER, server_name, NULL };
+  return proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+}
+
+/*
  * process_server -
  *
  * return:
@@ -1832,6 +1859,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 	      status = ER_GENERIC_ERROR;
 	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, token);
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, token);
+	      shutdown_reviving_server (token);
 	    }
 	}
       break;
@@ -2820,11 +2848,11 @@ is_pl_running (const char *server_name)
     }
 }
 
+#define WAIT_TIMEOUT_CUB_PL  (10)
 static int
-process_pl_restart (const char *db_name, bool suppress_message, bool process_window_service)
+process_pl_restart (const char *db_name, bool suppress_message)
 {
   int status = NO_ERROR;
-  static const int wait_timeout = 10;
   int waited_secs = 0;
 
   if (!suppress_message)
@@ -2841,46 +2869,57 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	}
     }
 
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
+  if (is_sp_on == false)
+    {
+      status = ER_GENERIC_ERROR;
+    }
+
   if (status == NO_ERROR)
     {
-      if (process_window_service)
-	{
-#if defined(WINDOWS)
-	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_PL,
-	    COMMAND_TYPE_STOP, db_name, NULL
-	  };
+      PL_SERVER_INFO pl_old = PL_SERVER_INFO_INITIALIZER;
+      PL_SERVER_INFO pl_new = PL_SERVER_INFO_INITIALIZER;
 
-	  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
-#endif
-	}
-      else
-	{
-	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
-	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
-	  sleep (1);
-	}
+      pl_read_info (db_name, pl_old);
+      pl_new.pid = pl_old.pid;
+
+      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
+      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+
+      /* We don't start cub_pl directly here.
+       * We just request a shutdown, and it will be restarted by cub_server.
+       */
 
       UTIL_PL_SERVER_STATUS_E pl_status;
       do
 	{
 	  // The pl server needs a few seconds to accept ping request
-	  pl_status = is_pl_running (db_name);
-	  status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
-	  sleep (1);		// wait to stop
+	  sleep (1);
 
-	  if (!is_server_running (CHECK_SERVER, db_name, 0))
+	  if (pl_old.pid == pl_new.pid)
 	    {
-	      status = ER_GENERIC_ERROR;
-	      if (!suppress_message)
+	      pl_read_info (db_name, pl_new);
+	    }
+	  else
+	    {
+	      pl_status = is_pl_running (db_name);
+	      status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+
+	      if (!is_server_running (CHECK_SERVER, db_name, 0))
 		{
-		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		  status = ER_GENERIC_ERROR;
+		  if (!suppress_message)
+		    {
+		      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		    }
+		  break;
 		}
-	      break;
 	    }
 
 	  waited_secs++;
 	}
-      while (status != NO_ERROR && waited_secs < wait_timeout);
+      while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
     }
 
   if (!suppress_message)
@@ -2895,10 +2934,11 @@ static int
 process_pl_status (const char *db_name)
 {
   int status = NO_ERROR;
-
-  static const int wait_timeout = 10;
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
+
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
 
   do
     {
@@ -2909,6 +2949,11 @@ process_pl_status (const char *db_name)
 	  return status;
 	}
 
+      if (is_sp_on == false)
+	{
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
 
       pl_status = is_pl_running (db_name);
       if (pl_status == PL_SERVER_RUNNING)
@@ -2929,7 +2974,7 @@ process_pl_status (const char *db_name)
       sleep (1);
       waited_secs++;
     }
-  while (status != NO_ERROR && waited_secs < wait_timeout);
+  while (status != NO_ERROR && waited_secs < WAIT_TIMEOUT_CUB_PL);
 
   if (status != NO_ERROR)
     {
@@ -3007,7 +3052,7 @@ process_pl (int command_type, int argc, const char **argv, bool show_usage, bool
 	    }
 	  break;
 	case RESTART:
-	  status = process_pl_restart (db_name, suppress_message, process_window_service);
+	  status = process_pl_restart (db_name, suppress_message);
 	  break;
 	case STATUS:
 	  status = process_pl_status (db_name);

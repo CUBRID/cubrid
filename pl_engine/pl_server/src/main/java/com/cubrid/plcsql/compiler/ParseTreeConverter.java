@@ -73,6 +73,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.spRevision = spRevision;
+        this.sqlSerialNo = 1;
     }
 
     public void askServerSemanticQuestions() {
@@ -203,13 +204,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
-                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
-                        || (tsp.typeVisitMode == TYPE_VISIT_RETURN
-                                && ct.colType.type == DBType.DB_NUMERIC)) {
+                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL) {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
                                     iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
                 } else {
+                    // Visiting a parameter type or return type.
+                    // Ignore specified precision and scale.
                     tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
                 }
             } else {
@@ -246,22 +247,36 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         boolean ofTopLevel = symbolStack.getCurrentScope().level == (SymbolStack.LEVEL_MAIN + 1);
         NodeList<DeclParam> ret = new NodeList<>();
-        if (ofTopLevel) {
-            for (ParameterContext pc : ctx.parameter()) {
-                DeclParam dp = (DeclParam) visit(pc);
-                if (dp.typeSpec.type == Type.BOOLEAN || dp.typeSpec.type == Type.SYS_REFCURSOR) {
+
+        boolean paramDefaultFound = false;
+        int i = 0;
+        for (ParameterContext pc : ctx.parameter()) {
+            DeclParam dp = (DeclParam) visit(pc);
+            i++;
+
+            if (dp.hasDefault()) {
+                paramDefaultFound = true;
+            } else {
+                if (paramDefaultFound) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(pc), // s064
-                            "type "
-                                    + dp.typeSpec.type.plcName
-                                    + " cannot be used as a paramter type of stored procedures");
+                            Misc.getLineColumnOf(pc), // s095
+                            "parameter "
+                                    + i
+                                    + " must have a default value because its predecessor has one");
                 }
-                ret.addNode(dp);
             }
-        } else {
-            for (ParameterContext pc : ctx.parameter()) {
-                ret.addNode((DeclParam) visit(pc));
+
+            if (ofTopLevel
+                    && (dp.typeSpec.type == Type.BOOLEAN
+                            || dp.typeSpec.type == Type.SYS_REFCURSOR)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(pc), // s064
+                        "type "
+                                + dp.typeSpec.type.plcName
+                                + " cannot be used as a paramter type of stored procedures");
             }
+
+            ret.addNode(dp);
         }
 
         return ret;
@@ -293,7 +308,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, null);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -310,7 +325,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec);
+        Expr defaultVal = visitExpression(ctx.default_value_part());
+
+        DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, defaultVal);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -476,7 +493,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
-        int length = 1; // default
+        int length = TypeChar.DEFAULT_LEN; // default
 
         try {
             if (ctx.length != null) {
@@ -508,7 +525,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new TypeSpec(ctx, Type.STRING_ANY);
         }
 
-        int length = TypeVarchar.MAX_LEN; // default
+        int length = TypeVarchar.DEFAULT_LEN; // default
 
         try {
             if (ctx.length != null) {
@@ -1015,6 +1032,79 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
+    public Expr visitSyntaxed_call_cast(Syntaxed_call_castContext ctx) {
+
+        connectionRequired = true;
+
+        Expr arg = visitExpression(ctx.argument());
+        TypeSpec tySpec = (TypeSpec) visitType_spec(ctx.type_spec());
+        return new ExprSyntaxedCallCast(ctx, arg, tySpec);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_chr(Syntaxed_call_chrContext ctx) {
+
+        connectionRequired = true;
+
+        Expr arg = visitExpression(ctx.argument());
+        boolean isUtf8 = ctx.UTF8() != null;
+        return new ExprSyntaxedCallChr(ctx, arg, isUtf8);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_adddate(Syntaxed_call_adddateContext ctx) {
+
+        connectionRequired = true;
+
+        Expr date = visitExpression(ctx.date);
+        Expr delta = visitExpression(ctx.delta);
+        String timeUnit = ctx.time_unit().getText();
+        return new ExprSyntaxedCallAdddate(ctx, date, delta, timeUnit);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_subdate(Syntaxed_call_subdateContext ctx) {
+
+        connectionRequired = true;
+
+        Expr date = visitExpression(ctx.date);
+        Expr delta = visitExpression(ctx.delta);
+        String timeUnit = ctx.time_unit().getText();
+        return new ExprSyntaxedCallSubdate(ctx, date, delta, timeUnit);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_extract(Syntaxed_call_extractContext ctx) {
+
+        connectionRequired = true;
+
+        String timeField = ctx.time_field().getText();
+        Expr arg = visitExpression(ctx.argument());
+        return new ExprSyntaxedCallExtract(ctx, timeField, arg);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_position(Syntaxed_call_positionContext ctx) {
+
+        connectionRequired = true;
+
+        Expr sub = visitExpression(ctx.sub);
+        Expr whole = visitExpression(ctx.whole);
+        return new ExprSyntaxedCallPosition(ctx, sub, whole);
+    }
+
+    @Override
+    public Expr visitSyntaxed_call_trim(Syntaxed_call_trimContext ctx) {
+
+        connectionRequired = true;
+
+        String trimDir = ctx.trim_dir() == null ? null : ctx.trim_dir().getText();
+        Expr trimStr = ctx.trim_str == null ? null : visitExpression(ctx.trim_str);
+        Expr str = visitExpression(ctx.str);
+        return new ExprSyntaxedCallTrim(ctx, trimDir, trimStr, str);
+    }
+
+    @Override
     public Expr visitSearched_case_expression(Searched_case_expressionContext ctx) {
 
         NodeList<CondExpr> condParts = new NodeList<>();
@@ -1324,27 +1414,41 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        boolean allFlowsBlocked;
+        StmtLoop.LoopOptimizable loopOptimizableSaved = null;
+        try {
+            if (loopOptimizable != null) {
+                // save the current one
+                loopOptimizableSaved = loopOptimizable;
+                loopOptimizable = null;
+            }
 
-        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        allFlowsBlocked = controlFlowBlocked;
+            boolean allFlowsBlocked;
 
-        NodeList<ExHandler> exHandlers = new NodeList<>();
-        for (Exception_handlerContext ehc : ctx.exception_handler()) {
-            exHandlers.addNode(visitException_handler(ehc));
-            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
+            NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+            allFlowsBlocked = controlFlowBlocked;
+
+            NodeList<ExHandler> exHandlers = new NodeList<>();
+            for (Exception_handlerContext ehc : ctx.exception_handler()) {
+                exHandlers.addNode(visitException_handler(ehc));
+                allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
+            }
+
+            controlFlowBlocked = allFlowsBlocked; // s017-1
+
+            String label;
+            if (ctx.label_name() == null) {
+                label = null;
+            } else {
+                label = Misc.getNormalizedText(ctx.label_name());
+            }
+
+            return new Body(ctx, stmts, exHandlers, label);
+        } finally {
+            if (loopOptimizableSaved != null) {
+                // restore
+                loopOptimizable = loopOptimizableSaved;
+            }
         }
-
-        controlFlowBlocked = allFlowsBlocked; // s017-1
-
-        String label;
-        if (ctx.label_name() == null) {
-            label = null;
-        } else {
-            label = Misc.getNormalizedText(ctx.label_name());
-        }
-
-        return new Body(ctx, stmts, exHandlers, label);
     }
 
     @Override
@@ -1512,7 +1616,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitKeyword_builtin_func(Keyword_builtin_funcContext ctx) {
+    public Expr visitReserved_builtin_func(Reserved_builtin_funcContext ctx) {
         String name = Misc.getNormalizedText(ctx);
 
         Decl decl = symbolStack.getDeclForIdExpr(name);
@@ -1639,6 +1743,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtBasicLoop visitStmt_basic_loop(Stmt_basic_loopContext ctx) {
 
+        boolean outermostLoop = (loopOptimizable == null);
+        if (outermostLoop) {
+            loopOptimizable = new StmtLoop.LoopOptimizable();
+        }
+
         symbolStack.pushSymbolTable("loop", null);
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1652,7 +1761,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtBasicLoop(ctx, declLabel, stmts);
+        StmtBasicLoop ret =
+                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
+        if (outermostLoop) {
+            loopOptimizable = null;
+        }
+        return ret;
     }
 
     @Override
@@ -1670,6 +1784,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtWhileLoop visitStmt_while_loop(Stmt_while_loopContext ctx) {
 
+        boolean outermostLoop = (loopOptimizable == null);
+        if (outermostLoop) {
+            loopOptimizable = new StmtLoop.LoopOptimizable();
+        }
+
         symbolStack.pushSymbolTable("while", null);
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
@@ -1684,11 +1803,22 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtWhileLoop(ctx, declLabel, cond, stmts);
+        StmtWhileLoop ret =
+                new StmtWhileLoop(
+                        ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
+        if (outermostLoop) {
+            loopOptimizable = null;
+        }
+        return ret;
     }
 
     @Override
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
+
+        boolean outermostLoop = (loopOptimizable == null);
+        if (outermostLoop) {
+            loopOptimizable = new StmtLoop.LoopOptimizable();
+        }
 
         symbolStack.pushSymbolTable("for_iter", null);
 
@@ -1715,8 +1845,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForIterLoop(
-                ctx, declLabel, iterDecl, reverse, lowerBound, upperBound, step, stmts);
+        StmtForIterLoop ret =
+                new StmtForIterLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        declLabel,
+                        iterDecl,
+                        reverse,
+                        lowerBound,
+                        upperBound,
+                        step,
+                        stmts);
+        if (outermostLoop) {
+            loopOptimizable = null;
+        }
+        return ret;
     }
 
     @Override
@@ -1739,7 +1882,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
+    public StmtForCursorLoop visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
+
+        boolean outermostLoop = (loopOptimizable == null);
+        if (outermostLoop) {
+            loopOptimizable = new StmtLoop.LoopOptimizable();
+        }
 
         connectionRequired = true;
 
@@ -1793,11 +1941,29 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForCursorLoop(ctx, cursor, args, label, record, recTy, stmts);
+        StmtForCursorLoop ret =
+                new StmtForCursorLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        cursor,
+                        args,
+                        label,
+                        record,
+                        recTy,
+                        stmts);
+        if (outermostLoop) {
+            loopOptimizable = null;
+        }
+        return ret;
     }
 
     @Override
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
+
+        boolean outermostLoop = (loopOptimizable == null);
+        if (outermostLoop) {
+            loopOptimizable = new StmtLoop.LoopOptimizable();
+        }
 
         connectionRequired = true;
 
@@ -1842,7 +2008,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
-        return new StmtForStaticSqlLoop(ctx, label, declForRecord, staticSql, stmts);
+        StmtForStaticSqlLoop ret =
+                new StmtForStaticSqlLoop(
+                        ctx,
+                        outermostLoop ? loopOptimizable : null,
+                        label,
+                        declForRecord,
+                        staticSql,
+                        stmts,
+                        getSqlSerialNo());
+        if (outermostLoop) {
+            loopOptimizable = null;
+        }
+        return ret;
     }
 
     @Override
@@ -2003,7 +2181,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtStaticSql(ctx, level, staticSql);
+        StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql, getSqlSerialNo());
+        if (loopOptimizable != null) {
+            loopOptimizable.sql.add(ret);
+        }
+        return ret;
     }
 
     @Override
@@ -2222,7 +2404,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtSql visitExecute_immediate(Execute_immediateContext ctx) {
+    public StmtExecImme visitExecute_immediate(Execute_immediateContext ctx) {
 
         connectionRequired = true;
 
@@ -2245,7 +2427,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
-        return new StmtExecImme(ctx, level, dynSql, intoTargetList, usedExprList);
+        StmtExecImme ret =
+                new StmtExecImme(
+                        ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
+        if (loopOptimizable != null) {
+            if (dynSql instanceof ExprStr) {
+                // only when it is a fixed string.
+                loopOptimizable.sql.add(ret);
+            }
+        }
+        return ret;
     }
 
     @Override
@@ -2437,6 +2628,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String spRevision;
 
+    private StmtLoop.LoopOptimizable loopOptimizable = null;
+
     private String spName;
     private boolean isSpFunc;
 
@@ -2446,6 +2639,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
+
+    private int sqlSerialNo;
+
+    private int getSqlSerialNo() {
+        return sqlSerialNo++;
+    }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
 
@@ -2761,7 +2960,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                 } else if (DBTypeAdapter.isSupported(ci.type)) {
-                    ty = DBTypeAdapter.getValueType(iStore, ci.type);
+                    ty = DBTypeAdapter.getDeclType(iStore, ci.type, ci.prec, ci.scale);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
@@ -2833,6 +3032,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
     }
 
+    private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =
+            new ExprNull(null); // any compatible value is OK
+
     private String makeParamList(NodeList<DeclParam> paramList, String name, PlParamInfo[] params) {
         if (params == null) {
             return null;
@@ -2853,7 +3055,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
                 paramList.nodes.add(new DeclParamOut(null, "p" + i, tySpec, alsoIn));
             } else {
-                paramList.nodes.add(new DeclParamIn(null, "p" + i, tySpec));
+                Expr defaultVal = params[i].hasDefault ? SP_PARAM_DEFAULT_VAL_DUMMY : null;
+                paramList.nodes.add(new DeclParamIn(null, "p" + i, tySpec, defaultVal));
             }
         }
 
@@ -2861,7 +3064,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private int checkArguments(NodeList<Expr> args, NodeList<DeclParam> params) {
-        if (params.nodes.size() != args.nodes.size()) {
+
+        int paramCnt = params.nodes.size();
+        if (paramCnt < args.nodes.size()) {
             return -1;
         }
 
@@ -2879,6 +3084,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
             }
 
+            i++;
+        }
+        while (i < paramCnt) {
+            DeclParam dp = params.nodes.get(i);
+            if (!dp.hasDefault()) {
+                return -1;
+            }
             i++;
         }
 

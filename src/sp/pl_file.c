@@ -18,7 +18,7 @@
 
 
 /*
- * pl_file.c - Functions to manage files related to Java Stored Procedure Server
+ * pl_file.c - Functions to manage files related to Procedure Language Server
  *
  * Note:
  */
@@ -118,7 +118,7 @@ pl_get_error_file (char *buf, size_t len, const char *db_name)
   char pl_logdir[PATH_MAX];
   envvar_logdir_file (pl_logdir, sizeof (pl_logdir), "");
 
-  if (snprintf (buf, len, "%s/%s_java.err", pl_logdir, db_name) < 0)
+  if (snprintf (buf, len, "%s/%s_pl.err", pl_logdir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';
@@ -133,7 +133,7 @@ pl_get_log_file (char *buf, size_t len, const char *db_name)
   char pl_logdir[PATH_MAX];
   envvar_logdir_file (pl_logdir, sizeof (pl_logdir), "");
 
-  if (snprintf (buf, len, "%s/%s_java.log", pl_logdir, db_name) < 0)
+  if (snprintf (buf, len, "%s/%s_pl.log", pl_logdir, db_name) < 0)
     {
       assert (false);
       buf[0] = '\0';
@@ -159,7 +159,7 @@ pl_read_info (const char *db_name, PL_SERVER_INFO & info)
 }
 
 bool
-pl_write_info (const char *db_name, PL_SERVER_INFO info)
+pl_write_info (const char *db_name, PL_SERVER_INFO * info)
 {
   bool result = false;
   FILE *fp = NULL;
@@ -167,7 +167,7 @@ pl_write_info (const char *db_name, PL_SERVER_INFO info)
   fp = pl_open_info (db_name, "w+");
   if (fp)
     {
-      fprintf (fp, "%d %d", info.pid, info.port);
+      fprintf (fp, "%d %d", info->pid, info->port);
       fclose (fp);
       result = true;
     }
@@ -178,5 +178,5 @@ bool
 pl_reset_info (const char *db_name)
 {
   PL_SERVER_INFO reset_info = PL_SERVER_INFO_INITIALIZER;
-  return pl_write_info (db_name, reset_info);
+  return pl_write_info (db_name, &reset_info);
 }

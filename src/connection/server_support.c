@@ -321,10 +321,7 @@ css_setup_server_loop (void)
 #endif /* not WINDOWS */
 
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  if (!pl_jvm_is_loaded ())
-    {
-      (void) os_set_signal_handler (SIGFPE, SIG_IGN);
-    }
+  (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #else /* LINUX || x86_SOLARIS || HPUX */
   (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #endif /* LINUX || x86_SOLARIS || HPUX */
@@ -2780,6 +2777,8 @@ css_server_task::execute (context_type &thread_ref)
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
+
+  (void) session_notify_pl_task_completion (session_p);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;

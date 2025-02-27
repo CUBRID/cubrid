@@ -251,8 +251,6 @@ static bool pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * pa
 static int pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 				     PT_TYPE_ENUM desired_type, PT_NODE * data_type, bool check_string_precision,
 				     bool implicit_coercion);
-static int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				     PT_NODE * data_type);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
@@ -7491,7 +7489,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  PT_NODE *limit, *t_node;
 	  PT_NODE **expr_pred;
 
-	  if (node->info.query.order_by)
+	  if (node->info.query.order_by && !node->info.query.flag.order_siblings)	/* when order siblings by */
 	    {
 	      expr_pred = &node->info.query.orderby_for;
 	      limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_ORDERBY_NUM, false);
@@ -7918,6 +7916,22 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
     case PT_METHOD_CALL:
       node = pt_eval_method_call_type (parser, node);
+
+      /* set CAST as NUMERIC(any,any) for NUMERIC type SP function */
+      if (node->info.method_call.method_type == PT_SP_FUNCTION
+	  && !PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_SP_NUMERIC) && node->type_enum == PT_TYPE_NUMERIC)
+	{
+	  int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
+
+	  PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_SP_NUMERIC);
+	  node = pt_wrap_with_cast_op (parser, node, PT_TYPE_NUMERIC, numeric[PRM_PRECISION], numeric[PRM_SCALE], NULL);
+	  if (node == NULL)
+	    {
+	      assert (false);
+	      PT_INTERNAL_ERROR (parser, "pt_eval_type");
+	      return NULL;
+	    }
+	}
       break;
 
     case PT_CREATE_INDEX:
@@ -19265,11 +19279,16 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       tree = NULL;
       return tree;
     }
-  /* do constant folding */
-  tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
-  if (pt_has_error (parser))
+
+  /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
+  if (!parser->flag.is_parsing_static_sql)
     {
-      tree = NULL;
+      /* do constant folding */
+      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+      if (pt_has_error (parser))
+	{
+	  tree = NULL;
+	}
     }
 
   return tree;
@@ -19421,10 +19440,12 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
  *   desired_type(in): the desired type of the coerced result
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  *   default_expr_type(in): default expression identifier
+ *   check_string_precision(in): true, if needs to consider string precision
  */
 int
 pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type)
+				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
+				   bool check_string_precision)
 {
   bool implicit_coercion;
 
@@ -19440,7 +19461,8 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
       implicit_coercion = true;
     }
 
-  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, implicit_coercion);
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, check_string_precision,
+				   implicit_coercion);
 }
 
 /*

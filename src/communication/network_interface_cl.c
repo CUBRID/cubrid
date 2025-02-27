@@ -4736,13 +4736,13 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
  * session_id (in) : the id of the session to end
  */
 int
-csession_end_session (SESSION_ID session_id)
+csession_end_session (SESSION_ID session_id, bool is_keep_session)
 {
 #if defined (CS_MODE)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
   char *request;
   char *ptr;
 
@@ -4750,6 +4750,7 @@ csession_end_session (SESSION_ID session_id)
   request = OR_ALIGNED_BUF_START (a_request);
 
   ptr = or_pack_int (request, session_id);
+  ptr = or_pack_int (ptr, is_keep_session);
 
   req_error =
     net_client_request (NET_SERVER_SES_END_SESSION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -4765,7 +4766,7 @@ csession_end_session (SESSION_ID session_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_end_session (thread_p, session_id);
+  result = xsession_end_session (thread_p, session_id, is_keep_session);
 
   exit_server (*thread_p);
 
@@ -11025,6 +11026,7 @@ error:
 	{
 	  unpacker.unpack_all (error_code, error_msg);
 	  cubmethod::handle_method_error (error_code, error_msg);
+	  req_error = error_code;
 	}
     }
 
@@ -11055,7 +11057,12 @@ error:
       }
     else
       {
-	std::string err_msg = executor.get_stack ()->get_error_message ();
+	std::string err_msg;
+	if (executor.get_stack ())
+	  {
+	    err_msg = executor.get_stack ()->get_error_message ();
+	  }
+
 	if (err_msg.empty () && req_error != ER_SP_EXECUTE_ERROR)
 	  {
 	    err_msg.assign (er_msg ());
@@ -11063,7 +11070,8 @@ error:
 
 	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	    req_error = ER_SP_EXECUTE_ERROR;
 	  }
 
 	packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
@@ -11373,7 +11381,7 @@ error:
       if (compile_response.err_code == NO_ERROR)
 	{
 	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
-	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
 	}
     }
 
@@ -11408,7 +11416,7 @@ error:
   else
     {
       compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
-      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
     }
 
   return success;

@@ -1233,6 +1233,7 @@ parser_create_parser (void)
   parser->flag.is_auto_commit = 0;
   parser->flag.is_parsing_static_sql = 0;
   parser->flag.is_parsing_unload_schema = 0;
+  parser->flag.is_parsing_trigger = 0;
 
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;

@@ -984,7 +984,7 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
 	      user = au_find_user (db_get_string (owner));
 	      if (user != NULL)
 		{
-		  error = au_change_sp_owner (sp_mop, user);
+		  error = au_change_sp_owner_with_privilege_cleanup (NULL, sp_mop, user);
 		  if (error == NO_ERROR)
 		    {
 		      ok = 1;

@@ -163,10 +163,13 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -201,10 +204,13 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  PL_SESSION *session = cubpl::get_session ();
-  if (!session || session->is_running () == false)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
@@ -4060,7 +4066,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4084,6 +4090,11 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      db_private_free_and_init (thread_p, class_attr_ndv.attr_ndv);
+    }
 }
 
 /*
@@ -8880,7 +8891,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, id) != NO_ERROR)
+      || (error = xsession_check_session (thread_p, id)) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
@@ -8890,6 +8901,10 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
+    }
+  else if (error == NO_ERROR)
+    {
+      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
@@ -8986,14 +9001,16 @@ void
 ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int err = NO_ERROR;
+  int is_keep_session;
   SESSION_ID id;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (ptr, &is_keep_session);
 
-  err = xsession_end_session (thread_p, id);
+  err = xsession_end_session (thread_p, id, (bool) is_keep_session);
 
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -10487,9 +10504,9 @@ end:
 }
 
 void
-ssession_stop_attached_threads (void *session)
+ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
 {
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 }
 
 static bool
@@ -10539,7 +10556,11 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
     }
   else
     {
-      std::string err_msg = executor.get_stack ()->get_error_message ();
+      std::string err_msg;
+      if (executor.get_stack ())
+	{
+	  err_msg = executor.get_stack ()->get_error_message ();
+	}
       if (err_msg.empty () && error_code != ER_SP_EXECUTE_ERROR)
 	{
 	  err_msg.assign (er_msg ());
