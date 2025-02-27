@@ -896,6 +896,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
   int lock_result;
   bool use_xasl_clone = false;
   xasl_cache_rt_check_result recompile_due_to_threshold = XASL_CACHE_RECOMPILE_NOT_NEEDED;
+  XASL_ID prev_xid;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -960,6 +961,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
   assert (tdes_p != NULL);
   if (tdes_p != NULL)
     {
+      XASL_ID_COPY (&prev_xid, &tdes_p->xasl_id);
       XASL_ID_COPY (&tdes_p->xasl_id, xid);
     }
 
@@ -991,12 +993,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
 		      XCACHE_LOG_ENTRY_OBJECT_ARGS (*xcache_entry, oid_index), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-	  if (tdes_p != NULL && xid != NULL)
-	    {
-	      XASL_ID_SET_NULL (&tdes_p->xasl_id);
-	    }
-
-	  return error_code;
+	  goto error;
 	}
     }
 
@@ -1072,7 +1069,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 			XCACHE_LOG_XASL_ID_TEXT ("xasl_id") XCACHE_LOG_TRAN_TEXT,
 			XCACHE_LOG_XASL_ID_ARGS (xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-      return error_code;
+      goto error;
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
 
@@ -1085,6 +1082,15 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 	      XCACHE_LOG_XASL_ID_ARGS (xid), XCACHE_LOG_CLONE_ARGS (xclone), XCACHE_LOG_TRAN_ARGS (thread_p));
 
   return NO_ERROR;
+
+error:
+  /* reset xasl_id of tdes */
+  if (tdes_p != NULL)
+    {
+      XASL_ID_COPY (&tdes_p->xasl_id, &prev_xid);
+    }
+
+  return error_code;
 }
 
 /*
