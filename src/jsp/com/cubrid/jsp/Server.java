@@ -115,11 +115,6 @@ public class Server {
         } catch (Exception e) {
             log(e);
             e.printStackTrace();
-
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ie) {
-            }
             System.exit(1);
         }
 
@@ -134,12 +129,6 @@ public class Server {
 
         } else {
             /* error, serverSocket is not properly initialized */
-
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ie) {
-            }
-
             System.exit(1);
         }
     }

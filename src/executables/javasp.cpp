@@ -152,15 +152,12 @@ main (int argc, char *argv[])
     }
 
   os_set_signal_handler (SIGABRT, javasp_signal_handler);
-
   os_set_signal_handler (SIGTERM, javasp_signal_handler);
-
   os_set_signal_handler (SIGILL, javasp_signal_handler);
   os_set_signal_handler (SIGFPE, javasp_signal_handler);
   os_set_signal_handler (SIGBUS, javasp_signal_handler);
   os_set_signal_handler (SIGSEGV, javasp_signal_handler);
   os_set_signal_handler (SIGSYS, javasp_signal_handler);
-  os_set_signal_handler (SIGTERM, javasp_signal_handler);
 #endif /* WINDOWS */
   {
     /*
@@ -350,7 +347,6 @@ static void javasp_signal_handler (int sig)
   if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
     {
       (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
-
       if (command.compare ("running") != 0 || db_name.empty ())
 	{
 	  return;
