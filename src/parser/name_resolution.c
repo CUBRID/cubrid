@@ -3324,7 +3324,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /*
 	       * When using a session variable in the first arg_list,
 	       * It is unknown whether the session variable contains a class, object, or constant value.
-	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
 	       * 
 	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
 	       *     insert into x values (4, 'string 4');
@@ -7956,19 +7956,55 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (hint & PT_HINT_NO_USE_HASH)
+  if ((hint & PT_HINT_NO_USE_HASH) && (*no_use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+      if (*no_use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
+	}
     }
 
-  if (hint & PT_HINT_USE_HASH)
+  if ((hint & PT_HINT_USE_HASH) && (*use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+      if (*use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -8035,8 +8071,8 @@ exit_on_error:
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
-      node->info.delete_.no_use_hash_hint = NULL;
-      node->info.delete_.use_hash_hint = NULL;
+      node->info.update.no_use_hash_hint = NULL;
+      node->info.update.use_hash_hint = NULL;
       break;
     default:
       break;
@@ -9369,13 +9405,15 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       PT_NODE *spec = NULL;
       PT_NODE *entity;
 
+      /* to process the clause "FOR UPDATE OF" */
       if (statement->info.query.q.select.for_update != NULL)
 	{
 	  /* Flag only the specified specs */
 	  for (; node != NULL; node = node->next)
 	    {
 	      spec = pt_find_spec (parser, statement->info.query.q.select.from, node);
-	      if (spec == NULL)
+	      /* table or view name is invalid or inline view */
+	      if (spec == NULL || spec->info.spec.flat_entity_list == NULL)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
 			      node->info.name.original);
@@ -9390,8 +9428,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
+		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
 	  statement->info.query.q.select.for_update = NULL;
@@ -9401,7 +9439,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	      /* "entity is NULL" means inline view, UPDATE FOR should exclude inline view */
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))

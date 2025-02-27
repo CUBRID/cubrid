@@ -4066,7 +4066,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4090,6 +4090,11 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      db_private_free_and_init (thread_p, class_attr_ndv.attr_ndv);
+    }
 }
 
 /*

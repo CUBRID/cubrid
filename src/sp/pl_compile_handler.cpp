@@ -145,8 +145,8 @@ namespace cubpl
 	  }
 	else
 	  {
+	    assert (code == METHOD_REQUEST_ERROR);
 	    error_code = ER_FAILED;
-	    assert (false);
 	  }
 
 	if (m_stack->get_data_queue ().empty() == false)
