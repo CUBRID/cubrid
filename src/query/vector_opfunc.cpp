@@ -146,3 +146,8 @@ int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
   return vector_distance_internal (result, args, num_args, faiss::fvec_L2sqr);
 }
+
+int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
+}

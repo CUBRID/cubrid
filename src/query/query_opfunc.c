@@ -6923,6 +6923,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
     case F_VECTOR_DISTANCE:
     case F_L1_DISTANCE:
     case F_L2_DISTANCE:
+    case F_INNER_PRODUCT:
       return qdata_vector_distance_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
@@ -8667,6 +8668,9 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
 	  break;
 	case F_L2_DISTANCE:
 	  distance_func = vector_l2_distance;
+	  break;
+	case F_INNER_PRODUCT:
+	  distance_func = vector_inner_product;
 	  break;
 	default:
 	  assert (false);
