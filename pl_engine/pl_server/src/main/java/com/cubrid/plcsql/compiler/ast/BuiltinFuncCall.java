@@ -37,7 +37,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class BuiltinFuncCall extends Expr implements SqlUse {
 
     public StmtLoop containerLoop;
-    public int sqlSerialNo;
+    public final int sqlSerialNo;
 
     @Override
     public void setContainerLoop(StmtLoop containerLoop) {
