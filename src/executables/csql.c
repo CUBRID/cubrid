@@ -3582,6 +3582,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   const char *err_msg;
   CSQL_ARGUMENT csql_new_arg;
 
+  csql_Error_code = NO_ERROR;
+
   if (argument == NULL)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
@@ -3631,7 +3633,6 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   er_init ("./csql.err", ER_NEVER_EXIT);
   csql_new_arg.passwd = (char *) NULL;
-  csql_Error_code = NO_ERROR;
 
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
