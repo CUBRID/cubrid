@@ -1489,11 +1489,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_CONNECT:
       if (csql_arg->sysadm != true)
 	{
-	  csql_exit_session (0, false);
 	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
 	  if (error_code != NO_ERROR)
 	    {
-	      return error_code;
+	      if (csql_Error_code == NO_ERROR)
+		{
+		  return DO_CMD_SUCCESS;
+		}
+	      else
+		{
+		  return DO_CMD_FAILURE;
+		}
 	    }
 	}
       else
@@ -2771,6 +2777,11 @@ csql_exit_session (int error, bool exit_flag)
 	}
     }
 
+  if (!exit_flag)
+    {
+      return;
+    }
+
   if (histo_is_supported ())
     {
       if (csql_Is_histo_on != HISTO_OFF)
@@ -2784,18 +2795,12 @@ csql_exit_session (int error, bool exit_flag)
     {
       csql_Database_connected = false;
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-      if (exit_flag)
-	{
-	  csql_exit (EXIT_FAILURE);
-	}
+      csql_exit (EXIT_FAILURE);
     }
   else
     {
       csql_Database_connected = false;
-      if (exit_flag)
-	{
-	  csql_exit (error ? EXIT_FAILURE : EXIT_SUCCESS);
-	}
+      csql_exit (error ? EXIT_FAILURE : EXIT_SUCCESS);
     }
 }
 
@@ -3581,7 +3586,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
       fprintf (csql_Output_fp, "%s\n", err_msg);
-      return DO_CMD_SUCCESS;
+      return ER_FAILED;
     }
 
   memset (&csql_new_arg, 0, sizeof csql_new_arg);
@@ -3591,7 +3596,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-      return DO_CMD_FAILURE;
+      return ER_FAILED;
     }
 
   /*find db name following the user name */
@@ -3605,7 +3610,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       if (csql_arg->sa_mode == true)
 	{
 	  fprintf (csql_Output_fp, "Cannot connect to other DB in the --SA-mode.\n");
-	  return DO_CMD_SUCCESS;
+	  return ER_FAILED;
 	}
     }
 
@@ -3615,17 +3620,18 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   memset (boot_Host_connected, 0, sizeof (boot_Host_connected));
 #endif /* CS_MODE */
 
-  /*Failed to access other host or db and then access formal db_name */
+  csql_exit_session (0, false);
 
+  /*Failed to access other host or db and then access formal db_name */
   if (csql_Database_connected)
     {
       csql_Database_connected = false;
       db_shutdown ();
-
     }
 
   er_init ("./csql.err", ER_NEVER_EXIT);
   csql_new_arg.passwd = (char *) NULL;
+  csql_Error_code = NO_ERROR;
 
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
@@ -3640,7 +3646,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	      csql_check_server_down ();
 	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
-	      return DO_CMD_FAILURE;
+	      return ER_FAILED;
 	    }
 
 	  if (p[0] == '\0')
@@ -3658,7 +3664,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	  csql_check_server_down ();
 	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
-	  return DO_CMD_FAILURE;
+	  return ER_FAILED;
 
 	}
     }
@@ -3690,5 +3696,5 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 /*If connect is success, copy csql_new_arg to csql_arg*/
 
-  return DO_CMD_SUCCESS;
+  return NO_ERROR;
 }
