@@ -5468,9 +5468,6 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
 
-  /* abort dblink transaction first */
-  (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
-
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {

@@ -86,7 +86,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
     {
       /* transaction is aborted for dblink commit fail */
-      state = xtran_server_abort (thread_p);
+      state = log_abort (thread_p, tran_index);
+#if defined(ENABLE_SYSTEMTAP)
+      CUBRID_TRAN_ABORT (tran_index, TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
+#endif /* ENABLE_SYSTEMTAP */
       return TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
     }
 
@@ -129,6 +132,8 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
 
   state = log_abort (thread_p, tran_index);
 

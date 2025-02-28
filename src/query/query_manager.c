@@ -2230,6 +2230,7 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
       query_p = tran_entry_p->query_entry_list_p;
       if (query_p)
 	{
+	  xqmgr_end_query (thread_p, query_p->query_id);
 	  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
 	}
     }

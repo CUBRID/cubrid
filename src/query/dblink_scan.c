@@ -548,9 +548,6 @@ dblink_end_tran (int conn_handle, bool is_abort)
   int rc;
   T_CCI_ERROR err_buf;
 
-  if (is_abort == false && (conn_handle % 2))
-    conn_handle = -1;
-
   if (is_abort)
     {
       rc = cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
@@ -561,14 +558,14 @@ dblink_end_tran (int conn_handle, bool is_abort)
     }
   if (rc < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
       return rc;
     }
 
   rc = cci_disconnect (conn_handle, &err_buf);
   if (rc < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
       return rc;
     }
 
