@@ -622,6 +622,10 @@ help_print_info (const char *command, FILE * fpp)
 	    {
 	      help_print_obj (output_ctx, class_mop);
 	    }
+          else
+           {
+              fprintf (fpp, "\nERROR: Unknown class \"%s.%s\"\n", ustr_lower(db_get_user_name()), buffer);
+           }
 	}
     }
   else if (MATCH_TOKEN (buffer, "trigger"))
