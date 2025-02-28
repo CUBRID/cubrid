@@ -20,6 +20,7 @@
  * type_checking.c - auxiliary functions for parse tree translation
  */
 
+#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -18962,6 +18963,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
 
     case F_REGEXP_SUBSTR:
       error = db_string_regexp_substr (result, args, num_args, NULL);
+      break;
+
+    case F_VECTOR_DISTANCE:
+      error = vector_distance (result, args, num_args);
       break;
 
     case F_L2_DISTANCE:

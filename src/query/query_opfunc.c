@@ -20,6 +20,7 @@
  * query_opfunc.c - The manipulation of data stored in the XASL nodes
  */
 
+#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -6919,6 +6920,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
     case F_REGEXP_SUBSTR:
       return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_VECTOR_DISTANCE:
     case F_L2_DISTANCE:
       return qdata_vector_distance_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
@@ -8655,14 +8657,17 @@ qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functio
     // *INDENT-OFF*
     std::function<int(DB_VALUE*, DB_VALUE*[], const int)> distance_func;
     switch (function_p->ftype)
-    {
-      case F_L2_DISTANCE:
-        distance_func = vector_l2_distance;
-        break;
-      default:
-        assert (false);
-        break;
-    }
+      {
+	case F_VECTOR_DISTANCE:
+	  distance_func = vector_distance;
+	  break;
+	case F_L2_DISTANCE:
+	  distance_func = vector_l2_distance;
+	  break;
+	default:
+	  assert (false);
+	  break;
+      }
     // *INDENT-ON*
 
 

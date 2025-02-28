@@ -1070,6 +1070,9 @@ IDL       [a-zA-Z0-9_]
 [vV][aA][rR][yY][iI][nN][gG]						{ begin_token(yytext);   return VARYING; }
 [vV][cC][lL][aA][sS][sS]						{ begin_token(yytext);   return VCLASS; }
 [vV][eE][cC][tT][oO][rR]						{ begin_token(yytext);   return VECTOR; }
+[vV][eE][cC][tT][oO][rR]_[dD][iI][sS][tT][aA][nN][cC][eE]		{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return VECTOR_DISTANCE; }
 [vV][iI][eE][wW]							{ begin_token(yytext);   return VIEW; }
 [vV][iI][sS][iI][bB][lL][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);

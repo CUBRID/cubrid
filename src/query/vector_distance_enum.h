@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,21 +16,22 @@
  *
  */
 
-
 /*
- * vector_opfunc.hpp - Manipulate arbitrary vectors
+ * vector_distance_enum.h - vector distance metric enum
  */
 
-#ifndef _VECTOR_OPFUNC_H_
-#define _VECTOR_OPFUNC_H_
+#ifndef _VECTOR_DISTANCE_ENUM_H_
+#define _VECTOR_DISTANCE_ENUM_H_
 
-#include "dbtype_def.h"
+enum DB_VECTOR_DISTANCE_METRIC
+{
+  //COSINE = 0,
+  //DOT = 1,
+  EUCLIDEAN = 2,
+  //EUCLIDEAN_SQUARED = 3,
+  //HAMMING = 4,
+  //MANHATTAN = 5,
+  //JACCARD = 6
+};
 
-int
-vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
-
-int
-vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
-
-
-#endif /* _VECTOR_OPFUNC_H_ */
+#endif // _VECOTR_DISTANCE_ENUM_H_

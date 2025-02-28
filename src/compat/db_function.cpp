@@ -180,6 +180,8 @@ fcode_get_uppercase_name (FUNC_CODE ftype)
       return "REGEXP_REPLACE";
     case F_REGEXP_SUBSTR:
       return "REGEXP_SUBSTR";
+    case F_VECTOR_DISTANCE:
+      return "VECTOR_DISTANCE";
     case F_L2_DISTANCE:
       return "L2_DISTANCE";
     default:
@@ -338,6 +340,8 @@ fcode_get_lowercase_name (FUNC_CODE ftype)
       return "regexp_replace";
     case F_REGEXP_SUBSTR:
       return "regexp_substr";
+    case F_VECTOR_DISTANCE:
+      return "vector_distance";
     case F_L2_DISTANCE:
       return "l2_distance";
     default:
