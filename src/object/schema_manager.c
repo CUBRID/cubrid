@@ -11308,7 +11308,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       con->index_btid = existing_con->index_btid;
 
       assert (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY || existing_con->type == SM_CONSTRAINT_UNIQUE
-	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY || existing_con->type == SM_CONSTRAINT_INDEX);
+	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY || existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX);
       if (existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  if (check_fk_validity (classop, class_, con->attributes, con->asc_desc, &(con->fk_info->ref_class_oid),
@@ -11364,12 +11364,10 @@ static int
 allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con, DB_OBJLIST * subclasses,
 				SM_TEMPLATE * template_)
 {
-  assert (false);
   int error = NO_ERROR;
 
   if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
     {
-      assert (false);
       return NO_ERROR;
     }
 
@@ -12164,8 +12162,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		}
 	    }
-	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
-	    {
+	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX)
+            {
 	      error = classobj_put_index (&(flat->properties), con, &(con->index_btid), NULL, NULL, false);
 	      if (error != NO_ERROR)
 		{
@@ -14513,6 +14511,7 @@ char *
 sm_produce_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE constraint_type, const char **att_names,
 			    const int *asc_desc, const char *given_name)
 {
+  fprintf (stdout, "constraint_type: %d\n", constraint_type);
   char *name = NULL;
   size_t name_size;
 
@@ -15078,7 +15077,10 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
 
 	  if (constraint != NULL
 	      && (constraint->type == SM_CONSTRAINT_INDEX || constraint->type == SM_CONSTRAINT_REVERSE_INDEX
-		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE))
+		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE || constraint->type == SM_CONSTRAINT_VECTOR_INDEX))
+            {
+              constraint_type = DB_CONSTRAINT_INDEX;
+            }
 	    {
 	      constraint_type = db_constraint_type (constraint);
 	    }
@@ -15172,7 +15174,7 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
     }
 
   if (constraint->type == SM_CONSTRAINT_NOT_NULL || constraint->type == SM_CONSTRAINT_INDEX
-      || constraint->type == SM_CONSTRAINT_REVERSE_INDEX)
+      || constraint->type == SM_CONSTRAINT_REVERSE_INDEX || constraint->type == SM_CONSTRAINT_VECTOR_INDEX)
     {
       return true;
     }
@@ -16068,6 +16070,7 @@ sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint, in
     case SM_CONSTRAINT_REVERSE_INDEX:
     case SM_CONSTRAINT_FOREIGN_KEY:
     case SM_CONSTRAINT_NOT_NULL:
+    case SM_CONSTRAINT_VECTOR_INDEX:
       /* always local */
       return NO_ERROR;
     case SM_CONSTRAINT_PRIMARY_KEY:

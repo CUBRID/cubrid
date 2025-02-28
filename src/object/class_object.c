@@ -75,6 +75,7 @@ static SM_CONSTRAINT_TYPE Constraint_types[] = {
   SM_CONSTRAINT_INDEX,
   SM_CONSTRAINT_REVERSE_INDEX,
   SM_CONSTRAINT_FOREIGN_KEY,
+  SM_CONSTRAINT_VECTOR_INDEX
 };
 
 static const char *Constraint_properties[] = {
@@ -604,7 +605,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	    }
 
 	  if (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_REVERSE_INDEX
-	      || c->type == SM_CONSTRAINT_FOREIGN_KEY || c->attributes[0]->class_mop == filter_class)
+	      || c->type == SM_CONSTRAINT_FOREIGN_KEY || c->type == SM_CONSTRAINT_VECTOR_INDEX || c->attributes[0]->class_mop == filter_class)
 	    {
 	      is_global = 0;
 	    }
@@ -2406,7 +2407,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
 	  if (att != NULL)
 	    {
 	      if (constraint_type == SM_CONSTRAINT_INDEX || constraint_type == SM_CONSTRAINT_REVERSE_INDEX
-		  || constraint_type == SM_CONSTRAINT_UNIQUE || constraint_type == SM_CONSTRAINT_REVERSE_UNIQUE)
+		  || constraint_type == SM_CONSTRAINT_UNIQUE || constraint_type == SM_CONSTRAINT_REVERSE_UNIQUE || constraint_type == SM_CONSTRAINT_VECTOR_INDEX)
 		{
 		  if (classobj_check_function_constraint_info (constraint_seq, &has_function_constraint) != NO_ERROR)
 		    {
@@ -4022,7 +4023,9 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
 	  return false;
 	default:
 	  return true;
-	}
+	} 
+    case SM_CONSTRAINT_VECTOR_INDEX:
+        return true;
     default:
       return true;
     }
@@ -6514,7 +6517,7 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
 	    {
 	      /* NOT NULL have already been copied by classobj_copy_attribute_like. INDEX will be duplicated after the
 	       * class is created. */
-	      assert (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_REVERSE_INDEX
+	      assert (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_REVERSE_INDEX || c->type == SM_CONSTRAINT_VECTOR_INDEX
 		      || c->type == SM_CONSTRAINT_NOT_NULL);
 	    }
 	}
