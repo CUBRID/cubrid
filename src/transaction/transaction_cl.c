@@ -291,7 +291,11 @@ tran_commit (bool retain_lock)
       return error_code;
     }
 
-  assert (!tran_was_latest_query_aborted ());
+  if (tran_was_latest_query_aborted ())
+    {
+      return tran_abort ();
+    }
+
   if (tran_was_latest_query_ended () || tran_is_in_libcas ())
     {
       /* Query ended with latest executed query. No need to notify server. */

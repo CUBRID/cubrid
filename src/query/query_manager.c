@@ -2195,7 +2195,7 @@ QMGR_TRAN_STATUS
 qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
 {
   QMGR_TRAN_STATUS status = QMGR_TRAN_NULL;
-  QMGR_QUERY_ENTRY *query_p;
+  QMGR_QUERY_ENTRY *query_p, *prev_query = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
@@ -2222,17 +2222,13 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
 	    }
 	}
 
+      prev_query = query_p;
       query_p = query_p->next;
+      qmgr_free_query_entry (thread_p, tran_entry_p, prev_query);
     }
 
-  if (is_abort)
-    {
-      query_p = tran_entry_p->query_entry_list_p;
-      if (query_p)
-	{
-	  qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
-	}
-    }
+  tran_entry_p->query_entry_list_p = NULL;
+  tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
 
   return status;
 }
