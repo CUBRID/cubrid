@@ -4798,7 +4798,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* look up the class */
   name = alter->info.alter.entity_name;
   cls_nam = name->info.name.original;
-  new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
 
   if (alter->info.alter.code == PT_CHANGE_ATTR || alter->info.alter.code == PT_ADD_INDEX_CLAUSE)
     {
@@ -4810,11 +4809,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* We cannot change the schema of a class by using synonym names. */
-  snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
-
-  if (db_find_synonym (new_cls_nam) != NULL)
+  if (db_find_synonym (cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, new_cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
   else
@@ -4829,27 +4826,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       else
 	{
 	  return;
-	}
-
-      /* Check if class exists by name. */
-      if (db_find_class (new_cls_nam) != NULL)
-	{
-	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
-	  return;
-	}
-      else
-	{
-	  /* db_find_class () == NULL */
-	  ASSERT_ERROR ();
-
-	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-	    {
-	      er_clear ();
-	    }
-	  else
-	    {
-	      return;
-	    }
 	}
     }
 
@@ -5275,6 +5251,59 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			       cls_nam);
 		}
 	    }
+	}
+      break;
+    case PT_CHANGE_OWNER:
+      new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+      if (new_owner != NULL)
+	{
+	  snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+
+	  /* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+	  if (db_find_synonym (new_cls_nam) != NULL)
+	    {
+	      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST, new_cls_nam);
+	      break;
+	    }
+	  else
+	    {
+	      /* db_find_synonym () == NULL */
+	      ASSERT_ERROR ();
+
+	      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+		{
+		  er_clear ();
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+
+	  /* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+	  if (db_find_class (new_cls_nam) != NULL)
+	    {
+	      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
+	      break;
+	    }
+	  else
+	    {
+	      // db_find_class () == NULL //
+	      ASSERT_ERROR ();
+
+	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+		{
+		  er_clear ();
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, ER_AU_INVALID_USER);
 	}
       break;
     default:
