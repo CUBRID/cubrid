@@ -72,7 +72,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 {
   TRAN_STATE state;
   int tran_index;
-  QMGR_TRAN_STATUS dblink_tran;
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
 
   /*
    * Execute some few remaining actions before the log manager is notified of
@@ -81,16 +81,20 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  /* dblink commit first */
-  dblink_tran = qmgr_check_dblink_trans (thread_p, tran_index, false);
-  if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
+  if (auto_commit == false)
     {
-      /* transaction is aborted for dblink commit fail */
-      state = log_abort (thread_p, tran_index);
+      /* dblink commit first in case of auto commit mode off */
+      QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, tran_index, false);
+
+      if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
+	{
+	  /* transaction is aborted for dblink commit fail */
+	  state = log_abort (thread_p, tran_index);
 #if defined(ENABLE_SYSTEMTAP)
-      CUBRID_TRAN_ABORT (tran_index, TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
+	  CUBRID_TRAN_ABORT (tran_index, TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
 #endif /* ENABLE_SYSTEMTAP */
-      return TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
+	  return TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
+	}
     }
 
   state = log_commit (thread_p, tran_index, retain_lock);
@@ -129,11 +133,18 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 {
   TRAN_STATE state;
   int tran_index;
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
+  if (auto_commit == false)
+    {
+      /* dblink commit first in case of auto commit mode off */
+      QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, tran_index, false);
+
+      (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
+    }
 
   state = log_abort (thread_p, tran_index);
 
