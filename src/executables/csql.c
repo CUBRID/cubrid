@@ -2667,6 +2667,51 @@ signal_stop (int sig_no)
 #endif /* !WINDOWS */
 }
 
+#if !defined(WINDOWS)
+/*
+ * crash_handler(): kill the server and spawn the new server process
+ *
+ *   returns: none
+ *   signo(IN): signo to handle
+ *   siginfo(IN): siginfo struct
+ *   dummyp(IN): this argument will not be used,
+ *               but remains to cope with its function prototype.
+ *
+ */
+
+static void
+crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
+{
+  if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  er_print_crash_callstack (signo);
+}
+
+/*
+ * register_crash_signal_handler () : register of the signal for occuring crash
+ *
+ *   returns : none
+ *   signo(IN): signo to handle
+ *
+ */
+
+static void
+register_crash_signal_handler (int signo)
+{
+  struct sigaction act;
+
+  act.sa_handler = NULL;
+  act.sa_sigaction = crash_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = 0;
+  act.sa_flags |= SA_SIGINFO;
+  sigaction (signo, &act, NULL);
+}
+#endif
+
 /*
  * csql_exit_session() - handling the default action of the last outstanding
  *                     transaction (i.e., commit or abort)
@@ -2943,6 +2988,16 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
+
+#if !defined(WINDOWS)
+  /* set signal handler */
+  register_crash_signal_handler (SIGABRT);
+  register_crash_signal_handler (SIGILL);
+  register_crash_signal_handler (SIGFPE);
+  register_crash_signal_handler (SIGBUS);
+  register_crash_signal_handler (SIGSEGV);
+  register_crash_signal_handler (SIGSYS);
+#endif
 
   /*
    * login and restart database

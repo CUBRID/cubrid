@@ -47,7 +47,9 @@ if(NOT EXISTS ${JDK_DEST_DIR})
       file(RENAME ${EXTRACTED_DIR} ${JDK_DEST_DIR})
       file(REMOVE_RECURSE ${JDK_DEST_DIR}/man)
       file(REMOVE_RECURSE ${JDK_DEST_DIR}/sample)
+      file(REMOVE_RECURSE ${JDK_DEST_DIR}/src.zip)
     endif()
+
+    message(STATUS "[INFO] JDK 8 is downloaded and extracted to ${JDK_DEST_DIR}")
 endif()
 
-message(STATUS "[INFO] JDK 8 downloaded and extracted to ${JDK_DEST_DIR}")
