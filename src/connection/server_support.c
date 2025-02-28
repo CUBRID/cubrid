@@ -321,10 +321,7 @@ css_setup_server_loop (void)
 #endif /* not WINDOWS */
 
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  if (!pl_jvm_is_loaded ())
-    {
-      (void) os_set_signal_handler (SIGFPE, SIG_IGN);
-    }
+  (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #else /* LINUX || x86_SOLARIS || HPUX */
   (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #endif /* LINUX || x86_SOLARIS || HPUX */

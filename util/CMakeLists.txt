@@ -223,6 +223,7 @@ endif(UNIX)
 
 set(PL_SERVER_SOURCES
   ${EXECUTABLES_DIR}/pl.cpp
+  ${SP_DIR}/pl_sr_jvm.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
   ${PL_SERVER_SOURCES}
@@ -234,7 +235,12 @@ endif(WIN32)
 add_executable(cub_pl ${PL_SERVER_SOURCES})
 target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
 target_compile_definitions(cub_pl PRIVATE PL_MODE ${COMMON_DEFS})
+if(WIN32)
+target_link_libraries(cub_pl LINK_PRIVATE cubridsa ${JVM_LIBS})
+else(WIN32)
 target_link_libraries(cub_pl LINK_PRIVATE cubridsa)
+endif(WIN32)
+add_dependencies(cub_pl pl_install_jdk)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c

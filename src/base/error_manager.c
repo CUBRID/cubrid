@@ -3259,3 +3259,136 @@ namespace cuberr
   }
 } // namespace cuberr
 /* *INDENT-ON* */
+
+#if !defined(WINDOWS)
+void
+er_print_crash_callstack (int sig)
+{
+  switch (sig)
+    {
+    case SIGABRT:
+    case SIGILL:
+    case SIGFPE:
+    case SIGBUS:
+    case SIGSEGV:
+    case SIGSYS:
+      break;
+    default:
+      return;
+    }
+
+  /* get CUBRID env */
+  char *env = getenv ("CUBRID");
+
+  if (!env)
+    {
+      return;
+    }
+
+  /* get cmdline information (process name, args) */
+  char buffer[513];
+  FILE *fp = fopen ("/proc/self/cmdline", "r");
+  if (!fp)
+    {
+      return;
+    }
+
+  size_t byteRead = fread (buffer, 1, sizeof (buffer) - 1, fp);
+  if (byteRead <= 0)
+    {
+      fclose (fp);
+      return;
+    }
+  buffer[byteRead] = '\0';
+  fclose (fp);
+
+  /* get current direcory, chdir to $CUBRID/log and check and make directory $CUBRID/log/coredump */
+  char cdir[PATH_MAX], logdir[PATH_MAX], *p = logdir;
+
+  getcwd (cdir, sizeof (cdir));
+  if (chdir (env) != 0)
+    {
+      return;
+    }
+  sprintf (logdir, "log/coredump");
+
+  while (p != NULL)
+    {
+      p = strchr (p, '/');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+      if (access (logdir, F_OK) < 0)
+	{
+	  if (mkdir (logdir, 0777) < 0)
+	    {
+	      chdir (cdir);
+	      return;
+	    }
+	}
+      if (p != NULL)
+	{
+	  *p = '/';
+	  p++;
+	}
+    }
+
+  /* make coredump filename : processname_YYYYMMDDHHSSMM.min.coredump */
+  struct timeval tv;
+  struct tm *tm_info;
+  char filename[PATH_MAX + 256];
+  char *args = buffer;
+
+  gettimeofday (&tv, NULL);
+  tm_info = localtime (&tv.tv_sec);
+
+  sprintf (filename, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
+	   tm_info->tm_year + 1900,
+	   tm_info->tm_mon + 1,
+	   tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000);
+
+  /* print process information and callstack into coredump file */
+  fp = fopen (filename, "w+");
+  if (!fp)
+    {
+      chdir (cdir);
+      return;
+    }
+
+  fprintf (fp, "process info : ");
+  while (args < buffer + byteRead)
+    {
+      fprintf (fp, "%s ", args);
+      args += strlen (args) + 1;
+    }
+  fprintf (fp, "\n\n");
+
+  if (!fname_table)
+    {
+      if (er_call_stack_init () == ER_FAILED)
+	{
+	  fclose (fp);
+	  chdir (cdir);
+	  return;
+	}
+      er_dump_call_stack (fp);
+      er_call_stack_final ();
+    }
+  else
+    {
+      er_dump_call_stack (fp);
+    }
+  fclose (fp);
+
+  /* chdir orignal path */
+  chdir (cdir);
+
+  return;
+}
+#else
+void
+er_print_crash_callstack (int sig)
+{
+}
+#endif
