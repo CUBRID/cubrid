@@ -803,12 +803,32 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       return;
     }
 
+  owner_mop = au_find_user (owner_name);
+  if (owner_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      db_make_error (return_val, error);
+      return;
+    }
+
+  error = au_fetch_class_force (class_mop, &class_, AU_FETCH_UPDATE);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return;
+    }
+
+  if (ws_is_same_object (class_->owner, owner_mop))
+    {
+      return;
+    }
+
   /* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
   snprintf (new_class_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, sm_remove_qualifier_name (class_name));
 
   if (db_find_synonym (new_class_name) != NULL)
     {
-      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, new_class_name);
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_class_name);
       db_make_error (return_val, error);
       return;
     }
@@ -829,7 +849,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
 	}
     }
 
-  /* When changing the owner of a class, the class name cannot be changed to be the same as the class name. //
+  /* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
   if (db_find_class (new_class_name) != NULL)
     {
       ERROR_SET_WARNING_1ARG (error, ER_LC_CLASSNAME_EXIST, new_class_name);
@@ -838,41 +858,25 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
     }
   else
     {
-      /* db_find_class () == NULL //
+      /* db_find_class () == NULL */
       ASSERT_ERROR ();
 
-      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-        {
-    er_clear ();
-  }
+      if (er_errid () == ER_LC_CLASSNAME_EXIST)
+	{
+	  er_clear ();
+	}
       else
-  {
-    ASSERT_ERROR_AND_SET (error);
-          db_make_error (return_val, error);
-    return;
-  }
-    }
-  */
-
-  error = au_fetch_class_force (class_mop, &class_, AU_FETCH_UPDATE);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return;
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  db_make_error (return_val, error);
+	  return;
+	}
     }
 
   /* To change the owner of a system class is not allowed. */
   if (sm_issystem (class_))
     {
       ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
-      db_make_error (return_val, error);
-      return;
-    }
-
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
       db_make_error (return_val, error);
       return;
     }
