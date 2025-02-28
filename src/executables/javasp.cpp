@@ -113,6 +113,7 @@ static std::string command;
 static std::string db_name;
 static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
 
+#if !defined(WINDOWS)
 static int
 unmask_signal (int signo)
 {
@@ -122,7 +123,7 @@ unmask_signal (int signo)
   sigaddset (&sigset, signo);
   return sigprocmask (SIG_UNBLOCK, &sigset, NULL);
 }
-
+#endif
 /*
  * main() - javasp main function
  */
