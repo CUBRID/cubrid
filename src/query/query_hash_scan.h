@@ -25,14 +25,10 @@
 
 #include "regu_var.hpp"
 
+#define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
+
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
-
-struct hashjoin_input;
-typedef struct hashjoin_input HASHJOIN_INPUT;
-
-struct hashjoin_pred_info;
-typedef struct hashjoin_pred_info HASHJOIN_PRED_INFO;
 
 /* kind of hash list scan method */
 enum hash_method
@@ -132,30 +128,6 @@ struct hash_list_scan
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
-};
-
-typedef struct hashjoin_context HASHJOIN_CONTEXT;
-struct hashjoin_context
-{
-  QFILE_LIST_ID *outer_part_list_id;
-  QFILE_LIST_ID *inner_part_list_id;
-  bool use_outer_for_build;
-};
-
-typedef struct hashjoin_manager HASHJOIN_MANAGER;
-struct hashjoin_manager
-{
-  HASHJOIN_INPUT *outer;
-  HASHJOIN_INPUT *inner;
-  HASHJOIN_PRED_INFO *join_pred_info;
-  QFILE_LIST_MERGE_INFO *merge_info;
-
-  HASH_LIST_SCAN hash_scan;
-  UINT64 mem_limit;
-
-  HASHJOIN_CONTEXT single_context;
-  HASHJOIN_CONTEXT *context;
-  int part_cnt;
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);

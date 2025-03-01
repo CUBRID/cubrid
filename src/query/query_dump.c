@@ -20,28 +20,29 @@
  * query_dump.c - Query processor printer
  */
 
-#ident "$Id$"
+ #ident "$Id$"
 
-#include "config.h"
-#include <math.h>
-#include <stdio.h>
-
-#include "jansson.h"
-#include "query_dump.h"
-#include "object_primitive.h"
-#include "system_parameter.h"
-#include "dbtype.h"
-#if defined (SERVER_MODE)
-#include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#endif // SERVER_MODE
-#include "xasl.h"
-#include "xasl_aggregate.hpp"
-#include "xasl_predicate.hpp"
-#include "subquery_cache.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
-#define foutput stdout
+ #include "config.h"
+ #include <math.h>
+ #include <stdio.h>
+ 
+ #include "jansson.h"
+ #include "query_dump.h"
+ #include "object_primitive.h"
+ #include "system_parameter.h"
+ #include "dbtype.h"
+ #if defined (SERVER_MODE)
+ #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+ #endif // SERVER_MODE
+ #include "xasl.h"
+ #include "xasl_aggregate.hpp"
+ #include "xasl_predicate.hpp"
+ #include "subquery_cache.h"
+ #include "query_hash_join.hpp"
+ // XXX: SHOULD BE THE LAST INCLUDE HEADER
+ #include "memory_wrapper.hpp"
+ 
+ #define foutput stdout
 
 enum
 {
@@ -3119,7 +3120,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	json_object_set_new (build, "ioread", json_integer (hashjoin_proc->stats.build.ioreads));
 	json_object_set_new (build, "hash_method", json_string (hash_method_string));
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
 	{
 	  json_t *profile = json_object ();
 	  json_object_set_new (profile, "F", json_integer (TO_MSEC (hashjoin_proc->stats.build.profile.fetch)));
@@ -3144,7 +3145,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	json_object_set_new (probe, "rows", json_integer (hashjoin_proc->stats.probe.rows));
 	json_object_set_new (probe, "max_collisions", json_integer (hashjoin_proc->stats.probe.max_collisions));
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
 	{
 	  json_t *profile = json_object ();
 	  json_object_set_new (profile, "F", json_integer (TO_MSEC (hashjoin_proc->stats.probe.profile.fetch)));
@@ -3638,7 +3639,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   XASL_NODE *build_xasl, *probe_xasl;
 
   HASHJOIN_PROC_NODE *proc;
-  HASHJOIN_STATS *stats, *part_stats, *current_stats;
+  HJ_STATS *stats, *part_stats, *current_stats;
   int part_cnt, part_index;
 
   int max_digits;
@@ -3661,8 +3662,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (part_cnt <= 1)
     {
-      build_xasl = (stats->use_outer_for_build) ? outer_xasl : inner_xasl;
-      probe_xasl = (stats->use_outer_for_build) ? inner_xasl : outer_xasl;
+      build_xasl = (stats->is_build_outer) ? outer_xasl : inner_xasl;
+      probe_xasl = (stats->is_build_outer) ? inner_xasl : outer_xasl;
       assert (build_xasl != NULL);
       assert (probe_xasl != NULL);
 
@@ -3700,7 +3701,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, ", hash_method: %s)", qdump_hashjoin_type_string (stats->hash_method));
     }
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
   fprintf (fp,
 	   ", (F: %d, H: %d, I: %d)",
 	   TO_MSEC (stats->build.profile.fetch),
@@ -3724,7 +3725,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) current_stats->build.fetch_time, (long long int) current_stats->build.ioreads,
 		   qdump_hashjoin_type_string (current_stats->hash_method));
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
 	  fprintf (fp,
 		   ", (F: %d, H: %d, I: %d)",
 		   TO_MSEC (current_stats->build.profile.fetch),
@@ -3759,7 +3760,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, ", max_collisions: %d)", (unsigned int) stats->probe.max_collisions);
     }
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
   fprintf (fp,
 	   ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
 	   TO_MSEC (stats->probe.profile.fetch),
@@ -3786,7 +3787,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) current_stats->probe.readkeys, (long long int) current_stats->probe.rows,
 		   (unsigned int) current_stats->probe.max_collisions);
 
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
+#if TEST_HASH_JOIN_PROFILE_TIME
 	  fprintf (fp,
 		   ", (F: %d, H: %d, S: %d, M: %d, A: %d)",
 		   TO_MSEC (current_stats->probe.profile.fetch),

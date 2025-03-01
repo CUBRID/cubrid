@@ -32,6 +32,7 @@
 #include "memory_hash.h"
 
 #include "query_hash_scan.h"
+#include "query_hash_join.hpp"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
@@ -373,6 +374,7 @@ struct mergelist_proc_node
 };
 
 typedef struct hashjoin_input HASHJOIN_INPUT;
+typedef struct hashjoin_input HJ_INPUT;
 struct hashjoin_input
 {
   XASL_NODE *xasl;
@@ -380,98 +382,32 @@ struct hashjoin_input
   VAL_LIST *val_list;
 };
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct hashjoin_stats HASHJOIN_STATS;
-struct hashjoin_stats
-{
-  HASH_METHOD hash_method;
-  bool use_outer_for_build;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-    UINT32 part_cnt;
-  } part;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    struct timeval build_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval insert;	/* qexec_hash_join_build_key */
-    } profile;
-#endif
-  } build;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    struct timeval probe_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-    UINT64 readkeys;
-    UINT64 rows;
-    UINT32 max_collisions;
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval search;	/* qexec_hash_join_probe_key */
-      struct timeval match;	/* qexec_hash_join_fetch_key */
-      struct timeval add;	/* qexec_merge_tuple_add_list */
-    } profile;
-#endif
-  } probe;
-};
-#endif
-
 typedef struct hashjoin_domain_info HASHJOIN_DOMAIN_INFO;
+typedef struct hashjoin_domain_info HJ_DOMAIN_INFO;
 struct hashjoin_domain_info
 {
-  TP_DOMAIN **domains;
-  int *value_indexes;
-};
-
-typedef struct hashjoin_pred_info HASHJOIN_PRED_INFO;
-struct hashjoin_pred_info
-{
-  HASHJOIN_DOMAIN_INFO outer;
-  HASHJOIN_DOMAIN_INFO inner;
+  HJ_INPUT_DOMAIN_INFO outer;
+  HJ_INPUT_DOMAIN_INFO inner;
 
   /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
   /* Whether there is a need to use the coerce domain. */
   bool need_coerce_domains;
-
-  PRED_EXPR *during_join_pred;
 };
 
 typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
 struct hashjoin_proc_node
 {
-  HASHJOIN_INPUT outer;
-  HASHJOIN_INPUT inner;
-  HASHJOIN_PRED_INFO join_pred_info;
   QFILE_LIST_MERGE_INFO merge_info;
+  
+  HJ_INPUT outer;
+  HJ_INPUT inner;
+  HJ_DOMAIN_INFO domain_info;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  HASHJOIN_STATS stats;
-  HASHJOIN_STATS *part_stats;
+  HJ_STATS stats;
+  HJ_STATS *part_stats;
 #endif
 };
 
@@ -1117,8 +1053,6 @@ struct xasl_node
   PROC_TYPE type;		/* XASL type */
   int flag;			/* flags */
   QFILE_LIST_ID *list_id;	/* list file identifier */
-  QFILE_LIST_ID **part_list_id;
-  int part_cnt;
   SORT_LIST *after_iscan_list;	/* sorting fields */
   SORT_LIST *orderby_list;	/* sorting fields */
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */

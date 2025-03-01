@@ -550,7 +550,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   PROJECTION_PART_INFO *outer_info;
   PROJECTION_PART_INFO *inner_info;
 
-  TP_DOMAIN **outer_domains, **inner_domains, **coerce_domains;
+  TP_DOMAIN **outer_domains = NULL, **inner_domains = NULL, **coerce_domains;
   int *outer_value_indexes, *inner_value_indexes;
   bool need_coerce_domains;
 
@@ -564,11 +564,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   XASL_NODE *xasl = NULL;
 
   HASHJOIN_PROC_NODE *proc;
-  HASHJOIN_PRED_INFO *join_pred_info;
   QFILE_LIST_MERGE_INFO *merge_info;
-  int value_count;
+  HJ_DOMAIN_INFO *domain_info;
 
-  int value_index, found_index, pos_index;
+  int value_count, value_index, found_index, pos_index;
   int domain_index, skip_index;
 
   assert (env != NULL);
@@ -615,8 +614,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     }
 
   proc = &(xasl->proc.hashjoin);
-  join_pred_info = &(proc->join_pred_info);
   merge_info = &(proc->merge_info);
+  domain_info = &(proc->domain_info);
 
   /**
    * STEP 2: Set the necessary information in QFILE_LIST_MERGE_INFO.
@@ -821,12 +820,12 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     }
   else
     {
-      PT_NODE *during_join_pred;
+      PT_NODE *during_join_pred = NULL;
       int *pos_list = NULL;
 
       if (outer_info->expr_count > 0)
 	{
-	  pos_list = (int *) db_ws_alloc (outer_info->name_count * sizeof (int));
+	  pos_list = (int *) malloc (outer_info->name_count * sizeof (int));
 	  if (pos_list == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -844,7 +843,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
       if (pos_list != NULL)
 	{
-	  db_ws_free_and_init (pos_list);
+	  free_and_init (pos_list);
 	}
 
       if (xasl == NULL)
@@ -905,31 +904,28 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
    */
 
   /* outer */
-  join_pred_info->outer.domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-  if (join_pred_info->outer.domains == NULL)
+  outer_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+  if (outer_domains == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
       goto exit_on_error;
     }
-  outer_domains = join_pred_info->outer.domains;
-  outer_value_indexes = join_pred_info->outer.value_indexes = merge_info->ls_outer_column;
+  domain_info->outer.domains = outer_domains;
+  domain_info->outer.value_indexes = outer_value_indexes = merge_info->ls_outer_column;
 
   /* inner */
-  join_pred_info->inner.domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-  if (join_pred_info->inner.domains == NULL)
+  inner_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+  if (inner_domains == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
       goto exit_on_error;
     }
-  inner_domains = join_pred_info->inner.domains;
-  inner_value_indexes = join_pred_info->inner.value_indexes = merge_info->ls_inner_column;
+  domain_info->inner.domains = inner_domains;
+  domain_info->inner.value_indexes = inner_value_indexes = merge_info->ls_inner_column;
 
   /* need_coerce_domains, coerce_domains */
-  join_pred_info->coerce_domains = NULL;
-  join_pred_info->need_coerce_domains = false;
-
-  coerce_domains = NULL;
-  need_coerce_domains = false;
+  domain_info->coerce_domains = coerce_domains = NULL;
+  domain_info->need_coerce_domains = need_coerce_domains = false;
 
   for (domain_index = 0; domain_index < value_count; domain_index++)
     {
@@ -986,16 +982,14 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 		{
 		  need_coerce_domains = true;
 
-		  join_pred_info->coerce_domains =
+		  coerce_domains =
 		    (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-		  if (join_pred_info->coerce_domains == NULL)
+		  if (coerce_domains == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      sizeof (TP_DOMAIN *) * value_count);
 		      goto exit_on_error;
 		    }
-
-		  coerce_domains = join_pred_info->coerce_domains;
 
 		  for (skip_index = 0; skip_index < domain_index; skip_index++)
 		    {
@@ -1060,15 +1054,13 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      need_coerce_domains = true;
 
-	      join_pred_info->coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-	      if (join_pred_info->coerce_domains == NULL)
+	      coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+	      if (coerce_domains == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  sizeof (TP_DOMAIN *) * value_count);
 		  goto exit_on_error;
 		}
-
-	      coerce_domains = join_pred_info->coerce_domains;
 
 	      for (skip_index = 0; skip_index < domain_index; skip_index++)
 		{
@@ -1088,8 +1080,10 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     }
 
   assert (need_coerce_domains == false || coerce_domains != NULL);
+  assert (need_coerce_domains == true || coerce_domains == NULL);
 
-  join_pred_info->need_coerce_domains = need_coerce_domains;
+  join_info->coerce_domains = coerce_domains;
+  join_info->need_coerce_domains = need_coerce_domains;
 
 exit_on_end:
   bitset_delset (&term_segs_set);
