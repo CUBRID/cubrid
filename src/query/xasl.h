@@ -32,7 +32,7 @@
 #include "memory_hash.h"
 
 #include "query_hash_scan.h"
-#include "query_hash_join.hpp"
+#include "query_hash_join.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
@@ -373,34 +373,11 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
-typedef struct hashjoin_input HASHJOIN_INPUT;
-typedef struct hashjoin_input HJ_INPUT;
-struct hashjoin_input
-{
-  XASL_NODE *xasl;
-  ACCESS_SPEC_TYPE *spec_list;
-  VAL_LIST *val_list;
-};
-
-typedef struct hashjoin_domain_info HASHJOIN_DOMAIN_INFO;
-typedef struct hashjoin_domain_info HJ_DOMAIN_INFO;
-struct hashjoin_domain_info
-{
-  HJ_INPUT_DOMAIN_INFO outer;
-  HJ_INPUT_DOMAIN_INFO inner;
-
-  /* The common domains between the domains of values used in the build and probe inputs. */
-  TP_DOMAIN **coerce_domains;
-
-  /* Whether there is a need to use the coerce domain. */
-  bool need_coerce_domains;
-};
-
 typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
 struct hashjoin_proc_node
 {
   QFILE_LIST_MERGE_INFO merge_info;
-  
+
   HJ_INPUT outer;
   HJ_INPUT inner;
   HJ_DOMAIN_INFO domain_info;

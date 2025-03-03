@@ -20,29 +20,29 @@
  * query_dump.c - Query processor printer
  */
 
- #ident "$Id$"
+#ident "$Id$"
 
- #include "config.h"
- #include <math.h>
- #include <stdio.h>
- 
- #include "jansson.h"
- #include "query_dump.h"
- #include "object_primitive.h"
- #include "system_parameter.h"
- #include "dbtype.h"
- #if defined (SERVER_MODE)
- #include "thread_manager.hpp"	// for thread_get_thread_entry_info
- #endif // SERVER_MODE
- #include "xasl.h"
- #include "xasl_aggregate.hpp"
- #include "xasl_predicate.hpp"
- #include "subquery_cache.h"
- #include "query_hash_join.hpp"
+#include "config.h"
+#include <math.h>
+#include <stdio.h>
+
+#include "jansson.h"
+#include "query_dump.h"
+#include "object_primitive.h"
+#include "system_parameter.h"
+#include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_predicate.hpp"
+#include "subquery_cache.h"
+#include "query_hash_join.h"
  // XXX: SHOULD BE THE LAST INCLUDE HEADER
- #include "memory_wrapper.hpp"
- 
- #define foutput stdout
+#include "memory_wrapper.hpp"
+
+#define foutput stdout
 
 enum
 {

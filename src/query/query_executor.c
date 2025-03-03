@@ -81,7 +81,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "query_hash_join.hpp"
+#include "query_hash_join.h"
 
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -8783,7 +8783,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
 			UPDDEL_CLASS_INFO * classes, UPDDEL_CLASS_INFO_INTERNAL * internal_classes, int num_assigns,
 			UPDATE_ASSIGNMENT * assigns, PRED_EXPR * cons_pred,
 			UPDDEL_MVCC_COND_REEVAL ** mvcc_reev_classes, UPDATE_MVCC_REEV_ASSIGNMENT ** mvcc_reev_assigns,
-bool has_delete)
+			bool has_delete)
 {
   UPDDEL_MVCC_COND_REEVAL *cond_reev_classes = NULL, *cond_reev_class = NULL;
   UPDDEL_CLASS_INFO *cls = NULL;
@@ -10313,7 +10313,7 @@ error:
  */
 static DEL_LOB_INFO *
 qexec_change_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, UPDDEL_CLASS_INFO_INTERNAL * class_info,
-DEL_LOB_INFO ** del_lob_info_list_ptr)
+			      DEL_LOB_INFO ** del_lob_info_list_ptr)
 {
   DEL_LOB_INFO *del_lob_info_list = *del_lob_info_list_ptr;
   DEL_LOB_INFO *del_lob_info = NULL;
@@ -10852,7 +10852,7 @@ error_exit:
  */
 static int
 qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, HFID * hfid, VAL_DESCR * vd, int op_type,
-HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+				    HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
 				    HEAP_CACHE_ATTRINFO * index_attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
 				    int pruning_type, PRUNING_CONTEXT * pcontext, int *force_count)
 {
@@ -14895,7 +14895,7 @@ exit_on_error:
 
 qfile_list_id *
 qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
-QUERY_ID query_id)
+		     QUERY_ID query_id)
 {
   int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
@@ -16830,7 +16830,7 @@ bf2df_str_son_index (THREAD_ENTRY * thread_p, char **son_index, char *father_ind
  */
 static int
 qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID * list_file, SORT_LIST * orderby_list,
-XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list)
+			XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list)
 {
   QFILE_LIST_ID *list_id = list_file;
   int n, i;
@@ -17473,7 +17473,7 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 {
   CONNECTBY_PROC_NODE *connect_by = &xasl->connect_by_ptr->proc.connect_by;
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tuple_rec = {     (QFILE_TUPLE) NULL, 0   };
+  QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
   SCAN_CODE scan;
   DB_VALUE *dbvalp;
   DB_LOGICAL ev_res;
@@ -19916,11 +19916,11 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  *   tplrec(out) 	: Tuple record descriptor to store result tuples
  */
 static ANALYTIC_STATE *
-qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, 				 ANALYTIC_TYPE * a_func_list,
-SORT_LIST * sort_list, 				 REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
-				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, 				 bool is_last_run,
-XASL_NODE * xasl, XASL_STATE * xasl_state, 				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
-QFILE_TUPLE_RECORD * tplrec)
+qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
+				 SORT_LIST * sort_list, REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
+				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_last_run,
+				 XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				 QFILE_TUPLE_RECORD * tplrec)
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   ANALYTIC_TYPE *func_p;

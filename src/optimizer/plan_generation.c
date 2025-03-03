@@ -982,8 +982,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 		{
 		  need_coerce_domains = true;
 
-		  coerce_domains =
-		    (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+		  coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
 		  if (coerce_domains == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -1082,8 +1081,8 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   assert (need_coerce_domains == false || coerce_domains != NULL);
   assert (need_coerce_domains == true || coerce_domains == NULL);
 
-  join_info->coerce_domains = coerce_domains;
-  join_info->need_coerce_domains = need_coerce_domains;
+  domain_info->coerce_domains = coerce_domains;
+  domain_info->need_coerce_domains = need_coerce_domains;
 
 exit_on_end:
   bitset_delset (&term_segs_set);
