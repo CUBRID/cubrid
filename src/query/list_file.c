@@ -1217,6 +1217,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
+
   list_id_p->type_list.domp = NULL;
 
   if (list_id_p->type_list.type_cnt != 0)

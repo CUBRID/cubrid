@@ -2236,11 +2236,17 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       return;
     }
 
+  bool is_pl_session_running = session_has_pl_session (thread_p);
 #if defined (SERVER_MODE) && !defined (NDEBUG)
-  if (!session_has_pl_session (thread_p))
+  /* there should be no active query */
+  for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
     {
-      /* there should be no active query */
-      for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
+      if (is_pl_session_running && query_p->query_status == QUERY_IN_PROGRESS)
+	{
+	  er_log_debug (ARG_FILE_LINE, "query %d is in progress, including an SP that contains COMMIT or ROLLBACK\n",
+			query_p->query_id);
+	}
+      else
 	{
 	  assert (query_p->query_status == QUERY_COMPLETED);
 	}
@@ -2250,6 +2256,12 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
   query_p = tran_entry_p->query_entry_list_p;
   while (query_p)
     {
+      if (is_pl_session_running && query_p->query_status == QUERY_IN_PROGRESS)
+	{
+	  query_p = query_p->next;
+	  continue;
+	}
+
       if (query_p->is_holdable)
 	{
 	  if (is_abort || is_tran_died)
@@ -2302,7 +2314,10 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       query_p = tran_entry_p->query_entry_list_p;
     }
 
-  assert (tran_entry_p->query_entry_list_p == NULL);
+  if (!is_pl_session_running)
+    {
+      assert (tran_entry_p->query_entry_list_p == NULL);
+    }
   tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
 }
 
@@ -3118,7 +3133,10 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	}
       else
 	{
-	  tfile_vfid_p->next->prev = tfile_vfid_p->prev;
+	  if (tfile_vfid_p->next)
+	    {
+	      tfile_vfid_p->next->prev = tfile_vfid_p->prev;
+	    }
 	  tfile_vfid_p->prev->next = tfile_vfid_p->next;
 	  if (query_p->temp_vfid == tfile_vfid_p)
 	    {
