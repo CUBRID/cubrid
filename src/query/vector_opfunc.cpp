@@ -186,7 +186,7 @@ static float cubvec_cosine_distance (const float * vec1, const float * vec2, siz
 
   // Cosine distance is 1 - cosine similarity
   float distance = 1.0f - similarity;
-  assert(distance <= 2.0f && distance >= 0.0f);
+  assert (distance <= 2.0f && distance >= 0.0f);
   return distance;
 
 }
