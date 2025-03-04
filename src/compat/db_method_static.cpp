@@ -818,6 +818,15 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       return;
     }
 
+  /* To change the owner of a system class is not allowed. */
+  if (sm_issystem (class_))
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
+      db_make_error (return_val, error);
+      return;
+    }
+
+  /* When changing to the same owner, a No-Operation is performed. */
   if (ws_is_same_object (class_->owner, owner_mop))
     {
       return;
@@ -871,14 +880,6 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
 	  db_make_error (return_val, error);
 	  return;
 	}
-    }
-
-  /* To change the owner of a system class is not allowed. */
-  if (sm_issystem (class_))
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS, "");
-      db_make_error (return_val, error);
-      return;
     }
 
   error = au_change_class_owner (class_mop, owner_mop);

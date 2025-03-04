@@ -4775,7 +4775,6 @@ static void
 pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
   DB_OBJECT *db, *super;
-  SM_CLASS *class_ = NULL;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
   PT_NODE *name, *sup, *att, *qry, *attr;
@@ -5253,22 +5252,38 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
     case PT_CHANGE_OWNER:
       {
-	char old_owner[DB_MAX_USER_LENGTH];
-	old_owner[0] = '\0';
 	const char *new_owner;
+	MOP new_owner_mop = NULL;
+	SM_CLASS *class_ = NULL;
 	char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
 	new_cls_nam[0] = '\0';
+	int error = NO_ERROR;
 
-	sm_qualifier_name (cls_nam, old_owner, DB_MAX_USER_LENGTH);
-	if (old_owner == NULL || old_owner[0] == '\0')
+	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+
+	new_owner_mop = au_find_user (new_owner);
+	if (new_owner_mop == NULL)
 	  {
-	    assert (false);
-	    PT_ERRORm (parser, name, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
 	    break;
 	  }
 
-	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
-	if (new_owner != NULL && strncmp (old_owner, new_owner, DB_MAX_USER_LENGTH) == 0)
+	error = au_fetch_class_force (db, &class_, AU_FETCH_UPDATE);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	/* To change the owner of a system class is not allowed. */
+	if (sm_issystem (class_))
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
+	    break;
+	  }
+
+	/* When changing to the same owner, a No-Operation is performed. */
+	if (ws_is_same_object (class_->owner, new_owner_mop))
 	  {
 	    break;
 	  }
@@ -5299,7 +5314,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
 	if (db_find_class (new_cls_nam) != NULL)
 	  {
-	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
 	    break;
 	  }
 	else
