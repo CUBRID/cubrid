@@ -38,4 +38,7 @@ vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
 int
 vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args);
 
+int
+vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);
+
 #endif /* _VECTOR_OPFUNC_H_ */

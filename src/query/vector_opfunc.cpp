@@ -24,6 +24,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+static float cubvec_cosine_distance (const float * vec1, const float * vec2, size_t dim);
+
 /**
  * @brief Converts a DB_VALUE vector of floats into a std::vector<float>.
  *
@@ -150,4 +152,41 @@ int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
   return vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
+}
+
+int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
+}
+
+static float cubvec_cosine_distance (const float * vec1, const float * vec2, size_t dim)
+{
+
+  float ip = faiss::fvec_inner_product (vec1, vec2, dim);
+  float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
+  float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
+
+  // Handle zero vectors to avoid division by zero
+  if (norm1 == 0.0f || norm2 == 0.0f)
+    {
+      return 1.0f; // Maximum distance
+    }
+
+  float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
+
+  // Clamp the similarity value to [-1, 1] to handle floating-point errors
+  if (similarity > 1.0f)
+    {
+      similarity = 1.0f;
+    }
+  if (similarity < -1.0f)
+    {
+      similarity = -1.0f;
+    }
+
+  // Cosine distance is 1 - cosine similarity
+  float distance = 1.0f - similarity;
+  assert(distance <= 2.0f && distance >= 0.0f);
+  return distance;
+
 }
