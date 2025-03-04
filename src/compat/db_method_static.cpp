@@ -776,7 +776,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (class_name) != NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_ALREADY_EXIST, class_name);
       db_make_error (return_val, error);
       return;
     }
@@ -791,6 +791,8 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
 	}
       else
 	{
+	  ASSERT_ERROR_AND_SET (error);
+	  db_make_error (return_val, error);
 	  return;
 	}
     }
