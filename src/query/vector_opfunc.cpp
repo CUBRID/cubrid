@@ -24,7 +24,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static float cubvec_cosine_distance (const float * vec1, const float * vec2, size_t dim);
+static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim);
 
 /**
  * @brief Converts a DB_VALUE vector of floats into a std::vector<float>.
