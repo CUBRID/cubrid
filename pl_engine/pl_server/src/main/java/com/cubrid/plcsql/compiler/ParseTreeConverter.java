@@ -1442,41 +1442,27 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        StmtLoop.LoopOptimizables loopOptimizableSaved = null;
-        try {
-            if (loopOptimizables != null) {
-                // save the current one
-                loopOptimizableSaved = loopOptimizables;
-                loopOptimizables = null;
-            }
+        boolean allFlowsBlocked;
 
-            boolean allFlowsBlocked;
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        allFlowsBlocked = controlFlowBlocked;
 
-            NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-            allFlowsBlocked = controlFlowBlocked;
-
-            NodeList<ExHandler> exHandlers = new NodeList<>();
-            for (Exception_handlerContext ehc : ctx.exception_handler()) {
-                exHandlers.addNode(visitException_handler(ehc));
-                allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
-            }
-
-            controlFlowBlocked = allFlowsBlocked; // s017-1
-
-            String label;
-            if (ctx.label_name() == null) {
-                label = null;
-            } else {
-                label = Misc.getNormalizedText(ctx.label_name());
-            }
-
-            return new Body(ctx, stmts, exHandlers, label);
-        } finally {
-            if (loopOptimizableSaved != null) {
-                // restore
-                loopOptimizables = loopOptimizableSaved;
-            }
+        NodeList<ExHandler> exHandlers = new NodeList<>();
+        for (Exception_handlerContext ehc : ctx.exception_handler()) {
+            exHandlers.addNode(visitException_handler(ehc));
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
+
+        controlFlowBlocked = allFlowsBlocked; // s017-1
+
+        String label;
+        if (ctx.label_name() == null) {
+            label = null;
+        } else {
+            label = Misc.getNormalizedText(ctx.label_name());
+        }
+
+        return new Body(ctx, stmts, exHandlers, label);
     }
 
     @Override
