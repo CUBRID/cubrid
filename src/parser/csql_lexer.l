@@ -467,7 +467,9 @@ IDL       [a-zA-Z0-9_]
 [iI][nN][hH][eE][rR][iI][tT]						{ begin_token(yytext);   return INHERIT; }
 [iI][nN][iI][tT][iI][aA][lL][lL][yY]					{ begin_token(yytext);   return INITIALLY; }
 [iI][nN][nN][eE][rR]							{ begin_token(yytext);   return INNER; }
-[iI][nN][nN][eE][rR]_[pP][rR][oO][dD][uU][cC][tT]			{ begin_token(yytext);   return INNER_PRODUCT; }
+[iI][nN][nN][eE][rR]_[pP][rR][oO][dD][uU][cC][tT]			{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return INNER_PRODUCT; }
 [iI][nN][oO][uU][tT]							{ begin_token(yytext);   return INOUT; }
 [iI][nN][pP][uU][tT]							{ begin_token(yytext);   return INPUT_; }
 [iI][nN][sS][eE][rR][tT]						{ begin_token(yytext);   return INSERT; }
