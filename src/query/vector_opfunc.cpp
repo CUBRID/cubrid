@@ -159,7 +159,7 @@ int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
 }
 
-static float cubvec_cosine_distance (const float * vec1, const float * vec2, size_t dim)
+static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
 {
 
   float ip = faiss::fvec_inner_product (vec1, vec2, dim);
