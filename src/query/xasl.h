@@ -32,7 +32,7 @@
 #include "memory_hash.h"
 
 #include "query_hash_scan.h"
-#include "query_hash_join.h"
+#include "query_hash_join.hpp"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"

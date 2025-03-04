@@ -38,10 +38,10 @@
  * Debug Macros
  */
 
-#define HASH_JOIN_PROFILE_TIME 1
-#define HASH_JOIN_DUMP_HASH_TABLE 1
-#define HASH_JOIN_DUMP_PROBE 1
-#define HASH_JOIN_DUMP_BUILD 1
+#define HASH_JOIN_PROFILE_TIME 0
+#define HASH_JOIN_DUMP_HASH_TABLE 0
+#define HASH_JOIN_DUMP_PROBE 0
+#define HASH_JOIN_DUMP_BUILD 0
 
 /**
  * Forward Declarations
@@ -158,7 +158,7 @@ struct hashjoin_stats
  * Function Declarations
  */
 
-int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, UINT64 query_id);
+int qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, UINT64 query_id);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

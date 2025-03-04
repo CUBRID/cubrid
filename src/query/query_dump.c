@@ -38,7 +38,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "query_hash_join.h"
+#include "query_hash_join.hpp"
  // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
