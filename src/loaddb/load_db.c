@@ -70,6 +70,7 @@ static int load_has_authorization (const std::string & class_name, DB_AUTH au_ty
 /* *INDENT-ON* */
 static int load_object_file (load_args * args, int *exit_status);
 static void print_er_msg ();
+static void ldr_print_error_msg (int line, int base_line, const char *file_name);
 
 /*
  * print_log_msg - print log message
@@ -939,6 +940,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int check_line_no = true;
   PT_NODE *statement = NULL;
+  int base_line = *start_line - 1;
 
   if ((*start_line) > 1)
     {
@@ -1009,15 +1011,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
-		  if (line >= 0)
+
+		  if (line <= 0)
 		    {
-		      // We need -1 here since start_line will offset the output.
-		      print_log_msg (1, "In %s line %d,\n", file_name, line + (*start_line) - 1);
-		      print_log_msg (1, "ERROR: %s \n", db_error_string (3));
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		      logddl_set_file_line (line);
+		      db_get_parser_line_col (session, &line, &col);	// current input line and column
 		    }
+
+		  ldr_print_error_msg (line, base_line, file_name);
+
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  logddl_set_file_line (line + base_line);
 		}
 	      while (session_error);
 	    }
@@ -1032,18 +1036,22 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (error < 0)
 	{
-	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  int line, col;
+	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
-	  logddl_set_file_line (last_statement_line_no);
+	  logddl_set_file_line (line + base_line);
 	  break;
 	}
       executed_cnt++;
       error = db_query_end (res);
       if (error < 0)
 	{
-	  print_log_msg (1, "ERROR: %s\n", db_error_string (3));
+	  int line, col;
+	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
-	  logddl_set_file_line (last_statement_line_no);
+	  logddl_set_file_line (line + base_line);
 	  break;
 	}
 
@@ -1052,8 +1060,8 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  db_commit_transaction ();
 	  print_log_msg (args->verbose_commit, "%8d statements executed. Commit transaction at line %d\n", executed_cnt,
-			 last_statement_line_no);
-	  *start_line = last_statement_line_no + 1;
+			 base_line + last_statement_line_no);
+	  *start_line = base_line + last_statement_line_no + 1;
 	}
       print_log_msg ((int) args->verbose, "Total %8d statements executed.\r", executed_cnt);
       fflush (stdout);
@@ -1359,4 +1367,19 @@ load_object_file (load_args * args, int *exit_status)
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
   return split (args->periodic_commit, args->object_file, c_handler, b_handler);
+}
+
+static void
+ldr_print_error_msg (int line, int base_line, const char *file_name)
+{
+  if (line >= 0)
+    {
+      print_log_msg (1, "In %s line %d,\n", file_name, line + base_line);
+    }
+  else
+    {
+      print_log_msg (1, "Unknown error line in %s, \n", file_name);
+    }
+
+  print_log_msg (1, "ERROR: %s \n", db_error_string (3));
 }
