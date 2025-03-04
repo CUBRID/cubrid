@@ -5252,69 +5252,71 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       break;
     case PT_CHANGE_OWNER:
-      char old_owner[DB_MAX_USER_LENGTH];
-      old_owner[0] = '\0';
-      const char *new_owner;
-      char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
-      new_cls_nam[0] = '\0';
+      {
+	char old_owner[DB_MAX_USER_LENGTH];
+	old_owner[0] = '\0';
+	const char *new_owner;
+	char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
+	new_cls_nam[0] = '\0';
 
-      sm_qualifier_name (cls_nam, old_owner, DB_MAX_USER_LENGTH);
-      if (old_owner == NULL || old_owner[0] == '\0')
-	{
-	  assert (false);
-	  PT_ERRORm (parser, name, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
-	  break;
-	}
+	sm_qualifier_name (cls_nam, old_owner, DB_MAX_USER_LENGTH);
+	if (old_owner == NULL || old_owner[0] == '\0')
+	  {
+	    assert (false);
+	    PT_ERRORm (parser, name, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	    break;
+	  }
 
-      new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
-      if (new_owner != NULL && strncmp (old_owner, new_owner, DB_MAX_USER_LENGTH) == 0)
-	{
-	  break;
-	}
+	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+	if (new_owner != NULL && strncmp (old_owner, new_owner, DB_MAX_USER_LENGTH) == 0)
+	  {
+	    break;
+	  }
 
-      /* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
-      snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+	/* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+	snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
 
-      if (db_find_synonym (new_cls_nam) != NULL)
-	{
-	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_cls_nam);
-	  break;
-	}
-      else
-	{
-	  /* db_find_synonym () == NULL */
-	  ASSERT_ERROR ();
+	if (db_find_synonym (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    /* db_find_synonym () == NULL */
+	    ASSERT_ERROR ();
 
-	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
-	    {
-	      er_clear ();
-	    }
-	  else
-	    {
-	      break;
-	    }
-	}
+	    if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
 
-      /* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
-      if (db_find_class (new_cls_nam) != NULL)
-	{
-	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
-	  break;
-	}
-      else
-	{
-	  // db_find_class () == NULL //
-	  ASSERT_ERROR ();
+	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+	if (db_find_class (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_EXISTS, new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    // db_find_class () == NULL //
+	    ASSERT_ERROR ();
 
-	  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-	    {
-	      er_clear ();
-	    }
-	  else
-	    {
-	      break;
-	    }
-	}
+	    if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+      }
       break;
     default:
       break;

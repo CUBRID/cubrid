@@ -861,7 +861,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       /* db_find_class () == NULL */
       ASSERT_ERROR ();
 
-      if (er_errid () == ER_LC_CLASSNAME_EXIST)
+      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
 	{
 	  er_clear ();
 	}
