@@ -68,7 +68,7 @@
 #include "pl_connection.hpp"
 #include "pl_comm.h"
 #include "pl_file.h"
-#include "pl_sr.h"
+#include "pl_sr_jvm.h"
 
 #include "packer.hpp"
 
@@ -283,6 +283,9 @@ main (int argc, char *argv[])
     /* pl command main routine */
     if (command.compare ("start") == 0)
       {
+#if !defined (WINDOWS)
+	pid_t ppid = getppid ();
+#endif
 	(void) pl_start_server (pl_info, db_name, pathname);
 
 	command = "running";
@@ -308,7 +311,7 @@ main (int argc, char *argv[])
 		break;// parent process is terminated
 	      }
 #else
-	    if (getppid () == 1)
+	    if (getppid () != ppid)
 	      {
 		// parent process is terminated
 		break;
@@ -394,28 +397,7 @@ static void pl_signal_handler (int sig)
 	  return;
 	}
 
-      // error handling in parent
-      std::string err_msg;
-
-      void *addresses[64];
-      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-      char **symbols = backtrace_symbols (addresses, nn_addresses);
-
-      err_msg += "pid (";
-      err_msg += std::to_string (getpid ());
-      err_msg += ")\n";
-
-      for (int i = 0; i < nn_addresses; i++)
-	{
-	  err_msg += symbols[i];
-	  if (i < nn_addresses - 1)
-	    {
-	      err_msg += "\n";
-	    }
-	}
-      free (symbols);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PL_SERVER_CRASHED, 1, err_msg.c_str ());
+      er_print_crash_callstack (sig);
 
       exit (1);
     }

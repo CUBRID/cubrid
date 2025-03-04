@@ -386,7 +386,6 @@ qmgr_free_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p, 
   pthread_mutex_lock (&tran_entry_p->mutex);
   query_p->next = tran_entry_p->free_query_entry_list_p;
   tran_entry_p->free_query_entry_list_p = query_p;
-  tran_entry_p->num_query_entries--;
   pthread_mutex_unlock (&tran_entry_p->mutex);
 }
 

@@ -701,6 +701,7 @@ endif(USE_DUMA)
 if(USE_CUBRID_ENV)
   message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
   set(CUBRID_PREFIXDIR .)
+  set(CUBRID_3RDPARTYDIR 3rdparty)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
   set(CUBRID_SRCDIR src)
@@ -725,6 +726,8 @@ else(USE_CUBRID_ENV)
 
   set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
   list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
+  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
+  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
   set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
   if(IS_ABSOLUTE ${CUBRID_BINDIR})
     list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
@@ -797,12 +800,6 @@ else(USE_CUBRID_ENV)
   set(CUBRID_DEMODIR demo CACHE STRING "The directory for demo data files")
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
-
-# For JVM libraries
-# if(WIN32)
-#    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
-#  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
-# endif(WIN32)
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
@@ -926,12 +923,16 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
 endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 # create empty directories
+install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+    DESTINATION ${CUBRID_3RDPARTYDIR}
+    FILES_MATCHING PATTERN "*.txt")
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
