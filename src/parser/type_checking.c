@@ -18978,7 +18978,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
       break;
 
     case F_INNER_PRODUCT:
-      error = vector_l2_distance (result, args, num_args);
+      error = vector_inner_product (result, args, num_args);
       break;
 
     default:
