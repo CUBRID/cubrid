@@ -1666,6 +1666,9 @@ cas_sig_handler (int signo)
   cas_free (true);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+
+  er_print_crash_callstack (signo);
+
 #ifdef _GCOV
   exit (0);
 #else

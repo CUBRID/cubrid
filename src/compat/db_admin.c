@@ -928,10 +928,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
-	  if (!pl_jvm_is_loaded ())
-	    {
-	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
-	    }
+	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
