@@ -15,7 +15,7 @@ public class SessionClassLoaderGroup {
     public void clear() {
         if (classLoaders != null) {
             classLoaders.clear();
-            classLoaders = null;
+            classLoaders = new HashMap<>();
         }
     }
 
