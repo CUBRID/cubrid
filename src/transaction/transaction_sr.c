@@ -141,8 +141,6 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   if (auto_commit == false)
     {
       /* dblink commit first in case of auto commit mode off */
-      QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, tran_index, false);
-
       (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
     }
 
