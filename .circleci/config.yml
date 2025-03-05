@@ -54,12 +54,11 @@ commands:
             # TODO:if save test_result.xml from previous commit's test,'circleci tests split' can be optimized
             #circleci tests glob $glob_path | circleci tests split | tee tc.list
             #test code
-            echo "cubrid-testcases-private-ex/shell/_10_plcsql" | tee tc.list
+            echo "cubrid-testcases-private-ex/shell/_01_utility" | tee tc.list
             
             find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
             #test code
-            #find cubrid-testcases-private-ex/shell/_06_issues -maxdepth 1 -type d ! -name "_06_issues" ! -name "_13_1h" ! -name "config" | xargs rm -rf
             HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
             
             # Run the tests
@@ -214,27 +213,32 @@ workflows:
 
       # - test_job:
       #     name: test_medium
-      #     requires: [build]
+      #     requires: 
+      #       - build
       #     test_suite: "medium"
 
       # - test_job:
       #     name: test_sql
-      #     requires: [build]
+      #     requires:
+      #       - build
       #     test_suite: "sql"
       #     parallel_num: 8
 
       # - test_job:
       #     name: test_plcsql
-      #     requires: [build]
+      #     requires: 
+      #       - build
       #     test_suite: "plcsql"
 
       - test_job:
           name: test_shell
- #         requires: [build]
+          # requires: 
+          #   - build
           test_suite: "shell"
           e: cubrid-test-shell
           #parallel_num: 16
           parallel_num: 1
 
       # - build-windows:
-      #     requires: [build]
+      #     requires: 
+      #       - build
