@@ -35,5 +35,6 @@ public interface SqlUse extends LoopOptimizable {
 
     boolean ofCallableStmt();
 
-    boolean ofRef();
+    boolean usingRef();
+    void setToUseRef();
 }

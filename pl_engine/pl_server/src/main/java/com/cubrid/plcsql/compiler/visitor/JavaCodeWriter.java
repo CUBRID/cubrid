@@ -675,21 +675,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "(new Object() { // global function call: %'FUNC-NAME'%",
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
-                "    CallableStatement pstmt = null;",
+                "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
-                "      pstmt = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
-                "      pstmt.registerOutParameter(1, java.sql.Types.OTHER);",
+                "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
+                "      pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(1, java.sql.Types.OTHER);",
                 "      %'+SET-GLOBAL-FUNC-ARGS'%",
-                "      pstmt.execute();",
-                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt.getObject(1);",
+                "      pstmt_%'SQL-SERIAL-NO'%.execute();",
+                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt_%'SQL-SERIAL-NO'%.getObject(1);",
                 "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                 "      return ret;",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
                 "    } finally {",
-                "      if (pstmt != null) {",
-                "        pstmt.close();",
+                "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
+                "        pstmt_%'SQL-SERIAL-NO'%.close();",
                 "      }",
                 "    }",
                 "  }",
@@ -702,18 +702,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "(new Object() { // global function call: %'FUNC-NAME'%",
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
-                "    CallableStatement pstmt = null;",
+                "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
-                "      pstmt = pstmtRef_%'SQL-SERIAL-NO'%[0];",
-                "      if (pstmt == null) {",
+                "      pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
+                "      if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
-                "        pstmt = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
-                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt;",
+                "        pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
+                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
                 "      }",
-                "      pstmt.registerOutParameter(1, java.sql.Types.OTHER);",
+                "      pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(1, java.sql.Types.OTHER);",
                 "      %'+SET-GLOBAL-FUNC-ARGS'%",
-                "      pstmt.execute();",
-                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt.getObject(1);",
+                "      pstmt_%'SQL-SERIAL-NO'%.execute();",
+                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt_%'SQL-SERIAL-NO'%.getObject(1);",
                 "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                 "      return ret;",
                 "    } catch (SQLException e) {",
@@ -1104,11 +1104,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "(new Object() {",
                 "  BigDecimal getSerialVal() throws Exception {",
-                "    PreparedStatement pstmt = null;",
+                "    PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      BigDecimal ret;",
-                "      pstmt = conn.prepareStatement(\"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\");",
-                "      ResultSet r = pstmt.executeQuery();",
+                "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareStatement(\"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\");",
+                "      ResultSet r = pstmt_%'SQL-SERIAL-NO'%.executeQuery();",
                 "      if (r.next()) {",
                 "        ret = r.getBigDecimal(1);",
                 "        if (ret != null && r.wasNull()) {",
@@ -1122,8 +1122,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
                 "    } finally {",
-                "      if (pstmt != null) {",
-                "        pstmt.close();",
+                "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
+                "        pstmt_%'SQL-SERIAL-NO'%.close();",
                 "      }",
                 "    }",
                 "  }",
@@ -1134,16 +1134,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "(new Object() {",
                 "  BigDecimal getSerialVal() throws Exception {",
-                "    PreparedStatement pstmt = null;",
+                "    PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      BigDecimal ret;",
-                "      pstmt = pstmtRef_%'SQL-SERIAL-NO'%[0];",
-                "      if (pstmt == null) {",
+                "      pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
+                "      if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
-                "        pstmt = conn.prepareStatement(\"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\");",
-                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt;",
+                "        pstmt_%'SQL-SERIAL-NO'% = conn.prepareStatement(\"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\");",
+                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
                 "      }",
-                "      ResultSet r = pstmt.executeQuery();",
+                "      ResultSet r = pstmt_%'SQL-SERIAL-NO'%.executeQuery();",
                 "      if (r.next()) {",
                 "        ret = r.getBigDecimal(1);",
                 "        if (ret != null && r.wasNull()) {",
@@ -1669,7 +1669,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private static String[] tmplStmtSql_inLoop =
+    private static String[] tmplStmtSql_inLoop_notUsingRef =
             new String[] {
                 "{ // %'KIND'% SQL statement",
                 "  try {",
@@ -1679,6 +1679,37 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
                 "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
+                "    }",
+                "    %'+BAN-INTO-CLAUSE'%",
+                "    %'+SET-USED-EXPR'%",
+                "    if (pstmt_%'SQL-SERIAL-NO'%.execute()) {",
+                // not from the Oracle specification, but from Oracle 19.0.0.0 behavior
+                "      sql_rowcount[0] = 0L;",
+                "      %'+HANDLE-INTO-CLAUSE'%",
+                "    } else {",
+                "      sql_rowcount[0] = (long) pstmt_%'SQL-SERIAL-NO'%.getUpdateCount();",
+                "    }",
+                "  } catch (SQLException e) {",
+                "    Server.log(e);",
+                "    throw new SQL_ERROR(e.getMessage());",
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
+                "  }",
+                "}"
+            };
+
+    private static String[] tmplStmtSql_inLoop_usingRef =
+            new String[] {
+                "{ // %'KIND'% SQL statement",
+                "  PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
+                "  try {",
+                "    String dynSql_%'LEVEL'% = checkNotNull(",
+                "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
+                "    pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
+                "    if (pstmt_%'SQL-SERIAL-NO'% == null) {",
+                // check if it is null to prepare the statement only once in the loop
+                "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
+                "      pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
                 "    }",
                 "    %'+BAN-INTO-CLAUSE'%",
                 "    %'+SET-USED-EXPR'%",
@@ -1805,10 +1836,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             banIntoClause = tmplBanIntoClause;
         }
 
+        String[] template = node.containerLoop == null ? tmplStmtSql_notInLoop :
+            node.usingRef() ? tmplStmtSql_inLoop_usingRef : tmplStmtSql_inLoop_notUsingRef ;
         return new CodeTemplate(
                 "StmtSql",
                 Misc.getLineColumnOf(node.ctx),
-                node.containerLoop == null ? tmplStmtSql_notInLoop : tmplStmtSql_inLoop,
+                template,
                 "%'KIND'%",
                 node.dynamic ? "dynamic" : "static",
                 "%'SQL-SERIAL-NO'%",
@@ -2083,7 +2116,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private static String[] tmplStmtForStaticSqlLoop_inLoop =
+    private static String[] tmplStmtForStaticSqlLoop_inLoop_notUsingRef =
             new String[] {
                 "{ // for loop with static SQL",
                 // no Statement declaration: it is done right before the outermost loop
@@ -2113,6 +2146,38 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
+    private static String[] tmplStmtForStaticSqlLoop_inLoop_usingRef =
+            new String[] {
+                "{ // for loop with static SQL",
+                "  PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
+                "  try {",
+                "    %'RECORD-CLASS'%[] %'RECORD'% = new %'RECORD-CLASS'%[] { new %'RECORD-CLASS'%() };",
+                "    pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
+                "    if (pstmt_%'SQL-SERIAL-NO'% == null) {",
+                // check if it is null to prepare the statement only once in the loop
+                "      String sql_%'LEVEL'% =",
+                "        %'+SQL'%;",
+                "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareStatement(sql_%'LEVEL'%);",
+                "      pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
+                "    }",
+                "    %'+SET-USED-EXPR'%",
+                "    ResultSet %'RECORD'%_r%'LEVEL'% = pstmt_%'SQL-SERIAL-NO'%.executeQuery();",
+                "    %'LABEL'%",
+                "    while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                "      %'RECORD'%[0].set(",
+                "        %'+RECORD-FIELD-VALUES'%",
+                "      );",
+                "      %'+STATEMENTS'%",
+                "    }",
+                "  } catch (SQLException e) {",
+                "    Server.log(e);",
+                "    throw new SQL_ERROR(e.getMessage());",
+                // no Statement.close() call in a finally clause: it is done right after the
+                // outermost loop
+                "  }",
+                "}"
+            };
+
     @Override
     public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
@@ -2123,13 +2188,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 getRecordSetArgs(node.record.name(), (TypeRecord) recTy, node.record.scope.level);
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
+        String[] template = node.containerLoop == null ? tmplStmtForStaticSqlLoop_notInLoop :
+                        node.usingRef() ? tmplStmtForStaticSqlLoop_inLoop_usingRef :
+                            tmplStmtForStaticSqlLoop_inLoop_notUsingRef;
         CodeTemplate ret =
                 new CodeTemplate(
                         "StmtForSqlLoop",
                         Misc.getLineColumnOf(node.ctx),
-                        node.containerLoop == null
-                                ? tmplStmtForStaticSqlLoop_notInLoop
-                                : tmplStmtForStaticSqlLoop_inLoop,
+                        template,
                         "%'SQL-SERIAL-NO'%",
                         Integer.toString(node.sqlSerialNo),
                         "%'RECORD-CLASS'%",
@@ -2163,18 +2229,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "new Object() { // global procedure call: %'PROC-NAME'%",
                 "  void invoke(%'PARAMETERS'%) throws Exception {",
-                "    CallableStatement pstmt = null;",
+                "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
-                "      pstmt = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
+                "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
                 "      %'+SET-GLOBAL-PROC-ARGS'%",
-                "      pstmt.execute();",
+                "      pstmt_%'SQL-SERIAL-NO'%.execute();",
                 "      %'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
                 "      throw new SQL_ERROR(e.getMessage());",
                 "    } finally {",
-                "      if (pstmt != null) {",
-                "        pstmt.close();",
+                "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
+                "        pstmt_%'SQL-SERIAL-NO'%.close();",
                 "      }",
                 "    }",
                 "  }",
@@ -2187,16 +2253,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "new Object() { // global procedure call: %'PROC-NAME'%",
                 "  void invoke(%'PARAMETERS'%) throws Exception {",
-                "    CallableStatement pstmt = null;",
+                "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
-                "      pstmt = pstmtRef_%'SQL-SERIAL-NO'%[0];",
-                "      if (pstmt == null) {",
+                "      pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
+                "      if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
-                "        pstmt = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
-                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt;",
+                "        pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
+                "        pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
                 "      }",
                 "      %'+SET-GLOBAL-PROC-ARGS'%",
-                "      pstmt.execute();",
+                "      pstmt_%'SQL-SERIAL-NO'%.execute();",
                 "      %'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
@@ -3102,7 +3168,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 // fill setArgs
                 setArgs.add(
                         String.format(
-                                "pstmt.registerOutParameter(%d, java.sql.Types.OTHER);",
+                                "pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(%d, java.sql.Types.OTHER);",
                                 i + argOffset));
 
                 ExprId id = (ExprId) args.nodes.get(i);
@@ -3113,7 +3179,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     String paramVal = "o" + i + "[0]";
                     setArgs.add(
                             String.format(
-                                    "pstmt.setObject(%d, %s);",
+                                    "pstmt_%'SQL-SERIAL-NO'%.setObject(%d, %s);",
                                     i + argOffset, c.javaCode(paramVal)));
                 }
 
@@ -3122,7 +3188,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
-                                "(%s) pstmt.getObject(%d)",
+                                "(%s) pstmt_%'SQL-SERIAL-NO'%.getObject(%d)",
                                 getJavaCodeOfType(param.typeSpec), i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
@@ -3134,7 +3200,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     i, id.name));
                 }
             } else {
-                setArgs.add(String.format("pstmt.setObject(%d, o%d);", i + argOffset, i));
+                setArgs.add(String.format("pstmt_%'SQL-SERIAL-NO'%.setObject(%d, o%d);", i + argOffset, i));
             }
         }
 
@@ -3595,7 +3661,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             String klass = u.ofCallableStmt() ? "CallableStatement" : "PreparedStatement";
 
             String decl;
-            if (u.ofRef()) {
+            if (u.usingRef()) {
                 decl =
                         String.format(
                                 "%1$s[] pstmtRef_%2$d = new %1$s[1];", klass, u.getSqlSerialNo());
@@ -3606,7 +3672,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     new CodeTemplate("StatementDeclMoved", Misc.UNKNOWN_LINE_COLUMN, decl));
 
             String close;
-            if (u.ofRef()) {
+            if (u.usingRef()) {
                 close =
                         String.format(
                                 "if (pstmtRef_%1$d[0] != null) { pstmtRef_%1$d[0].close(); }",
