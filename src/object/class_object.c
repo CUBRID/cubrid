@@ -987,6 +987,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
   char buf[128], *pbuf;
   int constraint_seq_index;
   int num_attrs = 0;
+
   db_make_null (&pvalue);
   db_make_null (&value);
 
@@ -1210,6 +1211,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
 	    }
 	}
     }
+
   /* add index status. */
   db_make_int (&value, con->index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
@@ -1234,6 +1236,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
     {
       pr_clear_value (&pvalue);
     }
+
   /* Just to be sure. */
   pr_clear_value (&value);
 

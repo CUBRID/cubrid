@@ -5584,7 +5584,8 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PA
 
   for (cons = smclass->constraints; cons != NULL; cons = cons->next)
     {
-      if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX && cons->type != SM_CONSTRAINT_VECTOR_INDEX)
+      if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX
+	  && cons->type != SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  continue;
 	}
@@ -9608,7 +9609,8 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
   for (c = src_class->constraints; c; c = c->next)
     {
-      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX && c->type != SM_CONSTRAINT_VECTOR_INDEX)
+      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX
+	  && c->type != SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  /* These should have been copied already. */
 	  continue;
@@ -11312,7 +11314,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  save_constr = true;
 		}
 	      /* non-unique index */
-	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX || sm_cls_constr->type == SM_CONSTRAINT_VECTOR_INDEX)
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX
+		       || sm_cls_constr->type == SM_CONSTRAINT_VECTOR_INDEX)
 		{
 		  assert (nb_att_in_constr >= 1);
 		  attr_chg_properties->p[P_CONSTR_NON_UNI] |= ATT_CHG_PROPERTY_PRESENT_OLD;

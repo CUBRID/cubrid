@@ -11370,6 +11370,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
   if (!SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
     {
       assert (false);
+      return NO_ERROR;
     }
 
   if (BTID_IS_NULL (&con->index_btid))
@@ -11451,7 +11452,6 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	{
 	  goto structure_error;
 	}
-
       /* be sure that constraints attributes are not decached. This may happen for foreign key, when
        * allocate_disk_structures function may be called second time. */
       for (con = class_->constraints; con != NULL; con = con->next)
@@ -11493,9 +11493,11 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
 	    }
+
 	  goto structure_error;
 	}
     }
+
   for (con = class_->constraints; con != NULL; con = con->next)
     {
       /* check for non-shared indexes */
@@ -14925,6 +14927,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  smt_quit (def);
 	  goto error_exit;
 	}
+
       needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
       /* This one frees the template inside!!! */
       error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
@@ -14942,23 +14945,27 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    {
 	      goto error_exit;
 	    }
+
 	  error = sm_update_statistics_without_gathering_stats (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
+
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
 	      goto error_exit;
 	    }
+
 	  error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
 	      goto error_exit;
 	    }
+
 	  /* Update the class now. */
 	  /* This one frees the template inside!!! */
 	  error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
@@ -15058,11 +15065,8 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
 		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE
 		  || constraint->type == SM_CONSTRAINT_VECTOR_INDEX))
 	    {
-	      constraint_type = DB_CONSTRAINT_INDEX;
+	      constraint_type = db_constraint_type (constraint);
 	    }
-	  {
-	    constraint_type = db_constraint_type (constraint);
-	  }
 	}
     }
 
