@@ -326,7 +326,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        Expr defaultVal = visitExpression(ctx.default_value_part());
+        // only the default values visited during the previsit are added to the Abstract Syntax Tree
+        Expr defaultVal = previsiting ? visitExpression(ctx.default_value_part()) : null;
 
         DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, defaultVal);
         symbolStack.putDecl(name, ret);
@@ -2675,6 +2676,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean controlFlowBlocked;
 
+    private boolean previsiting;
     private int routineDefNestLevel;
     private int sqlSerialNo;
     private int getSqlSerialNo() {
@@ -2732,21 +2734,31 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private void previsitConstant_declaration(Constant_declarationContext ctx) {
 
+        previsiting = true;
+
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitVariable_declaration(Variable_declarationContext ctx) {
+
+        previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitCursor_definition(Cursor_definitionContext ctx) {
+
+        previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         symbolStack.pushSymbolTable("cursor_def", null);
@@ -2763,13 +2775,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
         DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
-        routineDefNestLevel++;
+        previsiting = true;
         try {
+
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
             if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
@@ -2856,7 +2871,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
             }
         } finally {
-            routineDefNestLevel--;
+            previsiting = false;
         }
     }
 
