@@ -25,6 +25,8 @@
 #include "faiss/IndexHNSW.h"
 #include "hnsw.hpp"
 
+int hnsw_index_id = 0;
+
 int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40)
 {
   faiss::IndexHNSW index (dimension, hnsw_M, faiss::METRIC_L2);
