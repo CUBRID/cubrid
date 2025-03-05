@@ -36,6 +36,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class DeclRoutine extends Decl {
 
     public final String name;
+    public StmtLoop.LoopOptimizables loopOptimizables;
     public final NodeList<DeclParam> paramList;
     public final TypeSpec retTypeSpec;
     public NodeList<Decl> decls;
@@ -44,6 +45,7 @@ public abstract class DeclRoutine extends Decl {
     public DeclRoutine(
             ParserRuleContext ctx,
             String name,
+            StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
@@ -51,6 +53,7 @@ public abstract class DeclRoutine extends Decl {
         super(ctx);
 
         this.name = name;
+        this.loopOptimizables = loopOptimizables;
         this.paramList = paramList;
         this.retTypeSpec = retTypeSpec;
         this.decls = decls;

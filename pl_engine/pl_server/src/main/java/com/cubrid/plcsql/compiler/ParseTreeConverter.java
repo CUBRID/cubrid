@@ -137,7 +137,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                gpc.decl = new DeclProc(null, ps.name, paramList);
+                gpc.decl = new DeclProc(null, ps.name, null, paramList);
 
             } else if (q instanceof ServerAPI.FunctionSignature) {
                 ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
@@ -182,7 +182,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
                 gfc.decl =
-                        new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
+                        new DeclFunc(null, fs.name, null, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -1399,8 +1399,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
-
             boolean isFunction = (ctx.PROCEDURE() == null);
+
+            DeclRoutine ret = isFunction ? symbolStack.getDeclFunc(name) : symbolStack.getDeclProc(name);
+            assert ret != null; // by the previsit
+
+            StmtLoop.LoopOptimizables routineLoopOptimizables = ret.loopOptimizables;
+            if (routineLoopOptimizables != null) {
+                loopOptimizables = routineLoopOptimizables;
+            }
+
             symbolStack.pushSymbolTable(
                     name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
@@ -1418,19 +1426,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             symbolStack.popSymbolTable();
 
-            DeclRoutine ret;
-            if (isFunction) {
-                ret = symbolStack.getDeclFunc(name);
-                if (!controlFlowBlocked) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s016
-                            "function " + ret.name + " can reach its end without returning a value");
-                }
-            } else {
-                // procedure
-                ret = symbolStack.getDeclProc(name);
+            if (routineLoopOptimizables != null) {
+                // It is not null because loopOptimizables was null: see the previsitRoutine().
+                // Restore the null.
+                loopOptimizables = null;
             }
-            assert ret != null; // by the previsit
+
+            if (isFunction && !controlFlowBlocked) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s016
+                        "function " + ret.name + " can reach its end without returning a value");
+            }
+
             ret.decls = decls;
             ret.body = body;
 
@@ -1603,7 +1610,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     addToSqlUses(egfc);
                     egfc.decl =
                             new DeclFunc(
-                                    null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                                    null, name, null, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
                 }
             }
@@ -2782,6 +2789,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
+        StmtLoop.LoopOptimizables routineLoopOptimizables = null;
+        if (loopOptimizables == null) {
+            // This declaration part is not included in a loop.
+            // Prepare my own loop optimizables bag.
+            loopOptimizables = routineLoopOptimizables = new StmtLoop.LoopOptimizables();
+        }
+
         previsiting = true;
         try {
 
@@ -2852,7 +2866,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                         + " cannot be used as a return type of stored functions");
                     }
                 }
-                DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+                DeclFunc ret = new DeclFunc(ctx, name, routineLoopOptimizables, paramList, retTypeSpec);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);
@@ -2864,7 +2878,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             Misc.getLineColumnOf(ctx), // s051
                             "procedure " + name + " may not specify a return type");
                 }
-                DeclProc ret = new DeclProc(ctx, name, paramList);
+                DeclProc ret = new DeclProc(ctx, name, routineLoopOptimizables, paramList);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);
@@ -2872,6 +2886,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         } finally {
             previsiting = false;
+            if (routineLoopOptimizables != null) {
+                // it is not null because loopOptimizables was null; restore the null
+                loopOptimizables = null;
+            }
         }
     }
 
