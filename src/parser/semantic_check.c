@@ -5264,7 +5264,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	new_owner_mop = au_find_user (new_owner);
 	if (new_owner_mop == NULL)
 	  {
-	    PT_WARNINGmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
 	    break;
 	  }
 
@@ -5278,7 +5278,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	/* To change the owner of a system class is not allowed. */
 	if (sm_issystem (class_))
 	  {
-	    PT_WARNINGmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
 	    return;
 	  }
 
@@ -5314,7 +5314,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
 	if (db_find_class (new_cls_nam) != NULL)
 	  {
-	    PT_WARNINGmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
 	    break;
 	  }
 	else
