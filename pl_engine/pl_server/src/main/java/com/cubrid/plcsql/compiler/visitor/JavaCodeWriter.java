@@ -3168,7 +3168,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 // fill setArgs
                 setArgs.add(
                         String.format(
-                                "pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(%d, java.sql.Types.OTHER);",
+                                "pstmt_%%'SQL-SERIAL-NO'%%.registerOutParameter(%d, java.sql.Types.OTHER);",
                                 i + argOffset));
 
                 ExprId id = (ExprId) args.nodes.get(i);
@@ -3179,7 +3179,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     String paramVal = "o" + i + "[0]";
                     setArgs.add(
                             String.format(
-                                    "pstmt_%'SQL-SERIAL-NO'%.setObject(%d, %s);",
+                                    "pstmt_%%'SQL-SERIAL-NO'%%.setObject(%d, %s);",
                                     i + argOffset, c.javaCode(paramVal)));
                 }
 
@@ -3188,7 +3188,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert cRev != null; // by earlier check
                 String outVal =
                         String.format(
-                                "(%s) pstmt_%'SQL-SERIAL-NO'%.getObject(%d)",
+                                "(%s) pstmt_%%'SQL-SERIAL-NO'%%.getObject(%d)",
                                 getJavaCodeOfType(param.typeSpec), i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
@@ -3200,7 +3200,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     i, id.name));
                 }
             } else {
-                setArgs.add(String.format("pstmt_%'SQL-SERIAL-NO'%.setObject(%d, o%d);", i + argOffset, i));
+                setArgs.add(String.format("pstmt_%%'SQL-SERIAL-NO'%%.setObject(%d, o%d);", i + argOffset, i));
             }
         }
 
