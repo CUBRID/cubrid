@@ -325,6 +325,8 @@ namespace parallel_heap_scan
       case TYPE_REGU_VAR_LIST:
 	cnt += check (src->value.regu_var_list);
 	break;
+      case TYPE_OID:
+	break;
       default:
 	break;
       }

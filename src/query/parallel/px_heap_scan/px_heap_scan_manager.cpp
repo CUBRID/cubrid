@@ -40,7 +40,7 @@
 namespace parallel_heap_scan
 {
   manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-		    std::size_t core_count)
+		    std::size_t core_count, QUERY_ID query_id)
     : m_is_start_once (false),
       timeout_occurred (false),
       m_thread_p (thread_p),
@@ -49,7 +49,8 @@ namespace parallel_heap_scan
   {
     m_context = std::make_shared<context> (thread_p, scan_id);
     m_result_queue = std::make_shared<result_queue> (128*parallelism);
-
+    m_list_stream = std::make_shared<list_stream> (128*parallelism, query_id, scan_id);
+    m_list_reader = std::make_shared<list_reader> (m_list_stream);
     m_memory_mappers.reserve (parallelism);
     for (size_t i = 0; i < parallelism; i++)
       {
@@ -65,6 +66,53 @@ namespace parallel_heap_scan
       {
 	thread_get_manager()->destroy_worker_pool (m_workpool);
       }
+  }
+
+  SCAN_CODE manager::get_result_from_list_stream ()
+  {
+    list_page::status status = list_page::status::NONE;
+    while (status != list_page::status::READ_SUCCESS)
+      {
+	if (m_list_reader->m_cur_page == nullptr)
+	  {
+	    while (!m_list_stream->dequeue_timeout (m_list_reader->m_cur_page, 3))
+	      {
+		if (m_context->has_error())
+		  {
+		    return S_ERROR;
+		  }
+		if (m_context->all_tasks_scan_ended() && m_list_stream->size() == 0)
+		  {
+		    return S_END;
+		  }
+	      }
+	    m_list_reader->m_cur_page->open_list_scan (&m_list_reader->m_scan_id);
+	  }
+	status = m_list_reader->m_cur_page->read (m_thread_p, m_scan_id, &m_list_reader->m_scan_id);
+	if (status == list_page::status::READ_SUCCESS)
+	  {
+	    return S_SUCCESS;
+	  }
+	else if (status == list_page::status::READ_END)
+	  {
+	    m_list_reader->m_cur_page->close_list_scan (&m_list_reader->m_scan_id);
+	    m_list_reader->m_cur_page = nullptr;
+	    if (m_context->has_error())
+	      {
+		return S_ERROR;
+	      }
+	    if (m_context->all_tasks_scan_ended() && m_list_stream->size() == 0)
+	      {
+		return S_END;
+	      }
+	  }
+	else
+	  {
+	    return S_ERROR;
+	  }
+      }
+
+    return S_SUCCESS;
   }
 
   SCAN_CODE manager::get_result ()
@@ -139,7 +187,7 @@ namespace parallel_heap_scan
 
     for (size_t i = 0; i < parallelism; i++)
       {
-	taskp.reset (new task (m_context, m_result_queue, m_memory_mappers[i]));
+	taskp.reset (new task (m_context, m_result_queue, m_memory_mappers[i], m_list_stream));
 	thread_get_manager()->push_task (m_workpool, taskp.release());
 	m_context->add_tasks_started();
       }
@@ -178,7 +226,8 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       scan_id->s.phsid.manager->start_tasks();
       scan_id->s.phsid.manager->m_is_start_once = true;
     }
-  ret = scan_id->s.phsid.manager->get_result();
+  //ret = scan_id->s.phsid.manager->get_result();
+  ret = scan_id->s.phsid.manager->get_result_from_list_stream();
   if (scan_id->s.phsid.manager->timeout_occurred)
     {
 #if (PARALLEL_HEAP_SCAN_LOG)
@@ -236,7 +285,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-			      bool is_partition_table)
+			      bool is_partition_table, QUERY_ID query_id)
 {
   int ret;
   int parallelism = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
@@ -250,7 +299,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
   scan_id->type = S_PARALLEL_HEAP_SCAN;
   orig_heap_id = db_change_private_heap (thread_p, 0);
   scan_id->s.phsid.manager = new parallel_heap_scan::manager (thread_p, scan_id, parallelism, parallelism,
-      parallelism);
+      parallelism, query_id);
   db_change_private_heap (thread_p, orig_heap_id);
   return ret;
 }

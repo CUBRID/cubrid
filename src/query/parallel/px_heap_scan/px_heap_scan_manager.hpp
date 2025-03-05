@@ -29,6 +29,7 @@
 #include "scan_manager.h"
 #include "thread_manager.hpp"
 #include "px_heap_scan_context.hpp"
+#include "px_heap_scan_list_stream.hpp"
 
 namespace parallel_heap_scan
 {
@@ -47,9 +48,10 @@ namespace parallel_heap_scan
       std::size_t parallelism;
 
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-	       std::size_t core_count);
+	       std::size_t core_count, QUERY_ID query_id);
       ~manager();
       SCAN_CODE get_result ();
+      SCAN_CODE get_result_from_list_stream ();
       void start ();
       void reset ();
       void start_tasks ();
@@ -64,6 +66,8 @@ namespace parallel_heap_scan
       std::shared_ptr<context> m_context;
       std::shared_ptr<result_queue> m_result_queue;
       cubthread::entry_workpool *m_workpool;
+      std::shared_ptr<list_stream> m_list_stream;
+      std::shared_ptr<list_reader> m_list_reader;
   };
 }
 
@@ -87,7 +91,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-			      bool is_partition_table);
+			      bool is_partition_table, QUERY_ID query_id);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 

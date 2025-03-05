@@ -42,10 +42,11 @@
 namespace parallel_heap_scan
 {
   task::task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
-	      std::shared_ptr<memory_mapper> memory_mapper)
+	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream)
     : m_context (context)
     , m_result_queue (result_queue)
     , m_memory_mapper (memory_mapper)
+    , m_list_stream (list_stream)
   {
 
   }
@@ -127,7 +128,7 @@ namespace parallel_heap_scan
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
-
+    list_writer writer (m_list_stream, m_list_stream->get_type_list());
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -192,8 +193,9 @@ namespace parallel_heap_scan
 		  {
 		    tsc_getticks (&t1);
 		  }
-		auto entry = std::make_shared<result_queue::entry> (scan_id, rec_scan_code);
-		m_result_queue->enqueue (entry);
+		/*auto entry = std::make_shared<result_queue::entry> (scan_id, rec_scan_code);
+		m_result_queue->enqueue (entry);*/
+		writer.write (m_context->m_orig_thread_p, scan_id);
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
@@ -203,6 +205,7 @@ namespace parallel_heap_scan
 	      }
 	  }
       }
+    writer.close();
     m_context->add_tasks_scan_ended();
     if (on_trace)
       {

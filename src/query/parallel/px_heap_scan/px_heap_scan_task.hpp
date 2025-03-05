@@ -28,6 +28,7 @@
 #include "thread_entry_task.hpp"
 #include "scan_manager.h"
 #include "px_heap_scan_context.hpp"
+#include "px_heap_scan_list_stream.hpp"
 
 namespace parallel_heap_scan
 {
@@ -42,7 +43,7 @@ namespace parallel_heap_scan
       task &operator= (task &&) = delete;
 
       task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
-	    std::shared_ptr<memory_mapper> memory_mapper);
+	    std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream);
       ~task();
 
       virtual void execute (cubthread::entry &thread_ref) override;
@@ -52,6 +53,7 @@ namespace parallel_heap_scan
       std::shared_ptr<context> m_context;
       std::shared_ptr<result_queue> m_result_queue;
       std::shared_ptr<memory_mapper> m_memory_mapper;
+      std::shared_ptr<list_stream> m_list_stream;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

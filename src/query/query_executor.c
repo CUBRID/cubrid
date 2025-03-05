@@ -9132,7 +9132,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 	      if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid)
 		  && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid)
-		  && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)
+		  && !mvcc_select_lock_needed && thread_p->private_heap_id != 0 &&
+		  (curr_spec->s.cls_node.cls_regu_list_pred || curr_spec->s.cls_node.cls_regu_list_rest))
 		{
 		  /* Why thread_p->private_heap_id != 0? 
 		   * Because, if it is 0, it means that the scan is not executed in main thread.
@@ -9215,7 +9216,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					  curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
 					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 					  scan_type, curr_spec->s.cls_node.cache_reserved,
-					  curr_spec->s.cls_node.cls_regu_list_reserved, false);
+					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

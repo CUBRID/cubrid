@@ -379,6 +379,7 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
@@ -390,6 +391,7 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
   )
 
 set(METHOD_SOURCES
