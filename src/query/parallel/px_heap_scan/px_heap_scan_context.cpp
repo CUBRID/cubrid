@@ -34,6 +34,8 @@ namespace parallel_heap_scan
   context::context (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
     : m_scan_id (scan_id)
     , m_orig_thread_p (thread_p)
+    , is_scan_internal_ended (false)
+    , is_scan_external_ended (false)
     , m_tasks_executed (0)
     , m_tasks_started (0)
     , m_tasks_scan_ended (0)
