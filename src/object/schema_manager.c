@@ -11308,7 +11308,8 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       con->index_btid = existing_con->index_btid;
 
       assert (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY || existing_con->type == SM_CONSTRAINT_UNIQUE
-	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY || existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX);
+	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY || existing_con->type == SM_CONSTRAINT_INDEX
+	      || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX);
       if (existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  if (check_fk_validity (classop, class_, con->attributes, con->asc_desc, &(con->fk_info->ref_class_oid),
@@ -11377,7 +11378,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	{
 	  error = allocate_unique_constraint (classop, class_, con, subclasses, template_);
 	}
-      else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX)
+      else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX
+	       || con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  error = allocate_index (classop, class_, NULL, con);
 	}
@@ -11392,7 +11394,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	}
 
       /* check for safe guard */
-      if (BTID_IS_NULL (&con->index_btid))
+      if (con->type != SM_CONSTRAINT_VECTOR_INDEX && BTID_IS_NULL (&con->index_btid))
 	{
 	  return ER_FAILED;	/* unknown error */
 	}
@@ -11438,7 +11440,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
     {
       return ER_FAILED;
     }
-  
+
   /* Allocate_disk_structures may be called twice on the call-stack. Make sure constraints are not decached or recached
    * while they are processed. */
   dont_decache_and_flush = class_->dont_decache_constraints_or_flush;
@@ -11507,7 +11509,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	  num_indexes++;
 	}
     }
-  
+
   for (con = class_->constraints; con != NULL; con = con->next)
     {
       /* check for shared indexes */
@@ -12145,8 +12147,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		}
 	    }
-	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX)
-            {
+	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX
+		   || con->type == SM_CONSTRAINT_VECTOR_INDEX)
+	    {
 	      error = classobj_put_index (&(flat->properties), con, &(con->index_btid), NULL, NULL, false);
 	      if (error != NO_ERROR)
 		{
@@ -14785,7 +14788,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
       set_savepoint = true;
 
-      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX || constraint_type == DB_CONSTRAINT_VECTOR_INDEX);
+      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX
+			    || constraint_type == DB_CONSTRAINT_VECTOR_INDEX);
 
       if (is_secondary_index)
 	{
@@ -14929,7 +14933,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  smt_quit (def);
 	  goto error_exit;
 	}
-      
+
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
@@ -15051,13 +15055,14 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
 
 	  if (constraint != NULL
 	      && (constraint->type == SM_CONSTRAINT_INDEX || constraint->type == SM_CONSTRAINT_REVERSE_INDEX
-		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE || constraint->type == SM_CONSTRAINT_VECTOR_INDEX))
-            {
-              constraint_type = DB_CONSTRAINT_INDEX;
-            }
+		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE
+		  || constraint->type == SM_CONSTRAINT_VECTOR_INDEX))
 	    {
-	      constraint_type = db_constraint_type (constraint);
+	      constraint_type = DB_CONSTRAINT_INDEX;
 	    }
+	  {
+	    constraint_type = db_constraint_type (constraint);
+	  }
 	}
     }
 

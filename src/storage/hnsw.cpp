@@ -31,7 +31,6 @@ int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_e
 {
   faiss::IndexHNSW index (dimension, hnsw_M, faiss::METRIC_L2);
   index.hnsw.efConstruction = hnsw_efConstruction;
-  fprintf(stdout, "hnsw_add_index: %d %d %d\n", dimension, hnsw_M, hnsw_efConstruction);
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
