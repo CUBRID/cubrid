@@ -1387,56 +1387,61 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null
-                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-            int[] lineColumn = Misc.getLineColumnOf(ctx);
-            throw new SyntaxError(
-                    lineColumn[0],
-                    lineColumn[1],
-                    "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
-        }
-        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
-
-        boolean isFunction = (ctx.PROCEDURE() == null);
-        symbolStack.pushSymbolTable(
-                name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
-
-        visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
-
-        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
-        Body body = visitBody(ctx.body());
-        if (body.label != null && !body.label.equals(name)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.body().label_name()),
-                    String.format(
-                            "label does not match the %s name %s",
-                            isFunction ? "function" : "procedure", name)); // s053
-        }
-
-        symbolStack.popSymbolTable();
-
-        DeclRoutine ret;
-        if (isFunction) {
-            ret = symbolStack.getDeclFunc(name);
-            if (!controlFlowBlocked) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s016
-                        "function " + ret.name + " can reach its end without returning a value");
+        routineDefNestLevel++;
+        try {
+            if (ctx.LANGUAGE() != null
+                    && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+                int[] lineColumn = Misc.getLineColumnOf(ctx);
+                throw new SyntaxError(
+                        lineColumn[0],
+                        lineColumn[1],
+                        "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
-        } else {
-            // procedure
-            ret = symbolStack.getDeclProc(name);
-        }
-        assert ret != null; // by the previsit
-        ret.decls = decls;
-        ret.body = body;
+            String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-            // check it only for local routines
-            checkRedefinitionOfUsedName(name, ctx);
-        }
+            boolean isFunction = (ctx.PROCEDURE() == null);
+            symbolStack.pushSymbolTable(
+                    name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
-        return ret;
+            visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
+
+            NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
+            Body body = visitBody(ctx.body());
+            if (body.label != null && !body.label.equals(name)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.body().label_name()),
+                        String.format(
+                                "label does not match the %s name %s",
+                                isFunction ? "function" : "procedure", name)); // s053
+            }
+
+            symbolStack.popSymbolTable();
+
+            DeclRoutine ret;
+            if (isFunction) {
+                ret = symbolStack.getDeclFunc(name);
+                if (!controlFlowBlocked) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s016
+                            "function " + ret.name + " can reach its end without returning a value");
+                }
+            } else {
+                // procedure
+                ret = symbolStack.getDeclProc(name);
+            }
+            assert ret != null; // by the previsit
+            ret.decls = decls;
+            ret.body = body;
+
+            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+                // check it only for local routines
+                checkRedefinitionOfUsedName(name, ctx);
+            }
+
+            return ret;
+        } finally {
+            routineDefNestLevel--;
+        }
     }
 
     @Override
@@ -2670,8 +2675,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean controlFlowBlocked;
 
+    private int routineDefNestLevel;
     private int sqlSerialNo;
-
     private int getSqlSerialNo() {
         return sqlSerialNo++;
     }
@@ -2763,90 +2768,95 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
-        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
+        routineDefNestLevel++;
+        try {
+            String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
 
-            // local procedure/function
+                // local procedure/function
 
-            if (ctx.LANGUAGE() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
-                        "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
-            }
-            if (ctx.authid_spec() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
-                        "illegal keyword AUTHID for a local procedure/function");
-            }
-            if (ctx.routine_uniq_name().owner != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.routine_uniq_name().owner), // s085
-                        "owner specification is not allowed for local procedures/functions");
-            }
-        } else {
-
-            // SP being defined
-
-            assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
-            spName = name;
-            isSpFunc = (ctx.PROCEDURE() == null);
-        }
-
-        if (ctx.routine_uniq_name().owner != null) {
-            String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
-            assert owner.equals(spOwner);
-        }
-
-        // push a temporary symbol table, in order not to corrupt the current symbol table with the
-        // parameters
-        symbolStack.pushSymbolTable("temp", null);
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        symbolStack.popSymbolTable();
-
-        if (ctx.PROCEDURE() == null) {
-            // function
-            if (ctx.RETURN() == null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s050
-                        "function " + name + " must specify its return type");
-            }
-
-            TypeSpec retTypeSpec;
-            try {
-                typeVisitMode = TYPE_VISIT_RETURN;
-                retTypeSpec = (TypeSpec) visit(ctx.type_spec());
-            } finally {
-                typeVisitMode = TYPE_VISIT_NORMAL;
-            }
-
-            Type retType = retTypeSpec.type;
-            if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
-                if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                if (ctx.LANGUAGE() != null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.type_spec()), // s065
-                            "type "
-                                    + retType.plcName
-                                    + " cannot be used as a return type of stored functions");
+                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
+                            "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+                }
+                if (ctx.authid_spec() != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                            "illegal keyword AUTHID for a local procedure/function");
+                }
+                if (ctx.routine_uniq_name().owner != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.routine_uniq_name().owner), // s085
+                            "owner specification is not allowed for local procedures/functions");
+                }
+            } else {
+
+                // SP being defined
+
+                assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
+                spName = name;
+                isSpFunc = (ctx.PROCEDURE() == null);
+            }
+
+            if (ctx.routine_uniq_name().owner != null) {
+                String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+                assert owner.equals(spOwner);
+            }
+
+            // push a temporary symbol table, in order not to corrupt the current symbol table with the
+            // parameters
+            symbolStack.pushSymbolTable("temp", null);
+            NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+            symbolStack.popSymbolTable();
+
+            if (ctx.PROCEDURE() == null) {
+                // function
+                if (ctx.RETURN() == null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s050
+                            "function " + name + " must specify its return type");
+                }
+
+                TypeSpec retTypeSpec;
+                try {
+                    typeVisitMode = TYPE_VISIT_RETURN;
+                    retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+                } finally {
+                    typeVisitMode = TYPE_VISIT_NORMAL;
+                }
+
+                Type retType = retTypeSpec.type;
+                if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
+                    if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx.type_spec()), // s065
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
+                    }
+                }
+                DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+                symbolStack.putDecl(name, ret);
+                if (store != null) {
+                    store.put(name, ret);
+                }
+            } else {
+                // procedure
+                if (ctx.RETURN() != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s051
+                            "procedure " + name + " may not specify a return type");
+                }
+                DeclProc ret = new DeclProc(ctx, name, paramList);
+                symbolStack.putDecl(name, ret);
+                if (store != null) {
+                    store.put(name, ret);
                 }
             }
-            DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
-            symbolStack.putDecl(name, ret);
-            if (store != null) {
-                store.put(name, ret);
-            }
-        } else {
-            // procedure
-            if (ctx.RETURN() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s051
-                        "procedure " + name + " may not specify a return type");
-            }
-            DeclProc ret = new DeclProc(ctx, name, paramList);
-            symbolStack.putDecl(name, ret);
-            if (store != null) {
-                store.put(name, ret);
-            }
+        } finally {
+            routineDefNestLevel--;
         }
     }
 
@@ -3336,6 +3346,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void addToSqlUses(SqlUse node) {
 
         if (loopOptimizables != null) {
+            if (routineDefNestLevel > 0 && !node.usingRef()) {
+                // this sql-using construct resides in a routine definition, in which case
+                // it must use reference of Statement regardless of its default setting of usingRef
+                node.setToUseRef();
+            }
             loopOptimizables.sqlUses.add(node);
         }
     }

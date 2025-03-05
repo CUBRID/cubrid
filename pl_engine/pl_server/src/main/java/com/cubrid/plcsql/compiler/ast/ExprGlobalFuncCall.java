@@ -54,8 +54,12 @@ public class ExprGlobalFuncCall extends Expr implements SqlUse {
     }
 
     @Override
-    public boolean ofRef() {
+    public boolean usingRef() {
         return true;
+    }
+    @Override
+    public void setToUseRef() {
+        // do nothing: it is already true
     }
 
     @Override
