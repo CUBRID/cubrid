@@ -50,7 +50,6 @@ namespace parallel_heap_scan
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 	       std::size_t core_count, QUERY_ID query_id);
       ~manager();
-      SCAN_CODE get_result ();
       SCAN_CODE get_result_from_list_stream ();
       void start ();
       void reset ();
@@ -64,7 +63,6 @@ namespace parallel_heap_scan
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
       std::shared_ptr<context> m_context;
-      std::shared_ptr<result_queue> m_result_queue;
       cubthread::entry_workpool *m_workpool;
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_reader> m_list_reader;

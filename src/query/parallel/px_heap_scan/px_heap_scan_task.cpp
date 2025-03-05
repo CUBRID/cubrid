@@ -41,10 +41,9 @@
 
 namespace parallel_heap_scan
 {
-  task::task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
+  task::task (std::shared_ptr<context> context,
 	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream)
     : m_context (context)
-    , m_result_queue (result_queue)
     , m_memory_mapper (memory_mapper)
     , m_list_stream (list_stream)
   {
@@ -134,7 +133,7 @@ namespace parallel_heap_scan
     VPID_SET_NULL (&vpid);
     while (TRUE)
       {
-	if (m_context->has_error() || m_result_queue->is_scan_internal_ended || m_result_queue->is_scan_external_ended)
+	if (m_context->has_error() || m_context->is_scan_internal_ended || m_context->is_scan_external_ended)
 	  {
 	    break;
 	  }
@@ -152,13 +151,13 @@ namespace parallel_heap_scan
 
 	if (page_scan_code == S_END)
 	  {
-	    m_result_queue->is_scan_internal_ended = true;
+	    m_context->is_scan_internal_ended = true;
 	    break;
 	  }
 
 	while (TRUE)
 	  {
-	    if (m_context->has_error() || m_result_queue->is_scan_external_ended)
+	    if (m_context->has_error() || m_context->is_scan_external_ended)
 	      {
 		break;
 	      }
@@ -193,8 +192,6 @@ namespace parallel_heap_scan
 		  {
 		    tsc_getticks (&t1);
 		  }
-		/*auto entry = std::make_shared<result_queue::entry> (scan_id, rec_scan_code);
-		m_result_queue->enqueue (entry);*/
 		writer.write (m_context->m_orig_thread_p, scan_id);
 		if (on_trace)
 		  {

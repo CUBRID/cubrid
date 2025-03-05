@@ -48,7 +48,6 @@ namespace parallel_heap_scan
       parallelism (core_count)
   {
     m_context = std::make_shared<context> (thread_p, scan_id);
-    m_result_queue = std::make_shared<result_queue> (128*parallelism);
     m_list_stream = std::make_shared<list_stream> (128*parallelism, query_id, scan_id);
     m_list_reader = std::make_shared<list_reader> (m_list_stream);
     m_memory_mappers.reserve (parallelism);
@@ -115,44 +114,6 @@ namespace parallel_heap_scan
     return S_SUCCESS;
   }
 
-  SCAN_CODE manager::get_result ()
-  {
-    SCAN_CODE scan_code;
-    int result = FALSE;
-    int timeout_count = 0;
-
-    std::shared_ptr<result_queue::entry> entry;
-    if (m_context->has_error())
-      {
-	return S_ERROR;
-      }
-    if (m_context->all_tasks_scan_ended() && m_result_queue->size() == 0)
-      {
-	return S_END;
-      }
-
-    while (!m_result_queue->dequeue_timeout (entry, 10))
-      {
-	timeout_count++;
-	if (timeout_count > 1000)
-	  {
-	    timeout_occurred = true;
-	    return S_ERROR;
-	  }
-	if (m_context->has_error())
-	  {
-	    return S_ERROR;
-	  }
-	if (m_context->all_tasks_scan_ended() && m_result_queue->size() == 0)
-	  {
-	    return S_END;
-	  }
-      }
-
-    entry->unpack (m_scan_id, &scan_code);
-    return scan_code;
-  }
-
   void manager::start ()
   {
 
@@ -187,7 +148,7 @@ namespace parallel_heap_scan
 
     for (size_t i = 0; i < parallelism; i++)
       {
-	taskp.reset (new task (m_context, m_result_queue, m_memory_mappers[i], m_list_stream));
+	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream));
 	thread_get_manager()->push_task (m_workpool, taskp.release());
 	m_context->add_tasks_started();
       }
@@ -195,22 +156,21 @@ namespace parallel_heap_scan
 
   void manager::end()
   {
-    m_result_queue->is_scan_external_ended = true;
+    m_context->is_scan_external_ended = true;
     if (m_context->has_error())
       {
 	return;
       }
     while (!m_context->all_tasks_ended())
       {
-	std::shared_ptr<result_queue::entry> entry;
-	m_result_queue->try_dequeue (entry);
-	thread_sleep (1);
+	std::shared_ptr<list_page> page;
+	m_list_stream->dequeue_timeout (page, 1);
       }
     m_is_start_once = false;
     timeout_occurred = false;
-    m_result_queue->is_scan_external_ended = false;
-    m_result_queue->is_scan_internal_ended = false;
-    m_result_queue->clear();
+    m_context->is_scan_external_ended = false;
+    m_context->is_scan_internal_ended = false;
+    m_list_stream->clear();
   }
 }
 
@@ -226,7 +186,6 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       scan_id->s.phsid.manager->start_tasks();
       scan_id->s.phsid.manager->m_is_start_once = true;
     }
-  //ret = scan_id->s.phsid.manager->get_result();
   ret = scan_id->s.phsid.manager->get_result_from_list_stream();
   if (scan_id->s.phsid.manager->timeout_occurred)
     {

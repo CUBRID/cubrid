@@ -74,6 +74,7 @@ namespace parallel_heap_scan
       QFILE_TUPLE_VALUE_TYPE_LIST *get_type_list();
       size_t size();
       QUERY_ID get_query_id();
+      void clear();
       std::mutex m_list_create_destroy_mutex;
     private:
       tbb::concurrent_bounded_queue<std::shared_ptr<list_page>> m_queue;

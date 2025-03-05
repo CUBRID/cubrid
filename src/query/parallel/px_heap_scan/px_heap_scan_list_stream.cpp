@@ -99,6 +99,12 @@ namespace parallel_heap_scan
     return &m_type_list;
   }
 
+  void list_stream::clear()
+  {
+    std::unique_lock<std::mutex> lock (m_list_create_destroy_mutex);
+    m_queue.clear();
+  }
+
   list_reader::list_reader (std::shared_ptr<list_stream> stream)
     : m_stream (stream), m_cur_page (nullptr)
   {

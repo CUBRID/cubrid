@@ -42,7 +42,7 @@ namespace parallel_heap_scan
       task (task &&) = delete;
       task &operator= (task &&) = delete;
 
-      task (std::shared_ptr<context> context, std::shared_ptr<result_queue> result_queue,
+      task (std::shared_ptr<context> context,
 	    std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream);
       ~task();
 
@@ -51,7 +51,6 @@ namespace parallel_heap_scan
 
     private:
       std::shared_ptr<context> m_context;
-      std::shared_ptr<result_queue> m_result_queue;
       std::shared_ptr<memory_mapper> m_memory_mapper;
       std::shared_ptr<list_stream> m_list_stream;
   };

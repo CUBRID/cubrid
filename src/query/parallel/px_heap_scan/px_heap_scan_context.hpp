@@ -27,7 +27,6 @@
 
 #include "scan_manager.h"
 #include "px_heap_scan_memory_mapper.hpp"
-#include "px_heap_scan_result_queue.hpp"
 #include "thread_entry_task.hpp"
 #include "dbtype_def.h"
 #include <vector>
@@ -52,6 +51,8 @@ namespace parallel_heap_scan
       } m_locked_vpid;
       SCAN_ID *m_scan_id;
       THREAD_ENTRY *m_orig_thread_p;
+      std::atomic<bool> is_scan_internal_ended;
+      std::atomic<bool> is_scan_external_ended;
 
       context (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
       ~context();

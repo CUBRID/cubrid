@@ -17,7 +17,7 @@
  */
 
 /*
- * px_heap_scan_result_queue.hpp - queue for temporarily storing heap scan results
+ * px_heap_scan_perf_monitor.hpp - performance monitor for parallel heap scan
  */
 
 #ifndef _PX_HEAP_SCAN_PERF_MONITOR_HPP_
