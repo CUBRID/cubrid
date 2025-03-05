@@ -399,15 +399,17 @@ is_terminated_process (const int pid)
       return true;
     }
 
-    DWORD exit_code;
-    if (GetExitCodeProcess(h_process, &exit_code)) {
-        CloseHandle(h_process);
-        // if the process is terminated, return true
-        return (exit_code != STILL_ACTIVE);
+  DWORD exit_code;
+  if (GetExitCodeProcess (h_process, &exit_code))
+    {
+      CloseHandle (h_process);
+      return (exit_code != STILL_ACTIVE);
     }
-
-    CloseHandle (h_process);
-    return true;
+  else
+    {
+      CloseHandle (h_process);
+      return true;
+    }
 #else /* WINDOWS */
   if (kill (pid, 0) == -1)
     {
