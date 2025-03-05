@@ -746,6 +746,15 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_PARALLEL:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.parallel_thread = hint_table[i].arg_list;
+	      node->info.query.q.select.num_parallel_threads = atoi (hint_table[i].arg_list->info.name.original);
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
 	case PT_HINT_NO_ELIMINATE_JOIN:
 	  if (node->node_type == PT_SELECT)
 	    {

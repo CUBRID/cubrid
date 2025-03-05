@@ -9128,18 +9128,27 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
 #if SERVER_MODE && !WINDOWS
-	  if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) && prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS) > 0)	/* Only for User table */
+	  if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
 	    {
-	      if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid)
-		  && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid)
-		  && !mvcc_select_lock_needed && thread_p->private_heap_id != 0 &&
-		  (curr_spec->s.cls_node.cls_regu_list_pred || curr_spec->s.cls_node.cls_regu_list_rest))
+	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS))
 		{
-		  /* Why thread_p->private_heap_id != 0? 
-		   * Because, if it is 0, it means that the scan is not executed in main thread.
-		   * So, we can't use parallel heap scan.
-		   */
-		  scan_type = S_PARALLEL_HEAP_SCAN;
+		  curr_spec->num_parallel_threads = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
+		}
+	      else
+		{
+		  /* use the number of parallel heap scan threads set by hint */
+		}
+
+	      if (curr_spec->num_parallel_threads > 0)
+		{
+		  if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0 && (curr_spec->s.cls_node.cls_regu_list_pred || curr_spec->s.cls_node.cls_regu_list_rest))	/* Only for User table */
+		    {
+		      /* Why thread_p->private_heap_id != 0? 
+		       * Because, if it is 0, it means that the scan is not executed in main thread.
+		       * So, we can't use parallel heap scan.
+		       */
+		      scan_type = S_PARALLEL_HEAP_SCAN;
+		    }
 		}
 	    }
 #endif /* SERVER_MODE && !WINDOWS */
@@ -9216,7 +9225,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					  curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
 					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 					  scan_type, curr_spec->s.cls_node.cache_reserved,
-					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id);
+					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id,
+					  curr_spec->num_parallel_threads);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

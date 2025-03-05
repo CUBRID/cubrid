@@ -244,10 +244,10 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-			      bool is_partition_table, QUERY_ID query_id)
+			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads)
 {
   int ret;
-  int parallelism = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
+  int parallelism = num_parallel_threads;
   HL_HEAPID orig_heap_id;
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
   scan_id->type = S_HEAP_SCAN;

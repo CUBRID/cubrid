@@ -2051,6 +2051,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    }
 	}
 
+      if (node->info.query.q.select.hint & PT_HINT_PARALLEL)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.num_parallel_threads = node->info.query.q.select.num_parallel_threads;
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
+
       if (node->info.query.q.select.from != NULL && node->info.query.q.select.from->next == NULL)
 	{
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)

@@ -1412,6 +1412,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
 #define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
+#define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
 
 /* Codes for error messages */
 typedef enum
@@ -1745,7 +1746,8 @@ typedef enum
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
-  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000	/* spec for setted number of parallel query execution threads */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2383,6 +2385,7 @@ struct pt_spec_info
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
+  int num_parallel_threads;	/* number of parallel threads for this spec */
 };
 
 /* Info for an EVALUATE object */
@@ -2945,6 +2948,7 @@ struct pt_select_info
   PT_NODE *use_merge;		/* PT_NAME (list) */
   PT_NODE *no_use_hash;		/* PT_NAME (list) */
   PT_NODE *use_hash;		/* PT_NAME (list) */
+  PT_NODE *parallel_thread;	/* PT_NAME (list) */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
@@ -2954,6 +2958,7 @@ struct pt_select_info
   PT_HINT_ENUM hint;
   int flavor;
   int flag;			/* flags */
+  int num_parallel_threads;
   PT_CONNECT_BY_CHECK_CYCLES check_cycles;	/* CONNECT BY CHECK CYCLES */
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
