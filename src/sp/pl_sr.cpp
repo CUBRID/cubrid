@@ -258,7 +258,6 @@ namespace cubpl
   void
   server_manager::start ()
   {
-    pl_reset_info (m_db_name.c_str ());
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
     m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
@@ -359,6 +358,7 @@ namespace cubpl
       {
 	int status;
 
+	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
 	if (pid > 1) // parent
