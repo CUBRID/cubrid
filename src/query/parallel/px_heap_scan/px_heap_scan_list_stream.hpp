@@ -17,7 +17,7 @@
  */
 
 /*
- * px_heap_scan_list_stream.hpp
+ * px_heap_scan_list_stream.hpp - list stream for parallel heap scan
  */
 
 #ifndef _PX_HEAP_SCAN_LIST_STREAM_HPP_
