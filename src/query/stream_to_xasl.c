@@ -5400,7 +5400,6 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
   dblink_spec->conn_user = stx_restore_string (thread_p, ptr);
   dblink_spec->conn_password = stx_restore_string (thread_p, ptr);
   dblink_spec->conn_sql = stx_restore_string (thread_p, ptr);
-  dblink_spec->conn_handle = -1;	/* init for DML conn_handle */
 
   return ptr;
 

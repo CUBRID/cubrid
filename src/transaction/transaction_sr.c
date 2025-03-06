@@ -84,7 +84,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   if (auto_commit == false)
     {
       /* dblink commit first in case of auto commit mode off */
-      QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, tran_index, false);
+      QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
 
       if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
 	{
@@ -141,7 +141,7 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   if (auto_commit == false)
     {
       /* dblink commit first in case of auto commit mode off */
-      (void) qmgr_check_dblink_trans (thread_p, tran_index, true);
+      (void) qmgr_check_dblink_trans (thread_p, true);
     }
 
   state = log_abort (thread_p, tran_index);

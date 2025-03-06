@@ -2071,15 +2071,6 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   XASL_ID_SET_NULL (&query_p->xasl_id);
 
-  /* the dblink's query entry has to be deleted at commit or rollback */
-  if (query_p->xasl_ent && query_p->xasl_ent->one_clone.xasl && query_p->xasl_ent->one_clone.xasl->spec_list)
-    {
-      if (query_p->xasl_ent->one_clone.xasl->spec_list->type == TARGET_DBLINK)
-	{
-	  return rc;
-	}
-    }
-
   qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
   return rc;
 }
@@ -2191,43 +2182,17 @@ qmgr_is_related_class_modified (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl
 }
 
 QMGR_TRAN_STATUS
-qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort)
+qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 {
-  QMGR_TRAN_STATUS status = QMGR_TRAN_NULL;
-  QMGR_QUERY_ENTRY *query_p, *prev_query = NULL;
-  QMGR_TRAN_ENTRY *tran_entry_p;
+  QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
+  int rc = dblink_end_tran (thread_p, false);
 
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-  query_p = tran_entry_p->query_entry_list_p;
-
-  while (query_p)
+  if (rc != NO_ERROR)
     {
-      if (query_p->xasl_ent && query_p->xasl_ent->one_clone.xasl && query_p->xasl_ent->one_clone.xasl->spec_list)
-	{
-	  if (query_p->xasl_ent->one_clone.xasl->spec_list->type == TARGET_DBLINK)
-	    {
-	      struct access_spec_node *spec = query_p->xasl_ent->one_clone.xasl->spec_list;
-	      if (spec && spec->s.dblink_node.conn_handle >= 0)
-		{
-		  int rc = dblink_end_tran (spec->s.dblink_node.conn_handle, is_abort);
-		  if (rc != NO_ERROR)
-		    {
-		      /* remote transactions will be rollbacked */
-		      is_abort = true;
-		      status = QMGR_TRAN_DBLINK_ABORTED;
-		      er_log_debug (ARG_FILE_LINE, "dblink query %d not completed !\n", query_p->query_id);
-		    }
-		}
-	    }
-	}
-
-      prev_query = query_p;
-      query_p = query_p->next;
-      qmgr_free_query_entry (thread_p, tran_entry_p, prev_query);
+      /* remote transactions will be rollbacked */
+      status = QMGR_TRAN_DBLINK_ABORTED;
+      er_log_debug (ARG_FILE_LINE, "dblink query is not completed !\n");
     }
-
-  tran_entry_p->query_entry_list_p = NULL;
-  tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
 
   return status;
 }

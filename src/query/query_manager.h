@@ -175,6 +175,6 @@ extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *qu
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
-extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, int tran_index, bool is_abort);
+extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort);
 
 #endif /* _QUERY_MANAGER_H_ */
