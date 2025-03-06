@@ -146,13 +146,18 @@ static int qexec_hash_join_scan_init (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *ha
 				      QFILE_LIST_ID *list_id);
 static void qexec_hash_join_scan_clear (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan);
 
-/* Hash Join Processing */
-static HJ_STATUS qexec_hash_join_check_empty_inputs (HJ_MANAGER *manager, HJ_CONTEXT *context);
+/* Hash Join Partitioning */
 static HJ_STATUS qexec_hash_join_partition_inputs (THREAD_ENTRY *thread_p, HJ_MANAGER *manager);
 static int qexec_hash_join_partition_input (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_PARTITION_INFO *part_info,
     HJ_FETCH_INFO *fetch_info, bool is_null_allowed, HASH_SCAN_KEY *key);
+
+/* Hash Join Processing */
+static HJ_STATUS qexec_hash_join_check_empty_inputs (HJ_MANAGER *manager, HJ_CONTEXT *context);
 static int qexec_hash_join_fetch_key (THREAD_ENTRY *thread_p, HJ_FETCH_INFO *fetch_info,
 				      QFILE_TUPLE_RECORD *tuple_record, HASH_SCAN_KEY *key, HASH_SCAN_KEY *compare_key, bool *exit_on_next);
+static void qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats);
+static void qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info);
+static void qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info);
 
 /* Build Phase */
 static int qexec_hash_join_build (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
@@ -166,7 +171,7 @@ static int qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
 static int qexec_hash_join_probe_key (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan,
 				      QFILE_TUPLE_RECORD *tuple_record, QFILE_LIST_SCAN_ID *list_scan_id);
 
-/* QFILE_LIST_ID Merge */
+/* Merge QFILE_LIST_ID */
 static int qexec_hash_join_merge_tuple_add_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id,
     QFILE_TUPLE_RECORD *tplrec1, QFILE_TUPLE_RECORD *tplrec2, QFILE_LIST_MERGE_INFO *merge_info,
     QFILE_TUPLE_RECORD *tplrec);
@@ -174,11 +179,6 @@ static int qexec_hash_join_merge_tuple (QFILE_TUPLE_RECORD *tplrec1, QFILE_TUPLE
 					QFILE_LIST_MERGE_INFO *merge_info, QFILE_TUPLE_RECORD *tplrec);
 static long qexec_hash_join_size_remaining (QFILE_TUPLE_RECORD *tplrec1, QFILE_TUPLE_RECORD *tplrec2,
     QFILE_LIST_MERGE_INFO *merge_info, int k);
-
-static void qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats);
-
-static void qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info);
-static void qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info);
 
 /**
  * Function Definitions
@@ -1113,47 +1113,6 @@ qexec_hash_join_scan_clear (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan)
 }
 
 static HJ_STATUS
-qexec_hash_join_check_empty_inputs (HJ_MANAGER *manager, HJ_CONTEXT *context)
-{
-  INT64 outer_tuple_cnt, inner_tuple_cnt;
-  HJ_STATUS status;
-
-  assert (manager != NULL);
-  assert (context != NULL);
-
-  assert (context->outer_list_id != NULL);
-  assert (context->inner_list_id != NULL);
-
-  outer_tuple_cnt = context->outer_list_id->tuple_cnt;
-  inner_tuple_cnt = context->inner_list_id->tuple_cnt;
-
-  /* HASHJOIN_END must be checked first. */
-  switch (manager->merge_info->join_type)
-    {
-    case JOIN_INNER:
-      status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_END : HASHJOIN_TRY;
-      break;
-
-    case JOIN_LEFT:
-      status = (outer_tuple_cnt == 0) ? HASHJOIN_END : (inner_tuple_cnt == 0) ? HASHJOIN_FILL_EMPTY : HASHJOIN_TRY;
-      break;
-
-    case JOIN_RIGHT:
-      status = (inner_tuple_cnt == 0) ? HASHJOIN_END : (outer_tuple_cnt == 0) ? HASHJOIN_FILL_EMPTY : HASHJOIN_TRY;
-      break;
-
-    case JOIN_OUTER:
-    /* FULL OUTER JOIN is not supported. */
-    default:
-      assert (false);
-      status = HASHJOIN_ERROR;
-      break;
-    }
-
-  return status;
-}
-
-static HJ_STATUS
 qexec_hash_join_partition_inputs (THREAD_ENTRY *thread_p, HJ_MANAGER *manager)
 {
   QFILE_LIST_MERGE_INFO *merge_info;
@@ -1369,8 +1328,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-
-
 static int
 qexec_hash_join_partition_input (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_PARTITION_INFO *part_info,
 				 HJ_FETCH_INFO *fetch_info, bool is_null_allowed, HASH_SCAN_KEY *key)
@@ -1488,6 +1445,47 @@ exit_on_error:
     }
 
   goto exit_on_end;
+}
+
+static HJ_STATUS
+qexec_hash_join_check_empty_inputs (HJ_MANAGER *manager, HJ_CONTEXT *context)
+{
+  INT64 outer_tuple_cnt, inner_tuple_cnt;
+  HJ_STATUS status;
+
+  assert (manager != NULL);
+  assert (context != NULL);
+
+  assert (context->outer_list_id != NULL);
+  assert (context->inner_list_id != NULL);
+
+  outer_tuple_cnt = context->outer_list_id->tuple_cnt;
+  inner_tuple_cnt = context->inner_list_id->tuple_cnt;
+
+  /* HASHJOIN_END must be checked first. */
+  switch (manager->merge_info->join_type)
+    {
+    case JOIN_INNER:
+      status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_END : HASHJOIN_TRY;
+      break;
+
+    case JOIN_LEFT:
+      status = (outer_tuple_cnt == 0) ? HASHJOIN_END : (inner_tuple_cnt == 0) ? HASHJOIN_FILL_EMPTY : HASHJOIN_TRY;
+      break;
+
+    case JOIN_RIGHT:
+      status = (inner_tuple_cnt == 0) ? HASHJOIN_END : (outer_tuple_cnt == 0) ? HASHJOIN_FILL_EMPTY : HASHJOIN_TRY;
+      break;
+
+    case JOIN_OUTER:
+    /* FULL OUTER JOIN is not supported. */
+    default:
+      assert (false);
+      status = HASHJOIN_ERROR;
+      break;
+    }
+
+  return status;
 }
 
 static int
@@ -1634,6 +1632,66 @@ exit_on_error:
     }
 
   goto exit_on_end;
+}
+
+static void
+qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats)
+{
+  assert (stats != NULL);
+  assert (context_stats != NULL);
+
+  TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
+  TSC_ADD_TIMEVAL (stats->build.build_time, context_stats->build.build_time);
+  stats->build.fetches += context_stats->build.fetches;
+  stats->build.fetch_time += context_stats->build.fetch_time;
+  stats->build.ioreads += context_stats->build.ioreads;
+
+#if HASH_JOIN_PROFILE_TIME
+  TSC_ADD_TIMEVAL (stats->build.profile.fetch, context_stats->build.profile.fetch);
+  TSC_ADD_TIMEVAL (stats->build.profile.hash, context_stats->build.profile.hash);
+  TSC_ADD_TIMEVAL (stats->build.profile.insert, context_stats->build.profile.insert);
+#endif
+
+  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
+  TSC_ADD_TIMEVAL (stats->probe.probe_time, context_stats->probe.probe_time);
+  stats->probe.fetches += context_stats->probe.fetches;
+  stats->probe.fetch_time += context_stats->probe.fetch_time;
+  stats->probe.ioreads += context_stats->probe.ioreads;
+  stats->probe.readkeys += context_stats->probe.readkeys;
+  stats->probe.rows += context_stats->probe.rows;
+  stats->probe.max_collisions = MAX (stats->probe.max_collisions, context_stats->probe.max_collisions);
+
+#if HASH_JOIN_PROFILE_TIME
+  TSC_ADD_TIMEVAL (stats->probe.profile.fetch, context_stats->probe.profile.fetch);
+  TSC_ADD_TIMEVAL (stats->probe.profile.hash, context_stats->probe.profile.hash);
+  TSC_ADD_TIMEVAL (stats->probe.profile.search, context_stats->probe.profile.search);
+  TSC_ADD_TIMEVAL (stats->probe.profile.match, context_stats->probe.profile.match);
+  TSC_ADD_TIMEVAL (stats->probe.profile.add, context_stats->probe.profile.add);
+#endif
+}
+
+static void
+qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info)
+{
+  assert (info->outer.domains != NULL);
+  assert (info->outer.value_indexes != NULL);
+  assert (info->inner.domains != NULL);
+  assert (info->inner.value_indexes != NULL);
+  assert (info->need_coerce_domains == false || info->coerce_domains != NULL);
+  assert (info->need_coerce_domains == true || info->coerce_domains == NULL);
+}
+
+static void
+qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info)
+{
+  assert (info->list_id != NULL);
+  assert (info->part_cnt > 1 && info->part_list_id != NULL);
+#if !defined (NDEBUG)
+  for (int part_index = 0; part_index < info->part_cnt; part_index++)
+    {
+      assert (info->part_list_id[part_index] != NULL);
+    }
+#endif /* !NDEBUG */
 }
 
 static int
@@ -2503,64 +2561,4 @@ qexec_hash_join_size_remaining (QFILE_TUPLE_RECORD *tplrec1, QFILE_TUPLE_RECORD 
     }
 
   return tpl_size;
-}
-
-static void
-qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats)
-{
-  assert (stats != NULL);
-  assert (context_stats != NULL);
-
-  TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
-  TSC_ADD_TIMEVAL (stats->build.build_time, context_stats->build.build_time);
-  stats->build.fetches += context_stats->build.fetches;
-  stats->build.fetch_time += context_stats->build.fetch_time;
-  stats->build.ioreads += context_stats->build.ioreads;
-
-#if HASH_JOIN_PROFILE_TIME
-  TSC_ADD_TIMEVAL (stats->build.profile.fetch, context_stats->build.profile.fetch);
-  TSC_ADD_TIMEVAL (stats->build.profile.hash, context_stats->build.profile.hash);
-  TSC_ADD_TIMEVAL (stats->build.profile.insert, context_stats->build.profile.insert);
-#endif
-
-  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
-  TSC_ADD_TIMEVAL (stats->probe.probe_time, context_stats->probe.probe_time);
-  stats->probe.fetches += context_stats->probe.fetches;
-  stats->probe.fetch_time += context_stats->probe.fetch_time;
-  stats->probe.ioreads += context_stats->probe.ioreads;
-  stats->probe.readkeys += context_stats->probe.readkeys;
-  stats->probe.rows += context_stats->probe.rows;
-  stats->probe.max_collisions = MAX (stats->probe.max_collisions, context_stats->probe.max_collisions);
-
-#if HASH_JOIN_PROFILE_TIME
-  TSC_ADD_TIMEVAL (stats->probe.profile.fetch, context_stats->probe.profile.fetch);
-  TSC_ADD_TIMEVAL (stats->probe.profile.hash, context_stats->probe.profile.hash);
-  TSC_ADD_TIMEVAL (stats->probe.profile.search, context_stats->probe.profile.search);
-  TSC_ADD_TIMEVAL (stats->probe.profile.match, context_stats->probe.profile.match);
-  TSC_ADD_TIMEVAL (stats->probe.profile.add, context_stats->probe.profile.add);
-#endif
-}
-
-static void
-qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info)
-{
-  assert (info->outer.domains != NULL);
-  assert (info->outer.value_indexes != NULL);
-  assert (info->inner.domains != NULL);
-  assert (info->inner.value_indexes != NULL);
-  assert (info->need_coerce_domains == false || info->coerce_domains != NULL);
-  assert (info->need_coerce_domains == true || info->coerce_domains == NULL);
-}
-
-static void
-qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info)
-{
-  assert (info->list_id != NULL);
-  assert (info->part_cnt > 1 && info->part_list_id != NULL);
-#if !defined (NDEBUG)
-  for (int part_index = 0; part_index < info->part_cnt; part_index++)
-    {
-      assert (info->part_list_id[part_index] != NULL);
-    }
-#endif /* !NDEBUG */
 }
