@@ -125,26 +125,28 @@ struct hashjoin_manager
  * Function Declarations
  */
 
-/* Returns QFILE_LIST_ID * */
+/* Hash Join Execution */
+static QFILE_LIST_ID *qexec_hash_join_partition (THREAD_ENTRY *thread_p, HJ_MANAGER *manager);
 static QFILE_LIST_ID *qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context);
 static QFILE_LIST_ID *qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager,
     HJ_CONTEXT *context);
+static QFILE_LIST_ID *qexec_hash_inner_join (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context);
 
-/* Hash Join Manager Functions */
+/* Hash Join Manager */
 static int qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGER *manager,
     QUERY_ID query_id);
 static void qexec_hash_join_clear_manager (THREAD_ENTRY *thread_p, HJ_MANAGER *manager);
 
-/* Hash Join Context Functions */
+/* Hash Join Context */
 static int qexec_hash_join_init_context (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context);
 static void qexec_hash_join_clear_contexts (THREAD_ENTRY *thread_p, HJ_CONTEXT *context);
 
-/* Hash List Scan Functions */
+/* Hash List Scan */
 static int qexec_hash_join_scan_init (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan, int key_cnt,
 				      QFILE_LIST_ID *list_id);
 static void qexec_hash_join_scan_clear (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan);
 
-/* Hash Join Processing Functions */
+/* Hash Join Processing */
 static HJ_STATUS qexec_hash_join_check_empty_inputs (HJ_MANAGER *manager, HJ_CONTEXT *context);
 static HJ_STATUS qexec_hash_join_partition_inputs (THREAD_ENTRY *thread_p, HJ_MANAGER *manager);
 static int qexec_hash_join_partition_input (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_PARTITION_INFO *part_info,
@@ -164,7 +166,7 @@ static int qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
 static int qexec_hash_join_probe_key (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan,
 				      QFILE_TUPLE_RECORD *tuple_record, QFILE_LIST_SCAN_ID *list_scan_id);
 
-/* QFILE_LIST_ID Merge Functions */
+/* QFILE_LIST_ID Merge */
 static int qexec_hash_join_merge_tuple_add_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id,
     QFILE_TUPLE_RECORD *tplrec1, QFILE_TUPLE_RECORD *tplrec2, QFILE_LIST_MERGE_INFO *merge_info,
     QFILE_TUPLE_RECORD *tplrec);
@@ -185,12 +187,10 @@ static void qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info);
 int
 qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id)
 {
-  QFILE_LIST_ID *list_id = NULL, *t_list_id = NULL, *context_list_id = NULL;
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+  QFILE_LIST_ID *list_id = NULL;
 
   HJ_MANAGER manager;
-  HJ_CONTEXT *single_context, *current_context;
-  int context_cnt, context_index;
+  HJ_CONTEXT *single_context;
 
   HJ_STATUS status, part_status;
 
@@ -200,8 +200,6 @@ qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id)
   assert (xasl != NULL);
   assert (query_id != NULL_QUERY_ID);
 
-  HJ_STATS *stats, *current_stats;
-
   error = qexec_hash_join_init_manager (thread_p, xasl, &manager, query_id);
   if (error != NO_ERROR)
     {
@@ -209,8 +207,6 @@ qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id)
     }
 
   single_context = &manager.single_context;
-  stats = single_context->stats;
-  assert (stats == &manager.stats_group->stats);
 
   status = qexec_hash_join_check_empty_inputs (&manager, single_context);
   switch (status)
@@ -236,10 +232,15 @@ qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id)
 	  goto exit_on_end;
 
 	case HASHJOIN_PARTITION:
-	  /* fall through */
-	  break;
+	  list_id = qexec_hash_join_partition (thread_p, &manager);
+	  if (list_id == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  goto exit_on_end;
 
 	default:
+	  assert (false);
 	  goto exit_on_error;
 	}
       break;
@@ -252,59 +253,10 @@ qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id)
       goto exit_on_error;
     }
 
-  context_cnt = manager.context_cnt;
-
-  for (context_index = 0; context_index < context_cnt; context_index++)
-    {
-      current_context = &manager.contexts[context_index];
-      current_stats = current_context->stats;
-
-      context_list_id = qexec_hash_join_internal (thread_p, &manager, current_context);
-      if (context_list_id == NULL)
-	{
-	  error = er_errid ();
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      continue;
-	    }
-	}
-
-      qfile_close_list (thread_p, context_list_id);
-
-      if (list_id != NULL)
-	{
-	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
-	  if (list_id == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  qfile_clear_list_id (list_id);
-	  qfile_copy_list_id (list_id, t_list_id, false);
-
-	  QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
-	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
-	}
-      else
-	{
-	  // qfile_copy_list_id (list_id, context_list_id, false);
-	  list_id = context_list_id;
-	}
-
-      if (thread_is_on_trace (thread_p))
-	{
-	  qexec_hash_join_merge_stats (stats, current_stats);
-	}
-    }
-
 exit_on_end:
   if (list_id != NULL)
     {
-      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, xasl->list_id);
       qfile_copy_list_id (xasl->list_id, list_id, false);
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
@@ -327,21 +279,116 @@ exit_on_error:
 }
 
 static QFILE_LIST_ID *
-qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
+qexec_hash_join_partition (THREAD_ENTRY *thread_p, HJ_MANAGER *manager)
 {
-  QFILE_LIST_ID *build_list_id, *probe_list_id, *list_id = NULL;
-  QFILE_LIST_SCAN_ID build_list_scan_id, probe_list_scan_id;
-  HJ_STATUS status;
+  QFILE_LIST_ID *list_id = NULL, *t_list_id = NULL, *context_list_id = NULL;
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+  HJ_CONTEXT *current_context;
+  int context_cnt, context_index;
 
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (context != NULL);
 
-  /* Prevent faults when qfile_close_scan is called */
-  build_list_scan_id.status = S_CLOSED;
-  probe_list_scan_id.status = S_CLOSED;
+  HJ_STATS *total_stats = &manager->stats_group->stats;
+  HJ_STATS *current_stats;
+
+  context_cnt = manager->context_cnt;
+
+  for (context_index = 0; context_index < context_cnt; context_index++)
+    {
+      current_context = &manager->contexts[context_index];
+
+      current_stats = current_context->stats;
+      assert (current_stats != NULL || !thread_is_on_trace (thread_p));
+
+      context_list_id = qexec_hash_join_internal (thread_p, manager, current_context);
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  qexec_hash_join_merge_stats (total_stats, current_stats);
+	}
+
+      if (context_list_id == NULL)
+	{
+	  // list_id가 NULL이면서 에러가 아닌 경우가 있을까?
+	  error = er_errid ();
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
+      qfile_close_list (thread_p, context_list_id);
+
+      if (list_id != NULL)
+	{
+	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
+	  if (t_list_id == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  qfile_destroy_list (thread_p, list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (list_id);
+
+	  qfile_destroy_list (thread_p, context_list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+
+	  list_id = t_list_id;
+	  t_list_id = NULL;
+	}
+      else
+	{
+	  list_id = context_list_id;
+	}
+    }
+
+exit_on_end:
+  return list_id;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  if (list_id != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
+
+  if (context_list_id != NULL)
+    {
+      qfile_close_list (thread_p, context_list_id);
+      qfile_destroy_list (thread_p, context_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+    }
+
+  goto exit_on_end;
+}
+
+static QFILE_LIST_ID *
+qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
+{
+  QFILE_LIST_ID *list_id = NULL;
+  HJ_STATUS status;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
 
   status = qexec_hash_join_check_empty_inputs (manager, context);
 
@@ -356,7 +403,12 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
       goto exit_on_end;
 
     case HASHJOIN_TRY:
-      break;
+      list_id = qexec_hash_inner_join (thread_p, manager, context);
+      if (list_id == NULL)
+	{
+	  goto exit_on_error;
+	}
+      goto exit_on_end;
 
     case HASHJOIN_END:
       goto exit_on_end;
@@ -365,6 +417,40 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
     default:
       goto exit_on_error;
     }
+
+exit_on_end:
+  return list_id;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  assert (list_id == NULL);
+
+  goto exit_on_end;
+}
+
+static QFILE_LIST_ID *
+qexec_hash_inner_join (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
+{
+  QFILE_LIST_ID *build_list_id, *probe_list_id, *list_id = NULL;
+  QFILE_LIST_SCAN_ID build_list_scan_id, probe_list_scan_id;
+
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+
+  /* Prevent faults when qfile_close_scan is called */
+  build_list_scan_id.status = S_CLOSED;
+  probe_list_scan_id.status = S_CLOSED;
 
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
   if (list_id == NULL)
@@ -389,7 +475,6 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
       probe_list_id = context->outer_list_id;
     }
 
-  /* build */
   error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
   if (error != NO_ERROR)
     {
@@ -402,14 +487,12 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
       goto exit_on_error;
     }
 
-  /* probe */
   error = qfile_open_list_scan (probe_list_id, &probe_list_scan_id);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  // qexec_hash_outer_join_internal 고려해야 한다.
   error = qexec_hash_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
   if (error != NO_ERROR)
     {
@@ -418,7 +501,12 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
 
 exit_on_end:
   qfile_close_scan (thread_p, &build_list_scan_id);
+  qfile_close_list (thread_p, build_list_id);
+  qfile_destroy_list (thread_p, build_list_id);
+
   qfile_close_scan (thread_p, &probe_list_scan_id);
+  qfile_close_list (thread_p, probe_list_id);
+  qfile_destroy_list (thread_p, probe_list_id);
 
   qexec_hash_join_scan_clear (thread_p, &context->hash_scan);
 
@@ -434,18 +522,26 @@ exit_on_error:
 	}
     }
 
+  if (list_id != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
+
   goto exit_on_end;
 }
+
 
 static QFILE_LIST_ID *
 qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
 {
-  QFILE_LIST_ID *list_id, *result_list_id = NULL;
-  QFILE_LIST_SCAN_ID list_scan_id;
+  QFILE_LIST_ID *outer_list_id, *list_id = NULL;
+  QFILE_LIST_SCAN_ID outer_scan_id;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
-  QFILE_TUPLE_RECORD *outer_record;
-  QFILE_TUPLE_RECORD *inner_record;
+  QFILE_TUPLE_RECORD *left_record;
+  QFILE_TUPLE_RECORD *right_record;
   SCAN_CODE scan_code;
 
   int error = NO_ERROR;
@@ -461,20 +557,20 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
   /* Prevent faults when qfile_close_scan is called */
-  list_scan_id.status = S_CLOSED;
+  outer_scan_id.status = S_CLOSED;
 
   switch (context->join_type)
     {
     case JOIN_LEFT:
-      list_id = context->outer_list_id;
-      outer_record = &tuple_record;
-      inner_record = NULL;
+      outer_list_id = context->outer_list_id;
+      left_record = &tuple_record;
+      right_record = NULL;
       break;
 
     case JOIN_RIGHT:
-      list_id = context->inner_list_id;
-      outer_record = NULL;
-      inner_record = &tuple_record;
+      outer_list_id = context->inner_list_id;
+      left_record = NULL;
+      right_record = &tuple_record;
       break;
 
     default:
@@ -482,8 +578,8 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
       goto exit_on_error;
     }
 
-  result_list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
-  if (result_list_id == NULL)
+  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
+  if (list_id == NULL)
     {
       goto exit_on_error;
     }
@@ -497,7 +593,7 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
       goto exit_on_error;
     }
 
-  error = qfile_open_list_scan (list_id, &list_scan_id);
+  error = qfile_open_list_scan (outer_list_id, &outer_scan_id);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -511,9 +607,9 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
       old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
-  while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
+  while ((scan_code = qfile_scan_list_next (thread_p, &outer_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      error = qexec_hash_join_merge_tuple_add_list (thread_p, result_list_id, outer_record, inner_record, manager->merge_info,
+      error = qexec_hash_join_merge_tuple_add_list (thread_p, list_id, left_record, right_record, manager->merge_info,
 	      &overflow_record);
       if (error != NO_ERROR)
 	{
@@ -538,15 +634,12 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
 					    PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time) / 1000);
     }
 
-  qfile_close_scan (thread_p, &list_scan_id);
+  qfile_close_scan (thread_p, &outer_scan_id);
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
       goto exit_on_error;
     }
-
-  qfile_close_list (thread_p, list_id);
-  qfile_destroy_list (thread_p, list_id);
 
 exit_on_end:
   if (overflow_record.tpl)
@@ -554,7 +647,10 @@ exit_on_end:
       db_private_free_and_init (thread_p, overflow_record.tpl);
     }
 
-  return result_list_id;
+  qfile_close_list (thread_p, outer_list_id);
+  qfile_destroy_list (thread_p, outer_list_id);
+
+  return list_id;
 
 exit_on_error:
   if (error == NO_ERROR)
@@ -566,8 +662,12 @@ exit_on_error:
 	}
     }
 
-  qfile_close_list (thread_p, result_list_id);
-  qfile_destroy_list (thread_p, result_list_id);
+  if (list_id != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
 
   goto exit_on_end;
 }
@@ -1822,8 +1922,8 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD found_record = { NULL, 0 };
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
-  QFILE_TUPLE_RECORD *outer_record;
-  QFILE_TUPLE_RECORD *inner_record;
+  QFILE_TUPLE_RECORD *left_record;
+  QFILE_TUPLE_RECORD *right_record;
   SCAN_CODE scan_code;
 
   HJ_FETCH_INFO *build_fetch_info, *probe_fetch_info;
@@ -1868,16 +1968,16 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
       build_fetch_info = &context->outer_fetch_info;
       probe_fetch_info = &context->inner_fetch_info;
 
-      outer_record = &found_record;
-      inner_record = &tuple_record;
+      left_record = &found_record;
+      right_record = &tuple_record;
     }
   else
     {
       build_fetch_info = &context->inner_fetch_info;
       probe_fetch_info = &context->outer_fetch_info;
 
-      outer_record = &tuple_record;
-      inner_record = &found_record;
+      left_record = &tuple_record;
+      right_record = &found_record;
     }
 
   error = qfile_reallocate_tuple (&overflow_record, DB_PAGESIZE);
@@ -2031,7 +2131,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	    }
 #endif
 
-	  error = qexec_hash_join_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, manager->merge_info,
+	  error = qexec_hash_join_merge_tuple_add_list (thread_p, list_id, left_record, right_record, manager->merge_info,
 		  &overflow_record);
 	  if (error != NO_ERROR)
 	    {
