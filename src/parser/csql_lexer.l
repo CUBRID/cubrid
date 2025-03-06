@@ -247,6 +247,9 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][nN][tT][iI][nN][uU][eE]					{ begin_token(yytext);   return CONTINUE; }
 [cC][oO][nN][vV][eE][rR][tT]						{ begin_token(yytext);   return CONVERT; }
 [cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ begin_token(yytext);   return CORRESPONDING; }
+[cC][oO][sS][iI][nN][eE]_[dD][iI][sS][tT][aA][nN][cC][eE]		{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return COSINE_DISTANCE; }
 [cC][oO][sS][tT]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COST;

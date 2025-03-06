@@ -18981,6 +18981,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
       error = vector_inner_product (result, args, num_args);
       break;
 
+    case F_COSINE_DISTANCE:
+      error = vector_cosine_distance (result, args, num_args);
+      break;
+
     default:
       /* a supported function doesn't have const folding code */
       assert (false);

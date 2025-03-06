@@ -1617,6 +1617,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	    case F_L1_DISTANCE:
 	    case F_L2_DISTANCE:
 	    case F_INNER_PRODUCT:
+	    case F_COSINE_DISTANCE:
 	      {
 		if (regu_var->value.funcp->tmp_obj->compiled_regex)
 		  {

@@ -410,6 +410,11 @@ func_all_signatures sig_of_inner_product =
   {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
 };
 
+func_all_signatures sig_of_cosine_distance =
+{
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_CODE ft)
 {
@@ -557,6 +562,8 @@ get_signatures (FUNC_CODE ft)
       return &sig_of_l2_distance;
     case F_INNER_PRODUCT:
       return &sig_of_inner_product;
+    case F_COSINE_DISTANCE:
+      return &sig_of_cosine_distance;
     default:
       assert (false);
       return nullptr;
@@ -3142,6 +3149,7 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case F_L1_DISTANCE:
     case F_L2_DISTANCE:
     case F_INNER_PRODUCT:
+    case F_COSINE_DISTANCE:
     // COUNT functions
     case PT_COUNT:
     case PT_COUNT_STAR:

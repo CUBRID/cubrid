@@ -4396,6 +4396,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	case F_L1_DISTANCE:
 	case F_L2_DISTANCE:
 	case F_INNER_PRODUCT:
+	case F_COSINE_DISTANCE:
 	  break;
 
 	default:
