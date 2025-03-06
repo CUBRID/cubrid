@@ -32,12 +32,27 @@
 package com.cubrid.jsp;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 public class ListenerThread extends Thread {
 
     private ServerSocket serverSocket = null;
+
+    // Exponential Backoff
+    private static final int MAX_RETRIES = 5;
+    private static long[] backoff_times = new long[MAX_RETRIES];
+
+    private int attempt = 0;
+
+    static {
+        long initialDelay = 100; // 100ms
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            backoff_times[i] = initialDelay * (1L << i);
+        }
+    }
 
     ListenerThread(ServerSocket serverSocket) {
         super();
@@ -47,15 +62,21 @@ public class ListenerThread extends Thread {
     @Override
     public void run() {
         Socket client = null;
-        while (!Thread.interrupted()) {
+        while (!Thread.interrupted() && attempt < MAX_RETRIES) {
             try {
                 client = serverSocket.accept();
                 client.setTcpNoDelay(true);
                 Thread execThread = new ExecuteThread(client);
                 execThread.start();
-            } catch (IOException e) {
+                attempt = 0;
+            } catch (Throwable e) {
                 Server.log(e);
-                break;
+                try {
+                    Thread.sleep(backoff_times[attempt]);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                attempt++;
             }
         }
 
@@ -65,9 +86,37 @@ public class ListenerThread extends Thread {
             // do nothing
         }
         serverSocket = null;
+
+        try {
+            killProcess();
+        } catch (Exception e) {
+            Server.log(e);
+        }
+        Server.stop(1);
     }
 
     public ServerSocket getServerSocket() {
         return serverSocket;
+    }
+
+    private static void killProcess() throws IOException, InterruptedException {
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        String jvmName = runtimeMXBean.getName();
+        long pid = Long.parseLong(jvmName.split("@")[0]);
+
+        String command = null;
+        if (OSValidator.IS_UNIX) {
+            command = "kill -SIGABRT " + pid;
+        } else {
+            command = "taskkill /F /PID " + pid;
+        }
+        Server.log("Command: " + command);
+        Server.log("Process " + pid + " is going to be terminated");
+
+        Server.flushLog();
+
+        Thread.sleep(1000);
+
+        Runtime.getRuntime().exec(command);
     }
 }

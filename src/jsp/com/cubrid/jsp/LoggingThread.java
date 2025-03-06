@@ -34,6 +34,7 @@ package com.cubrid.jsp;
 import java.io.IOException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.FileHandler;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -74,6 +75,12 @@ public class LoggingThread extends Thread {
         try {
             logQueue.put(str);
         } catch (InterruptedException e) {
+        }
+    }
+
+    public void flush() {
+        for (Handler handler : logger.getHandlers()) {
+            handler.flush();
         }
     }
 }
