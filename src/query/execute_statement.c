@@ -42,6 +42,7 @@
 #include <ctype.h>
 
 
+#include "cubvec_assert.h"
 #include "error_manager.h"
 #include "db.h"
 #include "dbi.h"
@@ -3151,6 +3152,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_EXECUTE_TRIGGER:
 	case PT_CREATE_ENTITY:
+	case PT_CREATE_VECTOR_INDEX:
+	  if (statement->node_type) {
+	      ASSERT_VIMKIM(false);
+	  }
 	case PT_CREATE_INDEX:
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:

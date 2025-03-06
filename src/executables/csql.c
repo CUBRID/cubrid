@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "cubvec_assert.h"
 
 #include <stdio.h>
 #include <fcntl.h>
