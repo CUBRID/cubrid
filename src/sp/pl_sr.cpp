@@ -358,6 +358,7 @@ namespace cubpl
       {
 	int status;
 
+	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
 	if (pid > 1) // parent
@@ -529,6 +530,7 @@ namespace cubpl
 	  {
 	    // PL server is terminated by user (cubrid pl restart)
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
+	    m_failure_count = 0;
 	  }
 
 	if (m_state == SERVER_MONITOR_STATE_UNKNOWN)
