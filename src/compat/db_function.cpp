@@ -186,6 +186,8 @@ fcode_get_uppercase_name (FUNC_CODE ftype)
       return "L1_DISTANCE";
     case F_L2_DISTANCE:
       return "L2_DISTANCE";
+    case F_INNER_PRODUCT:
+      return "INNER_PRODUCT";
     default:
       return "***UNKNOWN***";
     }
@@ -348,6 +350,8 @@ fcode_get_lowercase_name (FUNC_CODE ftype)
       return "l1_distance";
     case F_L2_DISTANCE:
       return "l2_distance";
+    case F_INNER_PRODUCT:
+      return "inner_product";
     default:
       return "unknown function";
     }
