@@ -133,11 +133,14 @@ server_monitor::remove_server_entry (const std::string &server_name)
   auto entry = m_server_entry_map.find (server_name);
   assert (entry != m_server_entry_map.end ());
 
-  er_log_debug (ARG_FILE_LINE,
-		"[Server Monitor] [%s] Server entry has been unregistered. (pid : %d)",
-		server_name.c_str(), entry->second.get_pid());
+  if (entry != m_server_entry_map.end ())
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "[Server Monitor] [%s] Server entry has been unregistered. (pid : %d)",
+		    server_name.c_str(), entry->second.get_pid());
 
-  m_server_entry_map.erase (entry);
+      m_server_entry_map.erase (entry);
+    }
 }
 
 void
