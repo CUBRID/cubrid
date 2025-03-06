@@ -267,6 +267,10 @@ public class Server {
         loggingThread.log(str);
     }
 
+    public static void flushLog() {
+        loggingThread.flush();
+    }
+
     public void setShutdown() {
         shutdown.set(true);
     }

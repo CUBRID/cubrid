@@ -305,6 +305,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
   class_mop = sm_find_class (class_name_p);
   if (class_mop == NULL)
     {
+      fprintf (file_p, "\nERROR: %s\n", er_msg ());
       return;
     }
 
@@ -394,6 +395,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   class_mop = sm_find_class (class_name_p);
   if (class_mop == NULL)
     {
+      fprintf (file_p, "\nERROR: %s\n", er_msg ());
       return;
     }
 

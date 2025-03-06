@@ -67,8 +67,6 @@ static void free_grant_list (AU_GRANT *grants);
 static void map_grant_list (AU_GRANT *grants, MOP grantor);
 
 static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
-static int add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor);
-static void drop_grant_entry (DB_SET *grants, int index);
 static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
 
 /*
@@ -1162,7 +1160,7 @@ map_grant_list (AU_GRANT *grants, MOP grantor)
  *   obj_mop(in): database object being granted
  *   grantor(in): user doing the granting
  */
-static int
+int
 add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor)
 {
   DB_VALUE value;
@@ -1193,7 +1191,7 @@ add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grant
  *   grants(in): grant sequence
  *   index(in): index of grant element to remove
  */
-static void
+void
 drop_grant_entry (DB_SET *grants, int index)
 {
   int i;
@@ -1335,6 +1333,25 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
   grants = db_get_set (&value);
   gsize = set_size (grants);
 
+  /*
+   * The code below `filter` is no longer functional and should be considered for removal
+   * during future permission refactoring.
+   *
+   * The reason is that, in versions prior to 11.3v, when `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE`
+   * was granted and then deleted, the `owner` and `grants` rows in the `db_authorization` catalog
+   * were set to `NULL`.
+   *
+   * However, following the fixes for issues CBRD-25486 and CBRD-25574,
+   * all permissions are now revoked before `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE` is deleted.
+   * As a result, the `owner` and `grants` rows in the `db_authorization` catalog can no longer become `NULL`.
+   *
+   * That said, there are two possible reasons why the following code was originally implemented before 11.3v (guess):
+   *
+   * Case 1) If the `owner` in the `db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
+   *         the corresponding element is deleted.
+   * Case 2) If the `owner` in the `db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
+   *         the `GRANT_ENTRY_CACHE(mask)` is merged into the owner’s entry, and the existing element is deleted.
+   */
   if (!filter)
     {
       goto end;
