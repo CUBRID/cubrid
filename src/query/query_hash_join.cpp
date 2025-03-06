@@ -420,6 +420,8 @@ exit_on_end:
   qfile_close_scan (thread_p, &build_list_scan_id);
   qfile_close_scan (thread_p, &probe_list_scan_id);
 
+  qexec_hash_join_scan_clear (thread_p, &context->hash_scan);
+
   return list_id;
 
 exit_on_error:
