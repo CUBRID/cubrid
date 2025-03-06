@@ -1256,18 +1256,12 @@ stx_restore_pl_sig (THREAD_ENTRY * thread_p, char *ptr)
       return sig;
     }
 
-#if defined(SERVER_MODE)
-  sig = (PL_SIGNATURE_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_TYPE));
-  if (sig == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-
-  pl_sig_placement_new (sig);
-#else
+#if defined(MMON_DEBUG_LEVEL)
   sig = new PL_SIGNATURE_TYPE;
+#else
+  sig = new (std::nothrow) PL_SIGNATURE_TYPE;
 #endif
+
   if (stx_mark_struct_visited (thread_p, ptr, sig) == ER_FAILED || stx_build_pl_sig (thread_p, ptr, sig) == NULL)
     {
       return NULL;
@@ -1296,16 +1290,10 @@ stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
       return sig_array;
     }
 
-#if defined(SERVER_MODE)
-  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  if (sig_array == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-  pl_sig_array_placement_new (sig_array);
-#else
+#if defined(MMON_DEBUG_LEVEL)
   sig_array = new PL_SIGNATURE_ARRAY_TYPE;
+#else
+  sig_array = new (std::nothrow) PL_SIGNATURE_ARRAY_TYPE;
 #endif
 
   if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||

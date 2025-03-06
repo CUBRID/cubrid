@@ -12816,7 +12816,11 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   access =
     pt_make_cselect_access_spec (subquery_proc, sig_array, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
-  if (access && subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
+  if (!access)
+    {
+      regu_delete (sig_array);
+    }
+  else if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
     {
       return access;
     }

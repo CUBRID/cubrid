@@ -231,7 +231,6 @@ namespace cubpacking
       void unpack_overloaded (std::string &str);
       void unpack_c_string (char *str, const size_t max_str_size);
       void unpack_string_to_memblock (cubmem::extensible_block &blk);
-      void unpack_string_ptr (char *&str, size_t &len);
 
       void unpack_db_value (db_value &value);
       void unpack_overloaded (db_value &value);

@@ -1592,13 +1592,16 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_SP:
       pr_clear_value (regu_var->value.sp_ptr->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.sp_ptr->args, is_final);
-#if !defined(SERVER_MODE)
-      if (is_final)
+      if (is_final && regu_var->value.sp_ptr->sig)
 	{
-	  delete regu_var->value.sp_ptr->sig;
-	  regu_var->value.sp_ptr->sig = nullptr;
+	  if (!xcache_uses_clones ()
+	      || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || regu_var->value.sp_ptr->sig->is_disposable)
+	    {
+	      delete regu_var->value.sp_ptr->sig;
+	      regu_var->value.sp_ptr->sig = nullptr;
+	    }
 	}
-#endif
+
       break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
@@ -2111,13 +2114,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
-#if !defined(SERVER_MODE)
-	  if (is_final)
+	  if (is_final && p->s.method_node.sig_array)
 	    {
-	      delete p->s.method_node.sig_array;
-	      p->s.method_node.sig_array = NULL;
+	      if (!xcache_uses_clones ()
+		  || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || p->s.method_node.sig_array->is_disposable)
+		{
+		  delete p->s.method_node.sig_array;
+		  p->s.method_node.sig_array = NULL;
+		}
 	    }
-#endif
+
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;

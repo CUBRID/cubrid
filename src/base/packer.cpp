@@ -900,22 +900,6 @@ namespace cubpacking
     align (INT_ALIGNMENT);
   }
 
-  void
-  unpacker::unpack_string_ptr (char *&str, size_t &len)
-  {
-    len = 0;
-
-    unpack_string_size (len);
-
-    str = (char *) m_ptr;
-    if (len > 0)
-      {
-	m_ptr += len;
-      }
-
-    align (INT_ALIGNMENT);
-  }
-
   size_t
   packer::get_packed_size_overloaded (const packable_object &po, size_t curr_offset)
   {

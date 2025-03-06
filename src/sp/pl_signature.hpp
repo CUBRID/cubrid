@@ -48,8 +48,6 @@ namespace cubpl
 
   struct pl_arg : public cubpacking::packable_object
   {
-    THREAD_ENTRY *owner;
-
     int arg_size;
     int *arg_mode;  // array of (IN|OUT|IN/OUT)
     int *arg_type;  // array of DB_TYPE
@@ -87,8 +85,7 @@ namespace cubpl
 
   struct pl_signature : public cubpacking::packable_object
   {
-    THREAD_ENTRY *owner;
-
+    bool is_disposable;
     int type; // PL_TYPE
     char *name;
     char *auth;
@@ -113,7 +110,7 @@ namespace cubpl
 
   struct pl_signature_array : public cubpacking::packable_object
   {
-    THREAD_ENTRY *owner;
+    bool is_disposable;
 
     int num_sigs;
     pl_signature *sigs;
@@ -131,10 +128,5 @@ namespace cubpl
 using PL_SIGNATURE_TYPE = cubpl::pl_signature;
 using PL_SIGNATURE_ARG_TYPE = cubpl::pl_arg;
 using PL_SIGNATURE_ARRAY_TYPE = cubpl::pl_signature_array;
-
-#if defined(SERVER_MODE)
-void pl_sig_placement_new (PL_SIGNATURE_TYPE *sig);
-void pl_sig_array_placement_new (PL_SIGNATURE_ARRAY_TYPE *sig_arr);
-#endif
 
 #endif // _PL_SIGNATURE_HPP_

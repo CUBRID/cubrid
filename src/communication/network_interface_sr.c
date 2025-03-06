@@ -93,9 +93,7 @@
 #include "pl_compile_handler.hpp"
 #include "pl_session.hpp"
 #include "pl_executor.hpp"
-#if defined(SERVER_MODE)
-#include "xasl_stream.hpp"
-#endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -10531,16 +10529,6 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   int error_code = NO_ERROR;
   packing_unpacker unpacker (request, (size_t) reqlen);
 
-#if defined(SERVER_MODE)
-  XASL_UNPACK_INFO *unpack_info_call = NULL;
-
-  stx_set_xasl_errcode (thread_p, NO_ERROR);
-  stx_init_xasl_unpack_info (thread_p, NULL, 0);
-  unpack_info_call = get_xasl_unpack_info_ptr (thread_p);
-  unpack_info_call->use_xasl_clone = false;
-  unpack_info_call->track_allocated_bufers = 1;
-#endif
-
   DB_VALUE ret_value;
   db_make_null (&ret_value);
 
@@ -10614,12 +10602,6 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 
   pr_clear_value_vector (args);
   db_value_clear (&ret_value);
-
-#if defined(SERVER_MODE)
-  stx_free_visited_ptrs (thread_p);
-  set_xasl_unpack_info_ptr (thread_p, NULL);
-  free_xasl_unpack_info (thread_p, unpack_info_call);
-#endif
 }
 
 #if 0

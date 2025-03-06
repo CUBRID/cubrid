@@ -27,25 +27,6 @@
 #include "thread_manager.hpp"
 #endif
 
-#if defined(SERVER_MODE)
-//#include "xasl_stream.hpp"
-extern char *stx_alloc_struct (THREAD_ENTRY *thread_p, int size);
-
-/* ******************************************************************
- * Before including "memory_wrapper.hpp",
- * the following two functions must be defined.
- */
-// placement new
-void pl_sig_placement_new (PL_SIGNATURE_TYPE *sig)
-{
-  new (sig) PL_SIGNATURE_TYPE ();
-}
-void pl_sig_array_placement_new (PL_SIGNATURE_ARRAY_TYPE *sig_arr)
-{
-  new (sig_arr) PL_SIGNATURE_ARRAY_TYPE ();
-}
-/* ****************************************************************** */
-#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -68,11 +49,6 @@ namespace cubpl
   pl_arg::pl_arg (int num_args)
     : arg_size {num_args}
   {
-#if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
-#else
-    owner = NULL;
-#endif
     set_arg_size (num_args);
   }
 
@@ -86,7 +62,10 @@ namespace cubpl
   {
     if (arg_size > 0)
       {
-#if !defined(SERVER_MODE)
+	THREAD_ENTRY *owner = NULL;
+#if defined(SERVER_MODE)
+	owner = thread_get_thread_entry_info ();
+#endif
 	CHECK_NULL_AND_FREE (owner, arg_mode);
 	CHECK_NULL_AND_FREE (owner, arg_type);
 	if (arg_default_value_size)
@@ -101,7 +80,6 @@ namespace cubpl
 	  }
 	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
 	CHECK_NULL_AND_FREE (owner, arg_default_value);
-#endif
       }
   }
 
@@ -154,17 +132,12 @@ namespace cubpl
     if (num_args > 0)
       {
 	arg_size = num_args;
-#if !defined(SERVER_MODE)
+
 	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
-#else
-	arg_mode = (int *) stx_alloc_struct (owner, (num_args) * sizeof (int));
-	arg_type = (int *) stx_alloc_struct (owner, (num_args) * sizeof (int));
-	arg_default_value_size = (int *) stx_alloc_struct (owner, (num_args) * sizeof (int));
-	arg_default_value = (char **) stx_alloc_struct (owner, (num_args) * sizeof (char *));
-#endif
+
 	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
 	  {
 	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
@@ -193,17 +166,22 @@ namespace cubpl
     , type {PL_TYPE_NONE}
     , result_type {0}
   {
-#if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
-#else
-    owner = NULL;
-#endif
     memset (&ext, 0, sizeof (pl_ext));
+
+#if defined (SERVER_MODE)
+    is_disposable = (thread_get_thread_entry_info ()->private_heap_id != 0);
+#else
+    is_disposable = true;
+#endif
   }
 
   pl_signature::~pl_signature ()
   {
-#if !defined(SERVER_MODE)
+    THREAD_ENTRY *owner = NULL;
+#if defined(SERVER_MODE)
+    owner = thread_get_thread_entry_info ();
+#endif
+
     CHECK_NULL_AND_FREE (owner, name);
     CHECK_NULL_AND_FREE (owner, auth);
 
@@ -217,7 +195,6 @@ namespace cubpl
 	CHECK_NULL_AND_FREE (owner, ext.sp.target_class_name);
 	CHECK_NULL_AND_FREE (owner, ext.sp.target_method_name);
       }
-#endif
   }
 
   void
@@ -276,31 +253,17 @@ namespace cubpl
 
     deserializator.unpack_int (type);
 
-#if !defined(SERVER_MODE)
     cubmem::extensible_block name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
     deserializator.unpack_string_to_memblock (name_blk);
     name = name_blk.release_ptr ();
-#else
-    deserializator.unpack_string_ptr (ptr, len);
-    name = stx_alloc_struct (owner, len + 1 );
-    memcpy (name, ptr, len);
-    name[len] = '\0';
-#endif
 
     bool has_auth = false;
     deserializator.unpack_bool (has_auth);
     if (has_auth)
       {
-#if !defined(SERVER_MODE)
 	cubmem::extensible_block auth_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	deserializator.unpack_string_to_memblock (auth_name_blk);
 	auth = auth_name_blk.release_ptr ();
-#else
-	deserializator.unpack_string_ptr (ptr, len);
-	auth = stx_alloc_struct (owner, len + 1 );
-	memcpy (auth, ptr, len);
-	auth[len] = '\0';
-#endif
       }
     else
       {
@@ -318,16 +281,9 @@ namespace cubpl
 	deserializator.unpack_bool (has_cn);
 	if (has_cn)
 	  {
-#if !defined(SERVER_MODE)
 	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	    deserializator.unpack_string_to_memblock (class_name_blk);
 	    ext.method.class_name = class_name_blk.release_ptr ();
-#else
-	    deserializator.unpack_string_ptr (ptr, len);
-	    ext.method.class_name = stx_alloc_struct (owner, len + 1 );
-	    memcpy (ext.method.class_name, ptr, len);
-	    ext.method.class_name[len] = '\0';
-#endif
 	  }
 	else
 	  {
@@ -337,11 +293,7 @@ namespace cubpl
 	if (arg.arg_size > 0)
 	  {
 	    int cnt;
-#if !defined(SERVER_MODE)
 	    ext.method.arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * arg.arg_size);
-#else
-	    ext.method.arg_pos = (int *) stx_alloc_struct (owner, sizeof (int) * arg.arg_size );
-#endif
 	    deserializator.unpack_int_array (ext.method.arg_pos, cnt);
 	    assert (cnt == arg.arg_size);
 	  }
@@ -356,16 +308,9 @@ namespace cubpl
 	deserializator.unpack_bool (has_n);
 	if (has_n)
 	  {
-#if !defined(SERVER_MODE)
 	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	    deserializator.unpack_string_to_memblock (class_name_blk);
 	    ext.sp.target_class_name = class_name_blk.release_ptr ();
-#else
-	    deserializator.unpack_string_ptr (ptr, len);
-	    ext.sp.target_class_name = stx_alloc_struct (owner, len + 1 );
-	    memcpy (ext.sp.target_class_name, ptr, len);
-	    ext.sp.target_class_name[len] = '\0';
-#endif
 	  }
 	else
 	  {
@@ -375,16 +320,9 @@ namespace cubpl
 	deserializator.unpack_bool (has_n);
 	if (has_n)
 	  {
-#if !defined(SERVER_MODE)
 	    cubmem::extensible_block class_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
 	    deserializator.unpack_string_to_memblock (class_name_blk);
 	    ext.sp.target_method_name = class_name_blk.release_ptr ();
-#else
-	    deserializator.unpack_string_ptr (ptr, len);
-	    ext.sp.target_method_name = stx_alloc_struct (owner, len + 1 );
-	    memcpy (ext.sp.target_method_name, ptr, len);
-	    ext.sp.target_method_name[len] = '\0';
-#endif
 	  }
 	else
 	  {
@@ -457,9 +395,9 @@ namespace cubpl
     : num_sigs {num}
   {
 #if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
+    is_disposable = (thread_get_thread_entry_info ()->private_heap_id != 0);
 #else
-    owner = NULL;
+    is_disposable = true;
 #endif
 
     if (num <= 0)
@@ -468,21 +406,13 @@ namespace cubpl
       }
     else
       {
-#if !defined (SERVER_MODE)
-	sigs = new (std::nothrow) pl_signature[num];
+#if defined(MMON_DEBUG_LEVEL)
+	sigs = new  pl_signature[num];
 #else
-	sigs = (pl_signature *) stx_alloc_struct (owner, sizeof (pl_signature) * num);
+	sigs = new (std::nothrow) pl_signature[num];
 #endif
+
 	assert_release (sigs != NULL);
-#if defined (SERVER_MODE)
-	if (sigs)
-	  {
-	    for (int i = 0; i < num; i++)
-	      {
-		pl_sig_placement_new (sigs + i);
-	      }
-	  }
-#endif
       }
   }
 
@@ -490,9 +420,7 @@ namespace cubpl
   {
     if (sigs)
       {
-#if !defined (SERVER_MODE)
 	delete [] sigs;
-#endif
 	sigs = nullptr;
       }
   }
@@ -513,19 +441,16 @@ namespace cubpl
     deserializator.unpack_int (num_sigs);
     if (num_sigs > 0)
       {
-#if !defined (SERVER_MODE)
-	sigs = new (std::nothrow) pl_signature [num_sigs];
+#if defined(MMON_DEBUG_LEVEL)
+	sigs = new  pl_signature [num_sigs];
 #else
-	sigs = (pl_signature *) stx_alloc_struct (owner, sizeof (pl_signature) * num_sigs);
+	sigs = new (std::nothrow) pl_signature [num_sigs];
 #endif
 	assert_release (sigs != NULL);
 	if (sigs)
 	  {
 	    for (int i = 0; i < num_sigs; i++)
 	      {
-#if defined (SERVER_MODE)
-		pl_sig_placement_new (sigs + i);
-#endif
 		sigs[i].unpack (deserializator);
 	      }
 	  }
