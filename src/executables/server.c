@@ -217,6 +217,8 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
     {
       return;
     }
+
+  er_print_crash_callstack (signo);
 }
 
 #if !defined (NDEBUG)
@@ -257,6 +259,7 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
       free (local_clients_pid);
     }
 
+  er_print_crash_callstack (signo);
   /* abort the server itself */
   abort ();
 }
