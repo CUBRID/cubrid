@@ -20,7 +20,6 @@
  * xasl_generation.c - Generate XASL from the parse tree
  */
 
-#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
