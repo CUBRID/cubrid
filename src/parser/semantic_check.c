@@ -4808,7 +4808,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
   else
