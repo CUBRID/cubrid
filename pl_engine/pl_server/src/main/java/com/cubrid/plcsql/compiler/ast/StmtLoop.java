@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import java.util.LinkedList;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -47,14 +48,18 @@ public abstract class StmtLoop extends Stmt {
             for (SqlUse n : loopOptimizables.sqlUses) {
                 n.setContainerLoop(this);
             }
+            for (LocalRoutineCall n : loopOptimizables.localRoutineCalls) {
+                n.setContainerLoop(this);
+            }
         }
     }
 
     public static class LoopOptimizables {
         public List<SqlUse> sqlUses = new LinkedList<>();
+        public List<LocalRoutineCall> localRoutineCalls = new LinkedList<>();
 
         public boolean isEmpty() {
-            return sqlUses.isEmpty();
+            return sqlUses.isEmpty() && localRoutineCalls.isEmpty();
         }
     }
 }

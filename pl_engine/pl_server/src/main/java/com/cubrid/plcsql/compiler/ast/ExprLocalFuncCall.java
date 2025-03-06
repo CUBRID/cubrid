@@ -30,11 +30,23 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprLocalFuncCall extends Expr {
+public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
+
+    public StmtLoop containerLoop;
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+        decl.genCodeForLoopOpt = true;
+    }
+
+    public boolean isLoopOptApplicable() {
+        StmtLoop.LoopOptimizables lo = decl.loopOptimizables;
+        return (lo != null && !lo.isEmpty());
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {

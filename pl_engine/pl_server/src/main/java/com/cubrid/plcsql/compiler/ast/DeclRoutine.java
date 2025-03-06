@@ -35,6 +35,8 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class DeclRoutine extends Decl {
 
+    public boolean genCodeForLoopOpt;
+
     public final String name;
     public StmtLoop.LoopOptimizables loopOptimizables;
     public final NodeList<DeclParam> paramList;

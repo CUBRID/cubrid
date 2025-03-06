@@ -1036,7 +1036,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                ExprLocalFuncCall ret = new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                if (ret.isLoopOptApplicable()) {
+                    addToLocalRoutineCalls(ret);
+                }
+                return ret;
             }
         }
     }
@@ -2374,7 +2378,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT"));
 
     @Override
-    public AstNode visitProcedure_call(Procedure_callContext ctx) {
+    public Stmt visitProcedure_call(Procedure_callContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.proc_call_name().name);
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
@@ -2441,7 +2445,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + " must be updatable because it is to an OUT parameter");
             }
 
-            return new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            StmtLocalProcCall ret = new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            if (ret.isLoopOptApplicable()) {
+                addToLocalRoutineCalls(ret);
+            }
+            return ret;
         }
     }
 
@@ -3379,12 +3387,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void addToSqlUses(SqlUse node) {
 
         if (loopOptimizables != null) {
+
             if (routineDefNestLevel > 0 && !node.usingRef()) {
                 // this sql-using construct resides in a routine definition, in which case
                 // it must use reference of Statement regardless of its default setting of usingRef
                 node.setToUseRef();
             }
             loopOptimizables.sqlUses.add(node);
+        }
+    }
+
+    private void addToLocalRoutineCalls(LocalRoutineCall node) {
+
+        if (loopOptimizables != null) {
+            loopOptimizables.localRoutineCalls.add(node);
         }
     }
 }

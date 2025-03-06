@@ -28,46 +28,8 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.ast.loopOpt;
 
-import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
-import com.cubrid.plcsql.compiler.Scope;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
-
-public class StmtLocalProcCall extends Stmt implements LocalRoutineCall {
-
-    public StmtLoop containerLoop;
-    public void setContainerLoop(StmtLoop containerLoop) {
-        this.containerLoop = containerLoop;
-        decl.genCodeForLoopOpt = true;
-    }
-
-    public boolean isLoopOptApplicable() {
-        StmtLoop.LoopOptimizables lo = decl.loopOptimizables;
-        return (lo != null && !lo.isEmpty());
-    }
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtLocalProcCall(this);
-    }
-
-    public final String name;
-    public final NodeList<Expr> args;
-    public final Scope scope;
-    public final DeclProc decl;
-    public final boolean prefixDeclBlock;
-
-    public StmtLocalProcCall(
-            ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
-        super(ctx);
-
-        assert args != null;
-        this.name = name;
-        this.args = args;
-        this.scope = scope;
-        this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
-    }
+public interface LocalRoutineCall extends LoopOptimizable {
+    boolean isLoopOptApplicable();
 }
