@@ -2152,10 +2152,13 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   int attr_count;
   int i;
   UINTPTR spec_id;
+  bool has_inst_or_orderby_num = false;
 
   assert (statement->node_type == PT_SELECT && query_spec->info.query.order_by != NULL);
 
   order_by = parser_copy_tree_list (parser, query_spec->info.query.order_by);
+  has_inst_or_orderby_num = pt_has_inst_or_orderby_num (parser, query_spec)
+    || pt_has_inst_in_where_and_select_list (parser, statement);
 
   /* 1 get vclass spec attrs */
   if (class_ != NULL)
@@ -2246,7 +2249,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (pt_is_distinct (statement))
+	  if (pt_is_distinct (statement) && !has_inst_or_orderby_num)
 	    {
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
