@@ -3319,6 +3319,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
+  /* stats_group */
+  memset (&node_p->stats_group, 0, sizeof (HJ_STATS_GROUP));
+
   return ptr;
 
 exit_on_error:

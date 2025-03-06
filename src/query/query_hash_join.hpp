@@ -109,7 +109,6 @@ struct hashjoin_stats
     UINT64 fetches;
     UINT64 fetch_time;
     UINT64 ioreads;
-    UINT32 part_cnt;
   } part;
 
   struct
@@ -154,11 +153,20 @@ struct hashjoin_stats
   } probe;
 };
 
+typedef struct hashjoin_stats_group HASHJOIN_STATS_GROUP;
+typedef struct hashjoin_stats_group HJ_STATS_GROUP;
+struct hashjoin_stats_group
+{
+  HJ_STATS stats;
+  HJ_STATS *context_stats;
+  int context_cnt;
+};
+
 /**
  * Function Declarations
  */
 
-int qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, UINT64 query_id);
+int qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

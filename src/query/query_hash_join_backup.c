@@ -116,7 +116,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state
       old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
-  error = qexec_hash_join_build (thread_p, xasl_state, manager, context, &build_list_scan_id, stats);
+  error = qexec_hash_join_build (thread_p, xasl_state, manager, context, &build_list_scan_id);
 
   if (on_trace)
     {

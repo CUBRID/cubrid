@@ -2654,9 +2654,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 
     case HASHJOIN_PROC:
       {
-	if (xasl->proc.hashjoin.part_stats != NULL)
+	if (xasl->proc.hashjoin.stats_group.context_stats != NULL)
 	  {
-	    db_private_free_and_init (thread_p, xasl->proc.hashjoin.part_stats);
+	    db_private_free_and_init (thread_p, xasl->proc.hashjoin.stats_group.context_stats);
 	  }
 	break;
       }

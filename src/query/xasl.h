@@ -383,8 +383,7 @@ struct hashjoin_proc_node
   HJ_DOMAIN_INFO domain_info;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  HJ_STATS stats;
-  HJ_STATS *part_stats;
+  HJ_STATS_GROUP stats_group;
 #endif
 };
 

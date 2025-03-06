@@ -52,6 +52,10 @@
 #include "dbtype.h"
 #include "regu_var.hpp"
 
+#define CUBRID_DEBUG_DUMP_PLAN_COST 0
+#define TEST_HASH_JOIN_ENABLE 0
+#define TEST_HASH_JOIN_FORCE_ENABLE 0
+
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
 #define TITLE_WIDTH		7
@@ -343,7 +347,7 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   qo_hjoin_fprint,
   qo_join_walk,
   qo_join_free,
-#if defined(TEST_HASH_JOIN_FORCE_ENABLE)
+#if TEST_HASH_JOIN_FORCE_ENABLE
   qo_zero_cost,
   qo_zero_cost,
 #else
@@ -3076,8 +3080,8 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Nested Loop Cost: \n");
+#if CUBRID_DEBUG_DUMP_PLAN_COST
+  fprintf (stdout, "\nNested Loop Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
@@ -3154,8 +3158,8 @@ qo_mjoin_cost (QO_PLAN * planp)
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Sort Merge Cost: \n");
+#if CUBRID_DEBUG_DUMP_PLAN_COST
+  fprintf (stdout, "\nSort Merge Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
@@ -3278,8 +3282,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       assert (false);
     }
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
+#if CUBRID_DEBUG_DUMP_PLAN_COST
+  fprintf (stdout, "\nHash Join Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", plan_p->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", plan_p->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", plan_p->variable_cpu_cost);
@@ -6222,7 +6226,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   else
     {
       /* default: disable hash-join */
-#if defined(TEST_HASH_JOIN_ENABLE)
+#if TEST_HASH_JOIN_ENABLE
       /* fall through */
 #else
       goto exit;
