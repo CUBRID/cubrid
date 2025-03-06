@@ -35,7 +35,7 @@
 namespace parallel_heap_scan
 {
   list_stream::list_stream (int size, QUERY_ID query_id, SCAN_ID *scan_id)
-    : m_list_create_destroy_mutex (), m_queue (), m_type_list (), m_query_id (query_id)
+    : m_queue (), m_type_list (), m_query_id (query_id)
   {
     int i;
     REGU_VARIABLE_LIST p;
@@ -110,7 +110,6 @@ namespace parallel_heap_scan
 
   void list_stream::clear()
   {
-    std::unique_lock<std::mutex> lock (m_list_create_destroy_mutex);
     m_queue.clear();
   }
 
@@ -183,7 +182,7 @@ namespace parallel_heap_scan
       {
 	if (m_cur_page == nullptr)
 	  {
-	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list, &m_stream->m_list_create_destroy_mutex);
+	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list);
 	  }
 	status = m_cur_page->write (thread_p, tplrec);
 	if (status == list_page::status::WRITE_SUCCESS)
@@ -218,7 +217,7 @@ namespace parallel_heap_scan
       {
 	if (m_cur_page == nullptr)
 	  {
-	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list, &m_stream->m_list_create_destroy_mutex);
+	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list);
 	  }
 
 	status = m_cur_page->write (thread_p, tplrec);
@@ -334,19 +333,15 @@ namespace parallel_heap_scan
     return &m_tpl_buf;
   }
 
-  list_page::list_page (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list,
-			std::mutex *list_create_destroy_mutex)
-    : m_list_id (nullptr), m_thread_p (thread_p), m_type_list (type_list),
-      m_list_create_destroy_mutex (list_create_destroy_mutex)
+  list_page::list_page (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list)
+    : m_list_id (nullptr), m_thread_p (thread_p), m_type_list (type_list)
   {
-    std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
     m_list_id = qfile_open_list (thread_p, type_list, nullptr, query_id, QFILE_FLAG_ALL, nullptr);
     assert (m_list_id != nullptr);
   }
 
   list_page::~list_page()
   {
-    std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
     qfile_destroy_list (m_thread_p, m_list_id);
   }
 
@@ -440,7 +435,6 @@ namespace parallel_heap_scan
   {
     if (VPID_ISNULL (&m_list_id->first_vpid))
       {
-	std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
 	if (qfile_add_tuple_to_list (thread_p, m_list_id, (QFILE_TUPLE) tplrec->tpl) != NO_ERROR)
 	  {
 	    return status::WRITE_ERROR;
@@ -450,7 +444,6 @@ namespace parallel_heap_scan
     if (tplrec->size > QFILE_MAX_TUPLE_SIZE_IN_PAGE)
       {
 	/* overflow page */
-	std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
 	if (qfile_add_tuple_to_list (thread_p, m_list_id, (QFILE_TUPLE) tplrec->tpl) != NO_ERROR)
 	  {
 	    return status::WRITE_ERROR;
@@ -471,19 +464,16 @@ namespace parallel_heap_scan
 
   void list_page::close_list()
   {
-    std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
     qfile_close_list (m_thread_p, m_list_id);
   }
 
   int list_page::open_list_scan (QFILE_LIST_SCAN_ID *list_scan_id)
   {
-    std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
     return qfile_open_list_scan (m_list_id, list_scan_id);
   }
 
   int list_page::close_list_scan (QFILE_LIST_SCAN_ID *list_scan_id)
   {
-    std::unique_lock<std::mutex> lock (*m_list_create_destroy_mutex);
     qfile_close_scan (m_thread_p, list_scan_id);
     return 0;
   }

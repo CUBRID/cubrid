@@ -344,6 +344,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->query_flag = 0;
   query_p->is_holdable = false;
   query_p->includes_tde_class = false;
+  pthread_mutex_init (&query_p->temp_vfid_mutex, NULL);
 
 #if defined (NDEBUG)
   /* just a safe guard for a release build. I don't expect it will be hit. */
@@ -2791,6 +2792,14 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       tfile_vfid_p->tde_encrypted = true;
     }
 
+  pthread_mutex_lock (&query_p->temp_vfid_mutex);
+  /* In the existing code, there was only one thread with the same tran_id and query_id. 
+   * However, with the addition of the parallel execution feature for queries, 
+   * multiple threads can now have the same tran_id and query_id. In this state, 
+   * if multiple threads request the creation of a temporary file simultaneously, 
+   * there is a risk of faults due to a lack of thread safety when linking the list. 
+   * To prevent this, this mutex has been added. */
+
   /* chain allocated tfile_vfid to the query_entry */
   temp = query_p->temp_vfid;
   query_p->temp_vfid = tfile_vfid_p;
@@ -2812,6 +2821,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
 
   /* increment the counter of query entry */
   query_p->num_tmp++;
+  pthread_mutex_unlock (&query_p->temp_vfid_mutex);
 
   return tfile_vfid_p;
 }
@@ -3092,6 +3102,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     }
 
   rc = NO_ERROR;
+  pthread_mutex_lock (&query_p->temp_vfid_mutex);
   if (query_p->temp_vfid)
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
@@ -3136,6 +3147,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	  free_and_init (tfile_vfid_p);
 	}
     }
+  pthread_mutex_unlock (&query_p->temp_vfid_mutex);
 
   return NO_ERROR;
 }

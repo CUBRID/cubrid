@@ -47,8 +47,7 @@ namespace parallel_heap_scan
 	WRITE_OVERFLOW,
 	WRITE_ERROR
       };
-      list_page (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list,
-		 std::mutex *list_create_destroy_mutex);
+      list_page (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list);
       ~list_page();
       status read (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, QFILE_LIST_SCAN_ID *list_scan_id);
       status write (THREAD_ENTRY *thread_p, QFILE_TUPLE_RECORD *tplrec);
@@ -59,7 +58,6 @@ namespace parallel_heap_scan
       QFILE_LIST_ID *m_list_id;
       THREAD_ENTRY *m_thread_p;
       QFILE_TUPLE_VALUE_TYPE_LIST *m_type_list;
-      std::mutex *m_list_create_destroy_mutex;
   };
 
   class list_stream
@@ -75,7 +73,6 @@ namespace parallel_heap_scan
       size_t size();
       QUERY_ID get_query_id();
       void clear();
-      std::mutex m_list_create_destroy_mutex;
     private:
       tbb::concurrent_bounded_queue<std::shared_ptr<list_page>> m_queue;
       QFILE_TUPLE_VALUE_TYPE_LIST m_type_list;

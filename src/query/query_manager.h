@@ -129,6 +129,7 @@ struct qmgr_query_entry
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */
   QMGR_QUERY_ENTRY *next;
   QMGR_TEMP_FILE *temp_vfid;	/* head of per query temp file VFID */
+  pthread_mutex_t temp_vfid_mutex;	/* mutex for temp_vfid */
   int num_tmp;			/* number of tmpfiles allocated */
   int total_count;		/* total number of file pages alloc'd for the entire query */
   char *er_msg;			/* pointer to error message string of last error */

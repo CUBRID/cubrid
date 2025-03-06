@@ -28,6 +28,7 @@
 #include <memory>
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
+#include "query_manager.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
@@ -99,6 +100,7 @@ namespace parallel_heap_scan
     TSCTIMEVAL tv_diff;
     UINT64 old_fetches = 0, old_ioreads = 0;
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
+    QUERY_ID query_id = m_list_stream->get_query_id();
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
 
     if (m_context->has_error())
@@ -137,6 +139,17 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+	if (qmgr_is_query_interrupted (m_context->m_orig_thread_p, query_id))
+	  {
+	    m_context->is_scan_external_ended = true;
+	    if (m_context->has_error())
+	      {
+		break;
+	      }
+	    m_context->set_has_error();
+	    m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	    break;
+	  }
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
@@ -152,6 +165,17 @@ namespace parallel_heap_scan
 	if (page_scan_code == S_END)
 	  {
 	    m_context->is_scan_internal_ended = true;
+	    break;
+	  }
+
+	if (page_scan_code == S_ERROR)
+	  {
+	    if (m_context->has_error())
+	      {
+		break;
+	      }
+	    m_context->set_has_error();
+	    m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	    break;
 	  }
 
