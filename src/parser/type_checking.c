@@ -7938,6 +7938,11 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	}
       break;
 
+    case PT_CREATE_VECTOR_INDEX:
+
+      assert (nullptr == pt_where_type (parser, node->info.index.where));
+      break;
+
     case PT_CREATE_INDEX:
       node->info.index.where = pt_where_type (parser, node->info.index.where);
       break;
