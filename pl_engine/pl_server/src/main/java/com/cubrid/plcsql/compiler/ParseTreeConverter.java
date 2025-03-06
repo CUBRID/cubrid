@@ -1037,7 +1037,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 ExprLocalFuncCall ret = new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
-                if (ret.isLoopOptApplicable()) {
+                if (decl.isLoopOptApplicable()) {
                     addToLocalRoutineCalls(ret);
                 }
                 return ret;
@@ -2446,7 +2446,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             StmtLocalProcCall ret = new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
-            if (ret.isLoopOptApplicable()) {
+            if (decl.isLoopOptApplicable()) {
                 addToLocalRoutineCalls(ret);
             }
             return ret;

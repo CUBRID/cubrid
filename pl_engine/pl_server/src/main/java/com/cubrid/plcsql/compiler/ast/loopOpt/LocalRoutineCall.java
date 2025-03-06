@@ -30,6 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast.loopOpt;
 
+import com.cubrid.plcsql.compiler.ast.DeclRoutine;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import java.util.Set;
+
 public interface LocalRoutineCall extends LoopOptimizable {
-    boolean isLoopOptApplicable();
+    DeclRoutine getDecl();
 }

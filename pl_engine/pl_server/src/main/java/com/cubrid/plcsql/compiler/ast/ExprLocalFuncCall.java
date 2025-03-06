@@ -30,22 +30,25 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.Set;
 
 public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
 
     public StmtLoop containerLoop;
+    @Override
     public void setContainerLoop(StmtLoop containerLoop) {
         this.containerLoop = containerLoop;
-        decl.genCodeForLoopOpt = true;
+        decl.markCalledInLoop();
     }
 
-    public boolean isLoopOptApplicable() {
-        StmtLoop.LoopOptimizables lo = decl.loopOptimizables;
-        return (lo != null && !lo.isEmpty());
+    @Override
+    public DeclRoutine getDecl() {
+        return decl;
     }
 
     @Override
