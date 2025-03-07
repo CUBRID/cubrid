@@ -1166,7 +1166,7 @@ qexec_hash_join_scan_init (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan, in
   else
     {
 #if HASH_JOIN_DUMP_BUILD
-      fprintf (stdout, "\n[DEBUG] Hash Join Method: File\n");
+      fprintf (stdout, "\nHash Join Method: File\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
       fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id->tuple_cnt,
 	       mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
@@ -2197,7 +2197,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 
   while ((scan_code = qfile_scan_list_next (thread_p, probe_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
       qfile_print_tuple (&probe_scan_id->list_id.type_list, tuple_record.tpl);
 #endif
 
@@ -2304,7 +2304,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	    }
 	  else if (exit_on_next == true)
 	    {
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	      fprintf (stdout, "\nNot Matched Key: ");
 	      qfile_print_tuple (&build_scan_id->list_id.type_list, found_record.tpl);
 #endif
@@ -2318,7 +2318,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	      /* fall through */
 	    }
 
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nMatched Key: ");
 	  qfile_print_tuple (&build_scan_id->list_id.type_list, found_record.tpl);
 #endif
@@ -2500,7 +2500,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	  goto exit_on_error;
 	}
 
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
       qfile_print_tuple (&probe_scan_id->s.llsid.list_id->type_list, tuple_record.tpl);
 #endif
 
@@ -2529,7 +2529,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	}
       else if (exit_on_next == true)
 	{
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nFill Outer Key: ");
 	  qfile_print_tuple (&probe_scan_id->s.llsid.list_id->type_list, tuple_record.tpl);
 #endif
@@ -2685,7 +2685,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	    }
 	  else if (exit_on_next == true)
 	    {
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	      fprintf (stdout, "\nNot Matched Key: ");
 	      qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
@@ -2733,7 +2733,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 
 	      if (ev_res != V_TRUE)
 		{
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 		  fprintf (stdout, "\nNot Matched Key: ");
 		  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
@@ -2743,7 +2743,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 		}
 	    }
 
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nMatched Key: ");
 	  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
@@ -2784,7 +2784,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 
       if (any_record_added == false)
 	{
-#if HASH_JOIN_DUMP_PROBE
+#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nFill Outer Key: ");
 	  qfile_print_tuple (&probe_scan_id->s.llsid.list_id->type_list, tuple_record.tpl);
 #endif
