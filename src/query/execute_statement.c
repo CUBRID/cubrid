@@ -3918,10 +3918,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  /* statement->info.create_entity. internal_stmts, */
 					  do_create_entity);
       break;
-	case PT_CREATE_VECTOR_INDEX:
-	  if (statement->node_type) {
-	      assert(false);
-	  }
+    case PT_CREATE_VECTOR_INDEX:
+      err = do_create_vector_index (parser, statement);
+      break;
     case PT_CREATE_INDEX:
       err = do_create_index (parser, statement);
       break;
