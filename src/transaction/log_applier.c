@@ -6745,6 +6745,8 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
   int diff_msec;
   bool need_commit = false;
 
+  static int ha_mode = -1;
+
   assert (time_commit);
 
   /* check interval time for commit */
@@ -6769,6 +6771,34 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
       /* check for # of rows to commit */
       if (la_Info.prev_total_rows != la_Info.total_rows)
 	{
+	  need_commit = true;
+	}
+
+      if (ha_mode < HA_MODE_OFF)
+	{
+	  ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+	}
+
+      if (ha_mode == HA_MODE_REPLICA && la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_STANDBY)
+	{
+	  /*
+	   * 'db_ha_apply_info' catalog is updated by la_log_commit, and the HA service uses the updated
+	   * information (db_ha_apply_info) to obtain delay information.
+	   * However, during the process of applying logs replicated from the standby,
+	   * the db_ha_apply_info is not updated. Therefore, it needs to be updated periodically here.
+	   *
+	   * NOTE:
+	   * 1. The logs replicated from the 'standby' server do not contain replication logs.
+	   *   - The value of la_Info.total_rows does not change.
+	   *   - Therefore, la_log_commit is not called within this function.
+	   * 2. The logs replicated from the 'standby' server do not contain LOG_DUMMY_HA_SERVER_STATE log records either.
+	   *   - la_log_commit is not called in la_log_record_process
+	   * 3. la_log_commit is called only when the logs received from the standby server are read to the end (LOG_END_OF_LOG).
+	   *   - la_log_commit is called if the logs are fully applied and checked in la_change_state
+	   *   - Due to the above condition, unnecessary duplicate la_log_commit calls may occur (legacy issue).
+	   *   - The probability of applying the end of log decreases if ha_replica_delay is set.
+	   */
+
 	  need_commit = true;
 	}
 

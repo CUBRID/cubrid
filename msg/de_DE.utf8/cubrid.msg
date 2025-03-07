@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Checkpoint begonnen (voriger Checkpoint Seiten-ID: %1$lld, vorige Redo-Seiten-ID: %2$lld).
 978 Checkpoint beendet (Checkpoint Seiten-ID: %1$lld, Checkpoint Redo Seite id: %2$lld, flushed Seitenzahl: %3$d).
 979 CONNECT BY-Schleife in Benutzerdaten.
-980 Ein Thread wartet in %1$s seit mehr als %2$d msec.
+980 Ein Thread wartet in %1$s seit mehr als %2$d msec(%3$d msec).
 981 Transaktion %1$d hat die Schwelle der Statistik-Monitoring erreicht %2$s.
 982 Set-Interrupt auf Transaktion %1$d.
 983 Instanzen der wiederverwendbaren OID-Klasse sind nicht beziehbar. Diese Operation ist auf nicht beziehbaren Instanzen nicht erlaubt.
