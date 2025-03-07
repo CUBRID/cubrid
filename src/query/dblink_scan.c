@@ -39,10 +39,12 @@
 #include <cas_cci.h>
 
 #include <db_json.hpp>
+
+// for dblink connection handling
+#include "connection_defs.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#include "connection_defs.h"
 
 #define MAX_LEN_CONNECTION_URL    512
 
