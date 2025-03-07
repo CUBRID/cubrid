@@ -782,7 +782,6 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -845,7 +844,6 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -869,7 +867,6 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
     }
   else
     {
-      /* db_find_class () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)

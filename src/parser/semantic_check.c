@@ -4813,7 +4813,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -5298,7 +5297,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  }
 	else
 	  {
-	    /* db_find_synonym () == NULL */
 	    ASSERT_ERROR ();
 
 	    if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -5319,7 +5317,6 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  }
 	else
 	  {
-	    // db_find_class () == NULL //
 	    ASSERT_ERROR ();
 
 	    if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
@@ -10352,7 +10349,6 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  assert (node->info.serial.code == PT_SERIAL_OPTION || node->info.serial.code == PT_CHANGE_OWNER);
   switch (node->info.serial.code)
     {
     case PT_SERIAL_OPTION:
