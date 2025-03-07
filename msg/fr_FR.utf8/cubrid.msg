@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Point de contrôle commencé (id de la page précédente du point de contrôle: %1$lld, id de la page REDO précédente: %2$lld).
 978 Point de contrôle terminé (id de la page de point de contrôle: %1$lld, id de la page REDO du point de contrôle: %2$lld, nombre de pages écrit: %3$d).
 979 Boucle CONNECT BY dans les données d'utilisateur.
-980 Fil d'exécution est en attente en %1$s depuis plus de %2$d msec.
+980 Fil d'exécution est en attente en %1$s depuis plus de %2$d msec(%3$d msec).
 981 Transaction %1$d a atteint le seuil des statistiques de surveillance %2$s.
 982 Interruption de la transaction %1$d.
 983 Instances d'une classe OID réutilisable ne sont pas attribuables. Cette opération est interdite sur les non-attribuables instances.

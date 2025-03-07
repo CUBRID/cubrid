@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Punto de control iniciado (id de página del punto de control anterior: %1$lld, id de pagina de rehacer anterior : %2$lld).
 978 Punto de control terminado (id de página del punto de control: %1$lld, Id de página de rehacer punto de control: %2$lld, Número de páginas flushed: %3$d).
 979 Bucle CONNECT BY en los datos de usuario.
-980 Un hilo esta esperando en %1$s mas que %2$d msec.
+980 Un hilo esta esperando en %1$s mas que %2$d msec(%3$d msec).
 981 Transacción %1$d ha llegado al umbral de estadísticas de supervisión %2$s.
 982 Interrupcion de conjunto a la transaccion %1$d.
 983 Instancias de una clase OID reutilizable son non-referibles. Esta operacion no esta permitida para instancias non-referibles.
