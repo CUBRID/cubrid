@@ -745,8 +745,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   MOP owner_mop = NULL;
   const char *class_name = NULL;
   const char *owner_name = NULL;
-  char new_class_name[DB_MAX_IDENTIFIER_LENGTH];
-  new_class_name[0] = '\0';
+  char new_class_name[DB_MAX_IDENTIFIER_LENGTH] = {'\0', };
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
   int i;
