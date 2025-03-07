@@ -178,12 +178,21 @@ namespace parallel_heap_scan
 	    cnt += set_impossible_recursively (xasl->proc.cte.recursive_part);
 	  }
 	break;
+      case HASHJOIN_PROC:
+	if (xasl->proc.hashjoin.outer.xasl)
+	  {
+	    cnt += check (xasl->proc.hashjoin.outer.xasl);
+	  }
+	if (xasl->proc.hashjoin.inner.xasl)
+	  {
+	    cnt += check (xasl->proc.hashjoin.inner.xasl);
+	  }
+	break;
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case OBJFETCH_PROC:
       case MERGELIST_PROC:
-      case HASHJOIN_PROC:
       case UPDATE_PROC:
       case DELETE_PROC:
       case INSERT_PROC:
@@ -304,6 +313,18 @@ namespace parallel_heap_scan
       case TYPE_CLASS_ATTR_ID:
 	break;
       case TYPE_CONSTANT:
+      case TYPE_OID:
+      case TYPE_DBVAL:
+      case TYPE_POSITION:
+      case TYPE_POS_VALUE:
+	/* can execute with constants */
+	break;
+      case TYPE_ORDERBY_NUM:
+      case TYPE_LIST_ID:
+      case TYPE_CLASSOID:
+      case TYPE_REGUVAL_LIST:
+	/* cannot execute with this regu-variable */
+	cnt++;
 	break;
       case TYPE_INARITH:
       case TYPE_OUTARITH:
@@ -317,17 +338,11 @@ namespace parallel_heap_scan
       case TYPE_FUNC:
 	cnt += check (src->value.funcp->operand);
 	break;
-      case TYPE_DBVAL:
-	break;
-      case TYPE_REGUVAL_LIST:
-	cnt++;
-	break;
       case TYPE_REGU_VAR_LIST:
 	cnt += check (src->value.regu_var_list);
 	break;
-      case TYPE_OID:
-	break;
       default:
+	cnt++;
 	break;
       }
     return cnt;
