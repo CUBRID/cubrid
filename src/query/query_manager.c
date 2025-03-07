@@ -2185,7 +2185,7 @@ QMGR_TRAN_STATUS
 qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 {
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
-  int rc = dblink_end_tran (thread_p, false);
+  int rc = dblink_end_tran (thread_p, is_abort);
 
   if (rc != NO_ERROR)
     {
