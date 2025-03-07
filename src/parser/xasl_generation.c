@@ -21979,8 +21979,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       break;
 
     case PT_CTE:
-      assert (node->info.cte.xasl == NULL);
-
+      assert (node->info.cte.xasl == NULL || (parser->host_var_count == 0 && parser->auto_param_count == 0));
       xasl = parser_generate_xasl_proc (parser, node, info->query_list);
       break;
 
