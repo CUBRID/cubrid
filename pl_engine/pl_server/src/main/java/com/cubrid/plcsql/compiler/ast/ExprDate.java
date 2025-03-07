@@ -36,7 +36,7 @@ import java.time.LocalDate;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprDate extends Expr {
+public class ExprDate extends Expr implements SqlLiteral {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {

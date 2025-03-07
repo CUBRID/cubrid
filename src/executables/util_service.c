@@ -224,8 +224,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
-  {START, COMMAND_TYPE_START, MASK_ALL},
-  {STOP, COMMAND_TYPE_STOP, MASK_ALL},
+  {START, COMMAND_TYPE_START, MASK_ALL & ~MASK_PL},
+  {STOP, COMMAND_TYPE_STOP, MASK_ALL & ~MASK_PL},
   {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER | MASK_GATEWAY | MASK_PL},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
   {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
@@ -537,6 +537,7 @@ main (int argc, char *argv[])
   bool process_window_service = false;
   pid_t pid = getpid ();
   char env_buf[16];
+  int util_name_pos = 0;
 
 #if defined (DO_NOT_USE_CUBRIDENV)
   char *envval;
@@ -591,13 +592,21 @@ main (int argc, char *argv[])
 	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME, argv[1]);
 	  goto error;
 	}
+      if (util_type == ADMIN)
+	{
+	  util_name_pos = 2;
+	}
+    }
+  else if (util_type == ADMIN)
+    {
+      util_name_pos = 1;
     }
 
   if (load_properties () != NO_ERROR)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
       return EXIT_FAILURE;
@@ -607,7 +616,7 @@ main (int argc, char *argv[])
 
   if (util_type == ADMIN)
     {
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       status = process_admin (argc, argv);
       util_log_write_result (status);
 
@@ -647,7 +656,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  util_log_write_command (argc, argv);
+  util_log_write_command (argc, argv, util_name_pos);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -2860,6 +2869,13 @@ process_pl_restart (const char *db_name, bool suppress_message)
 	}
     }
 
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
+  if (is_sp_on == false)
+    {
+      status = ER_GENERIC_ERROR;
+    }
+
   if (status == NO_ERROR)
     {
       PL_SERVER_INFO pl_old = PL_SERVER_INFO_INITIALIZER;
@@ -2921,6 +2937,9 @@ process_pl_status (const char *db_name)
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
+  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
+
   do
     {
       if (!is_server_running (CHECK_SERVER, db_name, 0))
@@ -2930,6 +2949,11 @@ process_pl_status (const char *db_name)
 	  return status;
 	}
 
+      if (is_sp_on == false)
+	{
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
 
       pl_status = is_pl_running (db_name);
       if (pl_status == PL_SERVER_RUNNING)

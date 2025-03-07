@@ -122,6 +122,7 @@ namespace cubpl
       bool is_interrupted ();
       int get_interrupt_id ();
       std::string get_interrupt_msg ();
+      void clear_interrupt ();
 
       void wait_for_interrupt ();
       void set_local_error_for_interrupt (); // set interrupt on thread local error manager
