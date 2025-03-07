@@ -203,6 +203,10 @@ public class Server {
         Server.start(args);
     }
 
+    public static void log(String str) {
+        loggingThread.log(str);
+    }
+
     public static void log(Throwable ex) {
         StringWriter sw = new StringWriter();
         ex.printStackTrace(new PrintWriter(sw));
@@ -216,5 +220,9 @@ public class Server {
 
     public boolean getShutdown() {
         return shutdown.get();
+    }
+
+    public static void flushLog() {
+        loggingThread.flush();
     }
 }

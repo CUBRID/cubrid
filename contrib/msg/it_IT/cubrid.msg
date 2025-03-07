@@ -1044,7 +1044,7 @@ $ LOADDB
 977 Checkpoint started (page %d).
 978 Checkpoint finished (page %d).
 979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
+980 A thread is waiting in %1$s more than %2$d msec(%3$d msec).
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID classe are non-referable. This operation is not permitted on non-referable instances.

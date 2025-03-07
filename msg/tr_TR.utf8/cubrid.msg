@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Kontrol noktası çalıştırma (önceki kontrol noktası page id: %1$lld, daha önce yeniden yapılan pageid: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Kullanıcı verileri döngüsü ile Bağlanın.
-980 Bir iş parçacığı %2$d msn %1$s den daha fazla bekleniliyor.
+980 Bir iş parçacığı %2$d msn %1$s den daha fazla bekleniliyor(%3$d msec).
 981 İşlem %1$d izleme istatistiklerine %2$s eşiğine ulaşmıştır.
 982 İşlem %1$d ile kesme ayarlayın.
 983 Yeniden kullanılabilir bir OID sınıfının örnekleri olmayan başvurulabilir . Bu işleme olmayan başvurulabilir örnekler üzerinde izin verilmez.
