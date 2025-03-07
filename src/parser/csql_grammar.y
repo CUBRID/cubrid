@@ -2782,6 +2782,35 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CREATE			/* 1 */
+	  USER				/* 2 */
+		{
+                  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); 
+                  pwd_info.parser_add_user_check = true;
+                }	                /* 3 */
+	  identifier_without_dot	/* 4 */
+	  opt_password			/* 5 */
+	  opt_groups			/* 6 */
+	  opt_members			/* 7 */
+	  opt_comment_spec		/* 8 */
+		{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE USER identifier ~);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
+
+			if (node)
+			  {
+			    node->info.create_user.user_name = $4;
+			    node->info.create_user.password = $5;
+			    node->info.create_user.groups = $6;
+			    node->info.create_user.members = $7;
+			    node->info.create_user.comment = $8;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| CREATE					/* 1 */
 		{					/* 2 */
                         DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
@@ -2791,19 +2820,40 @@ create_stmt
 		}
 	  opt_hint_list					/* 3 */
 	  opt_reverse					/* 4 */
-	  VECTOR  /* new 5 */
+	  VECTOR
 	  INDEX						/* 6 */
 		{ pop_msg(); }  			/* 7 */
 	  identifier					/* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
+	  opt_where_clause				/* 12 */
+          opt_index_with_clause                         /* 13 */
+	  opt_invisible					/* 14 */
+	  opt_comment_spec				/* 15 */          
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
+			assert(node != NULL);
+
+			bool opt_unique = false;
+
+		        if (opt_unique && $12)
+			  {
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
+			    PT_ERRORm (this_parser, node,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
 			if (node && ocs)
 			  {
 			    PT_NODE *col, *temp;
@@ -2817,6 +2867,7 @@ create_stmt
 
 			    node->info.index.indexed_class = ocs;
 			    node->info.index.reverse = $4;
+			    node->info.index.unique = opt_unique;
 			    node->info.index.index_name = $8;
 			    if (node->info.index.index_name)
 			      {
@@ -2908,24 +2959,21 @@ create_stmt
 				  }
 			      }
                        
-			    // node->info.index.where = $12;
+			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
-                             // if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
-                             if (false && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
+                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                             if (opt_unique && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
                                   PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
                               }
 
-			    // node->info.index.comment = $15;
+			    node->info.index.comment = $15;
 
-                            //int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
-			    int with_online_ret = 0;
                             bool is_online = with_online_ret > 0;
-                            // bool is_invisible = $14;
-                            bool is_invisible = false;
+                            bool is_invisible = $14;
 
                             if (is_online && is_invisible)
                               {
@@ -2946,36 +2994,8 @@ create_stmt
                                 node->info.index.ib_threads = with_online_ret - 1;
                               }
 			  }
+
 		      $$ = node;
-
-		DBG_PRINT}}
-	| CREATE			/* 1 */
-	  USER				/* 2 */
-		{
-                  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); 
-                  pwd_info.parser_add_user_check = true;
-                }	                /* 3 */
-	  identifier_without_dot	/* 4 */
-	  opt_password			/* 5 */
-	  opt_groups			/* 6 */
-	  opt_members			/* 7 */
-	  opt_comment_spec		/* 8 */
-		{ pop_msg(); }
-		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE USER identifier ~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
-
-			if (node)
-			  {
-			    node->info.create_user.user_name = $4;
-			    node->info.create_user.password = $5;
-			    node->info.create_user.groups = $6;
-			    node->info.create_user.members = $7;
-			    node->info.create_user.comment = $8;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| CREATE					/* 1 */
