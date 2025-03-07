@@ -13528,7 +13528,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       break;
 
     case HASHJOIN_PROC:
-      if (qexec_hash_join (thread_p, xasl, xasl_state->query_id) != NO_ERROR)
+      if (qexec_hash_join (thread_p, xasl, xasl_state->query_id, &xasl_state->vd) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
