@@ -1047,7 +1047,7 @@ $ LOADDB
 977 Punct de control pornit (IDul paginii punctului de control anterior: %1$lld, IDul de pagină "redo" anterior: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 Ciclu de CONNECT BY în datele utilizatorului.
-980 Un fir de execuţie aşteaptă în %1$s pentru mai mult de %2$d msec.
+980 Un fir de execuţie aşteaptă în %1$s pentru mai mult de %2$d msec(%3$d msec).
 981 Tranzacţia %1$d a atins pragul statisticii de monitorizare %2$s.
 982 Comandă de întrerupere trimisă către tranzacţia %1$d.
 983 Instanţele unei clase OID reutilizabile nu pot fi referenţiate. Această operaţie nu este permisă pentru instanţe nereferenţiabile.

@@ -21995,6 +21995,48 @@ db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VA
   return db_date_add_sub_interval_expr (result, date, expr, unit, 0);
 }
 
+static bool
+db_check_datetime_format (const DB_VALUE * value_ptr)
+{
+  int len = db_get_string_size (value_ptr);
+  char *ps = (char *) db_get_string (value_ptr);
+#define LEAST_DATE_FORMAT_CHECK_LENGTH (26)	// "09:10:15.359 am 2011-04-20"
+  char *pe;
+  int df = 0;
+  int tf = 0;
+
+  if (*ps == '\0' || len <= 8 /* "12:34:56", "1:1:1 1-1-1" */ )
+    {
+      return false;
+    }
+
+  pe = ps + ((len < LEAST_DATE_FORMAT_CHECK_LENGTH) ? len : LEAST_DATE_FORMAT_CHECK_LENGTH);
+
+  while (ps < pe)
+    {
+      if (*ps == '-' || *ps == '/')
+	{
+	  if (tf)
+	    {
+	      return true;
+	    }
+	  df++;
+	}
+      else if (*ps == ':')
+	{
+	  if (df)
+	    {
+	      return true;
+	    }
+	  tf++;
+	}
+      ps++;
+    }
+
+  return false;
+}
+
+
 static int
 get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * value_ptr, bool dateformat)
 {
@@ -22130,52 +22172,75 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
       {
-	if (dateformat)
+	bool check_has_date = false;
+
+	if (dateformat == false)
+	  {
+	    if (res_type == DB_TYPE_NCHAR || res_type == DB_TYPE_VARNCHAR)
+	      {
+		;		// ignore
+	      }
+	    else if (db_check_datetime_format (value_ptr))
+	      {
+		check_has_date = true;
+	      }
+	  }
+
+	if (dateformat || check_has_date)
 	  {
 	    DB_VALUE dt;
 	    TP_DOMAIN *tp_datetime = db_type_to_db_domain (DB_TYPE_DATETIME);
 	    TP_DOMAIN *tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
 
-	    if (tp_value_cast (value_ptr, &dt, tp_datetime, false) != DOMAIN_COMPATIBLE)
+	    if (tp_value_cast (value_ptr, &dt, tp_datetime, false) == DOMAIN_COMPATIBLE)
+	      {
+		db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
+				    &dtzi->s, &dtzi->ms);
+
+		if (tp_value_cast (value_ptr, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
+		  {
+		    DB_DATETIMETZ dt_tz;
+
+		    dt_tz = *db_get_datetimetz (&dt);
+		    dtzi->tz_id = dt_tz.tz_id;
+		    dtzi->is_valid_tz = true;
+		  }
+
+		if (check_has_date)
+		  {
+		    dtzi->ms = 0;
+		  }
+
+		break;
+	      }
+	    else if (check_has_date == false)
 	      {
 		error_status = ER_QSTR_INVALID_DATA_TYPE;
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		return error_status;
 	      }
-
-	    db_datetime_decode (db_get_datetime (&dt), &dtzi->month, &dtzi->day, &dtzi->year, &dtzi->h, &dtzi->mi,
-				&dtzi->s, &dtzi->ms);
-
-	    if (tp_value_cast (value_ptr, &dt, tp_datetimetz, false) == DOMAIN_COMPATIBLE)
-	      {
-		DB_DATETIMETZ dt_tz;
-
-		dt_tz = *db_get_datetimetz (&dt);
-		dtzi->tz_id = dt_tz.tz_id;
-		dtzi->is_valid_tz = true;
-	      }
 	  }
-	else
-	  {
-	    DB_VALUE tm;
-	    TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
 
-	    if (tp_value_cast (value_ptr, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
-	      {
-		error_status = ER_QSTR_INVALID_DATA_TYPE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-		return error_status;
-	      }
+	{
+	  DB_VALUE tm;
+	  TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
 
-	    db_time_decode (db_get_time (&tm), &dtzi->h, &dtzi->mi, &dtzi->s);
+	  if (tp_value_cast (value_ptr, &tm, tp_time, false) != DOMAIN_COMPATIBLE)
+	    {
+	      error_status = ER_QSTR_INVALID_DATA_TYPE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      return error_status;
+	    }
 
-	    error_status = tz_create_session_tzid_for_time (db_get_time (&tm), true, &dtzi->tz_id);
-	    if (error_status != NO_ERROR)
-	      {
-		return error_status;
-	      }
-	    dtzi->is_valid_tz = true;
-	  }
+	  db_time_decode (db_get_time (&tm), &dtzi->h, &dtzi->mi, &dtzi->s);
+
+	  error_status = tz_create_session_tzid_for_time (db_get_time (&tm), true, &dtzi->tz_id);
+	  if (error_status != NO_ERROR)
+	    {
+	      return error_status;
+	    }
+	  dtzi->is_valid_tz = true;
+	}
       }
       break;
 
