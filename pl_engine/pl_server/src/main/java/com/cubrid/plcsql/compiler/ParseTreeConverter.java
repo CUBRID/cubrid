@@ -1424,7 +1424,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (!controlFlowBlocked) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s016
-                            "function " + ret.name + " can reach its end without returning a value");
+                            "function "
+                                    + ret.name
+                                    + " can reach its end without returning a value");
                 }
             } else {
                 // procedure
@@ -2679,6 +2681,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean previsiting;
     private int routineDefNestLevel;
     private int sqlSerialNo;
+
     private int getSqlSerialNo() {
         return sqlSerialNo++;
     }
@@ -2820,7 +2823,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert owner.equals(spOwner);
             }
 
-            // push a temporary symbol table, in order not to corrupt the current symbol table with the
+            // push a temporary symbol table, in order not to corrupt the current symbol table with
+            // the
             // parameters
             symbolStack.pushSymbolTable("temp", null);
             NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());

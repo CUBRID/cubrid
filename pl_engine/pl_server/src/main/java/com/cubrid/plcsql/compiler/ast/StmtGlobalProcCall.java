@@ -57,6 +57,7 @@ public class StmtGlobalProcCall extends Stmt implements SqlUse {
     public boolean usingRef() {
         return true;
     }
+
     @Override
     public void setToUseRef() {
         // do nothing: it is already true

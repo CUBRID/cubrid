@@ -61,6 +61,7 @@ public abstract class StmtSql extends Stmt implements SqlUse {
     public boolean usingRef() {
         return usingRef;
     }
+
     @Override
     public void setToUseRef() {
         usingRef = true;

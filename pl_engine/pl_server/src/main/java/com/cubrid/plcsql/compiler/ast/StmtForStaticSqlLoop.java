@@ -61,6 +61,7 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop implements SqlUse {
     public boolean usingRef() {
         return usingRef;
     }
+
     @Override
     public void setToUseRef() {
         usingRef = true;
