@@ -683,6 +683,7 @@ static int g_plcsql_text_pos;
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
+%type <node> vector_index_column_name
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -1104,6 +1105,7 @@ static int g_plcsql_text_pos;
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
+%type <c2> opt_vector_index_with_clause
 %type <c2> index_with_item_list
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
@@ -2827,8 +2829,10 @@ create_stmt
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
+	  // TODO: vector_index_column_name			/* 11 */
 	  opt_where_clause				/* 12 */
-          opt_index_with_clause                         /* 13 */
+          // opt_index_with_clause				/* 13 */
+	  opt_vector_index_with_clause			/* 13 */
 	  opt_invisible					/* 14 */
 	  opt_comment_spec				/* 15 */          
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
@@ -22779,6 +22783,18 @@ opt_index_with_clause_no_online
         ;
 
 opt_index_with_clause
+        : /* empty */
+          { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
+            container_2 ctn;
+            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            $$ = ctn; }
+        | WITH index_with_item_list
+          {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
+             $$ = $2;
+          DBG_PRINT}
+        ;
+
+opt_vector_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
