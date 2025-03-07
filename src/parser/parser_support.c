@@ -1473,6 +1473,7 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_ALTER_TRIGGER:
 	case PT_ALTER_USER:
 	case PT_CREATE_ENTITY:
+	case PT_CREATE_VECTOR_INDEX:
 	case PT_CREATE_INDEX:
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_STORED_PROCEDURE:

@@ -12260,6 +12260,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
       break;
 
+    case PT_CREATE_VECTOR_INDEX:
     case PT_CREATE_INDEX:
     case PT_ALTER_INDEX:
     case PT_DROP_INDEX:
