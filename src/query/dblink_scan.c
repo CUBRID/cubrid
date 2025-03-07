@@ -585,8 +585,8 @@ dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_nam
 
   while (dblink)
     {
-      if (!strcmp ((char *)dblink->conn_url, conn_url) && !strcmp ((char *)dblink->user_name, user_name)
-	  && !strcmp ((char *)dblink->password, password))
+      if (!strcmp ((char *) dblink->conn_url, conn_url) && !strcmp ((char *) dblink->user_name, user_name)
+	  && !strcmp ((char *) dblink->password, password))
 	{
 	  return dblink->conn_handle;
 	}
@@ -610,9 +610,9 @@ dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url
     }
 
   dblink_conn_entry->conn_handle = conn_handle;
-  strcpy((char *)dblink_conn_entry->conn_url, conn_url);
-  strcpy((char *)dblink_conn_entry->user_name, user_name);
-  strcpy((char *)dblink_conn_entry->password, password);
+  strcpy ((char *) dblink_conn_entry->conn_url, conn_url);
+  strcpy ((char *) dblink_conn_entry->user_name, user_name);
+  strcpy ((char *) dblink_conn_entry->password, password);
   dblink_conn_entry->next = thread_p->dblink_entry;
 
   thread_p->dblink_entry = dblink_conn_entry;
@@ -827,6 +827,8 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
   int error;
   T_CCI_ERROR err_buf;
 
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
+
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
 
   if (scan_info->stmt_handle >= 0)
@@ -835,12 +837,15 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 	{
 	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  if (auto_commit)
+	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	    }
 	  return S_ERROR;
 	}
     }
 
-  if (scan_info->conn_handle >= 0)
+  if (scan_info->conn_handle >= 0 && auto_commit)
     {
       if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
 	{
