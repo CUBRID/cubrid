@@ -37,11 +37,14 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtForCursorLoop extends StmtLoop implements SqlUse {
 
-    public StmtLoop containerLoop;
-
+    public boolean reachableFromLoopBody;
     @Override
-    public void setContainerLoop(StmtLoop containerLoop) {
-        this.containerLoop = containerLoop;
+    public boolean reachableFromLoopBody() {
+        return reachableFromLoopBody;
+    }
+    @Override
+    public void markAsReachableFromLoopBody() {
+        this.reachableFromLoopBody = true;
     }
 
     @Override

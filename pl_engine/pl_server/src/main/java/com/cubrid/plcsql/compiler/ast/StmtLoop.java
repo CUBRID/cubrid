@@ -34,10 +34,13 @@ import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtLoop extends Stmt {
 
+    public Set<SqlUse> reachableSqlUses; // sql uses that are rechable from this loop, but not contained in this loop
     public final LoopOptimizables loopOptimizables;
 
     public StmtLoop(ParserRuleContext ctx, LoopOptimizables loopOptimizables) {
@@ -46,10 +49,12 @@ public abstract class StmtLoop extends Stmt {
         this.loopOptimizables = loopOptimizables;
         if (loopOptimizables != null) {
             for (SqlUse n : loopOptimizables.sqlUses) {
-                n.setContainerLoop(this);
+                n.markAsReachableFromLoopBody();
             }
+
+            reachableSqlUses = new HashSet<>();
             for (LocalRoutineCall n : loopOptimizables.localRoutineCalls) {
-                n.setContainerLoop(this);
+                n.markAsReachableFromLoopBody(reachableSqlUses);
             }
         }
     }

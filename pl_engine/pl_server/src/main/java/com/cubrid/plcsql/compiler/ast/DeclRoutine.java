@@ -38,37 +38,31 @@ import java.util.Set;
 
 public abstract class DeclRoutine extends Decl {
 
-    public boolean calledInLoop;
-    public void markCalledInLoop() {
+    public boolean calledFromLoopBody;   // not contained in a loop but reachable from it
+    public void markAsCalledFromLoopBody(Set<SqlUse> accum) {
 
-        if (!calledInLoop) {
-            calledInLoop = true;   // mark as called in at least one loop
+        if (!calledFromLoopBody) {       // must be marked only once
+
+            calledFromLoopBody = true;   // mark as reachable from at least one loop
+
+            assert loopOptimizables != null;
+
+            // collect sql uses in this routine decl into the accum
+            for (SqlUse n : loopOptimizables.sqlUses) {
+                boolean added = accum.add(n);
+                assert added;   // because this routine declaration is first visited
+                assert !n.reachableFromLoopBody();
+                n.markAsReachableFromLoopBody();
+            }
 
             // recursively mark the reachable local routine calls
             for (LocalRoutineCall lrc: loopOptimizables.localRoutineCalls) {
-                lrc.getDecl().markCalledInLoop();
+                lrc.getDecl().markAsCalledFromLoopBody(accum);
             }
         }
     }
     public boolean isLoopOptApplicable() {
-        return (loopOptimizables != null && !loopOptimizables.isEmpty());
-    }
-    public boolean isToGenCodeForLoopOpt() {
-        return (calledInLoop && !loopOptimizables.sqlUses.isEmpty());
-    }
-    public void collectReachableSqlUses(Set<SqlUse> accum) {
-
-        if (loopOptimizables != null) {
-            for (SqlUse n : loopOptimizables.sqlUses) {
-                boolean added = accum.add(n);
-                if (!added) {
-                    return; // already visited this routine declaration
-                }
-            }
-            for (LocalRoutineCall n : loopOptimizables.localRoutineCalls) {
-                n.getDecl().collectReachableSqlUses(accum);
-            }
-        }
+        return (loopOptimizables != null);
     }
 
     public final String name;

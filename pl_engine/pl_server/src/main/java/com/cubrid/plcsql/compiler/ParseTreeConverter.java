@@ -2797,8 +2797,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
+        int scopeLevel = symbolStack.getCurrentScope().level;
+
         StmtLoop.LoopOptimizables routineLoopOptimizables = null;
-        if (loopOptimizables == null) {
+        if (scopeLevel > SymbolStack.LEVEL_MAIN && loopOptimizables == null) {
             // This declaration part is not included in a loop.
             // Prepare my own loop optimizables bag.
             loopOptimizables = routineLoopOptimizables = new StmtLoop.LoopOptimizables();
@@ -2809,7 +2811,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+            if (scopeLevel > SymbolStack.LEVEL_MAIN) {
 
                 // local procedure/function
 
@@ -2832,7 +2834,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 // SP being defined
 
-                assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
+                assert scopeLevel == SymbolStack.LEVEL_MAIN;
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
             }
@@ -2865,7 +2867,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 Type retType = retTypeSpec.type;
-                if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
+                if (scopeLevel == SymbolStack.LEVEL_MAIN) { // at top level
                     if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx.type_spec()), // s065
