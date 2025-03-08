@@ -265,7 +265,12 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
     }
   else
     {
-      /* range removal or table drop should be handled at a higher level. */
+      /* range removal or table drop should be handled at a higher level.                  */
+
+      /* TODO: need to implement table drop and range deletion.                            */
+      /* table drop doesn't actually happen in STORAGE, but it can work logically since    */
+      /* heap doesn't reuse slots. and it means that inserted records will still be there. */
+
       status = transactions[tran_index].txn->Delete (key).ok ();
     }
   assert (status);
@@ -284,6 +289,8 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 
   /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
   /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
+  scan_cache->kv_readopt.table_filter = nullptr;
+  scan_cache->kv_readopt = rocksdb::ReadOptions ();
 
   scan_cache->kv_readopt.prefix_same_as_start = true;
   scan_cache->kv_readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
@@ -438,6 +445,21 @@ cubrocks::context::kv_close ()
     {
       assert (false);
     }
+
+  /* release all references */
+  for (auto cf_handle : opt.cf_handles)
+  {
+      if (cf_handle->GetName () != rocksdb::kDefaultColumnFamilyName)
+      {
+          db->DropColumnFamily (cf_handle);
+      }
+  }
+
+  /* release itself */
+  for (auto cf_handle : opt.cf_handles)
+  {
+      db->DestroyColumnFamilyHandle (cf_handle);
+  }
 
   opt_compact.close_db = true;
   if (!db->WaitForCompact (opt_compact).ok ())

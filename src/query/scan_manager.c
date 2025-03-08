@@ -30,6 +30,7 @@
 #include "jansson.h"
 
 #include "error_manager.h"
+#include "cubrocks.hpp"
 #include "heap_file.h"
 #include "fetch.h"
 #include "list_file.h"
@@ -5374,7 +5375,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* Data filter passed. If object should be locked and is not locked yet, lock it. */
-
       if (scan_id->mvcc_select_lock_needed)
 	{
 	  /* data filter already initialized, don't have key or range init scan reevaluation structure */
