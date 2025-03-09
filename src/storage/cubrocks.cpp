@@ -289,7 +289,11 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 
   /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
   /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
-  scan_cache->kv_readopt.table_filter = nullptr;
+  if (scan_cache->kv_iter != nullptr)
+  {
+    /* IDK why this scope is executed. */
+    kv_scan_end (scan_cache);
+  }
   scan_cache->kv_readopt = rocksdb::ReadOptions ();
 
   scan_cache->kv_readopt.prefix_same_as_start = true;

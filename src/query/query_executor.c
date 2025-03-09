@@ -9903,6 +9903,15 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
+  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
+    {
+      printf("SCAN: ROCKSDB\n");
+    }
+  else
+    {
+      printf ("SCAN: CUBRID\n");
+    }
+
   do
     {
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
@@ -11490,6 +11499,15 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
+    {
+      printf("UPDATE: ROCKSDB\n");
+    }
+  else
+    {
+      printf ("UPDATE: CUBRID\n");
+    }
+
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -12352,6 +12370,15 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+
+  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
+    {
+      printf("DELETE: ROCKSDB\n");
+    }
+  else
+    {
+      printf ("DELETE: CUBRID\n");
+    }
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -13664,6 +13691,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   if (XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS) && xasl->list_id)
     {
       xasl->list_id->query_id = xasl_state->query_id;
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
+    {
+      printf("INSERT: ROCKSDB\n");
+    }
+  else
+    {
+      printf ("INSERT: CUBRID\n");
     }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a

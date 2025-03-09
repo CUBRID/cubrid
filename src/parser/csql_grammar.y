@@ -1680,6 +1680,7 @@ static int g_plcsql_text_pos;
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
+%token <cptr> ROCKSDB
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
@@ -9896,6 +9897,14 @@ table_option
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 	      DBG_PRINT}}
+  | ROCKSDB
+		{{ DBG_TRACE_GRAMMAR(table_option, | ROCKSDB);
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_ROCKSDB, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+
 	;
 
 opt_subtable_clause
@@ -23414,6 +23423,7 @@ identifier
 	| RETAIN                 {{ DBG_TRACE_GRAMMAR(identifier, | RETAIN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REUSE_OID              {{ DBG_TRACE_GRAMMAR(identifier, | REUSE_OID          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REVERSE                {{ DBG_TRACE_GRAMMAR(identifier, | REVERSE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| ROCKSDB                {{ DBG_TRACE_GRAMMAR(identifier, | ROCKSDB            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ROW_NUMBER             {{ DBG_TRACE_GRAMMAR(identifier, | ROW_NUMBER         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SECTIONS               {{ DBG_TRACE_GRAMMAR(identifier, | SECTIONS           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SEPARATOR              {{ DBG_TRACE_GRAMMAR(identifier, | SEPARATOR          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

@@ -25833,6 +25833,15 @@ heap_scancache_block_deallocate (cubmem::block &b)
 //
 // heap_scancache
 //
+
+heap_scancache::heap_scancache () : kv_iter(nullptr)
+{
+}
+
+heap_scancache::~heap_scancache ()
+{
+}
+
 void
 heap_scancache::start_area ()
 {

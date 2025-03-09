@@ -18739,6 +18739,11 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  XASL_SET_FLAG (xasl, XASL_RETURN_GENERATED_KEYS);
 	}
 
+     if (sm_is_rocksdb_class (class_obj))
+  {
+	  XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+  }
+
       insert = &xasl->proc.insert;
       insert->class_hfid = *hfid;
 
@@ -20586,6 +20591,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto error_return;
 	    }
 
+    if (sm_is_rocksdb_class (class_obj))
+    {
+      XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+    }
+
 	  num_subclasses = 0;
 	  while (cl_name_node)
 	    {
@@ -21319,6 +21329,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	{
 	  goto cleanup;
 	}
+
+      if (sm_is_rocksdb_class (class_obj))
+  {
+	  XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+  }
 
       upd_cls->has_uniques = (p->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
 
