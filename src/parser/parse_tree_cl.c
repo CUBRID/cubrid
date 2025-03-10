@@ -7304,7 +7304,7 @@ pt_init_create_vector_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  ASSERT_CUBVEC (false); // Not yet implemented;
+  ASSERT_CUBVEC (false);	// Not yet implemented;
   PARSER_VARCHAR *b = nullptr;
 
   b = pt_append_nulstring (parser, b, "Not yet implemented");
