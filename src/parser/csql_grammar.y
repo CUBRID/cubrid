@@ -2786,34 +2786,6 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| CREATE			/* 1 */
-	  USER				/* 2 */
-		{
-                  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); 
-                  pwd_info.parser_add_user_check = true;
-                }	                /* 3 */
-	  identifier_without_dot	/* 4 */
-	  opt_password			/* 5 */
-	  opt_groups			/* 6 */
-	  opt_members			/* 7 */
-	  opt_comment_spec		/* 8 */
-		{ pop_msg(); }
-		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE USER identifier ~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_USER);
-
-			if (node)
-			  {
-			    node->info.create_user.user_name = $4;
-			    node->info.create_user.password = $5;
-			    node->info.create_user.groups = $6;
-			    node->info.create_user.members = $7;
-			    node->info.create_user.comment = $8;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 		{					/* 2 */
