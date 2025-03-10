@@ -31,12 +31,6 @@
 #define ASSERT_CUBVEC(expr) ((void)0)
 #endif
 
-#ifdef MHOH3963
-#define ASSERT_MHOH3963(expr) assert(expr)
-#else
-#define ASSERT_MHOH3963(expr) ((void)0)
-#endif
-
 #ifdef HORNETMJ
 #define ASSERT_HORNETMJ(expr) assert(expr)
 #else
