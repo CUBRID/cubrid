@@ -2968,7 +2968,10 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            //node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+			    node->info.index.hnsw.m = 30;
+			    node->info.index.hnsw.ef_con = 100;
+
                              if (opt_unique && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
                                   PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");

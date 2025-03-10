@@ -4337,6 +4337,8 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	    case PT_CREATE_VECTOR_INDEX:
 	      ASSERT_CUBVEC (false);	// analysis required
+	      break;
+
 	    case PT_CREATE_INDEX:
 	      tmp = next;
 	      *attr_list_p = next = tmp->next;
@@ -7303,10 +7305,10 @@ pt_init_create_vector_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  // ASSERT_CUBVEC (false); // Not yet implemented;
+  ASSERT_CUBVEC (false); // Not yet implemented;
   PARSER_VARCHAR *b = nullptr;
 
-  b = pt_append_nulstring (parser, b, "wow");
+  b = pt_append_nulstring (parser, b, "Not yet implemented");
   return b;
 }
 
