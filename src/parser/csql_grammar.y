@@ -2786,7 +2786,6 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-		DBG_PRINT}}
 	| CREATE					/* 1 */
 		{					/* 2 */
                         DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
