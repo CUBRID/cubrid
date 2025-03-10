@@ -4335,7 +4335,7 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 
 	    case PT_CREATE_VECTOR_INDEX:
-		assert(false);
+	      assert (false);
 	    case PT_CREATE_INDEX:
 	      tmp = next;
 	      *attr_list_p = next = tmp->next;
@@ -7327,9 +7327,10 @@ pt_init_create_index (PT_NODE * p)
 }
 
 static PARSER_VARCHAR *
-pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p) {
-    assert(false);
-    return NULL;
+pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  assert (false);
+  return NULL;
 }
 
 /*
