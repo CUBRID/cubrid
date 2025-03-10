@@ -182,7 +182,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
                 gfc.decl =
-                        new DeclFunc(null, fs.name, null, paramList, TypeSpec.getBogus(iStore, retType));
+                        new DeclFunc(
+                                null, fs.name, null, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -1036,7 +1037,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                ExprLocalFuncCall ret = new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                ExprLocalFuncCall ret =
+                        new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
                 if (decl.isNotContainedInLoop()) {
                     addToLocalRoutineCalls(ret);
                 }
@@ -1405,7 +1407,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
             boolean isFunction = (ctx.PROCEDURE() == null);
 
-            DeclRoutine ret = isFunction ? symbolStack.getDeclFunc(name) : symbolStack.getDeclProc(name);
+            DeclRoutine ret =
+                    isFunction ? symbolStack.getDeclFunc(name) : symbolStack.getDeclProc(name);
             assert ret != null; // by the previsit
 
             StmtLoop.LoopOptimizables routineLoopOptimizables = ret.loopOptimizables;
@@ -1614,7 +1617,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     addToSqlUses(egfc);
                     egfc.decl =
                             new DeclFunc(
-                                    null, name, null, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                                    null,
+                                    name,
+                                    null,
+                                    EMPTY_PARAMS,
+                                    TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
                 }
             }
@@ -2445,7 +2452,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + " must be updatable because it is to an OUT parameter");
             }
 
-            StmtLocalProcCall ret = new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            StmtLocalProcCall ret =
+                    new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
             if (decl.isNotContainedInLoop()) {
                 addToLocalRoutineCalls(ret);
             }
@@ -2694,6 +2702,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private boolean previsiting;
     private int routineDefNestLevel;
     private int sqlSerialNo;
+
     private int getSqlSerialNo() {
         return sqlSerialNo++;
     }
@@ -2844,7 +2853,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert owner.equals(spOwner);
             }
 
-            // push a temporary symbol table, in order not to corrupt the current symbol table with the
+            // push a temporary symbol table, in order not to corrupt the current symbol table with
+            // the
             // parameters
             symbolStack.pushSymbolTable("temp", null);
             NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
@@ -2876,7 +2886,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                         + " cannot be used as a return type of stored functions");
                     }
                 }
-                DeclFunc ret = new DeclFunc(ctx, name, routineLoopOptimizables, paramList, retTypeSpec);
+                DeclFunc ret =
+                        new DeclFunc(ctx, name, routineLoopOptimizables, paramList, retTypeSpec);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);

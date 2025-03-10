@@ -39,13 +39,13 @@ import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
-import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.tree.*;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.util.Set;
 import java.util.HashSet;
+import java.util.Set;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.*;
 
 public class PlcsqlCompilerMain {
 
@@ -244,8 +244,9 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>();  // collected in TypeChecker
-        TypeChecker typeChecker = new TypeChecker(iStore, converter.symbolStack, converter, sqlUsesInRecursiveCalls);
+        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
+        TypeChecker typeChecker =
+                new TypeChecker(iStore, converter.symbolStack, converter, sqlUsesInRecursiveCalls);
         typeChecker.visitUnit(unit);
 
         if (verbose) {

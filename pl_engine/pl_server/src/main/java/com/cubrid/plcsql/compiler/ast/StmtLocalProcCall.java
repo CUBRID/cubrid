@@ -30,20 +30,22 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
-import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.Set;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtLocalProcCall extends Stmt implements LocalRoutineCall {
 
     public boolean reachableFromLoop;
+
     @Override
     public boolean reachableFromLoop() {
         return reachableFromLoop;
     }
+
     @Override
     public void markAsReachableFromLoop(Set<SqlUse> accum) {
         this.reachableFromLoop = true;

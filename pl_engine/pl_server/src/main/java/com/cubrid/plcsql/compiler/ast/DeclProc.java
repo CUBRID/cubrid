@@ -50,7 +50,8 @@ public class DeclProc extends DeclRoutine {
         super(ctx, name, loopOptimizables, paramList, null, decls, body);
     }
 
-    public DeclProc(ParserRuleContext ctx,
+    public DeclProc(
+            ParserRuleContext ctx,
             String name,
             StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList) {

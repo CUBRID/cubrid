@@ -58,7 +58,10 @@ import java.util.Stack;
 
 public class TypeChecker extends AstVisitor<Type> {
 
-    public TypeChecker(InstanceStore iStore, SymbolStack symbolStack, ParseTreeConverter ptConv,
+    public TypeChecker(
+            InstanceStore iStore,
+            SymbolStack symbolStack,
+            ParseTreeConverter ptConv,
             Set<SqlUse> sqlUsesInRecursiveCalls) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;

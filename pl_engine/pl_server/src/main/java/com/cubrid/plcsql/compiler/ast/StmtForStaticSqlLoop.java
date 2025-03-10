@@ -39,10 +39,12 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class StmtForStaticSqlLoop extends StmtForSqlLoop implements SqlUse {
 
     public boolean reachableFromLoop;
+
     @Override
     public boolean reachableFromLoop() {
         return reachableFromLoop;
     }
+
     @Override
     public void markAsReachableFromLoop() {
         this.reachableFromLoop = true;
@@ -64,6 +66,7 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop implements SqlUse {
     public boolean usingRef() {
         return usingRef;
     }
+
     @Override
     public void setToUseRef() {
         usingRef = true;

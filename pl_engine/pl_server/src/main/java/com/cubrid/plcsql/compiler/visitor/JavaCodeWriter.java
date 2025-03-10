@@ -106,11 +106,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static final String tmplGetConn =
             "Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
 
-
     private static final String[] tmplMainUserCode =
             new String[] {
-                "%'+DECL-CLASS'%",
-                "%'+BODY'%",
+                "%'+DECL-CLASS'%", "%'+BODY'%",
             };
 
     private static final String[] tmplUnit =
@@ -201,16 +199,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // body
         CodeToResolve bodyCode = visit(node.routine.body);
 
-        CodeToResolve mainUserCode = new CodeTemplate(
-            "main user code",
-            Misc.UNKNOWN_LINE_COLUMN,
-            tmplMainUserCode,
-            "%'+DECL-CLASS'%",
-            codeDeclClass,
-            "%'+BODY'%",
-            bodyCode);
+        CodeToResolve mainUserCode =
+                new CodeTemplate(
+                        "main user code",
+                        Misc.UNKNOWN_LINE_COLUMN,
+                        tmplMainUserCode,
+                        "%'+DECL-CLASS'%",
+                        codeDeclClass,
+                        "%'+BODY'%",
+                        bodyCode);
         if (!sqlUsesReachableFromLoop.isEmpty()) {
-            mainUserCode = wrapWithStmtDeclareAndClose(null, sqlUsesReachableFromLoop, mainUserCode);
+            mainUserCode =
+                    wrapWithStmtDeclareAndClose(null, sqlUsesReachableFromLoop, mainUserCode);
         }
 
         // record definitions
@@ -1856,8 +1856,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             banIntoClause = tmplBanIntoClause;
         }
 
-        String[] template = !node.reachableFromLoop ? tmplStmtSql_notInLoop :
-            node.usingRef() ? tmplStmtSql_inLoop_usingRef : tmplStmtSql_inLoop_notUsingRef ;
+        String[] template =
+                !node.reachableFromLoop
+                        ? tmplStmtSql_notInLoop
+                        : node.usingRef()
+                                ? tmplStmtSql_inLoop_usingRef
+                                : tmplStmtSql_inLoop_notUsingRef;
         return new CodeTemplate(
                 "StmtSql",
                 Misc.getLineColumnOf(node.ctx),
@@ -2218,9 +2222,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 getRecordSetArgs(node.record.name(), (TypeRecord) recTy, node.record.scope.level);
         Object setUsedExpr = getSetUsedExpr(node.usedExprList);
 
-        String[] template = !node.reachableFromLoop ? tmplStmtForStaticSqlLoop_notInLoop :
-                        node.usingRef() ? tmplStmtForStaticSqlLoop_inLoop_usingRef :
-                            tmplStmtForStaticSqlLoop_inLoop_notUsingRef;
+        String[] template =
+                !node.reachableFromLoop
+                        ? tmplStmtForStaticSqlLoop_notInLoop
+                        : node.usingRef()
+                                ? tmplStmtForStaticSqlLoop_inLoop_usingRef
+                                : tmplStmtForStaticSqlLoop_inLoop_notUsingRef;
         CodeTemplate ret =
                 new CodeTemplate(
                         "StmtForSqlLoop",
@@ -3234,7 +3241,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                     i, id.name));
                 }
             } else {
-                setArgs.add(String.format("pstmt_%%'SQL-SERIAL-NO'%%.setObject(%d, o%d);", i + argOffset, i));
+                setArgs.add(
+                        String.format(
+                                "pstmt_%%'SQL-SERIAL-NO'%%.setObject(%d, o%d);", i + argOffset, i));
             }
         }
 
@@ -3684,8 +3693,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}",
             };
 
-    private CodeToResolve wrapWithStmtDeclareAndClose(ParserRuleContext ctx, Iterable<SqlUse> sqlUses,
-            CodeToResolve code) {
+    private CodeToResolve wrapWithStmtDeclareAndClose(
+            ParserRuleContext ctx, Iterable<SqlUse> sqlUses, CodeToResolve code) {
 
         CodeTemplateList decls = new CodeTemplateList();
         CodeTemplateList closes = new CodeTemplateList();
