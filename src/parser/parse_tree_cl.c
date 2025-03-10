@@ -56,6 +56,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "cubvec_assert.h"
 
 #include <malloc.h>
 
@@ -4335,7 +4336,7 @@ pt_gather_constraints (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 
 	    case PT_CREATE_VECTOR_INDEX:
-	      assert (false);
+	      ASSERT_CUBVEC (false);	// analysis required
 	    case PT_CREATE_INDEX:
 	      tmp = next;
 	      *attr_list_p = next = tmp->next;
@@ -7329,8 +7330,11 @@ pt_init_create_index (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  assert (false);
-  return NULL;
+  // ASSERT_CUBVEC (false); // Not yet implemented;
+  PARSER_VARCHAR *b = nullptr;
+
+  b = pt_append_nulstring (parser, b, "wow");
+  return b;
 }
 
 /*

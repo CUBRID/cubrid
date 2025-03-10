@@ -20,7 +20,6 @@
  * name_resolution.c - resolving related functions
  */
 
-#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
