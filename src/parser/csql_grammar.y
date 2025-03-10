@@ -4897,6 +4897,72 @@ drop_stmt
 			  }
 
 		DBG_PRINT}}
+	| DROP					/* 1 */
+		{				/* 2 */
+			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
+			parser_push_hint_node(node);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_reverse					/* 4 */
+	  VECTOR					/* 5 */
+	  INDEX						/* 6 */
+	  identifier					/* 7 */
+	  ON_						/* 8 */
+	  only_class_name				/* 9 */
+	  opt_index_column_name_list			/* 10 */
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP ~ INDEX ~);
+
+			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+
+			if (node && ocs)
+			  {
+			    PT_NODE *col, *temp;
+			    node->info.index.reverse = $4;
+			    // node->info.index.unique = $5;
+			    node->info.index.unique = false;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
+			    node->info.index.indexed_class = ocs;
+
+			    col = $10;
+			    if (node->info.index.unique)
+			      {
+			        for (temp = col; temp != NULL; temp = temp->next)
+			          {
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
+			          }
+			      }
+			    node->info.index.column_names = col;
+
+			    $$ = node;
+			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			  }
+
+		DBG_PRINT}}
 	| DROP USER identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP USER identifier);
 
