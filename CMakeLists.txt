@@ -203,6 +203,30 @@ endif(MSVC)
 # Language setting
 #enable_language(C CXX)
 
+# Debug Macro for CUBVEC project. Refer to cubvec_assert.h.
+# How to use? When building the project,
+# `$ cmake -DCUBVEC_TEAM_BUILD=ON ...`
+# Or,
+# `$ configure_options="-DCUBVEC_TEAM_BUILD=ON" ./build.sh ...`
+if(CUBVEC_TEAM_BUILD)
+    add_compile_definitions(CUBVEC_TEAM)
+endif()
+if(MHOH3963_BUILD)
+    add_compile_definitions(MHOH3963)
+endif()
+if(HORNETMJ_BUILD)
+    add_compile_definitions(HORNETMJ)
+endif()
+if(HGRYOO_BUILD)
+    add_compile_definitions(HGRYOO)
+endif()
+if(YEUNJUNLEE_BUILD)
+    add_compile_definitions(YEUNJUNLEE)
+endif()
+if(VIMKIM_BUILD)
+    add_compile_definitions(VIMKIM)
+endif()
+
 # System check
 if(UNIX)
   if(CMAKE_COMPILER_IS_GNUCC)
