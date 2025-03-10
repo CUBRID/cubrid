@@ -108,13 +108,13 @@ namespace cubpacking
       void pack_overloaded (const packable_object &po);
 
       template <typename T>
-      size_t get_packed_size_overloaded (const std::reference_wrapper<T> wrapper, const size_t curr_offset);
+      size_t get_packed_size_overloaded (const std::reference_wrapper<T> &wrapper, const size_t curr_offset);
 
       template <typename T>
       void pack_overloaded (const std::reference_wrapper<T> &wrapper);
 
       template <typename T>
-      size_t get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset);
+      size_t get_packed_size_overloaded (const std::vector<T> &container, const size_t curr_offset);
 
       template <typename T>
       void pack_overloaded (const std::vector<T> &container);
@@ -325,14 +325,14 @@ namespace cubpacking
 
   template <typename T>
   size_t
-  packer::get_packed_size_overloaded (const std::reference_wrapper<T> wrapper, size_t curr_offset)
+  packer::get_packed_size_overloaded (const std::reference_wrapper<T> &wrapper, size_t curr_offset)
   {
     return get_packed_size_overloaded (wrapper.get(), curr_offset);
   }
 
   template <typename T>
   size_t
-  packer::get_packed_size_overloaded (const std::vector<T> container, const size_t curr_offset)
+  packer::get_packed_size_overloaded (const std::vector<T> &container, const size_t curr_offset)
   {
     size_t size = get_packed_bigint_size (curr_offset);
     if (size > 0)
