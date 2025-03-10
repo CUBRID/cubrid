@@ -7294,6 +7294,22 @@ pt_init_create_vector_index (PT_NODE * p)
   return p;
 }
 
+/*
+ * pt_print_create_vector_index () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  // ASSERT_CUBVEC (false); // Not yet implemented;
+  PARSER_VARCHAR *b = nullptr;
+
+  b = pt_append_nulstring (parser, b, "wow");
+  return b;
+}
+
 /* CREATE_INDEX */
 /*
  * pt_apply_create_index () -
@@ -7325,16 +7341,6 @@ pt_init_create_index (PT_NODE * p)
 {
   p->info.index.func_pos = -1;
   return p;
-}
-
-static PARSER_VARCHAR *
-pt_print_create_vector_index (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  // ASSERT_CUBVEC (false); // Not yet implemented;
-  PARSER_VARCHAR *b = nullptr;
-
-  b = pt_append_nulstring (parser, b, "wow");
-  return b;
 }
 
 /*
