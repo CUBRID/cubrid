@@ -20,7 +20,6 @@
  * execute_statement.c - functions to do execute
  */
 
-#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
