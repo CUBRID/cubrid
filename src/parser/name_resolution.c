@@ -9353,8 +9353,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
     {
       PT_NODE *idx_name = NULL;
       if (statement->node_type == PT_CREATE_INDEX || statement->node_type == PT_ALTER_INDEX
-	  || statement->node_type == PT_DROP_INDEX
-	  || statement->node_type == PT_CREATE_VECTOR_INDEX)
+	  || statement->node_type == PT_DROP_INDEX || statement->node_type == PT_CREATE_VECTOR_INDEX)
 	{
 	  /* backup the name of the index because it is not part of the table spec yet */
 	  idx_name = statement->info.index.index_name;
@@ -9376,8 +9375,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 
       if (statement
 	  && (statement->node_type == PT_CREATE_INDEX || statement->node_type == PT_ALTER_INDEX
-	      || statement->node_type == PT_DROP_INDEX
-	      || statement->node_type == PT_CREATE_VECTOR_INDEX))
+	      || statement->node_type == PT_DROP_INDEX || statement->node_type == PT_CREATE_VECTOR_INDEX))
 	{
 	  statement->info.index.index_name = idx_name;
 	}
