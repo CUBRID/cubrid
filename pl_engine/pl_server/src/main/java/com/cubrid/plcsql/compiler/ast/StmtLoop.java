@@ -30,31 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-import java.util.List;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import java.util.LinkedList;
-import java.sql.PreparedStatement;
+import java.util.List;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtLoop extends Stmt {
 
-    public final LoopOptimizable loopOptimizable;
+    public final LoopOptimizables loopOptimizables;
 
-    public StmtLoop(ParserRuleContext ctx, LoopOptimizable loopOptimizable) {
+    public StmtLoop(ParserRuleContext ctx, LoopOptimizables loopOptimizables) {
         super(ctx);
-        this.loopOptimizable = loopOptimizable;
-        if (loopOptimizable != null) {
-            for (StmtSql s: loopOptimizable.sql) {
-                s.outermostLoop = this;
+
+        this.loopOptimizables = loopOptimizables;
+        if (loopOptimizables != null) {
+            for (SqlUse n : loopOptimizables.sqlUses) {
+                n.setContainerLoop(this);
             }
         }
     }
 
-    public static class LoopOptimizable {
-        public List<StmtSql> sql = new LinkedList<>();
+    public static class LoopOptimizables {
+        public List<SqlUse> sqlUses = new LinkedList<>();
 
         public boolean isEmpty() {
-            return sql.isEmpty();
+            return sqlUses.isEmpty();
         }
     }
-
 }

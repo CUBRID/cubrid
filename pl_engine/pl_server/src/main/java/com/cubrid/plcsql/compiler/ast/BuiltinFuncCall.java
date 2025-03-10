@@ -30,10 +30,39 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class BuiltinFuncCall extends Expr {
+public abstract class BuiltinFuncCall extends Expr implements SqlUse {
+
+    public StmtLoop containerLoop;
+    public final int sqlSerialNo;
+
+    @Override
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    @Override
+    public boolean usingRef() {
+        return true;
+    }
+
+    @Override
+    public void setToUseRef() {
+        // do nothing: it is already true
+    }
 
     public Type resultType;
 
@@ -41,7 +70,9 @@ public abstract class BuiltinFuncCall extends Expr {
         this.resultType = resultType;
     }
 
-    public BuiltinFuncCall(ParserRuleContext ctx) {
+    public BuiltinFuncCall(ParserRuleContext ctx, int sqlSerialNo) {
         super(ctx);
+
+        this.sqlSerialNo = sqlSerialNo;
     }
 }
