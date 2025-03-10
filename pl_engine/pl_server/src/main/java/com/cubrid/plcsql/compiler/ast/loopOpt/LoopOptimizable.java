@@ -33,5 +33,5 @@ package com.cubrid.plcsql.compiler.ast.loopOpt;
 import com.cubrid.plcsql.compiler.ast.StmtLoop;
 
 public interface LoopOptimizable {
-    boolean reachableFromLoopBody();
+    boolean reachableFromLoop();
 }

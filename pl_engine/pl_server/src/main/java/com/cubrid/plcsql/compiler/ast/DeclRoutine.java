@@ -35,33 +35,96 @@ import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.type.Type;
 import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.Set;
+import java.util.Stack;
 
 public abstract class DeclRoutine extends Decl {
 
-    public boolean calledFromLoopBody;   // not contained in a loop but reachable from it
-    public void markAsCalledFromLoopBody(Set<SqlUse> accum) {
+    // not contained in a loop but reachable from it including the case of (mutually) recursive calls
+    public boolean calledFromLoop;
 
-        if (!calledFromLoopBody) {       // must be marked only once
+    public void markAsCalledFromLoop(Set<SqlUse> accum) {
 
-            calledFromLoopBody = true;   // mark as reachable from at least one loop
+        assert loopOptimizables != null;
 
-            assert loopOptimizables != null;
+        if (!calledFromLoop) {       // must be marked only once
+
+            calledFromLoop = true;   // mark as reachable from at least one loop
 
             // collect sql uses in this routine decl into the accum
             for (SqlUse n : loopOptimizables.sqlUses) {
                 boolean added = accum.add(n);
                 assert added;   // because this routine declaration is first visited
-                assert !n.reachableFromLoopBody();
-                n.markAsReachableFromLoopBody();
+                assert !n.reachableFromLoop();
+                n.markAsReachableFromLoop();
             }
 
             // recursively mark the reachable local routine calls
             for (LocalRoutineCall lrc: loopOptimizables.localRoutineCalls) {
-                lrc.getDecl().markAsCalledFromLoopBody(accum);
+                lrc.getDecl().markAsCalledFromLoop(accum);
             }
         }
     }
-    public boolean isLoopOptApplicable() {
+    public DeclRoutine visitToFindRecursiveCalls(Set<SqlUse> accum, Stack<DeclRoutine> calls) {
+
+        if (loopOptimizables == null) {
+            return null;    // TODO: self recursive routine. optimize this case too
+        }
+
+        if (calledFromLoop) {
+            return null;
+        }
+
+        if (calls.indexOf(this) >= 0) {
+            return this;
+        }
+
+        calls.push(this);
+        int callsSize = calls.size();
+
+        int lowestIndex = -1;
+        DeclRoutine lowestRecCallHead = null;
+
+        for (LocalRoutineCall lrc: loopOptimizables.localRoutineCalls) {
+
+            DeclRoutine r = lrc.getDecl().visitToFindRecursiveCalls(accum, calls);
+            if (r != null) {
+                // this routine is on a loop of recursive calls
+
+                if (!calledFromLoop) {       // must be marked only once
+
+                    calledFromLoop = true;
+
+                    // collect sql uses in this routine decl into the accum
+                    for (SqlUse n : loopOptimizables.sqlUses) {
+                        boolean added = accum.add(n);
+                        assert added;   // because this routine declaration is first visited
+                        assert !n.reachableFromLoop();
+                        n.markAsReachableFromLoop();
+                    }
+                }
+
+                int indexInCalls = calls.indexOf(r);
+                if (indexInCalls < callsSize - 1) {
+                    // only when the head is lower than this routine.
+
+                    if (lowestRecCallHead == null) {
+                        // never set
+                        lowestRecCallHead = r;
+                        lowestIndex = indexInCalls;
+                    } else if (indexInCalls < lowestIndex)  {
+                        // lower one found
+                        lowestRecCallHead = r;
+                        lowestIndex = indexInCalls;
+                    }
+                }
+            }
+        }
+
+        calls.pop();
+
+        return lowestRecCallHead ;
+    }
+    public boolean isNotContainedInLoop() {
         return (loopOptimizables != null);
     }
 

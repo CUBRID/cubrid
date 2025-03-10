@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler.ast.loopOpt;
 
 public interface SqlUse extends LoopOptimizable {
 
-    void markAsReachableFromLoopBody();
+    void markAsReachableFromLoop();
 
     int getSqlSerialNo();
 

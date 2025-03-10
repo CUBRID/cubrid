@@ -49,12 +49,12 @@ public abstract class StmtLoop extends Stmt {
         this.loopOptimizables = loopOptimizables;
         if (loopOptimizables != null) {
             for (SqlUse n : loopOptimizables.sqlUses) {
-                n.markAsReachableFromLoopBody();
+                n.markAsReachableFromLoop();
             }
 
             reachableSqlUses = new HashSet<>();
             for (LocalRoutineCall n : loopOptimizables.localRoutineCalls) {
-                n.markAsReachableFromLoopBody(reachableSqlUses);
+                n.markAsReachableFromLoop(reachableSqlUses);
             }
         }
     }

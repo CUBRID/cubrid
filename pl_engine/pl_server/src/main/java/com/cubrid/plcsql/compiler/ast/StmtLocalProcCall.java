@@ -39,15 +39,15 @@ import java.util.Set;
 
 public class StmtLocalProcCall extends Stmt implements LocalRoutineCall {
 
-    public boolean reachableFromLoopBody;
+    public boolean reachableFromLoop;
     @Override
-    public boolean reachableFromLoopBody() {
-        return reachableFromLoopBody;
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
     }
     @Override
-    public void markAsReachableFromLoopBody(Set<SqlUse> accum) {
-        this.reachableFromLoopBody = true;
-        decl.markAsCalledFromLoopBody(accum);
+    public void markAsReachableFromLoop(Set<SqlUse> accum) {
+        this.reachableFromLoop = true;
+        decl.markAsCalledFromLoop(accum);
     }
 
     @Override

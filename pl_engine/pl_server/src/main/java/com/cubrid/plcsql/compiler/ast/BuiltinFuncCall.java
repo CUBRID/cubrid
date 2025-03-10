@@ -37,14 +37,14 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class BuiltinFuncCall extends Expr implements SqlUse {
 
 
-    public boolean reachableFromLoopBody;
+    public boolean reachableFromLoop;
     @Override
-    public boolean reachableFromLoopBody() {
-        return reachableFromLoopBody;
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
     }
     @Override
-    public void markAsReachableFromLoopBody() {
-        this.reachableFromLoopBody = true;
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
     }
 
     public final int sqlSerialNo;

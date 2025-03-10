@@ -1037,7 +1037,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 ExprLocalFuncCall ret = new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
-                if (decl.isLoopOptApplicable()) {
+                if (decl.isNotContainedInLoop()) {
                     addToLocalRoutineCalls(ret);
                 }
                 return ret;
@@ -2446,7 +2446,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             StmtLocalProcCall ret = new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
-            if (decl.isLoopOptApplicable()) {
+            if (decl.isNotContainedInLoop()) {
                 addToLocalRoutineCalls(ret);
             }
             return ret;
@@ -3390,7 +3390,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         if (loopOptimizables != null) {
 
-            if (routineDefNestLevel > 0 && !node.usingRef()) {
+            if (routineDefNestLevel > 1 && !node.usingRef()) {
                 // this sql-using construct resides in a routine definition, in which case
                 // it must use reference of Statement regardless of its default setting of usingRef
                 node.setToUseRef();
