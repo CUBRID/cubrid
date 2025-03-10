@@ -1423,7 +1423,7 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
     case PT_CREATE_VECTOR_INDEX:
       if (node_type == PT_CREATE_VECTOR_INDEX)
 	{
-	  ASSERT_CUBVEC (false); // analysis required
+	  ASSERT_CUBVEC (false);	// analysis required
 	}
     case PT_CREATE_INDEX:
     case PT_CREATE_SERIAL:
