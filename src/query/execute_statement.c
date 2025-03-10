@@ -3233,7 +3233,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_VECTOR_INDEX:
 	  ASSERT_CUBVEC (false);	// analysis required
-          break;
+	  break;
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
 	  break;
