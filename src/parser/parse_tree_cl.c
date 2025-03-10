@@ -20,7 +20,6 @@
  * parse_tree_cl.c - Parser module for the client
  */
 
-#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
