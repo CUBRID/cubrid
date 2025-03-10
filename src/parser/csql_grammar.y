@@ -2803,12 +2803,12 @@ create_stmt
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
-	  // TODO: vector_index_column_with_metric		/* 11 */
+	  // TODO: vector_index_column_with_metric	/* 11 */
 	  opt_where_clause				/* 12 */
-          // opt_index_with_clause				/* 13 */
+          // TODO: remove this: opt_index_with_clause	/* 13 */
 	  opt_vector_index_with_clause			/* 13 */
 	  opt_invisible					/* 14 */
-	  opt_comment_spec				/* 15 */          
+	  opt_comment_spec				/* 15 */
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
