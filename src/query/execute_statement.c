@@ -15668,7 +15668,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
     case PT_CREATE_VECTOR_INDEX:
       if (statement->node_type == PT_CREATE_VECTOR_INDEX)
 	{
-	  ASSERT_CUBVEC (false); // analysis required
+	  ASSERT_CUBVEC (false);	// analysis required
 	}
       break;
     case PT_CREATE_INDEX:
