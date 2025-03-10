@@ -17494,12 +17494,22 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
 void
 pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *col, *next;
+  PT_NODE *col, *next, *spec;
 
   assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
 
   if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
     {
+      spec = query->info.query.q.select.from;
+      while (spec)
+	{
+	  if (PT_SPEC_IS_DERIVED (spec))
+	    {
+	      pt_try_remove_order_by (parser, spec->info.spec.derived_table);
+	    }
+	  spec = spec->next;
+	}
+
       /* order_by can not be removed when query has orderby_for or limit */
       return;
     }

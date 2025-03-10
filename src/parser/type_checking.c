@@ -5259,12 +5259,13 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
   /* for range expressions the second argument may be a collection or a query. */
   if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
     {
-      PT_NODE *spec = NULL, *derived_spec = NULL, *tmp = NULL;
-      bool has_order_by = false;
-
       /* the select list must have only one element and the first argument has to be of the same type as the argument
        * from the select list */
       PT_NODE *arg2_list = NULL;
+      PT_NODE *col = NULL;
+      /* duplicates are not relevant; order by is not relevant; */
+      expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
+      pt_try_remove_order_by (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
       if (arg2_list == NULL)
@@ -5272,30 +5273,12 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	  return NULL;
 	}
 
-      spec = arg2->info.query.q.select.from;
-      derived_spec = spec->info.spec.derived_table;
-
-      has_order_by =
-	(arg2->info.query.order_by !=
-	 NULL) ? true : ((derived_spec != NULL) ? ((derived_spec->info.query.order_by != NULL) ? true : false) : false);
-
-      for (tmp = arg2_list; tmp; tmp = tmp->next)
+      for (col = arg2_list; col; col = col->next)
 	{
-	  if (PT_IS_ORDERBYNUM (tmp) || (PT_IS_INSTNUM (tmp) && has_order_by))
+	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 	    {
-	      break;
+	      col->info.expr.op = PT_INST_NUM;
 	    }
-	  else
-	    {
-	      ;
-	    }
-	}
-
-      if (tmp == NULL)
-	{
-	  /* duplicates are not relevant; order by is not relevant; */
-	  expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
-	  pt_try_remove_order_by (parser, arg2);
 	}
 
       if (PT_IS_COLLECTION_TYPE (arg2_list->type_enum) && arg2_list->node_type == PT_FUNCTION)

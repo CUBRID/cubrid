@@ -2152,13 +2152,10 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   int attr_count;
   int i;
   UINTPTR spec_id;
-  bool has_inst_or_orderby_num = false;
 
   assert (statement->node_type == PT_SELECT && query_spec->info.query.order_by != NULL);
 
   order_by = parser_copy_tree_list (parser, query_spec->info.query.order_by);
-  has_inst_or_orderby_num = pt_has_inst_or_orderby_num (parser, query_spec)
-    || pt_has_inst_in_where_and_select_list (parser, statement);
 
   /* 1 get vclass spec attrs */
   if (class_ != NULL)
@@ -2249,7 +2246,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (pt_is_distinct (statement) && !has_inst_or_orderby_num)
+	  if (pt_is_distinct (statement))
 	    {
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
@@ -2295,47 +2292,40 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
-  if (order_by != NULL && statement->info.query.all_distinct == PT_DISTINCT)
+  /* generate orderby_num(), inst_num() */
+  if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
     {
-      ;
+      if (ord_num)
+	{
+	  parser_free_tree (parser, ord_num);
+	}
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
     }
-  else
+  ord_num->type_enum = PT_TYPE_BIGINT;
+  ord_num->info.expr.op = PT_ORDERBY_NUM;
+  PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+  ins_num->type_enum = PT_TYPE_BIGINT;
+  ins_num->info.expr.op = PT_INST_NUM;
+  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+  /* replace rownum of select-list to orderby_num */
+  statement->info.query.q.select.list =
+    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
+
+  /* replace rownum of where to orderby_num */
+  where = statement->info.query.q.select.where;
+  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
     {
-      /* generate orderby_num(), inst_num() */
-      if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
-	{
-	  if (ord_num)
-	    {
-	      parser_free_tree (parser, ord_num);
-	    }
-	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return NULL;
-	}
-      ord_num->type_enum = PT_TYPE_BIGINT;
-      ord_num->info.expr.op = PT_ORDERBY_NUM;
-      PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
 
-      ins_num->type_enum = PT_TYPE_BIGINT;
-      ins_num->info.expr.op = PT_INST_NUM;
-      PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
-
-      /* replace rownum of select-list to orderby_num */
-      statement->info.query.q.select.list =
-	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
-
-      /* replace rownum of where to orderby_num */
-      where = statement->info.query.q.select.where;
-      if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
-	{
-	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
-
-	  /* move prev orderby_for to orderby_for */
-	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
-	  /* move rownum only predicate to orderby_for */
-	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
-	  statement->info.query.q.select.where = NULL;
-	}
+      /* move prev orderby_for to orderby_for */
+      prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+      statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+      /* move rownum only predicate to orderby_for */
+      statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
+      statement->info.query.q.select.where = NULL;
     }
 
   if (free_node != NULL)
