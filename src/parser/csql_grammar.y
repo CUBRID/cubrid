@@ -683,7 +683,7 @@ static int g_plcsql_text_pos;
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
-%type <node> vector_index_column_name
+%type <node> vector_index_column_with_metric
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -2831,7 +2831,7 @@ create_stmt
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
-	  // TODO: vector_index_column_name			/* 11 */
+	  // TODO: vector_index_column_with_metric		/* 11 */
 	  opt_where_clause				/* 12 */
           // opt_index_with_clause				/* 13 */
 	  opt_vector_index_with_clause			/* 13 */
@@ -5175,6 +5175,10 @@ index_column_name_list
 
 		DBG_PRINT}}
 	;
+
+vector_index_column_with_metric
+	: '(' identifier identifier ')'
+// TODO: vector_distance_metric
 
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
