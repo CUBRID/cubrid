@@ -3153,9 +3153,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_EXECUTE_TRIGGER:
 	case PT_CREATE_ENTITY:
 	case PT_CREATE_VECTOR_INDEX:
-	  if (statement->node_type) {
-	      ASSERT_VIMKIM(false);
-	  }
+	  if (statement->node_type)
+	    {
+	      ASSERT_VIMKIM (false);
+	    }
 	case PT_CREATE_INDEX:
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
@@ -3234,9 +3235,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_CREATE_VECTOR_INDEX:
-	  if (statement->node_type) {
-	      assert(false);
-	  }
+	  if (statement->node_type)
+	    {
+	      assert (false);
+	    }
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
 	  break;
@@ -15669,9 +15671,10 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	break;
       }
     case PT_CREATE_VECTOR_INDEX:
-      if (statement->node_type) {
-	  assert(false);
-      }
+      if (statement->node_type)
+	{
+	  assert (false);
+	}
     case PT_CREATE_INDEX:
       {
 	BTID index;
@@ -16140,10 +16143,11 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_DROP_CLASS;
       break;
 
-	case PT_CREATE_VECTOR_INDEX:
-	  if (statement->node_type) {
-	      assert(false);
-	  }
+    case PT_CREATE_VECTOR_INDEX:
+      if (statement->node_type)
+	{
+	  assert (false);
+	}
     case PT_CREATE_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_CREATE_INDEX;
