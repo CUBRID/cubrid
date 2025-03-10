@@ -1107,6 +1107,8 @@ static int g_plcsql_text_pos;
 %type <c2> opt_index_with_clause
 %type <c2> opt_vector_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> vector_index_with_item_list
+%type <c2> vector_index_with_item
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
 
@@ -22800,11 +22802,42 @@ opt_vector_index_with_clause
             container_2 ctn;
             SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
-        | WITH index_with_item_list
+        | WITH '(' vector_index_with_item_list ')'
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
-             $$ = $2;
+             $$ = $3;
           DBG_PRINT}
         ;
+
+vector_index_with_item_list
+	: vector_index_with_item
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item);
+	    container_2 ctn;
+	    // init_container_2(&ctn);
+	    // add_to_container_2(&ctn, $1);
+	    $$ = ctn;
+	  }
+	| vector_index_with_item_list ',' vector_index_with_item
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item_list ',' vector_index_with_item);
+	    // add_to_container_2(&($1), $3);
+	    // $$ = $1;
+	    container_2 cnt2;
+	    $$ = (container_2)cnt2;
+	  }
+	;
+
+vector_index_with_item
+	: identifier '=' unsigned_integer
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item, IDENTIFIER '=' NUMBER);
+	    // Create a structure to hold the option and its value
+	    // option_item *opt = create_option_item($1, $3);
+	    //$$ = opt;
+	    container_2 cnt2;
+	    $$ = (container_2)cnt2;
+	  }
+	;
 
 index_with_item_list  
         : online_parallel
