@@ -31,7 +31,8 @@
 //        We need to consider a better way to identify the hnsw index.
 int hnsw_index_id = 0;
 
-int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40, enum faiss::MetricType metric_type = faiss::METRIC_L2)
+int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
+		    enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
   faiss::IndexHNSW index (dimension, hnsw_M, metric_type);
   index.hnsw.efConstruction = hnsw_efConstruction;
