@@ -3909,10 +3909,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  do_create_entity);
       break;
     case PT_CREATE_INDEX:
-      if (statement->info.index.vector_index_type == 1) { // ENUM like PT_VECTOR_INDEX_HNSW
-	err = do_create_vector_index (parser, statement);
-	break;
-      }
+      // TODO: ENUM like PT_VECTOR_INDEX_HNSW
+      if (statement->info.index.vector_index_type == 1)
+	{
+	  err = do_create_vector_index (parser, statement);
+	  break;
+	}
       err = do_create_index (parser, statement);
       break;
     case PT_CREATE_SERIAL:
