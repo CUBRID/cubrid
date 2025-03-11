@@ -25,6 +25,7 @@
 #include "px_heap_scan_manager.hpp"
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
+#include "query_manager.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 
@@ -36,7 +37,6 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "query_manager.h"
 
 namespace parallel_heap_scan
 {
