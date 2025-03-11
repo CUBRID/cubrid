@@ -91,12 +91,11 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
     }
   unpack_info->packed_xasl = xasl_stream;
   unpack_info->packed_size = xasl_stream_size;
-  for (n = 0; n < MAX_PTR_BLOCKS; ++n)
-    {
-      unpack_info->ptr_blocks[n] = (STX_VISITED_PTR *) 0;
-      unpack_info->ptr_lwm[n] = 0;
-      unpack_info->ptr_max[n] = 0;
-    }
+
+  memset (unpack_info->ptr_blocks, 0x00, sizeof (unpack_info->ptr_blocks));
+  memset (unpack_info->ptr_lwm, 0x00, sizeof (unpack_info->ptr_lwm));
+  memset (unpack_info->ptr_max, 0x00, sizeof (unpack_info->ptr_max));
+
   unpack_info->alloc_size = xasl_stream_size * UNPACK_SCALE;
   unpack_info->alloc_buf = (char *) unpack_info + head_offset;
   unpack_info->additional_buffers = NULL;
@@ -204,14 +203,13 @@ stx_free_visited_ptrs (THREAD_ENTRY *thread_p)
 
   for (size_t i = 0; i < MAX_PTR_BLOCKS; i++)
     {
-      xasl_unpack_info->ptr_lwm[i] = 0;
-      xasl_unpack_info->ptr_max[i] = 0;
       if (xasl_unpack_info->ptr_blocks[i])
 	{
 	  db_private_free_and_init (thread_p, xasl_unpack_info->ptr_blocks[i]);
-	  xasl_unpack_info->ptr_blocks[i] = (STX_VISITED_PTR *) 0;
 	}
     }
+  memset (xasl_unpack_info->ptr_lwm, 0x00, sizeof (xasl_unpack_info->ptr_lwm));
+  memset (xasl_unpack_info->ptr_max, 0x00, sizeof (xasl_unpack_info->ptr_max));
 }
 
 /*

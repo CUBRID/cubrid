@@ -31,11 +31,41 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class StmtSql extends Stmt {
+public abstract class StmtSql extends Stmt implements SqlUse {
+
+    public StmtLoop containerLoop;
+
+    @Override
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    private boolean usingRef = false;
+
+    @Override
+    public boolean usingRef() {
+        return usingRef;
+    }
+
+    @Override
+    public void setToUseRef() {
+        usingRef = true;
+    }
 
     public final boolean dynamic;
     public final int level;

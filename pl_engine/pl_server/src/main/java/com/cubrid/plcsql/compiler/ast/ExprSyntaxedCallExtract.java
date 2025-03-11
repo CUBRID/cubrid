@@ -43,8 +43,9 @@ public class ExprSyntaxedCallExtract extends BuiltinFuncCall {
     public String timeField;
     public Expr arg;
 
-    public ExprSyntaxedCallExtract(ParserRuleContext ctx, String timeField, Expr arg) {
-        super(ctx);
+    public ExprSyntaxedCallExtract(
+            ParserRuleContext ctx, String timeField, Expr arg, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         this.timeField = timeField;
         this.arg = arg;

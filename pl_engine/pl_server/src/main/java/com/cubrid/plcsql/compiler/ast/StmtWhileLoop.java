@@ -46,11 +46,11 @@ public class StmtWhileLoop extends StmtLoop {
 
     public StmtWhileLoop(
             ParserRuleContext ctx,
-            StmtLoop.LoopOptimizable loopOptimizable,
+            StmtLoop.LoopOptimizables loopOptimizables,
             DeclLabel declLabel,
             Expr cond,
             NodeList<Stmt> stmts) {
-        super(ctx, loopOptimizable);
+        super(ctx, loopOptimizables);
 
         this.declLabel = declLabel;
         this.cond = cond;
