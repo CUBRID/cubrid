@@ -127,7 +127,8 @@ namespace parallel_heap_scan
       }
     else
       {
-	assert (false);
+	/* Maybe interrupted */
+	return;
       }
   }
 
@@ -241,6 +242,7 @@ namespace parallel_heap_scan
 
   list_id_wrapper::~list_id_wrapper()
   {
+    close_list_scan();
     if (m_list_id != nullptr)
       {
 	if (m_main_thread_p != m_task_thread_p)

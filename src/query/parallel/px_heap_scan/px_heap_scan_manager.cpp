@@ -36,6 +36,7 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include "query_manager.h"
 
 namespace parallel_heap_scan
 {
@@ -66,6 +67,21 @@ namespace parallel_heap_scan
       {
 	thread_get_manager()->destroy_worker_pool (m_workpool);
       }
+  }
+
+  void manager::terminate_tasks()
+  {
+    list_id_data data;
+    m_context->set_has_error();
+    while (m_list_stream->dequeue_timeout (data, 3))
+      {
+	if (m_context->all_tasks_ended())
+	  {
+	    break;
+	  }
+      }
+    m_list_stream->clear();
+    m_list_stream.reset();
   }
 
   SCAN_CODE manager::get_result_from_list_stream ()
@@ -204,6 +220,12 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       scan_id->s.phsid.manager->start_tasks();
       scan_id->s.phsid.manager->m_is_start_once = true;
     }
+  if (qmgr_is_query_interrupted (thread_p, scan_id->s.phsid.manager->m_query_id))
+    {
+      scan_id->s.phsid.manager->get_context().set_has_error();
+      scan_id->s.phsid.manager->terminate_tasks();
+      return S_ERROR;
+    }
   ret = scan_id->s.phsid.manager->get_result_from_list_stream();
   if (thread_is_on_trace (thread_p))
     {
@@ -222,9 +244,17 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
     }
   if (ret == S_ERROR)
     {
-      while (!scan_id->s.phsid.manager->get_context().has_error());
-      cuberr::er_message &crt_error = cuberr::context::get_thread_local_context ().get_current_error_level ();
-      scan_id->s.phsid.manager->get_context().get_error (crt_error);
+      if (qmgr_is_query_interrupted (thread_p, scan_id->s.phsid.manager->m_query_id))
+	{
+	  scan_id->s.phsid.manager->get_context().set_has_error();
+	  scan_id->s.phsid.manager->terminate_tasks();
+	  return S_ERROR;
+	}
+      if (scan_id->s.phsid.manager->get_context().has_error())
+	{
+	  cuberr::er_message &crt_error = cuberr::context::get_thread_local_context ().get_current_error_level ();
+	  scan_id->s.phsid.manager->get_context().get_error (crt_error);
+	}
       return S_ERROR;
     }
   return ret;

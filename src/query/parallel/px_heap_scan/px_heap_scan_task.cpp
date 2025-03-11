@@ -28,7 +28,6 @@
 #include <memory>
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
-#include "query_manager.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 1
 #if PARALLEL_HEAP_SCAN_LOG
@@ -143,17 +142,6 @@ namespace parallel_heap_scan
       {
 	if (m_context->has_error() || m_context->is_scan_internal_ended || m_context->is_scan_external_ended)
 	  {
-	    break;
-	  }
-	if (qmgr_is_query_interrupted (m_context->m_orig_thread_p, query_id))
-	  {
-	    m_context->is_scan_external_ended = true;
-	    if (m_context->has_error())
-	      {
-		break;
-	      }
-	    m_context->set_has_error();
-	    m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	    break;
 	  }
 	if (on_trace)
