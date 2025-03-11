@@ -542,7 +542,6 @@ unloaddb: 从数据库导出对象和结构.\n\
   -i, --input-class-file=FILE  指定包含表名的输入文件; 默认: 转储所有类\n\
       --include-reference      和-i选项一起使用.当卸载了指定数据库类，卸载对象的引用; 默认: disabled\n\
       --input-class-only       和-i选项一起使用. 只创建与输入文件中的表相关的方案(schema)文件; 默认: 未启用\n\
-      --lo-count=COUNT         指明一个目录中要被创建的大对象(large object)文件的数目; 默认: 0\n\
       --estimated-size=NUMBER  指定预期的实例数目; 默认: 自动计算\n\
       --cached-pages=NUMBER    配置要被缓存进内存的对象数目; 默认: 100\n\
   -O, --output-path=PATH       用 PATH 作为输出目录; 默认: 工作目录\n\
@@ -552,6 +551,8 @@ unloaddb: 从数据库导出对象和结构.\n\
       --hash-file=FILE         指定hash文件名称; 默认: 由 tmpnam() 生成\n\
       --latest-image           转储对象时，它转储数据卷中对象的最新图像，而不是指日志卷（忽略 MVCC）\n\
                                它可能包括未提交的数据和未清除的已删除数据； 默认值：禁用\n\
+  -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
+      --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose                开启详细状态信息; 默认: 不可用\n\
       --use-delimiter          用 '"' 作为一个标示符的开始和结束; 默认: 不使用\n\
   -S, --SA-mode                单机模式执行\n\
