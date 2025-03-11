@@ -109,7 +109,7 @@ typedef jint (*CREATE_VM_FUNC) (JavaVM **, void **, void *);
 	(ENV)->GetStringUTFLength(STRING)
 
 static JavaVM *jvm = NULL;
-static jint sp_port = -1;
+static jint sp_port = PL_PORT_DISABLED;
 static std::string err_msgs;
 
 #if defined(WINDOWS)

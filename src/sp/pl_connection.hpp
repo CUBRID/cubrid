@@ -89,10 +89,6 @@ namespace cubpl
       void set_db_port (int port);
 
       bool is_system_pool () const;
-      void set_port_disabled()
-      {
-	m_db_port = PL_PORT_DISABLED;
-      }
 
     private:
       explicit connection_pool (int pool_size);

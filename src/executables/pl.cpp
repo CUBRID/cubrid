@@ -451,7 +451,6 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 	  er_clear();
 	}
 
-      int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
       PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
       pl_unlink_info (db_name.c_str ());
