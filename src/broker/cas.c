@@ -1707,14 +1707,6 @@ cas_free (bool from_sighandler)
       as_info->last_connect_time = 0;
 
     }
-  else
-    {
-#if defined(CAS_FOR_CGW)
-      cgw_cleanup ();
-#else
-      ux_database_shutdown ();
-#endif /* CAS_FOR_CGW */
-    }
 
   if (as_info->cur_statement_pooling && !from_sighandler)
     {
@@ -1829,6 +1821,13 @@ cas_free (bool from_sighandler)
       close (fd);
     }
 #endif
+
+#if defined(CAS_FOR_CGW)
+  cgw_cleanup ();
+#else
+  ux_database_shutdown ();
+#endif /* CAS_FOR_CGW */
+
 }
 
 static void

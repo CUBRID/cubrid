@@ -28,25 +28,14 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.ast.loopOpt;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public interface SqlUse extends LoopOptimizable {
+    int getSqlSerialNo();
 
-public class ExprSyntaxedCallPosition extends BuiltinFuncCall {
+    boolean ofCallableStmt();
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprSyntaxedCallPosition(this);
-    }
+    boolean usingRef();
 
-    public Expr sub;
-    public Expr whole;
-
-    public ExprSyntaxedCallPosition(ParserRuleContext ctx, Expr sub, Expr whole, int sqlSerialNo) {
-        super(ctx, sqlSerialNo);
-
-        this.sub = sub;
-        this.whole = whole;
-    }
+    void setToUseRef();
 }
