@@ -17,6 +17,7 @@
  */
 
 #include "schema_system_catalog.hpp"
+#include "schema_information_schema_install.hpp"
 
 #include "db.h"
 #include "dbtype_function.h"
@@ -86,31 +87,48 @@ namespace cubschema
     CT_RESOLUTION_NAME		// "_db_resolution"
   };
 
-  static const std::vector <std::string> sm_system_vclass_names =
+  static const std::vector<std::string> sm_system_vclass_names =
   {
     /*
      * catalog vclasses
      */
-    CTV_CLASS_NAME,			// "db_class"
-    CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
-    CTV_VCLASS_NAME,			// "db_vclass"
-    CTV_ATTRIBUTE_NAME,		// "db_attribute"
-    CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
-    CTV_METHOD_NAME,			// "db_method"
-    CTV_METHARG_NAME,		// "db_meth_arg"
-    CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
-    CTV_METHFILE_NAME,		// "db_meth_file"
-    CTV_INDEX_NAME,			// "db_index"
-    CTV_INDEXKEY_NAME,		// "db_index_key"
-    CTV_AUTH_NAME,			// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trig"
-    CTV_PARTITION_NAME,		// "db_partition"
-    CTV_STORED_PROC_NAME,	// "db_stored_procedure"
-    CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
-    CTV_DB_COLLATION_NAME,	// "db_collation"
-    CTV_DB_CHARSET_NAME,		// "db_charset"
-    CTV_DB_SERVER_NAME,		// "db_server"
-    CTV_SYNONYM_NAME			// "db_synonym"
+    CTV_CLASS_NAME,            // "db_class"
+    CTV_SUPER_CLASS_NAME,      // "db_direct_super_class"
+    CTV_VCLASS_NAME,           // "db_vclass"
+    CTV_ATTRIBUTE_NAME,        // "db_attribute"
+    CTV_ATTR_SD_NAME,          // "db_attr_setdomain_elm"
+    CTV_METHOD_NAME,           // "db_method"
+    CTV_METHARG_NAME,          // "db_meth_arg"
+    CTV_METHARG_SD_NAME,       // "db_meth_arg_setdomain_elm"
+    CTV_METHFILE_NAME,         // "db_meth_file"
+    CTV_INDEX_NAME,            // "db_index"
+    CTV_INDEXKEY_NAME,         // "db_index_key"
+    CTV_AUTH_NAME,             // "db_auth"
+    CTV_TRIGGER_NAME,          // "db_trig"
+    CTV_PARTITION_NAME,        // "db_partition"
+    CTV_STORED_PROC_NAME,      // "db_stored_procedure"
+    CTV_STORED_PROC_ARGS_NAME, // "db_stored_procedure_args"
+    CTV_DB_COLLATION_NAME,     // "db_collation"
+    CTV_DB_CHARSET_NAME,       // "db_charset"
+    CTV_DB_SERVER_NAME,        // "db_server"
+    CTV_SYNONYM_NAME,          // "db_synonym"
+
+    INFO_SCHEMA_COLUMNS,
+    INFO_SCHEMA_DOMAINS,
+    INFO_SCHEMA_KEY_COLUMN_USAGE,
+    INFO_SCHEMA_PARAMETERS,
+    INFO_SCHEMA_PARTITIONS,
+    INFO_SCHEMA_REFERENTIAL_CONSTRAINTS,
+    INFO_SCHEMA_ROUTINES,
+    INFO_SCHEMA_SCHEMATA,
+    INFO_SCHEMA_SEQUENCES,
+    INFO_SCHEMA_SYNONYMS,
+    INFO_SCHEMA_TABLE_CONSTRAINTS,
+    INFO_SCHEMA_TABLE_PRIVILEGES,
+    INFO_SCHEMA_TABLES,
+    INFO_SCHEMA_TRIGGERS,
+    INFO_SCHEMA_VIEWS,
+
   };
 
   static const identifier_store sm_catalog_class_names (sm_system_class_names, false);

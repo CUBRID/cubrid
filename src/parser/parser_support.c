@@ -10760,12 +10760,12 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (node->node_type == PT_NAME && sm_check_system_class_by_name (original_name))
     {
       /* In case 5, 6 */
-      if (resolved_name != NULL)
-	{
-	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
-	  *continue_walk = PT_STOP_WALK;
-	  return node;
-	}
+//       if (resolved_name != NULL)
+//      {
+//        PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
+//        *continue_walk = PT_STOP_WALK;
+//        return node;
+//      }
 
       /* resolved_name == NULL */
 

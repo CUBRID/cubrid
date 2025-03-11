@@ -4162,6 +4162,13 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
+  DB_VALUE value;
+  DB_DATETIME *datetime;
+  db_sys_datetime (&value);
+  datetime = db_get_datetime (&value);
+  class_->check_time.date = datetime->date;
+  class_->check_time.time = datetime->time;
+
   return class_;
 }
 
@@ -4198,6 +4205,12 @@ sm_get_statistics_force (MOP classop)
 	  if (err == NO_ERROR)
 	    {
 	      class_->stats = stats;
+	      DB_VALUE value;
+	      DB_DATETIME *datetime;
+	      db_sys_datetime (&value);
+	      datetime = db_get_datetime (&value);
+	      class_->check_time.date = datetime->date;
+	      class_->check_time.time = datetime->time;
 	    }
 	  else
 	    {
@@ -4277,6 +4290,17 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+		}
+
+	      if (error == NO_ERROR)
+		{
+		  DB_VALUE value;
+		  DB_DATETIME *datetime;
+		  db_sys_datetime (&value);
+		  datetime = db_get_datetime (&value);
+		  class_->check_time.date = datetime->date;
+		  class_->check_time.time = datetime->time;
+
 		}
 	    }
 	}
@@ -13305,6 +13329,15 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	      classobj_free_class (class_);
 	    }
 	}
+    }
+  else
+    {
+      DB_VALUE value;
+      DB_DATETIME *datetime;
+      db_sys_datetime (&value);
+      datetime = db_get_datetime (&value);
+      class_->update_time.date = datetime->date;
+      class_->update_time.time = datetime->time;
     }
 
   if (error != NO_ERROR || class_ == NULL)

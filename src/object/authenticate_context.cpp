@@ -35,18 +35,7 @@
 #include "schema_manager.h" /* sm_find_class() */
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
-
-/*
- * Authorization Class Names
- */
-#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
-#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
-#define AU_USER_CLASS_NAME      CT_USER_NAME
-#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
-#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
-
-#define AU_PUBLIC_USER_NAME     "PUBLIC"
-#define AU_DBA_USER_NAME        "DBA"
+#include "authenticate_constants.h"
 
 // static functions
 static int au_add_method_check_authorization (void);
@@ -240,6 +229,15 @@ authenticate_context::login (const char *name, const char *password, bool ignore
    * which is defined to return non-zero if a valid transaction is in
    * progress.
    */
+  std::string upper_name (name);
+  std::transform (upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
+  if (strcmp (upper_name.c_str(), "INFORMATION_SCHEMA") == 0)
+    {
+      error = ER_AU_INVALID_USER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
+      return error;
+    }
+
   if (root == NULL || !BOOT_IS_CLIENT_RESTARTED ())
     {
       /*
@@ -524,6 +522,11 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
+  information_schema_user = au_add_user ("INFORMATION_SCHEMA", &exists);
+  if (information_schema_user == NULL)
+    {
+      goto exit_on_error;
+    }
   /*
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
@@ -534,6 +537,12 @@ authenticate_context::install (void)
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
+  au_grant (DB_OBJECT_CLASS, information_schema_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
+
   au_add_method_check_authorization ();
 
   AU_ENABLE (save);
@@ -541,6 +550,11 @@ authenticate_context::install (void)
   return NO_ERROR;
 
 exit_on_error:
+  if (information_schema_user != NULL)
+    {
+      au_drop_user (information_schema_user);
+      information_schema_user = NULL;
+    }
   if (public_user != NULL)
     {
       au_drop_user (public_user);

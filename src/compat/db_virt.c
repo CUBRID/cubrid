@@ -154,7 +154,8 @@ db_create_vclass (const char *name)
     {
       class_name = sm_remove_qualifier_name (name);
       type = pr_find_type (class_name);
-      if (type != NULL || pt_is_reserved_word (class_name))
+//       if (type != NULL || (!sm_is_system_vclass(class_name) && !sm_is_system_class(class_name) && pt_is_reserved_word (class_name)))
+      if (type != NULL)
 	{
 	  error = ER_SM_CLASS_WITH_PRIM_NAME;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, class_name);

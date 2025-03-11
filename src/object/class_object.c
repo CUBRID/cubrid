@@ -6858,6 +6858,18 @@ classobj_make_class (const char *name)
   class_->comment = NULL;
 
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
+  DB_VALUE value;
+  DB_DATETIME *datetime;
+  db_sys_datetime (&value);
+  datetime = db_get_datetime (&value);
+  class_->create_time.date = datetime->date;
+  class_->create_time.time = datetime->time;
+
+  class_->update_time.date = 0;
+  class_->update_time.time = 0;
+
+  class_->check_time.date = 0;
+  class_->check_time.time = 0;
 
   if (name != NULL)
     {

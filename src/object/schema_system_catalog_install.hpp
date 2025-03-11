@@ -79,6 +79,23 @@ namespace cubschema
       static system_catalog_definition get_view_db_charset ();
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_db_server ();
+
+      // For Poc
+      static system_catalog_definition get_view_columns();
+      static system_catalog_definition get_view_domains();
+      static system_catalog_definition get_view_key_column_usage();
+      static system_catalog_definition get_view_parameters();
+      static system_catalog_definition get_view_partitions();
+      static system_catalog_definition get_view_referential_constratins();
+      static system_catalog_definition get_view_routines();
+      static system_catalog_definition get_view_schemata();
+      static system_catalog_definition get_view_sequences();
+      static system_catalog_definition get_view_synonym2();
+      static system_catalog_definition get_view_table_constraints();
+      static system_catalog_definition get_view_table_privileges();
+      static system_catalog_definition get_view_tables();
+      static system_catalog_definition get_view_triggers();
+      static system_catalog_definition get_view_views();
   };
 }
 
@@ -103,5 +120,23 @@ const char *sm_define_view_db_collation_spec (void);
 const char *sm_define_view_db_charset_spec (void);
 const char *sm_define_view_synonym_spec (void);
 const char *sm_define_view_db_server_spec (void);
+const char *sm_define_view_test_spec (void);
+
+// For Poc
+const char *sm_define_info_schema_columns_spec (void);
+const char *sm_define_info_schema_domains_spec (void);
+const char *sm_define_info_schema_key_column_usage_spec (void);
+const char *sm_define_info_schema_parameters_spec (void);
+const char *sm_define_info_schema_partitions_spec (void);
+const char *sm_define_info_schema_referential_constratins_spec (void);
+const char *sm_define_info_schema_routines_spec (void);
+const char *sm_define_info_schema_schemata_spec (void);
+const char *sm_define_info_schema_sequences_spec (void);
+const char *sm_define_info_schema_synonym_spec (void);
+const char *sm_define_info_schema_table_constraints_spec (void);
+const char *sm_define_info_schema_table_privileges_spec (void);
+const char *sm_define_info_schema_tables_spec (void);
+const char *sm_define_info_schema_triggers_spec (void);
+const char *sm_define_info_schema_views_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */

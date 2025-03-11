@@ -78,7 +78,8 @@ sm_define_view_class_spec (void)
 	    "END AS [partitioned], "
 	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
 	  "[coll].[coll_name] AS [collation], "
-	  "[c].[comment] AS [comment] "
+	  "[c].[comment] AS [comment], "
+          "'%s' AS [charset]"
 	"FROM "
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], "
@@ -125,6 +126,7 @@ sm_define_view_class_spec (void)
 		")"
 	    ")",
 	CT_PARTITION_NAME,
+        lang_charset_name(lang_charset()),
 	CT_CLASS_NAME,
 	CT_COLLATION_NAME,
 	AU_USER_CLASS_NAME,
@@ -1490,6 +1492,22 @@ sm_define_view_synonym_spec (void)
 	CT_SYNONYM_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
+sm_define_view_test_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+          "* "
+        "FROM dual"
+  );
   // *INDENT-ON*
 
   return stmt;

@@ -106,6 +106,7 @@ class EXPORT_IMPORT authenticate_context
     */
     MOP public_user;
     MOP dba_user;
+    MOP information_schema_user;
 
     /*
     * Au_user

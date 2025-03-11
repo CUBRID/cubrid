@@ -384,6 +384,9 @@ namespace cubschema
       {"class_meth_count", "integer"},
       {"collation_id", "integer"},
       {"tde_algorithm", "integer"},
+      {"create_time", "datetime"},
+      {"update_time", "datetime"},
+      {"check_time", "datetime"},
       {"sub_classes", format_sequence (CT_CLASS_NAME)},
       {"super_classes", format_sequence (CT_CLASS_NAME)},
       {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
@@ -425,7 +428,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -462,7 +465,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -664,7 +667,7 @@ namespace cubschema
 
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_INDEX_NAME,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -702,7 +705,7 @@ namespace cubschema
 
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CTV_INDEXKEY_NAME,
 		   // columns
     {
       {"index_of", CT_INDEX_NAME},
@@ -757,7 +760,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
@@ -789,7 +792,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -804,7 +807,7 @@ namespace cubschema
 
     return system_catalog_definition (
 		   // name
-		   CT_PARTITION_NAME,
+		   CT_DATATYPE_NAME,
 		   // columns
     {
       {"type_id", "integer"},
@@ -1088,7 +1091,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_collations
@@ -1279,6 +1282,7 @@ namespace cubschema
       {"is_reuse_oid_class", "varchar(3)"},
       {"collation", "varchar(32)"},
       {"comment", format_varchar (2048)},
+      {"charset", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
     },
