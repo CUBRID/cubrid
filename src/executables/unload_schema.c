@@ -42,6 +42,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
+#include "unload_object_file.h"
 #include "load_object.h"
 #include "object_primitive.h"
 #include "parser.h"

@@ -22,12 +22,18 @@
 #ifndef _LOAD_OBJECT_THREADING_H_
 #define _LOAD_OBJECT_THREADING_H_
 
+#if !defined(WINDOWS) && defined(CS_MODE)
+#define SUPPORT_MULTIPLE_UNLOADDB	// MULTI_PROCESSING_UNLOADDB_WITH_FORK // TODO: ctshim
+#endif
+
+class print_output;
+
 #define INVALID_FILE_NO  (-1)
 
 
-#include <thread.h>
-//#define YIELD_THREAD()   std::this_thread::yield ()
-#define YIELD_THREAD()   usleep (0)
+#include <thread>
+#define YIELD_THREAD()   std::this_thread::yield ()
+//#define YIELD_THREAD()   usleep (10)
 
 #define CHECK_PRINT_ERROR(print_fnc)            \
   do {                                          \
@@ -108,11 +114,11 @@ typedef struct _unloaddb_thread_param
 } UNLD_THR_PARAM;
 
 extern bool init_queue_n_list_for_object_file (int q_size, int blk_size);
-extern void quit_queue_n_list_for_object_file();
 
 extern int flushing_write_blk_queue ();
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
+extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 
@@ -124,4 +130,3 @@ extern bool g_multi_thread_mode;
 extern UNLD_THR_PARAM *g_thr_param;
 
 #endif // _LOAD_OBJECT_THREADING_H_
-

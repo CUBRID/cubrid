@@ -26,6 +26,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c
@@ -370,6 +371,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/util_common.c

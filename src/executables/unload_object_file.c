@@ -40,7 +40,6 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <math.h>
-#include <errno.h>
 
 #include "utility.h"
 #include "misc_string.h"
@@ -52,12 +51,13 @@
 #include "object_primitive.h"
 #include "set_object.h"
 #include "db.h"
-#include "large_object.h"
+#include "schema_manager.h"
 #include "server_interface.h"
 #include "load_object.h"
-#include "object_print.h"
 #include "unload_object_file.h"
+#include "db_value_printer.hpp"
 #include "network_interface_cl.h"
+#include "printer.hpp"
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
@@ -70,6 +70,8 @@ bool g_multi_thread_mode = false;
 UNLD_THR_PARAM *g_thr_param = NULL;
 int g_sampling_records = -1;
 
+
+static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
@@ -80,84 +82,73 @@ static int write_object_file (TEXT_BUFFER_BLK * head);
 #if !defined(WINDOWS)
 extern S_WAITING_INFO wi_write_file;
 #endif
-
-struct text_buffer_mgr
+class text_buffer_mgr
 {
+private:
   pthread_mutex_t m_cs_lock;
   TEXT_BUFFER_BLK *m_free_list;
   int m_max_cnt_free_list;
   int m_cnt_free_list;
-};
 
-struct write_block_queue
-{
-  pthread_mutex_t m_cs_lock;
-  TEXT_BUFFER_BLK **m_q_blk;
-  int m_q_size;
-  int m_front;
-  int m_rear;
-};
 
-// define 
-static struct text_buffer_mgr c_text_buf_mgr = { PTHREAD_MUTEX_INITIALIZER, NULL, 0, 0 };
-static struct write_block_queue c_write_blk_queue = { PTHREAD_MUTEX_INITIALIZER, NULL, 0, 0, 0 };
-
-  void quit_text_buffer_mgr (struct text_buffer_mgr* ptbm)
+  void quit_text_buffer_mgr ()
   {
     TEXT_BUFFER_BLK *tp;
 
-    pthread_mutex_lock (&ptbm->m_cs_lock);
-    while (ptbm->m_free_list)
+      pthread_mutex_lock (&m_cs_lock);
+    while (m_free_list)
       {
-	tp = ptbm->m_free_list;
-	ptbm->m_free_list = tp->next;
+	tp = m_free_list;
+	m_free_list = tp->next;
 
 	if (tp->buffer)
 	  {
 	    free (tp->buffer);
 	  }
 	free (tp);
-	ptbm->m_cnt_free_list--;
+	m_cnt_free_list--;
       }
-    pthread_mutex_unlock (&ptbm->m_cs_lock);
+    pthread_mutex_unlock (&m_cs_lock);
   }
 
-  void text_buffer_mgr_constructor (struct text_buffer_mgr* ptbm)
-  {    
-    pthread_mutex_init (&ptbm->m_cs_lock, NULL);
-    ptbm->m_free_list = NULL;
-    ptbm->m_max_cnt_free_list = ptbm->m_cnt_free_list = 0;
-  }
-  void text_buffer_mgr_destrouctor (struct text_buffer_mgr* ptbm)
+public:
+  text_buffer_mgr ()
   {
-    quit_text_buffer_mgr (ptbm);
-    (void) pthread_mutex_destroy (&ptbm->m_cs_lock);
+    //m_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init (&m_cs_lock, NULL);
+    m_free_list = NULL;
+    m_max_cnt_free_list = m_cnt_free_list = 0;
+  }
+  ~text_buffer_mgr ()
+  {
+    quit_text_buffer_mgr ();
+    (void) pthread_mutex_destroy (&m_cs_lock);
   }
 
-  bool init_text_buffer_mgr (struct text_buffer_mgr* ptbm, int count)
+  bool init_text_buffer_mgr (int count)
   {
-    pthread_mutex_lock (&ptbm->m_cs_lock);
-    assert (ptbm->m_free_list == NULL);
-    ptbm->m_max_cnt_free_list = count;
-    pthread_mutex_unlock (&ptbm->m_cs_lock);
+    pthread_mutex_lock (&m_cs_lock);
+    assert (m_free_list == NULL);
+    m_max_cnt_free_list = count;
+    pthread_mutex_unlock (&m_cs_lock);
     return true;
   }
 
-  TEXT_BUFFER_BLK *get_text_buffer (struct text_buffer_mgr* ptbm, int alloc_sz)
+  TEXT_BUFFER_BLK *get_text_buffer (int alloc_sz)
   {
     TEXT_BUFFER_BLK *tp = NULL;
 
     if (alloc_sz <= g_io_buffer_size)
       {
 	alloc_sz = g_io_buffer_size;
-	pthread_mutex_lock (&ptbm->m_cs_lock);
-	if (ptbm->m_free_list)
+	pthread_mutex_lock (&m_cs_lock);
+	if (m_free_list)
 	  {
-	    tp = ptbm->m_free_list;
-	    ptbm->m_free_list = tp->next;
-	    ptbm->m_cnt_free_list--;
+	    tp = m_free_list;
+	    m_free_list = tp->next;
+	    m_cnt_free_list--;
 	  }
-	pthread_mutex_unlock (&ptbm->m_cs_lock);
+	pthread_mutex_unlock (&m_cs_lock);
       }
 
     if (!tp)
@@ -189,7 +180,7 @@ static struct write_block_queue c_write_blk_queue = { PTHREAD_MUTEX_INITIALIZER,
     return tp;
   }
 
-  void release_text_buffer (struct text_buffer_mgr* ptbm, TEXT_BUFFER_BLK * tp)
+  void release_text_buffer (TEXT_BUFFER_BLK * tp)
   {
     /* re-init */
     tp->ptr = tp->buffer;
@@ -197,17 +188,17 @@ static struct write_block_queue c_write_blk_queue = { PTHREAD_MUTEX_INITIALIZER,
 
     if (tp->iosize == g_io_buffer_size)
       {
-	pthread_mutex_lock (&ptbm->m_cs_lock);
-	if (ptbm->m_cnt_free_list < ptbm->m_max_cnt_free_list)
+	pthread_mutex_lock (&m_cs_lock);
+	if (m_cnt_free_list < m_max_cnt_free_list)
 	  {
-	    tp->next = ptbm->m_free_list;
-	    ptbm->m_free_list = tp;
-	    ptbm->m_cnt_free_list++;
-	    pthread_mutex_unlock (&ptbm->m_cs_lock);
+	    tp->next = m_free_list;
+	    m_free_list = tp;
+	    m_cnt_free_list++;
+	    pthread_mutex_unlock (&m_cs_lock);
 
 	    return;
 	  }
-	pthread_mutex_unlock (&ptbm->m_cs_lock);
+	pthread_mutex_unlock (&m_cs_lock);
       }
 
     if (tp->buffer)
@@ -216,26 +207,37 @@ static struct write_block_queue c_write_blk_queue = { PTHREAD_MUTEX_INITIALIZER,
       }
     free (tp);
   }
+};
 
-void  write_block_queue_constructor (struct write_block_queue* pwbq)
+class write_block_queue
+{
+private:
+  pthread_mutex_t m_cs_lock;
+  TEXT_BUFFER_BLK **m_q_blk;
+  int m_q_size;
+  int m_front;
+  int m_rear;
+
+public:
+    write_block_queue ()
   {
-    pthread_mutex_init (&pwbq->m_cs_lock, NULL);
-    pwbq->m_q_blk = NULL;
-    pwbq->m_q_size = 0;
-    pwbq->m_front = pwbq->m_rear = 0;
+    //m_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init (&m_cs_lock, NULL);
+    m_q_blk = NULL;
+    m_q_size = 0;
+    m_front = m_rear = 0;
   }
-void write_block_queue_destrouctor (struct write_block_queue* pwbq)
+   ~write_block_queue ()
   {
-    if (pwbq->m_q_blk)
+    if (m_q_blk)
       {
 	TEXT_BUFFER_BLK *head, *pt;
-	assert (pwbq->m_front == pwbq->m_rear);
-	while (pwbq->m_front != pwbq->m_rear)
+	assert (m_front == m_rear);
+	while (m_front != m_rear)
 	  {
-            pwbq->m_front++;    
-	    pwbq->m_front %= pwbq->m_q_size;
-	    head = pwbq->m_q_blk[pwbq->m_front];
-	    pwbq->m_q_blk[pwbq->m_front] = NULL;
+	    ++m_front %= m_q_size;
+	    head = m_q_blk[m_front];
+	    m_q_blk[m_front] = NULL;
 	    while (head)
 	      {
 		pt = head;
@@ -248,88 +250,80 @@ void write_block_queue_destrouctor (struct write_block_queue* pwbq)
 	      }
 	  }
 
-	free (pwbq->m_q_blk);
-        pwbq->m_q_blk = NULL;
+	free (m_q_blk);
       }
 
-    (void) pthread_mutex_destroy (&pwbq->m_cs_lock);
+    (void) pthread_mutex_destroy (&m_cs_lock);
   }
 
-  bool init_queue (struct write_block_queue* pwbq, int size)
+  bool init_queue (int size)
   {
-    assert (pwbq->m_q_blk == NULL);
-    pwbq->m_front = pwbq->m_rear = 0;
-    pwbq->m_q_blk = (TEXT_BUFFER_BLK **) calloc (size, sizeof (TEXT_BUFFER_BLK *));
-    if (pwbq->m_q_blk)
+    assert (m_q_blk == NULL);
+    m_front = m_rear = 0;
+    m_q_blk = (TEXT_BUFFER_BLK **) calloc (size, sizeof (TEXT_BUFFER_BLK *));
+    if (m_q_blk)
       {
-	pwbq->m_q_size = size;
+	m_q_size = size;
 	return true;
       }
     else
       {
-	pwbq->m_q_size = 0;
+	m_q_size = 0;
 	return false;
       }
   }
 
-  bool enqueue (struct write_block_queue* pwbq, TEXT_BUFFER_BLK * tout)
+  bool enqueue (TEXT_BUFFER_BLK * tout)
   {
-    pthread_mutex_lock (&pwbq->m_cs_lock);
-    assert (pwbq->m_q_blk != NULL);
-    if ((pwbq->m_rear + 1) % pwbq->m_q_size == pwbq->m_front)
+    pthread_mutex_lock (&m_cs_lock);
+    assert (m_q_blk != NULL);
+    if ((m_rear + 1) % m_q_size == m_front)
       {				// full
-	pthread_mutex_unlock (&pwbq->m_cs_lock);
+	pthread_mutex_unlock (&m_cs_lock);
 	return false;
       }
 
-    pwbq->m_rear++;
-    pwbq->m_rear %= pwbq->m_q_size;
-    assert (pwbq->m_q_blk[pwbq->m_rear] == NULL);
-    pwbq->m_q_blk[pwbq->m_rear] = tout;
-    pthread_mutex_unlock (&pwbq->m_cs_lock);
+    ++m_rear %= m_q_size;
+    assert (m_q_blk[m_rear] == NULL);
+    m_q_blk[m_rear] = tout;
+    pthread_mutex_unlock (&m_cs_lock);
     return true;
   }
 
-  TEXT_BUFFER_BLK *dequeue (struct write_block_queue* pwbq)
+  TEXT_BUFFER_BLK *dequeue ()
   {
     TEXT_BUFFER_BLK *pt = NULL;
 
-    pthread_mutex_lock (&pwbq->m_cs_lock);
-    assert (pwbq->m_q_blk != NULL);
-    if (pwbq->m_front == pwbq->m_rear)
+    pthread_mutex_lock (&m_cs_lock);
+    assert (m_q_blk != NULL);
+    if (m_front == m_rear)
       {
 	;			// empty
       }
     else
       {
-        pwbq->m_front++;
-	pwbq->m_front %= pwbq->m_q_size;
-	pt = pwbq->m_q_blk[pwbq->m_front];
-	pwbq->m_q_blk[pwbq->m_front] = NULL;
+	++m_front %= m_q_size;
+	pt = m_q_blk[m_front];
+	m_q_blk[m_front] = NULL;
       }
-    pthread_mutex_unlock (&pwbq->m_cs_lock);
+    pthread_mutex_unlock (&m_cs_lock);
     return pt;
   }
+};
+
+// define 
+static class write_block_queue c_write_blk_queue;
+static class text_buffer_mgr c_text_buf_mgr;
 
 bool
 init_queue_n_list_for_object_file (int q_size, int blk_size)
 {
-  //text_buffer_mgr_constructor (&c_text_buf_mgr);
-  //write_block_queue_constructor(&c_write_blk_queue);
-
-  if (init_queue (&c_write_blk_queue, q_size))
+  if (c_write_blk_queue.init_queue (q_size))
     {
-      return init_text_buffer_mgr (&c_text_buf_mgr, blk_size); 
+      return c_text_buf_mgr.init_text_buffer_mgr (blk_size);
     }
 
   return false;
-}
-
-void
-quit_queue_n_list_for_object_file()
-{
-  write_block_queue_destrouctor  (&c_write_blk_queue);      
-  text_buffer_mgr_destrouctor  (&c_text_buf_mgr);  
 }
 
 static int
@@ -347,7 +341,7 @@ get_text_output_mem (TEXT_OUTPUT * tout, int alloc_sz)
     }
 
 
-  pt = get_text_buffer (&c_text_buf_mgr, alloc_sz);
+  pt = c_text_buf_mgr.get_text_buffer (alloc_sz);
   if (pt == NULL)
     {
       return ER_FAILED;
@@ -372,7 +366,7 @@ flushing_write_blk_queue ()
 {
   TEXT_BUFFER_BLK *head;
 
-  head = dequeue (&c_write_blk_queue);
+  head = c_write_blk_queue.dequeue ();
   if (head == NULL)
     {
       return 0;
@@ -385,10 +379,37 @@ flushing_write_blk_queue ()
 	  return -1;
 	}
 
-      head = dequeue (&c_write_blk_queue);
+      head = c_write_blk_queue.dequeue ();
     }
 
   return 1;
+}
+
+/*
+ * print_set - Print the contents of a real DB_SET (not a set descriptor).
+ *    return: void
+ *    output_ctx(in): output context
+ *    set(in): set reference
+ */
+static void
+print_set (print_output & output_ctx, DB_SET * set)
+{
+  DB_VALUE element_value;
+  int len, i;
+  len = set_size (set);
+  output_ctx ("{");
+  for (i = 0; i < len; i++)
+    {
+      if (set_get_element (set, i, &element_value) == NO_ERROR)
+	{
+	  desc_value_print (output_ctx, &element_value);
+	  if (i < len - 1)
+	    {
+	      output_ctx (", ");
+	    }
+	}
+    }
+  output_ctx ("}");
 }
 
 /*
@@ -664,7 +685,8 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   char *json_body = NULL;
   DB_TYPE type;
   int len;
-
+  DB_DATETIMETZ *dt_tz;
+  DB_TIMESTAMPTZ *ts_tz;
   type = DB_VALUE_TYPE (value);
 
   switch (type)
@@ -679,7 +701,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", db_get_int (value)));
       break;
     case DB_TYPE_SMALLINT:
-       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_short (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_short (value)));
       break;
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
@@ -704,7 +726,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  }
       }
       break;
-    case DB_TYPE_ENUMERATION:      
+    case DB_TYPE_ENUMERATION:
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", (int) db_get_enum_short (value)));
       break;
     case DB_TYPE_DATE:
@@ -719,12 +741,28 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       db_timestamp_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
       break;
-   
+    case DB_TYPE_TIMESTAMPLTZ:
+      db_timestampltz_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_timestamp (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'", buf));
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      ts_tz = db_get_timestamptz (value);
+      db_timestamptz_to_string (buf, INTERNAL_BUFFER_SIZE, &ts_tz->timestamp, &ts_tz->tz_id);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamptz '%s'", buf));
+      break;
     case DB_TYPE_DATETIME:
       db_datetime_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_datetime (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
       break;
-   
+    case DB_TYPE_DATETIMELTZ:
+      db_datetimeltz_to_string (buf, INTERNAL_BUFFER_SIZE, db_get_datetime (value));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimeltz '%s'", buf));
+      break;
+    case DB_TYPE_DATETIMETZ:
+      dt_tz = db_get_datetimetz (value);
+      db_datetimetz_to_string (buf, INTERNAL_BUFFER_SIZE, &dt_tz->datetime, &dt_tz->tz_id);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimetz '%s'", buf));
+      break;
     case DB_TYPE_MONETARY:
       /* Always print symbol before value, even if for turkish lira the user format is after value :
        * intl_get_currency_symbol_position */
@@ -790,7 +828,11 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_POINTER:
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%p", db_get_pointer (value)));
       break;
-     
+    case DB_TYPE_JSON:
+      json_body = db_get_json_raw_body (value);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", json_body));
+      db_private_free (NULL, json_body);
+      break;
     default:
       /* the others are handled by callers or internal-use only types */
       break;
@@ -841,6 +883,35 @@ exit_on_error:
   goto exit_on_end;
 }
 
+/*
+ * desc_value_print - Print a description of the given value.
+ *    return: void
+ *    output_ctx(in): output context
+ *    value(in): value container
+ * Note:
+ *    This is based on db_value_print() but has extensions for the
+ *    handling of set descriptors, and ELO's used by the desc_ module.
+ *    String printing is also hacked for "unprintable" characters.
+ */
+void
+desc_value_print (print_output & output_ctx, DB_VALUE * value)
+{
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      print_set (output_ctx, db_get_set (value));
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
+      break;
+    default:
+      db_print_value (output_ctx, value);
+      break;
+    }
+}
 
 
 /*
@@ -940,7 +1011,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	{
 	  tp = head;
 	  head = head->next;
-	  release_text_buffer (&c_text_buf_mgr, tp);
+	  c_text_buf_mgr.release_text_buffer (tp);
 	}
 
       tout->head_ptr = NULL;
@@ -964,7 +1035,7 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
     {
       do
 	{
-	  if (enqueue (&c_write_blk_queue, head))
+	  if (c_write_blk_queue.enqueue (head))
 	    {
 	      break;
 	    }
@@ -1022,7 +1093,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
 	    }
 	}
 
-      release_text_buffer (&c_text_buf_mgr, tp);
+      c_text_buf_mgr.release_text_buffer (tp);
     }
   TIMER_END ((g_sampling_records >= 0), &wi_write_file);
 
@@ -1090,5 +1161,3 @@ print_message_with_time (FILE * fp, const char *msg)
 	   (msg ? msg : ""));
 }
 #endif
-
-
