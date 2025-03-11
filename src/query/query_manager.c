@@ -3133,10 +3133,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	}
       else
 	{
-	  if (tfile_vfid_p->next)
-	    {
-	      tfile_vfid_p->next->prev = tfile_vfid_p->prev;
-	    }
+	  tfile_vfid_p->next->prev = tfile_vfid_p->prev;
 	  tfile_vfid_p->prev->next = tfile_vfid_p->next;
 	  if (query_p->temp_vfid == tfile_vfid_p)
 	    {
