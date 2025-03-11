@@ -2931,7 +2931,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 
       // Class or shared attributes are not considered. These are not indexed columns.
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
-      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_VECTOR_INDEX)
+      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
 	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
@@ -3024,8 +3024,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       if (has_deduplicate_key_col)
 	{
 	  SM_CLASS *class_ = NULL;
-	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX)
-		  || (ctype == DB_CONSTRAINT_VECTOR_INDEX));
+	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
 
 	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
 	  if (error != NO_ERROR)
@@ -5584,8 +5583,8 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PA
 
   for (cons = smclass->constraints; cons != NULL; cons = cons->next)
     {
-      if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX
-	  && cons->type != SM_CONSTRAINT_VECTOR_INDEX)
+      assert (cons->type == SM_CONSTRAINT_VECTOR_INDEX);
+      if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  continue;
 	}

@@ -62,8 +62,8 @@ struct pr_type;
         ((SM_IS_ATTFLAG_UNIQUE_FAMILY(c)      || \
 	 (c) == SM_ATTFLAG_FOREIGN_KEY        || \
          (c) == SM_ATTFLAG_INDEX              || \
-         (c) == SM_ATTFLAG_REVERSE_INDEX)     || \
-         (c) == SM_ATTFLAG_VECTOR_INDEX          \
+         (c) == SM_ATTFLAG_REVERSE_INDEX      || \
+         (c) == SM_ATTFLAG_VECTOR_INDEX)         \
          ? true : false)
 
 #define SM_IS_ATTFLAG_REVERSE_INDEX_FAMILY(c) \
@@ -138,8 +138,8 @@ struct pr_type;
 
 #define SM_IS_SHARE_WITH_FOREIGN_KEY(c) \
 	(((c) == SM_CONSTRAINT_FOREIGN_KEY || \
-	  (c) == SM_CONSTRAINT_INDEX      || \
-                (c) == SM_CONSTRAINT_VECTOR_INDEX)       \
+	  (c) == SM_CONSTRAINT_INDEX       || \
+          (c) == SM_CONSTRAINT_VECTOR_INDEX)  \
 	  ? true : false)
 
 #define SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY(c) \

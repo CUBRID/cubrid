@@ -25,11 +25,15 @@
 #include "faiss/IndexHNSW.h"
 #include "hnsw.hpp"
 
+// TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
+//        This is not a problem in current implementation, but it may be a problem in the future,
+//        such as duplicate hnsw_index_id when cub_server restarts.
+//        We need to consider a better way to identify the hnsw index.
 int hnsw_index_id = 0;
 
-int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40)
+int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40, enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
-  faiss::IndexHNSW index (dimension, hnsw_M, faiss::METRIC_L2);
+  faiss::IndexHNSW index (dimension, hnsw_M, metric_type);
   index.hnsw.efConstruction = hnsw_efConstruction;
 
   btid->vfid.volid = -1;

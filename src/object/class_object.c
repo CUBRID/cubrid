@@ -8181,11 +8181,11 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
       break;
 
     case DB_CONSTRAINT_FOREIGN_KEY:
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type) || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_VECTOR_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}
