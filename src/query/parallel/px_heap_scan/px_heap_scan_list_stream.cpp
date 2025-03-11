@@ -43,7 +43,6 @@ namespace parallel_heap_scan
     m_size = parallelism * size;
     m_query_id = query_id;
     m_scan_id = scan_id;
-    m_queue.set_capacity (m_size);
 
     int pred_len = regu_var_list_len (phsid->scan_pred.regu_list);
     int rest_len = regu_var_list_len (phsid->rest_regu_list);
