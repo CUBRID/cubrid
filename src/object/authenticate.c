@@ -8615,9 +8615,17 @@ au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_m
 	{
 	  if (u->grants != NULL)
 	    {
-	      // No error handling.
-	      // This case can occur when changing table ownership via ALTER TABLE.
-	      continue;
+	      uname = au_get_user_name (u->obj);
+
+	      /*
+	       * should this be setting an error condition ?
+	       * for now, leave a comment in the output file
+	       */
+	      output_ctx ("/*");
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION,
+					  MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
+	      output_ctx ("*/\n");
+	      ws_free_string (uname);
 	    }
 	}
       if (ecount)
