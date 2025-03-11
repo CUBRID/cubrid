@@ -1,3 +1,13 @@
-http://jira.cubrid.org/browse/CBRD-XXXX
+<http://jira.cubrid.org/browse/CBRD-XXXX>
 
-Describe here
+### Purpose
+
+N/A
+
+### Implementation
+
+N/A
+
+### Remarks
+
+N/A

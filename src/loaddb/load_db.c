@@ -35,6 +35,7 @@
 #include "utility.h"
 #include "authenticate.h"
 #include "ddl_log.h"
+#include "load_open_data.hpp"
 
 #include <fstream>
 #include <thread>
@@ -89,6 +90,7 @@ static void print_er_msg ();
 
 static T_SCHEMA_FILE_LIST_INFO **ldr_check_file_list (std::string & file_name, int &num_files, int &error_code);
 static void ldr_free_and_fclose (T_SCHEMA_FILE_LIST_INFO ** file_list, int num);
+static int ldr_load_hdf5_file (FILE * schema_fp, int schema_file_start_line, load_args args);
 static int ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args args);
 static void ldr_print_error_msg (int line, int base_line, const char *file_name);
 
@@ -207,6 +209,11 @@ ldr_validate_object_file (const char *argv0, load_args * args)
 	  PRINT_AND_LOG_ERR_MSG ("loaddb: Cannot load system parameters.\n");
 	  return ER_FAILED;
 	}
+    }
+
+  if (args->hdf5_file.empty () == false)
+    {
+      return NO_ERROR;
     }
 
   if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)
@@ -646,6 +653,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   /* disable trigger actions to be fired */
   db_disable_trigger ();
+
+  /* Handle hdf5 option, ignore the others */
+  if (args.hdf5_file.empty () == false)
+    {
+      print_log_msg (1, "\nStart hdf5 converting.\n");
+      cubload::read_hdf5_file (args.hdf5_file);
+      goto error_return;
+    }
 
   schema_file_start_line = ldr_get_start_line_no (args.schema_file);
   index_file_start_line = ldr_get_start_line_no (args.index_file);
@@ -1140,6 +1155,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
   char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
   char *schema_file_list = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_LIST_S, 0);
+  char *hdf5_file = utility_get_option_string_value (arg_map, LOAD_HDF5_FILE_S, 0);
 
   args->volume = volume ? volume : empty;
   args->input_file = input_file ? input_file : empty;
@@ -1173,6 +1189,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
   args->schema_file_list = schema_file_list ? schema_file_list : empty;
+  args->hdf5_file = hdf5_file ? hdf5_file : empty;
 }
 
 static void

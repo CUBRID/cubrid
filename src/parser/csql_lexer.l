@@ -247,6 +247,9 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][nN][tT][iI][nN][uU][eE]					{ begin_token(yytext);   return CONTINUE; }
 [cC][oO][nN][vV][eE][rR][tT]						{ begin_token(yytext);   return CONVERT; }
 [cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ begin_token(yytext);   return CORRESPONDING; }
+[cC][oO][sS][iI][nN][eE]_[dD][iI][sS][tT][aA][nN][cC][eE]		{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return COSINE_DISTANCE; }
 [cC][oO][sS][tT]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COST;
@@ -467,6 +470,9 @@ IDL       [a-zA-Z0-9_]
 [iI][nN][hH][eE][rR][iI][tT]						{ begin_token(yytext);   return INHERIT; }
 [iI][nN][iI][tT][iI][aA][lL][lL][yY]					{ begin_token(yytext);   return INITIALLY; }
 [iI][nN][nN][eE][rR]							{ begin_token(yytext);   return INNER; }
+[iI][nN][nN][eE][rR]_[pP][rR][oO][dD][uU][cC][tT]			{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return INNER_PRODUCT; }
 [iI][nN][oO][uU][tT]							{ begin_token(yytext);   return INOUT; }
 [iI][nN][pP][uU][tT]							{ begin_token(yytext);   return INPUT_; }
 [iI][nN][sS][eE][rR][tT]						{ begin_token(yytext);   return INSERT; }
@@ -590,6 +596,12 @@ IDL       [a-zA-Z0-9_]
 [kK][iI][lL][lL]							{ begin_token(yytext);   return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
 [kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
+[lL]1_[dD][iI][sS][tT][aA][nN][cC][eE]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return L1_DISTANCE; }
+[lL]2_[dD][iI][sS][tT][aA][nN][cC][eE]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return L2_DISTANCE; }
 [lL][aA][gG]								{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LAG; }
@@ -1067,6 +1079,9 @@ IDL       [a-zA-Z0-9_]
 [vV][aA][rR][yY][iI][nN][gG]						{ begin_token(yytext);   return VARYING; }
 [vV][cC][lL][aA][sS][sS]						{ begin_token(yytext);   return VCLASS; }
 [vV][eE][cC][tT][oO][rR]						{ begin_token(yytext);   return VECTOR; }
+[vV][eE][cC][tT][oO][rR]_[dD][iI][sS][tT][aA][nN][cC][eE]		{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return VECTOR_DISTANCE; }
 [vV][iI][eE][wW]							{ begin_token(yytext);   return VIEW; }
 [vV][iI][sS][iI][bB][lL][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);

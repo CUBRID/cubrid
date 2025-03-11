@@ -1348,6 +1348,8 @@ typedef struct _ha_config
 #define LOAD_NO_USER_SPECIFIED_NAME_L           "no-user-specified-name"
 #define LOAD_SCHEMA_FILE_LIST_S                 11826
 #define LOAD_SCHEMA_FILE_LIST_L                 "schema-file-list"
+#define LOAD_HDF5_FILE_S                        'h'
+#define LOAD_HDF5_FILE_L                        "hdf5-file"
 
 /* unloaddb option list */
 #define UNLOAD_INPUT_CLASS_FILE_S               'i'

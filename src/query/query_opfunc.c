@@ -20,6 +20,7 @@
  * query_opfunc.c - The manipulation of data stored in the XASL nodes
  */
 
+#include "db_function.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -52,6 +53,7 @@
 #include "query_list.h"
 #include "db_json.hpp"
 #include "arithmetic.h"
+#include "vector_opfunc.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
@@ -220,6 +222,9 @@ static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 
 static int qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 				  OID * obj_oid_p, QFILE_TUPLE tuple);
+
+static int qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+					   OID * obj_oid_p, QFILE_TUPLE tuple);
 
 static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
@@ -6915,6 +6920,13 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
     case F_REGEXP_SUBSTR:
       return qdata_regexp_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_VECTOR_DISTANCE:
+    case F_L1_DISTANCE:
+    case F_L2_DISTANCE:
+    case F_INNER_PRODUCT:
+    case F_COSINE_DISTANCE:
+      return qdata_vector_distance_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -8593,6 +8605,85 @@ qdata_regexp_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_
 
     cub_compiled_regex *&compiled_regex = function_p->tmp_obj->compiled_regex;
     error_status = regexp_func (function_p->value, args, no_args, &compiled_regex);
+    if (error_status != NO_ERROR)
+      {
+	goto exit;
+      }
+  }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_vector_distance_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				OID * obj_oid_p, QFILE_TUPLE tuple)
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  {
+    assert (function_p != NULL);
+    assert (function_p->value != NULL);
+    assert (function_p->operand != NULL);
+
+    operand = function_p->operand;
+
+    while (operand != NULL)
+      {
+	no_args++;
+	operand = operand->next;
+      }
+
+    args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+    operand = function_p->operand;
+    while (operand != NULL)
+      {
+	error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+	if (error_status != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+
+	args[index++] = value;
+
+	operand = operand->next;
+      }
+
+    assert (index == no_args);
+
+    // *INDENT-OFF*
+    std::function<int(DB_VALUE*, DB_VALUE*[], const int)> distance_func;
+    switch (function_p->ftype)
+      {
+	case F_VECTOR_DISTANCE:
+	  distance_func = vector_distance;
+	  break;
+	case F_L1_DISTANCE:
+	  distance_func = vector_l1_distance;
+	  break;
+	case F_L2_DISTANCE:
+	  distance_func = vector_l2_distance;
+	  break;
+	case F_INNER_PRODUCT:
+	  distance_func = vector_inner_product;
+	  break;
+	case F_COSINE_DISTANCE:
+	  distance_func = vector_cosine_distance;
+	  break;
+	default:
+	  assert (false);
+	  break;
+      }
+    // *INDENT-ON*
+
+
+    error_status = distance_func (function_p->value, args, no_args);
     if (error_status != NO_ERROR)
       {
 	goto exit;

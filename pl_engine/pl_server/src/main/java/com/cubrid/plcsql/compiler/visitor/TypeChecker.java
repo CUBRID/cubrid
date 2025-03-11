@@ -617,11 +617,7 @@ public class TypeChecker extends AstVisitor<Type> {
         return Type.BOOLEAN;
     }
 
-    @Override
-    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
-
-        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
-        String sql = String.format("select %s%s from dual", node.name, tvStr);
+    private Type typeBuiltinFuncCall(BuiltinFuncCall node, String name, String sql) {
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;
@@ -640,18 +636,10 @@ public class TypeChecker extends AstVisitor<Type> {
                         Misc.getLineColumnOf(node.ctx), // s233
                         String.format(
                                 "unsupported return type (code %d) of the built-in function %s",
-                                ci.type, node.name));
+                                ci.type, name));
             }
 
             node.setResultType(ret);
-
-            Expr arg0;
-            if (node.args.nodes.size() == 1
-                    && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
-                // cast to Object, a hint for Javac compiler. see CBRD-25168
-                arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
-            }
-
             return ret;
         } else {
             Server.log(
@@ -661,10 +649,120 @@ public class TypeChecker extends AstVisitor<Type> {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s235
                     "function "
-                            + node.name
+                            + name
                             + " is undefined or given wrong number or types of arguments");
         }
     }
+
+    @Override
+    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
+
+        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
+        String sql = String.format("select %s%s from dual", node.name, tvStr);
+        return typeBuiltinFuncCall(node, node.name, sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
+        String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
+        String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
+        String sql =
+                String.format(
+                        "select ADDDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        return typeBuiltinFuncCall(node, "ADDDATE", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
+        if (node.arg instanceof ExprNull) {
+            // Special case: the argument is NULL
+            //  . in this case, we do not need ask the server of the type
+            //  . moreover, the server returns an unsupported type code 5 (DB_OBJECT) in this case.
+            node.setResultType(node.tySpec.type);
+            return node.resultType;
+        } else {
+            String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+            String sql =
+                    String.format(
+                            "select CAST(%s AS %s) from dual",
+                            tvStrOfArg, node.tySpec.type.plcName);
+            return typeBuiltinFuncCall(node, "CAST", sql);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
+        String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+        String sql =
+                String.format(
+                        "select CHR(%s USING %s) from dual",
+                        tvStrOfArg, node.isUtf8 ? "utf8" : "iso88591");
+        return typeBuiltinFuncCall(node, "CHR", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
+        String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+        String sql =
+                String.format("select EXTRACT(%s FROM %s) from dual", node.timeField, tvStrOfArg);
+        return typeBuiltinFuncCall(node, "EXTRACT", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
+        String tvStrOfSub = checkArgAndGetTypicalValueStr(node.sub);
+        String tvStrOfWhole = checkArgAndGetTypicalValueStr(node.whole);
+        String sql = String.format("select POSITION(%s IN %s) from dual", tvStrOfSub, tvStrOfWhole);
+        return typeBuiltinFuncCall(node, "POSITION", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
+        String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
+        String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
+        String sql =
+                String.format(
+                        "select SUBDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        return typeBuiltinFuncCall(node, "SUBDATE", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
+        String tvStrOfTrimStr =
+                node.trimStr == null ? "" : checkArgAndGetTypicalValueStr(node.trimStr);
+        String tvStrOfStr = checkArgAndGetTypicalValueStr(node.str);
+        String sql =
+                String.format(
+                        "select TRIM(%s %s FROM %s) from dual",
+                        node.trimDir, tvStrOfTrimStr, tvStrOfStr);
+        return typeBuiltinFuncCall(node, "TRIM", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
 
     @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {
@@ -1240,6 +1338,25 @@ public class TypeChecker extends AstVisitor<Type> {
         return null;
     }
 
+    private String checkArgAndGetTypicalValueStr(Expr arg) {
+
+        String ret;
+        if (arg instanceof SqlLiteral) {
+            if (arg.ctx == null) {
+                // unreachable
+                throw new RuntimeException(
+                        "unreachable: a built-in function argument without a context");
+            } else {
+                ret = arg.ctx.getText();
+            }
+        } else {
+            Type argType = visit(arg);
+            ret = argType.typicalValueStr;
+        }
+
+        return ret;
+    }
+
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
 
         if (args.size() == 0) {
@@ -1257,26 +1374,14 @@ public class TypeChecker extends AstVisitor<Type> {
         for (int i = 0; i < len; i++) {
 
             Expr arg = args.get(i);
+            String typicalValueStr = checkArgAndGetTypicalValueStr(arg);
 
-            String typicalValueStr;
-            if (arg instanceof SqlLiteral) {
-                assert arg.ctx != null;
-                if (arg.ctx == null) {
-                    assert false : "a built-in function argument without a context"; // unreachable
-                    typicalValueStr = "null"; // temporary
-                } else {
-                    typicalValueStr = arg.ctx.getText();
-                }
-            } else {
-                Type argType = visit(arg);
-                typicalValueStr = argType.typicalValueStr;
-                if (typicalValueStr == null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(arg.ctx), // s234
-                            String.format(
-                                    "argument %d to the built-in function %s has an invalid type",
-                                    i + 1, funcName));
-                }
+            if (typicalValueStr == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(arg.ctx), // s234
+                        String.format(
+                                "argument %d to the built-in function %s has an invalid type",
+                                i + 1, funcName));
             }
 
             if (i > 0) {

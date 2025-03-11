@@ -25,6 +25,7 @@
 #include "db_date.h"
 #include "db_json.hpp"
 #include "dbtype.h"
+#include "db_vector.hpp"
 #include "language_support.h"
 #include "load_class_registry.hpp"
 #include "numeric_opfunc.h"
@@ -72,6 +73,7 @@ namespace cubload
   int to_db_datetimeltz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_datetimetz (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_json (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_vector (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -126,6 +128,7 @@ namespace cubload
 	setters_[set_type][LDR_ELO_EXT] = &to_db_elo_ext;
 	setters_[set_type][LDR_ELO_INT] = &to_db_elo_int;
 	setters_[set_type][LDR_JSON] = &to_db_json;
+	setters_[set_type][LDR_VECTOR] = &to_db_vector;
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
@@ -164,6 +167,8 @@ namespace cubload
     setters_[DB_TYPE_CLOB][LDR_ELO_INT] = &to_db_elo_int;
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
+
+    setters_[DB_TYPE_VECTOR][LDR_STR] = &to_db_vector;
 
     setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
@@ -590,6 +595,42 @@ namespace cubload
       }
 
     return db_make_json (val, document, true);
+  }
+
+  int
+  to_db_vector (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    int count = 0;
+    const int max_vector_size = 2000;
+    float float_array[max_vector_size];
+    DB_SET *vec = NULL;
+    DB_VALUE e_val;
+
+    int error_code = db_string_to_vector (str, str_size, float_array, &count);
+    if (error_code != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
+
+    // Create vector and populate it
+    vec = db_vec_create (NULL, NULL, 0);
+    if (vec == NULL)
+      {
+	assert (er_errid () != NO_ERROR);
+	return er_errid ();
+      }
+
+    db_make_vector (val, vec);
+    for (int i = 0; i < count; ++i)
+      {
+	db_make_float (&e_val, float_array[i]);
+	if (db_seq_put (db_get_set (val), i, &e_val) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+
+    return NO_ERROR;
   }
 
   int

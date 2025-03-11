@@ -41,6 +41,7 @@
 #include "db.h"
 #include "db_client_type.hpp"
 #include "db_json.hpp"
+#include "db_vector.hpp"
 #include "dbi.h"
 #include "dbtype.h"
 #include "elo.h"
@@ -72,7 +73,6 @@
 #include "utility.h"
 #include "work_space.h"
 #include "schema_system_catalog_constants.h"
-#include "pl_sr.h"
 
 using namespace cubload;
 
@@ -446,6 +446,7 @@ static DB_VALUE ldr_blob_tmpl;
 static DB_VALUE ldr_clob_tmpl;
 static DB_VALUE ldr_bit_tmpl;
 static DB_VALUE ldr_json_tmpl;
+static DB_VALUE ldr_vector_tmpl;
 
 /* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
 #define MAX_DIGITS_FOR_BIGINT   19
@@ -632,6 +633,8 @@ static void ldr_process_object_ref (object_ref_type *ref, int type);
 static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_json_db_json (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+static int ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
+static int ldr_vector_db_vector (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT *context, const char *str, size_t len, data_type type) = ldr_act_attr;
@@ -5401,7 +5404,8 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     case DB_TYPE_JSON:
       attdesc->setter[LDR_STR] = &ldr_json_db_json;
       break;
-
+    case DB_TYPE_VECTOR:
+      attdesc->setter[LDR_STR] = &ldr_vector_db_vector;
     default:
       break;
     }
@@ -6143,6 +6147,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
+  db_make_vector (&ldr_vector_tmpl, NULL);
 
   /*
    * Set up the conversion functions for collection elements.  These
@@ -6178,6 +6183,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
   elem_converter[LDR_JSON] = &ldr_json_elem;
+  elem_converter[LDR_VECTOR] = &ldr_vector_elem;
 
   /* Set up the lockhint array. Used by ldr_find_class() when locating a class. */
   ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE, LC_CLASS, LC_FETCH_CURRENT_VERSION);
@@ -6547,8 +6553,6 @@ exit:
 
   ldr_final ();
 
-  pl_server_destroy ();
-
   if (ldr_Driver != NULL)
     {
       delete ldr_Driver;
@@ -6812,6 +6816,57 @@ error_exit:
     }
 
   return ER_FAILED;
+}
+
+static int
+ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
+{
+  int count = 0;
+  const int max_vector_size = 2000;
+  float float_array[max_vector_size];
+  DB_SET *vec = NULL;
+  DB_VALUE e_val;
+
+  int error_code = db_string_to_vector (str, len, float_array, &count);
+  if (error_code != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  // Create vector and populate it
+  vec = db_vec_create (NULL, NULL, 0);
+  if (vec == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  db_make_vector (val, vec);
+  for (int i = 0; i < count; ++i)
+    {
+      db_make_float (&e_val, float_array[i]);
+      if (db_seq_put (db_get_set (val), i, &e_val) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+ldr_vector_db_vector (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  DB_VALUE val;
+
+  db_make_null (&val);
+  CHECK_ERR (err, ldr_vector_elem (context, str, len, &val));
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  db_value_clear (&val);
+  return err;
 }
 
 static int

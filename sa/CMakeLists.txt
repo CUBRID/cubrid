@@ -287,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -527,6 +528,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
   ${LOADDB_DIR}/load_object_table.c
+  ${LOADDB_DIR}/load_open_data.cpp
   ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   )
@@ -699,6 +701,9 @@ if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
   LIBEDIT
+  HDF
+  ZLIB
+  HIGHFIVE
   )
 endif(UNIX)
 target_external_dependencies(cubridsa

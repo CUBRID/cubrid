@@ -255,6 +255,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
+  ${QUERY_DIR}/vector_opfunc.cpp
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -439,6 +440,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_open_data.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
