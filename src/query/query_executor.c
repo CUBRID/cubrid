@@ -11931,7 +11931,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  continue;
 	}
 
-      if (xptr->status == XASL_CLEARED || xptr->status == XASL_INITIALIZED)
+      if (IS_XASL_INITIAL_STATUS (xptr->status))
 	{
 	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 	    {
@@ -14075,7 +14075,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  continue;
 		}
 
-	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
+	      if (IS_XASL_INITIAL_STATUS (xptr2->status))
 		{
 		  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 		    {
@@ -15954,7 +15954,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
 
   /* first the non recursive part from the CTE shall be executed */
-  if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
+  if (IS_XASL_INITIAL_STATUS (non_recursive_part->status))
     {
       if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	{
