@@ -3092,7 +3092,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
     }
 
   rc = NO_ERROR;
-
   if (query_p->temp_vfid)
     {
       if (!VFID_ISNULL (&tfile_vfid_p->temp_vfid))
