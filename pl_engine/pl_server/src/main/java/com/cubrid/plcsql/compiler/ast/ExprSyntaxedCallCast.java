@@ -43,8 +43,8 @@ public class ExprSyntaxedCallCast extends BuiltinFuncCall {
     public Expr arg;
     public TypeSpec tySpec;
 
-    public ExprSyntaxedCallCast(ParserRuleContext ctx, Expr arg, TypeSpec tySpec) {
-        super(ctx);
+    public ExprSyntaxedCallCast(ParserRuleContext ctx, Expr arg, TypeSpec tySpec, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         assert tySpec.ctx != null;
 
