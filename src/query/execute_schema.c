@@ -3202,7 +3202,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
-				       &statement->info.index, obj, DO_INDEX_CREATE);
+				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);
   return error;
 }
 

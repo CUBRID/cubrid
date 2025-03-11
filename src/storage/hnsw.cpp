@@ -22,7 +22,6 @@
 
 #include <bits/stdc++.h>
 
-#include "faiss/IndexHNSW.h"
 #include "hnsw.hpp"
 
 // TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
