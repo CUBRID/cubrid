@@ -2146,6 +2146,9 @@ struct pt_create_entity_info
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
+  int vector_index_type;
+  int ef_con;
+  int m;
   PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
