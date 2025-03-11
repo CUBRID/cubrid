@@ -66,6 +66,7 @@ namespace parallel_heap_scan
       cubthread::entry_workpool *m_workpool;
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_reader> m_list_reader;
+      QUERY_ID m_query_id;
   };
 }
 

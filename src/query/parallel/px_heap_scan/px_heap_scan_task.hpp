@@ -43,7 +43,8 @@ namespace parallel_heap_scan
       task &operator= (task &&) = delete;
 
       task (std::shared_ptr<context> context,
-	    std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream);
+	    std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
+	    std::shared_ptr<list_id_wrapper> list_id_wrapper);
       ~task();
 
       virtual void execute (cubthread::entry &thread_ref) override;
@@ -53,6 +54,7 @@ namespace parallel_heap_scan
       std::shared_ptr<context> m_context;
       std::shared_ptr<memory_mapper> m_memory_mapper;
       std::shared_ptr<list_stream> m_list_stream;
+      std::shared_ptr<list_id_wrapper> m_list_id_wrapper;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

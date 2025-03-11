@@ -30,7 +30,7 @@
 #include "perf_monitor.h"
 #include "query_manager.h"
 
-#define PARALLEL_HEAP_SCAN_LOG 0
+#define PARALLEL_HEAP_SCAN_LOG 1
 #if PARALLEL_HEAP_SCAN_LOG
 #include <unistd.h>
 #include <sys/syscall.h>
@@ -43,10 +43,12 @@
 namespace parallel_heap_scan
 {
   task::task (std::shared_ptr<context> context,
-	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream)
+	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
+	      std::shared_ptr<list_id_wrapper> list_id_wrapper)
     : m_context (context)
     , m_memory_mapper (memory_mapper)
     , m_list_stream (list_stream)
+    , m_list_id_wrapper (list_id_wrapper)
   {
 
   }
@@ -100,6 +102,7 @@ namespace parallel_heap_scan
     TSCTIMEVAL tv_diff;
     UINT64 old_fetches = 0, old_ioreads = 0;
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
+    list_id_data data;
     QUERY_ID query_id = m_list_stream->get_query_id();
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
 
@@ -120,7 +123,11 @@ namespace parallel_heap_scan
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
-
+    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
+    m_list_id_wrapper->open (thread_p);
+    lock.unlock();
+    m_context->add_tasks_list_opened();
+    list_writer writer (m_list_stream, m_list_id_wrapper.get());
     scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
 			 scan_id->fixed, scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval,
 			 scan_id->val_list, scan_id->vd, &hsidp->cls_oid, &hsidp->hfid,
@@ -129,7 +136,6 @@ namespace parallel_heap_scan
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
-    list_writer writer (m_list_stream, m_list_stream->get_type_list());
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -216,7 +222,7 @@ namespace parallel_heap_scan
 		  {
 		    tsc_getticks (&t1);
 		  }
-		writer.write (m_context->m_orig_thread_p, scan_id);
+		writer.write (thread_p, scan_id, data);
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
@@ -226,7 +232,8 @@ namespace parallel_heap_scan
 	      }
 	  }
       }
-    writer.close();
+    writer.close (data);
+    m_list_id_wrapper->close();
     m_context->add_tasks_scan_ended();
     if (on_trace)
       {

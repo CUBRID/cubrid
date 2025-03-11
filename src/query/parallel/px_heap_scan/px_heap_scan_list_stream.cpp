@@ -26,7 +26,6 @@
 #include "px_heap_scan_misc.hpp"
 #include "object_representation.h"
 #include "query_opfunc.h"
-#include "dbtype.h"
 #include "object_primitive.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -34,13 +33,18 @@
 
 namespace parallel_heap_scan
 {
-  list_stream::list_stream (int size, QUERY_ID query_id, SCAN_ID *scan_id)
-    : m_queue (), m_type_list (), m_query_id (query_id)
+  list_stream::list_stream (THREAD_ENTRY *thread_p, int parallelism, int size, QUERY_ID query_id, SCAN_ID *scan_id)
   {
     int i;
     REGU_VARIABLE_LIST p;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_id->s.phsid;
-    m_queue.set_capacity (size);
+    m_thread_p = thread_p;
+    m_parallelism = parallelism;
+    m_size = parallelism * size;
+    m_query_id = query_id;
+    m_scan_id = scan_id;
+    m_queue.set_capacity (m_size);
+
     int pred_len = regu_var_list_len (phsid->scan_pred.regu_list);
     int rest_len = regu_var_list_len (phsid->rest_regu_list);
     m_type_list.type_cnt = pred_len + rest_len;
@@ -57,6 +61,12 @@ namespace parallel_heap_scan
       {
 	m_type_list.domp[i] = p->value.domain;
       }
+
+    m_list_id_wrappers.reserve (parallelism);
+    for (i = 0; i < parallelism; i++)
+      {
+	m_list_id_wrappers.push_back (std::make_shared<list_id_wrapper> (thread_p, query_id, &m_type_list));
+      }
   }
 
   list_stream::~list_stream()
@@ -67,25 +77,20 @@ namespace parallel_heap_scan
       }
   }
 
-  void list_stream::enqueue (std::shared_ptr<list_page> page)
+  void list_stream::enqueue (list_id_data &data)
   {
-    m_queue.push (page);
+    m_queue.push (data);
+    er_log_debug (ARG_FILE_LINE, "enqueue list_id_data %d, %d", data.m_vpid.volid, data.m_vpid.pageid);
   }
 
-  std::shared_ptr<list_page> list_stream::dequeue()
-  {
-    std::shared_ptr<list_page> page;
-    m_queue.pop (page);
-    return page;
-  }
-
-  bool list_stream::dequeue_timeout (std::shared_ptr<list_page> &page, int milliseconds)
+  bool list_stream::dequeue_timeout (list_id_data &data, int milliseconds)
   {
     auto end_time = std::chrono::steady_clock::now() + std::chrono::milliseconds (milliseconds);
     while (std::chrono::steady_clock::now() < end_time)
       {
-	if (m_queue.try_pop (page))
+	if (m_queue.try_pop (data))
 	  {
+	    er_log_debug (ARG_FILE_LINE, "dequeue list_id_data %d, %d", data.m_vpid.volid, data.m_vpid.pageid);
 	    return true;
 	  }
 	std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -93,155 +98,44 @@ namespace parallel_heap_scan
     return false;
   }
 
-  size_t list_stream::size()
-  {
-    return m_queue.size();
-  }
-
-  QUERY_ID list_stream::get_query_id()
-  {
-    return m_query_id;
-  }
-
-  QFILE_TUPLE_VALUE_TYPE_LIST *list_stream::get_type_list()
-  {
-    return &m_type_list;
-  }
-
   void list_stream::clear()
   {
     m_queue.clear();
-  }
-
-  list_reader::list_reader (std::shared_ptr<list_stream> stream)
-    : m_stream (stream), m_cur_page (nullptr)
-  {
-
-  }
-
-  list_reader::~list_reader()
-  {
-    if (m_cur_page != nullptr)
+    for (auto &list_id_wrapper : m_list_id_wrappers)
       {
-	m_cur_page->close_list_scan (&m_scan_id);
-	m_cur_page = nullptr;
+	list_id_wrapper->close_list_scan();
       }
   }
 
-  void list_reader::read (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  void list_writer::write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data)
   {
-    list_page::status status = list_page::status::NONE;
-    while (status != list_page::status::READ_SUCCESS)
+    list_id_wrapper::status status = list_id_wrapper::status::NONE;
+    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, scan_id);
+
+    status = m_list_id_wrapper_p->write (thread_p, tplrec);
+    data.m_list_id_wrapper_p = m_list_id_wrapper_p;
+
+    if (status == list_id_wrapper::status::WRITE_SUCCESS)
       {
-	if (m_cur_page == nullptr)
-	  {
-	    m_cur_page = m_stream->dequeue();
-	    m_cur_page->open_list_scan (&m_scan_id);
-	  }
-
-	status = m_cur_page->read (thread_p, scan_id, &m_scan_id);
-	if (status == list_page::status::READ_SUCCESS)
-	  {
-	    return;
-	  }
-	else if (status == list_page::status::READ_END)
-	  {
-	    m_cur_page->close_list_scan (&m_scan_id);
-	    m_cur_page = nullptr;
-	  }
-	else
-	  {
-	    assert (false);
-	  }
+	return;
       }
-  }
-
-  list_writer::list_writer (std::shared_ptr<list_stream> stream, QFILE_TUPLE_VALUE_TYPE_LIST *type_list)
-    : m_stream (stream), m_type_list (type_list), m_query_id (stream->get_query_id()), m_cur_page (nullptr), m_tpl_buf ()
-  {
-    m_tpl_buf.tpl = (char *) malloc (QFILE_MAX_TUPLE_SIZE_IN_PAGE);
-    m_tpl_buf.size = 0;
-    m_type_list = type_list;
-    assert (m_type_list != nullptr);
-  }
-
-  list_writer::~list_writer()
-  {
-    if (m_cur_page != nullptr)
+    else if (status == list_id_wrapper::status::WRITE_CURPAGE_END)
+      {
+	VPID_COPY (&data.m_vpid, &m_list_id_wrapper_p->m_write_vpid);
+	m_stream->enqueue (data);
+	VPID_COPY (&m_list_id_wrapper_p->m_write_vpid, &m_list_id_wrapper_p->m_list_id->last_vpid);
+      }
+    else
       {
 	assert (false);
       }
-    free (m_tpl_buf.tpl);
   }
 
-  void list_writer::write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
+  void list_writer::close (list_id_data &data)
   {
-    list_page::status status = list_page::status::NONE;
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, scan_id);
-    while (status != list_page::status::WRITE_SUCCESS)
-      {
-	if (m_cur_page == nullptr)
-	  {
-	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list);
-	  }
-	status = m_cur_page->write (thread_p, tplrec);
-	if (status == list_page::status::WRITE_SUCCESS)
-	  {
-	    return;
-	  }
-	else if (status == list_page::status::WRITE_END)
-	  {
-	    m_cur_page->close_list();
-	    m_stream->enqueue (m_cur_page);
-	    m_cur_page = nullptr;
-	  }
-	else if (status == list_page::status::WRITE_OVERFLOW)
-	  {
-	    m_cur_page->close_list();
-	    m_stream->enqueue (m_cur_page);
-	    m_cur_page = nullptr;
-	    return;
-	  }
-	else
-	  {
-	    assert (false);
-	  }
-      }
-  }
-
-  void list_writer::write_final (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
-  {
-    list_page::status status = list_page::status::NONE;
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, scan_id);
-    while (status != list_page::status::WRITE_SUCCESS)
-      {
-	if (m_cur_page == nullptr)
-	  {
-	    m_cur_page = std::make_shared<list_page> (thread_p, m_query_id, m_type_list);
-	  }
-
-	status = m_cur_page->write (thread_p, tplrec);
-	if (status == list_page::status::WRITE_SUCCESS || status == list_page::status::WRITE_END)
-	  {
-	    m_cur_page->close_list();
-	    m_stream->enqueue (m_cur_page);
-	    m_cur_page = nullptr;
-	  }
-	else
-	  {
-	    assert (false);
-	  }
-      }
-  }
-
-  void list_writer::close ()
-  {
-    if (m_cur_page != nullptr)
-      {
-	m_cur_page->close_list();
-	m_stream->enqueue (m_cur_page);
-	m_cur_page = nullptr;
-      }
+    m_list_id_wrapper_p->close();
+    VPID_COPY (&data.m_vpid, &m_list_id_wrapper_p->m_write_vpid);
+    m_stream->enqueue (data);
   }
 
   QFILE_TUPLE_RECORD *list_writer::make_tuple_record (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
@@ -332,21 +226,61 @@ namespace parallel_heap_scan
 
     return &m_tpl_buf;
   }
-
-  list_page::list_page (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list)
-    : m_list_id (nullptr), m_thread_p (thread_p), m_type_list (type_list)
+  list_id_wrapper::list_id_wrapper (THREAD_ENTRY *thread_p, QUERY_ID query_id, QFILE_TUPLE_VALUE_TYPE_LIST *type_list)
   {
-    m_list_id = qfile_open_list (thread_p, type_list, nullptr, query_id, QFILE_FLAG_ALL, nullptr);
+    m_main_thread_p = thread_p;
+    m_task_thread_p = nullptr;
+    m_query_id = query_id;
+    m_type_list = type_list;
+    m_list_id = nullptr;
+    m_list_scan_opened = false;
+    m_list_id_closed = false;
+    VPID_SET_NULL (&m_read_vpid);
+    VPID_SET_NULL (&m_write_vpid);
+  }
+
+  list_id_wrapper::~list_id_wrapper()
+  {
+    if (m_list_id != nullptr)
+      {
+	if (m_main_thread_p != m_task_thread_p)
+	  {
+	    qfile_update_qlist_count (m_main_thread_p, m_list_id, 1);
+	    qfile_update_qlist_count (m_task_thread_p, m_list_id, -1);
+	  }
+	qfile_destroy_list (m_main_thread_p, m_list_id);
+	/* Because tran_id and query_id is same, and task thread is exited. */
+      }
+  }
+
+  int list_id_wrapper::open_list_scan ()
+  {
     assert (m_list_id != nullptr);
+    if (m_list_scan_opened)
+      {
+	return 0;
+      }
+    m_list_scan_opened = true;
+    return qfile_open_list_scan (m_list_id, &m_list_scan_id);
   }
 
-  list_page::~list_page()
+  int list_id_wrapper::close_list_scan ()
   {
-    qfile_destroy_list (m_thread_p, m_list_id);
+    if (m_list_id != nullptr)
+      {
+	if (m_list_scan_opened)
+	  {
+	    qfile_close_scan (m_main_thread_p, &m_list_scan_id);
+	    m_list_scan_opened = false;
+	  }
+      }
+    return 0;
   }
 
-  list_page::status list_page::read (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, QFILE_LIST_SCAN_ID *list_scan_id)
+  list_id_wrapper::status list_id_wrapper::read (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
+      QFILE_LIST_SCAN_ID *list_scan_id)
   {
+    assert (thread_p == m_main_thread_p);
     QFILE_TUPLE_RECORD tplrec;
     QFILE_TUPLE_VALUE_FLAG flag;
     OR_BUF iterator, buf;
@@ -356,19 +290,37 @@ namespace parallel_heap_scan
     int length;
     char *ptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_id->s.phsid;
-    SCAN_CODE status = qfile_scan_list_next (thread_p, list_scan_id, &tplrec, PEEK);
 
-    if (status == S_SUCCESS)
+    if (list_scan_id->position == S_ON
+	&& list_scan_id->curr_pgptr
+	&& VPID_EQ (&m_read_vpid, &list_scan_id->curr_vpid)
+	&& list_scan_id->curr_tplno >= QFILE_GET_TUPLE_COUNT (list_scan_id->curr_pgptr) - 1)
       {
-	/* fall through */
+	return status::READ_CURPAGE_END;
       }
-    else if (status == S_END)
+
+    while (true)
       {
-	return status::READ_END;
-      }
-    else
-      {
-	return status::READ_ERROR;
+	SCAN_CODE status = qfile_scan_list_next (thread_p, list_scan_id, &tplrec, PEEK);
+	if (status == S_SUCCESS)
+	  {
+	    if (VPID_EQ (&m_read_vpid, &list_scan_id->curr_vpid))
+	      {
+		break;
+	      }
+	    else
+	      {
+		continue;
+	      }
+	  }
+	else if (status == S_END)
+	  {
+	    return status::READ_END;
+	  }
+	else
+	  {
+	    return status::READ_ERROR;
+	  }
       }
 
     or_init (&iterator, tplrec.tpl, QFILE_GET_TUPLE_LENGTH (tplrec.tpl));
@@ -431,52 +383,46 @@ namespace parallel_heap_scan
     return status::READ_SUCCESS;
   }
 
-  list_page::status list_page::write (THREAD_ENTRY *thread_p, QFILE_TUPLE_RECORD *tplrec)
+  list_id_wrapper::status list_id_wrapper::write (THREAD_ENTRY *thread_p, QFILE_TUPLE_RECORD *tplrec)
   {
-    if (VPID_ISNULL (&m_list_id->first_vpid))
-      {
-	if (qfile_add_tuple_to_list (thread_p, m_list_id, (QFILE_TUPLE) tplrec->tpl) != NO_ERROR)
-	  {
-	    return status::WRITE_ERROR;
-	  }
-	return status::WRITE_SUCCESS;
-      }
-    if (tplrec->size > QFILE_MAX_TUPLE_SIZE_IN_PAGE)
-      {
-	/* overflow page */
-	if (qfile_add_tuple_to_list (thread_p, m_list_id, (QFILE_TUPLE) tplrec->tpl) != NO_ERROR)
-	  {
-	    return status::WRITE_ERROR;
-	  }
-	return status::WRITE_OVERFLOW;
-      }
-    if ((tplrec->size + m_list_id->last_offset) > DB_PAGESIZE)
-      {
-	/* page full */
-	return status::WRITE_END;
-      }
+    assert (thread_p == m_task_thread_p);
     if (qfile_add_tuple_to_list (thread_p, m_list_id, (QFILE_TUPLE) tplrec->tpl) != NO_ERROR)
       {
 	return status::WRITE_ERROR;
       }
+
+    if (VPID_ISNULL (&m_write_vpid))
+      {
+	VPID_COPY (&m_write_vpid, &m_list_id->last_vpid);
+      }
+
+    if (!VPID_EQ (&m_write_vpid, &m_list_id->last_vpid))
+      {
+	return status::WRITE_CURPAGE_END;
+      }
+
     return status::WRITE_SUCCESS;
   }
 
-  void list_page::close_list()
+  void list_id_wrapper::open (THREAD_ENTRY *thread_p)
   {
-    qfile_close_list (m_thread_p, m_list_id);
+    if (m_task_thread_p != thread_p)
+      {
+	m_task_thread_p = thread_p;
+      }
+    m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL, nullptr);
+    assert (m_list_id != nullptr);
   }
 
-  int list_page::open_list_scan (QFILE_LIST_SCAN_ID *list_scan_id)
+  void list_id_wrapper::close ()
   {
-    return qfile_open_list_scan (m_list_id, list_scan_id);
+    if (!m_list_id_closed)
+      {
+	qfile_close_list (m_task_thread_p, m_list_id);
+	m_list_id_closed = true;
+      }
   }
 
-  int list_page::close_list_scan (QFILE_LIST_SCAN_ID *list_scan_id)
-  {
-    qfile_close_scan (m_thread_p, list_scan_id);
-    return 0;
-  }
 } // namespace parallel_heap_scan
 
 #endif /* SERVER_MODE && !WINDOWS */

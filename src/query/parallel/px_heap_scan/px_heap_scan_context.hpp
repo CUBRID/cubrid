@@ -49,6 +49,9 @@ namespace parallel_heap_scan
 	bool is_ended;
 	std::mutex mutex;
       } m_locked_vpid;
+
+      std::mutex m_open_list_mutex;
+
       SCAN_ID *m_scan_id;
       THREAD_ENTRY *m_orig_thread_p;
       std::atomic<bool> is_scan_internal_ended;
@@ -90,11 +93,20 @@ namespace parallel_heap_scan
       {
 	m_tasks_executed.fetch_add (1);
       }
+      inline void add_tasks_list_opened()
+      {
+	m_tasks_list_opened.fetch_add (1);
+      }
+      inline bool all_tasks_list_opened() const
+      {
+	return m_tasks_list_opened.load() >= m_tasks_started.load();
+      }
 
     private:
       std::atomic<std::uint64_t> m_tasks_executed;
       std::atomic<std::uint64_t> m_tasks_started;
       std::atomic<std::uint64_t> m_tasks_scan_ended;
+      std::atomic<std::uint64_t> m_tasks_list_opened;
       std::atomic<bool> m_has_error;
       cuberr::er_message m_error_msg;
   };
