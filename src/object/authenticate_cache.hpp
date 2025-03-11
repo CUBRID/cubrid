@@ -142,13 +142,14 @@ class authenticate_cache
 
     void init (void);
     void flush (void);
-    int update (MOP classop, SM_CLASS *sm_class);
+    int update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr);
 
     // setter/getter of cache_index
     int get_cache_index ();
     void set_cache_index (int idx);
 
     unsigned int *get_cache_bits (SM_CLASS *sm_class);
+    unsigned int *get_procedure_cache_bits (MOP proc_mop);
 
     void free_authorization_cache (void *cache);
 
@@ -159,6 +160,7 @@ class authenticate_cache
     int get_user_cache_index (AU_USER_CACHE *cache, int *index);
 
     void reset_cache_for_user_and_class (SM_CLASS *sm_class);
+    void reset_cache_for_user_and_procedure (MOP obj);
     void reset_authorization_caches (void);
 
     void remove_user_cache (MOP user);
@@ -167,6 +169,13 @@ class authenticate_cache
     void print_cache (int cache, FILE *fp);  // for debugging
 
   private:
+
+    // procedure cache
+    using procedure_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure, cache bits>
+
+    procedure_cache_t procedure_cache;
+    std::unordered_map<MOP, MOP> procedure_owner_map;
+
     // migrate static methods
     AU_CLASS_CACHE *make_class_cache (int depth);
     void free_class_cache (AU_CLASS_CACHE *cache);

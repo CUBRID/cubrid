@@ -912,7 +912,7 @@ check_authorization (MOP classobj, SM_CLASS *sm_class, DB_AUTH type)
 	  if (*bits == AU_CACHE_INVALID)
 	    {
 	      /* update the cache and try again */
-	      error = Au_cache.update (classobj, sm_class);
+	      error = Au_cache.update (DB_OBJECT_CLASS, classobj, sm_class);
 	      if (error == NO_ERROR)
 		{
 		  bits = Au_cache.get_cache_bits (sm_class);
@@ -997,7 +997,7 @@ au_get_class_privilege (DB_OBJECT *mop, unsigned int *auth)
 
       if (*bits == AU_CACHE_INVALID)
 	{
-	  error = Au_cache.update (mop, class_);
+	  error = Au_cache.update (DB_OBJECT_CLASS, mop, class_);
 	  if (error == NO_ERROR)
 	    {
 	      bits = Au_cache.get_cache_bits (class_);
