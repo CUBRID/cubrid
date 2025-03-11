@@ -2810,7 +2810,7 @@ create_stmt
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
-			node->info.index.vector_index_type = 1;
+			node->info.index.vector_index_type = 1; // enum like PT_VECTOR_INDEX_HNSW;
 			node->info.index.ef_con = 999;
 			node->info.index.m = 9999;
 
