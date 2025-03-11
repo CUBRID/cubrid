@@ -17494,33 +17494,23 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
 void
 pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *col, *next, *spec;
+  PT_NODE *col, *next;
 
   assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
 
-  if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
+  if (query->info.query.order_by == NULL)
     {
-      for (col = pt_get_select_list (parser, query); col && query->info.query.order_by == NULL; col = col->next)
+      for (col = pt_get_select_list (parser, query); col; col = col->next)
 	{
 	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 	    {
 	      col->info.expr.op = PT_INST_NUM;
 	    }
 	}
+    }
 
-      spec = query->info.query.q.select.from;
-      while (spec)
-	{
-	  if (PT_SPEC_IS_DERIVED (spec))
-	    {
-	      if (pt_is_distinct (spec->info.spec.derived_table))
-		{
-		  pt_try_remove_order_by (parser, spec->info.spec.derived_table);
-		}
-	    }
-	  spec = spec->next;
-	}
-
+  if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
+    {
       /* order_by can not be removed when query has orderby_for or limit */
       return;
     }

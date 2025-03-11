@@ -5262,7 +5262,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       /* the select list must have only one element and the first argument has to be of the same type as the argument
        * from the select list */
       PT_NODE *arg2_list = NULL;
-      PT_NODE *col = NULL;
+
       /* duplicates are not relevant; order by is not relevant; */
       expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
       pt_try_remove_order_by (parser, arg2);
@@ -5271,14 +5271,6 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       if (arg2_list == NULL)
 	{
 	  return NULL;
-	}
-
-      for (col = arg2_list; col; col = col->next)
-	{
-	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
-	    {
-	      col->info.expr.op = PT_INST_NUM;
-	    }
 	}
 
       if (PT_IS_COLLECTION_TYPE (arg2_list->type_enum) && arg2_list->node_type == PT_FUNCTION)
