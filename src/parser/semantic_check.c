@@ -17500,12 +17500,23 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
   if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
     {
+      for (col = pt_get_select_list (parser, query); col && query->info.query.order_by == NULL; col = col->next)
+	{
+	  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
+	    {
+	      col->info.expr.op = PT_INST_NUM;
+	    }
+	}
+
       spec = query->info.query.q.select.from;
       while (spec)
 	{
 	  if (PT_SPEC_IS_DERIVED (spec))
 	    {
-	      pt_try_remove_order_by (parser, spec->info.spec.derived_table);
+	      if (pt_is_distinct (spec->info.spec.derived_table))
+		{
+		  pt_try_remove_order_by (parser, spec->info.spec.derived_table);
+		}
 	    }
 	  spec = spec->next;
 	}
