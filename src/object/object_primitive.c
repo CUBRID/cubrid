@@ -10926,7 +10926,7 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
   int align = INT_ALIGNMENT;
   int rc = NO_ERROR;
   int compressed_size = 0, expected_decompressed_size = 0;
-  char *decompressed_string = NULL, *compressed_string = NULL;
+  char *decompressed_string = NULL;
 
   if (value == NULL)
     {
@@ -11067,10 +11067,6 @@ cleanup:
       if (decompressed_string != NULL && decompressed_string != copy_buf)
 	{
 	  db_private_free_and_init (NULL, decompressed_string);
-	}
-      if (compressed_string != NULL)
-	{
-	  db_private_free_and_init (NULL, compressed_string);
 	}
     }
 
