@@ -10660,7 +10660,6 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   int unique_pk = 0;
   int not_null = 0;
   int reverse = 0;
-  int vector = 0;
 
   if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
     {
@@ -10683,7 +10682,6 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   else				/* if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_VECTOR_INDEX) */
     {
       reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
-      vector = (con->type == SM_CONSTRAINT_VECTOR_INDEX) ? true : false;
     }
 
   /* Count the attributes */
