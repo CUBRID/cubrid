@@ -26,7 +26,7 @@
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
 
-#define PARALLEL_HEAP_SCAN_LOG 1
+#define PARALLEL_HEAP_SCAN_LOG 0
 
 #if PARALLEL_HEAP_SCAN_LOG
 #include <unistd.h>

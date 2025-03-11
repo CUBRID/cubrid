@@ -29,7 +29,7 @@
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
 
-#define PARALLEL_HEAP_SCAN_LOG 1
+#define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
 #include <unistd.h>
 #include <sys/syscall.h>
