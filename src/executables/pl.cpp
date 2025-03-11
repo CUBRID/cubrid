@@ -165,12 +165,18 @@ main (int argc, char *argv[])
 #if defined(WINDOWS)
   FARPROC pl_old_hook = NULL;
 #else
-  if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
+  if (os_set_signal_handler (SIGTRAP, SIG_IGN) == SIG_ERR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
+  if (os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
       return ER_GENERIC_ERROR;
     }
 
   os_set_signal_handler (SIGABRT, pl_signal_handler);
+  os_set_signal_handler (SIGTERM, pl_signal_handler);
   os_set_signal_handler (SIGILL, pl_signal_handler);
   os_set_signal_handler (SIGFPE, pl_signal_handler);
   os_set_signal_handler (SIGBUS, pl_signal_handler);
@@ -401,12 +407,10 @@ static void pl_signal_handler (int sig)
 
       exit (1);
     }
-  else
-    {
-      // resume signal hanlding
-      os_set_signal_handler (sig, pl_signal_handler);
-      is_signal_handling = false;
-    }
+
+  // resume signal hanlding
+  os_set_signal_handler (sig, pl_signal_handler);
+  is_signal_handling = false;
 }
 #endif
 
