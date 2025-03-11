@@ -203,11 +203,29 @@ endif(MSVC)
 # Language setting
 #enable_language(C CXX)
 
-# Debug Macro for CUBVEC project. Refer to cubvec_assert.h.
-# How to use? When building the project,
-# `$ cmake -DCUBVEC_TEAM_BUILD=ON ...`
-# Or,
-# `$ configure_options="-DCUBVEC_TEAM_BUILD=ON" ./build.sh ...`
+
+# Debug Macros for CUBVEC Project
+#
+# These options enable developer-specific debugging features by defining
+# preprocessor macros that interact with assertions in cubvec_assert.h.
+#
+# Usage Options:
+#   1. Direct CMake configuration:
+#      $ cmake -DCUBVEC_TEAM_BUILD=ON -DCMAKE_BUILD_TYPE=Debug <other_options>
+#
+#   2. Using the project build script:
+#      $ configure_options="-DCUBVEC_TEAM_BUILD=ON" ./build.sh -m debug build
+#
+# Available build flags:
+#   - CUBVEC_TEAM_BUILD: Enables team-wide debugging features
+#   - HORNETMJ_BUILD, HGRYOO_BUILD, YEUNJUNLEE_BUILD, VIMKIM_BUILD:
+#     Developer-specific debugging features
+#
+# These build flags correspond to preprocessor definitions that can be used
+# in conditional compilation blocks throughout the codebase.
+#
+# Protip: Always build in debug mode (-DCMAKE_BUILD_TYPE=Debug) to ensure
+# assertion statements are properly evaluated and not optimized away.
 if(CUBVEC_TEAM_BUILD)
     add_compile_definitions(CUBVEC_TEAM)
 endif()
