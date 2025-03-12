@@ -163,10 +163,6 @@ struct heap_scancache
 						 * in the scan */
 
     rocksdb::Iterator* kv_iter;
-    rocksdb::ReadOptions kv_readopt;
-
-    heap_scancache ();
-    ~heap_scancache ();
 
     void start_area ();
     void end_area ();

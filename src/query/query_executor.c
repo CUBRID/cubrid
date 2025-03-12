@@ -65,6 +65,7 @@
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"
+#include "cubrocks.hpp"
 #if defined (SERVER_MODE)
 #include "jansson.h"
 #endif /* defined (SERVER_MODE) */
@@ -9903,6 +9904,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
+  /*
   if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
     {
       printf("SCAN: ROCKSDB\n");
@@ -9911,6 +9913,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
     {
       printf ("SCAN: CUBRID\n");
     }
+    */
 
   do
     {
@@ -11499,6 +11502,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  /*
   if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
     {
       printf("UPDATE: ROCKSDB\n");
@@ -11507,6 +11511,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       printf ("UPDATE: CUBRID\n");
     }
+    */
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -12371,6 +12376,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  /*
   if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
     {
       printf("DELETE: ROCKSDB\n");
@@ -12379,6 +12385,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       printf ("DELETE: CUBRID\n");
     }
+    */
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -13665,6 +13672,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int flag;
   TP_DOMAIN *result_domain;
   bool has_user_format;
+  bool use_rocksdb;
 
   thread_p->no_logging = (bool) insert->no_logging;
 
@@ -13693,7 +13701,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       xasl->list_id->query_id = xasl_state->query_id;
     }
 
-  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
+  use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
+
+  /*
+  if (use_rocksdb)
     {
       printf("INSERT: ROCKSDB\n");
     }
@@ -13701,6 +13712,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       printf ("INSERT: CUBRID\n");
     }
+    */
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
@@ -13726,12 +13738,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   /* need to start a topop to ensure statement atomicity. One insert statement might update several disk images. For
    * example, one row insert might update one heap record, zero or more index keys, catalog info of object count, and
    * other things. So, the insert statement must be performed atomically. */
-  if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
-    {
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
-    }
-  savepoint_used = 1;
+  if (!use_rocksdb)
+  {
+    if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
+      {
+        qexec_failure_line (__LINE__, xasl_state);
+        return ER_FAILED;
+      }
+    savepoint_used = 1;
+  }
 
   (void) session_begin_insert_values (thread_p);
 
@@ -14070,6 +14085,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
 	{
 	  s_id = &xasl->curr_spec->s_id;
+    if (use_rocksdb)
+    {
+      /* reserve virtual oids for insert */
+      cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), s_id->s.llsid.list_id->tuple_cnt);
+    }
 	  while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	    {
 	      for (k = num_default_expr, vallist = s_id->val_list->valp; k < val_no; k++, vallist = vallist->next)
@@ -14237,6 +14257,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
 	  GOTO_EXIT_ON_ERROR;
 	}
+
+    if (use_rocksdb)
+  {
+    /* reserve virtual oids for insert */
+    cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), insert->num_val_lists);
+  }
 
       for (i = 0; i < insert->num_val_lists; i++)
 	{
@@ -14443,7 +14469,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       pcontext = NULL;
     }
 
-  if (savepoint_used)
+  if (!use_rocksdb && savepoint_used)
     {
       if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa) != TRAN_ACTIVE)
 	{

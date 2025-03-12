@@ -20,6 +20,7 @@
  * cubrocks.cpp - rocksdb for cubrid
  */
 
+#include "porting.h"
 #ident "$Id$"
 
 #include <string>
@@ -81,7 +82,7 @@ cubrocks::context::context ()
   alive = false;
 
   /* set virtual counter */
-  SET_OID (&virtual_counter, /* volid */ 10, /* page id */ 0, /* slot id */ 0);
+  SET_OID ((OID *) &virtual_counter, /* volid */ 32767, /* page id */ 0, /* slot id */ 0);
 }
 
 cubrocks::context::~context ()
@@ -95,6 +96,10 @@ cubrocks::context::~context ()
 void
 cubrocks::context::kv_config (void)
 {
+  opt.txndb.write_policy = rocksdb::TxnDBWritePolicy::WRITE_PREPARED;
+
+  opt.db.two_write_queues = true;
+  opt.db.unordered_write = true;
   opt.db.bytes_per_sync = 512 * 1024;
   opt.db.max_background_jobs = 6;
   opt.db.max_background_compactions = 2;
@@ -148,18 +153,38 @@ cubrocks::context::is_tran_started (int tran_index)
   return transactions[tran_index].txn != nullptr;
 }
 
-OID
-cubrocks::context::kv_get_virtual_count (void)
+void
+cubrocks::context::kv_reserve_void (int tran_index, int count)
 {
-  OID oid = virtual_counter;
+  UINT64 vcounter, vcounter_next;
 
-  virtual_counter.slotid++;
-  if (virtual_counter.slotid >= 127)
-    {
-      virtual_counter.pageid++;
-      virtual_counter.slotid = 0;
-    }
-  return oid;
+  do
+  {
+    vcounter = virtual_counter;
+    vcounter_next = vcounter + count;
+  }
+  while (!ATOMIC_CAS_64 (&virtual_counter, vcounter, vcounter_next));
+
+  transactions[tran_index].reserved_count = count;
+  transactions[tran_index].reserved_next = vcounter;
+}
+
+OID
+cubrocks::context::kv_get_void (int tran_index)
+{
+    assert (alive);
+    assert (tran_index < MAX_NTRANS);
+    assert (tran_index == LOG_SYSTEM_TRAN_INDEX || transactions[tran_index].txn == nullptr);
+
+    assert (transactions[tran_index].reserved_count > 0);
+
+    OID oid;
+   
+    oid = *((OID *) &transactions[tran_index].reserved_next);
+    transactions[tran_index].reserved_count--;
+    transactions[tran_index].reserved_next++;
+
+    return oid;
 }
 
 void
@@ -237,27 +262,20 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
 
   bool status;
   OID oid;
+  UINT64 oid_uint64;
   char virtual_key[16];
   rocksdb::Slice key (virtual_key, 16);
   rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
 
-  if (context->type == HEAP_OPERATION_INSERT)
-    {
-      oid = cubrocks::ctx->kv_get_virtual_count ();
-    }
-  else
-    {
-      oid = context->oid;
-    }
+  oid = (context->type == HEAP_OPERATION_INSERT) ? kv_get_void (tran_index) : context->oid;
+  oid_uint64 = *((UINT64 *) &oid);
 
   /* memory ordering */
   * ((short *) virtual_key) = context->class_oid.volid;
   * ((int *) (virtual_key + 2)) = context->class_oid.pageid;
   * ((short *) (virtual_key + 6)) = context->class_oid.slotid;
 
-  * ((short *) (virtual_key + 8)) = htons (oid.volid);
-  * ((int *) (virtual_key + 10)) = htonl (oid.pageid);
-  * ((short *) (virtual_key + 14)) = htons (oid.slotid);
+  * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
 
   if (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE)
     {
@@ -289,26 +307,18 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 
   /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
   /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
-  if (scan_cache->kv_iter != nullptr)
-  {
-    /* IDK why this scope is executed. */
-    kv_scan_end (scan_cache);
-  }
-  scan_cache->kv_readopt = rocksdb::ReadOptions ();
+  rocksdb::ReadOptions readopt;
 
-  scan_cache->kv_readopt.prefix_same_as_start = true;
-  scan_cache->kv_readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
-  scan_cache->kv_readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
+  readopt.prefix_same_as_start = true;
+  readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
+  readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
 
-  scan_cache->kv_readopt.snapshot = db->GetSnapshot ();
-  assert (scan_cache->kv_readopt.snapshot != nullptr);
+  readopt.pin_data = true;
+  readopt.fill_cache = false;
+  readopt.async_io = true;
+  readopt.readahead_size = 2 * 1024 * 1024;
 
-  scan_cache->kv_readopt.pin_data = true;
-  scan_cache->kv_readopt.fill_cache = false;
-  scan_cache->kv_readopt.async_io = true;
-  scan_cache->kv_readopt.readahead_size = 2 * 1024 * 1024;
-
-  scan_cache->kv_iter = db->NewIterator (scan_cache->kv_readopt);
+  scan_cache->kv_iter = db->NewIterator (readopt);
   assert (scan_cache->kv_iter != nullptr);
 }
 
@@ -319,13 +329,10 @@ cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
 
   assert (scan_cache != NULL);
   assert (scan_cache->kv_iter != nullptr);
-  assert (scan_cache->kv_readopt.snapshot != nullptr);
 
   delete scan_cache->kv_iter;
-  db->ReleaseSnapshot (scan_cache->kv_readopt.snapshot);
 
   scan_cache->kv_iter = nullptr;
-  scan_cache->kv_readopt.snapshot = nullptr;
 }
 
 SCAN_CODE
@@ -338,7 +345,6 @@ cubrocks::context::kv_logical_scan (int tran_index, OID *class_oid, OID *next_oi
 
   assert (scan_cache != NULL);
   assert (scan_cache->kv_iter != nullptr);
-  assert (scan_cache->kv_readopt.snapshot != nullptr);
 
   /* I think the caller should not use PEEK for ispeeking at this function.
    * However, even if it is called with PEEK, it may not be a matter
@@ -506,6 +512,9 @@ cubrocks::context::transactions_initialize (void)
 
   for (i = 0; i < MAX_NTRANS; i++)
     {
+      transactions[i].reserved_next = 0;
+      transactions[i].reserved_count = 0;
+
       transactions[i].txn = nullptr;
     }
 

@@ -81,9 +81,63 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
+  struct timespec ts_start, ts_end;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_start);
+
   cubrocks::ctx->kv_tran_commit (tran_index);
+  
+  clock_gettime (CLOCK_MONOTONIC, &ts_end);
+  thread_p->statistics.rocks_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_start);
 
   state = log_commit (thread_p, tran_index, retain_lock);
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_end);
+  thread_p->statistics.cub_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+  if (thread_p)
+  {
+      UINT64 cub_sum = thread_p->statistics.cub_insert + thread_p->statistics.cub_commit;
+      UINT64 rocks_sum = thread_p->statistics.rocks_insert + thread_p->statistics.rocks_commit;
+
+      printf ("\n" \
+        "transaction end (%d)\n" \
+        "CUBRID insert commit sum\n" \
+        "%llu.%llu\n" \
+        "%llu.%llu\n" \
+        "%llu.%llu\n" \
+        "RocksDB insert commit sum\n" \
+        "%llu.%llu\n" \
+        "%llu.%llu\n" \
+        "%llu.%llu\n\n",
+
+        tran_index,
+
+        thread_p->statistics.cub_insert / 1000000,
+        thread_p->statistics.cub_insert % 1000000,
+
+        thread_p->statistics.cub_commit / 1000000,
+        thread_p->statistics.cub_commit % 1000000,
+
+        cub_sum / 1000000,
+        cub_sum % 1000000,
+
+        thread_p->statistics.rocks_insert / 1000000,
+        thread_p->statistics.rocks_insert % 1000000,
+
+        thread_p->statistics.rocks_commit / 1000000,
+        thread_p->statistics.rocks_commit % 1000000,
+
+        rocks_sum / 1000000,
+        rocks_sum % 1000000);
+
+      thread_p->statistics.cub_insert = 0;
+      thread_p->statistics.cub_commit = 0;
+      thread_p->statistics.rocks_insert = 0;
+      thread_p->statistics.rocks_commit = 0;
+  }
 
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)

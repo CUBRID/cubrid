@@ -23255,6 +23255,9 @@ error:
 int
 heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
+  struct timespec ts_start, ts_end;
+  int code;
+
   assert (context != NULL);
 
   /* in this scope, rocksdb must works. */
@@ -23263,10 +23266,26 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
   /* if class is user defined */
   if (is_user_class_oid (&context->class_oid))
-    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
+  {
+    clock_gettime (CLOCK_MONOTONIC, &ts_start);
+
+    code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
+    
+    clock_gettime (CLOCK_MONOTONIC, &ts_end);
+    thread_p->statistics.rocks_insert += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+    return code;
+  }
 
   /* general */
-  return heap_insert_logical_internal (thread_p, context, home_hint_p);
+  clock_gettime (CLOCK_MONOTONIC, &ts_start);
+
+  code = heap_insert_logical_internal (thread_p, context, home_hint_p);
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_end);
+  thread_p->statistics.cub_insert += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+  return code;
 }
 
 /*
@@ -25833,15 +25852,6 @@ heap_scancache_block_deallocate (cubmem::block &b)
 //
 // heap_scancache
 //
-
-heap_scancache::heap_scancache () : kv_iter(nullptr)
-{
-}
-
-heap_scancache::~heap_scancache ()
-{
-}
-
 void
 heap_scancache::start_area ()
 {

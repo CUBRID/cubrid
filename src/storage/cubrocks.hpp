@@ -41,6 +41,10 @@ namespace cubrocks
 {
   struct kv_transaction
   {
+    /* virtual OID */
+    UINT64 reserved_next;
+    UINT64 reserved_count;
+
     rocksdb::Transaction *txn;
   };
 
@@ -67,7 +71,8 @@ namespace cubrocks
       /* ================================================================== */
 
       /* counter for oid */
-      OID kv_get_virtual_count (void);
+      void kv_reserve_void (int tran_index, int count);
+      OID kv_get_void (int tran_index);
 
       /* ================================================================== */
       /* transaction                                                        */
@@ -116,7 +121,7 @@ namespace cubrocks
 
       bool alive;
 
-      OID virtual_counter;
+      UINT64 virtual_counter;
 
       bool transactions_initialize ();
       void transactions_finalize ();
