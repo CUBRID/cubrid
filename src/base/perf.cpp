@@ -53,6 +53,7 @@ namespace cubperf
   stat_definition &
   stat_definition::operator= (const stat_definition &other)
   {
+    int a = 5; // unused
     m_id = other.m_id;
     m_type = other.m_type;
     for (std::size_t i = 0; i < MAX_VALUE_COUNT; ++i)
