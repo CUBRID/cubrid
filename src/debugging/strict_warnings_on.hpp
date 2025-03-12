@@ -17,9 +17,9 @@
  */
 
 /*
- * strict_warnings.h - A utility header that treats warnings as errors for specific files to facilitate debugging.
+ * strict_warnings_on.hpp - A utility header that treats warnings as errors for specific files to facilitate debugging.
  * WARNING: Include this header at the top of your file, preferably after any other includes.
- * NOTE: This header must be used in conjunction with strict_warnings_off.h
+ * NOTE: This header must be used in conjunction with strict_warnings_off.hpp
  * INFO: Header guards are not necessary as this file is intended to be included multiple times.
  */
 

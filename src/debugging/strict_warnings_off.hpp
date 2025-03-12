@@ -17,12 +17,12 @@
  */
 
 /*
- * strict_warnings_off.h - A utility header file that disables strict warnings previously enabled by strict_warnings.h
+ * strict_warnings_off.hpp - A utility header file that disables strict warnings previously enabled by strict_warnings_on.hpp
  * NOTE: This header must be included after strict_warnings.h, preferably at the end of the source file.
  * INFO: Header guards are not necessary as this file is intended to be included multiple times.
  */
 
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
 #pragma warning(pop)
