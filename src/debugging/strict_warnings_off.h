@@ -23,8 +23,8 @@
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-  #pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
 #elif defined(_MSC_VER)
-  #pragma warning(pop)
+#pragma warning(pop)
 #endif
 

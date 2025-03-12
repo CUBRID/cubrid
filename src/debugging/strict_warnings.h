@@ -24,10 +24,10 @@
  */
 
 #if defined(__clang__) || defined(__GNUC__)
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic error "-Wall"
-  #pragma GCC diagnostic error "-Wextra"
-  #pragma GCC diagnostic error "-Wconversion"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Wall"
+#pragma GCC diagnostic error "-Wextra"
+#pragma GCC diagnostic error "-Wconversion"
 #elif defined(_MSC_VER)
-  #pragma warning(push, 4)
+#pragma warning(push, 4)
 #endif
