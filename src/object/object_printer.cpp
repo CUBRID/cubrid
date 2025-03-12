@@ -712,7 +712,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  m_buf (" CONSTRAINT ");
 	  describe_identifier (constraint.name, prt_type);
 	  m_buf (" FOREIGN KEY ");
-          break;
+	  break;
 	case SM_CONSTRAINT_VECTOR_INDEX:
 	  m_buf (" VECTOR INDEX ");
 	  describe_identifier (constraint.name, prt_type);
