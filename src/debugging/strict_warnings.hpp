@@ -23,18 +23,18 @@
  * INFO: Header guards are not necessary as this file is intended to be included multiple times.
  */
 
-#if defined(__clang__)
+#if defined(__GNUC__) || defined(__clang__)
 // Clang supports group warning options with diagnostic error.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wall"
 #pragma GCC diagnostic error "-Wextra"
+#pragma GCC diagnostic error "-Wpedantic"
 
-#elif defined(__GNUC__)
 // GCC does not support turning -Wall and -Wextra into errors directly.
 // Instead, we list each warning that those groups enable individually.
-#pragma GCC diagnostic push
 
 // Warnings from -Wall
+#pragma GCC diagnostic error "-Wpedantic"
 #pragma GCC diagnostic error "-Waddress"
 #pragma GCC diagnostic error "-Warray-bounds"
 #pragma GCC diagnostic error "-Wbool-compare"
@@ -85,9 +85,6 @@
 #pragma GCC diagnostic error "-Wformat-truncation=1"
 #pragma GCC diagnostic error "-Wformat-zero-length"
 #pragma GCC diagnostic error "-Wframe-address"
-#pragma GCC diagnostic error "-Wimplicit"
-#pragma GCC diagnostic error "-Wimplicit-function-declaration"
-#pragma GCC diagnostic error "-Wimplicit-int"
 #pragma GCC diagnostic error "-Winfinite-recursion"
 #pragma GCC diagnostic error "-Wint-in-bool-context"
 #pragma GCC diagnostic error "-Wmemset-elt-size"
@@ -128,9 +125,10 @@
 #pragma GCC diagnostic error "-Wreorder"                     // (C++ only)
 #pragma GCC diagnostic error "-Wself-move"                 // (C++ only)
 #pragma GCC diagnostic error "-Wnarrowing"                 // (C++ only)
-#pragma GCC diagnostic error "-Waligned-new"                // (C++ only)
 #else
 // C-specific warnings:
+#pragma GCC diagnostic error "-Wimplicit-function-declaration"
+#pragma GCC diagnostic error "-Wimplicit-int"
 #pragma GCC diagnostic error "-Wduplicate-decl-specifier"
 #pragma GCC diagnostic error "-Wenum-int-mismatch"
 #pragma GCC diagnostic error "-Wmissing-parameter-type"
@@ -149,7 +147,6 @@
 #pragma GCC diagnostic error "-Wswitch-default"
 #pragma GCC diagnostic error "-Wundef"
 #pragma GCC diagnostic error "-Wuseless-cast"
-#pragma GCC diagnostic error "-Wabsolute-value"
 #pragma GCC diagnostic error "-Walloc-size"
 #pragma GCC diagnostic error "-Wcalloc-transposed-args"
 #pragma GCC diagnostic error "-Wcast-function-type"
@@ -158,7 +155,6 @@
 #pragma GCC diagnostic error "-Wshift-negative-value"
 #pragma GCC diagnostic error "-Wstring-compare"
 #pragma GCC diagnostic error "-Wtype-limits"
-#pragma GCC diagnostic error "-Wunterminated-string-initialization"
 #pragma GCC diagnostic error "-Wunused-but-set-parameter"
 
 #ifdef __cplusplus
@@ -167,6 +163,7 @@
 #pragma GCC diagnostic error "-Wredundant-move"
 #pragma GCC diagnostic error "-Wsized-deallocation"
 #else
+#pragma GCC diagnostic error "-Wabsolute-value"
 #pragma GCC diagnostic error "-Wenum-conversion"
 #pragma GCC diagnostic error "-Wmissing-parameter-name"
 #pragma GCC diagnostic error "-Wold-style-declaration"
