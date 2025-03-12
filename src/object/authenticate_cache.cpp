@@ -448,7 +448,7 @@ authenticate_cache::get_procedure_cache_bits (MOP proc_mop)
     }
 
   bits->resize (cache_max, AU_CACHE_INVALID);
-  return &(*bits)[cache_index];
+  return & (*bits)[cache_index];
 }
 
 /*
