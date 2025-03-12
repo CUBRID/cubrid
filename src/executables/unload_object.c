@@ -161,54 +161,11 @@ static const char *prohibited_classes[] = {
   NULL
 };
 
-// To enable HAVE_ATOMIC_BUILTINS, include "porting.h"
-#if !defined(HAVE_ATOMIC_BUILTINS)
-static pthread_mutex_t atomic_cs_lock = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
-static inline INT64
-get_atomic_value (INT64 * atom_val)
-{
-#if defined(HAVE_ATOMIC_BUILTINS)
-  return ATOMIC_INC_64 (atom_val, 0);
-#else
-  INT64 tval;
-  (void) pthread_mutex_lock (&atomic_cs_lock);
-  tval = *atom_val;
-  pthread_mutex_unlock (&atomic_cs_lock);
-  return tval;
-#endif /* HAVE_ATOMIC_BUILTINS */
-}
-
-static inline void
-incr_atomic_value (INT64 * atom_val)
-{
-#if defined(HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_64 (atom_val, 1);
-#else
-  (void) pthread_mutex_lock (&atomic_cs_lock);
-  (*atom_val)++;
-  pthread_mutex_unlock (&atomic_cs_lock);
-  return tval;
-#endif /* HAVE_ATOMIC_BUILTINS */
-}
-
-static inline void
-reset_atomic_value (INT64 * atom_val)
-{
-#if defined(HAVE_ATOMIC_BUILTINS)
-  ATOMIC_TAS_64 (atom_val, 0);
-#else
-  (void) pthread_mutex_lock (&atomic_cs_lock);
-  *atom_val = 0;
-  pthread_mutex_unlock (&atomic_cs_lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-}
-
+#include <atomic>
 // *INDENT-OFF*
-static INT64  class_objects_atomic = 0;
-static INT64  total_objects_atomic = 0;
-static INT64  failed_objects_atomic = 0;
+static std::atomic_int64_t class_objects_atomic(0);
+static std::atomic_int64_t  total_objects_atomic(0);
+static std::atomic_int64_t  failed_objects_atomic(0);
 // *INDENT-ON*
 
 static INT64 approximate_class_objects = 0;
@@ -1227,8 +1184,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     }
   while (!all_classes_processed ());
 
-  total_objects = get_atomic_value (&total_objects_atomic);	//total_objects_atomic;
-  failed_objects = get_atomic_value (&failed_objects_atomic);	//failed_objects_atomic;
+  total_objects = total_objects_atomic;
+  failed_objects = failed_objects_atomic;
   if (failed_objects != 0)
     {
       status = 1;
@@ -1299,8 +1256,8 @@ gauge_alarm_handler (int sig)
 {
   if (sig == SIGALRM)
     {
-      int64_t class_objects = get_atomic_value (&class_objects_atomic);	//class_objects_atomic;
-      int64_t total_objects = get_atomic_value (&total_objects_atomic);	//total_objects_atomic;
+      int64_t class_objects = class_objects_atomic;
+      int64_t total_objects = total_objects_atomic;
       int64_t total_approximate_class_objects_tmp = total_approximate_class_objects;
 
       if (class_objects > approximate_class_objects)
@@ -1347,8 +1304,8 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
        * Process all objects for a requested class, but
        * only referenced objects for a referenced class.
        */
-      incr_atomic_value (&class_objects_atomic);	//++class_objects_atomic;
-      incr_atomic_value (&total_objects_atomic);	//++total_objects_atomic;
+      ++class_objects_atomic;
+      ++total_objects_atomic;
       LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
       error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, true);
@@ -1371,7 +1328,7 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
 	    {
 	      break;
 	    }
-	  incr_atomic_value (&failed_objects_atomic);	//++failed_objects_atomic;
+	  ++failed_objects_atomic;
 	}
       obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 #if defined(WINDOWS)
@@ -1540,7 +1497,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 	      break;
 	    }
 	  error = NO_ERROR;
-	  incr_atomic_value (&failed_objects_atomic);	//++failed_objects_atomic;
+	  ++failed_objects_atomic;
 	}
     }
 
@@ -1789,7 +1746,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       return NO_ERROR;		/* do nothing successfully */
     }
 
-  reset_atomic_value (&class_objects_atomic);	//class_objects_atomic = 0;
+  class_objects_atomic = 0;
   MARK_CLASS_PROCESSED (cl_no);
 
   /* Get the class data */
@@ -2008,12 +1965,12 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       error = ER_FAILED;
     }
 
-  class_objects = get_atomic_value (&class_objects_atomic);	//class_objects = class_objects_atomic;
+  class_objects = class_objects_atomic;
   total_approximate_class_objects += (class_objects - approximate_class_objects);
 
 exit_on_end:
-  class_objects = get_atomic_value (&class_objects_atomic);	//class_objects_atomic;
-  total_objects = get_atomic_value (&total_objects_atomic);	//total_objects_atomic;
+  class_objects = class_objects_atomic;
+  total_objects = total_objects_atomic;
   if (total_objects >= total_approximate_class_objects)
     {
       total = 100;
@@ -2735,7 +2692,7 @@ print_monitoring_info (const char *class_name, int nthreads)
 
   if (verbose_flag == false)
     {
-      int64_t class_objects = get_atomic_value (&class_objects_atomic);;	// class_objects_atomic;
+      int64_t class_objects = class_objects_atomic;
       fprintf (fp, ALIGN_SPACE_FMT "Records: %ld\n", class_name, class_objects);
     }
 
