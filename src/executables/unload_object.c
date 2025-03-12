@@ -47,6 +47,7 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 #include <thread>
+#include <atomic>
 
 #include "authenticate.h"
 #include "utility.h"
@@ -161,7 +162,6 @@ static const char *prohibited_classes[] = {
   NULL
 };
 
-#include <atomic>
 // *INDENT-OFF*
 static std::atomic_int64_t class_objects_atomic(0);
 static std::atomic_int64_t  total_objects_atomic(0);
