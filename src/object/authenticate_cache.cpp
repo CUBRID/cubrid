@@ -444,7 +444,7 @@ authenticate_cache::get_procedure_cache_bits (MOP proc_mop)
     }
   else
     {
-      bits = procedure_cache[proc_mop];
+      bits = it->second;
     }
 
   bits->resize (cache_max, AU_CACHE_INVALID);
