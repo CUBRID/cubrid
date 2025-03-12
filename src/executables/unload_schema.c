@@ -41,7 +41,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
-#include "load_object.h"
+#include "unload_object_file.h"
 #include "object_primitive.h"
 #include "parser.h"
 #include "printer.hpp"
@@ -179,10 +179,9 @@ static void emit_partition_info (print_output & output_ctx, MOP clsobj);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (print_output & output_ctx);
 static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
-static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
-			    char *output_filename_p, const size_t filename_size);
 static int export_server (print_output & output_ctx);
 static void str_tolower (char *str);
+static int extract_classes (extract_context & ctxt, print_output & schema_output_ctx);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -978,7 +977,7 @@ extract_classes_to_file (extract_context & ctxt, const char *output_filename)
  * Note:
  *    Always output the entire schema.
  */
-int
+static int
 extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 {
   DB_OBJLIST *classes = NULL;
@@ -3847,7 +3846,7 @@ create_filename_indexes (const char *output_dirname, const char *output_prefix,
   return create_filename (output_dirname, output_prefix, INDEX_SUFFIX, output_filename_p, filename_size);
 }
 
-static int
+int
 create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 		 char *output_filename_p, const size_t filename_size)
 {

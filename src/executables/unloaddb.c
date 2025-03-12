@@ -27,6 +27,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#if !defined (WINDOWS)
+#include <sys/time.h>
+#endif
 
 #include "porting.h"
 #include "authenticate.h"
@@ -38,17 +41,26 @@
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "unloaddb.h"
-#include "load_object.h"
 #include "utility.h"
 #include "util_func.h"
+
+#define MAX_PROCESS_COUNT (36)
+
 
 char *database_name = NULL;
 const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
-TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
 
-TEXT_OUTPUT *obj_out = &object_output;
+#define DFLT_PRE_ALLOC_VARCHAR_SIZE (1024)	// 1024 characters
+#define MAX_PRE_ALLOC_VARCHAR_SIZE  (DB_MAX_VARCHAR_PRECISION)
+#define DFLT_REQ_DATASIZE           (100)	// 100 page size
+#define MAX_REQ_DATA_PAGES          (1024)	//
+#define MAX_THREAD_COUNT            (127)
+
+int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
+int g_request_pages = DFLT_REQ_DATASIZE;
+
 int page_size = 4096;
 int cached_pages = 100;
 int64_t est_size = 0;
@@ -63,11 +75,7 @@ bool datafile_per_class = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
-int lo_count = 0;
-
 char *output_prefix = NULL;
-bool do_schema = false;
-bool do_objects = false;
 bool ignore_err_flag = false;
 
 /*
@@ -98,12 +106,21 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   const char *exec_name = arg->command_name;
   char er_msg_file[PATH_MAX];
   int error;
-  int status = 0;
+  int status = 1;
   int i;
   char *user, *password;
   int au_save;
   EMIT_STORAGE_ORDER order;
   extract_context unload_context;
+
+  bool do_objects = false;
+  bool do_schema = false;
+  bool is_main_process = true;
+  bool enhanced_estimates = false;
+  int thread_count = 1;
+  int sampling_records = -1;
+
+  db_set_use_utility_thread (true);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -115,7 +132,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   include_references = utility_get_option_bool_value (arg_map, UNLOAD_INCLUDE_REFERENCE_S);
   required_class_only = utility_get_option_bool_value (arg_map, UNLOAD_INPUT_CLASS_ONLY_S);
   datafile_per_class = utility_get_option_bool_value (arg_map, UNLOAD_DATAFILE_PER_CLASS_S);
-  lo_count = utility_get_option_int_value (arg_map, UNLOAD_LO_COUNT_S);
   est_size = utility_get_option_int_value (arg_map, UNLOAD_ESTIMATED_SIZE_S);
   cached_pages = utility_get_option_int_value (arg_map, UNLOAD_CACHED_PAGES_S);
   output_dirname = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
@@ -137,10 +153,49 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       order = FOLLOW_ATTRIBUTE_ORDER;
     }
 
+  g_pre_alloc_varchar_size = utility_get_option_int_value (arg_map, UNLOAD_STRING_BUFFER_SIZE_S);
+  if (g_pre_alloc_varchar_size < 0 || g_pre_alloc_varchar_size > MAX_PRE_ALLOC_VARCHAR_SIZE)
+    {
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_STRING_BUFFER_SIZE_L,
+	       MAX_PRE_ALLOC_VARCHAR_SIZE);
+      goto end;
+    }
+
+  g_request_pages = utility_get_option_int_value (arg_map, UNLOAD_REQUEST_PAGES_S);
+  if (g_request_pages < 0 || g_request_pages > MAX_REQ_DATA_PAGES)
+    {
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_REQUEST_PAGES_L,
+	       MAX_REQ_DATA_PAGES);
+      goto end;
+    }
+
+  if (verbose_flag)
+    {
+      enhanced_estimates = utility_get_option_bool_value (arg_map, UNLOAD_ENHANCED_ESTIMATES_S);
+    }
+
+  if (!do_schema)
+    {
+      sampling_records = utility_get_option_int_value (arg_map, UNLOAD_SAMPLING_TEST_S);
+      if (sampling_records < -1)
+	{
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_SAMPLING_TEST_L, INT_MAX);
+	  goto end;
+	}
+
+      thread_count = utility_get_option_int_value (arg_map, UNLOAD_THREAD_COUNT_S);
+      if ((thread_count < 0) || (thread_count > MAX_THREAD_COUNT))
+	{
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_THREAD_COUNT_L,
+		   MAX_THREAD_COUNT);
+	  goto end;
+	}
+    }
+
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
 
-
+  status = 0;			// success
   if (database_name == NULL)
     {
       status = 1;
@@ -160,6 +215,17 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       goto end;
+    }
+
+  if (!input_filename)
+    {
+      required_class_only = false;
+    }
+  if (required_class_only && include_references)
+    {
+      include_references = false;
+      fprintf (stderr, "warning: '-ir' option is ignored.\n");
+      fflush (stderr);
     }
 
   /* error message log file */
@@ -207,17 +273,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   if (!status)
     {
       db_set_lock_timeout (prm_get_integer_value (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
-    }
-
-  if (!input_filename)
-    {
-      required_class_only = false;
-    }
-  if (required_class_only && include_references)
-    {
-      include_references = false;
-      fprintf (stdout, "warning: '-ir' option is ignored.\n");
-      fflush (stdout);
     }
 
   class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ, NULL);
@@ -298,6 +353,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  goto end;
 	}
 
+      /* 
+       *  If you are in multi-process mode, this part must be done only in the first process.
+       */
       if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
 				   sizeof (trigger_output_filename)) != 0)
 	{
@@ -316,6 +374,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       unload_context.do_auth = 1;
       unload_context.storage_order = order;
       unload_context.exec_name = exec_name;
+      unload_context.output_prefix = output_prefix;
+      unload_context.output_dirname = output_dirname;
+
       if (extract_classes_to_file (unload_context, output_filename_schema) != 0)
 	{
 	  status = 1;
@@ -337,9 +398,36 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extract_objects (exec_name, output_dirname, output_prefix))
+      unload_context.exec_name = exec_name;
+      unload_context.output_prefix = output_prefix;
+      unload_context.output_dirname = output_dirname;
+
+      struct timeval startTime, endTime;
+      double diffTime;
+      if (sampling_records >= 0)
+	{
+	  gettimeofday (&startTime, NULL);
+	}
+
+      if (extract_objects (unload_context, output_dirname, thread_count, sampling_records, enhanced_estimates))
 	{
 	  status = 1;
+	}
+
+      if (sampling_records >= 0)
+	{
+	  gettimeofday (&endTime, NULL);
+	  int elapsed_sec = 0, elapsed_usec = 0;
+
+	  elapsed_sec = endTime.tv_sec - startTime.tv_sec;
+	  elapsed_usec = endTime.tv_usec - startTime.tv_usec;
+	  if (endTime.tv_usec < startTime.tv_usec)
+	    {
+	      elapsed_usec += 1000000;
+	      elapsed_sec--;
+	    }
+
+	  fprintf (stdout, "Elapsed= %.6f sec\n", elapsed_sec + ((double) elapsed_usec / 1000000));
 	}
     }
   AU_RESTORE (au_save);
