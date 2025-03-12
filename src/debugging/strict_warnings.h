@@ -24,13 +24,18 @@
  */
 
 #if defined(__clang__)
+// Clang supports group warning options with diagnostic error.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wall"
 #pragma GCC diagnostic error "-Wextra"
 #pragma GCC diagnostic error "-Wconversion"
 
 #elif defined(__GNUC__)
-// Common warnings that are part of -Wall
+// GCC does not support turning -Wall and -Wextra into errors directly.
+// Instead, we list each warning that those groups enable individually.
+#pragma GCC diagnostic push
+
+// Warnings from -Wall:
 #pragma GCC diagnostic error "-Waddress"
 #pragma GCC diagnostic error "-Warray-bounds"
 #pragma GCC diagnostic error "-Wbool-compare"
@@ -63,35 +68,42 @@
 #pragma GCC diagnostic error "-Wunused-variable"
 #pragma GCC diagnostic error "-Wunused-parameter"
 #pragma GCC diagnostic error "-Wvarargs"
+
+// Language-specific warnings:
 #ifdef __cplusplus
-  // C++ specific warnings
+// C++ specific
 #else
+// C-specific
 #pragma GCC diagnostic error "-Wmissing-parameter-type"
 #pragma GCC diagnostic error "-Wpointer-sign"
 #endif
 
-// Extra warnings (from -Wextra)
+// Extra warnings from -Wextra:
 #pragma GCC diagnostic error "-Wclobbered"
 #pragma GCC diagnostic error "-Wdeprecated"
 #pragma GCC diagnostic error "-Wfloat-conversion"
 #pragma GCC diagnostic error "-Wignored-qualifiers"
 #pragma GCC diagnostic error "-Wlogical-not-parentheses"
 #pragma GCC diagnostic error "-Wmissing-include-dirs"
-#pragma GCC diagnostic error "-Wold-style-cast"
-#pragma GCC diagnostic error "-Woverloaded-virtual"
 #pragma GCC diagnostic error "-Wpointer-arith"
 #pragma GCC diagnostic error "-Wsign-conversion"
 #pragma GCC diagnostic error "-Wswitch-default"
 #pragma GCC diagnostic error "-Wundef"
 #pragma GCC diagnostic error "-Wuseless-cast"
-#pragma GCC diagnostic error "-Wzero-as-null-pointer-constant"
 
+// Language-specific warnings:
 #ifdef __cplusplus
-  // C++ specific warnings
+// C++ specific
+#pragma GCC diagnostic error "-Wold-style-cast"
+#pragma GCC diagnostic error "-Woverloaded-virtual"
+#pragma GCC diagnostic error "-Wzero-as-null-pointer-constant"
 #else
-  // C specific warnings
+// C-specific
 #endif
 
-#elif defined(_MSC_VER)
+#else
+// For MSVC (or other compilers), adjust as needed.
+#if defined(_MSC_VER)
 #pragma warning(push, 4)
+#endif
 #endif
