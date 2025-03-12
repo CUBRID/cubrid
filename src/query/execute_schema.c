@@ -90,7 +90,7 @@
 
 typedef enum
 {
-  DO_INDEX_CREATE, DO_INDEX_DROP
+  DO_INDEX_CREATE, DO_INDEX_DROP, DO_VECTOR_INDEX_CREATE
 } DO_INDEX;
 
 typedef enum
@@ -2892,10 +2892,17 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
     }
 
-  ctype = get_reverse_unique_index_type (is_reverse, is_unique);
+  if (do_index != DO_VECTOR_INDEX_CREATE)
+    {
+      ctype = get_reverse_unique_index_type (is_reverse, is_unique);
+    }
+  else
+    {
+      ctype = DB_CONSTRAINT_VECTOR_INDEX;
+    }
 
   char *attname_tmp = NULL;
-  if (do_index != DO_INDEX_CREATE)
+  if (do_index != DO_INDEX_CREATE && do_index != DO_VECTOR_INDEX_CREATE)
     {
       assert (constraint_name != NULL);
       nnames = 0;
@@ -3040,7 +3047,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
-  else if (do_index == DO_INDEX_CREATE)
+  else if (do_index == DO_INDEX_CREATE || do_index == DO_VECTOR_INDEX_CREATE)
     {
       if (idx_info->where)
 	{
@@ -3196,6 +3203,41 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				       &statement->info.index, obj, DO_INDEX_CREATE);
+  return error;
+}
+
+/*
+ * do_create_vector_index() - Creates a vector index
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in) : Parse tree of a create index statement
+ */
+int
+do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  const char *index_name = NULL;
+  int error = NO_ERROR;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  /* class should be already available */
+  assert (statement->info.index.indexed_class);
+
+  cls = statement->info.index.indexed_class->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
+				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);
   return error;
 }
 
@@ -5541,6 +5583,7 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PA
 
   for (cons = smclass->constraints; cons != NULL; cons = cons->next)
     {
+      assert (cons->type == SM_CONSTRAINT_VECTOR_INDEX);
       if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  continue;
@@ -9440,7 +9483,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   for (c = class_->constraints; c; c = c->next)
     {
       if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX && c->type != SM_CONSTRAINT_UNIQUE
-	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE && c->type != SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  continue;
 	}
@@ -9565,7 +9608,8 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
   for (c = src_class->constraints; c; c = c->next)
     {
-      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX)
+      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX
+	  && c->type != SM_CONSTRAINT_VECTOR_INDEX)
 	{
 	  /* These should have been copied already. */
 	  continue;
@@ -11269,7 +11313,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  save_constr = true;
 		}
 	      /* non-unique index */
-	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX)
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX
+		       || sm_cls_constr->type == SM_CONSTRAINT_VECTOR_INDEX)
 		{
 		  assert (nb_att_in_constr >= 1);
 		  attr_chg_properties->p[P_CONSTR_NON_UNI] |= ATT_CHG_PROPERTY_PRESENT_OLD;
@@ -15341,6 +15386,7 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique, const c
   switch (sm_constraint->type)
     {
     case SM_CONSTRAINT_INDEX:
+    case SM_CONSTRAINT_VECTOR_INDEX:
       *is_reverse = false;
       *is_unique = false;
       break;

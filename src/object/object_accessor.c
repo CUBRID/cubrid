@@ -3409,9 +3409,14 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
 		  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_REVERSE_INDEX, &btid);
 		  if (r == 0)
 		    {
-		      /* couldn't find anything to search in */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
-		      return NULL;
+		      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_VECTOR_INDEX, &btid);
+
+		      if (r == 0)
+			{
+			  /* couldn't find anything to search in */
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
+			  return NULL;
+			}
 		    }
 		}
 	    }

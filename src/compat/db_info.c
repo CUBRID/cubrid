@@ -2044,6 +2044,10 @@ db_constraint_type (const DB_CONSTRAINT * constraint)
 	{
 	  type = DB_CONSTRAINT_FOREIGN_KEY;
 	}
+      else if (constraint->type == SM_CONSTRAINT_VECTOR_INDEX)
+	{
+	  type = DB_CONSTRAINT_VECTOR_INDEX;
+	}
     }
 
   return (type);

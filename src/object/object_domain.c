@@ -11569,6 +11569,7 @@ tp_valid_indextype (DB_TYPE type)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_VECTOR:
       return 1;
     default:
       return 0;

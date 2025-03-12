@@ -1023,8 +1023,9 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_VID_KEY "*V_KY"
 #define SM_PROPERTY_PRIMARY_KEY "*P"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
+#define SM_PROPERTY_VECTOR_INDEX "*VI"
 
-#define SM_PROPERTY_NUM_INDEX_FAMILY         6
+#define SM_PROPERTY_NUM_INDEX_FAMILY         7
 
 #define SM_FILTER_INDEX_ID "*FP*"
 #define SM_FUNCTION_INDEX_ID "*FI*"
@@ -1051,7 +1052,8 @@ typedef enum
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_VECTOR_INDEX = 2048	/* attribute has a vector index 0x800 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */

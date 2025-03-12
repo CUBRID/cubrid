@@ -62,7 +62,8 @@ struct pr_type;
         ((SM_IS_ATTFLAG_UNIQUE_FAMILY(c)      || \
 	 (c) == SM_ATTFLAG_FOREIGN_KEY        || \
          (c) == SM_ATTFLAG_INDEX              || \
-         (c) == SM_ATTFLAG_REVERSE_INDEX)        \
+         (c) == SM_ATTFLAG_REVERSE_INDEX      || \
+         (c) == SM_ATTFLAG_VECTOR_INDEX)         \
          ? true : false)
 
 #define SM_IS_ATTFLAG_REVERSE_INDEX_FAMILY(c) \
@@ -81,6 +82,7 @@ struct pr_type;
 	 (c) == SM_ATTFLAG_FOREIGN_KEY    ? SM_CONSTRAINT_FOREIGN_KEY : \
 	 (c) == SM_ATTFLAG_INDEX          ? SM_CONSTRAINT_INDEX : \
 	 (c) == SM_ATTFLAG_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE : \
+         (c) == SM_ATTFLAG_VECTOR_INDEX   ? SM_CONSTRAINT_VECTOR_INDEX : \
 	                                    SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_MAP_CONSTRAINT_ATTFLAG_TO_PROPERTY(c) \
@@ -98,6 +100,7 @@ struct pr_type;
 	 (c) == DB_CONSTRAINT_INDEX          ? SM_ATTFLAG_INDEX: \
 	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? SM_ATTFLAG_REVERSE_UNIQUE: \
 	 (c) == DB_CONSTRAINT_REVERSE_INDEX  ? SM_ATTFLAG_REVERSE_INDEX: \
+         (c) == DB_CONSTRAINT_VECTOR_INDEX   ? SM_ATTFLAG_VECTOR_INDEX: \
 	                                       SM_ATTFLAG_NONE)
 
 #define SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT(c) \
@@ -106,6 +109,7 @@ struct pr_type;
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? SM_CONSTRAINT_FOREIGN_KEY: \
 	 (c) == DB_CONSTRAINT_INDEX          ? SM_CONSTRAINT_INDEX: \
 	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE: \
+         (c) == DB_CONSTRAINT_VECTOR_INDEX   ? SM_CONSTRAINT_VECTOR_INDEX: \
 	                                       SM_CONSTRAINT_REVERSE_INDEX)
 
 #define SM_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
@@ -123,7 +127,8 @@ struct pr_type;
         ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
 	 (c) == SM_CONSTRAINT_FOREIGN_KEY      || \
          (c) == SM_CONSTRAINT_INDEX            || \
-         (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
+         (c) == SM_CONSTRAINT_VECTOR_INDEX)    || \
+         (c) == SM_CONSTRAINT_REVERSE_INDEX      \
          ? true : false )
 
 #define SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
@@ -133,7 +138,8 @@ struct pr_type;
 
 #define SM_IS_SHARE_WITH_FOREIGN_KEY(c) \
 	(((c) == SM_CONSTRAINT_FOREIGN_KEY || \
-	  (c) == SM_CONSTRAINT_INDEX)         \
+	  (c) == SM_CONSTRAINT_INDEX       || \
+          (c) == SM_CONSTRAINT_VECTOR_INDEX)  \
 	  ? true : false)
 
 #define SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY(c) \
@@ -145,6 +151,7 @@ struct pr_type;
         (((c) == SM_CONSTRAINT_UNIQUE          || \
          (c) == SM_CONSTRAINT_REVERSE_UNIQUE   || \
          (c) == SM_CONSTRAINT_INDEX            || \
+         (c) == SM_CONSTRAINT_VECTOR_INDEX     || \
          (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
          ? true : false )
 
@@ -284,7 +291,8 @@ typedef enum
   SM_CONSTRAINT_REVERSE_UNIQUE,
   SM_CONSTRAINT_REVERSE_INDEX,
   SM_CONSTRAINT_PRIMARY_KEY,
-  SM_CONSTRAINT_FOREIGN_KEY
+  SM_CONSTRAINT_FOREIGN_KEY,
+  SM_CONSTRAINT_VECTOR_INDEX
 } SM_CONSTRAINT_TYPE;
 
 /*

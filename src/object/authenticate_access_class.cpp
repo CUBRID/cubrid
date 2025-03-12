@@ -181,7 +181,8 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 	{
 	  if (constraints->type != SM_CONSTRAINT_INDEX
 	      && constraints->type != SM_CONSTRAINT_REVERSE_INDEX
-	      && constraints->type != SM_CONSTRAINT_UNIQUE && constraints->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+	      && constraints->type != SM_CONSTRAINT_UNIQUE && constraints->type != SM_CONSTRAINT_REVERSE_UNIQUE
+	      && constraints->type != SM_CONSTRAINT_VECTOR_INDEX)
 	    {
 	      continue;
 	    }
