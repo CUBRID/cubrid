@@ -1698,14 +1698,11 @@ cas_free (bool from_sighandler)
 
   if (from_sighandler)
     {
-      cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
-
-      as_info->database_name[0] = '\0';
-      as_info->database_host[0] = '\0';
-      as_info->database_user[0] = '\0';
-      as_info->database_passwd[0] = '\0';
-      as_info->last_connect_time = 0;
-
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
+    }
+  else
+    {
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
     }
 
   if (as_info->cur_statement_pooling && !from_sighandler)
