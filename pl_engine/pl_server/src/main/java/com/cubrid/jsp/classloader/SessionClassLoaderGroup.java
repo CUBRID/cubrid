@@ -14,7 +14,6 @@ public class SessionClassLoaderGroup {
 
     public void clear() {
         classLoaders.clear();
-        classLoaders = null;
     }
 
     public Class<?> loadClass(CompiledCodeSet code) throws ClassNotFoundException {
