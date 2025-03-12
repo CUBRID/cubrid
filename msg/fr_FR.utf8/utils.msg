@@ -516,7 +516,6 @@ options valids:\n\
   -i, --input-class-file=FICHIER  FICHIER d'entrée des noms de tables; par défaut: sauvegarde toutes les classes\n\
       --include-reference         comprennent les tables référencées; avec l'option -i; par défaut: désactivé\n\
       --input-class-only          comprennent seulement la classe spécifiée; avec l'option -i; par défaut: désactivé\n\
-      --lo-count=NOMBRE           NOMBRE de fichiers lo par un répertoire; par défaut: 0\n\
       --estimated-size=NOMBRE     estimation du NOMBRE des instances; par défaut: auto calculée\n\
       --cached-pages=NOMBRE       NOMBRE de pages mises en cache; par défaut: 100\n\
   -O, --output-path=CHEMIN        CHEMIN de répertoire de sortie, par défaut: répertoire de travail\n\
@@ -526,6 +525,8 @@ options valids:\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
       --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
                                   Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
+  -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
+      --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\

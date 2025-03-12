@@ -1279,6 +1279,8 @@ typedef struct _ha_config
 #define UNLOAD_INCLUDE_REFERENCE_L              "include-reference"
 #define UNLOAD_INPUT_CLASS_ONLY_S               11902
 #define UNLOAD_INPUT_CLASS_ONLY_L               "input-class-only"
+/* "--lo-count" is a deprecated option that has been removed.
+ * Let's delete it through a separate issue.*/
 #define UNLOAD_LO_COUNT_S                       11903
 #define UNLOAD_LO_COUNT_L                       "lo-count"
 #define UNLOAD_ESTIMATED_SIZE_S                 11904
@@ -1313,6 +1315,16 @@ typedef struct _ha_config
 #define UNLOAD_KEEP_STORAGE_ORDER_L		"keep-storage-order"
 #define UNLOAD_LATEST_IMAGE_S                   11919
 #define UNLOAD_LATEST_IMAGE_L                   "latest-image"
+#define UNLOAD_THREAD_COUNT_S                   't'
+#define UNLOAD_THREAD_COUNT_L                   "thread-count"
+#define UNLOAD_STRING_BUFFER_SIZE_S             11920
+#define UNLOAD_STRING_BUFFER_SIZE_L             "use-string-buffer"
+#define UNLOAD_REQUEST_PAGES_S                  11921
+#define UNLOAD_REQUEST_PAGES_L                  "use-request-pages"
+#define UNLOAD_SAMPLING_TEST_S                  11922
+#define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
+#define UNLOAD_ENHANCED_ESTIMATES_S             11923
+#define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

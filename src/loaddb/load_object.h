@@ -23,25 +23,11 @@
 #ifndef _LOAD_OBJECT_H_
 #define _LOAD_OBJECT_H_
 
+#include <fcntl.h>
+
 #include "dbtype_def.h"
 #include "class_object.h"
 #include <vector>
-
-class print_output;
-
-#define CHECK_PRINT_ERROR(print_fnc)            \
-  do {                                          \
-    if ((error = print_fnc) != NO_ERROR)        \
-      goto exit_on_error;                       \
-  } while (0)
-
-#define CHECK_EXIT_ERROR(e)                     \
-  do {                                          \
-    if ((e) == NO_ERROR) {                      \
-      if (((e) = er_errid()) == NO_ERROR)       \
-        (e) = ER_GENERIC_ERROR;                 \
-    }                                           \
-  } while (0)
 
 /*
  * DESC_OBJ
@@ -51,6 +37,14 @@ class print_output;
  *    loader/import/export utility but could be used for other things as
  *    well.
  */
+
+
+typedef struct dbvalue_buf
+{
+  char *buf;
+  int buf_size;
+} DBVALUE_BUF;
+
 typedef struct desc_obj
 {
   MOP classop;
@@ -59,31 +53,16 @@ typedef struct desc_obj
   int count;
   SM_ATTRIBUTE **atts;
   DB_VALUE *values;
+  DBVALUE_BUF *dbvalue_buf_ptr;	// Area for copying data of VARCHAR column
 } DESC_OBJ;
 
-typedef struct text_output
-{
-  /* pointer to the buffer */
-  char *buffer;
-  /* pointer to the next byte to buffer when writing */
-  char *ptr;
-  /* optimal I/O pagesize for device */
-  int iosize;
-  /* number of current buffered bytes */
-  int count;
-  /* output file */
-  FILE *fp;
-} TEXT_OUTPUT;
 
-extern int text_print_flush (TEXT_OUTPUT * tout);
-extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
-extern DESC_OBJ *make_desc_obj (SM_CLASS * class_);
+
+extern DESC_OBJ *make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size);
 extern int desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag);
-extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj);
+extern int desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb);
 extern void desc_free (DESC_OBJ * obj);
 
-extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
-extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int er_filter_fileset (FILE * ef);
 extern int er_filter_errid (bool ignore_warning);
 
