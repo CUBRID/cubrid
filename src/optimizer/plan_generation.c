@@ -555,7 +555,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   bool need_coerce_domains;
 
   REGU_VARIABLE_LIST value_list;
-  DB_TYPE outer_type, inner_type;
+  DB_TYPE outer_type, inner_type, common_type;
   int outer_precision, inner_precision;
   int outer_scale, inner_scale;
   int outer_integral, inner_integral;
@@ -910,6 +910,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
       goto exit_on_error;
     }
+  memset (outer_domains, 0, sizeof (TP_DOMAIN *) * value_count);
   domain_info->outer.domains = outer_domains;
   domain_info->outer.value_indexes = outer_value_indexes = merge_info->ls_outer_column;
 
@@ -920,11 +921,20 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
       goto exit_on_error;
     }
+  memset (inner_domains, 0, sizeof (TP_DOMAIN *) * value_count);
   domain_info->inner.domains = inner_domains;
   domain_info->inner.value_indexes = inner_value_indexes = merge_info->ls_inner_column;
 
-  /* need_coerce_domains, coerce_domains */
-  domain_info->coerce_domains = coerce_domains = NULL;
+  /* need_coerce_domains, coerce_domains
+   *   - NULL is not allowed when calling or_packed_domain_size, so either the outer or inner domain must be set. */
+  coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
+  if (coerce_domains == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
+      goto exit_on_error;
+    }
+  memset (coerce_domains, 0, sizeof (TP_DOMAIN *) * value_count);
+  domain_info->coerce_domains = coerce_domains;
   domain_info->need_coerce_domains = need_coerce_domains = false;
 
   for (domain_index = 0; domain_index < value_count; domain_index++)
@@ -940,6 +950,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
       assert (value_list != NULL);
       outer_domains[domain_index] = value_list->value.domain;
+      assert (outer_domains[domain_index] != NULL);
       outer_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
 
       value_list = inner_xasl->outptr_list->valptrp;
@@ -953,135 +964,113 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
       assert (value_list != NULL);
       inner_domains[domain_index] = value_list->value.domain;
+      assert (inner_domains[domain_index] != NULL);
       inner_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
 
+      /* common_type */
       if (outer_type == inner_type)
 	{
-	  outer_precision = outer_domains[domain_index]->precision;
-	  outer_scale = outer_domains[domain_index]->scale;
-
-	  inner_precision = inner_domains[domain_index]->precision;
-	  inner_scale = inner_domains[domain_index]->scale;
-
-	  if (outer_precision == inner_precision && outer_scale == inner_scale)
-	    {
-	      if (coerce_domains != NULL)
-		{
-		  coerce_domains[domain_index] = NULL;
-		}
-	    }
-	  else
-	    {
-	      /* outer_type == inner_type && (outer_precision != inner_precision || outer_scale != inner_scale) */
-
-	      if (need_coerce_domains == true)
-		{
-		  assert (coerce_domains != NULL);
-		}
-	      else
-		{
-		  need_coerce_domains = true;
-
-		  coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-		  if (coerce_domains == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      sizeof (TP_DOMAIN *) * value_count);
-		      goto exit_on_error;
-		    }
-
-		  for (skip_index = 0; skip_index < domain_index; skip_index++)
-		    {
-		      coerce_domains[skip_index] = NULL;
-		    }
-		}
-
-	      if (outer_type == DB_TYPE_NUMERIC)
-		{
-		  common_scale = MAX (outer_scale, inner_scale);
-
-		  outer_integral = outer_precision - outer_scale;
-		  inner_integral = inner_precision - inner_scale;
-
-		  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
-
-		  if (common_precision == outer_precision && common_scale == outer_scale)
-		    {
-		      coerce_domains[domain_index] = outer_domains[domain_index];
-		    }
-		  else if (common_precision == inner_precision && common_scale == inner_scale)
-		    {
-		      coerce_domains[domain_index] = inner_domains[domain_index];
-		    }
-		  else
-		    {
-		      coerce_domains[domain_index] = tp_domain_copy (outer_domains[domain_index], false);
-		      if (coerce_domains[domain_index] == NULL)
-			{
-			  goto exit_on_error;
-			}
-
-		      coerce_domains[domain_index]->precision = common_precision;
-		      coerce_domains[domain_index]->scale = common_scale;
-		    }
-		}
-	      else
-		{
-		  common_precision = MAX (outer_precision, inner_precision);
-		  if (common_precision == outer_precision)
-		    {
-		      coerce_domains[domain_index] = outer_domains[domain_index];
-		    }
-		  else
-		    {
-		      assert (common_precision == inner_precision);
-		      coerce_domains[domain_index] = inner_domains[domain_index];
-		    }
-		}
-	    }
+	  common_type = outer_type;
+	}
+      else if (outer_type == DB_TYPE_NULL)
+	{
+	  coerce_domains[domain_index] = inner_domains[domain_index];
+	  continue;
+	}
+      else if (inner_type == DB_TYPE_NULL)
+	{
+	  coerce_domains[domain_index] = outer_domains[domain_index];
+	  continue;
+	}
+      else if ((TP_IS_BIT_TYPE (outer_type) && TP_IS_BIT_TYPE (inner_type))
+	       || (TP_IS_CHAR_TYPE (outer_type) && TP_IS_CHAR_TYPE (inner_type))
+	       || (TP_IS_DATE_TYPE (outer_type) && TP_IS_DATE_TYPE (inner_type))
+	       || (TP_IS_SET_TYPE (outer_type) && TP_IS_SET_TYPE (inner_type))
+	       || (TP_IS_NUMERIC_TYPE (outer_type) && TP_IS_NUMERIC_TYPE (inner_type)))
+	{
+	  common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
 	}
       else
 	{
-	  /* outer_type != inner_type */
+	  assert (false);
+	  need_coerce_domains = true;
+	  coerce_domains[domain_index] = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	  continue;
+	}
 
-	  if (need_coerce_domains == true)
-	    {
-	      assert (coerce_domains != NULL);
-	    }
-	  else
-	    {
-	      need_coerce_domains = true;
+      /* common_precision, common_scale */
+      outer_precision = outer_domains[domain_index]->precision;
+      outer_scale = outer_domains[domain_index]->scale;
 
-	      coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-	      if (coerce_domains == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  sizeof (TP_DOMAIN *) * value_count);
-		  goto exit_on_error;
-		}
+      inner_precision = inner_domains[domain_index]->precision;
+      inner_scale = inner_domains[domain_index]->scale;
 
-	      for (skip_index = 0; skip_index < domain_index; skip_index++)
-		{
-		  coerce_domains[skip_index] = NULL;
-		}
+      if (outer_precision == TP_FLOATING_PRECISION_VALUE)
+	{
+	  coerce_domains[domain_index] = outer_domains[domain_index];
+	  continue;
+	}
+      else if (inner_precision == TP_FLOATING_PRECISION_VALUE)
+	{
+	  coerce_domains[domain_index] = inner_domains[domain_index];
+	  continue;
+	}
+      else if (common_type == DB_TYPE_NUMERIC)
+	{
+	  common_scale = MAX (outer_scale, inner_scale);
+
+	  outer_integral = outer_precision - outer_scale;
+	  inner_integral = inner_precision - inner_scale;
+
+	  common_precision = MAX (outer_integral, inner_integral) + common_scale;
+	  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+	}
+      else
+	{
+	  common_precision = MAX (outer_precision, inner_precision);
+	  common_scale = 0;
+	}
+
+      /* need_coerce_domains, coerce_domains */
+      if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
+	{
+	  coerce_domains[domain_index] = outer_domains[domain_index];
+	}
+      else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
+	{
+	  coerce_domains[domain_index] = inner_domains[domain_index];
+	}
+      else
+	{
+	  need_coerce_domains = true;
+
+	  coerce_domains[domain_index] =
+	    tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
+			    false);
+	  if (coerce_domains[domain_index] == NULL)
+	    {
+	      goto exit_on_error;
 	    }
 
-	  if (tp_more_general_type (outer_type, inner_type) > 0)
-	    {
-	      coerce_domains[domain_index] = outer_domains[domain_index];
-	    }
-	  else
-	    {
-	      coerce_domains[domain_index] = inner_domains[domain_index];
-	    }
+	  coerce_domains[domain_index]->precision = common_precision;
+	  coerce_domains[domain_index]->scale = common_scale;
+
+	  coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
 	}
     }
 
-  assert (need_coerce_domains == false || coerce_domains != NULL);
-  assert (need_coerce_domains == true || coerce_domains == NULL);
+#if !defined (NDEBUG)
+  if (!need_coerce_domains)
+    {
+      for (domain_index = 0; domain_index < value_count; domain_index++)
+	{
+	  assert (coerce_domains[domain_index] == outer_domains[domain_index] || coerce_domains[domain_index]
+		  || inner_domains[domain_index]);
+	}
+    }
+#endif /* !NDEBUG */
 
-  domain_info->coerce_domains = coerce_domains;
+  domain_info->coerce_domains = (need_coerce_domains) ? coerce_domains : NULL;
   domain_info->need_coerce_domains = need_coerce_domains;
 
 exit_on_end:
@@ -3139,14 +3128,14 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
    * STEP 9: Filter out unnecessary join edge segments from the projected segments of the outer and inner plans.
    *         In this case, the positions of the used segments must be set.
    * 
-   *   e.g. drop table if exists prove_input, build_input;
-   *        create table prove_input (c1 int);
+   *   e.g. drop table if exists probe_input, build_input;
+   *        create table probe_input (c1 int);
    *        create table build_input (c1 int);
    *
    *        -- segs_len: 1 (b.c1)
    *        -- outer_segs_len + inner_segs_len: 2 (a.c1, b.c1)
    *        select --+ recompile use_hash
-   *          b.c1 from prove_input a, build_input b where a.c1 = b.c1;
+   *          b.c1 from probe_input a, build_input b where a.c1 = b.c1;
    */
   if (plan_seg_count > 0 && plan_seg_count < (outer_info->name_count + inner_info->name_count))
     {

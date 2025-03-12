@@ -3702,7 +3702,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 static void
 qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 {
-  json_t *part, *part_array, *build, *probe;
+  json_t *part = NULL, *part_array, *build, *probe;
   json_t *input, *profile;
 
   XASL_NODE *outer_xasl, *inner_xasl;
@@ -3885,7 +3885,10 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   json_object_set_new (parent, "fetch", json_integer (xasl_p->xasl_stats.fetches));
   json_object_set_new (parent, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
   json_object_set_new (parent, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-  json_object_set_new (parent, "build", part);
+  if (part != NULL)
+    {
+      json_object_set_new (parent, "part", part);
+    }
   json_object_set_new (parent, "build", build);
   json_object_set_new (parent, "probe", probe);
 }

@@ -1414,7 +1414,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY *thread_p, HJ_MANAGER *manager)
   status = HASHJOIN_PARTITION;
 
 exit_on_end:
-  if (part_key == NULL)
+  if (part_key != NULL)
     {
       qdata_free_hscan_key (thread_p, part_key, merge_info->ls_column_cnt);
     }
@@ -1709,7 +1709,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY *thread_p, HJ_FETCH_INFO *fetch_info, QF
 
 	  pr_clear_value (key->values[key_index]);
 
-	  if (need_coerce_domains == true && coerce_domains[key_index] != NULL
+	  if (need_coerce_domains && coerce_domains[key_index] != NULL
 	      && coerce_domains[key_index] != domains[key_index])
 	    {
 	      error = domains[key_index]->type->data_readval (&buf, &pre_coerce_value, domains[key_index], -1, false, NULL, 0);
