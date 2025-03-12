@@ -563,14 +563,14 @@ namespace cubpl
     do
       {
 	error = do_ping_connection ();
-	if (error == NO_ERROR || ++c < fail_cnt)
+	if (error == NO_ERROR || ++c > fail_cnt)
 	  {
 	    break;
 	  }
 
 	/* The contents of the pl file may have changed, so set it to read again. */
 	assert (m_sys_conn_pool);
-	m_sys_conn_pool->set_port_disabled();
+	m_sys_conn_pool->set_db_port (pl_server_port_from_info ());
 
 	thread_sleep (1000);	/* 1000 msec */
       }

@@ -227,7 +227,7 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	{
 	  std::vector <int> handlers;
 	  unpacker.unpack_all (handlers);
-	  for (int i = 0; i < handlers.size (); i++)
+	  for (size_t i = 0; i < handlers.size (); i++)
 	    {
 	      cubmethod::get_callback_handler()->free_query_handle (handlers[i], false);
 	    }
