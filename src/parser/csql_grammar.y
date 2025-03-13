@@ -12116,8 +12116,8 @@ opt_using
                         if(arg[1] == 1)
                         {
                                 PT_ERRORf (this_parser, node,
-				"check syntax at %s, subqueries are not allowed in using clause.",
-				pt_short_print (this_parser, node));
+				"check syntax at '%s', subqueries are not allowed in using clause.",
+				pt_short_print_l (this_parser, node));
 
 				break;
                         }
