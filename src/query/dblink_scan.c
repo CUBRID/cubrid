@@ -588,8 +588,8 @@ dblink_find_conn_handle (char *conn_url, char *user_name, char *password)
 
   while (dblink)
     {
-      if (!strcmp ((char *) dblink->conn_url, conn_url) && !strcmp ((char *) dblink->user_name, user_name)
-	  && !strcmp ((char *) dblink->password, password))
+      if (!strcmp (dblink->conn_url, conn_url) && !strcmp (dblink->user_name, user_name)
+	  && !strcmp (dblink->password, password))
 	{
 	  return dblink->conn_handle;
 	}
@@ -615,9 +615,9 @@ dblink_add_conn_handle (int conn_handle, char *conn_url, char *user_name, char *
 
   dblink_conn_entry->conn_handle = conn_handle;
 
-  strcpy ((char *) dblink_conn_entry->conn_url, conn_url);
-  strcpy ((char *) dblink_conn_entry->user_name, user_name);
-  strcpy ((char *) dblink_conn_entry->password, password);
+  strcpy (dblink_conn_entry->conn_url, conn_url);
+  strcpy (dblink_conn_entry->user_name, user_name);
+  strcpy (dblink_conn_entry->password, password);
 
   dblink_conn_entry->next = thread_p->dblink_entry;
   thread_p->dblink_entry = dblink_conn_entry;
