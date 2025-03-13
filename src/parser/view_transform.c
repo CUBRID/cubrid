@@ -1441,10 +1441,18 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
   /* replace table */
   if (statement)
     {
+//       if(subquery->info.query.order_by != NULL && statement->info.query.order_by == NULL)
+//       {
+//         statement =
+//      mq_inline_view_lambda (parser, statement, derived_spec, query_spec_from, NULL, NULL, NULL, NULL);
+//       }
+//       else
+//       {
       statement =
 	mq_inline_view_lambda (parser, statement, derived_spec, query_spec_from, subquery->info.query.q.select.where,
 			       subquery->info.query.q.select.check_where, subquery->info.query.q.select.group_by,
 			       subquery->info.query.q.select.having);
+//       }
       if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_HAS_AGG))
 	{
 	  /* mark as agg select */
@@ -1987,7 +1995,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check for DISTINCT */
-  if (pt_is_distinct (subquery))
+  if (pt_is_distinct (subquery) || (pt_is_distinct (mainquery) && is_rownum_only))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -10431,7 +10439,7 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
   switch (statement->node_type)
     {
     case PT_SELECT:
-      statement->info.query.is_subquery = PT_IS_SUBQUERY;
+      statement->info.query.is_subquery = PT_IS_SUBQUERY;	// ?
 
       specptr = &statement->info.query.q.select.from;
       where_part = &statement->info.query.q.select.where;
