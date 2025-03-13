@@ -745,6 +745,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   MOP owner_mop = NULL;
   const char *class_name = NULL;
   const char *owner_name = NULL;
+  char new_class_name[DB_MAX_IDENTIFIER_LENGTH] = {'\0', };
   int is_partition = DB_NOT_PARTITIONED_CLASS;
   bool has_savepoint = false;
   int i;
@@ -771,8 +772,39 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       return;
     }
 
+  /* We cannot change the schema of a class by using synonym names. */
+  if (db_find_synonym (class_name) != NULL)
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, class_name);
+      db_make_error (return_val, error);
+      return;
+    }
+  else
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  db_make_error (return_val, error);
+	  return;
+	}
+    }
+
   class_mop = sm_find_class (class_name);
   if (class_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      db_make_error (return_val, error);
+      return;
+    }
+
+  owner_mop = au_find_user (owner_name);
+  if (owner_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       db_make_error (return_val, error);
@@ -794,12 +826,58 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
       return;
     }
 
-  owner_mop = au_find_user (owner_name);
-  if (owner_mop == NULL)
+  /* When changing to the same owner, a No-Operation is performed. */
+  if (ws_is_same_object (class_->owner, owner_mop))
     {
-      ASSERT_ERROR_AND_SET (error);
+      return;
+    }
+
+  /* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+  snprintf (new_class_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", owner_name, sm_remove_qualifier_name (class_name));
+
+  if (db_find_synonym (new_class_name) != NULL)
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_ALREADY_EXIST, new_class_name);
       db_make_error (return_val, error);
       return;
+    }
+  else
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  db_make_error (return_val, error);
+	  return;
+	}
+    }
+
+  /* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+  if (db_find_class (new_class_name) != NULL)
+    {
+      ERROR_SET_WARNING_1ARG (error, ER_LC_CLASSNAME_EXIST, new_class_name);
+      db_make_error (return_val, error);
+      return;
+    }
+  else
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  db_make_error (return_val, error);
+	  return;
+	}
     }
 
   error = au_change_class_owner (class_mop, owner_mop);
