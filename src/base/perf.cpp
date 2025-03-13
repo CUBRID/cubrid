@@ -29,7 +29,6 @@
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "strict_warnings_on.hpp"
 
 namespace cubperf
 {
@@ -47,7 +46,6 @@ namespace cubperf
     , m_names { other.m_names[0], other.m_names[1] }
     , m_offset (0)
   {
-    int x = 5;
     //
   }
 
@@ -191,5 +189,3 @@ namespace cubperf
   }
 
 } // namespace cubperf
-
-#include "strict_warnings_off.hpp"
