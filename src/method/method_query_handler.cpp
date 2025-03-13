@@ -839,7 +839,7 @@ namespace cubmethod
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
-    db_session_set_holdable (m_session, true);
+    db_session_set_holdable (m_session, false);
 
     /* prepare result set */
     m_num_markers = get_num_markers ();
