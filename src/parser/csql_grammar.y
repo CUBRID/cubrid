@@ -12118,8 +12118,6 @@ opt_using
                                 PT_ERRORf (this_parser, node,
 				"check syntax at '%s', subqueries are not allowed in using clause.",
 				pt_short_print_l (this_parser, node));
-
-				break;
                         }
 
 			$$ = $3;
