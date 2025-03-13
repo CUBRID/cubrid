@@ -1793,7 +1793,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
-
+  bool has_orderby_num;
   /* check nulls */
   if (subquery == NULL)
     {
@@ -1995,10 +1995,35 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check for DISTINCT */
-  if (pt_is_distinct (subquery) || (pt_is_distinct (mainquery) && is_rownum_only))
+  if (pt_is_distinct (subquery))
     {
       /* not pushable */
       return NON_PUSHABLE;
+    }
+
+  /*
+   * View merging is blocked to preserve ORDER BY clause in inline view 
+   * for the following cases:
+   *
+   * 1. Main query's SELECT list contains ROWNUM or ORDERBY_NUM()
+   * 2. Main query contains LIMIT clause
+   * 3. Subquery's SELECT list contains ORDERBY_NUM()
+   * 4. Subquery contains LIMIT clause
+   *
+   * In these cases, ORDER BY clause must be preserved by preventing view merging
+   * to maintain correct query results.
+   */
+  if (pt_is_distinct (mainquery) && subquery->info.query.order_by != NULL)
+    {
+      bool has_orderby_num = false;
+      parser_walk_tree (parser, subquery->info.query.q.select.list, pt_is_orderby_num_node, &has_orderby_num,
+			pt_is_orderby_num_node_post, &has_orderby_num);
+
+      if (pt_has_inst_in_where_and_select_list (parser, mainquery) || has_orderby_num
+	  || pt_has_inst_num (parser, subquery->info.query.q.select.where))
+	{
+	  return NON_PUSHABLE;
+	}
     }
 
   /* check for aggregate or orderby_for or analytic */

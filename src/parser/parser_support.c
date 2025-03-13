@@ -1385,6 +1385,49 @@ pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
   return tree;
 }
 
+PT_NODE *
+pt_is_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_orderby_num = (bool *) arg;
+
+  if (*has_orderby_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+PT_NODE *
+pt_is_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_orderby_num = (bool *) arg;
+
+  if (PT_IS_ORDERBYNUM (tree))
+    {
+      *has_orderby_num = true;
+    }
+
+  if (*has_orderby_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
 /*
  * pt_is_inst_or_orderby_num_node () -
  *   return:

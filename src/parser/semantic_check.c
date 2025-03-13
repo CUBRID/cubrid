@@ -17498,7 +17498,6 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
   assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
 
-
   if (query->info.query.order_by == NULL || query->info.query.orderby_for != NULL || query->info.query.limit != NULL)
     {
       /* order_by can not be removed when query has orderby_for or limit */
