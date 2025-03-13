@@ -447,6 +447,10 @@ pl_jvm_options ()
   options.push_back ("-ea"); // must be the first option in order not to override ones specified by the user
 #endif // !NDEBUG
 
+  // CBRD-25659: dump heap memory on JVM OutOfMemory error
+  options.push_back ("-XX:+HeapDumpOnOutOfMemoryError");
+  options.push_back ("-XX:HeapDumpPath=jvmheapdump.hprof");
+
   // defaults
   options.push_back ("-Djava.awt.headless=true");
   options.push_back ("-Dfile.encoding=UTF-8");
