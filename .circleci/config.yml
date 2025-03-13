@@ -9,7 +9,7 @@ parameters:
     default: "none"
   run_shell_test:
     type: boolean
-    default: false
+    default: true
 
 # --------------------------------------------------
 # 1. Reusable commands
@@ -40,25 +40,35 @@ commands:
             elif [ "$TEST_SUITE" = "plcsql" ]; then
               # Hack: run plcsql test via sql suite
               TEST_SUITE="sql"
-              glob_path="cubrid-testcases/sql/{_05_plcsql,_35_fig_cake/plcsql}"
+              file_ext="sql"
+              base_dir="cubrid-testcases"
+              # glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
+              glob_path="$base_dir/sql/_35_fig_cake/plcsql/**/*.sql"
             elif [ "$TEST_SUITE" = "sql" ]; then
-              rm -rf cubrid-testcases/sql/_05_plcsql
-              rm -rf cubrid-testcases/sql/_35_fig_cake/plcsql
-              glob_path="cubrid-testcases/$TEST_SUITE/_*"
+              file_ext="sql"
+              base_dir="cubrid-testcases"
+              rm -rf $base_dir/sql/_05_plcsql
+              rm -rf $base_dir/sql/_35_fig_cake/plcsql
+              # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
+              glob_path="$base_dir/$TEST_SUITE/_01_object/**/*.sql"
             elif [ "$TEST_SUITE" = "shell" ]; then
-              glob_path="cubrid-testcases-private-ex/$TEST_SUITE/_*"
+              file_ext="sh"
+              base_dir="cubrid-testcases-private-ex"
+              # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+              glob_path="$base_dir/$TEST_SUITE/_01_utility/_01_sqlx/**/*.sh"
             else
-              glob_path="cubrid-testcases/$TEST_SUITE/_*"
+              file_ext="sql"
+              base_dir="cubrid-testcases"
+              glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
             fi
 
-            # TODO:if save test_result.xml from previous commit's test,'circleci tests split' can be optimized
-            #circleci tests glob $glob_path | circleci tests split | tee tc.list
-            #test code
-            echo "cubrid-testcases-private-ex/shell/_01_utility" | tee tc.list
-            
-            find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' |circleci tests split --split-by=timings | tee tc.list
+            cat tc.list | sed "s|^|$base_dir/|" > keep_files.txt
+            find $base_dir -name "*.$file_ext" -type f | grep -v -f keep_files.txt | xargs -r rm -rf
 
-            #test code
+            # Original command that had issues:   
+            # find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+
             HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1693-6d1e147/drop/CUBRID-11.4.0.1693-6d1e147-Linux.x86_64.sh
             
             # Run the tests
@@ -70,7 +80,6 @@ commands:
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
               mv -f /tmp/tests/*.csv /tmp/logs
-              cp /tmp/tests/*.xml /tmp/logs
             else
               mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
