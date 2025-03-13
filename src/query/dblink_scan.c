@@ -20,6 +20,10 @@
 
 #include <string.h>
 #include "query_executor.h"
+
+// dblink connection handling for distributed transaction
+#include "connection_defs.h"
+#include "thread_manager.hpp"
 #include "dblink_scan.h"
 
 #include "xasl.h"
@@ -39,9 +43,6 @@
 #include <cas_cci.h>
 
 #include <db_json.hpp>
-
-// for dblink connection handling
-#include "connection_defs.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -547,25 +548,26 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 }
 
 int
-dblink_end_tran (THREAD_ENTRY * thread_p, bool is_abort)
+dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 {
-  int rc = NO_ERROR;
+  int tran_error = NO_ERROR, rc;
   T_CCI_ERROR err_buf;
-  DBLINK_CONN_ENTRY *prev, *dblink = thread_p->dblink_entry;
+  DBLINK_CONN_ENTRY *prev;
 
   while (dblink)
     {
       rc = cci_end_tran (dblink->conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
-      if (rc < 0)
+      if (rc < 0 && tran_error == NO_ERROR)
 	{
 	  is_abort = true;
+	  tran_error = ER_DBLINK_TRAN;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	}
 
       rc = cci_disconnect (dblink->conn_handle, &err_buf);
-      if (rc < 0)
+      if (rc < 0 && tran_error == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	}
 
       /* delete dblink_entry */
@@ -575,14 +577,13 @@ dblink_end_tran (THREAD_ENTRY * thread_p, bool is_abort)
       free (prev);
     }
 
-  thread_p->dblink_entry = NULL;
-
-  return rc;
+  return (tran_error == NO_ERROR) ? rc : tran_error;
 }
 
 static int
-dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password)
+dblink_find_conn_handle (char *conn_url, char *user_name, char *password)
 {
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   DBLINK_CONN_ENTRY *dblink = thread_p->dblink_entry;
 
   while (dblink)
@@ -600,8 +601,9 @@ dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_nam
 }
 
 static int
-dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password)
+dblink_add_conn_handle (int conn_handle, char *conn_url, char *user_name, char *password)
 {
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   DBLINK_CONN_ENTRY *dblink_conn_entry;
 
   dblink_conn_entry = (DBLINK_CONN_ENTRY *) malloc (sizeof (DBLINK_CONN_ENTRY));
@@ -612,22 +614,21 @@ dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url
     }
 
   dblink_conn_entry->conn_handle = conn_handle;
+
   strcpy ((char *) dblink_conn_entry->conn_url, conn_url);
   strcpy ((char *) dblink_conn_entry->user_name, user_name);
   strcpy ((char *) dblink_conn_entry->password, password);
-  dblink_conn_entry->next = thread_p->dblink_entry;
 
+  dblink_conn_entry->next = thread_p->dblink_entry;
   thread_p->dblink_entry = dblink_conn_entry;
 
   return NO_ERROR;
 }
 
 int
-dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VAL_DESCR * vd,
-		      DBLINK_HOST_VARS * host_vars)
+dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
-
   int ret = NO_ERROR, result, conn_handle, stmt_handle;
   T_CCI_ERROR err_buf;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
@@ -649,16 +650,28 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
   if (!auto_commit)
     {
-      conn_handle = dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+      conn_handle = dblink_find_conn_handle (spec->s.dblink_node.conn_url, user_name, password);
     }
 
   if (conn_handle < 0)
     {
       conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-      ret = cci_set_autocommit (conn_handle, auto_commit ? CCI_AUTOCOMMIT_TRUE : CCI_AUTOCOMMIT_FALSE);
-      if (!auto_commit && conn_handle >= 0)
+      if (conn_handle < 0)
 	{
-	  ret = dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+
+      ret = cci_set_autocommit (conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
+	  goto error_exit;
+	}
+
+      if (!auto_commit)
+	{
+	  ret = dblink_add_conn_handle (conn_handle, spec->s.dblink_node.conn_url, user_name, password);
 	  if (ret < 0)
 	    {
 	      /* malloc error */
@@ -723,7 +736,7 @@ error_exit:
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 		  VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
@@ -749,18 +762,28 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 
   if (!auto_commit)
     {
-      scan_info->conn_handle = dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+      scan_info->conn_handle = dblink_find_conn_handle (spec->s.dblink_node.conn_url, user_name, password);
     }
 
   if (scan_info->conn_handle < 0)
     {
       scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-      ret = cci_set_autocommit (scan_info->conn_handle, auto_commit ? CCI_AUTOCOMMIT_TRUE : CCI_AUTOCOMMIT_FALSE);
-      if (!auto_commit && scan_info->conn_handle >= 0)
+      if (scan_info->conn_handle < 0)
 	{
-	  ret =
-	    dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
-				    password);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+
+      ret = cci_set_autocommit (scan_info->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
+	  goto error_exit;
+	}
+
+      if (!auto_commit)
+	{
+	  ret = dblink_add_conn_handle (scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name, password);
 	  if (ret < 0)
 	    {
 	      return ret;

@@ -2185,7 +2185,7 @@ QMGR_TRAN_STATUS
 qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 {
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
-  int rc = dblink_end_tran (thread_p, is_abort);
+  int rc = dblink_end_tran (thread_p->dblink_entry, is_abort);
 
   if (rc != NO_ERROR)
     {
@@ -2193,6 +2193,8 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
       status = QMGR_TRAN_DBLINK_ABORTED;
       er_log_debug (ARG_FILE_LINE, "dblink query is not completed !\n");
     }
+
+  thread_p->dblink_entry = NULL;
 
   return status;
 }
