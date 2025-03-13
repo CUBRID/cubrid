@@ -13673,6 +13673,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   TP_DOMAIN *result_domain;
   bool has_user_format;
   bool use_rocksdb;
+  int inserted;
 
   thread_p->no_logging = (bool) insert->no_logging;
 
@@ -14050,6 +14051,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       scan_cache_op_type = SINGLE_ROW_INSERT;
     }
 
+  inserted = 0;
   if (specp)
     {
       /* we are inserting multiple values ... ie. insert into foo select ... */
@@ -14201,6 +14203,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  GOTO_EXIT_ON_ERROR;
 		}
 
+        inserted++;
 	      /* restore class oid and hfid that might have changed in the call above */
 	      HFID_COPY (&insert->class_hfid, &class_hfid);
 	      COPY_OID (&(attr_info.class_oid), &class_oid);
@@ -14224,6 +14227,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		      xasl->list_id->tuple_cnt += force_count;
 		    }
 		}
+
+          if (use_rocksdb && inserted == 50)
+      {
+        /* prepare */
+        cubrocks::ctx->kv_tran_prepare (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+        inserted = 0;
+      }
+	
 	    }
 
 	  if (ls_scan != S_END)
@@ -14408,6 +14419,13 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      /* Clear the list id */
 	      qfile_clear_list_id (xasl->list_id);
 	    }
+
+          if (use_rocksdb && inserted == 50)
+      {
+        /* prepare */
+        cubrocks::ctx->kv_tran_prepare (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+        inserted = 0;
+      }
 	}
     }
 

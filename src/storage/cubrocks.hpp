@@ -80,6 +80,7 @@ namespace cubrocks
 
       void kv_tran_start (int tran_index);
 
+      void kv_tran_prepare (int tran_index);
       void kv_tran_commit (int tran_index);
       void kv_tran_abort (int tran_index);
 

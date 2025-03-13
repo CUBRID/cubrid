@@ -98,17 +98,14 @@ cubrocks::context::kv_config (void)
 {
   opt.txndb.write_policy = rocksdb::TxnDBWritePolicy::WRITE_PREPARED;
 
-  opt.db.two_write_queues = true;
-  opt.db.unordered_write = true;
-  opt.db.bytes_per_sync = 512 * 1024;
   opt.db.max_background_jobs = 6;
   opt.db.max_background_compactions = 2;
   opt.db.max_background_flushes = 2;
   opt.db.max_open_files = -1;
   opt.db.allow_mmap_reads = true;
+  opt.db.two_write_queues = true;
 
-
-
+  opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
   opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10, false));
   opt.table.index_type = rocksdb::BlockBasedTableOptions::kHashSearch;
   opt.table.block_size = 4 * 1024;
@@ -117,8 +114,6 @@ cubrocks::context::kv_config (void)
   opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024);
   opt.table.use_delta_encoding = false;
   opt.table.whole_key_filtering = false;
-
-
 
   opt.cf.level_compaction_dynamic_level_bytes = true;
   opt.cf.compaction_pri = rocksdb::kMinOverlappingRatio;
@@ -201,6 +196,18 @@ cubrocks::context::kv_tran_start (int tran_index)
       transactions[tran_index].txn = db->BeginTransaction (write_options);
       assert (transactions[tran_index].txn != nullptr);
     }
+}
+
+void
+cubrocks::context::kv_tran_prepare (int tran_index)
+{
+  bool status;
+
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+
+  status = transactions[tran_index].txn->Prepare ().ok ();
+  assert (status);
 }
 
 void
