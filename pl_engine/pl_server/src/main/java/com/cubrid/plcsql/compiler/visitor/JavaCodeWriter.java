@@ -104,11 +104,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // Unit
     //
     private static final String tmplGetConn =
-            "Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
+            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
 
     private static final String[] tmplMainUserCode =
             new String[] {
-                "%'+DECL-CLASS'%", "%'+BODY'%",
+                "%'OPT-RETURN'%new Object() {",
+                "  %'RETURN-TYPE'% %'METHOD-NAME'%(",
+                "      %'+PARAMETERS'%",
+                "    ) throws Exception {",
+                "    Long[] sql_rowcount = new Long[] { null };",
+                "    %'+NULLIFY-OUT-PARAMETERS'%",
+                "    %'+DECL-CLASS'%",
+                "    %'+BODY'%",
+                "  }",
+                "}.%'METHOD-NAME'%(%'PARAMETER-NAMES'%);"
             };
 
     private static final String[] tmplUnit =
@@ -121,9 +130,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
                 "    ) throws Exception {",
-                "    %'+NULLIFY-OUT-PARAMETERS'%",
                 "    try {",
-                "      Long[] sql_rowcount = new Long[] { null };",
                 "      %'GET-CONNECTION'%",
                 "      %'+MAIN-USER-CODE'%",
                 // exceptions that escaped from the exception handlers of the body
@@ -188,7 +195,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         : getJavaCodeOfType(node.routine.retTypeSpec);
 
         // parameters
-        Object strParamArr =
+        Object objParamArr =
                 Misc.isEmpty(node.routine.paramList)
                         ? ""
                         : visitNodeList(node.routine.paramList).setDelimiter(",");
@@ -199,15 +206,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // body
         CodeToResolve bodyCode = visit(node.routine.body);
 
+        // main user code
         CodeToResolve mainUserCode =
                 new CodeTemplate(
                         "main user code",
                         Misc.UNKNOWN_LINE_COLUMN,
                         tmplMainUserCode,
+                        "%'OPT-RETURN'%",
+                        node.routine.retTypeSpec == null ? "" : "return ",
+                        "%'+PARAMETERS'%",
+                        objParamArr,
+                        "%'+NULLIFY-OUT-PARAMETERS'%",
+                        strNullifyOutParam,
                         "%'+DECL-CLASS'%",
                         codeDeclClass,
                         "%'+BODY'%",
-                        bodyCode);
+                        bodyCode,
+                        "%'PARAMETER-NAMES'%",
+                        getParameterNames(node.routine.paramList));
         if (!sqlUsesReachableFromLoop.isEmpty()) {
             mainUserCode =
                     wrapWithStmtDeclareAndClose(null, sqlUsesReachableFromLoop, mainUserCode);
@@ -249,10 +265,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
         importsArray = Arrays.copyOf(importsArray, i);
 
+        // parameters - need to visit again to obtain another object instance though the contents are the same,
+        //   because two big holes cannot be resolved by a single CodeToResolve object
+        objParamArr =
+                Misc.isEmpty(node.routine.paramList)
+                        ? ""
+                        : visitNodeList(node.routine.paramList).setDelimiter(",");
+
         return new CodeTemplate(
                 "Unit",
                 new int[] {1, 1},
                 tmplUnit,
+                "%'+MAIN-USER-CODE'%",
+                mainUserCode,
                 "%'+IMPORTS'%",
                 importsArray,
                 "%'CLASS-NAME'%",
@@ -262,13 +287,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'METHOD-NAME'%",
                 node.routine.name,
                 "%'+PARAMETERS'%",
-                strParamArr,
-                "%'+NULLIFY-OUT-PARAMETERS'%",
-                strNullifyOutParam,
+                objParamArr,
                 "%'GET-CONNECTION'%",
                 strGetConn,
-                "%'+MAIN-USER-CODE'%",
-                mainUserCode,
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -2617,10 +2638,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    throw e;",
                 "  } catch (OutOfMemoryError e) {",
                 "    Server.log(e);",
-                "    throw new STORAGE_ERROR().initCause(e);",
+                "    STORAGE_ERROR ee = new STORAGE_ERROR();",
+                "    ee.initCause(e);",
+                "    throw ee;",
                 "  } catch (Throwable e) {",
                 "    Server.log(e);",
-                "    throw new PROGRAM_ERROR().initCause(e);",
+                "    PROGRAM_ERROR ee = new PROGRAM_ERROR();",
+                "    ee.initCause(e);",
+                "    throw ee;",
                 "  }",
                 "}",
                 "%'+CATCHES'%"
@@ -2921,6 +2946,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
 
         return ret.setDelimiter(",");
+    }
+
+    private static String getParameterNames(NodeList<DeclParam> paramList) {
+
+        List<String> ret = new LinkedList<>();
+        for (DeclParam dp : paramList.nodes) {
+            ret.add(dp.name);
+        }
+        return String.join(",", ret.toArray(DUMMY_STRING_ARRAY));
     }
 
     private static String[] getNullifyOutParamCode(NodeList<DeclParam> paramList) {
