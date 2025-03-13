@@ -11,7 +11,7 @@ test_defaults: &test_defaults
         name: Test
         shell: /bin/bash
         environment:
-          _JAVA_OPTIONS: -Xmx500m
+          _JAVA_OPTIONS: -Xmx900m
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
