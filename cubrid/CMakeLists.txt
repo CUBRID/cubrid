@@ -292,7 +292,6 @@ set(SP_SOURCES
   ${SP_DIR}/pl_comm.c
   ${SP_DIR}/pl_file.c
   ${SP_DIR}/pl_sr.cpp
-  ${SP_DIR}/pl_sr_jvm.cpp
   ${SP_DIR}/sp_code.cpp
   )
 
@@ -563,7 +562,7 @@ if(WIN32)
     ${LOADER_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
-  target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
+  target_link_libraries(cubrid LINK_PRIVATE ws2_32)
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
@@ -606,12 +605,10 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ws2_32
     cascci
     cubridcs
-    ${JVM_LIBS}
     ${EP_LIBS}
     )
 
   target_include_directories(cubrid-win-lib PRIVATE
-    ${JAVA_INC}
     ${EP_INCLUDES}
     ${FLEX_INCLUDE_DIRS}
     )

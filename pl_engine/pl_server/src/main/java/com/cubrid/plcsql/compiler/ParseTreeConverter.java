@@ -41,6 +41,7 @@ import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.ast.loopOpt.*;
 import com.cubrid.plcsql.compiler.error.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
@@ -325,7 +326,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             typeVisitMode = TYPE_VISIT_NORMAL;
         }
 
-        Expr defaultVal = visitExpression(ctx.default_value_part());
+        // only the default values visited during the previsit are added to the Abstract Syntax Tree
+        Expr defaultVal = previsiting ? visitExpression(ctx.default_value_part()) : null;
 
         DeclParamIn ret = new DeclParamIn(ctx, name, typeSpec, defaultVal);
         symbolStack.putDecl(name, ret);
@@ -946,13 +948,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 String recordText = Misc.getNormalizedText(ctx.record);
                 // do not push a symbol table: no nested structure
-                Expr ret =
+                ExprSerialVal ret =
                         new ExprSerialVal(
                                 ctx,
                                 recordText,
                                 (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
                                         ? ExprSerialVal.SerialVal.CURR_VAL
-                                        : ExprSerialVal.SerialVal.NEXT_VAL);
+                                        : ExprSerialVal.SerialVal.NEXT_VAL,
+                                getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
                 return ret;
             } else {
@@ -982,7 +986,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 connectionRequired = true;
 
                 String uniqName = owner + '.' + name;
-                ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, uniqName, args);
+                ExprGlobalFuncCall ret =
+                        new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.FunctionSignature(uniqName));
 
                 return ret; // done
@@ -994,7 +1000,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args);
+            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
+            addToSqlUses(ret);
             semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
 
             return ret;
@@ -1007,7 +1014,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 connectionRequired = true;
-                return new ExprBuiltinFuncCall(ctx, name, args);
+                ExprBuiltinFuncCall ret =
+                        new ExprBuiltinFuncCall(ctx, name, args, getSqlSerialNo());
+                addToSqlUses(ret);
+                return ret;
             } else {
                 int res = checkArguments(args, decl.paramList);
                 if (res < 0) {
@@ -1038,7 +1048,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr arg = visitExpression(ctx.argument());
         TypeSpec tySpec = (TypeSpec) visitType_spec(ctx.type_spec());
-        return new ExprSyntaxedCallCast(ctx, arg, tySpec);
+        ExprSyntaxedCallCast ret = new ExprSyntaxedCallCast(ctx, arg, tySpec, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1048,7 +1060,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr arg = visitExpression(ctx.argument());
         boolean isUtf8 = ctx.UTF8() != null;
-        return new ExprSyntaxedCallChr(ctx, arg, isUtf8);
+        ExprSyntaxedCallChr ret = new ExprSyntaxedCallChr(ctx, arg, isUtf8, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1059,7 +1073,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
         String timeUnit = ctx.time_unit().getText();
-        return new ExprSyntaxedCallAdddate(ctx, date, delta, timeUnit);
+        ExprSyntaxedCallAdddate ret =
+                new ExprSyntaxedCallAdddate(ctx, date, delta, timeUnit, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1070,7 +1087,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr date = visitExpression(ctx.date);
         Expr delta = visitExpression(ctx.delta);
         String timeUnit = ctx.time_unit().getText();
-        return new ExprSyntaxedCallSubdate(ctx, date, delta, timeUnit);
+        ExprSyntaxedCallSubdate ret =
+                new ExprSyntaxedCallSubdate(ctx, date, delta, timeUnit, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1080,7 +1100,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         String timeField = ctx.time_field().getText();
         Expr arg = visitExpression(ctx.argument());
-        return new ExprSyntaxedCallExtract(ctx, timeField, arg);
+        ExprSyntaxedCallExtract ret =
+                new ExprSyntaxedCallExtract(ctx, timeField, arg, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1090,7 +1113,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Expr sub = visitExpression(ctx.sub);
         Expr whole = visitExpression(ctx.whole);
-        return new ExprSyntaxedCallPosition(ctx, sub, whole);
+        ExprSyntaxedCallPosition ret =
+                new ExprSyntaxedCallPosition(ctx, sub, whole, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1101,7 +1127,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String trimDir = ctx.trim_dir() == null ? null : ctx.trim_dir().getText();
         Expr trimStr = ctx.trim_str == null ? null : visitExpression(ctx.trim_str);
         Expr str = visitExpression(ctx.str);
-        return new ExprSyntaxedCallTrim(ctx, trimDir, trimStr, str);
+        ExprSyntaxedCallTrim ret =
+                new ExprSyntaxedCallTrim(ctx, trimDir, trimStr, str, getSqlSerialNo());
+        addToSqlUses(ret);
+        return ret;
     }
 
     @Override
@@ -1359,96 +1388,89 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
-        if (ctx.LANGUAGE() != null
-                && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-            int[] lineColumn = Misc.getLineColumnOf(ctx);
-            throw new SyntaxError(
-                    lineColumn[0],
-                    lineColumn[1],
-                    "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
-        }
-        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
-
-        boolean isFunction = (ctx.PROCEDURE() == null);
-        symbolStack.pushSymbolTable(
-                name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
-
-        visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
-
-        NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
-        Body body = visitBody(ctx.body());
-        if (body.label != null && !body.label.equals(name)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.body().label_name()),
-                    String.format(
-                            "label does not match the %s name %s",
-                            isFunction ? "function" : "procedure", name)); // s053
-        }
-
-        symbolStack.popSymbolTable();
-
-        DeclRoutine ret;
-        if (isFunction) {
-            ret = symbolStack.getDeclFunc(name);
-            if (!controlFlowBlocked) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s016
-                        "function " + ret.name + " can reach its end without returning a value");
+        routineDefNestLevel++;
+        try {
+            if (ctx.LANGUAGE() != null
+                    && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+                int[] lineColumn = Misc.getLineColumnOf(ctx);
+                throw new SyntaxError(
+                        lineColumn[0],
+                        lineColumn[1],
+                        "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
-        } else {
-            // procedure
-            ret = symbolStack.getDeclProc(name);
-        }
-        assert ret != null; // by the previsit
-        ret.decls = decls;
-        ret.body = body;
+            String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-            // check it only for local routines
-            checkRedefinitionOfUsedName(name, ctx);
-        }
+            boolean isFunction = (ctx.PROCEDURE() == null);
+            symbolStack.pushSymbolTable(
+                    name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
-        return ret;
+            visitParameter_list(ctx.parameter_list()); // just to put symbols to the symbol table
+
+            NodeList<Decl> decls = visitSeq_of_declare_specs(ctx.seq_of_declare_specs());
+            Body body = visitBody(ctx.body());
+            if (body.label != null && !body.label.equals(name)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.body().label_name()),
+                        String.format(
+                                "label does not match the %s name %s",
+                                isFunction ? "function" : "procedure", name)); // s053
+            }
+
+            symbolStack.popSymbolTable();
+
+            DeclRoutine ret;
+            if (isFunction) {
+                ret = symbolStack.getDeclFunc(name);
+                if (!controlFlowBlocked) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s016
+                            "function "
+                                    + ret.name
+                                    + " can reach its end without returning a value");
+                }
+            } else {
+                // procedure
+                ret = symbolStack.getDeclProc(name);
+            }
+            assert ret != null; // by the previsit
+            ret.decls = decls;
+            ret.body = body;
+
+            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+                // check it only for local routines
+                checkRedefinitionOfUsedName(name, ctx);
+            }
+
+            return ret;
+        } finally {
+            routineDefNestLevel--;
+        }
     }
 
     @Override
     public Body visitBody(BodyContext ctx) {
 
-        StmtLoop.LoopOptimizable loopOptimizableSaved = null;
-        try {
-            if (loopOptimizable != null) {
-                // save the current one
-                loopOptimizableSaved = loopOptimizable;
-                loopOptimizable = null;
-            }
+        boolean allFlowsBlocked;
 
-            boolean allFlowsBlocked;
+        NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        allFlowsBlocked = controlFlowBlocked;
 
-            NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-            allFlowsBlocked = controlFlowBlocked;
-
-            NodeList<ExHandler> exHandlers = new NodeList<>();
-            for (Exception_handlerContext ehc : ctx.exception_handler()) {
-                exHandlers.addNode(visitException_handler(ehc));
-                allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
-            }
-
-            controlFlowBlocked = allFlowsBlocked; // s017-1
-
-            String label;
-            if (ctx.label_name() == null) {
-                label = null;
-            } else {
-                label = Misc.getNormalizedText(ctx.label_name());
-            }
-
-            return new Body(ctx, stmts, exHandlers, label);
-        } finally {
-            if (loopOptimizableSaved != null) {
-                // restore
-                loopOptimizable = loopOptimizableSaved;
-            }
+        NodeList<ExHandler> exHandlers = new NodeList<>();
+        for (Exception_handlerContext ehc : ctx.exception_handler()) {
+            exHandlers.addNode(visitException_handler(ehc));
+            allFlowsBlocked = allFlowsBlocked && controlFlowBlocked;
         }
+
+        controlFlowBlocked = allFlowsBlocked; // s017-1
+
+        String label;
+        if (ctx.label_name() == null) {
+            label = null;
+        } else {
+            label = Misc.getNormalizedText(ctx.label_name());
+        }
+
+        return new Body(ctx, stmts, exHandlers, label);
     }
 
     @Override
@@ -1578,7 +1600,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                     Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
-                    ExprGlobalFuncCall egfc = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
+                    ExprGlobalFuncCall egfc =
+                            new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                    addToSqlUses(egfc);
                     egfc.decl =
                             new DeclFunc(
                                     null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
@@ -1604,7 +1628,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (decl instanceof DeclFunc) {
                 if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
                     connectionRequired = true;
-                    return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                    ExprBuiltinFuncCall ret =
+                            new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                    addToSqlUses(ret);
+                    return ret;
                 } else {
                     return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
                 }
@@ -1631,7 +1658,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } else if (decl instanceof DeclFunc) {
             if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
                 connectionRequired = true;
-                return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                ExprBuiltinFuncCall ret =
+                        new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS, getSqlSerialNo());
+                addToSqlUses(ret);
+                return ret;
             } else {
                 return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
             }
@@ -1743,9 +1773,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtBasicLoop visitStmt_basic_loop(Stmt_basic_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         symbolStack.pushSymbolTable("loop", null);
@@ -1762,9 +1792,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
 
         StmtBasicLoop ret =
-                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizable : null, declLabel, stmts);
+                new StmtBasicLoop(ctx, outermostLoop ? loopOptimizables : null, declLabel, stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
@@ -1784,9 +1814,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtWhileLoop visitStmt_while_loop(Stmt_while_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         symbolStack.pushSymbolTable("while", null);
@@ -1805,20 +1835,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         StmtWhileLoop ret =
                 new StmtWhileLoop(
-                        ctx, outermostLoop ? loopOptimizable : null, declLabel, cond, stmts);
+                        ctx, outermostLoop ? loopOptimizables : null, declLabel, cond, stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
 
     @Override
     public StmtForIterLoop visitStmt_for_iter_loop(Stmt_for_iter_loopContext ctx) {
-
-        boolean outermostLoop = (loopOptimizable == null);
-        if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
-        }
 
         symbolStack.pushSymbolTable("for_iter", null);
 
@@ -1830,6 +1855,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Expr lowerBound = visitLower_bound(ctx.iterator().lower_bound());
         Expr upperBound = visitUpper_bound(ctx.iterator().upper_bound());
         Expr step = visitStep(ctx.iterator().step());
+
+        // NOTE: loopOptimizables must be set after visiting lower bound, upper bound, and step
+        // because they are calculated only once for the loop
+        boolean outermostLoop = (loopOptimizables == null);
+        if (outermostLoop) {
+            loopOptimizables = new StmtLoop.LoopOptimizables();
+        }
 
         DeclForIter iterDecl = new DeclForIter(ctx.iterator().index_name(), iter);
         symbolStack.putDecl(iter, iterDecl);
@@ -1848,7 +1880,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         StmtForIterLoop ret =
                 new StmtForIterLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         declLabel,
                         iterDecl,
                         reverse,
@@ -1857,7 +1889,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         step,
                         stmts);
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
         return ret;
     }
@@ -1884,9 +1916,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public StmtForCursorLoop visitStmt_for_cursor_loop(Stmt_for_cursor_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         connectionRequired = true;
@@ -1944,25 +1976,27 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         StmtForCursorLoop ret =
                 new StmtForCursorLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         cursor,
                         args,
                         label,
                         record,
                         recTy,
-                        stmts);
+                        stmts,
+                        getSqlSerialNo());
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
+        addToSqlUses(ret);
         return ret;
     }
 
     @Override
     public StmtForSqlLoop visitStmt_for_static_sql_loop(Stmt_for_static_sql_loopContext ctx) {
 
-        boolean outermostLoop = (loopOptimizable == null);
+        boolean outermostLoop = (loopOptimizables == null);
         if (outermostLoop) {
-            loopOptimizable = new StmtLoop.LoopOptimizable();
+            loopOptimizables = new StmtLoop.LoopOptimizables();
         }
 
         connectionRequired = true;
@@ -2003,23 +2037,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.putDecl(record, declForRecord);
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
-        controlFlowBlocked =
-                false; // every loop is assumed not to block control flow in generated Java code
+
+        // every loop is assumed not to block control flow in generated Java code
+        controlFlowBlocked = false;
 
         symbolStack.popSymbolTable();
 
         StmtForStaticSqlLoop ret =
                 new StmtForStaticSqlLoop(
                         ctx,
-                        outermostLoop ? loopOptimizable : null,
+                        outermostLoop ? loopOptimizables : null,
                         label,
                         declForRecord,
                         staticSql,
                         stmts,
                         getSqlSerialNo());
         if (outermostLoop) {
-            loopOptimizable = null;
+            loopOptimizables = null;
         }
+        addToSqlUses(ret);
         return ret;
     }
 
@@ -2182,9 +2218,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         int level = symbolStack.getCurrentScope().level + 1;
         StmtStaticSql ret = new StmtStaticSql(ctx, level, staticSql, getSqlSerialNo());
-        if (loopOptimizable != null) {
-            loopOptimizable.sql.add(ret);
-        }
+        addToSqlUses(ret);
         return ret;
     }
 
@@ -2358,7 +2392,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 connectionRequired = true;
 
                 String uniqName = owner + '.' + name;
-                StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, uniqName, args);
+                StmtGlobalProcCall ret =
+                        new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
+                addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(uniqName));
 
                 return ret; // done
@@ -2377,7 +2413,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             connectionRequired = true;
 
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args);
+            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
+            addToSqlUses(ret);
             semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
 
             return ret;
@@ -2427,13 +2464,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
+
         StmtExecImme ret =
                 new StmtExecImme(
                         ctx, level, dynSql, intoTargetList, usedExprList, getSqlSerialNo());
-        if (loopOptimizable != null) {
+        if (loopOptimizables != null) {
             if (dynSql instanceof ExprStr) {
                 // only when it is a fixed string.
-                loopOptimizable.sql.add(ret);
+                loopOptimizables.sqlUses.add(ret);
             }
         }
         return ret;
@@ -2628,7 +2666,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String spRevision;
 
-    private StmtLoop.LoopOptimizable loopOptimizable = null;
+    private StmtLoop.LoopOptimizables loopOptimizables = null;
 
     private String spName;
     private boolean isSpFunc;
@@ -2640,6 +2678,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean controlFlowBlocked;
 
+    private boolean previsiting;
+    private int routineDefNestLevel;
     private int sqlSerialNo;
 
     private int getSqlSerialNo() {
@@ -2697,21 +2737,31 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private void previsitConstant_declaration(Constant_declarationContext ctx) {
 
+        previsiting = true;
+
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitVariable_declaration(Variable_declarationContext ctx) {
+
+        previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, null);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitCursor_definition(Cursor_definitionContext ctx) {
+
+        previsiting = true;
 
         String name = Misc.getNormalizedText(ctx.identifier());
         symbolStack.pushSymbolTable("cursor_def", null);
@@ -2728,95 +2778,104 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable();
         DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
         symbolStack.putDecl(name, ret);
+
+        previsiting = false;
     }
 
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
-        String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
+        previsiting = true;
+        try {
 
-        if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+            String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-            // local procedure/function
+            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
 
-            if (ctx.LANGUAGE() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
-                        "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
-            }
-            if (ctx.authid_spec() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
-                        "illegal keyword AUTHID for a local procedure/function");
-            }
-            if (ctx.routine_uniq_name().owner != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.routine_uniq_name().owner), // s085
-                        "owner specification is not allowed for local procedures/functions");
-            }
-        } else {
+                // local procedure/function
 
-            // SP being defined
-
-            assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
-            spName = name;
-            isSpFunc = (ctx.PROCEDURE() == null);
-        }
-
-        if (ctx.routine_uniq_name().owner != null) {
-            String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
-            assert owner.equals(spOwner);
-        }
-
-        // push a temporary symbol table, in order not to corrupt the current symbol table with the
-        // parameters
-        symbolStack.pushSymbolTable("temp", null);
-        NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
-        symbolStack.popSymbolTable();
-
-        if (ctx.PROCEDURE() == null) {
-            // function
-            if (ctx.RETURN() == null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s050
-                        "function " + name + " must specify its return type");
-            }
-
-            TypeSpec retTypeSpec;
-            try {
-                typeVisitMode = TYPE_VISIT_RETURN;
-                retTypeSpec = (TypeSpec) visit(ctx.type_spec());
-            } finally {
-                typeVisitMode = TYPE_VISIT_NORMAL;
-            }
-
-            Type retType = retTypeSpec.type;
-            if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
-                if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                if (ctx.LANGUAGE() != null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.type_spec()), // s065
-                            "type "
-                                    + retType.plcName
-                                    + " cannot be used as a return type of stored functions");
+                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s083
+                            "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+                }
+                if (ctx.authid_spec() != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                            "illegal keyword AUTHID for a local procedure/function");
+                }
+                if (ctx.routine_uniq_name().owner != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.routine_uniq_name().owner), // s085
+                            "owner specification is not allowed for local procedures/functions");
+                }
+            } else {
+
+                // SP being defined
+
+                assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
+                spName = name;
+                isSpFunc = (ctx.PROCEDURE() == null);
+            }
+
+            if (ctx.routine_uniq_name().owner != null) {
+                String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+                assert owner.equals(spOwner);
+            }
+
+            // push a temporary symbol table, in order not to corrupt the current symbol table with
+            // the
+            // parameters
+            symbolStack.pushSymbolTable("temp", null);
+            NodeList<DeclParam> paramList = visitParameter_list(ctx.parameter_list());
+            symbolStack.popSymbolTable();
+
+            if (ctx.PROCEDURE() == null) {
+                // function
+                if (ctx.RETURN() == null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s050
+                            "function " + name + " must specify its return type");
+                }
+
+                TypeSpec retTypeSpec;
+                try {
+                    typeVisitMode = TYPE_VISIT_RETURN;
+                    retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+                } finally {
+                    typeVisitMode = TYPE_VISIT_NORMAL;
+                }
+
+                Type retType = retTypeSpec.type;
+                if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
+                    if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx.type_spec()), // s065
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
+                    }
+                }
+                DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+                symbolStack.putDecl(name, ret);
+                if (store != null) {
+                    store.put(name, ret);
+                }
+            } else {
+                // procedure
+                if (ctx.RETURN() != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s051
+                            "procedure " + name + " may not specify a return type");
+                }
+                DeclProc ret = new DeclProc(ctx, name, paramList);
+                symbolStack.putDecl(name, ret);
+                if (store != null) {
+                    store.put(name, ret);
                 }
             }
-            DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
-            symbolStack.putDecl(name, ret);
-            if (store != null) {
-                store.put(name, ret);
-            }
-        } else {
-            // procedure
-            if (ctx.RETURN() != null) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s051
-                        "procedure " + name + " may not specify a return type");
-            }
-            DeclProc ret = new DeclProc(ctx, name, paramList);
-            symbolStack.putDecl(name, ret);
-            if (store != null) {
-                store.put(name, ret);
-            }
+        } finally {
+            previsiting = false;
         }
     }
 
@@ -3301,5 +3360,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         symbolStack.popSymbolTable(); // pop the temporary symbol table
 
         return ret;
+    }
+
+    private void addToSqlUses(SqlUse node) {
+
+        if (loopOptimizables != null) {
+            if (routineDefNestLevel > 0 && !node.usingRef()) {
+                // this sql-using construct resides in a routine definition, in which case
+                // it must use reference of Statement regardless of its default setting of usingRef
+                node.setToUseRef();
+            }
+            loopOptimizables.sqlUses.add(node);
+        }
     }
 }

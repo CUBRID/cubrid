@@ -50,7 +50,7 @@ public class StmtForIterLoop extends StmtLoop {
 
     public StmtForIterLoop(
             ParserRuleContext ctx,
-            StmtLoop.LoopOptimizable loopOptimizable,
+            StmtLoop.LoopOptimizables loopOptimizables,
             DeclLabel declLabel,
             DeclForIter iter,
             boolean reverse,
@@ -58,7 +58,7 @@ public class StmtForIterLoop extends StmtLoop {
             Expr upperBound,
             Expr step,
             NodeList<Stmt> stmts) {
-        super(ctx, loopOptimizable);
+        super(ctx, loopOptimizables);
 
         this.declLabel = declLabel;
         this.iter = iter;

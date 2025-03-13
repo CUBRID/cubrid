@@ -138,8 +138,6 @@ EXPORTS
     pl_disconnect_server
     pl_writen
     pl_readn
-    pl_start_jvm_server
-    pl_server_port
     pl_get_info_file
     pl_get_error_file
     pl_open_info_dir
@@ -831,4 +829,6 @@ EXPORTS
     windows_socket_shutdown
     gethostbyname_uhost
     getnameinfo_uhost
+    pl_get_socket_file_path
+    envvar_vmdir_file
 	

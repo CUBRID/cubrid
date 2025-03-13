@@ -398,10 +398,17 @@ is_terminated_process (const int pid)
     {
       return true;
     }
+
+  DWORD exit_code;
+  if (GetExitCodeProcess (h_process, &exit_code))
+    {
+      CloseHandle (h_process);
+      return (exit_code != STILL_ACTIVE);
+    }
   else
     {
       CloseHandle (h_process);
-      return false;
+      return true;
     }
 #else /* WINDOWS */
   if (kill (pid, 0) == -1)

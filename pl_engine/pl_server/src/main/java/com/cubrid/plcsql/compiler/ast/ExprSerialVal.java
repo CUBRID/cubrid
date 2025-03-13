@@ -30,10 +30,38 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprSerialVal extends Expr {
+public class ExprSerialVal extends Expr implements SqlUse {
+
+    public StmtLoop containerLoop;
+
+    @Override
+    public void setContainerLoop(StmtLoop containerLoop) {
+        this.containerLoop = containerLoop;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    @Override
+    public boolean usingRef() {
+        return true;
+    }
+
+    @Override
+    public void setToUseRef() {
+        // do nothing: it is already true
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -47,13 +75,15 @@ public class ExprSerialVal extends Expr {
 
     public final String name;
     public final SerialVal mode; // CURR_VAL or NEXT_VAL
+    public final int sqlSerialNo;
 
     public boolean verified;
 
-    public ExprSerialVal(ParserRuleContext ctx, String name, SerialVal mode) {
+    public ExprSerialVal(ParserRuleContext ctx, String name, SerialVal mode, int sqlSerialNo) {
         super(ctx);
 
         this.name = name;
         this.mode = mode;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }
