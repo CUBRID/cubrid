@@ -3271,8 +3271,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       node->info.merge.into->next = NULL;
       break;
 
-    case PT_CREATE_VECTOR_INDEX:
     case PT_CREATE_INDEX:
+    case PT_CREATE_VECTOR_INDEX:
     case PT_ALTER_INDEX:
     case PT_DROP_INDEX:
       scopestack.specs = node->info.index.indexed_class;
