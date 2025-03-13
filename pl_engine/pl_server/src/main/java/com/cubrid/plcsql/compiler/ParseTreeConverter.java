@@ -2729,7 +2729,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (ret == null && throwIfNotFound) {
-            throw new UndeclaredId(Misc.getLineColumnOf(ctx), "undeclared id " + name);
+            throw new UndeclaredId(Misc.getLineColumnOf(ctx), "undeclared identifier " + name);
         } else {
             return ret;
         }
