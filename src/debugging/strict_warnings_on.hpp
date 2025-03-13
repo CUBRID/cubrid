@@ -120,11 +120,11 @@
 #pragma GCC diagnostic error "-Wclass-memaccess"            // (C++ only)
 #pragma GCC diagnostic error "-Wmismatched-new-delete"      // (C++ only)
 #pragma GCC diagnostic error "-Woverloaded-virtual=1"       // (C++ only)
-#pragma GCC diagnostic error "-Wpessimizing-move"            // (C++ only)
-#pragma GCC diagnostic error "-Wrange-loop-construct"        // (C++ only)
-#pragma GCC diagnostic error "-Wreorder"                     // (C++ only)
-#pragma GCC diagnostic error "-Wself-move"                 // (C++ only)
-#pragma GCC diagnostic error "-Wnarrowing"                 // (C++ only)
+#pragma GCC diagnostic error "-Wpessimizing-move"           // (C++ only)
+#pragma GCC diagnostic error "-Wrange-loop-construct"       // (C++ only)
+#pragma GCC diagnostic error "-Wreorder"                    // (C++ only)
+#pragma GCC diagnostic error "-Wself-move"                  // (C++ only)
+#pragma GCC diagnostic error "-Wnarrowing"                  // (C++ only)
 #else
 // C-specific warnings:
 #pragma GCC diagnostic error "-Wimplicit-function-declaration"
