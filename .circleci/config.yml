@@ -59,7 +59,7 @@ commands:
             find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
             #test code
-            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1661-77c99ad/drop/CUBRID-11.4.0.1661-77c99ad-Linux.x86_64.sh
+            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install http://192.168.1.91:8080/REPO_ROOT/store_01/11.4.0.1693-6d1e147/drop/CUBRID-11.4.0.1693-6d1e147-Linux.x86_64.sh
             
             # Run the tests
             /entrypoint.sh test
@@ -67,11 +67,12 @@ commands:
           name: Collect Logs
           command: |
             mkdir -p /tmp/logs
-            mv -f CUBRID/log /tmp/logs/cubrid_log
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
               mv -f /tmp/tests/*.csv /tmp/logs
+              cp /tmp/tests/*.xml /tmp/logs
             else
+              mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
             find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
