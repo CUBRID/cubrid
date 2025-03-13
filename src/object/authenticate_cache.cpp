@@ -184,7 +184,7 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
       goto end;
     }
 
-  if (ws_is_same_object (Au_user, owner))
+  if (ws_is_same_object (Au_user, owner) || ws_is_same_object (Au_public_user, owner))
     {
       /* might want to allow grant/revoke on self */
       *bits = FULL_AUTH;
