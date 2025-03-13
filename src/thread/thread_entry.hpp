@@ -301,8 +301,10 @@ namespace cubthread
       struct
       {
         UINT64 cub_insert;
+        UINT64 cub_select;
         UINT64 cub_commit;
         UINT64 rocks_insert;
+        UINT64 rocks_select;
         UINT64 rocks_commit;
       } statistics;
 

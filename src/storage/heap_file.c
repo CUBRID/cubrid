@@ -19006,6 +19006,9 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
+  struct timespec ts_start, ts_end;
+  SCAN_CODE code;
+
   /* in this scope, rocksdb must works. */
   assert (cubrocks::ctx->is_alive ());
   assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
@@ -19013,11 +19016,25 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
   /* if class is user defined or oid is in the user defined class */
   if (class_oid != NULL && (is_user_class_oid (class_oid) || is_user_oid (next_oid)))
     {
-      return cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
+      clock_gettime (CLOCK_MONOTONIC, &ts_start);
+
+      code = cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
+ 
+      clock_gettime (CLOCK_MONOTONIC, &ts_end);
+      thread_p->statistics.rocks_select += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+      return code;
     }
 
   /* general */
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
+  clock_gettime (CLOCK_MONOTONIC, &ts_start);
+
+  code = heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
+
+  clock_gettime (CLOCK_MONOTONIC, &ts_end);
+  thread_p->statistics.rocks_select += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
+
+  return code;
 }
 
 /*

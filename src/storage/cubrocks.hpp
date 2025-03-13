@@ -78,7 +78,8 @@ namespace cubrocks
       /* transaction                                                        */
       /* ================================================================== */
 
-      void kv_tran_start (int tran_index);
+      /* use default value for trid when there is no information about trid */
+      void kv_tran_start (int tran_index, int trid = 0);
 
       void kv_tran_prepare (int tran_index);
       void kv_tran_commit (int tran_index);

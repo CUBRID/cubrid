@@ -99,16 +99,18 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   if (thread_p)
   {
-      UINT64 cub_sum = thread_p->statistics.cub_insert + thread_p->statistics.cub_commit;
-      UINT64 rocks_sum = thread_p->statistics.rocks_insert + thread_p->statistics.rocks_commit;
+      UINT64 cub_sum = thread_p->statistics.cub_insert + thread_p->statistics.cub_select + thread_p->statistics.cub_commit;
+      UINT64 rocks_sum = thread_p->statistics.rocks_insert + thread_p->statistics.rocks_select + thread_p->statistics.rocks_commit;
 
       printf ("\n" \
         "transaction end (%d)\n" \
-        "CUBRID insert commit sum\n" \
+        "CUBRID insert select commit sum\n" \
         "%llu.%llu\n" \
         "%llu.%llu\n" \
         "%llu.%llu\n" \
-        "RocksDB insert commit sum\n" \
+        "%llu.%llu\n" \
+        "RocksDB insert select commit sum\n" \
+        "%llu.%llu\n" \
         "%llu.%llu\n" \
         "%llu.%llu\n" \
         "%llu.%llu\n\n",
@@ -117,6 +119,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
         thread_p->statistics.cub_insert / 1000000,
         thread_p->statistics.cub_insert % 1000000,
+
+        thread_p->statistics.cub_select / 1000000,
+        thread_p->statistics.cub_select % 1000000,
 
         thread_p->statistics.cub_commit / 1000000,
         thread_p->statistics.cub_commit % 1000000,
@@ -127,6 +132,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
         thread_p->statistics.rocks_insert / 1000000,
         thread_p->statistics.rocks_insert % 1000000,
 
+        thread_p->statistics.rocks_select / 1000000,
+        thread_p->statistics.rocks_select % 1000000,
+
         thread_p->statistics.rocks_commit / 1000000,
         thread_p->statistics.rocks_commit % 1000000,
 
@@ -134,8 +142,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
         rocks_sum % 1000000);
 
       thread_p->statistics.cub_insert = 0;
+      thread_p->statistics.cub_select = 0;
       thread_p->statistics.cub_commit = 0;
       thread_p->statistics.rocks_insert = 0;
+      thread_p->statistics.rocks_select = 0;
       thread_p->statistics.rocks_commit = 0;
   }
 

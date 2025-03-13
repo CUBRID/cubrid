@@ -27,6 +27,7 @@
 #include <memory>
 #include <iostream>
 #include <assert.h>
+#include <sstream>
 
 #include <arpa/inet.h>
 
@@ -151,6 +152,9 @@ cubrocks::context::is_tran_started (int tran_index)
 void
 cubrocks::context::kv_reserve_void (int tran_index, int count)
 {
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+ 
   UINT64 vcounter, vcounter_next;
 
   do
@@ -167,25 +171,24 @@ cubrocks::context::kv_reserve_void (int tran_index, int count)
 OID
 cubrocks::context::kv_get_void (int tran_index)
 {
-    assert (alive);
-    assert (tran_index < MAX_NTRANS);
-    assert (tran_index == LOG_SYSTEM_TRAN_INDEX || transactions[tran_index].txn == nullptr);
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].reserved_count > 0);
 
-    assert (transactions[tran_index].reserved_count > 0);
+  OID oid;
+ 
+  oid = *((OID *) &transactions[tran_index].reserved_next);
+  transactions[tran_index].reserved_count--;
+  transactions[tran_index].reserved_next++;
 
-    OID oid;
-   
-    oid = *((OID *) &transactions[tran_index].reserved_next);
-    transactions[tran_index].reserved_count--;
-    transactions[tran_index].reserved_next++;
-
-    return oid;
+  return oid;
 }
 
 void
-cubrocks::context::kv_tran_start (int tran_index)
+cubrocks::context::kv_tran_start (int tran_index, int trid)
 {
   rocksdb::WriteOptions write_options;
+  std::ostringstream txn_name;
 
   assert (alive);
   assert (tran_index < MAX_NTRANS);
@@ -193,7 +196,9 @@ cubrocks::context::kv_tran_start (int tran_index)
 
   if (transactions[tran_index].txn == nullptr)
     {
+      txn_name << tran_index << ":" << trid;
       transactions[tran_index].txn = db->BeginTransaction (write_options);
+      transactions[tran_index].txn->SetName (txn_name.str ());
       assert (transactions[tran_index].txn != nullptr);
     }
 }
@@ -201,13 +206,13 @@ cubrocks::context::kv_tran_start (int tran_index)
 void
 cubrocks::context::kv_tran_prepare (int tran_index)
 {
-  bool status;
+  rocksdb::Status status;
 
   assert (alive);
   assert (tran_index < MAX_NTRANS);
 
-  status = transactions[tran_index].txn->Prepare ().ok ();
-  assert (status);
+  status = transactions[tran_index].txn->Prepare ();
+  assert (status.ok ());
 }
 
 void
@@ -223,6 +228,8 @@ cubrocks::context::kv_tran_commit (int tran_index)
       assert (tran_index == LOG_SYSTEM_TRAN_INDEX);
       return ;
     }
+
+  kv_tran_prepare (tran_index);
 
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
