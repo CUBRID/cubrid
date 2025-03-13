@@ -59,7 +59,7 @@ commands:
             find $glob_path -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
 
             #test code
-            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install http://192.168.1.91:8080/REPO_ROOT/store_01/11.4.0.1693-6d1e147/drop/CUBRID-11.4.0.1693-6d1e147-Linux.x86_64.sh
+            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1693-6d1e147/drop/CUBRID-11.4.0.1693-6d1e147-Linux.x86_64.sh
             
             # Run the tests
             /entrypoint.sh test
