@@ -250,6 +250,8 @@ jobs:
 
             # [exception case] lea_heap.c is third party code
             if [ "$f" != "src/heaplayers/lea_heap.c" ]; then
+              # "strict_warnings_(on|off).hpp" should be able to come after memory_wrapper.hpp
+              # Refer to CBRD-25966
               last_include_line=$(
                 grep -n "^#include" "$f" \
                 | grep -v -E "strict_warnings_(on|off)\.hpp" \
