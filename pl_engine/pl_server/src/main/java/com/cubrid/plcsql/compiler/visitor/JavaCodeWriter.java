@@ -265,7 +265,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
         importsArray = Arrays.copyOf(importsArray, i);
 
-        // parameters - need to visit again to obtain another object instance though the contents are the same,
+        // parameters - need to visit again to obtain another object instance though the contents
+        // are the same,
         //   because two big holes cannot be resolved by a single CodeToResolve object
         objParamArr =
                 Misc.isEmpty(node.routine.paramList)
