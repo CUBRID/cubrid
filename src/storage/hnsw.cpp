@@ -32,28 +32,36 @@ std::unordered_map<int, faiss::IndexHNSW *> hnsw_index_map;
 int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		    enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
-  faiss::IndexHNSW index (dimension, hnsw_M, metric_type);
-  index.hnsw.efConstruction = hnsw_efConstruction;
+  faiss::IndexHNSW *index = new faiss::IndexHNSW (dimension, hnsw_M, metric_type);
+  index->hnsw.efConstruction = hnsw_efConstruction;
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
   btid->root_pageid = ++hnsw_index_id;
 
-  hnsw_index_map[hnsw_index_id] = &index;
+  hnsw_index_map[hnsw_index_id] = index;
 
   return NO_ERROR;
 }
 
 int hnsw_delete_index (BTID *btid)
 {
-  if (hnsw_index_map.find (btid->root_pageid) != hnsw_index_map.end())
+  if (!btid)
     {
-      hnsw_index_map.erase (btid->root_pageid);
-      return NO_ERROR;
+      return ER_FAILED;
+    }
+
+  int hnsw_id = btid->root_pageid;
+  auto it = hnsw_index_map.find (hnsw_id);
+
+  if (it == hnsw_index_map.end())
+    {
+      return ER_FAILED;
     }
   else
     {
-      return ER_FAILED;
+      delete it->second;
+      hnsw_index_map.erase (it);
     }
 
   return NO_ERROR;
