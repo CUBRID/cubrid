@@ -24,6 +24,7 @@
 #define _HNSW_HPP_
 
 #include <unordered_map>
+#include <memory>
 
 #include "storage_common.h"
 #include "faiss/IndexHNSW.h"
@@ -32,5 +33,5 @@ int hnsw_add_index (BTID *btid, int dimension, int hnsw_M, int hnsw_efConstructi
 int hnsw_delete_index (BTID *btid);
 
 extern int hnsw_index_id;
-extern std::unordered_map<int, faiss::IndexHNSW *> hnsw_index_map;
+extern std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
 #endif
