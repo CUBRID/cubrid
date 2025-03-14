@@ -89,7 +89,6 @@ namespace parallel_heap_scan
 	m_obj_cnt--;
       }
 
-      // 특수화된 함수들의 선언
       void clear_and_free (heap_cache_attrinfo *ptr);
       void clear_and_free (PRED_EXPR *ptr);
       void clear_and_free (DB_VALUE *ptr);

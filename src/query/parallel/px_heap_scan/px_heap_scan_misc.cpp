@@ -350,7 +350,7 @@ restart_scan_oid:
 	      }
 	  }
 
-	/* Data filter passed. If object should be locked and is not locked yet, lock it. */
+	/* Data filter passed. */
 	assert (!scan_id->mvcc_select_lock_needed);
 	assert (!mvcc_is_mvcc_disabled_class (&hsidp->cls_oid));
 
