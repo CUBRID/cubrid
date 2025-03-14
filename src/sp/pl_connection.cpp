@@ -171,7 +171,7 @@ namespace cubpl
   bool
   connection_pool::is_system_pool () const
   {
-    return (m_epoch.load (std::memory_order::relaxed) == SYSTEM_REVISION);
+    return (m_epoch.load (std::memory_order_relaxed) == SYSTEM_REVISION);
   }
 
   // private

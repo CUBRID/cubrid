@@ -45,7 +45,18 @@ namespace
   {
     const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
 #ifdef LINUX
-    std::string filename = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().string ();
+
+    std::string filename;
+    if (cubrid_tmp != nullptr) 
+      {
+	filename = std::string(cubrid_tmp);
+      } 
+    else 
+      {
+	// Convert u8string to string if necessary
+	auto u8path = std::filesystem::temp_directory_path().u8string();
+	filename = std::string(reinterpret_cast<const char*>(u8path.c_str()), u8path.length());
+      }
 
     filename += "/";
     filename += prefix;
