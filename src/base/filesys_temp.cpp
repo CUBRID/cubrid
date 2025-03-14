@@ -46,17 +46,9 @@ namespace
     const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
 #ifdef LINUX
 
-    std::string filename;
-    if (cubrid_tmp != nullptr) 
-      {
-	filename = std::string(cubrid_tmp);
-      } 
-    else 
-      {
-	// Convert u8string to string if necessary
-	auto u8path = std::filesystem::temp_directory_path().u8string();
-	filename = std::string(reinterpret_cast<const char*>(u8path.c_str()), u8path.length());
-      }
+    std::string filename = cubrid_tmp != nullptr
+			   ? std::string (cubrid_tmp)
+			   :std::filesystem::temp_directory_path().string();
 
     filename += "/";
     filename += prefix;
@@ -123,7 +115,23 @@ std::pair<std::string, FILE *> filesys::open_temp_file (const char *prefix, cons
 std::string filesys::temp_directory_path (void)
 {
   const char *cubrid_tmp = envvar_get (CUBRID_TMP_ENV);
-  std::string pathname = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().string ();
+  // std::string pathname = cubrid_tmp != nullptr ? cubrid_tmp : std::filesystem::temp_directory_path ().u8string ();
+
+  std::filesystem::path temp_path = std::filesystem::temp_directory_path();
+  std::string pathname;
+  if (cubrid_tmp != nullptr)
+    {
+      pathname = std::string (cubrid_tmp);
+    }
+  else
+    {
+#ifdef _WIN32
+      std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+      pathname = converter.to_bytes (temp_path.wstring()); // Convert UTF-16 to UTF-8
+#else
+      pathname = temp_path.string();  // On Linux/macOS, this is already UTF-8
+#endif
+    }
 
   return pathname;
 }
