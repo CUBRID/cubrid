@@ -10786,6 +10786,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    {
 	      break;
 	    }
+	  /* fall through */
 
 	default:
 	  att = attribute->info.attr_def.attr_name;
@@ -11377,6 +11378,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
+	  /* fall through */
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;
