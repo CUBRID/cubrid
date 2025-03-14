@@ -6562,7 +6562,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
    PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_parallel_heap_scan_threads_flag,
    (void *) &prm_parallel_heap_scan_threads_default,

@@ -97,7 +97,20 @@ namespace parallel_heap_scan
 	    regu_var->value.funcp->tmp_obj = NULL;
 	  }
 	break;
+      case TYPE_DBVAL:
+      case TYPE_CONSTANT:
+      case TYPE_ORDERBY_NUM:
+      case TYPE_POSITION:
+      case TYPE_LIST_ID:
+      case TYPE_POS_VALUE:
+      case TYPE_OID:
+      case TYPE_CLASSOID:
+      case TYPE_REGUVAL_LIST:
+      case TYPE_REGU_VAR_LIST:
+	/* do nothing*/
+	break;
       default:
+	assert (false);
 	break;
       }
 
@@ -175,6 +188,9 @@ namespace parallel_heap_scan
 	break;
       case T_NOT_TERM:
 	pg_cnt += pred_clear (thread_p, pr->pe.m_not_term);
+	break;
+      default:
+	assert (false);
 	break;
       }
 
