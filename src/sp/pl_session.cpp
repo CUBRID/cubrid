@@ -76,6 +76,7 @@ namespace cubpl
     , m_is_running (false)
     , m_req_id {0}
     , m_param_info {nullptr}
+    , m_all_session_params_required {true}
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
   }
@@ -255,6 +256,7 @@ namespace cubpl
 	  }
 	release_connection (cv);
       }
+    m_all_session_params_required = true;
   }
 
   execution_stack *
@@ -576,7 +578,8 @@ namespace cubpl
     SYSPRM_ASSIGN_VALUE *next_param = session_params;
     while (next_param != NULL)
       {
-	if (m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ())
+	bool is_param_changed = m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ();
+	if (m_all_session_params_required || is_param_changed)
 	  {
 	    changed_sys_params.emplace_back (next_param);
 	  }
@@ -589,18 +592,45 @@ namespace cubpl
 	sysprm_free_assign_values (&session_params);
       }
 
+    if (changed_sys_params.size () > 0)
+      {
+	for (auto &param : changed_sys_params)
+	  {
+	    m_session_params[param.prm_id] = param;
+	  }
+      }
+
     if (reset)
       {
 	m_session_param_changed_ids.clear ();
       }
 
-    return changed_sys_params;
+    if (m_all_session_params_required)
+      {
+	// get m_session_params's second to std::vector
+	std::vector<sys_param> all_sys_params;
+	for (auto &param : m_session_params)
+	  {
+	    all_sys_params.push_back (param.second);
+	  }
+	return all_sys_params;
+      }
+    else
+      {
+	return changed_sys_params;
+      }
   }
 
   void
-  session::mark_session_param_changed (PARAM_ID prm_id)
+  session::mark_session_param_changed (int prm_id)
   {
     m_session_param_changed_ids.insert (prm_id);
+  }
+
+  void
+  session::set_session_param (const sys_param &param)
+  {
+    m_session_params.insert_or_assign (param.prm_id, param);
   }
 
 #define SYS_PARAM_PACKER_ARGS() \
@@ -621,7 +651,7 @@ namespace cubpl
     if (PRM_IS_BOOLEAN (prm))
       {
 	bool val = prm_get_bool_value (prm->id);
-	prm_value = val ? "true" : "false";
+	prm_value = val ? "t" : "f";
       }
     else if (PRM_IS_STRING (prm))
       {

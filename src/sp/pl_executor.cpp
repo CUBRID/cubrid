@@ -578,6 +578,10 @@ exit:
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
+
+      case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
+	error_code = callback_set_pl_session_param (thread_ref, unpacker);
+	break;
       default:
 	// TODO: not implemented yet, do we need error handling?
 	assert (false);
@@ -1017,6 +1021,37 @@ exit:
 
     error = m_stack->send_data_to_java (blk);
     blk.freemem ();
+
+    return error;
+  }
+
+  int
+  executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_SET_PL_SESSION_PARAM;
+
+    std::vector<sys_param> params;
+    unpacker.unpack_all (params);
+
+    for (const auto &prm : params)
+      {
+	if (prm.prm_id < PRM_START_IDX)
+	  {
+	    continue;
+	  }
+	else
+	  {
+	    get_session ()->set_session_param (prm);
+	  }
+      }
+
+    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS));
+    if (blk.is_valid ())
+      {
+	m_stack->send_data_to_java (blk);
+	blk.freemem ();
+      }
 
     return error;
   }

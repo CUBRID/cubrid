@@ -287,4 +287,8 @@ public class CUBRIDUnpacker {
     public int getCurrentLimit() {
         return buffer.limit();
     }
+
+    public ByteBuffer getBuffer() {
+        return buffer;
+    }
 }
