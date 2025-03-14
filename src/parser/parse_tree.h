@@ -1414,6 +1414,10 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
 #define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
 
+/* Parallel query execution threads limits */
+#define  PT_MAX_PARALLEL_THREADS  64
+#define  PT_MIN_PARALLEL_THREADS  0
+
 /* Codes for error messages */
 typedef enum
 {

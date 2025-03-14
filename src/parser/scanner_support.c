@@ -366,6 +366,7 @@ void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
+  int num_parallel_threads = 0;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   bool first_hit = true;
@@ -751,7 +752,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	      node->info.query.q.select.parallel_thread = hint_table[i].arg_list;
-	      node->info.query.q.select.num_parallel_threads = atoi (hint_table[i].arg_list->info.name.original);
+	      num_parallel_threads = atoi (hint_table[i].arg_list->info.name.original);
+	      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+		{
+		  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+		}
+	      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+		{
+		  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+		}
+	      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
 	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
