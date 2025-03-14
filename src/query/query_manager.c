@@ -2187,11 +2187,16 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
   int rc = dblink_end_tran (thread_p->dblink_entry, is_abort);
 
-  if (rc != NO_ERROR)
+  if (rc == ER_DBLINK_TRAN)
     {
       /* remote transactions will be rollbacked */
       status = QMGR_TRAN_DBLINK_ABORTED;
-      er_log_debug (ARG_FILE_LINE, "dblink query is not completed !\n");
+      er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
+    }
+  else if (rc != NO_ERROR)
+    {
+      /* error occurred while remote transaction is committed or rollbacked */
+      er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
     }
 
   thread_p->dblink_entry = NULL;
