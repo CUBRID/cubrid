@@ -226,6 +226,7 @@ endif(MSVC)
 #
 # Protip: Always build in debug mode (-DCMAKE_BUILD_TYPE=Debug) to ensure
 # assertion statements are properly evaluated and not optimized away.
+option(CUBVEC_TEAM_BUILD "Enable CUBVEC team build" ON)
 if(CUBVEC_TEAM_BUILD)
     add_compile_definitions(CUBVEC_TEAM)
 endif()
