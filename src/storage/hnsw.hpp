@@ -23,13 +23,14 @@
 #ifndef _HNSW_HPP_
 #define _HNSW_HPP_
 
-#include <bits/stdc++.h>
+#include <unordered_map>
 
 #include "storage_common.h"
 #include "faiss/IndexHNSW.h"
 
 int hnsw_add_index (BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction, enum faiss::MetricType metric_type);
+int hnsw_delete_index (BTID *btid);
 
 extern int hnsw_index_id;
-
+extern std::unordered_map<int, faiss::IndexHNSW *> hnsw_index_map;
 #endif

@@ -10885,19 +10885,28 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *con;
+  SM_CONSTRAINT_TYPE ctype;
   int ref_count = 0;
 
   for (con = cons; con != NULL; con = con->next)
     {
       if (BTID_IS_EQUAL (index, &con->index_btid))
 	{
+	  ctype = con->type;
 	  ref_count++;
 	}
     }
 
   if (ref_count == 1)
     {
-      error = btree_delete_index (index);
+      if (ctype == SM_CONSTRAINT_VECTOR_INDEX)
+	{
+	  error = hnsw_delete_index (index);
+	}
+      else
+	{
+	  error = btree_delete_index (index);
+	}
     }
 
   return error;
@@ -14054,6 +14063,12 @@ sm_drop_index (MOP classop, const char *constraint_name)
 
   if (found == NULL)
     {
+      ctype = SM_CONSTRAINT_VECTOR_INDEX;
+      found = classobj_find_class_constraint (class_->constraints, ctype, constraint_name);
+    }
+
+  if (found == NULL)
+    {
       ERROR1 (error, ER_SM_NO_INDEX, constraint_name);
     }
   else
@@ -15048,7 +15063,7 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
   int error = NO_ERROR;
   SM_TEMPLATE *def = NULL;
 
-  if (mysql_index_name && constraint_type == DB_CONSTRAINT_INDEX)
+  if (mysql_index_name && (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_VECTOR_INDEX))
     {
       SM_CLASS *smcls = NULL;
 
@@ -15075,6 +15090,7 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
+    case SM_CONSTRAINT_VECTOR_INDEX:
       error = sm_drop_index (classop, constraint_name);
       break;
 
