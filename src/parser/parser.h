@@ -451,12 +451,10 @@ extern "C"
   extern PT_NODE *pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						  int *continue_walk);
   extern PT_NODE *pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-  extern PT_NODE *pt_is_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						       int *continue_walk);
   extern PT_NODE *pt_is_inst_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-  extern PT_NODE *pt_is_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
   extern PT_NODE *pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select, const char *table_name,
 						  const char *table_alias, const DB_AUTH auth_bypass);
