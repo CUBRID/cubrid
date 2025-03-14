@@ -63,7 +63,7 @@ namespace cubpl
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
 
-  using PRM_START_IDX = 100000;
+  constexpr int PRM_START_IDX = 100000;
   enum class sys_param_id : int
   {
     PRM_ID_DBMS_OUTPUT = PRM_START_IDX
