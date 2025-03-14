@@ -38,10 +38,10 @@
 #define CONNECTED_STATE         0
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
-#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
+#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = (x);\
                                 if (rc != SQL_SUCCESS) \
                                 { \
-                                    cgw_error_msg (h, ht, rc); \
+                                    cgw_error_msg ((h), (ht), rc); \
                                 } \
                                 if (rc <= SQL_ERROR) \
                                 { \

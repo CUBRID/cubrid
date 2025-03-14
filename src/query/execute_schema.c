@@ -3029,7 +3029,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
 	    {
 	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
 	    }
 	}
     }
