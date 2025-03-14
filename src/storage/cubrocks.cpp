@@ -100,36 +100,26 @@ cubrocks::context::kv_config (void)
   opt.txndb.write_policy = rocksdb::TxnDBWritePolicy::WRITE_PREPARED;
 
   opt.db.max_background_jobs = 6;
-  opt.db.max_background_compactions = 2;
-  opt.db.max_background_flushes = 2;
   opt.db.max_open_files = -1;
-  opt.db.allow_mmap_reads = true;
   opt.db.two_write_queues = true;
 
   opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
-  opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10, false));
-  opt.table.index_type = rocksdb::BlockBasedTableOptions::kHashSearch;
+  opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (9.9, false));
+  opt.table.index_type = rocksdb::BlockBasedTableOptions::kTwoLevelIndexSearch;
   opt.table.block_size = 4 * 1024;
   opt.table.cache_index_and_filter_blocks = true;
-  opt.table.pin_l0_filter_and_index_blocks_in_cache = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024);
+  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 8);
   opt.table.use_delta_encoding = false;
-  opt.table.whole_key_filtering = false;
 
-  opt.cf.level_compaction_dynamic_level_bytes = true;
-  opt.cf.compaction_pri = rocksdb::kMinOverlappingRatio;
-  opt.cf.compaction_style = rocksdb::kCompactionStyleLevel;
-  opt.cf.write_buffer_size = 64 << 20;
-  opt.cf.max_write_buffer_number = 4;
-  opt.cf.num_levels = 4;
-  opt.cf.level0_file_num_compaction_trigger = 2;
-  opt.cf.level0_slowdown_writes_trigger = 4;
-  opt.cf.level0_stop_writes_trigger = 8;
+  opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+  opt.table.metadata_cache_options.partition_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+  opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+
+  opt.cf.write_buffer_size = 64 * 1024 * 1024;
+  opt.cf.max_write_buffer_number = 8;
   opt.cf.target_file_size_base = 64 * 1024 * 1024;
-  opt.cf.max_bytes_for_level_base = 512 * 1024 * 1024;
-  opt.cf.max_bytes_for_level_multiplier = 8;
-  opt.cf.memtable_huge_page_size = true;
   opt.cf.memtable_prefix_bloom_size_ratio = 0.1;
+  opt.cf.memtable_huge_page_size = true;
 
   opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
   opt.cf.prefix_extractor.reset (rocksdb::NewFixedPrefixTransform (8));
@@ -330,7 +320,7 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
   readopt.pin_data = true;
   readopt.fill_cache = false;
   readopt.async_io = true;
-  readopt.readahead_size = 2 * 1024 * 1024;
+//  readopt.readahead_size = 2 * 1024 * 1024;
 
   scan_cache->kv_iter = db->NewIterator (readopt);
   assert (scan_cache->kv_iter != nullptr);
