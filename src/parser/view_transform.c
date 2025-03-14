@@ -1913,7 +1913,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
+      && (((!is_rownum_only || pt_is_distinct (mainquery)) && pt_has_inst_in_where_and_select_list (parser, mainquery))
 	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
 	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
@@ -2335,6 +2335,11 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
     {
       /* replace orderby_num of select-list to rownum */
       query_spec = pt_lambda_with_arg (parser, query_spec, ord_num, ins_num, false, 0, false);
+
+      if (statement->info.query.order_by == NULL)
+	{
+	  ;
+	}
 
       parser_free_tree (parser, free_node);
     }
