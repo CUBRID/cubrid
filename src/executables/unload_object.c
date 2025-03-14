@@ -395,8 +395,6 @@ static void update_hash (OID * object_oid, OID * class_oid, int *data);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
 static int all_classes_processed (void);
 
-static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
-			    char *output_filename_p, const size_t filename_size);
 static void close_object_file ();
 static bool open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name);
 static bool init_thread_param (const char *output_dirname, int nthreads);
@@ -2560,27 +2558,6 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
   return 0;
 }
 
-
-static int
-create_filename (const char *output_dirname, const char *output_prefix, const char *suffix, char *output_filename_p,
-		 const size_t filename_size)
-{
-  if (output_dirname == NULL)
-    {
-      output_dirname = ".";
-    }
-
-  size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
-
-  if (total > filename_size)
-    {
-      return -1;
-    }
-
-  snprintf (output_filename_p, filename_size - 1, "%s/%s%s", output_dirname, output_prefix, suffix);
-
-  return 0;
-}
 
 static void
 close_object_file ()

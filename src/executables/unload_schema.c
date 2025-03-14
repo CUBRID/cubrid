@@ -167,8 +167,7 @@ static void emit_partition_info (print_output & output_ctx, MOP clsobj);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
 static int emit_stored_procedure (print_output & output_ctx);
 static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
-static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
-			    char *output_filename_p, const size_t filename_size);
+
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -3445,7 +3444,7 @@ create_filename_indexes (const char *output_dirname, const char *output_prefix,
   return create_filename (output_dirname, output_prefix, INDEX_SUFFIX, output_filename_p, filename_size);
 }
 
-static int
+int
 create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 		 char *output_filename_p, const size_t filename_size)
 {
