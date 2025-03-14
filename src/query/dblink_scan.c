@@ -675,54 +675,48 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
 	  if (ret < 0)
 	    {
 	      /* malloc error */
-	      return ret;
+	      goto error_exit;
 	    }
 	}
     }
 
-  if (conn_handle < 0)
+  stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
+  if (stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       goto error_exit;
     }
-  else
+
+  if (host_vars->count > 0)
     {
-      stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
-      if (stmt_handle < 0)
+      if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  goto error_exit;
 	}
+    }
 
-      if (host_vars->count > 0)
-	{
-	  if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
-	    {
-	      return ret;
-	    }
-	}
+  result = cci_execute (stmt_handle, 0, 0, &err_buf);
+  if (result < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      goto error_exit;
+    }
 
-      result = cci_execute (stmt_handle, 0, 0, &err_buf);
-      if (result < 0)
+  if (auto_commit)
+    {
+      ret = cci_disconnect (conn_handle, &err_buf);
+      if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-
-      if (auto_commit)
-	{
-	  ret = cci_disconnect (conn_handle, &err_buf);
-	  if (ret < 0)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	      goto error_exit;
-	    }
+	  return ER_DBLINK;
 	}
     }
 
   return result;
 
 error_exit:
+  (void) cci_disconnect (conn_handle, &err_buf);
+
   return ER_DBLINK;
 }
 
@@ -786,58 +780,51 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	  ret = dblink_add_conn_handle (scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name, password);
 	  if (ret < 0)
 	    {
-	      return ret;
+	      goto error_exit;
 	    }
 	}
     }
 
-  if (scan_info->conn_handle < 0)
+  scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
+  if (scan_info->stmt_handle < 0)
     {
-      scan_info->stmt_handle = -1;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      goto error_exit;
+    }
+
+  if (host_vars->count > 0)
+    {
+      if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
+	{
+	  goto error_exit;
+	}
+    }
+
+  ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
+  if (ret < 0)
+    {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       goto error_exit;
     }
   else
     {
-      scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
-      if (scan_info->stmt_handle < 0)
+      T_CCI_CUBRID_STMT stmt_type;
+
+      scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
+      if (scan_info->col_info == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  /* this can not be reached, something wrong */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
 	  goto error_exit;
 	}
-
-      if (host_vars->count > 0)
-	{
-	  if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
-	    {
-	      return ret;
-	    }
-	}
-
-      ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
-      if (ret < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-      else
-	{
-	  T_CCI_CUBRID_STMT stmt_type;
-
-	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
-	  if (scan_info->col_info == NULL)
-	    {
-	      /* this can not be reached, something wrong */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	      goto error_exit;
-	    }
-	  scan_info->cursor = CCI_CURSOR_FIRST;
-	}
+      scan_info->cursor = CCI_CURSOR_FIRST;
     }
 
   return NO_ERROR;
 
 error_exit:
+  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+
   return ER_DBLINK;
 }
 
