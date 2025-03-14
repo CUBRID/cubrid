@@ -715,7 +715,10 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
   return result;
 
 error_exit:
-  (void) cci_disconnect (conn_handle, &err_buf);
+  if (auto_commit)
+    {
+      (void) cci_disconnect (conn_handle, &err_buf);
+    }
 
   return ER_DBLINK;
 }
@@ -823,7 +826,10 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
   return NO_ERROR;
 
 error_exit:
-  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+  if (auto_commit)
+    {
+      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+    }
 
   return ER_DBLINK;
 }
