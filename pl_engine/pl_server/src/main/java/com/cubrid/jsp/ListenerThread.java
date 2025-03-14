@@ -78,7 +78,7 @@ public class ListenerThread extends Thread {
                 Server.log(e);
 
                 // For the case when execThread.run() is not invoked due to an exception.
-                //   execThread.closeSocket() is called at the end of execThread.run()
+                //   NOTE: execThread.closeSocket() is called at the end of execThread.run()
                 if (execThread == null) {
                     if (client != null) {
                         try {
