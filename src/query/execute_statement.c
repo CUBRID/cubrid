@@ -42,7 +42,6 @@
 #include <ctype.h>
 
 
-#include "cubvec_assert.h"
 #include "error_manager.h"
 #include "db.h"
 #include "dbi.h"
@@ -92,7 +91,6 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
-#include "cubvec_assert.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3154,7 +3152,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_EXECUTE_TRIGGER:
 	case PT_CREATE_ENTITY:
 	case PT_CREATE_INDEX:
-	case PT_CREATE_VECTOR_INDEX:
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
@@ -3233,10 +3230,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
-	  break;
-
-	case PT_CREATE_VECTOR_INDEX:
-	  ASSERT_CUBVEC (false);	// analysis required
 	  break;
 
 	case PT_EVALUATE:
@@ -3851,7 +3844,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_EXECUTE_TRIGGER:
     case PT_CREATE_ENTITY:
     case PT_CREATE_INDEX:
-    case PT_CREATE_VECTOR_INDEX:
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
@@ -3918,9 +3910,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_INDEX:
       err = do_create_index (parser, statement);
-      break;
-    case PT_CREATE_VECTOR_INDEX:
-      err = do_create_vector_index (parser, statement);
       break;
     case PT_CREATE_SERIAL:
       err = do_create_serial (parser, statement);
@@ -15692,12 +15681,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
 	break;
       }
-    case PT_CREATE_VECTOR_INDEX:
-      if (statement->node_type == PT_CREATE_VECTOR_INDEX)
-	{
-	  ASSERT_CUBVEC (false);	// analysis required
-	}
-      break;
     case PT_ALTER_INDEX:
       {
 	BTID index;
@@ -16143,10 +16126,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_CREATE_INDEX;
-      break;
-
-    case PT_CREATE_VECTOR_INDEX:
-      ASSERT_CUBVEC (false);	// analysis required
       break;
 
     case PT_ALTER_INDEX:

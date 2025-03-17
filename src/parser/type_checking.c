@@ -64,7 +64,6 @@
 #include "func_type.hpp"
 
 #include "dbtype.h"
-#include "cubvec_assert.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -7941,11 +7940,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
     case PT_CREATE_INDEX:
       node->info.index.where = pt_where_type (parser, node->info.index.where);
-      break;
-
-    case PT_CREATE_VECTOR_INDEX:
-
-      ASSERT_CUBVEC (nullptr == pt_where_type (parser, node->info.index.where));
       break;
 
     case PT_DELETE:
