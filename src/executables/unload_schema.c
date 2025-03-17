@@ -182,6 +182,8 @@ static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int export_server (print_output & output_ctx);
 static void str_tolower (char *str);
 static int extract_classes (extract_context & ctxt, print_output & schema_output_ctx);
+static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
+			    char *output_filename_p, const size_t filename_size);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -3847,6 +3849,13 @@ create_filename_indexes (const char *output_dirname, const char *output_prefix,
 }
 
 int
+create_filename_log (const char *output_dirname, const char *output_prefix,
+		     char *output_filename_p, const size_t filename_size)
+{
+  return create_filename (output_dirname, output_prefix, "_unloaddb.log", output_filename_p, filename_size);
+}
+
+static int
 create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 		 char *output_filename_p, const size_t filename_size)
 {
