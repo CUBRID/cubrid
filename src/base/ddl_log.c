@@ -51,7 +51,6 @@
 #include "util_func.h"
 #include "hide_password.h"
 #include "db.h"
-#include "cubvec_assert.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"
@@ -1421,11 +1420,6 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
     case PT_ALTER_TRIGGER:
     case PT_CREATE_ENTITY:
     case PT_CREATE_INDEX:
-    case PT_CREATE_VECTOR_INDEX:
-      if (node_type == PT_CREATE_VECTOR_INDEX)
-	{
-	  ASSERT_CUBVEC (false);	// analysis required
-	}
     case PT_CREATE_SERIAL:
     case PT_CREATE_STORED_PROCEDURE:
     case PT_CREATE_SYNONYM:
