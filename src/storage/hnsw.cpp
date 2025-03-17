@@ -56,6 +56,7 @@ int hnsw_delete_index (BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
+      assert (false);
       return ER_FAILED;
     }
   else
