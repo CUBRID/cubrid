@@ -768,14 +768,14 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       if (scan_info->conn_handle < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
+	  return ER_DBLINK;
 	}
 
       ret = cci_set_autocommit (scan_info->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
-	  goto error_exit;
+	  return ER_DBLINK;
 	}
 
       if (!auto_commit)
@@ -783,7 +783,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	  ret = dblink_add_conn_handle (scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name, password);
 	  if (ret < 0)
 	    {
-	      goto error_exit;
+	      return ER_DBLINK;
 	    }
 	}
     }
@@ -792,14 +792,14 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
   if (scan_info->stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      goto error_exit;
+      return ER_DBLINK;
     }
 
   if (host_vars->count > 0)
     {
       if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
 	{
-	  goto error_exit;
+	  return ER_DBLINK;
 	}
     }
 
@@ -807,7 +807,7 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
   if (ret < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      goto error_exit;
+      return ER_DBLINK;
     }
   else
     {
@@ -818,20 +818,12 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 	{
 	  /* this can not be reached, something wrong */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	  goto error_exit;
+	  return ER_DBLINK;
 	}
       scan_info->cursor = CCI_CURSOR_FIRST;
     }
 
   return NO_ERROR;
-
-error_exit:
-  if (auto_commit)
-    {
-      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
-    }
-
-  return ER_DBLINK;
 }
 
 /*
