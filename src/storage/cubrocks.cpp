@@ -21,11 +21,13 @@
  */
 
 #include "porting.h"
+#include "rocksdb/compression_type.h"
 #ident "$Id$"
 
 #include <string>
 #include <memory>
 #include <iostream>
+#include <thread>
 #include <assert.h>
 #include <sstream>
 
@@ -98,11 +100,14 @@ void
 cubrocks::context::kv_config (void)
 {
   opt.txndb.write_policy = rocksdb::TxnDBWritePolicy::WRITE_PREPARED;
-
-  opt.db.max_background_jobs = 6;
   opt.db.max_open_files = -1;
   opt.db.two_write_queues = true;
+  opt.db.allow_2pc = true;
+  opt.db.enable_pipelined_write = true;
+  opt.db.IncreaseParallelism(std::thread::hardware_concurrency ());
 
+  /* use CRC32 if the machine supports acceleration functions */
+  opt.table.checksum = rocksdb::kCRC32c;
   opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
   opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (9.9, false));
   opt.table.index_type = rocksdb::BlockBasedTableOptions::kTwoLevelIndexSearch;
@@ -114,6 +119,9 @@ cubrocks::context::kv_config (void)
   opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
   opt.table.metadata_cache_options.partition_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
   opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+
+  /* this should be set for pair experiment */
+  opt.cf.compression = rocksdb::kNoCompression;
 
   opt.cf.write_buffer_size = 64 * 1024 * 1024;
   opt.cf.max_write_buffer_number = 8;
@@ -315,11 +323,13 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 
   readopt.prefix_same_as_start = true;
   readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
-  readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
+//  readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
 
-  readopt.pin_data = true;
+//  readopt.pin_data = true;
   readopt.fill_cache = false;
   readopt.async_io = true;
+  readopt.adaptive_readahead = true; 
+
 //  readopt.readahead_size = 2 * 1024 * 1024;
 
   scan_cache->kv_iter = db->NewIterator (readopt);
