@@ -750,19 +750,26 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_PARALLEL:
 	  if (node->node_type == PT_SELECT)
 	    {
-	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-	      node->info.query.q.select.parallel_thread = hint_table[i].arg_list;
-	      num_parallel_threads = atoi (hint_table[i].arg_list->info.name.original);
-	      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+	      if (hint_table[i].arg_list != NULL)
 		{
-		  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.query.q.select.hint =
+			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			}
+		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			}
+		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
 		}
-	      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
-		{
-		  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
-		}
-	      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
-	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
 	case PT_HINT_NO_ELIMINATE_JOIN:

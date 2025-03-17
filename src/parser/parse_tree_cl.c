@@ -14660,18 +14660,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
 	    {
 	      q = pt_append_nulstring (parser, q, "PARALLEL");
-	      if (p->info.query.q.select.parallel_thread)
-		{
-		  char buffer[10];
-		  snprintf (buffer, sizeof (buffer), "%d", p->info.query.q.select.num_parallel_threads);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_nulstring (parser, q, buffer);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
+	      char buffer[10];
+	      snprintf (buffer, sizeof (buffer), "%d", p->info.query.q.select.num_parallel_threads);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_nulstring (parser, q, buffer);
+	      q = pt_append_nulstring (parser, q, ") ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
