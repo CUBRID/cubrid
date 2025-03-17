@@ -21,6 +21,8 @@
 //
 
 #include "hnsw.hpp"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 // TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
 //        This is not a problem in current implementation, but it may be a problem in the future,
@@ -40,7 +42,6 @@ int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_e
   btid->root_pageid = ++hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
-
   return NO_ERROR;
 }
 
@@ -67,3 +68,32 @@ int hnsw_delete_index (BTID *btid)
 }
 
 
+int hnsw_print_index_info (BTID *btid)
+{
+  if (!btid)
+    {
+      return ER_FAILED;
+    }
+
+  int hnsw_id = btid->root_pageid;
+  auto it = hnsw_index_map.find (hnsw_id);
+
+  if (it == hnsw_index_map.end())
+    {
+      return ER_FAILED;
+    }
+
+  else
+    {
+      std::unique_ptr<faiss::IndexHNSW> &index = it->second;
+
+      er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
+      er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
+      er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
+      er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", index->hnsw.efConstruction);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", index->hnsw.efSearch);
+    }
+
+  return NO_ERROR;
+}
