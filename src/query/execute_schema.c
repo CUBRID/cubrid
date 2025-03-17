@@ -3288,7 +3288,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       return error_code;
     }
 
-  if (index_type == DB_CONSTRAINT_INDEX)
+  if (index_type == DB_CONSTRAINT_INDEX || index_type == DB_CONSTRAINT_VECTOR_INDEX)
     {
       error_code = get_index_type_qualifiers (obj, &is_reverse, &is_unique, index_name);
       if (error_code != NO_ERROR)
