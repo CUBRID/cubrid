@@ -2817,7 +2817,7 @@ create_stmt
 			assert(node != NULL);
 
 			/* Initialize vector_index_info (now an embedded structure) */
-			node->info.index.vector_index.kind = VECTOR_INDEX_HNSW;
+			node->info.index.is_vector_index = true;
 			node->info.index.vector_index.hnsw_m = 16;                /* Example default value */
 			node->info.index.vector_index.hnsw_ef_construction = 200; /* Example default value */
 

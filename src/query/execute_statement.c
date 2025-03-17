@@ -3231,7 +3231,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_INDEX:
 
-	  if (statement->info.index.vector_index.kind != VECTOR_INDEX_NONE)
+	  if (statement->info.index.is_vector_index)
 	    {
 	      ASSERT_CUBVEC (false);
 	      // error = do_create_vector_index (parser, statement);
@@ -3918,7 +3918,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  do_create_entity);
       break;
     case PT_CREATE_INDEX:
-      if (statement->info.index.vector_index.kind != VECTOR_INDEX_NONE)
+      if (statement->info.index.is_vector_index)
 	{
 	  err = do_create_vector_index (parser, statement);
 	  break;
