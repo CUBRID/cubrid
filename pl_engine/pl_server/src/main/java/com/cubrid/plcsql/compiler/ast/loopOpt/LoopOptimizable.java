@@ -30,8 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast.loopOpt;
 
-import com.cubrid.plcsql.compiler.ast.StmtLoop;
-
 public interface LoopOptimizable {
-    void setContainerLoop(StmtLoop containerLoop);
+    boolean reachableFromLoop();
 }
