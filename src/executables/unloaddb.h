@@ -68,8 +68,7 @@ extern int create_filename_trigger (const char *output_dirname, const char *outp
 				    char *output_filename_p, const size_t filename_size);
 extern int create_filename_indexes (const char *output_dirname, const char *output_prefix,
 				    char *output_filename_p, const size_t filename_size);
-
-extern int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
-			    char *output_filename_p, const size_t filename_size);
+extern int create_filename_log (const char *output_dirname, const char *output_prefix,
+				char *output_filename_p, const size_t filename_size);
 
 #endif /* _UNLOADDB_H_ */

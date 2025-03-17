@@ -1101,8 +1101,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
    */
   total_approximate_class_objects = est_objects;
 
-  if (create_filename
-      (ctxt.output_dirname, ctxt.output_prefix, "_unloaddb.log", unloadlog_filename, sizeof (unloadlog_filename)) != 0)
+  if (create_filename_log (ctxt.output_dirname, ctxt.output_prefix, unloadlog_filename, sizeof (unloadlog_filename)) !=
+      0)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
       status = 1;
