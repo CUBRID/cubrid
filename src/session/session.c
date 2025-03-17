@@ -773,7 +773,7 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
     }
 
 #if defined (SERVER_MODE)
-  assert (session_p->ref_count > 0);
+  assert (session_p->ref_count >= 0);
 
   if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
       && thread_p->conn_entry->session_p == session_p)
