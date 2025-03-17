@@ -2336,11 +2336,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* replace orderby_num of select-list to rownum */
       query_spec = pt_lambda_with_arg (parser, query_spec, ord_num, ins_num, false, 0, false);
 
-      if (statement->info.query.order_by == NULL)
-	{
-	  ;
-	}
-
       parser_free_tree (parser, free_node);
     }
 
