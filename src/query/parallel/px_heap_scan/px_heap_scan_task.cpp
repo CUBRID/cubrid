@@ -104,11 +104,11 @@ namespace parallel_heap_scan
     list_id_data data;
     QUERY_ID query_id = m_list_stream->get_query_id();
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
-
     if (m_context->has_error())
       {
 	m_context->add_tasks_scan_ended();
 	m_context->add_tasks_executed();
+	m_context->add_tasks_list_opened();
 	return;
       }
     HL_HEAPID orig_heap_id = db_change_private_heap (thread_p, 0);

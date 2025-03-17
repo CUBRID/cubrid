@@ -300,29 +300,20 @@ namespace parallel_heap_scan
 	return status::READ_CURPAGE_END;
       }
 
-    while (true)
+    SCAN_CODE status = qfile_scan_list_next (thread_p, list_scan_id, &tplrec, PEEK);
+    if (status == S_SUCCESS)
       {
-	SCAN_CODE status = qfile_scan_list_next (thread_p, list_scan_id, &tplrec, PEEK);
-	if (status == S_SUCCESS)
-	  {
-	    if (VPID_EQ (&m_read_vpid, &list_scan_id->curr_vpid))
-	      {
-		break;
-	      }
-	    else
-	      {
-		continue;
-	      }
-	  }
-	else if (status == S_END)
-	  {
-	    return status::READ_END;
-	  }
-	else
-	  {
-	    return status::READ_ERROR;
-	  }
+	assert (VPID_EQ (&m_read_vpid, &list_scan_id->curr_vpid));
       }
+    else if (status == S_END)
+      {
+	return status::READ_END;
+      }
+    else
+      {
+	return status::READ_ERROR;
+      }
+
 
     or_init (&iterator, tplrec.tpl, QFILE_GET_TUPLE_LENGTH (tplrec.tpl));
     rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
