@@ -2083,7 +2083,7 @@ logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  if (!tdes)
+  if (tdes)
     {
       tdes->is_user_active = is_user_active;
     }
