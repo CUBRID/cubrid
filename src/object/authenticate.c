@@ -7647,7 +7647,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
   int error = NO_ERROR;
   CLASS_AUTH cl_auth;
   CLASS_USER *u;
-  int statements, ecount;
+  int statements;
   char *uname;
 
   cl_auth.class_mop = class_mop;
@@ -7666,7 +7666,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
       while ((statements = class_grant_loop (output_ctx, &cl_auth)))
 	;
 
-      for (u = cl_auth.users, ecount = 0; u != NULL; u = u->next)
+      for (u = cl_auth.users; u != NULL; u = u->next)
 	{
 	  if (u->grants != NULL)
 	    {
@@ -7681,13 +7681,7 @@ au_export_grants (print_output & output_ctx, MOP class_mop)
 					  MSGCAT_AUTH_GRANT_DUMP_ERROR), uname);
 	      output_ctx ("*/\n");
 	      ws_free_string (uname);
-	      ecount++;
 	    }
-	}
-      if (ecount)
-	{
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
     }
 
