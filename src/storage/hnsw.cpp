@@ -42,6 +42,7 @@ int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_e
   btid->root_pageid = ++hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
+
   return NO_ERROR;
 }
 
@@ -57,6 +58,7 @@ int hnsw_delete_index (BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
+      assert (false);
       return ER_FAILED;
     }
   else

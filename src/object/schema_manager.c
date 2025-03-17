@@ -10897,6 +10897,10 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 	}
     }
 
+  // TODO : Constraint with given BTID exists only once. If is not, ctype can be overwriten can call wrong index delete function.
+  // To prevent this, we need to refactor this code to guarantee that ctype is unique for given BTID.
+  assert (ref_count == 1);
+
   if (ref_count == 1)
     {
       if (ctype == SM_CONSTRAINT_VECTOR_INDEX)
