@@ -710,7 +710,6 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   char unloadlog_filename[PATH_MAX];
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
-  char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
   TEXT_OUTPUT *obj_out = NULL;
 
   // set sampling mode
@@ -1571,7 +1570,6 @@ print_object_header_for_class (extract_context & ctxt, SM_CLASS * class_ptr, OID
 {
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   SM_ATTRIBUTE *attribute;
   int v, error = NO_ERROR;
 
@@ -2585,13 +2583,11 @@ static bool
 open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name)
 {
   char out_fname[PATH_MAX];
-  char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
-  char *name_ptr = (char *) class_name;
 
   out_fname[0] = '\0';
   if (class_name && *class_name)
     {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
+      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, class_name, OBJECT_SUFFIX);
     }
   else
     {
