@@ -2789,7 +2789,7 @@ create_stmt
 	| CREATE					/* 1 */
 		{					/* 2 */
                         DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
-			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_VECTOR_INDEX);
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
 			parser_push_hint_node (node);
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 		}
@@ -2816,7 +2816,12 @@ create_stmt
 
 			assert(node != NULL);
 
-			bool opt_unique = false;
+			/* Initialize vector_index_info (now an embedded structure) */
+			node->info.index.vector_index.kind = VECTOR_INDEX_HNSW;
+			node->info.index.vector_index.hnsw_m = 16;                /* Example default value */
+			node->info.index.vector_index.hnsw_ef_construction = 200; /* Example default value */
+
+			bool opt_unique = false; // original $5
 
 		        if (opt_unique && $12)
 			  {

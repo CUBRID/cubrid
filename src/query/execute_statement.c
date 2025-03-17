@@ -91,6 +91,7 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
+#include "cubvec_assert.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3229,6 +3230,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_CREATE_INDEX:
+
+	  if (statement->info.index.vector_index.kind != VECTOR_INDEX_NONE)
+	    {
+	      ASSERT_CUBVEC(false);
+	      // error = do_create_vector_index (parser, statement);
+	      // break;
+	    }
+
 	  error = do_create_index (parser, statement);
 	  break;
 
@@ -3909,6 +3918,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  do_create_entity);
       break;
     case PT_CREATE_INDEX:
+      if (statement->info.index.vector_index.kind != VECTOR_INDEX_NONE)
+	{
+	  err = do_create_vector_index (parser, statement);
+	  break;
+	}
+
       err = do_create_index (parser, statement);
       break;
     case PT_CREATE_SERIAL:

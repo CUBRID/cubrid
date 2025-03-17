@@ -2143,6 +2143,19 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+/* Enumeration for vector index kind */
+typedef enum vector_index_kind {
+    VECTOR_INDEX_NONE = 0,
+    VECTOR_INDEX_HNSW
+} vector_index_kind;
+
+/* Structure for vector index specific information */
+typedef struct pt_vector_index_info {
+    vector_index_kind kind;
+    int hnsw_m;
+    int hnsw_ef_construction;
+} PT_VECTOR_INDEX_INFO;
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
@@ -2157,6 +2170,8 @@ struct pt_index_info
   PT_NODE *function_expr;	/* PT_EXPR - expression to be used in a function index */
   PT_NODE *comment;		/* PT_VALUE */
   PT_ALTER_CODE code;
+
+  PT_VECTOR_INDEX_INFO vector_index;
 
   int func_pos;			/* the position of the expression in the function index's column list */
   int func_no_args;		/* number of arguments in the function index expression
