@@ -172,7 +172,7 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 	}
     }
 
-  if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+  //if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
       /* Likely the commit failed.. somehow */
       (void) return_error_to_client (thread_p, rid);

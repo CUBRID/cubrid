@@ -563,6 +563,13 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 	  tran_error = ER_DBLINK_TRAN;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	}
+      else
+	{
+	  rc = -1;
+	  is_abort = true;
+	  tran_error = ER_DBLINK_TRAN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, "dblink aborted (tested)");
+	}
 
       rc = cci_disconnect (dblink->conn_handle, &err_buf);
       if (rc < 0 && tran_error == NO_ERROR)
