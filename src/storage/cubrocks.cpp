@@ -99,12 +99,10 @@ cubrocks::context::~context ()
 void
 cubrocks::context::kv_config (void)
 {
-  opt.txndb.write_policy = rocksdb::TxnDBWritePolicy::WRITE_PREPARED;
   opt.db.max_open_files = -1;
-  opt.db.two_write_queues = true;
   opt.db.allow_2pc = true;
   opt.db.enable_pipelined_write = true;
-  opt.db.IncreaseParallelism(std::thread::hardware_concurrency ());
+  opt.db.IncreaseParallelism (std::thread::hardware_concurrency ());
 
   /* use CRC32 if the machine supports acceleration functions */
   opt.table.checksum = rocksdb::kCRC32c;
@@ -210,6 +208,10 @@ cubrocks::context::kv_tran_prepare (int tran_index)
   assert (tran_index < MAX_NTRANS);
 
   status = transactions[tran_index].txn->Prepare ();
+  if (!status.ok ())
+  {
+    std::cout << status.ToString () << std::endl;
+  }
   assert (status.ok ());
 }
 
@@ -227,7 +229,7 @@ cubrocks::context::kv_tran_commit (int tran_index)
       return ;
     }
 
-  kv_tran_prepare (tran_index);
+  //kv_tran_prepare (tran_index);
 
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
