@@ -38,11 +38,16 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtSql extends Stmt implements SqlUse {
 
-    public StmtLoop containerLoop;
+    public boolean reachableFromLoop;
 
     @Override
-    public void setContainerLoop(StmtLoop containerLoop) {
-        this.containerLoop = containerLoop;
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
+    }
+
+    @Override
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
     }
 
     @Override
