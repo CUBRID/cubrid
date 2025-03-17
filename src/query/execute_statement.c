@@ -3233,7 +3233,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (statement->info.index.vector_index.kind != VECTOR_INDEX_NONE)
 	    {
-	      ASSERT_CUBVEC(false);
+	      ASSERT_CUBVEC (false);
 	      // error = do_create_vector_index (parser, statement);
 	      // break;
 	    }

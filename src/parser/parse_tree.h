@@ -2144,16 +2144,18 @@ struct pt_create_entity_info
 };
 
 /* Enumeration for vector index kind */
-typedef enum vector_index_kind {
-    VECTOR_INDEX_NONE = 0,
-    VECTOR_INDEX_HNSW
+typedef enum vector_index_kind
+{
+  VECTOR_INDEX_NONE = 0,
+  VECTOR_INDEX_HNSW
 } vector_index_kind;
 
 /* Structure for vector index specific information */
-typedef struct pt_vector_index_info {
-    vector_index_kind kind;
-    int hnsw_m;
-    int hnsw_ef_construction;
+typedef struct pt_vector_index_info
+{
+  vector_index_kind kind;
+  int hnsw_m;
+  int hnsw_ef_construction;
 } PT_VECTOR_INDEX_INFO;
 
 /* CREATE/DROP INDEX INFO */
