@@ -107,18 +107,18 @@ public class StoredProcedure {
             }
         } else if (lang == LANG_JAVASP) {
             try {
-                c = ctx.getOldClassLoader().loadClass(sig.getClassName());
+                // find a class in static directory first
+                c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
+
+                if (c == null) {
+                    c = ctx.getOldClassLoader().loadClass(sig.getClassName());
+                }
             } catch (ClassNotFoundException e) {
                 ex = e;
             }
         } else {
             assert false;
             throw new ClassNotFoundException(sig.getClassName());
-        }
-
-        // find a class in static directory and system loader
-        if (c == null) {
-            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
         }
 
         if (c == null) {
