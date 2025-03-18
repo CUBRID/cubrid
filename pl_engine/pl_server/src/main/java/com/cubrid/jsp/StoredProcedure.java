@@ -110,7 +110,6 @@ public class StoredProcedure {
                 // find a class in static directory first
                 c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
             } catch (Exception e) {
-                ex = e;
             }
 
             try {
