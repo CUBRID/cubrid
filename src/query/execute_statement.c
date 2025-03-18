@@ -3233,7 +3233,20 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (statement->info.index.is_vector_index)
 	    {
+	      /*
+	       * In CUBVEC-25, we implemented the function do_create_vector_index() to handle vector indexes.
+	       * This new function mimics the behavior of do_create_index and should be invoked when
+	       * statement->info.index.is_vector_index is true.
+	       *
+	       * Currently, the SQL execution path primarily uses do_execute_statement, and the do_statement
+	       * function is not analyze yet. The assert here (ASSERT_CUBVEC(false))
+	       * acts as a safeguard. If this code path is ever executed, it will immediately flag the unexpected
+	       * use case, enabling us to quickly identify, debug, and patch the issue during the development phase
+	       * of CUBVEC project.
+	       */
 	      ASSERT_CUBVEC (false);
+
+	      /* Perhaps in the future */
 	      // error = do_create_vector_index (parser, statement);
 	      // break;
 	    }
