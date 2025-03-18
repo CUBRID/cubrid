@@ -376,13 +376,11 @@ struct mergelist_proc_node
 typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
 struct hashjoin_proc_node
 {
-  QFILE_LIST_MERGE_INFO merge_info;
-
   HJ_INPUT outer;
   HJ_INPUT inner;
-  HJ_DOMAIN_INFO domain_info;
-
+  QFILE_LIST_MERGE_INFO merge_info;
 #if defined (SERVER_MODE) || defined (SA_MODE)
+  HJ_DOMAIN_INFO domain_info;
   HJ_STATS_GROUP stats_group;
 #endif
 };

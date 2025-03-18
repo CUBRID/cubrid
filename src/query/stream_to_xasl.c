@@ -3161,53 +3161,14 @@ static char *
 stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
 {
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  TP_DOMAIN **all_domains = NULL;
+  int domain_cnt, domain_index;
   int need_coerce_domains;
-  int i, offset;
+  int offset;
 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
-
-  /**
-   * merge_info
-   */
-  ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
-  if (ptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /**
-   * domains, value_indexes
-   */
-  if (node_p->merge_info.ls_column_cnt == 0)
-    {
-      error = ER_QPROC_INVALID_XASLNODE;
-      stx_set_xasl_errcode (thread_p, error);
-      goto exit_on_error;
-    }
-  else
-    {
-      node_p->domain_info.outer.domains =
-	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->domain_info.outer.domains == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  stx_set_xasl_errcode (thread_p, error);
-	  goto exit_on_error;
-	}
-      node_p->domain_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
-
-      node_p->domain_info.inner.domains =
-	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->domain_info.inner.domains == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  stx_set_xasl_errcode (thread_p, error);
-	  goto exit_on_error;
-	}
-      node_p->domain_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
-    }
 
   /**
    * outer
@@ -3246,11 +3207,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	{
 	  goto exit_on_error;
 	}
-    }
-
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-    {
-      ptr = or_unpack_domain (ptr, &node_p->domain_info.outer.domains[i], 0);
     }
 
   /**
@@ -3292,35 +3248,43 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
+  /**
+   * merge_info
+   */
+  ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
+  if (ptr == NULL)
     {
-      ptr = or_unpack_domain (ptr, &node_p->domain_info.inner.domains[i], NULL);
+      goto exit_on_error;
     }
 
   /**
-   * need_coerce_domains, coerce_domains
+   * domain_info
    */
-  ptr = or_unpack_int (ptr, &need_coerce_domains);
-  node_p->domain_info.need_coerce_domains = need_coerce_domains;
-  if (node_p->domain_info.need_coerce_domains)
+  domain_cnt = node_p->merge_info.ls_column_cnt;
+
+  if (domain_cnt == 0)
     {
-      node_p->domain_info.coerce_domains =
-	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->domain_info.coerce_domains == NULL)
+      error = ER_QPROC_INVALID_XASLNODE;
+      stx_set_xasl_errcode (thread_p, error);
+      goto exit_on_error;
+    }
+  else
+    {
+      all_domains = (TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * domain_cnt * 3);
+      if (all_domains == NULL)
 	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  stx_set_xasl_errcode (thread_p, error);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * domain_cnt * 3);
 	  goto exit_on_error;
 	}
 
-      for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-	{
-	  ptr = or_unpack_domain (ptr, &node_p->domain_info.coerce_domains[i], 0);
-	}
-    }
+      /* It is initialized before execution, so initialization here is unnecessary. */
+      node_p->domain_info.outer.domains = all_domains;
+      node_p->domain_info.inner.domains = all_domains + domain_cnt;
+      node_p->domain_info.coerce_domains = all_domains + domain_cnt * 2;
 
-  /* stats_group */
-  memset (&node_p->stats_group, 0, sizeof (HJ_STATS_GROUP));
+      node_p->domain_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
+      node_p->domain_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
+    }
 
   return ptr;
 

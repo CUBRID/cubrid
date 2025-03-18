@@ -3597,16 +3597,7 @@ static char *
 xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 {
   ACCESS_SPEC_TYPE *spec = NULL;
-  int i, offset, spec_count;
-
-  /**
-   * merge_info
-   */
-  ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
+  int offset, spec_count;
 
   /**
    * outer
@@ -3636,11 +3627,6 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-    {
-      ptr = or_pack_domain (ptr, node_p->domain_info.outer.domains[i], 0, 0);
-    }
 
   /**
    * inner
@@ -3675,21 +3661,13 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-    {
-      ptr = or_pack_domain (ptr, node_p->domain_info.inner.domains[i], 0, 0);
-    }
-
   /**
-   * need_coerce_domains, coerce_domains
+   * merge_info
    */
-  ptr = or_pack_int (ptr, node_p->domain_info.need_coerce_domains);
-  if (node_p->domain_info.need_coerce_domains)
+  ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
+  if (ptr == NULL)
     {
-      for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-	{
-	  ptr = or_pack_domain (ptr, node_p->domain_info.coerce_domains[i], 0, 0);
-	}
+      return NULL;
     }
 
   return ptr;
@@ -6367,17 +6345,7 @@ static int
 xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 {
   ACCESS_SPEC_TYPE *spec = NULL;
-  int i, size = 0, tmp_size;
-
-  /**
-   * merge_info
-   */
-  tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
-  if (tmp_size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-  size += tmp_size;
+  int size = 0, tmp_size;
 
   /**
    * outer
@@ -6389,16 +6357,6 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
   for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
     {
       tmp_size = xts_sizeof_access_spec_type (spec);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
-    }
-
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-    {
-      tmp_size = or_packed_domain_size (node_p->domain_info.outer.domains[i], 0);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6423,32 +6381,15 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       size += tmp_size;
     }
 
-  for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-    {
-      tmp_size = or_packed_domain_size (node_p->domain_info.inner.domains[i], 0);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
-    }
-
   /**
-   * need_coerce_domains, coerce_domains
+   * merge_info
    */
-  size += OR_INT_SIZE;		/* Whether there is a need to use the coerce domain. */
-  if (node_p->domain_info.need_coerce_domains)
+  tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
     {
-      for (i = 0; i < node_p->merge_info.ls_column_cnt; i++)
-	{
-	  tmp_size = or_packed_domain_size (node_p->domain_info.coerce_domains[i], 0);
-	  if (tmp_size == ER_FAILED)
-	    {
-	      return ER_FAILED;
-	    }
-	  size += tmp_size;
-	}
+      return ER_FAILED;
     }
+  size += tmp_size;
 
   return size;
 }

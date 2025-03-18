@@ -39,7 +39,7 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 #include "query_hash_join.hpp"
- // XXX: SHOULD BE THE LAST INCLUDE HEADER
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #define foutput stdout

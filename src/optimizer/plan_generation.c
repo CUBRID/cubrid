@@ -550,25 +550,14 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   PROJECTION_PART_INFO *outer_info;
   PROJECTION_PART_INFO *inner_info;
 
-  TP_DOMAIN **outer_domains = NULL, **inner_domains = NULL, **coerce_domains;
-  int *outer_value_indexes, *inner_value_indexes;
-  bool need_coerce_domains;
-
-  REGU_VARIABLE_LIST value_list;
-  DB_TYPE outer_type, inner_type, common_type;
-  int outer_precision, inner_precision;
-  int outer_scale, inner_scale;
-  int outer_integral, inner_integral;
-  int common_precision, common_scale;
-
   XASL_NODE *xasl = NULL;
 
   HASHJOIN_PROC_NODE *proc;
   QFILE_LIST_MERGE_INFO *merge_info;
-  HJ_DOMAIN_INFO *domain_info;
 
-  int value_count, value_index, found_index, pos_index;
-  int domain_index, skip_index;
+  int *all_value_indexes;
+  int value_cnt, value_index, found_index;
+  int pos_cnt, pos_index;
 
   assert (env != NULL);
   assert (plan != NULL);
@@ -615,7 +604,6 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   proc = &(xasl->proc.hashjoin);
   merge_info = &(proc->merge_info);
-  domain_info = &(proc->domain_info);
 
   /**
    * STEP 2: Set the necessary information in QFILE_LIST_MERGE_INFO.
@@ -630,37 +618,27 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
    * STEP 2-2: Set the number of columns used in the join predicate.
    */
   merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
-  value_count = merge_info->ls_column_cnt;
-  assert (value_count > 0);
+
+  value_cnt = merge_info->ls_column_cnt;
+  assert (value_cnt > 0);
 
   /**
    * STEP 2-3: Set the positions of the outer and inner columns used in the join predicate.
    */
-  merge_info->ls_outer_column = (int *) pt_alloc_packing_buf (value_count * sizeof (int));
-  if (merge_info->ls_outer_column == NULL)
+  all_value_indexes = NULL;
+  all_value_indexes = (int *) pt_alloc_packing_buf (sizeof (int) * value_cnt * 4);
+  if (all_value_indexes == NULL)
     {
       goto exit_on_error;
     }
+  memset (all_value_indexes, 0, sizeof (int) * value_cnt * 4);
+
+  merge_info->ls_outer_column = all_value_indexes;
+  merge_info->ls_inner_column = all_value_indexes + value_cnt;
 
   /* Not used, but necessary to prevent a fault when qdump_print_list_merge_info is called. */
-  merge_info->ls_outer_unique = (int *) pt_alloc_packing_buf (value_count * sizeof (int));
-  if (merge_info->ls_outer_unique == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  merge_info->ls_inner_column = (int *) pt_alloc_packing_buf (value_count * sizeof (int));
-  if (merge_info->ls_inner_column == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* Not used, but necessary to prevent a fault when qdump_print_list_merge_info is called. */
-  merge_info->ls_inner_unique = (int *) pt_alloc_packing_buf (value_count * sizeof (int));
-  if (merge_info->ls_inner_unique == NULL)
-    {
-      goto exit_on_error;
-    }
+  merge_info->ls_outer_unique = all_value_indexes + value_cnt * 2;
+  merge_info->ls_inner_unique = all_value_indexes + value_cnt * 3;
 
   outer_xasl->orderby_list = NULL;
   inner_xasl->orderby_list = NULL;
@@ -761,31 +739,33 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
 
       /* currently, not used */
-      merge_info->ls_outer_unique[value_index] = false;	/* currently, unused */
-      merge_info->ls_inner_unique[value_index] = false;	/* currently, unused */
+      merge_info->ls_outer_unique[value_index] = false;
+      merge_info->ls_inner_unique[value_index] = false;
     }
 
-  assert (value_index == value_count);
+  assert (value_index == value_cnt);
 
   /**
    * STEP 2-4: Set the number of columns for the merged tuple.
    */
   merge_info->ls_pos_cnt = outer_info->name_count + inner_info->name_count;
 
+  pos_cnt = merge_info->ls_pos_cnt;
+  assert (pos_cnt > 0);
+
   /**
    * STEP 2-5: Set the positions of the outer and inner columns for the merged tuple.
    */
-  merge_info->ls_outer_inner_list = (int *) pt_alloc_packing_buf (merge_info->ls_pos_cnt * sizeof (int));
-  if (merge_info->ls_outer_inner_list == NULL)
+  all_value_indexes = NULL;
+  all_value_indexes = (int *) pt_alloc_packing_buf (sizeof (int) * pos_cnt * 2);
+  if (all_value_indexes == NULL)
     {
       goto exit_on_error;
     }
+  memset (all_value_indexes, 0, sizeof (TP_DOMAIN *) * pos_cnt * 2);
 
-  merge_info->ls_pos_list = (int *) pt_alloc_packing_buf (merge_info->ls_pos_cnt * sizeof (int));
-  if (merge_info->ls_pos_list == NULL)
-    {
-      goto exit_on_error;
-    }
+  merge_info->ls_outer_inner_list = all_value_indexes;
+  merge_info->ls_pos_list = all_value_indexes + pos_cnt;
 
   /**
    * these could be sorted out arbitrily.
@@ -898,180 +878,6 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	  parser_free_tree (parser, during_join_pred);
 	}
     }
-
-  /**
-   * STEP 4: Check coerce_domains.
-   */
-
-  /* outer */
-  outer_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-  if (outer_domains == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
-      goto exit_on_error;
-    }
-  memset (outer_domains, 0, sizeof (TP_DOMAIN *) * value_count);
-  domain_info->outer.domains = outer_domains;
-  domain_info->outer.value_indexes = outer_value_indexes = merge_info->ls_outer_column;
-
-  /* inner */
-  inner_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-  if (inner_domains == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
-      goto exit_on_error;
-    }
-  memset (inner_domains, 0, sizeof (TP_DOMAIN *) * value_count);
-  domain_info->inner.domains = inner_domains;
-  domain_info->inner.value_indexes = inner_value_indexes = merge_info->ls_inner_column;
-
-  /* need_coerce_domains, coerce_domains
-   *   - NULL is not allowed when calling or_packed_domain_size, so either the outer or inner domain must be set. */
-  coerce_domains = (TP_DOMAIN **) pt_alloc_packing_buf (sizeof (TP_DOMAIN *) * value_count);
-  if (coerce_domains == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * value_count);
-      goto exit_on_error;
-    }
-  memset (coerce_domains, 0, sizeof (TP_DOMAIN *) * value_count);
-  domain_info->coerce_domains = coerce_domains;
-  domain_info->need_coerce_domains = need_coerce_domains = false;
-
-  for (domain_index = 0; domain_index < value_count; domain_index++)
-    {
-      value_list = outer_xasl->outptr_list->valptrp;
-      for (skip_index = 0; skip_index < outer_xasl->outptr_list->valptr_cnt; skip_index++)
-	{
-	  if (outer_value_indexes[domain_index] == skip_index)
-	    {
-	      break;
-	    }
-	  value_list = value_list->next;
-	}
-      assert (value_list != NULL);
-      outer_domains[domain_index] = value_list->value.domain;
-      assert (outer_domains[domain_index] != NULL);
-      outer_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
-
-      value_list = inner_xasl->outptr_list->valptrp;
-      for (skip_index = 0; skip_index < inner_xasl->outptr_list->valptr_cnt; skip_index++)
-	{
-	  if (inner_value_indexes[domain_index] == skip_index)
-	    {
-	      break;
-	    }
-	  value_list = value_list->next;
-	}
-      assert (value_list != NULL);
-      inner_domains[domain_index] = value_list->value.domain;
-      assert (inner_domains[domain_index] != NULL);
-      inner_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
-
-      /* common_type */
-      if (outer_type == inner_type)
-	{
-	  common_type = outer_type;
-	}
-      else if (outer_type == DB_TYPE_NULL)
-	{
-	  coerce_domains[domain_index] = inner_domains[domain_index];
-	  continue;
-	}
-      else if (inner_type == DB_TYPE_NULL)
-	{
-	  coerce_domains[domain_index] = outer_domains[domain_index];
-	  continue;
-	}
-      else if ((TP_IS_BIT_TYPE (outer_type) && TP_IS_BIT_TYPE (inner_type))
-	       || (TP_IS_CHAR_TYPE (outer_type) && TP_IS_CHAR_TYPE (inner_type))
-	       || (TP_IS_DATE_TYPE (outer_type) && TP_IS_DATE_TYPE (inner_type))
-	       || (TP_IS_SET_TYPE (outer_type) && TP_IS_SET_TYPE (inner_type))
-	       || (TP_IS_NUMERIC_TYPE (outer_type) && TP_IS_NUMERIC_TYPE (inner_type)))
-	{
-	  common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
-	}
-      else
-	{
-	  assert (false);
-	  need_coerce_domains = true;
-	  coerce_domains[domain_index] = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	  continue;
-	}
-
-      /* common_precision, common_scale */
-      outer_precision = outer_domains[domain_index]->precision;
-      outer_scale = outer_domains[domain_index]->scale;
-
-      inner_precision = inner_domains[domain_index]->precision;
-      inner_scale = inner_domains[domain_index]->scale;
-
-      if (outer_precision == TP_FLOATING_PRECISION_VALUE)
-	{
-	  coerce_domains[domain_index] = outer_domains[domain_index];
-	  continue;
-	}
-      else if (inner_precision == TP_FLOATING_PRECISION_VALUE)
-	{
-	  coerce_domains[domain_index] = inner_domains[domain_index];
-	  continue;
-	}
-      else if (common_type == DB_TYPE_NUMERIC)
-	{
-	  common_scale = MAX (outer_scale, inner_scale);
-
-	  outer_integral = outer_precision - outer_scale;
-	  inner_integral = inner_precision - inner_scale;
-
-	  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-	  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
-	}
-      else
-	{
-	  common_precision = MAX (outer_precision, inner_precision);
-	  common_scale = 0;
-	}
-
-      /* need_coerce_domains, coerce_domains */
-      if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
-	{
-	  coerce_domains[domain_index] = outer_domains[domain_index];
-	}
-      else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
-	{
-	  coerce_domains[domain_index] = inner_domains[domain_index];
-	}
-      else
-	{
-	  need_coerce_domains = true;
-
-	  coerce_domains[domain_index] =
-	    tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
-			    false);
-	  if (coerce_domains[domain_index] == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  coerce_domains[domain_index]->precision = common_precision;
-	  coerce_domains[domain_index]->scale = common_scale;
-
-	  coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
-	}
-    }
-
-#if !defined (NDEBUG)
-  if (!need_coerce_domains)
-    {
-      for (domain_index = 0; domain_index < value_count; domain_index++)
-	{
-	  assert (coerce_domains[domain_index] == outer_domains[domain_index] || coerce_domains[domain_index]
-		  || inner_domains[domain_index]);
-	}
-    }
-#endif /* !NDEBUG */
-
-  domain_info->coerce_domains = (need_coerce_domains) ? coerce_domains : NULL;
-  domain_info->need_coerce_domains = need_coerce_domains;
 
 exit_on_end:
   bitset_delset (&term_segs_set);

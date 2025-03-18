@@ -93,12 +93,12 @@ struct hashjoin_context
 
   HJ_FETCH_INFO outer_fetch_info;
   HJ_FETCH_INFO inner_fetch_info;
+  int key_cnt;
 
   JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
 
   HASH_LIST_SCAN hash_scan;
-  int key_cnt;
   bool is_build_outer;
 
   HJ_STATS *stats;
@@ -108,18 +108,18 @@ typedef struct hashjoin_manager HASHJOIN_MANAGER;
 typedef struct hashjoin_manager HJ_MANAGER;
 struct hashjoin_manager
 {
-  QFILE_LIST_MERGE_INFO *merge_info;
-
   HJ_INPUT *outer;
   HJ_INPUT *inner;
+  QFILE_LIST_MERGE_INFO *merge_info;
 
   HJ_CONTEXT single_context;
   HJ_CONTEXT *contexts;
   int context_cnt;
 
   QUERY_ID query_id;
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   VAL_DESCR *vd;
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+
   HJ_STATS_GROUP *stats_group;
 };
 
@@ -140,6 +140,9 @@ static int qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl
     QUERY_ID query_id, VAL_DESCR *vd);
 static void qexec_hash_join_clear_manager (THREAD_ENTRY *thread_p, HJ_MANAGER *manager);
 
+/* Hash Join Domain Info */
+static int qexec_hash_join_init_domain_info (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_DOMAIN_INFO *domain_info);
+
 /* Hash Join Context */
 static int qexec_hash_join_init_context (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context);
 static void qexec_hash_join_clear_contexts (THREAD_ENTRY *thread_p, HJ_CONTEXT *context);
@@ -159,7 +162,6 @@ static HJ_STATUS qexec_hash_join_check_empty_inputs (HJ_CONTEXT *context);
 static int qexec_hash_join_fetch_key (THREAD_ENTRY *thread_p, HJ_FETCH_INFO *fetch_info,
 				      QFILE_TUPLE_RECORD *tuple_record, HASH_SCAN_KEY *key, HASH_SCAN_KEY *compare_key, bool *exit_on_next);
 static void qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats);
-static void qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info);
 static void qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info);
 
 /* Build Phase */
@@ -195,9 +197,8 @@ qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id, VAL
   QFILE_LIST_ID *list_id = NULL;
 
   HJ_MANAGER manager;
-  HJ_CONTEXT *single_context;
-
   HJ_STATUS status, part_status;
+  HJ_CONTEXT *single_context;
 
   int error = NO_ERROR;
 
@@ -688,9 +689,9 @@ exit_on_error:
 static QFILE_LIST_ID *
 qexec_hash_outer_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
 {
-  ACCESS_SPEC_TYPE *build_spec, *probe_spec;
+  ACCESS_SPEC_TYPE *build_spec = NULL, *probe_spec = NULL;
   VAL_LIST *build_val_list, *probe_val_list;
-  QFILE_LIST_ID *build_list_id, *probe_list_id, *list_id = NULL;
+  QFILE_LIST_ID *build_list_id = NULL, *probe_list_id = NULL, *list_id = NULL;
 
   int error = NO_ERROR;
 
@@ -822,7 +823,6 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
   HJ_DOMAIN_INFO *domain_info;
   HJ_CONTEXT *context;
-
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list = NULL;
   int type_cnt, type_index;
 
@@ -842,27 +842,35 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   manager->merge_info = merge_info;
 
   manager->outer = &proc->outer;
-  assert (manager->outer->xasl != NULL);
-
-  outer_list_id = manager->outer->xasl->list_id;
-  assert (outer_list_id != NULL);
-
   manager->inner = &proc->inner;
+  assert (manager->outer->xasl != NULL);
   assert (manager->inner->xasl != NULL);
 
+  outer_list_id = manager->outer->xasl->list_id;
   inner_list_id = manager->inner->xasl->list_id;
+  assert (outer_list_id != NULL);
   assert (inner_list_id != NULL);
 
+  /**
+   * When aptr_list is executed in qexec_execute_mainblock_internal,
+   * it checks the results from outer_xasl and inner_xasl in merge_info.
+   * If either one has no result, the execution of the other is skipped.
+   * In this case, the list_id.type_list.type_cnt of the skipped one can be 0.
+   */
+  if (outer_list_id->type_list.type_cnt == 0 || inner_list_id->type_list.type_cnt == 0)
+    {
+      goto exit_on_end;
+    }
+
+  assert (outer_list_id->type_list.domp != NULL);
+  assert (inner_list_id->type_list.domp != NULL);
+
   domain_info = &proc->domain_info;
-  qexec_hash_join_is_valid_domain_info (domain_info);
-
-  /* query_id, vd */
-  manager->query_id = query_id;
-  manager->vd = vd;
-
-  /* stats_group */
-  manager->stats_group = &proc->stats_group;
-  memset (manager->stats_group, 0, sizeof (HJ_STATS_GROUP));
+  error = qexec_hash_join_init_domain_info (thread_p, manager, domain_info);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* single_context */
   context = &manager->single_context;
@@ -877,14 +885,12 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   context->inner_fetch_info.input = &domain_info->inner;
   context->inner_fetch_info.coerce_domains = domain_info->coerce_domains;
   context->inner_fetch_info.need_coerce_domains = domain_info->need_coerce_domains;
+  context->key_cnt = merge_info->ls_column_cnt;
 
   context->join_type = merge_info->join_type;
   context->during_join_pred = xasl->during_join_pred;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
-
-  context->key_cnt = merge_info->ls_column_cnt;
-
   assert (context->is_build_outer == false);
 
   context->stats = &manager->stats_group->stats;
@@ -893,46 +899,42 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   assert (manager->contexts == NULL);
   assert (manager->context_cnt == 0);
 
+  /* query_id, vd */
+  manager->query_id = query_id;
+  manager->vd = vd;
+
   /* type_list */
   type_list = &manager->type_list;
   assert (type_list->domp == NULL);
   assert (type_list->type_cnt == 0);
 
-  /**
-   * When aptr_list is executed in qexec_execute_mainblock_internal,
-   * it checks the results from outer_xasl and inner_xasl in merge_info.
-   * If either one has no result, the execution of the other is skipped.
-   * In this case, the list_id.type_list.type_cnt of the skipped one can be 0.
-   */
-  if (outer_list_id->type_list.type_cnt > 0 && inner_list_id->type_list.type_cnt > 0)
+  type_cnt = merge_info->ls_pos_cnt;
+
+  type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * type_cnt);
+  if (type_list->domp == NULL)
     {
-      assert (outer_list_id->type_list.domp != NULL);
-      assert (inner_list_id->type_list.domp != NULL);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * type_cnt);
+      goto exit_on_error;
+    }
 
-      type_cnt = merge_info->ls_pos_cnt;
+  type_list->type_cnt = type_cnt;
 
-      type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * type_cnt);
-      if (type_list->domp == NULL)
+  for (type_index = 0; type_index < type_cnt; type_index++)
+    {
+      if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
 	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * type_cnt);
-	  goto exit_on_error;
+	  type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
 	}
-
-      type_list->type_cnt = type_cnt;
-
-      for (type_index = 0; type_index < type_cnt; type_index++)
+      else
 	{
-	  if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
-	    {
-	      type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
-	    }
-	  else
-	    {
-	      type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
-	    }
+	  type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
 	}
     }
+
+  /* stats_group */
+  manager->stats_group = &proc->stats_group;
+  memset (manager->stats_group, 0, sizeof (HJ_STATS_GROUP));
 
 exit_on_end:
   return error;
@@ -985,6 +987,207 @@ qexec_hash_join_clear_manager (THREAD_ENTRY *thread_p, HJ_MANAGER *manager)
     {
       assert (manager->context_cnt == 0);
     }
+}
+
+static int
+qexec_hash_join_init_domain_info (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_DOMAIN_INFO *domain_info)
+{
+  QFILE_LIST_MERGE_INFO *merge_info;
+  QFILE_LIST_ID *outer_list_id, *inner_list_id;
+
+  TP_DOMAIN **outer_domains, **inner_domains, **coerce_domains;
+  int *outer_value_indexes, *inner_value_indexes;
+  int outer_value_index, inner_value_index;
+  int domain_cnt, domain_index, skip_index;
+  bool need_coerce_domains;
+
+  DB_TYPE outer_type, inner_type, common_type;
+  int outer_precision, inner_precision;
+  int outer_scale, inner_scale;
+  int outer_integral, inner_integral;
+  int common_precision, common_scale;
+
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (domain_info != NULL);
+
+  /* NULL checks not needed. HJ_MANAGER is already verified in qexec_hash_join_init_manager. */
+  merge_info = manager->merge_info;
+  outer_list_id = manager->outer->xasl->list_id;
+  inner_list_id = manager->inner->xasl->list_id;
+
+  /**
+   * domain_info
+   */
+  domain_cnt = merge_info->ls_column_cnt;
+
+  outer_domains = domain_info->outer.domains;
+  outer_value_indexes = domain_info->outer.value_indexes;
+  assert (outer_domains != NULL);
+  assert (outer_value_indexes != NULL);
+
+  inner_domains = domain_info->inner.domains;
+  inner_value_indexes = domain_info->inner.value_indexes;
+  assert (inner_domains != NULL);
+  assert (inner_value_indexes != NULL);
+
+  coerce_domains = domain_info->coerce_domains;
+  need_coerce_domains = domain_info->need_coerce_domains = false;
+
+  memset (coerce_domains, 0, sizeof (TP_DOMAIN *) * domain_cnt);
+
+  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new. */
+  for (domain_index = 0; domain_index < domain_cnt; domain_index++)
+    {
+      outer_value_index = outer_value_indexes[domain_index];
+      inner_value_index = inner_value_indexes[domain_index];
+
+      outer_domains[domain_index] = outer_list_id->type_list.domp[outer_value_index];
+      inner_domains[domain_index] = inner_list_id->type_list.domp[inner_value_index];
+      assert (outer_domains[domain_index] != NULL);
+      assert (inner_domains[domain_index] != NULL);
+
+      outer_type = TP_DOMAIN_TYPE (outer_domains[domain_index]);
+      inner_type = TP_DOMAIN_TYPE (inner_domains[domain_index]);
+
+      /* common_type */
+      if (outer_type == inner_type)
+	{
+	  common_type = outer_type;
+	}
+      else if (outer_type == DB_TYPE_NULL)
+	{
+	  assert (false);
+	  need_coerce_domains = true;
+	  coerce_domains[domain_index] = inner_domains[domain_index];
+	  continue;
+	}
+      else if (inner_type == DB_TYPE_NULL)
+	{
+	  assert (false);
+	  need_coerce_domains = true;
+	  coerce_domains[domain_index] = outer_domains[domain_index];
+	  continue;
+	}
+      else if ((TP_IS_BIT_TYPE (outer_type) && TP_IS_BIT_TYPE (inner_type))
+	       || (TP_IS_CHAR_TYPE (outer_type) && TP_IS_CHAR_TYPE (inner_type))
+	       || (TP_IS_DATE_TYPE (outer_type) && TP_IS_DATE_TYPE (inner_type))
+	       || (TP_IS_SET_TYPE (outer_type) && TP_IS_SET_TYPE (inner_type))
+	       || (TP_IS_NUMERIC_TYPE (outer_type) && TP_IS_NUMERIC_TYPE (inner_type)))
+	{
+	  common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
+	}
+      else
+	{
+	  assert (false);
+	  need_coerce_domains = true;
+	  coerce_domains[domain_index] = &tp_String_domain;
+	  continue;
+	}
+
+      /* outer_precision, outer_scale */
+      outer_precision = outer_domains[domain_index]->precision;
+      outer_scale = outer_domains[domain_index]->scale;
+
+      inner_precision = inner_domains[domain_index]->precision;
+      inner_scale = inner_domains[domain_index]->scale;
+
+      if (outer_precision == inner_precision && outer_scale == inner_scale)
+	{
+	  coerce_domains[domain_index] = NULL;
+	  continue;
+	}
+      else
+	{
+	  need_coerce_domains = true;
+	}
+
+      if (outer_precision == TP_FLOATING_PRECISION_VALUE || inner_precision == TP_FLOATING_PRECISION_VALUE)
+	{
+	  common_precision = TP_FLOATING_PRECISION_VALUE;
+	  common_scale = 0;
+	}
+      else if (common_type == DB_TYPE_NUMERIC)
+	{
+	  common_scale = MAX (outer_scale, inner_scale);
+
+	  outer_integral = outer_precision - outer_scale;
+	  inner_integral = inner_precision - inner_scale;
+
+	  common_precision = MAX (outer_integral, inner_integral) + common_scale;
+	  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+	}
+      else
+	{
+	  common_precision = MAX (outer_precision, inner_precision);
+	  common_scale = 0;
+	}
+
+      /* need_coerce_domains, coerce_domains */
+      if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
+	{
+	  coerce_domains[domain_index] = outer_domains[domain_index];
+	}
+      else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
+	{
+	  coerce_domains[domain_index] = inner_domains[domain_index];
+	}
+      else
+	{
+	  coerce_domains[domain_index] =
+		  tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
+				  false);
+	  if (coerce_domains[domain_index] == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  coerce_domains[domain_index]->precision = common_precision;
+	  coerce_domains[domain_index]->scale = common_scale;
+
+	  coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
+	}
+    }
+
+#if !defined (NDEBUG)
+  if (!need_coerce_domains)
+    {
+      for (domain_index = 0; domain_index < domain_cnt; domain_index++)
+	{
+	  assert (coerce_domains[domain_index] == NULL);
+	}
+    }
+#endif /* !NDEBUG */
+
+  /*
+   * If any join predicate compares different types, need_coerce_domains is set to true.
+   * Otherwise, need_coerce_domains is false.
+   *
+   * If need_coerce_domains is true, coerce_domains is either inner_domains,
+   * outer_domains, or a common domain for comparison.
+   *
+   * If either inner_domains or outer_domains matches coerce_domains,
+   * value coercion is unnecessary for that domain.
+   * Otherwise, values must be coerced to the common domain.
+   */
+  domain_info->need_coerce_domains = need_coerce_domains;
+
+exit_on_end:
+  return error;
+
+exit_on_error:
+  if (error == NO_ERROR)
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  goto exit_on_end;
 }
 
 static int
@@ -1520,7 +1723,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ
 	{
 	  goto exit_on_error;
 	}
-      else if (exit_on_next == true)
+      else if (exit_on_next)
 	{
 	  if (is_null_allowed)
 	    {
@@ -1600,8 +1803,16 @@ qexec_hash_join_check_empty_inputs (HJ_CONTEXT *context)
 
   assert (context != NULL);
 
-  assert (context->outer_list_id != NULL);
-  assert (context->inner_list_id != NULL);
+  /**
+   * When aptr_list is executed in qexec_execute_mainblock_internal,
+   * it checks the results from outer_xasl and inner_xasl in merge_info.
+   * If either one has no result, the execution of the other is skipped.
+   * In this case, the list_id.type_list.type_cnt of the skipped one can be 0.
+   */
+  if (context->outer_list_id == NULL || context->inner_list_id == NULL)
+    {
+      return HASHJOIN_END;
+    }
 
   outer_tuple_cnt = context->outer_list_id->tuple_cnt;
   inner_tuple_cnt = context->inner_list_id->tuple_cnt;
@@ -1815,17 +2026,6 @@ qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats)
 }
 
 static void
-qexec_hash_join_is_valid_domain_info (HJ_DOMAIN_INFO *info)
-{
-  assert (info->outer.domains != NULL);
-  assert (info->outer.value_indexes != NULL);
-  assert (info->inner.domains != NULL);
-  assert (info->inner.value_indexes != NULL);
-  assert (info->need_coerce_domains == false || info->coerce_domains != NULL);
-  assert (info->need_coerce_domains == true || info->coerce_domains == NULL);
-}
-
-static void
 qexec_hash_join_is_valid_part_info (HJ_PARTITION_INFO *info)
 {
   assert (info->list_id != NULL);
@@ -1920,7 +2120,7 @@ qexec_hash_join_build (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	{
 	  goto exit_on_error;
 	}
-      else if (exit_on_next == true)
+      else if (exit_on_next)
 	{
 	  /* Give up and read the next tuple. */
 	  exit_on_next = false;
@@ -2151,7 +2351,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
   TSCTIMEVAL profile_tv_diff;
 #endif
   UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
-  int max_collisions;
+  int max_collisions = 0;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
   hash_scan = &context->hash_scan;
@@ -2226,7 +2426,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	{
 	  goto exit_on_error;
 	}
-      else if (exit_on_next == true)
+      else if (exit_on_next)
 	{
 	  /* Give up and read the next tuple. */
 	  exit_on_next = false;
@@ -2302,7 +2502,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	    {
 	      goto exit_on_error;
 	    }
-	  else if (exit_on_next == true)
+	  else if (exit_on_next)
 	    {
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	      fprintf (stdout, "\nNot Matched Key: ");
@@ -2527,7 +2727,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	{
 	  goto exit_on_error;
 	}
-      else if (exit_on_next == true)
+      else if (exit_on_next)
 	{
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nFill Outer Key: ");
@@ -2683,7 +2883,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	    {
 	      goto exit_on_error;
 	    }
-	  else if (exit_on_next == true)
+	  else if (exit_on_next)
 	    {
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	      fprintf (stdout, "\nNot Matched Key: ");
@@ -2782,7 +2982,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	  stats->probe.max_collisions = MAX (stats->probe.max_collisions, max_collisions);
 	}
 
-      if (any_record_added == false)
+      if (!any_record_added)
 	{
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nFill Outer Key: ");
