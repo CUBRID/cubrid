@@ -1913,10 +1913,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
-  has_inst = pt_has_inst_in_where_and_select_list (parser, mainquery)
-    || pt_has_inst_in_where_and_select_list (parser, subquery);
   if (subquery->info.query.order_by
-      && (((!is_rownum_only || pt_is_distinct (mainquery)) && has_inst)
+      && (((!is_rownum_only || pt_is_distinct (mainquery)) && pt_has_inst_in_where_and_select_list (parser, mainquery))
 	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
 	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
