@@ -26,21 +26,21 @@
 #include <assert.h>
 
 #ifdef CUBVEC_TEAM
-  #ifdef NDEBUG
+#ifdef NDEBUG
     // Custom assertion that works even in release mode
-    #define ASSERT_CUBVEC(expr) \
+#define ASSERT_CUBVEC(expr) \
       do { \
         if (!(expr)) { \
           fprintf(stderr, "Assertion failed: %s, file %s, line %d\n", #expr, __FILE__, __LINE__); \
           abort(); \
         } \
       } while (0)
-  #else
-    // In debug mode, use the standard assert
-    #define ASSERT_CUBVEC(expr) assert(expr)
-  #endif
 #else
-  #define ASSERT_CUBVEC(expr) ((void)0)
+    // In debug mode, use the standard assert
+#define ASSERT_CUBVEC(expr) assert(expr)
+#endif
+#else
+#define ASSERT_CUBVEC(expr) ((void)0)
 #endif
 
 #ifdef HORNETMJ
