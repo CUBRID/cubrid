@@ -57,7 +57,7 @@ extern "C"
   extern const unsigned char *iso8859_upper_mapper_ptr;
 
 #ifndef NDEBUG
-#define CHECK_OVER_CODE_VALUE(c)   assert((unsigned char)(c) < 256)
+#define CHECK_OVER_CODE_VALUE(c)   assert((unsigned int)(c) < 256)
 #else
 #define CHECK_OVER_CODE_VALUE(c)
 #endif

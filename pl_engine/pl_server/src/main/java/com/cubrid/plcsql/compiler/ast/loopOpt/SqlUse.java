@@ -31,6 +31,9 @@
 package com.cubrid.plcsql.compiler.ast.loopOpt;
 
 public interface SqlUse extends LoopOptimizable {
+
+    void markAsReachableFromLoop();
+
     int getSqlSerialNo();
 
     boolean ofCallableStmt();

@@ -764,7 +764,10 @@ void
 ux_database_shutdown ()
 {
 #if !defined(CAS_FOR_CGW)
-  db_shutdown ();
+  if (db_get_connect_status () == 1)	// only if connected to db
+    {
+      db_shutdown ();
+    }
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';

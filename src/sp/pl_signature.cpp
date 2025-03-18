@@ -22,21 +22,21 @@
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "sp_constants.hpp"
-
+#include "error_manager.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"
 #endif
 
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
 #define CHECK_NULL_AND_FREE(owner, val)                        \
-  do {                                                  \
-    if (val != nullptr)                                 \
-    {                                                   \
-      db_private_free_and_init (owner, val);             \
-    }                                                   \
-  } while(0)
+    do {                                                  \
+      if (val != nullptr)                                 \
+      {                                                   \
+       db_private_free_and_init (owner, val);             \
+      }                                                   \
+    } while(0)
 
 namespace cubpl
 {
@@ -49,11 +49,6 @@ namespace cubpl
   pl_arg::pl_arg (int num_args)
     : arg_size {num_args}
   {
-#if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
-#else
-    owner = NULL;
-#endif
     set_arg_size (num_args);
   }
 
@@ -67,13 +62,20 @@ namespace cubpl
   {
     if (arg_size > 0)
       {
+	THREAD_ENTRY *owner = NULL;
+#if defined(SERVER_MODE)
+	owner = thread_get_thread_entry_info ();
+#endif
 	CHECK_NULL_AND_FREE (owner, arg_mode);
 	CHECK_NULL_AND_FREE (owner, arg_type);
-	for (int i = 0; i < arg_size; i++)
+	if (arg_default_value_size)
 	  {
-	    if (arg_default_value_size && arg_default_value_size[i] > 0)
+	    for (int i = 0; i < arg_size; i++)
 	      {
-		CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
+		if (arg_default_value_size[i] > 0)
+		  {
+		    CHECK_NULL_AND_FREE (owner, arg_default_value[i]);
+		  }
 	      }
 	  }
 	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
@@ -130,16 +132,22 @@ namespace cubpl
     if (num_args > 0)
       {
 	arg_size = num_args;
+
 	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
-	for (int i = 0; i < num_args; i++)
+
+	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
 	  {
-	    arg_mode[i] = 0;
-	    arg_type[i] = 0;
-	    arg_default_value_size[i] = 0;
-	    arg_default_value[i] = nullptr;
+	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
+	    memset (arg_type, 0x00, (num_args * sizeof (int)));
+	    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
+	    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
+	  }
+	else
+	  {
+	    assert_release (false);
 	  }
       }
     else
@@ -155,19 +163,25 @@ namespace cubpl
   pl_signature::pl_signature ()
     : name {nullptr}
     , auth {nullptr}
-    , type {0}
+    , type {PL_TYPE_NONE}
     , result_type {0}
   {
-#if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
-#else
-    owner = NULL;
-#endif
     memset (&ext, 0, sizeof (pl_ext));
+
+#if defined (SERVER_MODE)
+    is_disposable = (thread_get_thread_entry_info ()->private_heap_id != 0);
+#else
+    is_disposable = true;
+#endif
   }
 
   pl_signature::~pl_signature ()
   {
+    THREAD_ENTRY *owner = NULL;
+#if defined(SERVER_MODE)
+    owner = thread_get_thread_entry_info ();
+#endif
+
     CHECK_NULL_AND_FREE (owner, name);
     CHECK_NULL_AND_FREE (owner, auth);
 
@@ -232,6 +246,11 @@ namespace cubpl
   void
   pl_signature::unpack (cubpacking::unpacker &deserializator)
   {
+#if defined(SERVER_MODE)
+    size_t len = 0;
+    char *ptr = NULL;
+#endif
+
     deserializator.unpack_int (type);
 
     cubmem::extensible_block name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
@@ -273,8 +292,8 @@ namespace cubpl
 
 	if (arg.arg_size > 0)
 	  {
-	    ext.method.arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * arg.arg_size);
 	    int cnt;
+	    ext.method.arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * arg.arg_size);
 	    deserializator.unpack_int_array (ext.method.arg_pos, cnt);
 	    assert (cnt == arg.arg_size);
 	  }
@@ -376,11 +395,25 @@ namespace cubpl
     : num_sigs {num}
   {
 #if defined (SERVER_MODE)
-    owner = thread_get_thread_entry_info ();
+    is_disposable = (thread_get_thread_entry_info ()->private_heap_id != 0);
 #else
-    owner = NULL;
+    is_disposable = true;
 #endif
-    sigs = (num > 0) ? new pl_signature[num] : nullptr;
+
+    if (num <= 0)
+      {
+	sigs = nullptr;
+      }
+    else
+      {
+#if defined(MMON_DEBUG_LEVEL)
+	sigs = new  pl_signature[num];
+#else
+	sigs = new (std::nothrow) pl_signature[num];
+#endif
+
+	assert_release (sigs != NULL);
+      }
   }
 
   pl_signature_array::~pl_signature_array ()
@@ -408,10 +441,18 @@ namespace cubpl
     deserializator.unpack_int (num_sigs);
     if (num_sigs > 0)
       {
-	sigs = new pl_signature [num_sigs];
-	for (int i = 0; i < num_sigs; i++)
+#if defined(MMON_DEBUG_LEVEL)
+	sigs = new  pl_signature [num_sigs];
+#else
+	sigs = new (std::nothrow) pl_signature [num_sigs];
+#endif
+	assert_release (sigs != NULL);
+	if (sigs)
 	  {
-	    sigs[i].unpack (deserializator);
+	    for (int i = 0; i < num_sigs; i++)
+	      {
+		sigs[i].unpack (deserializator);
+	      }
 	  }
       }
   }

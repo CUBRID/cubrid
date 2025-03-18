@@ -831,4 +831,5 @@ EXPORTS
     getnameinfo_uhost
     pl_get_socket_file_path
     envvar_vmdir_file
+    envvar_logdir_file
 	

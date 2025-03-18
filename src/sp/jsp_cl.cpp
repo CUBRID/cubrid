@@ -2260,77 +2260,6 @@ exit_on_error:
 }
 
 static int
-check_execute_authorization_by_query (const MOP sp_obj)
-{
-  int error = NO_ERROR, save;
-  const char *query = "SELECT [au] FROM " CT_CLASSAUTH_NAME
-		      " [au] WHERE [object_type] = ? and [auth_type] = 'EXECUTE' and [object_of] = ? and [grantee] = ?";
-  DB_QUERY_RESULT *result = NULL;
-  DB_SESSION *session = NULL;
-  DB_VALUE val[3];
-  int stmt_id;
-  int cnt = 0;
-
-  db_make_null (&val[0]);
-  db_make_null (&val[1]);
-  db_make_null (&val[2]);
-
-  /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
-
-  session = db_open_buffer_local (query);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto release;
-    }
-
-  db_make_int (&val[0], (int) DB_OBJECT_PROCEDURE);
-  db_make_object (&val[1], sp_obj);
-  db_make_object (&val[2], Au_user);
-
-  error = db_push_values (session, 3, val);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
-  cnt = error = db_execute_statement_local (session, stmt_id, &result);
-  if (error < 0)
-    {
-      goto release;
-    }
-
-  error = db_query_end (result);
-
-release:
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-  pr_clear_value (&val[0]);
-  pr_clear_value (&val[1]);
-  pr_clear_value (&val[2]);
-
-  AU_ENABLE (save);
-
-  return cnt;
-}
-
-static int
 check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
   int error = NO_ERROR;
@@ -2347,27 +2276,13 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
       return NO_ERROR;
     }
 
-  error = db_get (sp_obj, SP_ATTR_OWNER, &owner);
-  if (error == NO_ERROR)
+// check execute authorization (Au_user is granted by owner)
+  if (au_check_procedure_authorization (sp_obj) == NO_ERROR)
     {
-      // check sp's owner is current user
-      owner_mop = db_get_object (&owner);
-      if (ws_is_same_object (owner_mop, Au_user) || ws_is_same_object (owner_mop, Au_public_user))
-	{
-	  return NO_ERROR;
-	}
-      else if (check_execute_authorization_by_query (sp_obj) == 0)
-	{
-	  error = ER_AU_EXECUTE_FAILURE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  error = er_errid ();
-	}
+      return NO_ERROR;
     }
 
-  return error;
+  return ER_FAILED;
 }
 
 PT_NODE *

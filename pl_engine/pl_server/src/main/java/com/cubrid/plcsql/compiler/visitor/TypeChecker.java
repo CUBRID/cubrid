@@ -41,6 +41,7 @@ import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
@@ -53,13 +54,19 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.Stack;
 
 public class TypeChecker extends AstVisitor<Type> {
 
-    public TypeChecker(InstanceStore iStore, SymbolStack symbolStack, ParseTreeConverter ptConv) {
+    public TypeChecker(
+            InstanceStore iStore,
+            SymbolStack symbolStack,
+            ParseTreeConverter ptConv,
+            Set<SqlUse> sqlUsesInRecursiveCalls) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;
         this.ptConv = ptConv;
+        this.sqlUsesInRecursiveCalls = sqlUsesInRecursiveCalls;
     }
 
     @Override
@@ -767,6 +774,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
+        if (routineDefNestLevel == 1) {
+            Stack<DeclRoutine> calls = new Stack<>();
+            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
+            assert calls.size() == 0;
+        }
         return node.decl.retTypeSpec.type;
     }
 
@@ -1216,6 +1228,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtLocalProcCall(StmtLocalProcCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
+        if (routineDefNestLevel == 1) {
+            Stack<DeclRoutine> calls = new Stack<>();
+            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
+            assert calls.size() == 0;
+        }
         return null;
     }
 
@@ -1307,9 +1324,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     private static final Type[] TYPE_ARRAY_DUMMY = new Type[0];
 
+    private int routineDefNestLevel;
+
     private InstanceStore iStore;
     private SymbolStack symbolStack;
     private ParseTreeConverter ptConv;
+    private Set<SqlUse> sqlUsesInRecursiveCalls;
 
     private List<Type> caseComparedTypes;
 
@@ -1326,6 +1346,9 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     private Type visitDeclRoutine(DeclRoutine node) {
+
+        routineDefNestLevel++;
+
         visitNodeList(node.paramList);
         if (node.retTypeSpec != null) {
             visit(node.retTypeSpec);
@@ -1335,6 +1358,9 @@ public class TypeChecker extends AstVisitor<Type> {
         }
         assert node.body != null; // syntactically guaranteed
         visitBody(node.body);
+
+        routineDefNestLevel--;
+
         return null;
     }
 

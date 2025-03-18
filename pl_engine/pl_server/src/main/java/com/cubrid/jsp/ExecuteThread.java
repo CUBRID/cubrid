@@ -130,145 +130,152 @@ public class ExecuteThread extends Thread {
     public void run() {
         /* main routine handling stored procedure */
         Header header = null;
-        while (!Thread.interrupted()) {
-            try {
-                header = listenCommand();
-                ContextManager.registerThread(Thread.currentThread().getId(), ctx.getSessionId());
-                switch (header.code) {
+        try {
+            while (!Thread.interrupted()) {
+                try {
+                    header = listenCommand();
+                    ContextManager.registerThread(
+                            Thread.currentThread().getId(), ctx.getSessionId());
+                    switch (header.code) {
+                            /*
+                             * the following two request codes are for processing java stored procedure
+                             * routine
+                             */
+                        case RequestCode.INVOKE_SP:
+                            {
+                                processStoredProcedure();
+                                ctx = null;
+                                break;
+                            }
+
+                        case RequestCode.COMPILE:
+                            {
+                                processCompile();
+                                break;
+                            }
+
+                        case RequestCode.DESTROY:
+                            {
+                                ContextManager.destroyContext(ctx.getSessionId());
+                                break;
+                            }
+
+                            /* the following request codes are for system requests */
+                        case RequestCode.UTIL_BOOTSTRAP:
+                            {
+                                processBootstrap();
+                                break;
+                            }
+                        case RequestCode.UTIL_PING:
+                            {
+                                String ping = Server.getServer().getServerName();
+
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+                                packer.packString(ping);
+
+                                resultBuffer = packer.getBuffer();
+                                writeBuffer(resultBuffer);
+                                break;
+                            }
+                        case RequestCode.UTIL_STATUS:
+                            {
+                                // TODO: create a packable class for status
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+
+                                packer.packInt(Server.getServer().getServerPort());
+                                packer.packString(Server.getServer().getServerName());
+                                List<String> vm_args = Server.getJVMArguments();
+                                packer.packInt(vm_args.size());
+                                for (String arg : vm_args) {
+                                    packer.packString(arg);
+                                }
+
+                                resultBuffer = packer.getBuffer();
+                                writeBuffer(resultBuffer);
+                                break;
+                            }
+                        case RequestCode.UTIL_TERMINATE_THREAD:
+                            {
+                                // hacky way.. If thread is terminated and socket is closed
+                                // immediately,
+                                // "ping" or "status" command does not work properly
+                                sleep(100);
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        case RequestCode.UTIL_TERMINATE_SERVER:
+                            {
+                                Server.stop(0);
+                                break;
+                            }
+
+                            /* invalid request */
+                        default:
+                            {
+                                // throw new ExecuteException ("invalid request code: " +
+                                // requestCode);
+                            }
+                    }
+                    ContextManager.deregisterThread(Thread.currentThread().getId());
+                } catch (Throwable e) {
+                    if (e instanceof IOException) {
                         /*
-                         * the following two request codes are for processing java stored procedure
-                         * routine
+                         * CAS disconnects socket
+                         * 1) end of the procedure successfully by calling jsp_close_internal_connection
+                         * 2) socket is in invalid status. we do not have to deal with it here.
                          */
-                    case RequestCode.INVOKE_SP:
-                        {
-                            processStoredProcedure();
-                            ctx = null;
-                            break;
+                        break;
+                    } else {
+                        Throwable throwable = e;
+                        if (e instanceof InvocationTargetException) {
+                            throwable = ((InvocationTargetException) e).getTargetException();
                         }
-
-                    case RequestCode.COMPILE:
-                        {
-                            processCompile();
-                            break;
-                        }
-
-                    case RequestCode.DESTROY:
-                        {
-                            ContextManager.destroyContext(ctx.getSessionId());
-                            break;
-                        }
-
-                        /* the following request codes are for system requests */
-                    case RequestCode.UTIL_BOOTSTRAP:
-                        {
-                            processBootstrap();
-                            break;
-                        }
-                    case RequestCode.UTIL_PING:
-                        {
-                            String ping = Server.getServer().getServerName();
-
-                            resultBuffer.clear(); /* prepare to put */
-                            packer.setBuffer(resultBuffer);
-                            packer.packString(ping);
-
-                            resultBuffer = packer.getBuffer();
-                            writeBuffer(resultBuffer);
-                            break;
-                        }
-                    case RequestCode.UTIL_STATUS:
-                        {
-                            // TODO: create a packable class for status
-                            resultBuffer.clear(); /* prepare to put */
-                            packer.setBuffer(resultBuffer);
-
-                            packer.packInt(Server.getServer().getServerPort());
-                            packer.packString(Server.getServer().getServerName());
-                            List<String> vm_args = Server.getJVMArguments();
-                            packer.packInt(vm_args.size());
-                            for (String arg : vm_args) {
-                                packer.packString(arg);
-                            }
-
-                            resultBuffer = packer.getBuffer();
-                            writeBuffer(resultBuffer);
-                            break;
-                        }
-                    case RequestCode.UTIL_TERMINATE_THREAD:
-                        {
-                            // hacky way.. If thread is terminated and socket is closed immediately,
-                            // "ping" or "status" command does not work properly
-                            sleep(100);
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    case RequestCode.UTIL_TERMINATE_SERVER:
-                        {
-                            Server.stop(0);
-                            break;
-                        }
-
-                        /* invalid request */
-                    default:
-                        {
-                            // throw new ExecuteException ("invalid request code: " + requestCode);
-                        }
-                }
-                ContextManager.deregisterThread(Thread.currentThread().getId());
-            } catch (Throwable e) {
-                if (e instanceof IOException) {
-                    /*
-                     * CAS disconnects socket
-                     * 1) end of the procedure successfully by calling jsp_close_internal_connection
-                     * 2) socket is in invalid status. we do not have to deal with it here.
-                     */
-                    break;
-                } else {
-                    Throwable throwable = e;
-                    if (e instanceof InvocationTargetException) {
-                        throwable = ((InvocationTargetException) e).getTargetException();
-                    }
-                    Server.log(throwable);
-                    try {
-                        // TODO: error managing module
-                        if (throwable instanceof SQLException) {
-                            String msg = throwable.getMessage();
-                            if (msg == null) {
-                                msg = "Unexpected sql error";
-                            }
-                            sendError(msg);
-                        } else if (throwable instanceof PlcsqlRuntimeError) {
-                            PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
-                            int line = plcsqlError.getLine();
-                            int col = plcsqlError.getColumn();
-                            String errMsg;
-                            if (line == -1 && col == -1) {
-                                // exception was thrown not in the SP code but in the PL engine code
-                                errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                        Server.log(throwable);
+                        try {
+                            // TODO: error managing module
+                            if (throwable instanceof SQLException) {
+                                String msg = throwable.getMessage();
+                                if (msg == null) {
+                                    msg = "Unexpected sql error";
+                                }
+                                sendError(msg);
+                            } else if (throwable instanceof PlcsqlRuntimeError) {
+                                PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
+                                int line = plcsqlError.getLine();
+                                int col = plcsqlError.getColumn();
+                                String errMsg;
+                                if (line == -1 && col == -1) {
+                                    // exception was thrown not in the SP code but in the PL engine
+                                    // code
+                                    errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                                } else {
+                                    errMsg =
+                                            String.format(
+                                                    "\n  (line %d, column %d) %s",
+                                                    line, col, plcsqlError.getMessage());
+                                }
+                                sendError(errMsg);
                             } else {
-                                errMsg =
-                                        String.format(
-                                                "\n  (line %d, column %d) %s",
-                                                line, col, plcsqlError.getMessage());
+                                String msg = throwable.getMessage();
+                                if (msg == null) {
+                                    msg = "Unexpected internal error";
+                                }
+                                sendError(msg);
                             }
-                            sendError(errMsg);
-                        } else {
-                            String msg = throwable.getMessage();
-                            if (msg == null) {
-                                msg = "Unexpected internal error";
-                            }
-                            sendError(msg);
+                        } catch (IOException e1) {
+                            Server.log(e1);
                         }
-                    } catch (IOException e1) {
-                        Server.log(e1);
                     }
+                } finally {
+                    ContextManager.deregisterThread(Thread.currentThread().getId());
+                    ctx = null;
                 }
-            } finally {
-                ContextManager.deregisterThread(Thread.currentThread().getId());
-                ctx = null;
             }
+        } finally {
+            closeSocket();
         }
-        closeSocket();
     }
 
     private Header listenCommand() throws Exception {

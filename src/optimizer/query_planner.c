@@ -9943,7 +9943,7 @@ qo_classify (PT_NODE * attr)
 	{
 	  return PC_ATTR;
 	}
-
+      /* fall through */
     default:
       return PC_OTHER;
     }
