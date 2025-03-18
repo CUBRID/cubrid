@@ -63,20 +63,23 @@ namespace cubpl
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
 
-  constexpr int PRM_START_IDX = 100000;
   enum class sys_param_id : int
   {
-    PRM_ID_DBMS_OUTPUT = PRM_START_IDX
+    PRM_ID_BEGIN = 100000,
+    PRM_ID_DBMS_OUTPUT = PRM_ID_BEGIN,
+    PRM_ID_END
   };
 
   struct EXPORT_IMPORT sys_param : public cubpacking::packable_object
   {
-    int prm_id; // if value >= PRM_START_IDX: PL's parameter, otherwise: DBMS's parameter
+    int prm_id; // if value >= PRM_ID_BEGIN: PL's parameter, otherwise: DBMS's parameter
     int prm_type;
     std::string prm_value;
 
     sys_param () = default;
-    sys_param (SYSPRM_ASSIGN_VALUE *db_param);
+    explicit sys_param (const SYSPRM_ASSIGN_VALUE *db_param);
+    explicit sys_param (const SYSPRM_PARAM *db_param);
+    sys_param (int prm_id, int prm_type, std::string prm_value);
 
     void set_prm_value (const SYSPRM_PARAM *prm);
 
@@ -162,8 +165,11 @@ namespace cubpl
       cubmethod::db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (cubmethod::db_parameter_info *param_info);
 
-      const std::vector <sys_param> obtain_session_parameters (bool reset);
+      // handling DB and PL session parameters
+      bool check_reloading_pl_context_required (const connection_view &cv);
+      const std::vector <sys_param> obtain_session_parameters (const connection_view &conn);
       void mark_session_param_changed (int prm_id);
+      void set_session_params_all_required (bool is_required);
       void set_session_param (const sys_param &param);
 
     private:
@@ -193,8 +199,10 @@ namespace cubpl
 
       // session parameters
       std::unordered_map<int, sys_param> m_session_params;
+      std::unordered_map<int, sys_param> m_session_param_changed;
       std::unordered_set<int> m_session_param_changed_ids;
       bool m_all_session_params_required;
+      int m_last_conn_epoch;
 
       // interrupt
       bool m_is_interrupted;
