@@ -42,13 +42,13 @@ namespace parallel_heap_scan
 {
   manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
 		    std::size_t core_count, QUERY_ID query_id)
-    : m_is_start_once (false),
-      timeout_occurred (false),
-      m_thread_p (thread_p),
-      m_scan_id (scan_id),
-      parallelism (core_count),
-      m_query_id (query_id)
   {
+    m_is_start_once = false;
+    timeout_occurred = false;
+    m_thread_p = thread_p;
+    m_scan_id = scan_id;
+    parallelism = core_count;
+    m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
     m_list_stream = std::make_shared<list_stream> (thread_p, core_count, 128, query_id, scan_id);
     m_list_reader = std::make_shared<list_reader> ();

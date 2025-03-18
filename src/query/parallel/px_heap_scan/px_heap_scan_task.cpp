@@ -79,7 +79,7 @@ namespace parallel_heap_scan
 	/* should read this last page (fixed) */
 	page_scan_code = S_SUCCESS;
       }
-    assert (vpid->pageid != NULL);
+    assert (vpid->pageid != NULL_PAGEID);
     return page_scan_code;
   }
 

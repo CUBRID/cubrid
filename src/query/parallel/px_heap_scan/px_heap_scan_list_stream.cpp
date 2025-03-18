@@ -79,7 +79,6 @@ namespace parallel_heap_scan
   void list_stream::enqueue (list_id_data &data)
   {
     m_queue.push (data);
-    er_log_debug (ARG_FILE_LINE, "enqueue list_id_data %d, %d", data.m_vpid.volid, data.m_vpid.pageid);
   }
 
   bool list_stream::dequeue_timeout (list_id_data &data, int milliseconds)
@@ -89,7 +88,6 @@ namespace parallel_heap_scan
       {
 	if (m_queue.try_pop (data))
 	  {
-	    er_log_debug (ARG_FILE_LINE, "dequeue list_id_data %d, %d", data.m_vpid.volid, data.m_vpid.pageid);
 	    return true;
 	  }
 	std::this_thread::sleep_for (std::chrono::milliseconds (1));
