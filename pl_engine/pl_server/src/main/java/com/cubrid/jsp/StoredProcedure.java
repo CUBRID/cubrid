@@ -93,9 +93,20 @@ public class StoredProcedure {
 
         Class<?> c = null;
         ClassNotFoundException ex = null;
+
+        try {
+            // find a class in static directory first
+            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
+        } catch (ClassNotFoundException e) {
+            // do nothing
+        }
+
         if (lang == LANG_PLCSQL) {
             try {
-                c = ctx.getSessionCLManager().findClass(sig.getClassName());
+                if (c == null) {
+                    c = ctx.getSessionCLManager().findClass(sig.getClassName());
+                }
+
                 if (c == null) {
                     CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
                     if (codeset != null) {
@@ -106,12 +117,6 @@ public class StoredProcedure {
                 ex = e;
             }
         } else if (lang == LANG_JAVASP) {
-            try {
-                // find a class in static directory first
-                c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
-            } catch (Exception e) {
-            }
-
             try {
                 if (c == null) {
                     c = ctx.getOldClassLoader().loadClass(sig.getClassName());
