@@ -1785,7 +1785,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
-  bool has_inst;
+  bool mainquery_has_inst, subquery_has_inst;
 
   /* check nulls */
   if (subquery == NULL)
@@ -1913,10 +1913,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
+  mainquery_has_inst = pt_has_inst_in_where_and_select_list (parser, mainquery);
+  subquery_has_inst = pt_has_inst_in_where_and_select_list (parser, subquery);
   if (subquery->info.query.order_by
-      && (((!is_rownum_only || pt_is_distinct (mainquery)) && pt_has_inst_in_where_and_select_list (parser, mainquery))
+      && ((!is_rownum_only && mainquery_has_inst)
 	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
-	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
+	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)
+	  || (pt_is_distinct (mainquery) && (mainquery_has_inst || subquery_has_inst))))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -2002,7 +2005,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check inst num or orderby_num */
-  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
+  if (!is_only_spec && subquery_has_inst)
     {
       return NON_PUSHABLE;
     }
