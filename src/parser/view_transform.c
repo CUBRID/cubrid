@@ -1785,7 +1785,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   CHECK_PUSHABLE_INFO cpi;
   bool is_pushable_query, is_outer_joined;
   bool is_only_spec, is_rownum_only, is_orderby_for;
-  bool mainquery_has_inst, subquery_has_inst;
 
   /* check nulls */
   if (subquery == NULL)
@@ -1913,13 +1912,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
-  mainquery_has_inst = pt_has_inst_in_where_and_select_list (parser, mainquery);
-  subquery_has_inst = pt_has_inst_in_where_and_select_list (parser, subquery);
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && mainquery_has_inst)
+      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
 	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
-	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)
-	  || (pt_is_distinct (mainquery) && (mainquery_has_inst || subquery_has_inst))))
+	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -2005,7 +2001,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check inst num or orderby_num */
-  if (!is_only_spec && subquery_has_inst)
+  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
     {
       return NON_PUSHABLE;
     }
@@ -2314,26 +2310,33 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   ins_num->info.expr.op = PT_INST_NUM;
   PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
-  /* replace rownum of select-list to orderby_num */
-  statement->info.query.q.select.list =
-    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
-
-  /* replace rownum of where to orderby_num */
-  where = statement->info.query.q.select.where;
-  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
+  if (free_node == NULL)
     {
-      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+      /* replace rownum of select-list to orderby_num */
+      statement->info.query.q.select.list =
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
-      /* move prev orderby_for to orderby_for */
-      prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-      statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
-      /* move rownum only predicate to orderby_for */
-      statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
-      statement->info.query.q.select.where = NULL;
+      /* replace rownum of where to orderby_num */
+      where = statement->info.query.q.select.where;
+      if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
+	{
+	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+
+	  /* move prev orderby_for to orderby_for */
+	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+	  /* move rownum only predicate to orderby_for */
+	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
+	  statement->info.query.q.select.where = NULL;
+	}
     }
 
   if (free_node != NULL)
     {
+      /* replace orderby_num of select-list to rownum */
+      statement->info.query.q.select.list =
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ord_num, ins_num, false, 2, false);
+
       parser_free_tree (parser, free_node);
     }
 
