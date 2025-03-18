@@ -138,8 +138,9 @@ namespace parallel_heap_scan
       list_writer (std::shared_ptr<list_stream> stream, list_id_wrapper *list_id_wrapper_p)
 	: m_stream (stream), m_list_id_wrapper_p (list_id_wrapper_p)
       {
-	m_tpl_buf.tpl = (char *) malloc (QFILE_MAX_TUPLE_SIZE_IN_PAGE);
+	m_tpl_buf.tpl = (char *) malloc (DB_PAGESIZE);
 	m_tpl_buf.size = 0;
+	m_tpl_buf_alloc_size = DB_PAGESIZE;
       }
       ~list_writer()
       {
@@ -154,6 +155,7 @@ namespace parallel_heap_scan
       list_id_wrapper *m_list_id_wrapper_p;
 
       QFILE_TUPLE_RECORD m_tpl_buf;
+      std::size_t m_tpl_buf_alloc_size;
       QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   };
 }

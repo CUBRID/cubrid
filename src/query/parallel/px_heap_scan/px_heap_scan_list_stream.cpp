@@ -200,12 +200,14 @@ namespace parallel_heap_scan
 	dbval_p = reg_var_p->vfetch_to;
 	n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
 	assert (n_size != ER_FAILED);
-	if (tlen + n_size > QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+	if (tlen + n_size > m_tpl_buf_alloc_size)
 	  {
 	    tpl_size = MAX (tlen, QFILE_TUPLE_LENGTH_SIZE);
 	    tpl_size += MAX (n_size, DB_PAGESIZE);
+	    tpl_size = ((tpl_size + DB_PAGESIZE - 1) / DB_PAGESIZE) * DB_PAGESIZE;
 	    m_tpl_buf.tpl = (char *) realloc ((void *) m_tpl_buf.tpl, tpl_size);
-	    assert (m_tpl_buf.tpl != NULL);
+	    assert_release (m_tpl_buf.tpl != NULL);
+	    m_tpl_buf_alloc_size = tpl_size;
 	    tuple_p = (char *) (m_tpl_buf.tpl) + toffset;
 	  }
 
@@ -286,8 +288,6 @@ namespace parallel_heap_scan
     PR_TYPE *pr_type;
     int i, rc;
     REGU_VARIABLE_LIST p;
-    int length;
-    char *ptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_id->s.phsid;
 
     if (list_scan_id->position == S_ON
