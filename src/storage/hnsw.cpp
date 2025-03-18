@@ -43,6 +43,9 @@ int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_e
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
 
+  er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
+  hnsw_print_index_info (btid);
+
   return NO_ERROR;
 }
 
@@ -56,13 +59,18 @@ int hnsw_delete_index (BTID *btid)
   int hnsw_id = btid->root_pageid;
   auto it = hnsw_index_map.find (hnsw_id);
 
+
   if (it == hnsw_index_map.end())
     {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
       assert (false);
       return ER_FAILED;
     }
   else
     {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index deleted with ID %d", hnsw_id);
+      hnsw_print_index_info (btid);
+
       hnsw_index_map.erase (it);
     }
 
