@@ -197,9 +197,10 @@ namespace cubpl
 
       cubmethod::db_parameter_info *m_param_info;
 
-      // session parameters
+      /* session parameters */
       std::unordered_map<int, sys_param> m_session_params;
-      std::unordered_map<int, sys_param> m_session_param_changed;
+
+      // session parameters: The following variables are used to check if the session parameters have changed and updateing to the PL server is required
       std::unordered_set<int> m_session_param_changed_ids;
       bool m_all_session_params_required;
       int m_last_conn_epoch;
