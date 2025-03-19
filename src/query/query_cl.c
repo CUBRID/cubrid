@@ -127,15 +127,9 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
   *list_idp =
     qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);
 
-  /* check dblink transaction first */
-  if ((ret = er_errid ()) == ER_DBLINK_TRAN)
-    {
-      return ret;
-    }
-
   if (*list_idp == NULL)
     {
-      return (ret == NO_ERROR) ? ER_FAILED : ret;
+      return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
     }
 
   assert (ret == NO_ERROR);
