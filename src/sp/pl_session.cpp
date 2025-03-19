@@ -590,7 +590,7 @@ namespace cubpl
   bool
   session::check_reloading_pl_context_required (const connection_view &conn)
   {
-    return m_last_conn_epoch == -1 || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
+    return m_last_conn_epoch == -1 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
   }
 
   const std::vector <sys_param>
