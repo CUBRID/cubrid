@@ -20,8 +20,6 @@
  * cubrocks.cpp - rocksdb for cubrid
  */
 
-#include "porting.h"
-#include "rocksdb/compression_type.h"
 #ident "$Id$"
 
 #include <string>
@@ -39,10 +37,11 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/filter_policy.h"
-
+#include "rocksdb/compression_type.h"
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/db.h"
 
+#include "porting.h"
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "cubrocks.hpp"
@@ -99,33 +98,52 @@ cubrocks::context::~context ()
 void
 cubrocks::context::kv_config (void)
 {
-  opt.db.max_open_files = -1;
-  opt.db.allow_2pc = true;
-  opt.db.enable_pipelined_write = true;
   opt.db.IncreaseParallelism (std::thread::hardware_concurrency ());
+  opt.db.max_open_files = -1;
+  opt.db.enable_pipelined_write = true;
+  opt.db.avoid_unnecessary_blocking_io = true;
 
-  /* use CRC32 if the machine supports acceleration functions */
-  opt.table.checksum = rocksdb::kCRC32c;
-  opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
-  opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (9.9, false));
-  opt.table.index_type = rocksdb::BlockBasedTableOptions::kTwoLevelIndexSearch;
-  opt.table.block_size = 4 * 1024;
-  opt.table.cache_index_and_filter_blocks = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024, 8);
-  opt.table.use_delta_encoding = false;
+  opt.db.max_total_wal_size = 4 * 1024 * 1024 * 1024LL;
+  opt.db.bytes_per_sync = 16777216;
+  opt.db.wal_bytes_per_sync = 4194304;
 
-  opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
-  opt.table.metadata_cache_options.partition_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
-  opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+  opt.db.use_direct_reads = true;
+  opt.db.use_direct_io_for_flush_and_compaction = true;
+
+  opt.db.max_subcompactions = 4;
+  opt.db.compaction_readahead_size = 16 * 1024 * 1024;
+
 
   /* this should be set for pair experiment */
   opt.cf.compression = rocksdb::kNoCompression;
 
-  opt.cf.write_buffer_size = 64 * 1024 * 1024;
-  opt.cf.max_write_buffer_number = 8;
-  opt.cf.target_file_size_base = 64 * 1024 * 1024;
-  opt.cf.memtable_prefix_bloom_size_ratio = 0.1;
-  opt.cf.memtable_huge_page_size = true;
+  opt.cf.write_buffer_size = 256 * 1024 * 1024;
+  opt.cf.max_write_buffer_number = 2;
+
+  opt.cf.max_bytes_for_level_base = 512 * 1024 * 1024;
+
+  opt.cf.level0_stop_writes_trigger = 30;
+
+  opt.cf.target_file_size_base = 32 * 1024 * 1024;
+
+  opt.cf.optimize_filters_for_hits = true;
+  opt.cf.memtable_prefix_bloom_size_ratio = 0.05;
+
+
+  /* use CRC32 if the machine supports acceleration functions */
+  opt.table.checksum = rocksdb::kCRC32c;
+  opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
+  opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10, false));
+  opt.table.index_type = rocksdb::BlockBasedTableOptions::kBinarySearchWithFirstKey;
+  opt.table.block_size = 16 * 1024;
+  opt.table.cache_index_and_filter_blocks = true;
+  opt.table.cache_index_and_filter_blocks_with_high_priority = true;
+  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024LL, 6);
+  opt.table.use_delta_encoding = false;
+
+  opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+  opt.table.metadata_cache_options.partition_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
+  opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar; 
 
   opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
   opt.cf.prefix_extractor.reset (rocksdb::NewFixedPrefixTransform (8));
