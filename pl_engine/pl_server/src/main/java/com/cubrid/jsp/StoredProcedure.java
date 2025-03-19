@@ -101,32 +101,29 @@ public class StoredProcedure {
             // do nothing
         }
 
-        if (lang == LANG_PLCSQL) {
-            try {
-                if (c == null) {
+        if (c == null) {
+            if (lang == LANG_PLCSQL) {
+                try {
                     c = ctx.getSessionCLManager().findClass(sig.getClassName());
-                }
-
-                if (c == null) {
-                    CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
-                    if (codeset != null) {
-                        c = ctx.getSessionCLManager().loadClass(codeset);
+                    if (c == null) {
+                        CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
+                        if (codeset != null) {
+                            c = ctx.getSessionCLManager().loadClass(codeset);
+                        }
                     }
+                } catch (ClassNotFoundException e) {
+                    ex = e;
                 }
-            } catch (ClassNotFoundException e) {
-                ex = e;
-            }
-        } else if (lang == LANG_JAVASP) {
-            try {
-                if (c == null) {
+            } else if (lang == LANG_JAVASP) {
+                try {
                     c = ctx.getOldClassLoader().loadClass(sig.getClassName());
+                } catch (ClassNotFoundException e) {
+                    ex = e;
                 }
-            } catch (ClassNotFoundException e) {
-                ex = e;
+            } else {
+                assert false;
+                throw new ClassNotFoundException(sig.getClassName());
             }
-        } else {
-            assert false;
-            throw new ClassNotFoundException(sig.getClassName());
         }
 
         if (c == null) {
