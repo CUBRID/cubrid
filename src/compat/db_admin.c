@@ -1052,13 +1052,18 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
-static int is_doing_end_session = -1;
+static SESSION_ID is_doing_end_session = -1;
 int
 db_end_session (void)
 {
   int retval;
 
   CHECK_CONNECT_ERROR ();
+
+  if (db_get_session_id () == DB_EMPTY_SESSION)
+    {
+      return NO_ERROR;
+    }
 
   /* prevent additional execution during execting csession_end_session() */
   if (is_doing_end_session > 0 && is_doing_end_session == db_get_session_id ())
@@ -1068,6 +1073,11 @@ db_end_session (void)
   is_doing_end_session = db_get_session_id ();
 
   retval = csession_end_session (db_get_session_id (), db_get_keep_session ());
+
+  if (retval != ER_FAILED && !db_get_keep_session ())
+    {
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
 
