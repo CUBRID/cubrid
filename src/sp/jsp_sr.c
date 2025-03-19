@@ -513,7 +513,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
-  int vm_n_default_options = 2;
+  int vm_n_default_options = 4;
   int vm_n_ext_options = 0;
   char classpath[PATH_MAX + 32] = { 0 };
   char logging_prop[PATH_MAX + 32] = { 0 };
@@ -551,6 +551,10 @@ jsp_start_server (const char *db_name, const char *path, int port)
     snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	      envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
 
+    char jvm_heap_dump_file_opt[PATH_MAX + 17], buffer[PATH_MAX];
+    snprintf (jvm_heap_dump_file_opt, sizeof (jvm_heap_dump_file_opt) - 1, "-XX:HeapDumpPath=%s",
+	      envvar_logdir_file (buffer, PATH_MAX, "jvmheapdump.hprof"));
+
     debug_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_DEBUG);
     if (debug_port != -1)
       {
@@ -576,11 +580,13 @@ jsp_start_server (const char *db_name, const char *path, int port)
     int ext_idx = vm_n_default_options;
     options[0].optionString = classpath;
     options[1].optionString = logging_prop;
+    options[2].optionString = "-XX:+HeapDumpOnOutOfMemoryError";
+    options[3].optionString = jvm_heap_dump_file_opt;
     if (debug_port != -1)
       {
 	snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
-	options[2].optionString = debug_flag;
-	options[3].optionString = option_debug;
+	options[4].optionString = debug_flag;
+	options[5].optionString = option_debug;
       }
 
     for (auto it = opts.begin (); it != opts.end (); ++it)
