@@ -1722,23 +1722,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
        * ================================
        *   grantee         {..,unique_name, grantor, ..}
        */
-      if (ws_is_same_object (grantee_mop, new_owner_mop))
-	{
-	  error = obj_inst_lock (db_auth_object_mop, 1);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
-
-	  error = obj_delete (db_auth_object_mop);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
-	}
-      else
+      if (!ws_is_same_object (grantee_mop, new_owner_mop))
 	{
 	  /* before deleting the data in db_auth, merge the data and temp store it. */
 	  std::get<0> (key) = ws_is_same_object (grantor_mop, old_owner_mop) ? new_owner_mop : grantor_mop;
@@ -1750,20 +1734,20 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	    {
 	      auth_unordered_map[key] = is_grantable;
 	    }
+	}
 
-	  error = obj_inst_lock (db_auth_object_mop, 1);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
+      error = obj_inst_lock (db_auth_object_mop, 1);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
+	}
 
-	  error = obj_delete (db_auth_object_mop);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
+      error = obj_delete (db_auth_object_mop);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
 	}
     }
 
