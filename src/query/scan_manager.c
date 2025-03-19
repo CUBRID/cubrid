@@ -7956,6 +7956,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SAMPLING_SCAN:
+    case S_PARALLEL_HEAP_SCAN:
       if (scan_id->scan_stats.noscan)
 	{
 	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
@@ -7964,10 +7965,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	{
 	  fprintf (fp, "(heap");
 	}
-      break;
-
-    case S_PARALLEL_HEAP_SCAN:
-      fprintf (fp, "(heap");	/* TODO: add parallel heap scan stats */
       break;
 
     case S_INDX_SCAN:
