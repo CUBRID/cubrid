@@ -6,10 +6,10 @@ version: 2.1
 parameters:
   baseline:
     type: string
-    default: "none"
+    default: ""
   run_shell_test:
     type: boolean
-    default: true
+    default: false
 
 # --------------------------------------------------
 # 1. Reusable commands
@@ -54,8 +54,9 @@ commands:
             elif [ "$TEST_SUITE" = "shell" ]; then
               file_ext="sh"
               base_dir="cubrid-testcases-private-ex"
-              # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
-              glob_path="$base_dir/$TEST_SUITE/_01_utility/_03_start_server/**/*.sh"
+              rm -rf $base_dir/$TEST_SUITE/_25_unstable
+              # glob_path="$base_dir/$TEST_SUITE/_01_utility/_03_start_server/**/*.sh"
+              glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
             else
               file_ext="sql"
               base_dir="cubrid-testcases"
@@ -120,7 +121,7 @@ executors:
 
   cubrid-test-shell:
     docker:
-      # - image: cubridci/cubridci:shell
+      # - image: cubridci/cubridci:test_shell
       - image: twkang3219/ctp_image_shell:latest
     working_directory: /home
 
@@ -220,36 +221,30 @@ jobs:
 workflows:
   build_test:
     jobs:
-#      - build
-
+      # - build
       # - test_job:
       #     name: test_medium
       #     requires: 
       #       - build
       #     test_suite: "medium"
-
       # - test_job:
       #     name: test_sql
       #     requires:
       #       - build
       #     test_suite: "sql"
       #     parallel_num: 8
-
       # - test_job:
       #     name: test_plcsql
       #     requires: 
       #       - build
       #     test_suite: "plcsql"
-
       - test_job:
           name: test_shell
           # requires: 
           #   - build
           test_suite: "shell"
           e: cubrid-test-shell
-          #parallel_num: 16
           parallel_num: 1
-
       # - build-windows:
       #     requires: 
       #       - build
