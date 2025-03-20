@@ -46,7 +46,6 @@ import java.util.HashSet;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
-import org.antlr.v4.runtime.misc.ParseCancellationException;
 
 public class PlcsqlCompilerMain {
 
