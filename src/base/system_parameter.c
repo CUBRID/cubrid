@@ -767,6 +767,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
 
+#define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
+
 #define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
 
 /*
@@ -2483,6 +2485,10 @@ static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
 static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
 static unsigned int prm_max_subquery_cache_size_flag = 0;
+
+static bool PRM_DBLINK_AUTO_COMMIT = true;
+static bool prm_dblink_auto_commit_default = true;
+static unsigned int prm_dblink_auto_commit_flag = 0;
 
 int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
 static int prm_parallel_heap_scan_threads_default = 0;
@@ -6560,7 +6566,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
+  {PRM_ID_DBLINK_AUTO_COMMIT,
+   PRM_NAME_DBLINK_AUTO_COMMIT,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_dblink_auto_commit_flag,
+   (void *) &prm_dblink_auto_commit_default,
+   (void *) &PRM_DBLINK_AUTO_COMMIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+   {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
    PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
@@ -6571,7 +6588,8 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_parallel_heap_scan_threads_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+   }
 };
 
 static int num_session_parameters = 0;

@@ -1060,14 +1060,24 @@ db_end_session (void)
 
   CHECK_CONNECT_ERROR ();
 
-  /* prevent additional execution during execting csession_end_session() */
-  if (is_doing_end_session > 0 && is_doing_end_session == db_get_session_id ())
+  if (db_get_session_id () == DB_EMPTY_SESSION)
     {
       return NO_ERROR;
     }
-  is_doing_end_session = db_get_session_id ();
+
+  /* prevent additional execution during execting csession_end_session() */
+  if (is_doing_end_session > 0 && is_doing_end_session == (int) db_get_session_id ())
+    {
+      return NO_ERROR;
+    }
+  is_doing_end_session = (int) db_get_session_id ();
 
   retval = csession_end_session (db_get_session_id (), db_get_keep_session ());
+
+  if (retval != ER_FAILED && !db_get_keep_session ())
+    {
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
 

@@ -69,7 +69,8 @@ typedef enum
   QMGR_TRAN_RESUME_DUE_DEADLOCK,	/* Transaction has been resumed to deallocate all query pages. The transaction
 					 * was involved in a deadlock. Transaction will have to restart the query. Note
 					 * that the transaction is not aborted. */
-  QMGR_TRAN_TERMINATED		/* Terminated transaction */
+  QMGR_TRAN_TERMINATED,		/* Terminated transaction */
+  QMGR_TRAN_DBLINK_ABORTED	/* A dblink'ed transaction is aborted */
 } QMGR_TRAN_STATUS;
 
 typedef struct qmgr_temp_file QMGR_TEMP_FILE;
@@ -174,5 +175,6 @@ extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *qu
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
+extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort);
 
 #endif /* _QUERY_MANAGER_H_ */
