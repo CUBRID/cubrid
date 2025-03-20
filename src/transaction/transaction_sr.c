@@ -105,15 +105,15 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
       printf ("\n" \
         "transaction end (%d)\n" \
         "CUBRID insert select commit sum\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n" \
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n" \
         "RocksDB insert select commit sum\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n" \
-        "%llu.%llu\n\n",
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n" \
+        "%llu.%06llu\n\n",
 
         tran_index,
 
