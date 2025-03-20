@@ -6577,7 +6577,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
+  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
    PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
@@ -6589,7 +6589,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   }
+}
 };
 
 static int num_session_parameters = 0;
