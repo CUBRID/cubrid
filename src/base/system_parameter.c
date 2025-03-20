@@ -6589,7 +6589,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-}
 };
 
 static int num_session_parameters = 0;
