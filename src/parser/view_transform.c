@@ -4997,6 +4997,14 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
+  /* Rewrite the CTEs in the WITH clause.
+   * When rewriting subqueries within WITH clause, subqueries with MATERIALIZE hint can reference other subqueries, 
+   * but subqueries without MATERIALIZE hint cannot reference subqueries that have MATERIALIZE hint. */
+  with_clause = parser_walk_tree (parser, with_clause, mq_rewrite_cte_pre, NULL, NULL, NULL);
+
+  /* Count the number of CTE references, except for the with clause. */
+  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+
   /* Rewrite the main query considering the reference count. */
   node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
 
@@ -5096,47 +5104,6 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   switch (node->node_type)
     {
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      if (node->info.query.with != NULL)
-	{
-	  /* Rewrite the CTEs in the WITH clause.
-	   * When rewriting subqueries within WITH clause, subqueries with MATERIALIZE hint can reference other subqueries, 
-	   * but subqueries without MATERIALIZE hint cannot reference subqueries that have MATERIALIZE hint. */
-	  node->info.query.with =
-	    parser_walk_tree (parser, node->info.query.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
-
-	  /* Count the number of CTE references, except for the with clause. */
-	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
-
-	}
-      break;
-
-    case PT_DELETE:
-      if (node->info.delete_.with != NULL)
-	{
-	  node->info.delete_.with =
-	    parser_walk_tree (parser, node->info.delete_.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
-	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
-
-	}
-      break;
-
-    case PT_UPDATE:
-      if (node->info.update.with != NULL)
-	{
-	  node->info.update.with =
-	    parser_walk_tree (parser, node->info.update.with, mq_rewrite_cte_pre, NULL, NULL, NULL);
-	  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
-
-	}
-      break;
-
-    case PT_WITH_CLAUSE:
-      break;
-
     case PT_SPEC:
       if (PT_SPEC_IS_CTE (node))
 	{
