@@ -36,17 +36,6 @@
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
 
-/*
- * Authorization Class Names
- */
-#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
-#define AU_USER_CLASS_NAME      CT_USER_NAME
-#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
-#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
-
-#define AU_PUBLIC_USER_NAME     "PUBLIC"
-#define AU_DBA_USER_NAME        "DBA"
-
 // static functions
 static int au_add_method_check_authorization (void);
 
