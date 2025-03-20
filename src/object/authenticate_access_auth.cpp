@@ -1400,7 +1400,11 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		   * ================================
 		   *   grantee         {..,unique_name, grantor, ..}
 		   */
-		  if (!ws_is_same_object (grantee_mop, new_owner_mop))
+		  if (ws_is_same_object (grantee_mop, new_owner_mop))
+		    {
+		      /* privileges cannot be granted to the owner, so they are removed immediately without being temporarily stored. */
+		    }
+		  else
 		    {
 		      error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &element);
 		      if (error != NO_ERROR)
@@ -1722,7 +1726,11 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
        * ================================
        *   grantee         {..,unique_name, grantor, ..}
        */
-      if (!ws_is_same_object (grantee_mop, new_owner_mop))
+      if (ws_is_same_object (grantee_mop, new_owner_mop))
+	{
+	  /* privileges cannot be granted to the owner, so they are removed immediately without being temporarily stored. */
+	}
+      else
 	{
 	  /* before deleting the data in db_auth, merge the data and temp store it. */
 	  std::get<0> (key) = ws_is_same_object (grantor_mop, old_owner_mop) ? new_owner_mop : grantor_mop;
