@@ -88,6 +88,10 @@ namespace cubthread
     context.shutdown = false;
 #endif // SERVER_MODE
 
+    /* Set clearly for safety.
+     * In fact, it is processed in functions that call xlocator_fetch_all().
+     */
+
     on_recycle (context);
   }
 

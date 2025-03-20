@@ -2797,6 +2797,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   int num_objs;
   char *packed_desc = NULL;
   int packed_desc_size;
+  int decode_endian = 1;
 
   error = NO_ERROR;
   if (net_Server_name[0] == '\0')
@@ -2841,6 +2842,10 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   reply = or_unpack_int (reply, &num_objs);
   reply = or_unpack_int (reply, &packed_desc_size);
   reply = or_unpack_int (reply, &content_size);
+  if (request == NET_SERVER_LC_FETCHALL)
+    {
+      reply = or_unpack_int (reply, &decode_endian);
+    }
 
   if (packed_desc_size == 0 && content_size == 0)
     {
@@ -2867,7 +2872,8 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		}
 	      else
 		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc,
+						       ((decode_endian == 0) ? packed_desc_size : -1));
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}
@@ -3117,7 +3123,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 		}
 	      else
 		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc, -1);
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}
@@ -3285,7 +3291,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 		}
 	      else
 		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc, -1);
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}
@@ -3506,7 +3512,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 		  return set_server_error (error);
 		}
 
-	      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+	      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc, -1);
 	      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 	      free_and_init (packed_desc);
 	    }
@@ -3717,7 +3723,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	      return set_server_error (error);
 	    }
 
-	  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+	  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc, -1);
 	  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 	  free_and_init (packed_desc);
 	}

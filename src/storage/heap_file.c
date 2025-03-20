@@ -7944,6 +7944,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* stop */
 		      break;
 		    }
+
 		  if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		    {
 		      /* skip the header */
