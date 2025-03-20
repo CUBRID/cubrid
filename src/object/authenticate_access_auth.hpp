@@ -97,7 +97,7 @@ extern int au_delete_authorizartion_of_dropping_user (MOP user);
 extern int au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char *name);
 
 /*
-* drop a class, virtual class and procedure, or when changing the owner, all privileges are revoked.
+* drop a class, virtual class and procedure all privileges are revoked.
 */
 extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const char *unique_name);
 
@@ -105,5 +105,11 @@ extern int au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor
 * when a user is deleted, all of their privileges are revoked.
 */
 extern int au_user_revoke_all_privileges (MOP user_mop);
+
+/*
+* when the owner of a class, virtual class, or procedure is changed, the previous owner's privileges are transferred to the new owner.
+*/
+extern int au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP old_owner_mop,
+    MOP new_owner_mop, const char *unique_name);
 
 #endif // _authenticate_access_auth_HPP_

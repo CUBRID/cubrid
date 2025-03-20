@@ -122,7 +122,8 @@ public class SymbolStack {
 
                         // add op
                         DeclFunc op =
-                                new DeclFunc(null, name, params, TypeSpec.getBogus(null, retType));
+                                new DeclFunc(
+                                        null, name, null, params, TypeSpec.getBogus(null, retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -135,7 +136,7 @@ public class SymbolStack {
         DeclProc dp;
 
         // disable
-        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", new NodeList<DeclParam>());
+        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", null, new NodeList<DeclParam>());
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
 
         // enable
@@ -143,6 +144,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$ENABLE",
+                        null,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -157,6 +159,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$GET_LINE",
+                        null,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
@@ -173,7 +176,7 @@ public class SymbolStack {
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line
-        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", new NodeList<DeclParam>());
+        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", null, new NodeList<DeclParam>());
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
 
         // put_line
@@ -181,6 +184,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
+                        null,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -195,6 +199,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$PUT",
+                        null,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -497,7 +502,8 @@ public class SymbolStack {
 
         for (String s : funcNames) {
             DeclFunc df =
-                    new DeclFunc(null, s, null, null); // only name is used for builtin functions
+                    new DeclFunc(
+                            null, s, null, null, null); // only name is used for builtin functions
             putDeclTo(predefinedSymbols, df.name, df);
         }
     }

@@ -43,8 +43,8 @@ public class ExprSyntaxedCallPosition extends BuiltinFuncCall {
     public Expr sub;
     public Expr whole;
 
-    public ExprSyntaxedCallPosition(ParserRuleContext ctx, Expr sub, Expr whole) {
-        super(ctx);
+    public ExprSyntaxedCallPosition(ParserRuleContext ctx, Expr sub, Expr whole, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         this.sub = sub;
         this.whole = whole;

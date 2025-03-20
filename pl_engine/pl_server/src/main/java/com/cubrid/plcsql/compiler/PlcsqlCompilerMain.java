@@ -34,6 +34,7 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -41,6 +42,8 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashSet;
+import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
@@ -241,7 +244,9 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(iStore, converter.symbolStack, converter);
+        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
+        TypeChecker typeChecker =
+                new TypeChecker(iStore, converter.symbolStack, converter, sqlUsesInRecursiveCalls);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -251,7 +256,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter(iStore).buildCodeLines(unit);
+        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

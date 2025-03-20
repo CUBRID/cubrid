@@ -28,57 +28,17 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.ast.loopOpt;
 
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
-import com.cubrid.plcsql.compiler.type.Type;
-import org.antlr.v4.runtime.ParserRuleContext;
+public interface SqlUse extends LoopOptimizable {
 
-public abstract class BuiltinFuncCall extends Expr implements SqlUse {
+    void markAsReachableFromLoop();
 
-    public boolean reachableFromLoop;
+    int getSqlSerialNo();
 
-    @Override
-    public boolean reachableFromLoop() {
-        return reachableFromLoop;
-    }
+    boolean ofCallableStmt();
 
-    @Override
-    public void markAsReachableFromLoop() {
-        this.reachableFromLoop = true;
-    }
+    boolean usingRef();
 
-    public final int sqlSerialNo;
-
-    @Override
-    public int getSqlSerialNo() {
-        return sqlSerialNo;
-    }
-
-    @Override
-    public boolean ofCallableStmt() {
-        return false;
-    }
-
-    @Override
-    public boolean usingRef() {
-        return true;
-    }
-
-    @Override
-    public void setToUseRef() {
-        // do nothing: it is already true
-    }
-
-    public Type resultType;
-
-    public void setResultType(Type resultType) {
-        this.resultType = resultType;
-    }
-
-    public BuiltinFuncCall(ParserRuleContext ctx, int sqlSerialNo) {
-        super(ctx);
-
-        this.sqlSerialNo = sqlSerialNo;
-    }
+    void setToUseRef();
 }
