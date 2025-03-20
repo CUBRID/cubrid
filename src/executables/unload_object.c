@@ -109,7 +109,6 @@ static char *class_processed = NULL;
 static OID null_oid;
 
 static const char *prohibited_classes[] = {
-  CT_AUTHORIZATIONS_NAME,	/* old name for db_root */
   CT_ROOT_NAME,
   CT_USER_NAME,
   CT_AUTHORIZATION_NAME,

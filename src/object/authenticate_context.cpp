@@ -40,7 +40,6 @@
  * Authorization Class Names
  */
 #define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
-#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
 #define AU_USER_CLASS_NAME      CT_USER_NAME
 #define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
 #define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
@@ -295,7 +294,7 @@ authenticate_context::login (const char *name, const char *password, bool ignore
 int
 authenticate_context::install (void)
 {
-  MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL, old_cls = NULL;
+  MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL;
   SM_TEMPLATE *def;
   AU_USER_CACHE *user_cache;
   int exists, save, index;
@@ -310,9 +309,8 @@ authenticate_context::install (void)
   user_cls = db_create_class (AU_USER_CLASS_NAME);
   pass_cls = db_create_class (AU_PASSWORD_CLASS_NAME);
   auth_cls = db_create_class (AU_AUTH_CLASS_NAME);
-  old_cls = db_create_class (AU_OLD_ROOT_CLASS_NAME);
 
-  if (root_cls == NULL || user_cls == NULL || pass_cls == NULL || auth_cls == NULL || old_cls == NULL)
+  if (root_cls == NULL || user_cls == NULL || pass_cls == NULL || auth_cls == NULL)
     {
       goto exit_on_error;
     }
@@ -321,7 +319,6 @@ authenticate_context::install (void)
   sm_mark_system_class (user_cls, 1);
   sm_mark_system_class (pass_cls, 1);
   sm_mark_system_class (auth_cls, 1);
-  sm_mark_system_class (old_cls, 1);
 
   /*
    * db_root
@@ -357,36 +354,6 @@ authenticate_context::install (void)
   smt_add_class_method (def, "change_sp_owner", "au_change_sp_owner_method");
 
   if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (root_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /*
-   * db_authorizations
-   */
-
-  /*
-   * temporary support for the old name, need to migrate
-   * users over to db_root
-   */
-  def = smt_edit_class_mop (old_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  smt_add_class_method (def, "add_user", "au_add_user_method");
-  smt_add_class_method (def, "drop_user", "au_drop_user_method");
-
-  smt_add_class_method (def, "find_user", "au_find_user_method");
-  smt_assign_argument_domain (def, "find_user", true, NULL, 0, "string", (DB_DOMAIN *) 0);
-
-  smt_add_class_method (def, "print_authorizations", "au_describe_root_method");
-  smt_add_class_method (def, "info", "au_info_method");
-  smt_add_class_method (def, "change_owner", "au_change_owner_method");
-  smt_add_class_method (def, "change_trigger_owner", "au_change_trigger_owner_method");
-  smt_add_class_method (def, "get_owner", "au_get_owner_method");
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (old_cls, false) == NULL)
     {
       goto exit_on_error;
     }
@@ -512,7 +479,6 @@ authenticate_context::install (void)
   set_user (dba_user);
 
   au_change_class_owner_including_partitions (root_cls, current_user);
-  au_change_class_owner_including_partitions (old_cls, current_user);
   au_change_class_owner_including_partitions (user_cls, current_user);
   au_change_class_owner_including_partitions (pass_cls, current_user);
   au_change_class_owner_including_partitions (auth_cls, current_user);
@@ -529,7 +495,6 @@ authenticate_context::install (void)
    * note that the password class cannot be read by anyone except the DBA
    */
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
@@ -555,10 +520,6 @@ exit_on_error:
     {
       obj_delete (root);
       root = NULL;
-    }
-  if (old_cls != NULL)
-    {
-      db_drop_class (old_cls);
     }
   if (auth_cls != NULL)
     {

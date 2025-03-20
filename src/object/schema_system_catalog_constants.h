@@ -50,7 +50,6 @@
 #define CT_ROOT_NAME               "db_root"
 #define CT_PASSWORD_NAME           "db_password"
 #define CT_AUTHORIZATION_NAME      "db_authorization"
-#define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
 #define CT_DB_SERVER_NAME          "_db_server"
