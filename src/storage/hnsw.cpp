@@ -90,6 +90,7 @@ int hnsw_print_index_info (BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
       return ER_FAILED;
     }
 
