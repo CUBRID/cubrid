@@ -367,7 +367,7 @@ er_dump_call_stack_internal (print_output & output)
 
 #else /* __WORDSIZE == 32 */
 
-#define MAX_TRACE       32
+#define MAX_TRACE       64
 #define BUFFER_SIZE     1024
 
 /*
@@ -391,7 +391,8 @@ er_dump_call_stack_internal (print_output & output)
     {
       if (dladdr (return_addr[i], &dl_info) == 0)
 	{
-	  break;
+	  output ("[%.02d] %.016p: unknown function at unknown file\n", trace_count - i, return_addr[i]);
+	  continue;
 	}
 
       if (dl_info.dli_fbase >= (const void *) 0x40000000)
@@ -403,23 +404,25 @@ er_dump_call_stack_internal (print_output & output)
 	  func_addr_p = return_addr[i];
 	}
 
-      if (dl_info.dli_sname)
+      if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
 	{
-	  func_name_p = dl_info.dli_sname;
+	  func_name_p = buffer;
 	}
       else
 	{
-	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
-	    {
-	      func_name_p = buffer;
-	    }
-	  else
-	    {
-	      func_name_p = "???";
-	    }
+	  func_name_p = NULL;
 	}
 
-      output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      if (func_name_p && strstr (func_name_p, " at "))
+	{
+	  output ("[%.02d] %s\n", trace_count - i, func_name_p);
+	}
+      else
+	{
+	  output ("[%.02d] %.016p: %s at %s\n", trace_count - i, return_addr[i],
+		  (dl_info.dli_sname == NULL ? "unknown function" : dl_info.dli_sname),
+		  (dl_info.dli_fname == NULL ? "unknown file" : dl_info.dli_fname));
+	}
     }
 
   output.flush ();
@@ -444,7 +447,15 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
       return NO_ERROR;
     }
 
-  snprintf (cmd_line, sizeof (cmd_line), "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
+  if (strchr (lib_file_name_p, '/') == NULL)
+    {
+      snprintf (cmd_line, sizeof (cmd_line), "addr2line -a -f -C -p -e %s/bin/%s %p 2>/dev/null", getenv ("CUBRID"),
+		lib_file_name_p, address);
+    }
+  else
+    {
+      snprintf (cmd_line, sizeof (cmd_line), "addr2line -a -f -C -p -e %s %p 2>/dev/null", lib_file_name_p, address);
+    }
 
   output = popen (cmd_line, "r");
   if (!output)

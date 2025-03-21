@@ -194,6 +194,7 @@ extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmo
 extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name - au_check_authorization
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
+extern int au_check_procedure_authorization (MOP procedure_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 //
 
@@ -236,7 +237,7 @@ extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
 extern int au_change_sp_owner (PARSER_CONTEXT * parser, MOP sp, MOP owner);
-extern int au_change_sp_owner_with_privilege_cleanup (PARSER_CONTEXT * parser, MOP sp_mop, MOP owner_mop);
+extern int au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT * parser, MOP sp_mop, MOP owner_mop);
 extern MOP au_get_class_owner (MOP classmop);
 //
 

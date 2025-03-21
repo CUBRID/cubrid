@@ -767,6 +767,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
 
+#define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2481,6 +2483,10 @@ static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
 static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
 static unsigned int prm_max_subquery_cache_size_flag = 0;
+
+static bool PRM_DBLINK_AUTO_COMMIT = true;
+static bool prm_dblink_auto_commit_default = true;
+static unsigned int prm_dblink_auto_commit_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6548,6 +6554,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_stored_procedure_return_numeric_size_flag,
    (void *) &prm_stored_procedure_return_numeric_size_default,
    (void *) &PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DBLINK_AUTO_COMMIT,
+   PRM_NAME_DBLINK_AUTO_COMMIT,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_dblink_auto_commit_flag,
+   (void *) &prm_dblink_auto_commit_default,
+   (void *) &PRM_DBLINK_AUTO_COMMIT,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

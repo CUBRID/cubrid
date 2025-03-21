@@ -61,13 +61,13 @@ public class ContextManager {
         }
     }
 
-    public static void destroyContext(long id) {
+    public static synchronized void destroyContext(long id) {
         if (hasContext(id)) {
             Context ctx = contextMap.get(id);
+            contextMap.remove(id);
             if (ctx != null) {
                 ctx.destroy();
             }
-            contextMap.remove(id);
             // System.out.println ("deleted session =" + id); // for debug
         }
     }

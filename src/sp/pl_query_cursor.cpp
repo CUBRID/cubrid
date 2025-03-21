@@ -72,7 +72,7 @@ namespace cubpl
   {
     if (m_is_opened == false)
       {
-	if (reset () == NO_ERROR && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
+	if (reset () == NO_ERROR && m_query_entry && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
 	  {
 	    m_is_opened = true;
 	  }
@@ -93,7 +93,6 @@ namespace cubpl
 	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 
 	    qfile_close_list (m_thread, m_query_entry->list_id);
-	    qfile_destroy_list (m_thread, m_query_entry->list_id);
 	  }
 
 	// clear query entry

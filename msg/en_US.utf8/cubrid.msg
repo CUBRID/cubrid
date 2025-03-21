@@ -1459,7 +1459,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1366 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
 
-1367 Last Error
+1367 DBLINK Transaction ABORTED: %1$s
+
+1368 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

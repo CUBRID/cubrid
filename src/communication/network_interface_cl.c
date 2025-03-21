@@ -7282,16 +7282,24 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
       if (replydata_listid && replydata_size_listid)
 	{
-	  /* unpack list file id of query result from the reply data */
-	  ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
-	  /* QFILE_LIST_ID shipped with last page */
-	  if (replydata_size_page)
+	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 	    {
-	      list_id->last_pgptr = replydata_page;
+	      /* dblink transaction is aborted */
+	      ;
 	    }
 	  else
 	    {
-	      list_id->last_pgptr = NULL;
+	      /* unpack list file id of query result from the reply data */
+	      ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
+	      /* QFILE_LIST_ID shipped with last page */
+	      if (replydata_size_page)
+		{
+		  list_id->last_pgptr = replydata_page;
+		}
+	      else
+		{
+		  list_id->last_pgptr = NULL;
+		}
 	    }
 	  free_and_init (replydata_listid);
 	}
