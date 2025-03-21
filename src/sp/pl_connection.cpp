@@ -121,7 +121,7 @@ namespace cubpl
     er_log_debug (ARG_FILE_LINE, "pl_connection_pool extended: %lld to %lld\n", currentSize, newSize);
 
     // Create the new connection
-    for (int i = currentSize; i < newSize; ++i)
+    for (size_t i = currentSize; i < newSize; ++i)
       {
 	m_queue.push (i);
       }

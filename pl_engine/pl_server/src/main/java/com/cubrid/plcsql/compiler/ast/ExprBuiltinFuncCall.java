@@ -43,8 +43,9 @@ public class ExprBuiltinFuncCall extends BuiltinFuncCall {
     public final String name;
     public final NodeList<Expr> args;
 
-    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
-        super(ctx);
+    public ExprBuiltinFuncCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         this.name = name;
         this.args = args;

@@ -204,6 +204,7 @@ namespace cubpl
 
   struct bootstrap_request : public cubpacking::packable_object
   {
+    cubmethod::header req_header;
     std::vector <sys_param> server_params;
 
     bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
@@ -358,6 +359,7 @@ namespace cubpl
       {
 	int status;
 
+	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
 	if (pid > 1) // parent
@@ -410,6 +412,7 @@ namespace cubpl
 	int try_count = 0;
 	do
 	  {
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
 	    do_monitor ();
 	  }
 	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
@@ -528,6 +531,7 @@ namespace cubpl
 	  {
 	    // PL server is terminated by user (cubrid pl restart)
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
+	    m_failure_count = 0;
 	  }
 
 	if (m_state == SERVER_MONITOR_STATE_UNKNOWN)
@@ -560,14 +564,14 @@ namespace cubpl
     do
       {
 	error = do_ping_connection ();
-	if (error == NO_ERROR || ++c < fail_cnt)
+	if (error == NO_ERROR || ++c > fail_cnt)
 	  {
 	    break;
 	  }
 
 	/* The contents of the pl file may have changed, so set it to read again. */
 	assert (m_sys_conn_pool);
-	m_sys_conn_pool->set_port_disabled();
+	m_sys_conn_pool->set_db_port (pl_server_port_from_info ());
 
 	thread_sleep (1000);	/* 1000 msec */
       }
@@ -625,10 +629,9 @@ exit:
       }
 
     cubmem::block bootstrap_response;
-    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
     connection_view cv = m_sys_conn_pool->claim ();
 
-    error = cv->send_buffer_args (header, *m_bootstrap_request);
+    error = cv->send_buffer_args (*m_bootstrap_request);
     if (error == NO_ERROR)
       {
 	error = cv->receive_buffer (bootstrap_response);
@@ -648,8 +651,12 @@ exit:
   /*********************************************************************
    * bootstrap_request - definition
    *********************************************************************/
+#define BOOTSTRAP_REQ_ARGS() \
+  req_header, server_params
+
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : server_params ()
+    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0)
+    , server_params ()
   {
     while (pl_ctx_values != nullptr)
       {
@@ -661,7 +668,7 @@ exit:
   void
   bootstrap_request::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (server_params);
+    serializator.pack_all (BOOTSTRAP_REQ_ARGS ());
   }
 
   void
@@ -673,7 +680,7 @@ exit:
   size_t
   bootstrap_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, server_params);
+    return serializator.get_all_packed_size_starting_offset (start_offset, BOOTSTRAP_REQ_ARGS ());
   }
 } // namespace cubpl
 
@@ -736,4 +743,28 @@ PL_CONNECTION_POOL *get_connection_pool ()
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_PL_SERVER, 0);
       return nullptr;
     }
+}
+
+
+/*
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ *
+ *
+ * Note:
+ */
+
+static int sp_port = PL_PORT_DISABLED;
+
+int
+pl_server_port_from_info (void)
+{
+  // check $CUBRID/var/pl_<db_name>.info
+  PL_SERVER_INFO pl_info {-1, -1};
+  pl_read_info (boot_db_name (), pl_info);
+  sp_port = pl_info.port;
+
+  return sp_port;
 }
