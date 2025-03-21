@@ -7865,6 +7865,13 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     {
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       or_pred = index->filter_predicate;
+
+      if (index->btid.vfid.volid == -1)
+	{
+	  fprintf (stdout, "HNSW INDEX\n");
+	  continue;
+	}
+
       if (or_pred && or_pred->pred_stream)
 	{
 	  error_code =

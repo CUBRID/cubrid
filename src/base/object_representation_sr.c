@@ -330,8 +330,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;
 	      root_vpid.volid = bt_statsp->btid.vfid.volid;
-
-	      if (VPID_ISNULL (&root_vpid))
+	      if (VPID_ISNULL (&root_vpid) || root_vpid.volid == -1)
 		{
 		  /* after create the catalog record of the class, and before create the catalog record of the
 		   * constraints for the class currently, does not know BTID */

@@ -234,6 +234,10 @@ stats_client_unpack_statistics (char *buf_p)
 	  btree_stats_p->keys = MIN (btree_stats_p->keys, class_stats_p->heap_num_objects);
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
+	      if (btree_stats_p->btid.vfid.volid == -1)
+		{
+		  continue;
+		}
 	      assert (btree_stats_p->pkeys[k] >= 0);
 	      btree_stats_p->pkeys[k] = MIN (btree_stats_p->pkeys[k], btree_stats_p->keys);
 	    }
