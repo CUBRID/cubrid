@@ -169,7 +169,7 @@ namespace cubschema
     const authorization &auth = catalog_def.auth;
     if (auth.owner != nullptr)
       {
-	error_code = au_change_owner (class_mop, auth.owner);
+	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -243,7 +243,7 @@ namespace cubschema
     assert (auth.owner != nullptr);
     if (auth.owner != nullptr)
       {
-	error_code = au_change_owner (class_mop, auth.owner);
+	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;

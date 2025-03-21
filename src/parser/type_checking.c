@@ -7796,11 +7796,13 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
+      break;
     case PT_EXPR:
       if (pt_is_dblink_related (node))
 	{
 	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
 	}
+      break;
     default:
       // nope
       break;
@@ -7921,9 +7923,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       if (node->info.method_call.method_type == PT_SP_FUNCTION
 	  && !PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_SP_NUMERIC) && node->type_enum == PT_TYPE_NUMERIC)
 	{
+	  int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
+
 	  PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_SP_NUMERIC);
-	  node =
-	    pt_wrap_with_cast_op (parser, node, PT_TYPE_NUMERIC, DB_NUMERIC_PRECISION_SP, DB_NUMERIC_SCALE_SP, NULL);
+	  node = pt_wrap_with_cast_op (parser, node, PT_TYPE_NUMERIC, numeric[PRM_PRECISION], numeric[PRM_SCALE], NULL);
 	  if (node == NULL)
 	    {
 	      assert (false);
@@ -17269,6 +17272,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      cmp = 1;
 	      break;
 	    }
+	  /* fall through */
 	case PT_NE_ALL:
 	  cmp = set_issome (arg1, db_get_set (arg2), PT_EQ_SOME, 1);
 	  if (cmp == 1)
@@ -19278,11 +19282,16 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       tree = NULL;
       return tree;
     }
-  /* do constant folding */
-  tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
-  if (pt_has_error (parser))
+
+  /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
+  if (!parser->flag.is_parsing_static_sql)
     {
-      tree = NULL;
+      /* do constant folding */
+      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+      if (pt_has_error (parser))
+	{
+	  tree = NULL;
+	}
     }
 
   return tree;

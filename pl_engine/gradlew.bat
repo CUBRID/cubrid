@@ -55,9 +55,14 @@ echo location of your Java installation.
 goto fail
 
 :findJavaFromJavaHome
-set JAVA_HOME=%JAVA_HOME:"=%
-set JAVA_EXE=%JAVA_HOME%/bin/java.exe
 
+@rem trim
+for /f "delims=" %%A in ('powershell -Command "[System.Environment]::GetEnvironmentVariable(\"JAVA_HOME\").Trim()"') do set JAVA_HOME=%%A
+set JAVA_HOME=%JAVA_HOME:"=%
+
+set JAVA_EXE=%JAVA_HOME%\bin\java.exe
+
+echo JAVA_EXE in grandlew: %JAVA_EXE%
 if exist "%JAVA_EXE%" goto execute
 
 echo.

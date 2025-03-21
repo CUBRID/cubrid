@@ -141,8 +141,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
-	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_PL_SERVER, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_PL_SERVER; // Handle the case where connection is unavailable
 	  }
 
 	return conn->send_buffer_args (m_java_header, std::forward<Args> (args)...);
@@ -154,8 +154,8 @@ namespace cubpl
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connection pool");
-	    return ER_SP_CANNOT_CONNECT_JVM; // Handle the case where connection is unavailable
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_PL_SERVER, 1, "connection pool");
+	    return ER_SP_CANNOT_CONNECT_PL_SERVER; // Handle the case where connection is unavailable
 	  }
 
 	pl_callback_func interrupt_func = [this]()

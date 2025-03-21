@@ -18,7 +18,7 @@
 
 
 /*
- * pl_comm.c - Functions to communicate with Java Stored Procedure Server
+ * pl_comm.c - Functions to communicate with Procedure Language Server
  *
  * Note:
  */
@@ -273,7 +273,7 @@ pl_connect_server_uds (const char *db_name, SOCKET & out)
   if (success < 0)
     {
       out = INVALID_SOCKET;
-      return ER_SP_CANNOT_CONNECT_JVM;
+      return ER_SP_CANNOT_CONNECT_PL_SERVER;
     }
 
   int one = 1;
@@ -305,7 +305,7 @@ pl_connect_server_tcp (int server_port, SOCKET & out)
   if (server_port < 0)
     {
       out = sockfd;		/* INVALID_SOCKET (-1) */
-      return ER_SP_CANNOT_CONNECT_JVM;
+      return ER_SP_CANNOT_CONNECT_PL_SERVER;
     }
 
   inaddr = inet_addr (server_host);
@@ -337,7 +337,7 @@ pl_connect_server_tcp (int server_port, SOCKET & out)
   if (IS_INVALID_SOCKET (sockfd))
     {
       out = INVALID_SOCKET;
-      return ER_SP_CANNOT_CONNECT_JVM;
+      return ER_SP_CANNOT_CONNECT_PL_SERVER;
     }
   else
     {
@@ -349,7 +349,7 @@ pl_connect_server_tcp (int server_port, SOCKET & out)
   if (success < 0)
     {
       out = INVALID_SOCKET;
-      return ER_SP_CANNOT_CONNECT_JVM;
+      return ER_SP_CANNOT_CONNECT_PL_SERVER;
     }
 
   out = sockfd;

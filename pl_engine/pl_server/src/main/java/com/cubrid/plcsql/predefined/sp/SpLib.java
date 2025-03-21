@@ -36,7 +36,6 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
@@ -54,7 +53,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -319,25 +317,42 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(
-            Connection conn, String name, int resultTypeCode, Object... args) {
+    private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
-        assert args != null;
+    public static Object invokeBuiltinFunc(
+            Connection conn,
+            String callStr,
+            int resultTypeCode,
+            PreparedStatement[] pstmtRef,
+            Object... args) {
+
+        if (args == null) {
+            args = SINGLE_NULL_ARG;
+        }
 
         int argsLen = args.length;
-        String hostVars;
-        if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
-            assert argsLen == 0;
-            hostVars = "";
-        } else {
-            hostVars = getHostVarsStr(argsLen);
-        }
-        String query = String.format("select %s%s from dual", name, hostVars);
+        String query = String.format("select %s from dual", callStr);
+
+        PreparedStatement pstmt = null;
         try {
-            PreparedStatement pstmt = conn.prepareStatement(query);
+
+            if (pstmtRef == null) {
+                // not in a loop
+                pstmt = conn.prepareStatement(query);
+            } else {
+                // in a loop.
+                pstmt = pstmtRef[0];
+                // Check if it is null in order to call prepareStatement only once in the loop
+                if (pstmt == null) {
+                    pstmt = conn.prepareStatement(query);
+                    pstmtRef[0] = pstmt; // save it for the later iterations
+                }
+            }
+
             for (int i = 0; i < argsLen; i++) {
                 pstmt.setObject(i + 1, args[i]);
             }
+
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 Object ret;
@@ -385,11 +400,6 @@ public class SpLib {
                     ret = null;
                 }
 
-                Statement stmt = rs.getStatement();
-                if (stmt != null) {
-                    stmt.close();
-                }
-
                 return ret;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -397,6 +407,15 @@ public class SpLib {
         } catch (SQLException e) {
             Server.log(e);
             throw new SQL_ERROR(e.getMessage());
+        } finally {
+            if (pstmtRef == null && pstmt != null) {
+                try {
+                    pstmt.close();
+                } catch (SQLException e) {
+                    Server.log(e);
+                    throw new SQL_ERROR(e.getMessage());
+                }
+            }
         }
     }
 
@@ -592,11 +611,13 @@ public class SpLib {
         public ResultSet rs;
         public int rowCount;
 
+        private PreparedStatement myStmt;
+
         public Query(String query) {
             this.query = query;
         }
 
-        public void open(Connection conn, Object... val) {
+        public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
 
             assert val != null;
 
@@ -604,7 +625,24 @@ public class SpLib {
                 if (isOpen()) {
                     throw new CURSOR_ALREADY_OPEN();
                 }
-                PreparedStatement pstmt = conn.prepareStatement(query);
+
+                PreparedStatement pstmt;
+
+                // using pstmtRef is for the loop optimization:
+                //  preparing the statement once and closing it once for the whole iterations
+                if (pstmtRef == null) {
+                    // case of not applying the loop optimization
+                    myStmt = conn.prepareStatement(query);
+                    pstmt = myStmt;
+                } else {
+                    // case of applying the loop optimization
+                    pstmt = pstmtRef[0];
+                    if (pstmt == null) {
+                        pstmt = conn.prepareStatement(query);
+                        pstmtRef[0] = pstmt; // store it for the later loop iterations
+                    }
+                }
+
                 for (int i = 0; i < val.length; i++) {
                     pstmt.setObject(i + 1, val[i]);
                 }
@@ -620,11 +658,16 @@ public class SpLib {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
-                if (rs != null) {
-                    Statement stmt = rs.getStatement();
-                    if (stmt != null) {
-                        stmt.close();
-                    }
+                if (myStmt == null) {
+                    // no need to close the statement because it was declared and is closed outside
+                    // of this Query
+                    // close only the result set.
+                    rs.close();
+                    rs = null;
+                } else {
+                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
+                    // on Statement.close()
+                    myStmt = null;
                     rs = null;
                 }
             } catch (SQLException e) {
@@ -3220,7 +3263,7 @@ public class SpLib {
         try {
             return checkFloat(Float.valueOf(e.floatValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + convDoubleToString(e));
         }
     }
 
@@ -3304,7 +3347,7 @@ public class SpLib {
         try {
             return checkDouble(Double.valueOf(e.doubleValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + convFloatToString(e));
         }
     }
 
@@ -3378,7 +3421,7 @@ public class SpLib {
         try {
             return checkDouble(Double.valueOf(e.doubleValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + convNumericToString(e));
         }
     }
 
@@ -3390,7 +3433,7 @@ public class SpLib {
         try {
             return checkFloat(Float.valueOf(e.floatValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + convNumericToString(e));
         }
     }
 
@@ -4411,7 +4454,7 @@ public class SpLib {
         try {
             return bdp.longValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type BIGINT: " + bd);
+            throw new VALUE_ERROR("data overflow on data type BIGINT: " + convNumericToString(bd));
         }
     }
 
@@ -4421,7 +4464,7 @@ public class SpLib {
         try {
             return bdp.intValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type INTEGER: " + bd);
+            throw new VALUE_ERROR("data overflow on data type INTEGER: " + convNumericToString(bd));
         }
     }
 
@@ -4431,7 +4474,7 @@ public class SpLib {
         try {
             return bdp.shortValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type SHORT: " + bd);
+            throw new VALUE_ERROR("data overflow on data type SHORT: " + convNumericToString(bd));
         }
     }
 
@@ -4441,7 +4484,7 @@ public class SpLib {
         try {
             return bdp.byteValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type BYTE: " + bd);
+            throw new VALUE_ERROR("data overflow on data type BYTE: " + convNumericToString(bd));
         }
     }
 
@@ -6541,16 +6584,6 @@ public class SpLib {
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);
-        }
-    }
-
-    private static String getHostVarsStr(int len) {
-        if (len == 0) {
-            return "()";
-        } else {
-            String[] arr = new String[len];
-            Arrays.fill(arr, "?");
-            return "(" + String.join(", ", arr) + ")";
         }
     }
 

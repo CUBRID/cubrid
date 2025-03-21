@@ -1256,15 +1256,11 @@ stx_restore_pl_sig (THREAD_ENTRY * thread_p, char *ptr)
       return sig;
     }
 
-  //sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  //if (sig_array == NULL)
-  //  {
-  //   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  //   return NULL;
-  // }
+#if defined(MMON_DEBUG_LEVEL)
   sig = new PL_SIGNATURE_TYPE;
-
-  // new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+#else
+  sig = new (std::nothrow) PL_SIGNATURE_TYPE;
+#endif
 
   if (stx_mark_struct_visited (thread_p, ptr, sig) == ER_FAILED || stx_build_pl_sig (thread_p, ptr, sig) == NULL)
     {
@@ -1294,17 +1290,11 @@ stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
       return sig_array;
     }
 
-#if 0
-  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  if (sig_array == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-  new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
-#endif
-
+#if defined(MMON_DEBUG_LEVEL)
   sig_array = new PL_SIGNATURE_ARRAY_TYPE;
+#else
+  sig_array = new (std::nothrow) PL_SIGNATURE_ARRAY_TYPE;
+#endif
 
   if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||
       stx_build_pl_sig_array (thread_p, ptr, sig_array) == NULL)
@@ -1751,6 +1741,19 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_BUILD;
+  /* ************************************************************************** 
+   *  === Status transition diagram   
+   *       |------------------>----------------------------------|
+   *  XASL_BUILD -> XASL_SUCCESS/XASL_FAILURE -> XASL_INITIALIZED/XASL_CLEARED  
+   *                            |--------------<-----------------|
+   *  
+   * 1. When you first create an XASL, it starts with the XASL_BUILD status.
+   * 2. If the created XASL is executed successfully, it becomes XASL_SUCCESS, and if an error occurs, it becomes XASL_FAILURE.
+   *    When an error occurs, the status of XASLs that have not yet been executed does not change.
+   * 3. When the task execution is completed, whether successful or failed, 
+   *    it changes to XASL_INITIALIZED or XASL_CLEARED through qexec_clear_xasl().
+   * 4. If the XASL is cached and reused, steps 2 and 3 are repeated.
+   ************************************************************************** */
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

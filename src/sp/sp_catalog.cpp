@@ -64,7 +64,6 @@ static const std::vector<std::string> sp_entry_names
 static const std::vector<std::string> sp_args_entry_names
 {
   SP_ATTR_SP_OF,
-  SP_ATTR_PKG,
   SP_ATTR_INDEX_OF_NAME,
   SP_ATTR_IS_SYSTEM_GENERATED,
   SP_ATTR_ARG_NAME,
@@ -110,7 +109,6 @@ static int sp_builtin_init ()
 
   // arg(0) of enable
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "s";
   a.data_type = DB_TYPE_INTEGER;
@@ -149,7 +147,6 @@ static int sp_builtin_init ()
 
   // arg(0) of put
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "str";
   a.data_type = DB_TYPE_STRING;
@@ -173,7 +170,6 @@ static int sp_builtin_init ()
 
   // arg(0) of put_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "str";
   a.data_type = DB_TYPE_STRING;
@@ -210,7 +206,6 @@ static int sp_builtin_init ()
 
   // arg(0) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "line";
   a.data_type = DB_TYPE_STRING;
@@ -221,7 +216,6 @@ static int sp_builtin_init ()
 
   // arg(1) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 1;
   a.arg_name = "status";
   a.data_type = DB_TYPE_INTEGER;
@@ -245,7 +239,6 @@ static int sp_builtin_init ()
 
   // arg(0) of get_lines
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 0;
   a.arg_name = "lines";
   a.data_type = DB_TYPE_STRING;
@@ -256,7 +249,6 @@ static int sp_builtin_init ()
 
   // arg(1) of get_line
   a.sp_name = v.sp_name;
-  a.pkg_name = "DBMS_OUTPUT";
   a.index_of = 1;
   a.arg_name = "cnt";
   a.data_type = DB_TYPE_INTEGER;
@@ -487,7 +479,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
 
 	arg.sp_name = info.sp_name;
-	arg.pkg_name = info.pkg_name;
 
 	err = sp_add_stored_procedure_argument (&mop_list[i], arg);
 	if (err != NO_ERROR)
@@ -673,18 +664,6 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
     {
       assert (er_errid () != NO_ERROR);
       err = er_errid ();
-      goto error;
-    }
-
-  if (!info.pkg_name.empty ())
-    {
-      db_make_string (&value, info.pkg_name.data ());
-    }
-  err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
-  pr_clear_value (&value);
-
-  if (err != NO_ERROR)
-    {
       goto error;
     }
 

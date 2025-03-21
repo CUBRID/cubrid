@@ -69,7 +69,7 @@ extern int util_log_write_result (int error);
 extern int util_log_write_errid (int message_id, ...);
 extern int util_log_write_errstr (const char *format, ...);
 extern int util_log_write_warnstr (const char *format, ...);
-extern int util_log_write_command (int argc, char *argv[]);
+extern int util_log_write_command (int argc, char *argv[], int util_name_pos);
 
 extern int util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeof_elem,
 			 int (*func_compare) (const void *, const void *), bool * out_found);

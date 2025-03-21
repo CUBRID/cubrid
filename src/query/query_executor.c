@@ -415,7 +415,7 @@ static void qexec_failure_line (int line, XASL_STATE * xasl_state);
 static void qexec_reset_regu_variable (REGU_VARIABLE * var);
 static void qexec_reset_regu_variable_list (REGU_VARIABLE_LIST list);
 static void qexec_reset_pred_expr (PRED_EXPR * pred);
-static int qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static void qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE * list, bool is_final);
 static int qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, bool is_final);
 static int qexec_clear_regu_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, bool is_final);
@@ -1416,10 +1416,9 @@ qexec_failure_line (int line, XASL_STATE * xasl_state)
  * if any, and also resultant single values, if any. Return the
  * number of total pages deallocated.
  */
-static int
+static void
 qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  int pg_cnt = 0;
   VAL_LIST *single_tuple;
   QPROC_DB_VALUE_LIST value_list;
   int i;
@@ -1456,14 +1455,11 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  /* The values allocated during execution will be cleared and the xasl is reused. */
 	  xasl->status = XASL_INITIALIZED;
 	}
-
     }
   else
     {
       xasl->status = XASL_CLEARED;
     }
-
-  return pg_cnt;
 }
 
 /*
@@ -1568,13 +1564,16 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	{
 	  if (xcache_uses_clones ())
 	    {
-	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_CLEARED)
+	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 		{
-		  /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
-		  XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
-		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
+		  if (regu_var->xasl->status != XASL_CLEARED)
+		    {
+		      /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
+		      XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
+		      pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
+		    }
 		}
-	      else if (!XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_INITIALIZED)
+	      else if (regu_var->xasl->status != XASL_INITIALIZED)
 		{
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
@@ -1593,11 +1592,16 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_SP:
       pr_clear_value (regu_var->value.sp_ptr->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.sp_ptr->args, is_final);
-      if (is_final)
+      if (is_final && regu_var->value.sp_ptr->sig)
 	{
-	  delete regu_var->value.sp_ptr->sig;
-	  regu_var->value.sp_ptr->sig = nullptr;
+	  if (!xcache_uses_clones ()
+	      || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || regu_var->value.sp_ptr->sig->is_disposable)
+	    {
+	      delete regu_var->value.sp_ptr->sig;
+	      regu_var->value.sp_ptr->sig = nullptr;
+	    }
 	}
+
       break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
@@ -2110,11 +2114,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
-	  if (is_final)
+	  if (is_final && p->s.method_node.sig_array)
 	    {
-	      delete p->s.method_node.sig_array;
-	      p->s.method_node.sig_array = NULL;
+	      if (!xcache_uses_clones ()
+		  || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || p->s.method_node.sig_array->is_disposable)
+		{
+		  delete p->s.method_node.sig_array;
+		  p->s.method_node.sig_array = NULL;
+		}
 	    }
+
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
@@ -2248,7 +2257,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   xasl->query_in_progress = true;
 
   /* clear the head node */
-  pg_cnt += qexec_clear_xasl_head (thread_p, xasl);
+  qexec_clear_xasl_head (thread_p, xasl);
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */

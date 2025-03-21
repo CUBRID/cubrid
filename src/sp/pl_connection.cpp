@@ -121,7 +121,7 @@ namespace cubpl
     er_log_debug (ARG_FILE_LINE, "pl_connection_pool extended: %lld to %lld\n", currentSize, newSize);
 
     // Create the new connection
-    for (int i = currentSize; i < newSize; ++i)
+    for (size_t i = currentSize; i < newSize; ++i)
       {
 	m_queue.push (i);
       }
@@ -415,7 +415,7 @@ namespace cubpl
     int error = pl_connect_server (m_pool->get_db_name (), m_pool->get_db_port (), m_socket);
     if (error != NO_ERROR && !m_pool->is_system_pool ())
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_PL_SERVER, 1, "connect()");
       }
 
     if (m_socket != INVALID_SOCKET)
