@@ -2117,47 +2117,6 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 		  continue;
 		}
 
-	      if (db_get_int (&started_val) == 1)
-		{
-		  DB_VALUE diff_val, answer_val;
-
-		  db_make_null (&diff_val);
-		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
-		  if (sr_error == ER_IT_DATA_OVERFLOW)
-		    {
-		      // max - cur might be flooded.
-		      diff_val = max_val;
-		      er_clear ();
-		    }
-		  else if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  sr_error = numeric_db_value_compare (&inc_val, &diff_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  /* auto_increment is always non-cyclic */
-		  if (db_get_int (&answer_val) > 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = numeric_db_value_add (&cur_val, &inc_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  pr_clear_value (&cur_val);
-		  cur_val = answer_val;
-		}
-
 	      start_with = numeric_db_value_print (&cur_val, str_buf);
 	      if (start_with[0] == '\0')
 		{
@@ -2167,6 +2126,11 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      SPLIT_USER_SPECIFIED_NAME (db_get_string (&sr_name), owner_name, serial_name);
 	      output_ctx ("ALTER SERIAL %s%s%s.%s%s%s START WITH %s;\n",
 			  PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (serial_name), start_with);
+
+	      if (db_get_int (&started_val) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&sr_name)));
+		}
 
 	      pr_clear_value (&sr_name);
 	    }
