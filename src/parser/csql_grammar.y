@@ -683,6 +683,7 @@ static int g_plcsql_text_pos;
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
+%type <node> vector_index_column_with_metric
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -1104,7 +1105,10 @@ static int g_plcsql_text_pos;
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
+%type <c2> opt_vector_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> vector_index_with_item_list
+%type <c2> vector_index_with_item
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
 
@@ -2780,6 +2784,202 @@ create_stmt
 
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CREATE					/* 1 */
+		{					/* 2 */
+                        DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
+			parser_push_hint_node (node);
+			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_reverse					/* 4 */
+	  VECTOR
+	  INDEX						/* 6 */
+		{ pop_msg(); }  			/* 7 */
+	  identifier					/* 8 */
+	  ON_						/* 9 */
+	  only_class_name				/* 10 */
+	  vector_index_column_with_metric	        /* 11 */
+	  opt_where_clause				/* 12 */
+          // TODO: remove this: opt_index_with_clause	/* 13 */
+	  opt_vector_index_with_clause			/* 13 */
+	  opt_invisible					/* 14 */
+	  opt_comment_spec				/* 15 */
+		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
+
+			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+
+			assert(node != NULL);
+
+			/* Initialize vector_index_info (now an embedded structure) */
+			node->info.index.is_vector_index = true;
+			node->info.index.vector_index.hnsw_m = 16;                /* Example default value */
+			node->info.index.vector_index.hnsw_ef_construction = 200; /* Example default value */
+
+			bool opt_unique = false; // original $5
+
+		        if (opt_unique && $12)
+			  {
+			    /* Currently, not allowed unique with filter/function index.
+			       However, may be introduced later, if it will be usefull.
+			       Unique filter/function index code is removed from
+			       grammar module only. It is kept yet in the others modules.
+			       This will allow us to easily support this feature later by
+			       adding in grammar only. If no need such feature,
+			       filter/function code must be removed from all modules. */
+			    PT_ERRORm (this_parser, node,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			  }
+			if (node && ocs)
+			  {
+			    PT_NODE *col, *temp;
+			    int arg_count = 0, prefix_col_count = 0;
+
+			    ocs->info.spec.entity_name = $10;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @10.buffer_pos)
+
+			    node->info.index.indexed_class = ocs;
+			    node->info.index.reverse = $4;
+			    node->info.index.unique = opt_unique;
+			    node->info.index.index_name = $8;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    col = $11;
+			    if (node->info.index.unique)
+			      {
+			        for (temp = col; temp != NULL; temp = temp->next)
+			          {
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
+			          }
+			      }
+
+			    prefix_col_count =
+				parser_count_prefix_columns (col, &arg_count);
+
+			    if (prefix_col_count > 1 ||	(prefix_col_count == 1 && arg_count > 1))
+			      {
+				PT_ERRORm (this_parser, node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
+			      }
+			    else
+			      {
+				if (arg_count == 1 && (prefix_col_count == 1
+				    || col->info.sort_spec.expr->node_type == PT_FUNCTION))
+				  {
+				    PT_NODE *expr = col->info.sort_spec.expr;
+				    PT_NODE *arg_list = expr->info.function.arg_list;
+				    if ((arg_list != NULL)
+					&& (arg_list->next == NULL)
+					&& (arg_list->node_type == PT_VALUE))
+				      {
+					if (node->info.index.reverse
+					    || node->info.index.unique)
+					  {
+					    PT_ERRORm (this_parser, node,
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					  }
+					else
+					  {
+					    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+					    if (p)
+					      {
+						p->info.name.original = expr->info.function.generic_name;
+                                                expr->info.function.generic_name = NULL;
+					      }
+					    node->info.index.prefix_length = expr->info.function.arg_list;
+
+                                            expr->info.function.arg_list = NULL;
+                                            parser_free_node (this_parser, expr);
+
+					    col->info.sort_spec.expr = p;
+					  }
+				      }
+				    else
+				      {
+                                        char buf[512], *ptr;
+                                        PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
+
+                                        ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
+                                        if(function_ptr->function_type == PT_GENERIC)
+                                        {
+                                           snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
+                                           ptr = buf;
+                                        }
+                                        
+					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
+						    MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
+				      }
+				  }
+			      }
+                       
+			    node->info.index.where = $12;
+			    node->info.index.column_names = col;
+
+                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+			    // TODO: node->info.index.hnsw.m = 30;
+			    // TODO: node->info.index.hnsw.ef_con = 100;
+
+                             if (opt_unique && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
+                              {
+                                  PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
+                              }
+
+			    node->info.index.comment = $15;
+
+                            int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
+                                                        // thread_count + 1 for parallel
+                            bool is_online = with_online_ret > 0;
+                            bool is_invisible = $14;
+
+                            if (is_online && is_invisible)
+                              {
+                                /* We do not allow invisible and online index at the same time. */
+                                PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+                              }
+                            node->info.index.index_status = SM_NORMAL_INDEX;
+                            if (is_invisible)
+                              {
+                                /* Invisible index. */
+                                node->info.index.index_status = SM_INVISIBLE_INDEX;
+                              }
+                            else if (is_online)
+                              {
+                                /* Online index. */
+                                node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+                                node->info.index.ib_threads = with_online_ret - 1;
+                              }
+			  }
+
+		      $$ = node;
 
 		DBG_PRINT}}
 	| CREATE					/* 1 */
@@ -4701,6 +4901,72 @@ drop_stmt
 			  }
 
 		DBG_PRINT}}
+	| DROP					/* 1 */
+		{				/* 2 */
+			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
+			parser_push_hint_node(node);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_reverse					/* 4 */
+	  VECTOR					/* 5 */
+	  INDEX						/* 6 */
+	  identifier					/* 7 */
+	  ON_						/* 8 */
+	  only_class_name				/* 9 */
+	  opt_index_column_name_list			/* 10 */
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP ~ INDEX ~);
+
+			PT_NODE *node = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+
+			if (node && ocs)
+			  {
+			    PT_NODE *col, *temp;
+			    node->info.index.reverse = $4;
+			    // node->info.index.unique = $5;
+			    node->info.index.unique = false;
+			    node->info.index.index_name = $7;
+			    if (node->info.index.index_name)
+			      {
+				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
+			    node->info.index.indexed_class = ocs;
+
+			    col = $10;
+			    if (node->info.index.unique)
+			      {
+			        for (temp = col; temp != NULL; temp = temp->next)
+			          {
+			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+			              {
+			                /* Currently, not allowed unique with
+			                   filter/function index. However, may be
+			                   introduced later, if it will be usefull.
+			                   Unique filter/function index code is removed
+			                   from grammar module only. It is kept yet in
+			                   the others modules. This will allow us to
+			                   easily support this feature later by adding in
+			                   grammar only. If no need such feature,
+			                   filter/function code must be removed from all
+			                   modules. */
+			                PT_ERRORm (this_parser, node,
+			                           MSGCAT_SET_PARSER_SYNTAX,
+			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			              }
+			          }
+			      }
+			    node->info.index.column_names = col;
+
+			    $$ = node;
+			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			  }
+
+		DBG_PRINT}}
 	| DROP USER identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP USER identifier);
 
@@ -4953,6 +5219,13 @@ index_column_name_list
 
 		DBG_PRINT}}
 	;
+
+vector_index_column_with_metric
+	: '(' sort_spec identifier ')'
+	    {{
+	       $$ = $2;
+	    }}
+	// TODO: : '(' sort_spec vector_distance_metric ')'
 
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
@@ -22573,6 +22846,49 @@ opt_index_with_clause
              $$ = $2;
           DBG_PRINT}
         ;
+
+opt_vector_index_with_clause
+        : /* empty */
+          { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
+            container_2 ctn;
+            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            $$ = ctn; }
+        | WITH '(' vector_index_with_item_list ')'
+          {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
+             $$ = $3;
+          DBG_PRINT}
+        ;
+
+vector_index_with_item_list
+	: vector_index_with_item
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item);
+	    container_2 ctn;
+	    // init_container_2(&ctn);
+	    // add_to_container_2(&ctn, $1);
+	    $$ = ctn;
+	  }
+	| vector_index_with_item_list ',' vector_index_with_item
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item_list ',' vector_index_with_item);
+	    // add_to_container_2(&($1), $3);
+	    // $$ = $1;
+	    container_2 cnt2;
+	    $$ = (container_2)cnt2;
+	  }
+	;
+
+vector_index_with_item
+	: identifier '=' unsigned_integer
+	  {
+	    DBG_TRACE_GRAMMAR(vector_index_with_item, IDENTIFIER '=' NUMBER);
+	    // Create a structure to hold the option and its value
+	    // option_item *opt = create_option_item($1, $3);
+	    //$$ = opt;
+	    container_2 cnt2;
+	    $$ = (container_2)cnt2;
+	  }
+	;
 
 index_with_item_list  
         : online_parallel

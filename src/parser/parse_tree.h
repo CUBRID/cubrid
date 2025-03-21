@@ -2143,9 +2143,19 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+/* Structure for vector index specific information */
+typedef struct pt_vector_index_info
+{
+  int hnsw_m;
+  int hnsw_ef_construction;
+} PT_VECTOR_INDEX_INFO;
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
+  bool is_vector_index;
+  PT_VECTOR_INDEX_INFO vector_index;
+
   PT_NODE *indexed_class;	/* PT_SPEC */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
