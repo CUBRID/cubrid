@@ -68,7 +68,7 @@
 #include "pl_connection.hpp"
 #include "pl_comm.h"
 #include "pl_file.h"
-#include "pl_sr.h"
+#include "pl_sr_jvm.h"
 
 #include "packer.hpp"
 
@@ -153,7 +153,7 @@ get_ppid (DWORD &ppid)
 #endif
 
 /*
- * main() - javasp main function
+ * main() - pl server main function
  */
 
 int
@@ -165,12 +165,18 @@ main (int argc, char *argv[])
 #if defined(WINDOWS)
   FARPROC pl_old_hook = NULL;
 #else
-  if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
+  if (os_set_signal_handler (SIGTRAP, SIG_IGN) == SIG_ERR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
+  if (os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
       return ER_GENERIC_ERROR;
     }
 
   os_set_signal_handler (SIGABRT, pl_signal_handler);
+  os_set_signal_handler (SIGTERM, pl_signal_handler);
   os_set_signal_handler (SIGILL, pl_signal_handler);
   os_set_signal_handler (SIGFPE, pl_signal_handler);
   os_set_signal_handler (SIGBUS, pl_signal_handler);
@@ -209,7 +215,7 @@ main (int argc, char *argv[])
 
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
-	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_java.err", db_name.c_str ());
+	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_pl.err", db_name.c_str ());
 	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
@@ -221,7 +227,7 @@ main (int argc, char *argv[])
 	char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	snprintf (err_msg, sizeof (err_msg), "Error while opening file (%s)", info_path);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1, err_msg);
 	goto exit;
       }
 
@@ -280,9 +286,12 @@ main (int argc, char *argv[])
     // load system parameter
     sysprm_load_and_init (db_name.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS);
 
-    /* javasp command main routine */
+    /* pl command main routine */
     if (command.compare ("start") == 0)
       {
+#if !defined (WINDOWS)
+	pid_t ppid = getppid ();
+#endif
 	(void) pl_start_server (pl_info, db_name, pathname);
 
 	command = "running";
@@ -308,7 +317,7 @@ main (int argc, char *argv[])
 		break;// parent process is terminated
 	      }
 #else
-	    if (getppid () == 1)
+	    if (getppid () != ppid)
 	      {
 		// parent process is terminated
 		break;
@@ -331,14 +340,13 @@ main (int argc, char *argv[])
 	PL_PRINT_ERR_MSG ("Invalid command: %s\n", command.c_str ());
 	status = ER_GENERIC_ERROR;
       }
-
-#if defined(WINDOWS)
-    // socket shutdown for windows
-    windows_socket_shutdown (pl_old_hook);
-#endif /* WINDOWS */
   }
 
 exit:
+#if defined(WINDOWS)
+  // socket shutdown for windows
+  windows_socket_shutdown (pl_old_hook);
+#endif /* WINDOWS */
 
   if (command.compare ("ping") == 0)
     {
@@ -395,37 +403,14 @@ static void pl_signal_handler (int sig)
 	  return;
 	}
 
-      // error handling in parent
-      std::string err_msg;
-
-      void *addresses[64];
-      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-      char **symbols = backtrace_symbols (addresses, nn_addresses);
-
-      err_msg += "pid (";
-      err_msg += std::to_string (getpid ());
-      err_msg += ")\n";
-
-      for (int i = 0; i < nn_addresses; i++)
-	{
-	  err_msg += symbols[i];
-	  if (i < nn_addresses - 1)
-	    {
-	      err_msg += "\n";
-	    }
-	}
-      free (symbols);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+      er_print_crash_callstack (sig);
 
       exit (1);
     }
-  else
-    {
-      // resume signal hanlding
-      os_set_signal_handler (sig, pl_signal_handler);
-      is_signal_handling = false;
-    }
+
+  // resume signal hanlding
+  os_set_signal_handler (sig, pl_signal_handler);
+  is_signal_handling = false;
 }
 #endif
 
@@ -460,8 +445,12 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 
       er_clear (); // clear error before string JVM
       status = pl_start_jvm_server (db_name.c_str (), path.c_str (), pl_get_port_param ());
+      if (er_has_error())
+	{
+	  PL_PRINT_ERR_MSG ("%s\n", er_msg());
+	  er_clear();
+	}
 
-      int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
       PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
       pl_unlink_info (db_name.c_str ());
@@ -475,8 +464,8 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 	  char info_path[PATH_MAX], err_msg[PATH_MAX + 32];
 	  pl_get_info_file (info_path, PATH_MAX, db_name.c_str ());
 	  snprintf (err_msg, sizeof (err_msg), "Error while writing to file: (%s)", info_path);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, err_msg);
-	  status = ER_SP_CANNOT_START_JVM;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1, err_msg);
+	  status = ER_SP_CANNOT_START_PL_SERVER;
 	}
     }
 
@@ -569,7 +558,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 exit:
   if (status != NO_ERROR)
     {
-      fprintf (stdout, "Java Stored Procedure Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
+      fprintf (stdout, "Procedure Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
   if (buffer.ptr)
@@ -620,17 +609,17 @@ pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 {
   if (status_info.port == PL_PORT_UDS_MODE)
     {
-      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
+      fprintf (fp, "Procedure Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
     }
   else
     {
-      fprintf (fp, "Java Stored Procedure Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
+      fprintf (fp, "Procedure Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
 	       status_info.port);
     }
   auto vm_args_len = status_info.vm_args.size();
   if (vm_args_len > 0)
     {
-      fprintf (fp, "Java VM arguments :\n");
+      fprintf (fp, "VM arguments :\n");
       fprintf (fp, " -------------------------------------------------\n");
       for (int i = 0; i < (int) vm_args_len; i++)
 	{

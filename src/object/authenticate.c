@@ -511,3 +511,11 @@ au_is_server_authorized_user (DB_VALUE * owner_val)
 {
   return (au_check_owner (owner_val) == NO_ERROR);
 }
+
+#if defined (SA_MODE)
+void
+au_disable_passwords (void)
+{
+  AU_DISABLE_PASSWORDS ();
+}
+#endif

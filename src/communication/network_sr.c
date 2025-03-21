@@ -942,7 +942,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (conn_p->session_p);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p);
     }
 
 loop:

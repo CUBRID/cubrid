@@ -44,6 +44,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.newsclub.net.unix.AFUNIXServerSocket;
 import org.newsclub.net.unix.AFUNIXSocketAddress;
@@ -89,6 +90,13 @@ public class Server {
 
         // store JVM options
         getJVMArguments();
+        logger.log(Level.INFO, "JVM arguments: " + jvmArguments);
+
+        // log max heap memory
+        long maxHeap = Runtime.getRuntime().maxMemory();
+        logger.log(
+                Level.INFO,
+                String.format("max heap size: %d B (%d MB)", maxHeap, (maxHeap / 1024 / 1024)));
     }
 
     private synchronized void initailizeEnvironments(ServerConfig config) {
@@ -265,6 +273,10 @@ public class Server {
 
     public static void log(String str) {
         loggingThread.log(str);
+    }
+
+    public static void flushLog() {
+        loggingThread.flush();
     }
 
     public void setShutdown() {

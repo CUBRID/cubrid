@@ -18084,6 +18084,7 @@ reserved_func
 			  {
 			    pt_set_fill_default_in_path_expression (path);
 			    node = parser_make_expression (this_parser, PT_DEFAULTF, path, NULL, NULL);
+                            node->flag.for_default_func = 1;
 			    PICE (node);
 			  }
 			$$ = node;

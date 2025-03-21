@@ -7282,16 +7282,24 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
       if (replydata_listid && replydata_size_listid)
 	{
-	  /* unpack list file id of query result from the reply data */
-	  ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
-	  /* QFILE_LIST_ID shipped with last page */
-	  if (replydata_size_page)
+	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 	    {
-	      list_id->last_pgptr = replydata_page;
+	      /* dblink transaction is aborted */
+	      ;
 	    }
 	  else
 	    {
-	      list_id->last_pgptr = NULL;
+	      /* unpack list file id of query result from the reply data */
+	      ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
+	      /* QFILE_LIST_ID shipped with last page */
+	      if (replydata_size_page)
+		{
+		  list_id->last_pgptr = replydata_page;
+		}
+	      else
+		{
+		  list_id->last_pgptr = NULL;
+		}
 	    }
 	  free_and_init (replydata_listid);
 	}
@@ -11057,7 +11065,12 @@ error:
       }
     else
       {
-	std::string err_msg = executor.get_stack ()->get_error_message ();
+	std::string err_msg;
+	if (executor.get_stack ())
+	  {
+	    err_msg = executor.get_stack ()->get_error_message ();
+	  }
+
 	if (err_msg.empty () && req_error != ER_SP_EXECUTE_ERROR)
 	  {
 	    err_msg.assign (er_msg ());
@@ -11376,7 +11389,7 @@ error:
       if (compile_response.err_code == NO_ERROR)
 	{
 	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
-	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
 	}
     }
 
@@ -11411,7 +11424,7 @@ error:
   else
     {
       compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
-      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
     }
 
   return success;

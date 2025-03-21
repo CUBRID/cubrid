@@ -21374,7 +21374,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 {
   DB_OBJECT *server_object = NULL;
   MOP user_obj = NULL;
-  int au_save, error;
+  int au_save, error = NO_ERROR;
   DB_VALUE user_val;
 
   db_make_null (&user_val);
@@ -21397,7 +21397,6 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 	}
     }
 
-error_end:
   AU_ENABLE (au_save);
   pr_clear_value (&user_val);
 

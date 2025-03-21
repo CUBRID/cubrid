@@ -6696,9 +6696,11 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
        * To avoid being set to default Numeric, set numeric(any,any) to precision = 0, scale = 0.
        * TO DO: We need to define a separate type for numeric(any,any) in the future.
        */
+      int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
+
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
-      regu->domain->precision = DB_NUMERIC_PRECISION_SP;
-      regu->domain->scale = DB_NUMERIC_SCALE_SP;
+      regu->domain->precision = numeric[PRM_PRECISION];
+      regu->domain->scale = numeric[PRM_SCALE];
     }
 
   return regu;
@@ -12814,7 +12816,11 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   access =
     pt_make_cselect_access_spec (subquery_proc, sig_array, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
-  if (access && subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
+  if (!access)
+    {
+      regu_delete (sig_array);
+    }
+  else if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
     {
       return access;
     }
@@ -21977,8 +21983,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       break;
 
     case PT_CTE:
-      assert (node->info.cte.xasl == NULL);
-
+      assert (node->info.cte.xasl == NULL || (parser->host_var_count == 0 && parser->auto_param_count == 0));
       xasl = parser_generate_xasl_proc (parser, node, info->query_list);
       break;
 

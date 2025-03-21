@@ -26,6 +26,7 @@
 #include "authenticate_cache.hpp"
 #include "authenticate_access_auth.hpp"
 
+#include "boot.h"
 #include "db.h" /* db_compile_and_execute_local () */
 #include "dbtype.h" /* DB_IS_STRING */
 // #include "dbtype_function.h"
@@ -67,8 +68,6 @@ static void free_grant_list (AU_GRANT *grants);
 static void map_grant_list (AU_GRANT *grants, MOP grantor);
 
 static int find_grant_entry (DB_SET *grants, MOP class_mop, MOP grantor);
-static int add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor);
-static void drop_grant_entry (DB_SET *grants, int index);
 static void print_grant_entry (DB_SET *grants, int grant_index, FILE *fp);
 
 /*
@@ -448,10 +447,10 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		}
 
 	      /*
-	       * clear the cache for this user/class pair to make sure we
+	       * clear the cache for this user/procedure pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      //reset_cache_for_user_and_class (classobj);
+	      Au_cache.reset_cache_for_user_and_procedure (obj_mop);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -945,7 +944,7 @@ check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type)
 
   if (*cache_bits == AU_CACHE_INVALID)
     {
-      if (Au_cache.update (classop, sm_class))
+      if (Au_cache.update (DB_OBJECT_CLASS, classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1162,7 +1161,7 @@ map_grant_list (AU_GRANT *grants, MOP grantor)
  *   obj_mop(in): database object being granted
  *   grantor(in): user doing the granting
  */
-static int
+int
 add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor)
 {
   DB_VALUE value;
@@ -1193,7 +1192,7 @@ add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grant
  *   grants(in): grant sequence
  *   index(in): index of grant element to remove
  */
-static void
+void
 drop_grant_entry (DB_SET *grants, int index)
 {
   int i;
@@ -1335,6 +1334,25 @@ get_grants (MOP auth, DB_SET **grant_ptr, int filter)
   grants = db_get_set (&value);
   gsize = set_size (grants);
 
+  /*
+   * The code below `filter` is no longer functional and should be considered for removal
+   * during future permission refactoring.
+   *
+   * The reason is that, in versions prior to 11.3v, when `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE`
+   * was granted and then deleted, the `owner` and `grants` rows in the `db_authorization` catalog
+   * were set to `NULL`.
+   *
+   * However, following the fixes for issues CBRD-25486 and CBRD-25574,
+   * all permissions are now revoked before `GRANT_ENTRY_CLASS` or `GRANT_ENTRY_SOURCE` is deleted.
+   * As a result, the `owner` and `grants` rows in the `db_authorization` catalog can no longer become `NULL`.
+   *
+   * That said, there are two possible reasons why the following code was originally implemented before 11.3v (guess):
+   *
+   * Case 1) If the `owner` in the `db_authorization` catalog is `NULL` and `GRANT_ENTRY_CLASS` in `grants` is also `NULL`,
+   *         the corresponding element is deleted.
+   * Case 2) If the `owner` in the `db_authorization` catalog is `NULL`, but `GRANT_ENTRY_CLASS` in `grants` has an owner,
+   *         the `GRANT_ENTRY_CACHE(mask)` is merged into the owner’s entry, and the existing element is deleted.
+   */
   if (!filter)
     {
       goto end;
@@ -1937,9 +1955,9 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	  gsize = set_size (grants);
 	  if (gsize)
 	    {
-	      for (j = 0; j < gsize && error == NO_ERROR; j += GRANT_ENTRY_LENGTH)
+	      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
+	      for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
 		{
-		  cache = AU_NO_AUTHORIZATION;
 		  if (set_get_element (grants, GRANT_ENTRY_CLASS (j), &element))
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -1949,7 +1967,6 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 
 		  if (db_get_object (&element) == obj_mop)
 		    {
-		      cache = AU_NO_AUTHORIZATION;
 		      if (set_get_element (grants, GRANT_ENTRY_CACHE (j), &element))
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -1958,17 +1975,7 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 			}
 
 		      cache = db_get_int (&element);
-		      mask = (unsigned int) (type | (type << AU_GRANT_SHIFT));
-		      if ((cache & mask) != mask)
-			{
-			  error = appropriate_error (cache, mask);
-			  if (error)
-			    {
-			      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-			      break;
-			    }
-			}
-		      else
+		      if ((cache & mask) == mask)
 			{
 			  *grantor = login_user;
 			  break;
@@ -2045,6 +2052,54 @@ au_print_grants (MOP auth, FILE *fp)
 	}
       set_free (grants);
     }
+}
+
+int
+au_check_procedure_authorization (MOP procedure_mop)
+{
+  int error = NO_ERROR;
+  DB_VALUE owner;
+  MOP owner_mop;
+
+  // if procedure cache does not exist, update the procedure cache
+  uint32_t *bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
+
+  if ((*bits & AU_EXECUTE) != AU_EXECUTE)
+    {
+      if (*bits == AU_CACHE_INVALID)
+	{
+	  error = db_get (procedure_mop, SP_ATTR_OWNER, &owner);
+	  owner_mop = db_get_object (&owner);
+
+	  /* update the cache and try again */
+	  error = Au_cache.update (DB_OBJECT_PROCEDURE, procedure_mop, owner_mop);
+	  if (error == NO_ERROR)
+	    {
+	      bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+	      if (bits == NULL)
+		{
+		  return er_errid ();
+		}
+	      if ((*bits & AU_EXECUTE) != AU_EXECUTE)
+		{
+		  error = appropriate_error (*bits, AU_EXECUTE);
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		}
+	    }
+	}
+      else
+	{
+	  error = appropriate_error (*bits, AU_EXECUTE);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+    }
+
+  return error;
 }
 
 #if defined (SA_MODE)

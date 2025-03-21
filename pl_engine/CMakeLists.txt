@@ -15,11 +15,10 @@
 #   limitations under the License.
 # 
 #
-include(FindJava)
-find_package(Java 1.6 COMPONENTS Development)
 
 set(PL_ENGINE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/pl_engine)
 set(PL_ENGINE_BUILD_DIR ${CMAKE_BINARY_DIR}/pl_engine)
+set(JDK_DIR ${CMAKE_BINARY_DIR}/vm)
 
 # Find gradlew
 if(UNIX)
@@ -30,7 +29,14 @@ endif(UNIX)
 
 set(LOCAL_JDBC_PATH_COMMAND)
 
+add_custom_target(pl_install_jdk)
+add_custom_command(TARGET pl_install_jdk
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${JDK_DIR}
+  COMMAND ${CMAKE_COMMAND} -DJDK_DIR=${JDK_DIR} -P ${PL_ENGINE_SOURCE_DIR}/cmake/install_jdk.cmake
+)
+
 add_custom_target(pl_build ALL)
+add_dependencies(pl_build pl_install_jdk)
 
 if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   set(JDBC_DIR ${CMAKE_SOURCE_DIR}/cubrid-jdbc)
@@ -47,19 +53,49 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   add_dependencies(pl_build jdbc_build)
 endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
+set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
+if(UNIX)
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+message(STATUS "JAVA_HOME: ${JAVA_HOME}")
+else(UNIX)
+string(REPLACE "/" "\\" JAVA_HOME ${JAVA_HOME})
+message(STATUS "JAVA_HOME: ${JAVA_HOME}")
+endif(UNIX)
+
+# For PL server
+find_package(Java REQUIRED)
+
+if(UNIX)
 add_custom_command(TARGET pl_build
   COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
   COMMAND ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
+else(UNIX)
+add_custom_command(TARGET pl_build
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
+  COMMAND cmd.exe /C "set JAVA_HOME=${JAVA_HOME} && ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}"
+)
+endif(UNIX)
 
 add_custom_target(pl_unittest)
+if(UNIX)
 add_custom_command(TARGET pl_unittest
   COMMAND ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
+else(UNIX)
+add_custom_command(TARGET pl_unittest
+  COMMAND cmd.exe /C "set JAVA_HOME=${JAVA_HOME} && ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}"
+)
+endif(UNIX)
 add_dependencies(pl_unittest pl_build)
 
 install(FILES
   ${PL_ENGINE_BUILD_DIR}/libs/pl_server.jar
   ${PL_ENGINE_BUILD_DIR}/resources/main/logging.properties
-  DESTINATION ${CUBRID_JAVADIR}
+  DESTINATION ${CUBRID_VMDIR}
+)
+
+install(DIRECTORY
+  ${JDK_DIR}/jdk8
+  DESTINATION ${CUBRID_VMDIR}
 )

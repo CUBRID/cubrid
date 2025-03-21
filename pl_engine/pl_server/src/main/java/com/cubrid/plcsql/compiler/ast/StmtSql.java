@@ -31,11 +31,46 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Coercion;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class StmtSql extends Stmt {
+public abstract class StmtSql extends Stmt implements SqlUse {
+
+    public boolean reachableFromLoop;
+
+    @Override
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
+    }
+
+    @Override
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    private boolean usingRef = false;
+
+    @Override
+    public boolean usingRef() {
+        return usingRef;
+    }
+
+    @Override
+    public void setToUseRef() {
+        usingRef = true;
+    }
 
     public final boolean dynamic;
     public final int level;
@@ -43,6 +78,7 @@ public abstract class StmtSql extends Stmt {
     public final List<Type> columnTypeList;
     public final List<Expr> intoTargetList;
     public final List<? extends Expr> usedExprList;
+    public final int sqlSerialNo;
 
     public List<Coercion> coercions;
 
@@ -53,7 +89,8 @@ public abstract class StmtSql extends Stmt {
             Expr sql,
             List<Type> columnTypeList,
             List<Expr> intoTargetList,
-            List<? extends Expr> usedExprList) {
+            List<? extends Expr> usedExprList,
+            int sqlSerialNo) {
         super(ctx);
 
         // if static and a SELECT statement, then columnTypeList must be given
@@ -65,6 +102,7 @@ public abstract class StmtSql extends Stmt {
         this.columnTypeList = columnTypeList;
         this.intoTargetList = intoTargetList;
         this.usedExprList = usedExprList;
+        this.sqlSerialNo = sqlSerialNo;
     }
 
     public void setCoercions(List<Coercion> coercions) {

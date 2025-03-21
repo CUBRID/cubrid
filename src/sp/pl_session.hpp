@@ -122,6 +122,7 @@ namespace cubpl
       bool is_interrupted ();
       int get_interrupt_id ();
       std::string get_interrupt_msg ();
+      void clear_interrupt ();
 
       void wait_for_interrupt ();
       void set_local_error_for_interrupt (); // set interrupt on thread local error manager
@@ -143,6 +144,7 @@ namespace cubpl
 
     private:
       execution_stack *top_stack_internal ();
+      void destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 

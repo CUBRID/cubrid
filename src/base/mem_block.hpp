@@ -68,6 +68,8 @@ namespace cubmem
 
       inline bool is_valid () const;
 
+      inline void freemem ();
+
       inline char *move_ptr ();                                    //NOT RECOMMENDED! use move semantics: std::move()
 
     private:
@@ -267,6 +269,17 @@ namespace cubmem
   block::is_valid () const
   {
     return (dim != 0 && ptr != NULL);
+  }
+
+  void
+  block::freemem ()
+  {
+    if (is_valid ())
+      {
+	delete[] ptr;
+	dim = 0;
+	ptr = NULL;
+      }
   }
 
   char *

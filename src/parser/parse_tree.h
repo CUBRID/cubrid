@@ -3860,6 +3860,7 @@ struct parser_node
     unsigned done_reduce_equality_terms:1;	/* reduce_equality_terms() is already called */
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
+    unsigned for_default_func:1;	/* for DEFAULT built-in function */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -4024,6 +4025,7 @@ struct parser_context
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
+    unsigned is_parsing_trigger:1;
   } flag;
 };
 

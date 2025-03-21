@@ -250,7 +250,14 @@ jobs:
 
             # [exception case] lea_heap.c is third party code
             if [ "$f" != "src/heaplayers/lea_heap.c" ]; then
-              last_include_line=$(cat $f | grep -n "^#include" | cut -d':' -f1 | tail -1)
+              # "strict_warnings_(on|off).hpp" should be able to come after memory_wrapper.hpp
+              # Refer to CBRD-25966
+              last_include_line=$(
+                grep -n "^#include" "$f" \
+                | grep -v -E "strict_warnings_(on|off)\.hpp" \
+                | cut -d':' -f1 \
+                | tail -1
+              )
               wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
               if [ "$last_include_line" != "$wrapper_include_line" ]; then
                 result_for_f="FAIL"

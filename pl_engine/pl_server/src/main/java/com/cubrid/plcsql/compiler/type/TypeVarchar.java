@@ -61,7 +61,7 @@ public class TypeVarchar extends Type {
     }
 
     private static String getTypicalValueStr(int length) {
-        return String.format("cast(? as varchar(%d))", length);
+        return String.format("cast('a' as varchar(%d))", length);
     }
 
     private TypeVarchar(int length) {

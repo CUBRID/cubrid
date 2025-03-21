@@ -18,7 +18,7 @@
 
 
 /*
- * pl_comm.h - Functions to communicate with Java Stored Procedure Server
+ * pl_comm.h - Functions to communicate with Procedure Language Server
  *
  * Note:
  */
