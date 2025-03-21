@@ -2801,8 +2801,7 @@ create_stmt
 	  identifier					/* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
-	  index_column_name_list			/* 11 */
-	  // TODO: vector_index_column_with_metric	/* 11 */
+	  vector_index_column_with_metric	        /* 11 */
 	  opt_where_clause				/* 12 */
           // TODO: remove this: opt_index_with_clause	/* 13 */
 	  opt_vector_index_with_clause			/* 13 */
@@ -5222,8 +5221,11 @@ index_column_name_list
 	;
 
 vector_index_column_with_metric
-	: '(' identifier identifier ')'
-// TODO: vector_distance_metric
+	: '(' sort_spec identifier ')'
+	    {{
+	       $$ = $2;
+	    }}
+	// TODO: : '(' sort_spec vector_distance_metric ')'
 
 update_statistics_stmt
 	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
