@@ -104,6 +104,7 @@ cubrocks::context::kv_config (void)
   opt.db.avoid_unnecessary_blocking_io = true;
 
   opt.db.max_total_wal_size = 4 * 1024 * 1024 * 1024LL;
+
   opt.db.bytes_per_sync = 16777216;
   opt.db.wal_bytes_per_sync = 4194304;
 
@@ -138,7 +139,7 @@ cubrocks::context::kv_config (void)
   opt.table.block_size = 16 * 1024;
   opt.table.cache_index_and_filter_blocks = true;
   opt.table.cache_index_and_filter_blocks_with_high_priority = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (512 * 1024 * 1024LL, 6);
+  opt.table.block_cache = rocksdb::NewLRUCache (5 * 1024 * 1024 * 1024LL, 6);
   opt.table.use_delta_encoding = false;
 
   opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
@@ -210,9 +211,10 @@ cubrocks::context::kv_tran_start (int tran_index, int trid)
 
   if (transactions[tran_index].txn == nullptr)
     {
-      txn_name << tran_index << ":" << trid;
+      write_options.memtable_insert_hint_per_batch = true;
+      write_options.sync = true;
+
       transactions[tran_index].txn = db->BeginTransaction (write_options);
-      transactions[tran_index].txn->SetName (txn_name.str ());
       assert (transactions[tran_index].txn != nullptr);
     }
 }
@@ -247,7 +249,7 @@ cubrocks::context::kv_tran_commit (int tran_index)
       return ;
     }
 
-  //kv_tran_prepare (tran_index);
+  /* kv_tran_prepare (tran_index); */
 
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
@@ -346,11 +348,11 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 //  readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
 
 //  readopt.pin_data = true;
-  readopt.fill_cache = false;
+//  readopt.fill_cache = false;
   readopt.async_io = true;
-  readopt.adaptive_readahead = true; 
+  readopt.readahead_size = 2 * 1024 * 1024;
 
-//  readopt.readahead_size = 2 * 1024 * 1024;
+  readopt.background_purge_on_iterator_cleanup = true;
 
   scan_cache->kv_iter = db->NewIterator (readopt);
   assert (scan_cache->kv_iter != nullptr);
