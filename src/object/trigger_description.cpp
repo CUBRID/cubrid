@@ -256,9 +256,20 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
     }
   else if (trigger->status != TR_STATUS_INVALID)
     {
+      if (trigger->class_mop != NULL)
+	{
+	  name = db_get_class_name (trigger->class_mop);
+	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	  class_name = sm_remove_qualifier_name (name);
+	}
+
       /* automatically filter out invalid triggers */
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
+      output_ctx ("[%s].[%s]\n", owner_name, sm_remove_qualifier_name (trigger->name));
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
 
@@ -277,13 +288,6 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
 
       if (trigger->class_mop != NULL)
 	{
-	  name = db_get_class_name (trigger->class_mop);
-	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	  class_name = sm_remove_qualifier_name (name);
 	  output_ctx (" ON ");
 	  output_ctx ("[%s].[%s]", owner_name, class_name);
 
@@ -332,7 +336,7 @@ tr_dump_trigger (print_output &output_ctx, DB_OBJECT *trigger_object)
 	  help_print_describe_comment (output_ctx, trigger->comment);
 	}
 
-      output_ctx (";\n");
+      output_ctx (";\n\n");
     }
 
   AU_ENABLE (save);
@@ -416,8 +420,6 @@ tr_dump_selective_triggers (print_output &output_ctx, DB_OBJLIST *classes)
 		      if (trigger->status != TR_STATUS_INVALID)
 			{
 			  tr_dump_trigger (output_ctx, trigger_object);
-			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-				      sm_remove_qualifier_name (trigger->name), get_user_name (trigger->owner));
 			}
 		    }
 		  else if (is_system_class < 0)
