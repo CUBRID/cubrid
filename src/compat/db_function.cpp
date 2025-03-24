@@ -119,7 +119,7 @@ fcode_get_uppercase_name (FUNC_CODE ftype)
     case F_CLASS_OF:
       return "F_CLASS_OF";
     case F_INSERT_SUBSTRING:
-      return "INSERT_SUBSTRING";
+      return "INSERT";
     case F_ELT:
       return "ELT";
     case F_BENCHMARK:

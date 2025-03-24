@@ -1145,6 +1145,8 @@ qdump_regu_type_string (REGU_DATATYPE type)
       return "TYPE_REGUVAL_LIST";
     case TYPE_REGU_VAR_LIST:
       return "TYPE_REGU_VAR_LIST";
+    case TYPE_SP:
+      return "TYPE_SP";
     default:
       return "undefined";
     }
@@ -1355,6 +1357,13 @@ qdump_print_value (REGU_VARIABLE * value_p)
 
     case TYPE_FUNC:
       qdump_print_function_value (value_p);
+      return true;
+
+    case TYPE_SP:
+      fprintf (foutput, "[TYPE_SP]");
+      fprintf (foutput, "[%s]", value_p->value.sp_ptr->sig->name);
+      fprintf (foutput, "args-->");
+      qdump_print_regu_variable_list (value_p->value.sp_ptr->args);
       return true;
 
     default:

@@ -4022,7 +4022,7 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* */
-		       QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list)
+		       QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
   /* scan type is METHOD SCAN */
   scan_id->type = S_METHOD_SCAN;
@@ -4031,7 +4031,7 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  int error = scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
+  int error = scan_id->s.msid.init (thread_p, sig_array, list_id);
   if (error == NO_ERROR)
     {
       error = scan_id->s.msid.open ();
@@ -5216,6 +5216,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   regu_variable_list_node *p;
 
   hsidp = &scan_id->s.hsid;
+  p_current_oid = &hsidp->curr_oid;
+
   if (scan_id->mvcc_select_lock_needed)
     {
       COPY_OID (&current_oid, &hsidp->curr_oid);

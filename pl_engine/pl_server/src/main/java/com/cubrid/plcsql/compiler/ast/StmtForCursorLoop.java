@@ -30,38 +30,80 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForCursorLoop extends StmtCursorOpen {
+public class StmtForCursorLoop extends StmtLoop implements SqlUse {
+
+    public boolean reachableFromLoop;
+
+    @Override
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
+    }
+
+    @Override
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    @Override
+    public boolean usingRef() {
+        return true;
+    }
+
+    @Override
+    public void setToUseRef() {
+        // do nothing: it is already true
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtForCursorLoop(this);
     }
 
+    public final ExprId cursor;
+    public final NodeList<Expr> cursorArgs;
     public final String label;
     public final String record;
     public final TypeRecord recordType;
     public final NodeList<Stmt> stmts;
+    public int sqlSerialNo;
 
     public StmtForCursorLoop(
             ParserRuleContext ctx,
+            StmtLoop.LoopOptimizables loopOptimizables,
             ExprId cursor,
-            NodeList<Expr> args,
+            NodeList<Expr> cursorArgs,
             String label,
             String record,
             TypeRecord recordType,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
 
-        super(ctx, cursor, args);
+        super(ctx, loopOptimizables);
 
-        assert args != null;
+        assert cursor.decl instanceof DeclCursor;
+        assert cursorArgs != null;
 
+        this.cursor = cursor;
+        this.cursorArgs = cursorArgs;
         this.label = label;
         this.record = record;
         this.recordType = recordType;
         this.stmts = stmts;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }

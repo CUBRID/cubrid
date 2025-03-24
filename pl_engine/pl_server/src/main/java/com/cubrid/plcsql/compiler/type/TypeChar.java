@@ -34,7 +34,8 @@ import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeChar extends Type {
 
-    public static final int MAX_LEN = 268435455;
+    public static final int MAX_LEN = 2048;
+    public static final int DEFAULT_LEN = 1;
 
     public final int length;
 
@@ -60,7 +61,7 @@ public class TypeChar extends Type {
     }
 
     private static String getTypicalValueStr(int length) {
-        return String.format("cast(? as char(%d))", length);
+        return String.format("cast('a' as char(%d))", length);
     }
 
     private TypeChar(int length) {

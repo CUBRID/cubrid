@@ -299,6 +299,8 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
+    db_set_keep_session
+    db_get_keep_session
     db_find_or_create_session
     db_end_session
     db_set_connect_status
@@ -979,3 +981,7 @@ EXPORTS
   gethostbyname_uhost
   getnameinfo_uhost
   trim
+  er_has_error
+  prm_get_name
+  windows_socket_startup
+  windows_socket_shutdown

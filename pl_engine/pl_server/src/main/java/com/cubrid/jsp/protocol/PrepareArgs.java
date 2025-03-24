@@ -24,7 +24,7 @@ public class PrepareArgs {
 
     public int getArgCount() {
         if (arguments == null) {
-            return -1;
+            return 0;
         } else {
             return arguments.length;
         }
@@ -37,17 +37,18 @@ public class PrepareArgs {
     public void readArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
         groupId = unpacker.unpackBigint();
         tranId = unpacker.unpackInt();
+
         int argCount = unpacker.unpackInt();
-
-        if (arguments == null || argCount != arguments.length) {
+        if (argCount > 0) {
             arguments = new Value[argCount];
-        }
+            for (int i = 0; i < arguments.length; i++) {
+                int paramType = unpacker.unpackInt();
 
-        for (int i = 0; i < arguments.length; i++) {
-            int paramType = unpacker.unpackInt();
-
-            Value arg = unpacker.unpackValue(paramType);
-            arguments[i] = (arg);
+                Value arg = unpacker.unpackValue(paramType);
+                arguments[i] = (arg);
+            }
+        } else {
+            arguments = null;
         }
     }
 }

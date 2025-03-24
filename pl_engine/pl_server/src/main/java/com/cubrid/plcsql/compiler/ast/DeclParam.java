@@ -34,6 +34,8 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class DeclParam extends DeclIdTypeSpeced {
 
+    public abstract boolean hasDefault();
+
     public final String name;
     public final TypeSpec typeSpec;
 

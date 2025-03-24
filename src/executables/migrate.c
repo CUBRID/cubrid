@@ -468,7 +468,6 @@ main (int argc, char *argv[])
     }
 
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
 

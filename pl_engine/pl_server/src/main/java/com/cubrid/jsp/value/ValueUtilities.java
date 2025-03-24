@@ -32,7 +32,11 @@
 package com.cubrid.jsp.value;
 
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import cubrid.sql.CUBRIDOID;
+import java.math.BigDecimal;
+import java.sql.ResultSet;
 
 public class ValueUtilities {
     public static Object resolveValue(int dbType, Value value) throws TypeMismatchException {
@@ -91,5 +95,62 @@ public class ValueUtilities {
                 break;
         }
         return resolvedResult;
+    }
+
+    public static Value createValueFrom(Object o) throws TypeMismatchException, ExecuteException {
+        Value val = null;
+
+        if (o == null) {
+            val = new NullValue();
+        } else if (o instanceof Boolean) {
+            val = new BooleanValue(((Boolean) o).booleanValue());
+        } else if (o instanceof Byte) {
+            val = new ByteValue(((Byte) o).byteValue());
+        } else if (o instanceof Short) {
+            val = new ShortValue(((Short) o).shortValue());
+        } else if (o instanceof Integer) {
+            val = new IntValue(((Integer) o).intValue());
+        } else if (o instanceof Long) {
+            val = new LongValue(((Long) o).longValue());
+        } else if (o instanceof Float) {
+            val = new FloatValue(((Float) o).floatValue());
+        } else if (o instanceof Double) {
+            val = new DoubleValue(((Double) o).doubleValue());
+        } else if (o instanceof BigDecimal) {
+            val = new NumericValue(((BigDecimal) o));
+        } else if (o instanceof String) {
+            val = new StringValue((String) o);
+        } else if (o instanceof java.sql.Date) {
+            val = new DateValue((java.sql.Date) o);
+        } else if (o instanceof java.sql.Time) {
+            val = new TimeValue((java.sql.Time) o);
+        } else if (o instanceof java.sql.Timestamp) {
+            val =
+                    new DatetimeValue(
+                            (java.sql.Timestamp)
+                                    o); // DatetimeValue allows more values than TimestampValue
+        } else if (o instanceof CUBRIDOID) {
+            val = new OidValue((CUBRIDOID) o);
+        } else if (o instanceof ResultSet) {
+            val = new ResultSetValue((ResultSet) o);
+        } else if (o instanceof byte[]) {
+            val = new StringValue((byte[]) o);
+        } else if (o instanceof short[]) {
+            val = new SetValue((short[]) o);
+        } else if (o instanceof int[]) {
+            val = new SetValue((int[]) o);
+        } else if (o instanceof long[]) {
+            val = new SetValue((long[]) o);
+        } else if (o instanceof float[]) {
+            val = new SetValue((float[]) o);
+        } else if (o instanceof double[]) {
+            val = new SetValue((double[]) o);
+        } else if (o instanceof Object[]) {
+            val = new SetValue((Object[]) o);
+        } else {
+            throw new ExecuteException("Not supported data type: '" + o.getClass().getName() + "'");
+        }
+
+        return val;
     }
 }

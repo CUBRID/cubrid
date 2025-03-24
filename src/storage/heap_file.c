@@ -3362,6 +3362,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	      break;
 	    }
 #if defined (SERVER_MODE)
+#if !defined (NDEBUG)
+	  _er_log_debug (ARG_FILE_LINE, "[CBRD-25970] errid=%d\n", er_errid_if_has_error ());
+#endif
 	  // ignores a warning and expects no other errors
 	  assert (er_errid_if_has_error () == NO_ERROR);
 #endif /* SERVER_MODE */
@@ -3751,6 +3754,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	  search_all = true;
 	  start_pos = -1;
 	  next_vpid = heap_hdr->estimates.full_search_vpid;
+	  start_vpid = next_vpid;
 	}
       else
 	{

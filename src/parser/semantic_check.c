@@ -46,6 +46,7 @@
 #include "db_json.hpp"
 #include "object_primitive.h"
 #include "db_client_type.hpp"
+#include "msgcat_glossary.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -273,6 +274,7 @@ static PT_NODE *pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * part,
 						       PT_NODE * part_next, PT_NODE * column_dt);
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
+static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -4773,7 +4775,6 @@ static void
 pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
   DB_OBJECT *db, *super;
-  SM_CLASS *class_ = NULL;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
   PT_NODE *name, *sup, *att, *qry, *attr;
@@ -4807,13 +4808,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -4829,8 +4828,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   db = pt_find_class (parser, name, for_update);
   if (!db)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
 
@@ -5250,6 +5248,87 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 	}
+      break;
+    case PT_CHANGE_OWNER:
+      {
+	const char *new_owner;
+	MOP new_owner_mop = NULL;
+	SM_CLASS *class_ = NULL;
+	char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
+	new_cls_nam[0] = '\0';
+	int error = NO_ERROR;
+
+	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+
+	new_owner_mop = au_find_user (new_owner);
+	if (new_owner_mop == NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
+	    break;
+	  }
+
+	error = au_fetch_class_force (db, &class_, AU_FETCH_UPDATE);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	/* To change the owner of a system class is not allowed. */
+	if (sm_issystem (class_))
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
+	    return;
+	  }
+
+	/* When changing to the same owner, a No-Operation is performed. */
+	if (ws_is_same_object (class_->owner, new_owner_mop))
+	  {
+	    break;
+	  }
+
+	/* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+	snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+
+	if (db_find_synonym (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+
+	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+	if (db_find_class (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+      }
       break;
     default:
       break;
@@ -9505,6 +9584,59 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
+ * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, system expressions, incoercible type
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static int
+pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
+{
+  int error = NO_ERROR;
+  PT_NODE *node_ptr = NULL;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  const char *default_value_print = NULL;
+
+  default_value_node = param->info.sp_param.default_value =
+    pt_check_data_default (parser, param->info.sp_param.default_value);
+  if (pt_has_error (parser))
+    {
+      return error;
+    }
+
+  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
+
+  default_value = default_value_node->info.data_default.default_value;
+  default_value_print = pt_short_print (parser, default_value);
+
+  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
+    {
+      PT_ERRORmf (parser,
+		  param,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
+      return error;
+    }
+
+  {
+    PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
+    error =
+      pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
+					 default_value_node->info.data_default.default_expr_type, false);
+    parser_free_node (parser, dummy);
+    if (error != NO_ERROR)
+      {
+	error = (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
+	PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
+		     default_value_print, pt_get_type_name (param->type_enum, param->data_type));
+      }
+  }
+
+  return error;
+}
+
+/*
  * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -9513,9 +9645,38 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 static void
 pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *param;
-
+  int error = NO_ERROR;
+  PT_NODE *param = NULL;
+  PT_NODE *default_value_node = NULL;
+  PT_NODE *default_value = NULL;
+  PT_NODE *initial_def_val = NULL;
+  int param_count = 0;
+  bool has_default_value = false;
   bool is_plcsql = (node->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL);
+
+  DB_OBJECT *owner = NULL;
+  PT_NODE *name = node->info.sp.name;
+  const char *owner_name = pt_get_qualifier_name (parser, name);
+  if (owner_name)
+    {
+      owner = db_find_user (owner_name);
+      if (owner == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+
+	  if (er_errid () == ER_AU_INVALID_USER)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	    }
+	  return;
+	}
+      else if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+		      "CREATE PROCEDURE/FUNCTION");
+	  return;
+	}
+    }
 
   for (param = node->info.sp.param_list; param; param = param->next)
     {
@@ -9543,7 +9704,32 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORmf (parser, param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_ARG_TYPE,
 			  pt_get_type_name (param->type_enum, param->data_type));
 	    }
-	  return;
+	  goto end;
+	}
+
+      /* check trailing arguments */
+      if (param->info.sp_param.default_value != NULL)
+	{
+	  has_default_value = true;
+	  // check default value
+	  error = pt_check_default_value_param_for_stored_procedure (parser, param);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+      else
+	{
+	  // error for non-trailing arguments
+	  if (has_default_value)
+	    {
+	      PT_ERRORmf (parser,
+			  param,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SP_NON_TRAILING_OPTIONAL_PARAMS,
+			  pt_short_print (parser, param->info.sp_param.name));
+	      goto end;
+	    }
 	}
     }
 
@@ -9575,9 +9761,12 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 			  MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE, pt_get_type_name (node->info.sp.ret_type,
 										       node->info.sp.ret_data_type));
 	    }
-	  return;
+	  goto end;
 	}
     }
+
+end:
+  return;
 }
 
 /*
@@ -9850,10 +10039,48 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   const char *username;
   PT_FLAT_SPEC_INFO info;
 
-  /* Replace each Entity Spec with an Equivalent flat list */
-  info.spec_parent = NULL;
-  info.for_update = false;
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+  bool is_for_spec = true;
+  PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
+  while (auth_cmd_list)
+    {
+      PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV)
+	{
+	  is_for_spec = false;
+	  break;
+	}
+
+      auth_cmd_list = auth_cmd_list->next;
+    }
+
+  if (is_for_spec == true)
+    {
+      /* Replace each Entity Spec with an Equivalent flat list */
+      info.spec_parent = NULL;
+      info.for_update = false;
+      parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+    }
+  else
+    {
+      /* check grant option */
+      if (node->info.grant.grant_option == PT_GRANT_OPTION)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_AU_GRANT_OPTION_NOT_ALLOWED,
+		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	}
+
+      /* check spec_list (procedures/functions) exists */
+      for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
+	{
+	  // [TODO] Resovle user schema name, built-in package name
+	  const char *proc_name = procs->info.name.original;
+	  if (jsp_is_exist_stored_procedure (proc_name) == false)
+	    {
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      break;
+	    }
+	}
+    }
 
   /* make sure the grantees/revokees exist */
   for ((user = (node->node_type == PT_GRANT ? node->info.grant.user_list : node->info.revoke.user_list)); user;
@@ -10122,7 +10349,6 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  assert (node->info.serial.code != NULL);
   switch (node->info.serial.code)
     {
     case PT_SERIAL_OPTION:
@@ -11100,6 +11326,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_assignments (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
       pt_no_double_updates (parser, node);
 
       /* cannot update derived tables */
@@ -11263,6 +11494,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_assignments (parser, node);
+      if (pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
       pt_no_double_updates (parser, node);
 
       /* check destination derived table */
@@ -14484,6 +14720,15 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  /* test assignment compatibility. This sets parser->error_msgs */
 	  PT_NODE *new_node;
+
+	  if (parser->flag.is_parsing_static_sql == 1 && a->node_type != PT_NAME)
+	    {
+	      assert (a->node_type == PT_HOST_VAR);
+	      PT_ERRORmf2 (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_HAS_NO_ATTR,
+			   pt_short_print (parser, stmt->info.insert.spec->info.spec.entity_name),
+			   a->info.host_var.label);
+	      continue;
+	    }
 
 	  new_node = pt_assignment_compatible (parser, a, v);
 	  if (new_node == NULL)

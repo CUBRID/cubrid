@@ -194,7 +194,7 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
     case TARGET_METHOD:
       ACCESS_SPEC_METHOD_REGU_LIST (&spec) = NULL;
       ACCESS_SPEC_XASL_NODE (&spec) = NULL;
-      ACCESS_SPEC_METHOD_SIG_LIST (&spec) = NULL;
+      ACCESS_SPEC_METHOD_SIG_ARRAY (&spec) = NULL;
       break;
     case TARGET_JSON_TABLE:
       ACCESS_SPEC_JSON_TABLE_REGU_VAR (&spec) = NULL;
@@ -278,6 +278,21 @@ regu_init (arith_list_node &arith)
   arith.rand_seed = NULL;
 
   regu_alloc (arith.value);
+}
+
+void
+regu_init (cubxasl::sp_node &sp)
+{
+  sp.args = NULL;
+  sp.sig = NULL;
+
+  regu_alloc (sp.value);
+
+  regu_alloc (sp.sig);
+  if (sp.sig)
+    {
+      new (sp.sig) PL_SIGNATURE_TYPE ();
+    }
 }
 
 void

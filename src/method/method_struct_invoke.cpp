@@ -80,7 +80,7 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Common structure implementation
 //////////////////////////////////////////////////////////////////////////
-  prepare_args::prepare_args (METHOD_GROUP_ID id, int tid, METHOD_TYPE type,
+  prepare_args::prepare_args (uint64_t id, int tid, METHOD_TYPE type,
 			      std::vector<std::reference_wrapper<DB_VALUE>> &vec)
     : group_id (id), tran_id (tid), type (type), args (vec)
   {
@@ -100,6 +100,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	serializator.pack_int (tran_id);
 	serializator.pack_int (args.size ());
@@ -142,6 +143,7 @@ namespace cubmethod
 	break;
       }
       case METHOD_TYPE_JAVA_SP:
+      case METHOD_TYPE_PLCSQL:
       {
 	size += serializator.get_packed_int_size (size);	// tran_id
 	size += serializator.get_packed_int_size (size);	// arg count
@@ -158,110 +160,6 @@ namespace cubmethod
 	assert (false);
 	break;
       }
-    return size;
-  }
-
-//////////////////////////////////////////////////////////////////////////
-// Method Builtin (C Language Method)
-//////////////////////////////////////////////////////////////////////////
-  invoke_builtin::invoke_builtin (METHOD_GROUP_ID g_id, method_sig_node *sig)
-    : group_id (g_id)
-    , sig (sig)
-  {
-    //
-  }
-
-  void
-  invoke_builtin::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_bigint (group_id);
-    sig->pack (serializator);
-  }
-
-  void
-  invoke_builtin::unpack (cubpacking::unpacker &deserializator)
-  {
-    deserializator.unpack_bigint (group_id);
-    sig = new METHOD_SIG ();
-    sig->unpack (deserializator);
-  }
-
-  size_t
-  invoke_builtin::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = serializator.get_packed_bigint_size (start_offset); //group id
-    size += sig->get_packed_size (serializator, size); // sig
-    return size;
-  }
-
-//////////////////////////////////////////////////////////////////////////
-// Method Java
-//////////////////////////////////////////////////////////////////////////
-  invoke_java::invoke_java (METHOD_GROUP_ID id, int tid, method_sig_node *sig, bool tc)
-    : group_id (id)
-    , tran_id (tid)
-  {
-    signature.assign (sig->method_name);
-    num_args = sig->num_method_args;
-
-    arg_pos.resize (num_args);
-    arg_mode.resize (num_args);
-    arg_type.resize (num_args);
-
-    for (int i = 0; i < num_args; i++)
-      {
-	arg_pos[i] = sig->method_arg_pos[i];
-	arg_mode[i] = sig->arg_info.arg_mode[i];
-	arg_type[i] = sig->arg_info.arg_type[i];
-      }
-
-    result_type = sig->arg_info.result_type;
-    transaction_control = tc;
-  }
-
-  void
-  invoke_java::pack (cubpacking::packer &serializator) const
-  {
-    serializator.pack_bigint (group_id);
-    serializator.pack_int (tran_id);
-    serializator.pack_string (signature);
-    serializator.pack_int (num_args);
-
-    for (int i = 0; i < num_args; i++)
-      {
-	serializator.pack_int (arg_pos[i]);
-	serializator.pack_int (arg_mode[i]);
-	serializator.pack_int (arg_type[i]);
-      }
-
-    serializator.pack_int (result_type);
-    serializator.pack_bool (transaction_control);
-  }
-
-  void
-  invoke_java::unpack (cubpacking::unpacker &deserializator)
-  {
-    // TODO: unpacking is not necessary
-    assert (false);
-  }
-
-  size_t
-  invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
-  {
-    size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
-    size += serializator.get_packed_int_size (size); // tran_id
-    size += serializator.get_packed_string_size (signature, size); // signature
-    size += serializator.get_packed_int_size (size); // num_args
-
-    for (int i = 0; i < num_args; i++)
-      {
-	size += serializator.get_packed_int_size (size); // arg_pos
-	size += serializator.get_packed_int_size (size); // arg_mode
-	size += serializator.get_packed_int_size (size); // arg_type
-      }
-
-    size += serializator.get_packed_int_size (size); // return_type
-    size += serializator.get_packed_bool_size (size); // transaction_control
     return size;
   }
 }

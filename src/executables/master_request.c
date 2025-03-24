@@ -56,6 +56,7 @@
 #include "master_util.h"
 #include "master_request.h"
 #include "master_heartbeat.h"
+#include "master_server_monitor.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -530,6 +531,14 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 		  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
+#if !defined(WINDOWS)
+		  if (auto_Restart_server)
+		    {
+		      /* *INDENT-OFF* */
+		      master_Server_monitor->produce_job (server_monitor::job_type::UNREGISTER_SERVER, -1, "", "", server_name);
+		      /* *INDENT-ON* */
+		    }
+#endif
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
@@ -595,6 +604,54 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
     {
       css_cleanup_info_connection (conn);
     }
+}
+
+/*
+ * css_process_start_shutdown_by_name()
+ *   return: none
+ *   server_name(in/out)
+ */
+void
+css_process_start_shutdown_by_name (char *server_name)
+{
+#if !defined(WINDOWS)
+  SOCKET_QUEUE_ENTRY *temp;
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  (void) pthread_mutex_lock (&css_Master_socket_anchor_lock);
+
+  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+    {
+      if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0))
+	{
+	  /* Send a shutdown request to the specified cub_server with a timeout of 0. 
+	   * Buffer will be unused in the receiving function (css_process_shutdown_request). */
+	  css_process_start_shutdown (temp, 0, buffer);
+	}
+    }
+  (void) pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+#endif
+}
+
+
+/*
+ * css_process_shutdown_reviving_server()
+ *   return: none
+ *   conn(in)
+ *   request_id(in)
+ *   server_name(in/out)
+ */
+static void
+css_process_shutdown_reviving_server (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name)
+{
+#if !defined(WINDOWS)
+  if (auto_Restart_server)
+    {
+      /* *INDENT-OFF* */
+      master_Server_monitor->produce_job (server_monitor::job_type::SHUTDOWN_SERVER, -1, "", "", server_name);
+      /* *INDENT-ON* */
+    }
+#endif
 }
 
 /*
@@ -709,6 +766,14 @@ css_process_shutdown (char *time_buffer)
   memset (buffer, 0, sizeof (buffer));
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
 	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
+#if !defined(WINDOWS)
+  if (auto_Restart_server)
+    {
+      /* INDENT-OFF */
+      master_Server_monitor.reset ();
+      /* INDENT-ON */
+    }
+#endif
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -1919,6 +1984,12 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  if (buffer != NULL)
 	    {
 	      css_process_kill_immediate (conn, request_id, buffer);
+	    }
+	  break;
+	case SHUTDOWN_REVIVING_SERVER:
+	  if (buffer != NULL)
+	    {
+	      css_process_shutdown_reviving_server (conn, request_id, buffer);
 	    }
 	  break;
 	case GET_ALL_COUNT:

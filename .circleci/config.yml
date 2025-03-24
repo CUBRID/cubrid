@@ -50,8 +50,8 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j 10
-    resource_class: large
+      MAKEFLAGS: -j 8
+    resource_class: xlarge
     steps:
       - checkout
       - run:
@@ -149,4 +149,6 @@ workflows:
           requires:
             - build
 
-      - build-windows
+      - build-windows:
+          requires:
+            - build

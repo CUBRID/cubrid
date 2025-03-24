@@ -415,7 +415,7 @@ static void qexec_failure_line (int line, XASL_STATE * xasl_state);
 static void qexec_reset_regu_variable (REGU_VARIABLE * var);
 static void qexec_reset_regu_variable_list (REGU_VARIABLE_LIST list);
 static void qexec_reset_pred_expr (PRED_EXPR * pred);
-static int qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static void qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE * list, bool is_final);
 static int qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, bool is_final);
 static int qexec_clear_regu_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, bool is_final);
@@ -1416,10 +1416,9 @@ qexec_failure_line (int line, XASL_STATE * xasl_state)
  * if any, and also resultant single values, if any. Return the
  * number of total pages deallocated.
  */
-static int
+static void
 qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  int pg_cnt = 0;
   VAL_LIST *single_tuple;
   QPROC_DB_VALUE_LIST value_list;
   int i;
@@ -1456,14 +1455,11 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  /* The values allocated during execution will be cleared and the xasl is reused. */
 	  xasl->status = XASL_INITIALIZED;
 	}
-
     }
   else
     {
       xasl->status = XASL_CLEARED;
     }
-
-  return pg_cnt;
 }
 
 /*
@@ -1568,13 +1564,16 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	{
 	  if (xcache_uses_clones ())
 	    {
-	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_CLEARED)
+	      if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 		{
-		  /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
-		  XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
-		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
+		  if (regu_var->xasl->status != XASL_CLEARED)
+		    {
+		      /* regu_var->xasl not cleared yet. Set flag to clear the values allocated at unpacking. */
+		      XASL_SET_FLAG (regu_var->xasl, XASL_DECACHE_CLONE);
+		      pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
+		    }
 		}
-	      else if (!XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) && regu_var->xasl->status != XASL_INITIALIZED)
+	      else if (regu_var->xasl->status != XASL_INITIALIZED)
 		{
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final);
@@ -1589,6 +1588,20 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       pg_cnt += qexec_clear_arith_list (thread_p, xasl_p, regu_var->value.arithptr, is_final);
+      break;
+    case TYPE_SP:
+      pr_clear_value (regu_var->value.sp_ptr->value);
+      pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.sp_ptr->args, is_final);
+      if (is_final && regu_var->value.sp_ptr->sig)
+	{
+	  if (!xcache_uses_clones ()
+	      || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || regu_var->value.sp_ptr->sig->is_disposable)
+	    {
+	      delete regu_var->value.sp_ptr->sig;
+	      regu_var->value.sp_ptr->sig = nullptr;
+	    }
+	}
+
       break;
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
@@ -2101,6 +2114,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.method_node.method_regu_list, is_final);
+	  if (is_final && p->s.method_node.sig_array)
+	    {
+	      if (!xcache_uses_clones ()
+		  || XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) || p->s.method_node.sig_array->is_disposable)
+		{
+		  delete p->s.method_node.sig_array;
+		  p->s.method_node.sig_array = NULL;
+		}
+	    }
+
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
@@ -2234,7 +2257,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   xasl->query_in_progress = true;
 
   /* clear the head node */
-  pg_cnt += qexec_clear_xasl_head (thread_p, xasl);
+  qexec_clear_xasl_head (thread_p, xasl);
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
@@ -2632,14 +2655,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+	      if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+		{
+		  /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* non_recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
@@ -2652,14 +2677,16 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 	      qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
 	    {
-	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
-	      XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
-	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+	      if (xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+		{
+		  /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
+		  XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
+		}
 	    }
-	  else if (!XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE)
-		   && xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
+	  else if (xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
 	    {
 	      /* recursive_part not cleared yet. Set flag to clear the values allocated at unpacking. */
 	      pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
@@ -9326,7 +9353,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     case TARGET_METHOD:
       error_code =
 	scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_LIST (curr_spec));
+			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_ARRAY (curr_spec));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -10154,6 +10181,10 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
       qexec_reset_regu_variable (var->value.arithptr->rightptr);
       qexec_reset_regu_variable (var->value.arithptr->thirdptr);
       /* use arithptr */
+      break;
+    case TYPE_SP:
+      /* use sp_ptr */
+      qexec_reset_regu_variable_list (var->value.sp_ptr->args);
       break;
     case TYPE_FUNC:
       /* use funcp */
@@ -14567,7 +14598,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  continue;
 	}
 
-      if (xptr->status == XASL_CLEARED || xptr->status == XASL_INITIALIZED)
+      if (IS_XASL_INITIAL_STATUS (xptr->status))
 	{
 	  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
 	    {
@@ -16281,21 +16312,25 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
-      if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
-	{
-	  /* still want better error code */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_FAILED;
-	}
+      /*
+       * The below routine is skipped for consistance with PL/CSQL's execution
+       * because OFFSET will be processed with 0 for negative value
+       *
+       * cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+       * if (cmp_with_zero != DB_GT && cmp_with_zero != DB_EQ)
+       * {
+       *   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+       *   return ER_FAILED;
+       * }
+       *
+       */
     }
 
   if (xasl->limit_row_count != NULL)
     {
       /* When limit_row_count is
        *   > 0, go to execute the query.
-       *   = 0, no result will be generated. stop execution for optimization.
-       *   < 0, raise an error.
+       *   <= 0, no result will be generated. stop execution for optimization.
        */
       if (fetch_peek_dbval (thread_p, xasl->limit_row_count, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) !=
 	  NO_ERROR)
@@ -16309,16 +16344,10 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  /* validated */
 	  return NO_ERROR;
 	}
-      else if (cmp_with_zero == DB_EQ)
+      else
 	{
 	  *empty_result = true;
 	  return NO_ERROR;
-	}
-      else
-	{
-	  /* still want better error code */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_FAILED;
 	}
     }
 
@@ -16743,7 +16772,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  continue;
 		}
 
-	      if (xptr2->status == XASL_CLEARED || xptr2->status == XASL_INITIALIZED)
+	      if (IS_XASL_INITIAL_STATUS (xptr2->status))
 		{
 		  if (QEXEC_IS_SUBQUERY_CACHE (xptr2))
 		    {
@@ -17426,7 +17455,6 @@ qfile_list_id *
 qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
 		     QUERY_ID query_id)
 {
-  int re_execute;
   int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
@@ -17579,72 +17607,65 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       (void) logtb_get_mvcc_snapshot (thread_p);
     }
 
-  do
-    {
-      re_execute = false;
+  /* execute the query set the query in progress flag so that qmgr_clear_trans_wakeup() will not remove our XASL
+   * tree out from under us in the event the transaction is unilaterally aborted during query execution. */
 
-      /* execute the query set the query in progress flag so that qmgr_clear_trans_wakeup() will not remove our XASL
-       * tree out from under us in the event the transaction is unilaterally aborted during query execution. */
-
-      xasl->query_in_progress = true;
-      stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
-      xasl->query_in_progress = false;
+  xasl->query_in_progress = true;
+  stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
+  xasl->query_in_progress = false;
 
 #if defined(SERVER_MODE)
-      if (thread_is_on_trace (thread_p))
-	{
-	  qexec_set_xasl_trace_to_session (thread_p, xasl);
-	}
+  if (thread_is_on_trace (thread_p))
+    {
+      qexec_set_xasl_trace_to_session (thread_p, xasl);
+    }
 #endif
 
-      if (stat != NO_ERROR)
+  if (stat != NO_ERROR)
+    {
+      switch (er_errid ())
 	{
-	  switch (er_errid ())
-	    {
-	    case NO_ERROR:
-	      {
-		char buf[512];
+	case NO_ERROR:
+	  {
+	    char buf[512];
 
-		/* Make sure this does NOT return error indication without setting an error message and code. If we
-		 * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
-		 * condition. */
-		snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
-		break;
-	      }
-	    case ER_INTERRUPTED:
-	      /*
-	       * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
-	       * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
-	       *  finishing their cleanup), so disable it.
-	       */
-	      xlogtb_set_interrupt (thread_p, false);
-	      break;
-	    }
-
-	  qmgr_set_query_error (thread_p, query_id);	/* propagate error */
-
-	  if (xasl->list_id)
-	    {
-	      qfile_close_list (thread_p, xasl->list_id);
-	    }
-
-	  list_id = qexec_get_xasl_list_id (xasl);
-
-	  (void) qexec_clear_xasl (thread_p, xasl, true);
-
-	  /* caller will detect the error condition and free the listid */
-	  goto end;
-	}
-      /* for async query, clean error */
-      else
-	{
-	  /* async query executed successfully */
-	  er_clear ();
+	    /* Make sure this does NOT return error indication without setting an error message and code. If we
+	     * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
+	     * condition. */
+	    snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
+	    break;
+	  }
+	case ER_INTERRUPTED:
+	  /*
+	   * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
+	   * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
+	   *  finishing their cleanup), so disable it.
+	   */
+	  xlogtb_set_interrupt (thread_p, false);
+	  break;
 	}
 
+      qmgr_set_query_error (thread_p, query_id);	/* propagate error */
+
+      if (xasl->list_id)
+	{
+	  qfile_close_list (thread_p, xasl->list_id);
+	}
+
+      list_id = qexec_get_xasl_list_id (xasl);
+
+      (void) qexec_clear_xasl (thread_p, xasl, true);
+
+      /* caller will detect the error condition and free the listid */
+      goto end;
     }
-  while (re_execute);
+  /* for async query, clean error */
+  else
+    {
+      /* async query executed successfully */
+      er_clear ();
+    }
 
   list_id = qexec_get_xasl_list_id (xasl);
 
@@ -18630,7 +18651,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
 
   /* first the non recursive part from the CTE shall be executed */
-  if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
+  if (IS_XASL_INITIAL_STATUS (non_recursive_part->status))
     {
       if (non_recursive_part->sub_xasl_id == NULL
 	  || (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR))
@@ -18856,6 +18877,17 @@ qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable
       qexec_replace_prior_regu_vars_prior_expr (thread_p, regu->value.arithptr->thirdptr, xasl, connect_by_ptr);
       break;
 
+    case TYPE_SP:
+      {
+	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
+	while (r)
+	  {
+	    qexec_replace_prior_regu_vars_prior_expr (thread_p, &r->value, xasl, connect_by_ptr);
+	    r = r->next;
+	  }
+      }
+      break;
+
     case TYPE_FUNC:
       {
 	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
@@ -18901,6 +18933,17 @@ qexec_replace_prior_regu_vars (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu, XA
 	  qexec_replace_prior_regu_vars (thread_p, regu->value.arithptr->rightptr, xasl);
 	  qexec_replace_prior_regu_vars (thread_p, regu->value.arithptr->thirdptr, xasl);
 	}
+      break;
+
+    case TYPE_SP:
+      {
+	REGU_VARIABLE_LIST r = regu->value.sp_ptr->args;
+	while (r)
+	  {
+	    qexec_replace_prior_regu_vars (thread_p, &r->value, xasl);
+	    r = r->next;
+	  }
+      }
       break;
 
     case TYPE_FUNC:

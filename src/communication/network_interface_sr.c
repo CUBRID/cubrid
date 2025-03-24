@@ -63,7 +63,7 @@
 #include "statistics.h"
 #include "chartype.h"
 #include "heap_file.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
 #include "connection_sr.h"
@@ -86,11 +86,14 @@
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "method_invoke_group.hpp"
-#include "method_runtime_context.hpp"
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
-#include "method_compile.hpp"
+#include "pl_struct_compile.hpp"
+#include "pl_compile_handler.hpp"
+#include "pl_session.hpp"
+#include "pl_executor.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -160,10 +163,13 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -198,10 +204,13 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-  if (!rctx || rctx->is_running () == false || rctx->get_depth () == 0)
+  if (session_has_pl_session (thread_p))
     {
-      net_cleanup_server_queues (rid);
+      PL_SESSION *session = cubpl::get_session ();
+      if (!session || session->is_running () == false)
+	{
+	  net_cleanup_server_queues (rid);
+	}
     }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
@@ -4057,7 +4066,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4081,6 +4090,11 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      db_private_free_and_init (thread_p, class_attr_ndv.attr_ndv);
+    }
 }
 
 /*
@@ -6648,50 +6662,6 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 }
 
 /*
- * xs_send_method_call_info_to_client -
- *
- * return:
- *
- *   list_id(in):
- *   method_sig_list(in):
- *
- * NOTE:
- */
-int
-xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id, method_sig_list * methsg_list)
-{
-  int length = 0;
-  char *databuf;
-  char *ptr;
-  unsigned int rid;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  rid = css_get_comm_request_id (thread_p);
-  length = or_listid_length ((void *) list_id);
-  length += or_method_sig_list_length ((void *) methsg_list);
-  ptr = or_pack_int (reply, (int) METHOD_CALL);
-  ptr = or_pack_int (ptr, length);
-
-#if !defined(NDEBUG)
-  /* suppress valgrind UMW error */
-  memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
-#endif
-
-  databuf = (char *) db_private_alloc (thread_p, length);
-  if (databuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  ptr = or_pack_listid (databuf, (void *) list_id);
-  ptr = or_pack_method_sig_list (ptr, (void *) methsg_list);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf, length);
-  db_private_free_and_init (thread_p, databuf);
-  return NO_ERROR;
-}
-
-/*
  * xs_receive_data_from_client -
  *
  * return:
@@ -8080,7 +8050,7 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char 
 }
 
 /*
- * sjsp_get_server_port -
+ * spl_get_server_port -
  *
  * return:
  *
@@ -8089,12 +8059,12 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char 
  * NOTE:
  */
 void
-sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+spl_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  (void) or_pack_int (reply, jsp_server_port_from_info ());
+  (void) or_pack_int (reply, pl_server_port_from_info ());
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -8921,7 +8891,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
-      || xsession_check_session (thread_p, id) != NO_ERROR)
+      || (error = xsession_check_session (thread_p, id)) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
@@ -8931,6 +8901,10 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
+    }
+  else if (error == NO_ERROR)
+    {
+      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
@@ -9027,14 +9001,16 @@ void
 ssession_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int err = NO_ERROR;
+  int is_keep_session;
   SESSION_ID id;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
 
-  (void) or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (request, (int *) &id);
+  ptr = or_unpack_int (ptr, &is_keep_session);
 
-  err = xsession_end_session (thread_p, id);
+  err = xsession_end_session (thread_p, id, (bool) is_keep_session);
 
   ptr = or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -10528,9 +10504,9 @@ end:
 }
 
 void
-ssession_stop_attached_threads (void *session)
+ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
 {
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 }
 
 static bool
@@ -10547,6 +10523,88 @@ cdc_check_client_connection ()
     }
 }
 
+void
+spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  DB_VALUE ret_value;
+  db_make_null (&ret_value);
+
+  /* 1) unpack arguments */
+  cubpl::pl_signature sig;
+  std::vector < DB_VALUE > args;
+  unpacker.unpack_all (sig, args);
+
+  std::vector < std::reference_wrapper < DB_VALUE >> ref_args (args.begin (), args.end ());
+
+  /* 2) invoke */
+  cubpl::executor executor (sig);
+  error_code = executor.fetch_args_peek (ref_args);
+  if (error_code == NO_ERROR)
+    {
+      error_code = executor.execute (ret_value);
+    }
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  if (error_code == NO_ERROR)
+    {
+      /* 3) pack */
+      packer.set_buffer_and_pack_all (eb, ret_value, executor.get_out_args ());
+    }
+  else
+    {
+      std::string err_msg;
+      if (executor.get_stack ())
+	{
+	  err_msg = executor.get_stack ()->get_error_message ();
+	}
+      if (err_msg.empty () && error_code != ER_SP_EXECUTE_ERROR)
+	{
+	  err_msg.assign (er_msg ());
+	}
+
+      if (error_code != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
+	}
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  char *reply_data = eb.get_ptr ();
+  int reply_data_size = (int) packer.get_current_size ();
+
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = or_pack_int (reply, (int) END_CALLBACK);
+  ptr = or_pack_int (ptr, reply_data_size);
+  ptr = or_pack_int (ptr, error_code);
+
+  // clear
+  //if (top_on_stack)
+  //  {
+  //    top_on_stack->reset (true);
+  //    top_on_stack->end ();
+  //  }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
+				     reply_data_size);
+
+/*
+  if (top_on_stack)
+    {
+      rctx->pop_stack (thread_p, top_on_stack);
+    }
+*/
+
+  pr_clear_value_vector (args);
+  db_value_clear (&ret_value);
+}
+
+#if 0
 void
 smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10593,7 +10651,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
-	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	  if (sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	    {
 	      continue;
 	    }
@@ -10669,6 +10727,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
   db_value_clear (&ret_value);
   sig_list.freemem ();
 }
+#endif
 
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
@@ -11282,23 +11341,16 @@ css_send_error:
 void
 splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  packing_unpacker unpacker (request, (size_t) reqlen);
-
-  bool verbose;
-  std::string input_string;
-  unpacker.unpack_all (verbose, input_string);
-
-  cubmethod::runtime_context * ctx = NULL;
-  session_get_method_runtime_context (thread_p, ctx);
-
   int error = ER_FAILED;
-  cubmem::extensible_block ext_blk;
-  if (ctx)
-    {
-      error = cubmethod::invoke_compile (*thread_p, *ctx, input_string, verbose, ext_blk);
-    }
+  PLCSQL_COMPILE_REQUEST compile_request;
 
-  // Error code and is_ignored.
+  packing_unpacker unpacker (request, (size_t) reqlen);
+  unpacker.unpack_all (compile_request);
+
+  cubmem::extensible_block ext_blk;
+  cubpl::compile_handler compile_handler;
+  error = compile_handler.compile (compile_request, ext_blk);
+
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = or_pack_int (reply, (int) END_CALLBACK);

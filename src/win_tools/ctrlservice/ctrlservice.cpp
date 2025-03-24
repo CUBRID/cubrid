@@ -39,7 +39,7 @@
 #define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
-#define		CUBRID_UTIL_JAVASP			"javasp"
+#define		CUBRID_UTIL_PL			        "pl"
 
 #define		CUBRID_COMMAND_START			"start"
 #define		CUBRID_COMMAND_STOP			"stop"
@@ -62,8 +62,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	210
-#define		SERVICE_CONTROL_JAVASP_STOP		211
+#define		SERVICE_CONTROL_PL_START	210
+#define		SERVICE_CONTROL_PL_STOP		211
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
@@ -295,7 +295,7 @@ _tmain (int argc, char *argv[])
     {
       if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 ||
 	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 ||
-	  _stricmp (argv[1], CUBRID_UTIL_GATEWAY) == 0 || _stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0)
+	  _stricmp (argv[1], CUBRID_UTIL_GATEWAY) == 0 || _stricmp (argv[1], CUBRID_UTIL_PL) == 0)
 	{
 	  SERVICE_STATUS ss;
 	  int service_control_code;
@@ -333,13 +333,13 @@ _tmain (int argc, char *argv[])
 	    {
 	      service_control_code = SERVICE_CONTROL_GATEWAY_OFF;
 	    }
-	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
+	  else if (_stricmp (argv[1], CUBRID_UTIL_PL) == 0 && _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_START;
+	      service_control_code = SERVICE_CONTROL_PL_START;
 	    }
-	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+	  else if (_stricmp (argv[1], CUBRID_UTIL_PL) == 0 && _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_STOP;
+	      service_control_code = SERVICE_CONTROL_PL_STOP;
 	    }
 	  else
 	    {

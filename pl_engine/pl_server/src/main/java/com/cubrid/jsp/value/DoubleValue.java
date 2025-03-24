@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
@@ -38,6 +39,11 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class DoubleValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_DOUBLE;
+    }
+
     private double value;
 
     public DoubleValue(double value) throws TypeMismatchException {
@@ -46,15 +52,7 @@ public class DoubleValue extends Value {
             throw new TypeMismatchException("invalid double " + value);
         }
         this.value = value;
-    }
-
-    public DoubleValue(double value, int mode, int dbType) throws TypeMismatchException {
-        super(mode);
-        if (!Double.isFinite(value)) {
-            throw new TypeMismatchException("invalid double " + value);
-        }
-        this.value = value;
-        this.dbType = dbType;
+        this.dbType = DBType.DB_DOUBLE;
     }
 
     @Override

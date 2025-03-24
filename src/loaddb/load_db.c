@@ -251,7 +251,11 @@ ldr_check_file (std::string & file_name, int &error_code)
 
   if (!file_name.empty ())
     {
+#if defined(WINDOWS)
+      file_p = fopen (file_name.c_str (), "rb");
+#else
       file_p = fopen (file_name.c_str (), "r");
+#endif
       if (file_p == NULL)
 	{
 	  const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
@@ -563,8 +567,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* open loaddb log file */
   sprintf (log_file_name, "%s_%s", args.volume.c_str (), LOADDB_LOG_FILENAME_SUFFIX);

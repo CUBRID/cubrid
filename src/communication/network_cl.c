@@ -48,7 +48,8 @@
 #include "environment_variable.h"
 #include "boot_cl.h"
 #include "query_method.hpp"
-#include "method_def.hpp"
+#include "method_callback.hpp"
+
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -1714,6 +1715,15 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
+      /*
+       * delete deferred query handlers during PL execution
+       * TODO: move it to proper place
+       */
+      if (!tran_is_in_libcas ())
+	{
+	  cubmethod::get_callback_handler ()->free_deferred_query_handler ();
+	}
+
       if (histo_is_collecting ())
 	{
 	  int recevied = replysize
@@ -1906,6 +1916,15 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	}
     }
   while (server_request != END_CALLBACK);
+
+  /*
+   * delete deferred query handlers during PL execution
+   * TODO: move it to proper place
+   */
+  if (!tran_is_in_libcas ())
+    {
+      cubmethod::get_callback_handler ()->free_deferred_query_handler ();
+    }
 
   if (histo_is_collecting ())
     {

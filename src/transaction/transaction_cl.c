@@ -86,7 +86,7 @@ int tm_Tran_latest_query_status;
  *
  * 0 means "unlimited", and negative value means "do not calculate timeout".
  *
- * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (Java SP)
+ * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
@@ -291,8 +291,12 @@ tran_commit (bool retain_lock)
       return error_code;
     }
 
-  assert (!tran_was_latest_query_aborted ());
-  if (tran_was_latest_query_ended ())
+  if (tran_was_latest_query_aborted ())
+    {
+      return tran_abort ();
+    }
+
+  if (tran_was_latest_query_ended () || tran_is_in_libcas ())
     {
       /* Query ended with latest executed query. No need to notify server. */
       query_end_notify_server = false;

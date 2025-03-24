@@ -943,6 +943,13 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	   * calling pt_apply. */
 	  node_type = node->node_type;
 
+	  assert (node_type >= PT_NODE_NONE);
+	  if (node_type == PT_NODE_NONE)
+	    {
+	      assert (pt_has_error (parser));
+	      return NULL;
+	    }
+
 	  if (node_type >= PT_LAST_NODE_NUMBER || !(apply = pt_apply_f[node_type]))
 	    {
 	      return NULL;
@@ -4043,6 +4050,8 @@ pt_show_priv (PT_PRIV_TYPE t)
       return "drop";
     case PT_EXECUTE_PRIV:
       return "execute";
+    case PT_EXECUTE_PROCEDURE_PRIV:
+      return "execute on procedure";
     case PT_INDEX_PRIV:
       return "index";
     case PT_INSERT_PRIV:
@@ -7564,6 +7573,7 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   PT_APPLY_WALK (parser, p->info.sp.param_list, arg);
   PT_APPLY_WALK (parser, p->info.sp.ret_data_type, arg);
   return p;
@@ -7580,6 +7590,7 @@ pt_apply_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *ar
 static PT_NODE *
 pt_apply_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
+  PT_APPLY_WALK (parser, p->info.sp.name, arg);
   return p;
 }
 
@@ -7595,14 +7606,26 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
-  q = pt_append_nulstring (parser, q, "create ");
-  if (p->info.sp.or_replace)
+
+  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? "CREATE OR REPLACE " : "create ");
+  if (p->info.sp.or_replace && !parser->flag.is_parsing_unload_schema)
     {
       q = pt_append_nulstring (parser, q, "or replace ");
     }
-  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
+  q =
+    pt_append_nulstring (parser, q,
+			 parser->flag.is_parsing_unload_schema ? strcmp (pt_show_misc_type (p->info.sp.type),
+									 "procedure") ==
+			 0 ? "PROCEDURE" : "FUNCTION" : pt_show_misc_type (p->info.sp.type));
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_varchar (parser, q, r1);
+  if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
+    {
+      q = pt_append_name (parser, q, p->info.sp.name->info.name.original);
+    }
+  else
+    {
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r2 = pt_print_bytes_l (parser, p->info.sp.param_list);
   q = pt_append_nulstring (parser, q, "(");
@@ -7611,7 +7634,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
-      q = pt_append_nulstring (parser, q, " return ");
+      q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " RETURN " : " return ");
       if (p->info.sp.ret_data_type)
 	{
 	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
@@ -7622,10 +7645,27 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
+  if (parser->flag.is_parsing_unload_schema)
+    {
+      if (p->info.sp.auth_id == PT_AUTHID_OWNER)
+	{
+	  q = pt_append_nulstring (parser, q, " AUTHID OWNER");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " AUTHID CALLER");
+	}
+
+      if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
+	{
+	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
+	}
+    }
+
   r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
-  if (p->info.sp.comment != NULL)
+  if (p->info.sp.comment != NULL && !parser->flag.is_parsing_unload_schema)
     {
       r1 = pt_print_bytes (parser, p->info.sp.comment);
       q = pt_append_nulstring (parser, q, " comment ");
@@ -7879,7 +7919,10 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.sp_param.name);
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp_param.mode));
+  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ?
+			   (p->info.sp_param.mode == PT_INPUT || p->info.sp_param.mode == PT_NOPUT) ?
+			   "IN" : p->info.sp_param.mode == PT_OUTPUT ?
+			   "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
   q = pt_append_nulstring (parser, q, " ");
   if (p->data_type)
     {
@@ -7888,6 +7931,12 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   else
     {
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+    }
+
+  if (p->info.sp_param.default_value != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sp_param.default_value);
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.sp_param.comment != NULL)
@@ -7924,8 +7973,7 @@ static PARSER_VARCHAR *
 pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1 = NULL;
-
-  q = pt_append_nulstring (parser, q, " as ");
+  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " AS\n" : " as ");
   if (p->info.sp_body.lang == SP_LANG_PLCSQL)
     {
       // TODO: PL/CSQL compiler should permit it.
@@ -7963,8 +8011,13 @@ pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
          }
        */
     }
+
   q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ";");
+
+  if (!parser->flag.is_parsing_unload_schema)
+    {
+      q = pt_append_nulstring (parser, q, ";");
+    }
 
   return q;
 }
@@ -8333,6 +8386,11 @@ pt_print_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (sp_info->recompile == 1)
+    {
+      q = pt_append_nulstring (parser, q, " recompile ");
+    }
+
   if (sp_info->comment != NULL)
     {
       r1 = pt_print_bytes (parser, sp_info->comment);
@@ -8552,10 +8610,33 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, buf);
 	}
       break;
+
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+      if (parser->flag.is_parsing_unload_schema)
+	{
+	  switch (p->type_enum)
+	    {
+	    case PT_TYPE_CHAR:
+	      q = pt_append_nulstring (parser, q, "character");
+	      break;
+	    case PT_TYPE_VARCHAR:
+	      q = pt_append_nulstring (parser, q, "character varying");
+	      break;
+	    case PT_TYPE_NCHAR:
+	      q = pt_append_nulstring (parser, q, "national character");
+	      break;
+	    case PT_TYPE_VARNCHAR:
+	      q = pt_append_nulstring (parser, q, "national character varying");
+	      break;
+	    default:
+	      assert (false);
+	    }
+	  break;
+	}
+
       show_collation = true;
       /* FALLTHRU */
     case PT_TYPE_BIT:
@@ -10504,22 +10585,62 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	r1 = pt_print_bytes (parser, p->info.expr.arg1);
 	q = pt_append_varchar (parser, q, r1);
 
-	flags = p->info.expr.arg3->info.value.data_value.i;
-	lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
-	if (has_user_format)
+	assert (p->info.expr.arg3);
+	if (p->info.expr.arg3->node_type == PT_HOST_VAR)
 	  {
-	    const char *lang_name = lang_get_lang_name_from_id (lang_id);
-
 	    q = pt_append_nulstring (parser, q, ", ");
 	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	    q = pt_append_varchar (parser, q, r1);
 
-	    if (lang_name != NULL && has_user_lang)
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	    q = pt_append_varchar (parser, q, r1);
+	  }
+	else if (p->info.expr.arg3->node_type == PT_VALUE)
+	  {
+	    flags = p->info.expr.arg3->info.value.data_value.i;
+	    lang_id = lang_get_lang_id_from_flag (flags, &has_user_format, &has_user_lang);
+	    if (has_user_format)
 	      {
-		q = pt_append_nulstring (parser, q, ", '");
-		q = pt_append_nulstring (parser, q, lang_name);
-		q = pt_append_nulstring (parser, q, "'");
+		const char *lang_name = lang_get_lang_name_from_id (lang_id);
+
+		q = pt_append_nulstring (parser, q, ", ");
+		r1 = pt_print_bytes (parser, p->info.expr.arg2);
+		q = pt_append_varchar (parser, q, r1);
+
+		if (lang_name != NULL && has_user_lang)
+		  {
+		    q = pt_append_nulstring (parser, q, ", '");
+		    q = pt_append_nulstring (parser, q, lang_name);
+		    q = pt_append_nulstring (parser, q, "'");
+		  }
 	      }
+	  }
+	else if (parser->flag.is_parsing_static_sql)
+	  {
+	    assert (p->info.expr.arg3->node_type == PT_EXPR && p->info.expr.arg3->info.expr.op == PT_CAST);
+	    assert (p->info.expr.arg3->info.expr.cast_type->node_type == PT_DATA_TYPE);
+	    assert (PT_IS_SIMPLE_CHAR_STRING_TYPE (p->info.expr.arg3->info.expr.cast_type->type_enum));
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	    q = pt_append_varchar (parser, q, r1);
+	  }
+	else
+	  {
+	    /*    
+	       create table foo(a char(20), b varchar, c nchar(20), d nchar varying, e sequence(int));
+	       insert into foo values('aaa', 'bbb', n'ccc', n'ddd', {1, 2, 3, 4, 5});
+	       select to_char(e) from foo order by 1;
+
+	       --In a case like "select to_char(e) from foo", it enters the second step.
+	     */
+	    assert ((pt_has_error (parser) || er_errid () != NO_ERROR)
+		    || (p->info.expr.arg2 &&
+			p->info.expr.arg2->node_type == PT_VALUE && p->info.expr.arg2->type_enum == PT_TYPE_NULL));
 	  }
 	q = pt_append_nulstring (parser, q, ")");
       }
@@ -11102,10 +11223,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_DEFAULTF:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      q = pt_append_nulstring (parser, q, " default(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
+      if (parser->flag.is_parsing_static_sql && !p->flag.for_default_func)
+	{
+	  q = pt_append_nulstring (parser, q, " default");
+	}
+      else
+	{
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_nulstring (parser, q, " default(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_OID_OF_DUPLICATE_KEY:
@@ -11547,6 +11675,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  if (parser->flag.is_parsing_trigger && p->info.expr.flag)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
+
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -12821,17 +12955,34 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, p->info.host_var.str);
-  /* for internal print, print a host variable with its index */
-  if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+
+  if (parser->flag.is_parsing_static_sql == 1 && pt_has_error (parser))
     {
-      sprintf (s, " ");
+      /*
+       * To avoid the following error message:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  ?:0 ='ttt' where  id =1
+       * we need to print the host variable name as it is.
+
+       * The following error message is expected:
+       *   Semantic: Illegal left hand side of an assignment clause. update [dba.tbl] [dba.tbl] set  s ='ttt' where  id =1
+       */
+      q = pt_append_nulstring (parser, q, p->info.host_var.label);
     }
   else
     {
-      sprintf (s, ":%d", p->info.host_var.index);
+      q = pt_append_nulstring (parser, q, p->info.host_var.str);
+      /* for internal print, print a host variable with its index */
+      if (parser->custom_print & PT_PRINT_NO_HOST_VAR_INDEX)
+	{
+	  sprintf (s, " ");
+	}
+      else
+	{
+	  sprintf (s, ":%d", p->info.host_var.index);
+	}
+      q = pt_append_nulstring (parser, q, s);
     }
-  q = pt_append_nulstring (parser, q, s);
+
   q = pt_append_nulstring (parser, q, " ");
 
   for (t = p->or_next; t; t = t->or_next)
@@ -12904,7 +13055,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql || parser->flag.is_parsing_trigger)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
@@ -13296,7 +13447,10 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_method_call (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
-  PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
+  if (PT_IS_METHOD (p))
+    {
+      PT_APPLY_WALK (parser, p->info.method_call.method_name, arg);
+    }
   PT_APPLY_WALK (parser, p->info.method_call.arg_list, arg);
   PT_APPLY_WALK (parser, p->info.method_call.on_call_target, arg);
   PT_APPLY_WALK (parser, p->info.method_call.to_return_var, arg);
@@ -13456,8 +13610,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
-
-  char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
@@ -18861,7 +19013,8 @@ pt_json_table_column_behavior_to_string (const json_table_column_behavior_type &
 // column_behavior (in) : column behavior
 //
 static PARSER_VARCHAR *
-pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PARSER_VARCHAR * pstr,
+pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser,
+						    PARSER_VARCHAR * pstr,
 						    const struct json_table_column_behavior &column_behavior)
 {
   PARSER_VARCHAR *substr = NULL;

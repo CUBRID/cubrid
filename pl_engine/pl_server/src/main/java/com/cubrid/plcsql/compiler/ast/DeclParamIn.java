@@ -35,13 +35,20 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclParamIn extends DeclParam {
 
+    public boolean hasDefault() {
+        return defaultVal != null;
+    }
+
+    public final Expr defaultVal;
+
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitDeclParamIn(this);
     }
 
-    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec, Expr defaultVal) {
         super(ctx, name, typeSpec);
+        this.defaultVal = defaultVal;
     }
 
     @Override

@@ -1310,6 +1310,7 @@ logwr_archive_active_log (void)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = logwr_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = NULL_TRANID;
   arvhdr->fpageid = logwr_Gl.last_arv_fpageid;
   arvhdr->arv_num = logwr_Gl.last_arv_num;

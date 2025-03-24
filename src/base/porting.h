@@ -155,6 +155,8 @@ extern char *realpath (const char *path, char *resolved_path);
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p
 #define strtof		strtof_win
+#define strndup         strndup_win
+
 #if defined (_WIN32)
 #define mktime         mktime_for_win32
 #endif
@@ -997,6 +999,7 @@ extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 
 #if defined (WINDOWS)
 extern float strtof_win (const char *nptr, char **endptr);
+extern char *strndup_win (const char *src, size_t size);
 #endif
 
 #ifndef HAVE_STRLCPY

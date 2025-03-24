@@ -1100,7 +1100,7 @@ typedef enum
 #define SERIAL_ATTR_CYCLIC          "cyclic"
 #define SERIAL_ATTR_STARTED         "started"
 #define SERIAL_ATTR_CLASS_NAME      "class_name"
-#define SERIAL_ATTR_ATT_NAME        "att_name"
+#define SERIAL_ATTR_ATTR_NAME       "attr_name"
 #define SERIAL_ATTR_CACHED_NUM      "cached_num"
 #define SERIAL_ATTR_COMMENT         "comment"
 

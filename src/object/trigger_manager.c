@@ -125,8 +125,8 @@ static const char *OLD_REFERENCE_NAME = "old";
  * Currently, the evaluate grammar must have parens surrounding the expression.
  */
 
-static const char *EVAL_PREFIX = "EVALUATE ( ";
-static const char *EVAL_SUFFIX = " ) ";
+const char *EVAL_PREFIX = "EVALUATE ( ";
+const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
@@ -1668,7 +1668,8 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
       class_mop = ((curname == NULL && tempname == NULL) ? NULL : trigger->class_mop);
 
       activity->statement =
-	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname);
+	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname,
+				 &activity->source, with_evaluate);
       if (activity->statement == NULL || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
 	  error = er_errid ();
@@ -5099,7 +5100,7 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
     {
       if (AU_SET_USER (save_user))
 	{
-	  /* what can this mean ? */
+	  // what can this mean ?
 	  rstatus = TR_RETURN_ERROR;
 	}
     }
@@ -7569,3 +7570,53 @@ tr_downcase_all_trigger_info (void)
   return ((mop == NULL) ? NO_ERROR : ER_FAILED);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * remove_appended_trigger_evaluate () - remove appended trigger evaluate
+ *   trigger_stmt_str(in/out):
+ *   with_evaluate(in):
+ */
+char *
+remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
+{
+  size_t remove_eval_suffix_len;
+  /* while performing the query rewrite, the characters “EVALUATE” are changed to lowercase. */
+  const char *remove_eval_prefix = "evaluate (";
+  char *p = NULL;
+
+  if (trigger_stmt_str == NULL)
+    {
+      assert (trigger_stmt_str != NULL);
+      return NULL;
+    }
+
+  if (with_evaluate)
+    {
+      p = strstr (trigger_stmt_str, remove_eval_prefix);
+      if (p == NULL)
+	{
+	  assert (p != NULL);
+	  return NULL;
+	}
+
+      remove_eval_suffix_len = strlen (p) - strlen (remove_eval_prefix);
+      if (remove_eval_suffix_len > (size_t) strlen (p))
+	{
+	  assert (0);
+	  return NULL;
+	}
+
+      p = (char *) memmove (p, p + strlen (remove_eval_prefix), remove_eval_suffix_len + 1);
+
+      if (p[remove_eval_suffix_len - 1] == ')')
+	{
+	  p[remove_eval_suffix_len - 1] = '\0';
+	}
+      else
+	{
+	  return NULL;
+	}
+    }
+
+  return trigger_stmt_str;
+}

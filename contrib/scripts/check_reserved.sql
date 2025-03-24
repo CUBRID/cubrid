@@ -31,7 +31,7 @@ UNION ALL
 SELECT 'stored_proc', sp_name, '', ''
 FROM   _db_stored_procedure WHERE sp_name IN :reserved
 UNION ALL
-SELECT 'stored_proc_arg', arg_name, '', sp_name
+SELECT 'stored_proc_arg', arg_name, '', sp_of.sp_name
 FROM   _db_stored_procedure_args WHERE arg_name IN :reserved
 UNION ALL
 SELECT 'user', name, '', ''

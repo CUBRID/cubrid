@@ -114,6 +114,7 @@ static BOOL WINAPI intr_handler (int sig_no);
 static void intr_handler (int sig_no);
 #endif
 
+static void crash_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
@@ -262,8 +263,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -482,7 +481,6 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -786,8 +784,6 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -973,7 +969,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   /* tuning system parameters */
   sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2293,8 +2288,6 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
 #if defined (CS_MODE)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2759,6 +2752,15 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+#if !defined (WINDOWS)
+  os_set_signal_handler (SIGABRT, crash_handler);
+  os_set_signal_handler (SIGILL, crash_handler);
+  os_set_signal_handler (SIGFPE, crash_handler);
+  os_set_signal_handler (SIGBUS, crash_handler);
+  os_set_signal_handler (SIGSEGV, crash_handler);
+  os_set_signal_handler (SIGSYS, crash_handler);
+#endif
+
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
   if (db_login ("DBA", NULL) != NO_ERROR)
@@ -2959,6 +2961,15 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	    basename (log_path_base));
   free (log_path_base);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+#if !defined (WINDOWS)
+  os_set_signal_handler (SIGABRT, crash_handler);
+  os_set_signal_handler (SIGILL, crash_handler);
+  os_set_signal_handler (SIGFPE, crash_handler);
+  os_set_signal_handler (SIGBUS, crash_handler);
+  os_set_signal_handler (SIGSEGV, crash_handler);
+  os_set_signal_handler (SIGSYS, crash_handler);
+#endif
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
@@ -3491,6 +3502,22 @@ intr_handler (int sig_no)
 }
 
 /*
+ * crash_handler() - print call stack for occurring crash
+ *    return: none
+ *    sig_no(in)
+ */
+static void
+crash_handler (int sig_no)
+{
+  if (os_set_signal_handler (sig_no, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  er_print_crash_callstack (sig_no);
+}
+
+/*
  * tranlist_cmp_f() - qsort compare function used in tranlist().
  *   return:
  */
@@ -3671,8 +3698,6 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   if (dump_flag)
@@ -4610,6 +4635,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
+
+  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
 
   if (db_restart (arg->command_name, TRUE, database_name))
     {

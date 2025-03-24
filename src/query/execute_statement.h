@@ -207,4 +207,5 @@ extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size);
 #endif /* _EXECUTE_STATEMENT_H_ */

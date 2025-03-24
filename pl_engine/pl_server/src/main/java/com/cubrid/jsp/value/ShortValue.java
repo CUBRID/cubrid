@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
@@ -38,17 +39,17 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class ShortValue extends Value {
+
+    protected String getTypeName() {
+        return TYPE_NAME_SHORT;
+    }
+
     private short value;
 
     public ShortValue(short value) {
         super();
         this.value = value;
-    }
-
-    public ShortValue(short value, int mode, int dbType) {
-        super(mode);
-        this.value = value;
-        this.dbType = dbType;
+        this.dbType = DBType.DB_SHORT;
     }
 
     @Override

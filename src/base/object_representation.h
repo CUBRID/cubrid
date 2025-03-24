@@ -1111,7 +1111,6 @@ extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
 extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype, int bound_bits, int size);
-extern char *or_pack_method_sig_list (char *ptr, void *method_sig_list);
 extern char *or_pack_set_node (char *ptr, void *set_node);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);
@@ -1187,7 +1186,6 @@ extern int or_packed_varbit_length (int bitlen);
  * this file (it references DB_TYPE)
  */
 extern int or_listid_length (void *listid);
-extern int or_method_sig_list_length (void *method_sig_list_ptr);
 extern int or_set_node_length (void *set_node_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_elo_length (void *elo_ptr);

@@ -63,10 +63,12 @@ struct au_grant
  *
  */
 
-#define GRANT_ENTRY_LENGTH 		3
-#define GRANT_ENTRY_CLASS(index) 	(index)
-#define GRANT_ENTRY_SOURCE(index) 	((index) + 1)
-#define GRANT_ENTRY_CACHE(index) 	((index) + 2)
+#define GRANT_ENTRY_LENGTH 		4
+
+#define GRANT_ENTRY_TYPE(index) 	((index))
+#define GRANT_ENTRY_CLASS(index) 	((index) + 1)
+#define GRANT_ENTRY_SOURCE(index) 	((index) + 2)
+#define GRANT_ENTRY_CACHE(index) 	((index) + 3)
 
 extern int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
 extern int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
@@ -75,5 +77,8 @@ extern int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
 extern void au_print_grants (MOP auth, FILE *fp);
 
 extern int appropriate_error (unsigned int bits, unsigned int requested);
+
+extern int add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor);
+extern void drop_grant_entry (DB_SET *grants, int index);
 
 #endif

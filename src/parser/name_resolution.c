@@ -530,6 +530,10 @@ pt_resolved (const PT_NODE * expr)
 	  return (expr->info.name.spec_id != 0);
 	case PT_DOT_:
 	  return (pt_resolved (expr->info.dot.arg1) && pt_resolved (expr->info.dot.arg2));
+	case PT_FUNCTION:
+	  // Resolved as a function node.  
+	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
+	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
 	  break;
 	}
@@ -941,11 +945,16 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
       /* If pt_name in group by/ having, maybe it's alias. We will try to resolve it later. */
       if (!is_pt_name_in_group_having (in_node))
 	{
-
-	  if (parser->flag.is_parsing_static_sql == 1)
+	  if (parser->flag.is_parsing_static_sql == 1
+	      && ((in_node->node_type == PT_DOT_ && !pt_resolved (in_node->info.dot.arg2))
+		  || in_node->node_type == PT_NAME))
 	    {
 	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 	      pt_reset_error (parser);
+	      if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+		{
+		  er_clear ();
+		}
 
 	      node = pt_parameterize_for_static_sql (parser, in_node);
 	    }
@@ -1980,13 +1989,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   short i, k, lhs_location, rhs_location, level;
   PT_JOIN_TYPE join_type;
   void *save_etc = NULL;
+  PT_NODE *method_name_node = NULL;
+  const char *method_name;
 
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (!node || !parser)
+  if (!node || !parser || pt_has_error (parser))
     {
       return node;
     }
+
+  *continue_walk = PT_CONTINUE_WALK;
 
   /* treat scopes as the next outermost scope */
   scopestack.next = bind_arg->scopes;
@@ -3288,13 +3299,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * first parameter to the on_call_target.  If there is no parameter,
        * it will be caught in pt_semantic_check_local()
        */
-      if (!node->info.method_call.on_call_target
-	  && jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
+      method_name_node = node->info.method_call.method_name;
+      // parser_print_tree is for built-in package names such as DBMS_OUTPUT
+      method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
+									     method_name_node) :
+	PT_NAME_ORIGINAL (method_name_node);
+      if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
 	{
-	  PT_NODE *method_name = node->info.method_call.method_name;
-	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) method_name;
-	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name->info.name.original);
-	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
+	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
+	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
+	  method_name_node->info.name.meta_class = PT_METHOD;
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	  /* don't revisit leaves */
 	  *continue_walk = PT_LIST_WALK;
@@ -3306,6 +3320,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      node->info.method_call.on_call_target = node->info.method_call.arg_list;
 	      node->info.method_call.arg_list = node->info.method_call.arg_list->next;
 	      node->info.method_call.on_call_target->next = NULL;
+
+	      /*
+	       * When using a session variable in the first arg_list,
+	       * It is unknown whether the session variable contains a class, object, or constant value.
+	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * 
+	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
+	       *     insert into x values (4, 'string 4');
+	       *     select x into p1 from x where xint = 4;
+	       *     call add_int(p1, 1, 2);
+	       */
+	      node->info.method_call.method_name->info.name.original =
+		sm_remove_qualifier_name (node->info.method_call.method_name->info.name.original);
 	    }
 
 	  /* make method name look resolved */
@@ -3347,9 +3374,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  node->info.method_call.method_name->info.name.spec_id = entity->info.spec.id;
 		}
 	    }
-
 	}
-
       break;
 
     case PT_DATA_TYPE:
@@ -3406,6 +3431,44 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    node = temp;
 	  }
+	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
+	  {
+	    /*
+	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION), 
+	     * pt_bind_name_or_path_in_scope() always returns NULL and sets the value PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+	     */
+	    pt_reset_error (parser);
+
+	    /*
+	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
+	     */
+	    char downcase_owner_name[DB_MAX_USER_LENGTH];
+	    downcase_owner_name[0] = '\0';
+	    char *generic_name = NULL;
+
+	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
+	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    node->info.dot.arg2->info.function.generic_name = generic_name;
+	    node->info.dot.arg1->info.name.original = generic_name;
+
+	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
+	      {
+		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		if (node1 == NULL)
+		  {
+		    break;	// FIXME: something wrong
+		  }
+		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
+
+		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, node);
+		node = node1;	/* return the new node */
+		/* don't revisit leaves */
+		*continue_walk = PT_LIST_WALK;
+	      }
+	  }
 	else if (pt_has_error (parser))
 	  {
 	    return NULL;
@@ -3440,18 +3503,38 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  const char *generic_name = node->info.function.generic_name;
+	  MOP sp_mop = NULL;
+	  char sp_unique_name[SM_MAX_IDENTIFIER_LENGTH + 1];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
+	      if (strchr (node->info.function.generic_name, '.'))
+		{
+		  /*
+		   * when checking for a PROCEDURE in a PT_DOT_ type, if the PROCEDURE does not exist, the check moves on to the PT_FUNCTION.
+		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME, 
+		   * which will always return NULL and set the value of
+		   * PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
+		   */
+		  pt_reset_error (parser);
+		}
+
 	      /*
 	       * It may be a method call since they are parsed as
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      if (jsp_is_exist_stored_procedure (generic_name))
+	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name, DB_AUTH_NONE);
+	      if (sp_mop != NULL)
 		{
+		  sp_unique_name[0] = '\0';
+		  jsp_get_unique_name (sp_mop, sp_unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+		  if (sp_unique_name[0] != '\0')
+		    {
+		      node->info.function.generic_name = pt_append_string (parser, NULL, sp_unique_name);
+		    }
+
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
 		}
 	      else
@@ -3505,17 +3588,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 				     MSGCAT_SEMANTIC_PREFIX_IN_FUNC_INDX_NOT_ALLOWED);
 			}
-		      else if (parser_function_code != PT_EMPTY)
-			{
-			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, node->info.function.generic_name);
-			}
 		      else
 			{
-			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
-				      node->info.function.generic_name);
-			}
+			  char downcase_generic_name[DB_MAX_IDENTIFIER_LENGTH];
+			  downcase_generic_name[0] = '\0';
+			  sm_downcase_name (node->info.function.generic_name, downcase_generic_name,
+					    DB_MAX_IDENTIFIER_LENGTH);
 
+			  if (parser_function_code != PT_EMPTY)
+			    {
+			      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					  MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, downcase_generic_name);
+			    }
+			  else
+			    {
+			      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
+					  downcase_generic_name);
+			    }
+			}
 		    }
 		}
 	    }
@@ -3532,6 +3622,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_SINGLE_TABLE_IN,
 			      pt_short_print (parser, node));
 		}
+	    }
+
+	  if (pt_has_error (parser))
+	    {
+	      node = NULL;
+	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
       break;
@@ -7860,19 +7956,55 @@ pt_resolve_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  if (hint & PT_HINT_NO_USE_HASH)
+  if ((hint & PT_HINT_NO_USE_HASH) && (*no_use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, no_use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+      if (*no_use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_NO_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
+	}
     }
 
-  if (hint & PT_HINT_USE_HASH)
+  if ((hint & PT_HINT_USE_HASH) && (*use_hash != NULL))
     {
       if (pt_resolve_hint_args (parser, use_hash, spec_list, DISCARD_NO_MATCH) != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+      if (*use_hash == NULL)
+	{
+	  switch (node->node_type)
+	    {
+	    case PT_SELECT:
+	      node->info.query.q.select.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_DELETE:
+	      node->info.delete_.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    case PT_UPDATE:
+	      node->info.update.hint &= ~PT_HINT_USE_HASH;
+	      break;
+	    default:
+	      PT_INTERNAL_ERROR (parser, "Invalid statement in hints resolving");
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -7939,8 +8071,8 @@ exit_on_error:
       node->info.update.use_nl_hint = NULL;
       node->info.update.use_idx_hint = NULL;
       node->info.update.use_merge_hint = NULL;
-      node->info.delete_.no_use_hash_hint = NULL;
-      node->info.delete_.use_hash_hint = NULL;
+      node->info.update.no_use_hash_hint = NULL;
+      node->info.update.use_hash_hint = NULL;
       break;
     default:
       break;
@@ -9273,13 +9405,15 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       PT_NODE *spec = NULL;
       PT_NODE *entity;
 
+      /* to process the clause "FOR UPDATE OF" */
       if (statement->info.query.q.select.for_update != NULL)
 	{
 	  /* Flag only the specified specs */
 	  for (; node != NULL; node = node->next)
 	    {
 	      spec = pt_find_spec (parser, statement->info.query.q.select.from, node);
-	      if (spec == NULL)
+	      /* table or view name is invalid or inline view */
+	      if (spec == NULL || spec->info.spec.flat_entity_list == NULL)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
 			      node->info.name.original);
@@ -9294,8 +9428,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
+		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
 	  statement->info.query.q.select.for_update = NULL;
@@ -9305,7 +9439,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	      /* "entity is NULL" means inline view, UPDATE FOR should exclude inline view */
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
@@ -10163,6 +10297,8 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * f_node, PT_BIND_NAMES_AR
   new_node->info.method_call.arg_list = parser_copy_tree_list (parser, f_node->info.function.arg_list);
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
   new_node->info.method_call.on_call_target = NULL;
+  new_node->info.method_call.auth_name = NULL;
+  PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));	// default
 
   return new_node;
 }				/* pt_make_method_call */
@@ -10257,6 +10393,10 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
 static PT_NODE *
 pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
+  char owner[DB_MAX_USER_LENGTH + 1];
+  owner[0] = '\0';
+  char *current_user_owner;
+
   PT_NODE *new_node = pt_make_method_call (parser, node, bind_arg);
   if (new_node == NULL)
     {
@@ -10274,6 +10414,12 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
       return NULL;
     }
 
+  if (jsp_get_owner_name (sp_name, owner, DB_MAX_USER_LENGTH) == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "jsp_get_owner_name");
+      return NULL;
+    }
+
   new_node->type_enum = pt_db_to_type_enum ((DB_TYPE) return_type);
   TP_DOMAIN *d = pt_type_enum_to_db_domain (new_node->type_enum);
   d = tp_domain_cache (d);
@@ -10283,6 +10429,18 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   int sp_type_misc = jsp_get_sp_type (sp_name);
   new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+
+  PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
+  if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
+    {
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, owner);
+    }
+  else
+    {
+      current_user_owner = au_get_user_name (Au_user);
+      PT_METHOD_CALL_AUTH_NAME (new_node) = pt_append_string (parser, NULL, current_user_owner);
+      ws_free_string_and_init (current_user_owner);
+    }
 
   return new_node;
 }				/* pt_resolve_stored_procedure */

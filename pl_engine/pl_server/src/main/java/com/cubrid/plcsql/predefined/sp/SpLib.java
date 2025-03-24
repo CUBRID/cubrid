@@ -31,10 +31,11 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
@@ -48,11 +49,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -317,25 +317,42 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(
-            Connection conn, String name, int resultTypeCode, Object... args) {
+    private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
-        assert args != null;
+    public static Object invokeBuiltinFunc(
+            Connection conn,
+            String callStr,
+            int resultTypeCode,
+            PreparedStatement[] pstmtRef,
+            Object... args) {
+
+        if (args == null) {
+            args = SINGLE_NULL_ARG;
+        }
 
         int argsLen = args.length;
-        String hostVars;
-        if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
-            assert argsLen == 0;
-            hostVars = "";
-        } else {
-            hostVars = getHostVarsStr(argsLen);
-        }
-        String query = String.format("select %s%s from dual", name, hostVars);
+        String query = String.format("select %s from dual", callStr);
+
+        PreparedStatement pstmt = null;
         try {
-            PreparedStatement pstmt = conn.prepareStatement(query);
+
+            if (pstmtRef == null) {
+                // not in a loop
+                pstmt = conn.prepareStatement(query);
+            } else {
+                // in a loop.
+                pstmt = pstmtRef[0];
+                // Check if it is null in order to call prepareStatement only once in the loop
+                if (pstmt == null) {
+                    pstmt = conn.prepareStatement(query);
+                    pstmtRef[0] = pstmt; // save it for the later iterations
+                }
+            }
+
             for (int i = 0; i < argsLen; i++) {
                 pstmt.setObject(i + 1, args[i]);
             }
+
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 Object ret;
@@ -383,11 +400,6 @@ public class SpLib {
                     ret = null;
                 }
 
-                Statement stmt = rs.getStatement();
-                if (stmt != null) {
-                    stmt.close();
-                }
-
                 return ret;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -395,6 +407,15 @@ public class SpLib {
         } catch (SQLException e) {
             Server.log(e);
             throw new SQL_ERROR(e.getMessage());
+        } finally {
+            if (pstmtRef == null && pstmt != null) {
+                try {
+                    pstmt.close();
+                } catch (SQLException e) {
+                    Server.log(e);
+                    throw new SQL_ERROR(e.getMessage());
+                }
+            }
         }
     }
 
@@ -529,17 +550,24 @@ public class SpLib {
     // builtin exceptions
     // ---------------------------------------------------------------------------------------
 
+    private static int checkAppErrCode(int code) {
+        if (code <= CODE_APP_ERROR) {
+            throw new VALUE_ERROR(
+                    "exception codes below " + (CODE_APP_ERROR + 1) + " are reserved");
+        }
+
+        return code;
+    }
+
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
         public $APP_ERROR(int code, String msg) {
-            super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
-        }
-
-        public $APP_ERROR(String msg) {
-            super(CODE_APP_ERROR, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
+            // called for raise_application_error(...)
+            super(checkAppErrCode(code), isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR() {
+            // called for user defined exceptions
             super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
     }
@@ -583,11 +611,13 @@ public class SpLib {
         public ResultSet rs;
         public int rowCount;
 
+        private PreparedStatement myStmt;
+
         public Query(String query) {
             this.query = query;
         }
 
-        public void open(Connection conn, Object... val) {
+        public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
 
             assert val != null;
 
@@ -595,7 +625,24 @@ public class SpLib {
                 if (isOpen()) {
                     throw new CURSOR_ALREADY_OPEN();
                 }
-                PreparedStatement pstmt = conn.prepareStatement(query);
+
+                PreparedStatement pstmt;
+
+                // using pstmtRef is for the loop optimization:
+                //  preparing the statement once and closing it once for the whole iterations
+                if (pstmtRef == null) {
+                    // case of not applying the loop optimization
+                    myStmt = conn.prepareStatement(query);
+                    pstmt = myStmt;
+                } else {
+                    // case of applying the loop optimization
+                    pstmt = pstmtRef[0];
+                    if (pstmt == null) {
+                        pstmt = conn.prepareStatement(query);
+                        pstmtRef[0] = pstmt; // store it for the later loop iterations
+                    }
+                }
+
                 for (int i = 0; i < val.length; i++) {
                     pstmt.setObject(i + 1, val[i]);
                 }
@@ -611,11 +658,16 @@ public class SpLib {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
-                if (rs != null) {
-                    Statement stmt = rs.getStatement();
-                    if (stmt != null) {
-                        stmt.close();
-                    }
+                if (myStmt == null) {
+                    // no need to close the statement because it was declared and is closed outside
+                    // of this Query
+                    // close only the result set.
+                    rs.close();
+                    rs = null;
+                } else {
+                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
+                    // on Statement.close()
+                    myStmt = null;
                     rs = null;
                 }
             } catch (SQLException e) {
@@ -694,7 +746,7 @@ public class SpLib {
     // is null
     @Operator(coercionScheme = CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -771,7 +823,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opNeg(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -846,7 +898,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opBitCompli(Object l) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -933,7 +985,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -946,7 +998,7 @@ public class SpLib {
     }
 
     public static Boolean opEqChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1029,7 +1081,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1054,7 +1106,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1067,7 +1119,7 @@ public class SpLib {
     }
 
     public static Boolean opNullSafeEqChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1162,7 +1214,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1190,7 +1242,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1277,7 +1329,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1303,7 +1355,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1316,7 +1368,7 @@ public class SpLib {
     }
 
     public static Boolean opLeChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1399,7 +1451,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1423,7 +1475,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1436,7 +1488,7 @@ public class SpLib {
     }
 
     public static Boolean opGeChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1519,7 +1571,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1543,7 +1595,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1556,7 +1608,7 @@ public class SpLib {
     }
 
     public static Boolean opLtChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1639,7 +1691,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1664,7 +1716,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1677,7 +1729,7 @@ public class SpLib {
     }
 
     public static Boolean opGtChar(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1760,7 +1812,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -1788,7 +1840,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1807,7 +1859,7 @@ public class SpLib {
     }
 
     public static Boolean opBetweenChar(String o, String lower, String upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1922,7 +1974,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1960,7 +2012,7 @@ public class SpLib {
     public static Boolean opInChar(String o, String... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -1973,7 +2025,7 @@ public class SpLib {
 
         boolean nullFound = false;
         for (String p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }
@@ -2078,7 +2130,7 @@ public class SpLib {
     public static Boolean opIn(Object o, Object... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -2089,7 +2141,7 @@ public class SpLib {
         }
         boolean nullFound = false;
         for (Object p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }
@@ -2189,7 +2241,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opMult(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2215,7 +2267,7 @@ public class SpLib {
         if (r.equals((short) 0)) {
             throw new ZERO_DIVIDE();
         }
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
         } else {
             return (short) (l / r);
@@ -2230,7 +2282,7 @@ public class SpLib {
         if (r.equals(0)) {
             throw new ZERO_DIVIDE();
         }
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l.longValue()), BigDecimal.valueOf(r.longValue()));
         } else {
             return l / r;
@@ -2246,7 +2298,7 @@ public class SpLib {
             throw new ZERO_DIVIDE();
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return opDiv(BigDecimal.valueOf(l), BigDecimal.valueOf(r));
         } else {
             return l / r;
@@ -2268,7 +2320,7 @@ public class SpLib {
         int s2 = r.scale();
 
         int scale;
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_COMPAT_NUMERIC_DIVISION_SCALE)) {
+        if (Context.getSystemParameterBool(SysParam.COMPAT_NUMERIC_DIVISION_SCALE)) {
             scale = Math.max(s1, s2);
         } else {
             scale = Math.max(9, Math.max(s1, s2));
@@ -2317,7 +2369,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opDiv(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2370,7 +2422,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opDivInt(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2423,7 +2475,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Object opMod(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2443,7 +2495,7 @@ public class SpLib {
     // +
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static String opAdd(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (l == null) {
                 l = EMPTY_STRING;
             }
@@ -2637,7 +2689,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2871,7 +2923,7 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(l)) {
                 l = null;
             }
@@ -2891,7 +2943,7 @@ public class SpLib {
     // ||
     @Operator(coercionScheme = CoercionScheme.StringOp)
     public static String opConcat(String l, String r) {
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (l == null) {
                 l = EMPTY_STRING;
             }
@@ -3142,7 +3194,7 @@ public class SpLib {
         }
 
         Instant instant = Instant.ofEpochMilli(e.getTime());
-        ZoneOffset timezone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+        ZoneId timezone = Server.getConfig().getTimeZone();
         ZonedDateTime zdt = ZonedDateTime.ofInstant(instant, timezone);
         return zdt.format(TIMESTAMP_FORMAT);
     }
@@ -3195,7 +3247,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             BigDecimal bd = new BigDecimal(e.doubleValue(), doubleToStringContext);
             return detachTrailingZeros(bd.toPlainString());
         } else {
@@ -3211,7 +3263,7 @@ public class SpLib {
         try {
             return checkFloat(Float.valueOf(e.floatValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + convDoubleToString(e));
         }
     }
 
@@ -3279,7 +3331,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             BigDecimal bd = new BigDecimal(e.doubleValue(), floatToStringContext);
             return detachTrailingZeros(bd.toPlainString());
         } else {
@@ -3295,7 +3347,7 @@ public class SpLib {
         try {
             return checkDouble(Double.valueOf(e.doubleValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + convFloatToString(e));
         }
     }
 
@@ -3354,7 +3406,7 @@ public class SpLib {
             return null;
         }
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_COMPAT_NUMBER_BEHAVIOR)) {
             return detachTrailingZeros(e.toPlainString());
         } else {
             return e.toString();
@@ -3369,7 +3421,7 @@ public class SpLib {
         try {
             return checkDouble(Double.valueOf(e.doubleValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + e);
+            throw new VALUE_ERROR("data overflow on data type DOUBLE: " + convNumericToString(e));
         }
     }
 
@@ -3381,7 +3433,7 @@ public class SpLib {
         try {
             return checkFloat(Float.valueOf(e.floatValue()));
         } catch (VALUE_ERROR ee) {
-            throw new VALUE_ERROR("data overflow on data type FLOAT: " + e);
+            throw new VALUE_ERROR("data overflow on data type FLOAT: " + convNumericToString(e));
         }
     }
 
@@ -4125,7 +4177,7 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
-    private static final int CODE_APP_ERROR = 99;
+    private static final int CODE_APP_ERROR = 1000;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
     private static final String MSG_CURSOR_ALREADY_OPEN = "cursor already open";
@@ -4268,7 +4320,7 @@ public class SpLib {
     private static Boolean commonOpIn(Object o, Object... arr) {
         assert arr != null;
 
-        if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+        if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
             if (EMPTY_STRING.equals(o)) {
                 o = null;
             }
@@ -4279,7 +4331,7 @@ public class SpLib {
         }
         boolean nullFound = false;
         for (Object p : arr) {
-            if (Server.getSystemParameterBool(Server.SYS_PARAM_ORACLE_STYLE_EMPTY_STRING)) {
+            if (Context.getSystemParameterBool(SysParam.ORACLE_STYLE_EMPTY_STRING)) {
                 if (EMPTY_STRING.equals(p)) {
                     p = null;
                 }
@@ -4402,7 +4454,7 @@ public class SpLib {
         try {
             return bdp.longValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type BIGINT: " + bd);
+            throw new VALUE_ERROR("data overflow on data type BIGINT: " + convNumericToString(bd));
         }
     }
 
@@ -4412,7 +4464,7 @@ public class SpLib {
         try {
             return bdp.intValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type INTEGER: " + bd);
+            throw new VALUE_ERROR("data overflow on data type INTEGER: " + convNumericToString(bd));
         }
     }
 
@@ -4422,7 +4474,7 @@ public class SpLib {
         try {
             return bdp.shortValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type SHORT: " + bd);
+            throw new VALUE_ERROR("data overflow on data type SHORT: " + convNumericToString(bd));
         }
     }
 
@@ -4432,7 +4484,7 @@ public class SpLib {
         try {
             return bdp.byteValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR("data overflow on data type BYTE: " + bd);
+            throw new VALUE_ERROR("data overflow on data type BYTE: " + convNumericToString(bd));
         }
     }
 
@@ -6532,16 +6584,6 @@ public class SpLib {
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);
-        }
-    }
-
-    private static String getHostVarsStr(int len) {
-        if (len == 0) {
-            return "()";
-        } else {
-            String[] arr = new String[len];
-            Arrays.fill(arr, "?");
-            return "(" + String.join(", ", arr) + ")";
         }
     }
 

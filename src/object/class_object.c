@@ -3007,6 +3007,11 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
     {
       goto error;
     }
+
+  filter_predicate->pred_string = NULL;
+  filter_predicate->pred_stream = NULL;
+  filter_predicate->att_ids = NULL;
+
   if (val_str_len > 0)
     {
       filter_predicate->pred_string = (char *) db_ws_alloc (val_str_len + 1);
@@ -4184,7 +4189,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
-  is_uk_new = SM_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
+  is_uk_new = DB_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
 
   for (cons = cons_list; cons; cons = cons->next)
     {

@@ -895,7 +895,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     }
 
   /* select the connection protocol, for PC's this will always be new */
-  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
+  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST_FROM_CLIENT);
 
   if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
       == NULL)

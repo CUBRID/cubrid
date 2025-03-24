@@ -24,6 +24,8 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
+#include <stack>
+
 #include "porting.h"
 #include "dbtype_def.h"
 
@@ -113,6 +115,14 @@ class EXPORT_IMPORT authenticate_context
     * system authorizations.
     */
     MOP current_user;
+
+    /*
+    * Au_user_stack
+    *
+    * This manages the MOP stack to track execution rights of stored procedures.
+    */
+    std::stack <MOP> user_stack;
+
     /*
      * Au_user_name, Au_user_password
      *
@@ -160,6 +170,10 @@ class EXPORT_IMPORT authenticate_context
     // checks
     int check_user (void);
     bool has_user_name (void);
+
+    // execution rights
+    int push_user (MOP user);
+    int pop_user ();
 
     // getters
     MOP get_public_user (void);

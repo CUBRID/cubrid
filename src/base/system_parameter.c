@@ -434,6 +434,16 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE_UDS "java_stored_procedure_uds"
 
+#define PRM_NAME_STORED_PROCEDURE "stored_procedure"
+
+#define PRM_NAME_STORED_PROCEDURE_PORT "stored_procedure_port"
+
+#define PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS "stored_procedure_vm_options"
+
+#define PRM_NAME_STORED_PROCEDURE_DEBUG "stored_procedure_debug"
+
+#define PRM_NAME_STORED_PROCEDURE_UDS "stored_procedure_uds"
+
 #define PRM_NAME_ALLOW_TRUNCATED_STRING "allow_truncated_string"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -752,6 +762,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
 #define PRM_NAME_ENABLE_MEMORY_MONITORING "enable_memory_monitoring"
+
+#define PRM_NAME_STORED_PROCEDURE_DUMP_ICODE "stored_procedure_dump_icode"
+
+#define PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE "stored_procedure_return_numeric_size"
+
+#define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2305,29 +2321,40 @@ int PRM_ER_LOG_TDE = false;
 static int prm_er_log_tde_default = false;
 static unsigned int prm_er_log_tde_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE = true;
-static bool prm_java_stored_procedure_default = true;
-static unsigned int prm_java_stored_procedure_flag = 0;
+bool PRM_STORED_PROCEDURE = true;
+static bool prm_stored_procedure_default = true;
+static unsigned int prm_stored_procedure_flag = 0;
 
-int PRM_JAVA_STORED_PROCEDURE_PORT = 0;
-static int prm_java_stored_procedure_port_default = 0;
-static int prm_java_stored_procedure_port_upper = 65535;
-static int prm_java_stored_procedure_port_lower = 0;
-static unsigned int prm_java_stored_procedure_port_flag = 0;
+int PRM_STORED_PROCEDURE_PORT = 0;
+static int prm_stored_procedure_port_default = 0;
+static int prm_stored_procedure_port_upper = 65535;
+static int prm_stored_procedure_port_lower = 0;
+static unsigned int prm_stored_procedure_port_flag = 0;
 
-const char *PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS = "";
-static const char *prm_java_stored_procedure_jvm_options_default = "";
-static unsigned int prm_java_stored_procedure_jvm_options_flag = 0;
+const char *PRM_STORED_PROCEDURE_JVM_OPTIONS = "";
+static const char *prm_stored_procedure_jvm_options_default = "";
+static unsigned int prm_stored_procedure_jvm_options_flag = 0;
 
-int PRM_JAVA_STORED_PROCEDURE_DEBUG = -1;
-static int prm_java_stored_procedure_debug_default = -1;
-static int prm_java_stored_procedure_debug_upper = 65535;
-static int prm_java_stored_procedure_debug_lower = -1;
-static unsigned int prm_java_stored_procedure_debug_flag = 0;
+int PRM_STORED_PROCEDURE_DEBUG = -1;
+static int prm_stored_procedure_debug_default = -1;
+static int prm_stored_procedure_debug_upper = 65535;
+static int prm_stored_procedure_debug_lower = -1;
+static unsigned int prm_stored_procedure_debug_flag = 0;
 
-bool PRM_JAVA_STORED_PROCEDURE_UDS = true;
-static bool prm_java_stored_procedure_uds_default = true;
-static unsigned int prm_java_stored_procedure_uds_flag = 0;
+bool PRM_STORED_PROCEDURE_UDS = true;
+static bool prm_stored_procedure_uds_default = true;
+static unsigned int prm_stored_procedure_uds_flag = 0;
+
+bool PRM_STORED_PROCEDURE_DUMP_ICODE = false;
+static bool prm_stored_procedure_dump_icode_default = false;
+static unsigned int prm_stored_procedure_dump_icode_flag = 0;
+
+static int prm_stored_procedure_return_numeric_size_default_arr[] = { 2, 38, 15 };
+
+int *PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE = NULL;
+static int *prm_stored_procedure_return_numeric_size_default = prm_stored_procedure_return_numeric_size_default_arr;
+
+static unsigned int prm_stored_procedure_return_numeric_size_flag = 0;
 
 bool PRM_ALLOW_TRUNCATED_STRING = false;
 static bool prm_allow_truncated_string_default = false;
@@ -2456,6 +2483,10 @@ static UINT64 prm_max_subquery_cache_size_default = 2 * 1024 * 1024;	/* 2 MB */
 static UINT64 prm_max_subquery_cache_size_lower = 0;	/* 0 */
 static UINT64 prm_max_subquery_cache_size_upper = 16 * 1024 * 1024;	/* 16 MB */
 static unsigned int prm_max_subquery_cache_size_flag = 0;
+
+static bool PRM_DBLINK_AUTO_COMMIT = true;
+static bool prm_dblink_auto_commit_default = true;
+static unsigned int prm_dblink_auto_commit_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3548,7 +3579,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_STYLE_EMPTY_STRING,
    PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_oracle_style_empty_string_flag,
    (void *) &prm_oracle_style_empty_string_default,
@@ -3604,7 +3635,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
    PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_compat_numeric_division_scale_flag,
    (void *) &prm_compat_numeric_division_scale_default,
@@ -3626,7 +3657,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_AUTO_RESTART_SERVER,
    PRM_NAME_AUTO_RESTART_SERVER,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    &prm_auto_restart_server_flag,
    (void *) &prm_auto_restart_server_default,
@@ -4665,7 +4696,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_NUMBER_LANG,
    PRM_NAME_INTL_NUMBER_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_number_lang_flag,
    (void *) &prm_intl_number_lang_default,
@@ -4676,7 +4707,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_DATE_LANG,
    PRM_NAME_INTL_DATE_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_date_lang_flag,
    (void *) &prm_intl_date_lang_default,
@@ -4817,7 +4848,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INTL_COLLATION,
    PRM_NAME_INTL_COLLATION,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_intl_collation_flag,
    (void *) &prm_intl_collation_default,
@@ -5311,7 +5342,8 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_TIMEZONE,
    PRM_NAME_TIMEZONE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT |
+    PRM_FOR_PL_CONTEXT),
    PRM_STRING,
    &prm_timezone_flag,
    (void *) &prm_timezone_default,
@@ -6025,33 +6057,33 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_flag,
-   (void *) &prm_java_stored_procedure_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_PORT,
    PRM_NAME_JAVA_STORED_PROCEDURE_PORT,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   &prm_java_stored_procedure_port_flag,
-   (void *) &prm_java_stored_procedure_port_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_PORT,
-   (void *) &prm_java_stored_procedure_port_upper, (void *) &prm_java_stored_procedure_port_lower,
+   &prm_stored_procedure_port_flag,
+   (void *) &prm_stored_procedure_port_default,
+   (void *) &PRM_STORED_PROCEDURE_PORT,
+   (void *) &prm_stored_procedure_port_upper, (void *) &prm_stored_procedure_port_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
    PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_STRING,
-   &prm_java_stored_procedure_jvm_options_flag,
-   (void *) &prm_java_stored_procedure_jvm_options_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
+   &prm_stored_procedure_jvm_options_flag,
+   (void *) &prm_stored_procedure_jvm_options_default,
+   (void *) &PRM_STORED_PROCEDURE_JVM_OPTIONS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6060,20 +6092,20 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_JAVA_STORED_PROCEDURE_DEBUG,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
-   &prm_java_stored_procedure_debug_flag,
-   (void *) &prm_java_stored_procedure_debug_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_DEBUG,
+   &prm_stored_procedure_debug_flag,
+   (void *) &prm_stored_procedure_debug_default,
+   (void *) &PRM_STORED_PROCEDURE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE_UDS,
    PRM_NAME_JAVA_STORED_PROCEDURE_UDS,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_java_stored_procedure_uds_flag,
-   (void *) &prm_java_stored_procedure_uds_default,
-   (void *) &PRM_JAVA_STORED_PROCEDURE_UDS,
+   &prm_stored_procedure_uds_flag,
+   (void *) &prm_stored_procedure_uds_default,
+   (void *) &PRM_STORED_PROCEDURE_UDS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6277,7 +6309,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT),
    PRM_BOOLEAN,
    &prm_oracle_compat_number_behavior_flag,
    (void *) &prm_oracle_compat_number_behavior_default,
@@ -6446,6 +6478,94 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_MAX_SUBQUERY_CACHE_SIZE,
    (void *) &prm_max_subquery_cache_size_upper,
    (void *) &prm_max_subquery_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE,
+   PRM_NAME_STORED_PROCEDURE,
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_flag,
+   (void *) &prm_stored_procedure_default,
+   (void *) &PRM_STORED_PROCEDURE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_PORT,
+   PRM_NAME_STORED_PROCEDURE_PORT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_stored_procedure_port_flag,
+   (void *) &prm_stored_procedure_port_default,
+   (void *) &PRM_STORED_PROCEDURE_PORT,
+   (void *) &prm_stored_procedure_port_upper, (void *) &prm_stored_procedure_port_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
+   PRM_NAME_STORED_PROCEDURE_JVM_OPTIONS,
+   (PRM_FOR_SERVER),
+   PRM_STRING,
+   &prm_stored_procedure_jvm_options_flag,
+   (void *) &prm_stored_procedure_jvm_options_default,
+   (void *) &PRM_STORED_PROCEDURE_JVM_OPTIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DEBUG,
+   PRM_NAME_STORED_PROCEDURE_DEBUG,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_stored_procedure_debug_flag,
+   (void *) &prm_stored_procedure_debug_default,
+   (void *) &PRM_STORED_PROCEDURE_DEBUG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_UDS,
+   PRM_NAME_STORED_PROCEDURE_UDS,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_uds_flag,
+   (void *) &prm_stored_procedure_uds_default,
+   (void *) &PRM_STORED_PROCEDURE_UDS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_DUMP_ICODE,
+   PRM_NAME_STORED_PROCEDURE_DUMP_ICODE,
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_PL_CONTEXT),
+   PRM_BOOLEAN,
+   &prm_stored_procedure_dump_icode_flag,
+   (void *) &prm_stored_procedure_dump_icode_default,
+   (void *) &PRM_STORED_PROCEDURE_DUMP_ICODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_INTEGER_LIST,
+   &prm_stored_procedure_return_numeric_size_flag,
+   (void *) &prm_stored_procedure_return_numeric_size_default,
+   (void *) &PRM_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DBLINK_AUTO_COMMIT,
+   PRM_NAME_DBLINK_AUTO_COMMIT,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_dblink_auto_commit_flag,
+   (void *) &prm_dblink_auto_commit_default,
+   (void *) &PRM_DBLINK_AUTO_COMMIT,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
@@ -7450,7 +7570,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 	    }
 	}
 
-      if (strcmp (section, "common") == 0 && strcmp (prm->name, PRM_NAME_JAVA_STORED_PROCEDURE_PORT) == 0)
+      if (strcmp (section, "common") == 0 && strcmp (prm->name, PRM_NAME_STORED_PROCEDURE_PORT) == 0)
 	{
 	  error = PRM_ERR_CANNOT_CHANGE;
 	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
@@ -9204,6 +9324,53 @@ xsysprm_dump_server_parameters (FILE * outfp)
 {
   sysprm_dump_parameters (outfp);
 }
+
+/*
+ * xsysprm_get_pl_context_parameters () - obtain values for parameters
+ *					    marked as PRM_FOR_PL_CONTEXT
+ *
+ * return : list of values
+ *
+ */
+SYSPRM_ASSIGN_VALUE *
+xsysprm_get_pl_context_parameters (int flag)
+{
+  SYSPRM_ASSIGN_VALUE *pl_ctx_values = NULL, *last_assign = NULL;
+  SYSPRM_PARAM *prm = NULL;
+  int i;
+
+  for (i = 0; i < NUM_PRM; i++)
+    {
+      prm = GET_PRM (i);
+      if (PRM_IS_FOR_PL_CONTEXT (prm->static_flag) && (prm->static_flag & flag))
+	{
+	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+	  if (change_val == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
+	      goto cleanup;
+	    }
+	  change_val->prm_id = (PARAM_ID) i;
+	  change_val->next = NULL;
+	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
+	  if (pl_ctx_values != NULL)
+	    {
+	      last_assign->next = change_val;
+	      last_assign = change_val;
+	    }
+	  else
+	    {
+	      pl_ctx_values = last_assign = change_val;
+	    }
+	}
+    }
+
+  return pl_ctx_values;
+
+cleanup:
+  sysprm_free_assign_values (&pl_ctx_values);
+  return NULL;
+}
 #endif /* !CS_MODE */
 
 /*
@@ -10043,6 +10210,23 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    /* save size in the first position */
 	    val[0] = list_size;
 	  }
+
+	if (sysprm_get_id (prm) == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
+	  {
+	    /*  
+	     *  The length of the parameter must be 2
+	     *  Check the valid range
+	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
+	     *    precision >= scale
+	     */
+	    if (val[0] != 2 || val[PRM_PRECISION] < 1 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
+		|| val[PRM_SCALE] < 0 || val[PRM_SCALE] > val[PRM_PRECISION])
+	      {
+		free_and_init (val);
+		return PRM_ERR_BAD_VALUE;
+	      }
+	  }
+
 	new_value->integer_list = val;
 	break;
       }
@@ -10270,7 +10454,15 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	    }
 	}
 
-      return sysprm_set_session_parameter_value (param, id, value);
+      SYSPRM_ERR err = sysprm_set_session_parameter_value (param, id, value);
+
+      // err always returns PRM_ERR_NO_ERROR
+      if (PRM_IS_FOR_PL_CONTEXT (GET_PRM_STATIC_FLAG (id)))
+	{
+	  (void) session_set_pl_session_parameter (thread_p, id);
+	}
+
+      return err;
     }
 
   /* if prm is not for session or if session_parameters have not been initialized just set the system parameter stored

@@ -1491,6 +1491,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
+  bool is_unset_hidden_col;
   PT_NODE *derived_table;
 
   assert (PT_IS_SELECT (statement));
@@ -1605,6 +1606,27 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 	}
     }
 
+  /* check whether to unset hidden col. If no hidden column in original, remove hidden settings */
+  is_unset_hidden_col = true;
+  for (col = subquery->info.query.q.select.list; col; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  is_unset_hidden_col = false;
+	  break;
+	}
+    }
+  if (is_unset_hidden_col)
+    {
+      for (col = tmp_query->info.query.q.select.list; col; col = col->next)
+	{
+	  if (col->flag.is_hidden_column)
+	    {
+	      col->flag.is_hidden_column = 0;
+	    }
+	}
+    }
+
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
 
@@ -1671,7 +1693,7 @@ mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node,
   switch (node->node_type)
     {
     case PT_METHOD_CALL:
-      if ((node->info.method_call.method_name)
+      if (PT_IS_METHOD (node) && (node->info.method_call.method_name)
 	  && (node->info.method_call.method_name->info.name.spec_id == info->old_id))
 	{
 	  node->info.method_call.method_name->info.name.spec_id = info->new_id;
@@ -1930,8 +1952,9 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && pt_has_inst_num (parser, pred)) || pt_has_analytic (parser, mainquery)
-	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
+      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
+	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
+	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -2260,7 +2283,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
 		{
-		  statement->info.query.order_by = save_next;
+		  order_by = save_next;
 		}
 	      else
 		{
@@ -2299,7 +2322,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       order = save_next;
     }
 
-  statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   /* generate orderby_num(), inst_num() */
   if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
@@ -2319,23 +2341,39 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   ins_num->info.expr.op = PT_INST_NUM;
   PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
-  /* replace rownum of select-list to orderby_num */
-  statement->info.query.q.select.list =
-    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
-
-  /* replace rownum of where to orderby_num */
-  where = statement->info.query.q.select.where;
-  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
+  /* Check whether orderby_num and rownum need to be changed */
+  if (statement->info.query.order_by == NULL && order_by != NULL)
     {
-      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+      /* case 1 : order by of mainquery is newly added ==> rownum of mainquery is changed to orderby_num */
+      statement->info.query.q.select.list =
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
-      /* move prev orderby_for to orderby_for */
-      prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-      statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
-      /* move rownum only predicate to orderby_for */
-      statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
-      statement->info.query.q.select.where = NULL;
+      /* replace rownum of where to orderby_num */
+      where = statement->info.query.q.select.where;
+      if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY))
+	{
+	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+
+	  /* move prev orderby_for to orderby_for */
+	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+	  /* move rownum only predicate to orderby_for */
+	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
+	  statement->info.query.q.select.where = NULL;
+	}
     }
+  else if (query_spec->info.query.order_by != NULL && order_by == NULL)
+    {
+      /* case 2 : order by of subqery is totally removed ==> orderby_num of subquery is changed to rownum */
+      /* if where of subquery has rownum, orderby_num, can not view-merged. so is not needed to change */
+      query_spec->info.query.q.select.list =
+	pt_lambda_with_arg (parser, query_spec->info.query.q.select.list, ord_num, ins_num, false, 2, false);
+    }
+
+  parser_free_tree (parser, ord_num);
+  parser_free_tree (parser, ins_num);
+
+  statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   if (free_node != NULL)
     {
@@ -3232,6 +3270,11 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 		      return NULL;
 		    }
 
+		  if (PT_IS_FOR_PL_COMPILE (parser) && sm_is_system_vclass (entity->info.name.original))
+		    {
+		      continue;
+		    }
+
 		  if (!fetch_for_update)
 		    {
 		      subquery = mq_fetch_subqueries (parser, entity);
@@ -3404,13 +3447,10 @@ mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_METHOD_CALL)
+  if (PT_IS_CLASS_METHOD (node))
     {
       /* found class method */
-      if (node->info.method_call.method_type == PT_IS_CLASS_MTHD)
-	{
-	  *found = true;
-	}
+      *found = true;
     }
   else if (pt_is_query (node))
     {
@@ -4954,8 +4994,9 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
    * Therefore, the NO_MERGE hint is not moved to the derived subquery. 
    * Additionally, if the subquery has the QUERY_CACHE hint, it should not be merged, so it is treated together with the NO_MERGE hint.
    * All hints except for NO_MERGE and QUERY_CACHE are moved to the derived subquery. */
-  derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
-  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE);
+  derived->info.query.q.select.hint =
+    agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE);
+  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE);
 
   derived->info.query.q.select.leading = agg_sel->info.query.q.select.leading;
   agg_sel->info.query.q.select.leading = NULL;
@@ -7292,6 +7333,8 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 {
   short *locp = (short *) arg;
 
+  *continue_walk = PT_CONTINUE_WALK;
+
   if (!locp && node->node_type == PT_SELECT)
     {
       short location = 0;
@@ -7339,6 +7382,11 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		}
 	    }
 	}
+    }
+  else if (node->node_type == PT_SELECT)
+    {
+      /* don't walk into subqueries */
+      *continue_walk = PT_LIST_WALK;
     }
   else if (locp)
     {
@@ -7637,7 +7685,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       mq_bump_order_dep_corr_lvl (parser, node);
 
-      node = parser_walk_tree (parser, node, mq_mark_location, NULL, mq_check_non_updatable_vclass_oid, &strict);
+      node = parser_walk_tree (parser, node, mq_mark_location, NULL, NULL, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_check_non_updatable_vclass_oid, &strict);
 
       if (pt_has_error (parser))
 	{
@@ -8373,7 +8422,7 @@ mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int 
 static PT_NODE *
 mq_reset_spec_in_method_names (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
-  if (node->node_type == PT_METHOD_CALL)
+  if (PT_IS_METHOD (node))
     {
       PT_NODE *method_name;
       method_name = node->info.method_call.method_name;

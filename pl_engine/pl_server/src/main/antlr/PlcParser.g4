@@ -39,8 +39,13 @@ create_routine
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
+      (authid_spec? deterministic_spec? | deterministic_spec authid_spec) (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    ;
+
+routine_uniq_name
+    : (owner=identifier '.')? name=identifier
+    | '[' (owner=identifier '.')? name=identifier ']'   /* rewritten query */
     ;
 
 parameter_list
@@ -48,8 +53,18 @@ parameter_list
     ;
 
 parameter
-    : parameter_name IN? type_spec (COMMENT CHAR_STRING)?                   # parameter_in
-    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?   # parameter_out
+    : parameter_name IN? type_spec default_value_part? (COMMENT CHAR_STRING)?                     # parameter_in
+    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?                         # parameter_out
+    ;
+
+authid_spec
+    : AUTHID (DEFINER | OWNER)                          # authid_owner
+    | AUTHID (CALLER | CURRENT_USER)                    # authid_caller
+    ;
+
+deterministic_spec
+    : NOT DETERMINISTIC
+    | DETERMINISTIC
     ;
 
 default_value_part
@@ -109,6 +124,7 @@ label_declaration
 statement
     : block                                 # stmt_block
     | sql_statement                         # stmt_sql              // must go before procedure_call
+    | cursor_manipulation_statement         # stmt_cursor_manipulation
     | raise_application_error_statement     # stmt_raise_app_err    // must go before procedure_call
     | execute_immediate                     # stmt_exec_imme
     | assignment_statement                  # stmt_assign
@@ -210,7 +226,11 @@ return_statement
     ;
 
 procedure_call
-    : (DBMS_OUTPUT '.')? routine_name function_argument?
+    : proc_call_name function_argument?
+    ;
+
+proc_call_name
+    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
     ;
 
 body
@@ -227,7 +247,6 @@ block
 
 sql_statement
     : static_sql
-    | cursor_manipulation_statement
     | transaction_control_statement
     ;
 
@@ -343,8 +362,10 @@ unary_expression
 atom
     : literal                                   # literal_exp
     | record_field                              # field_exp
+    | syntaxed_call                             # syntaxed_call_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
+    | reserved_builtin_func                     # builtin_func
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
@@ -358,7 +379,98 @@ record_field
     ;
 
 function_call
-    : function_name function_argument
+    : func_call_name function_argument
+    ;
+
+func_call_name
+    : (owner=identifier '.')? name=func_name
+    ;
+
+func_name
+    : identifier
+    | reserved_builtin_func
+    ;
+
+reserved_builtin_func   /* those which cannot be an identifier */
+    : ADDDATE
+    | CAST
+    | CHR
+    | CURRENT_USER
+    | DATE
+    | DATE_ADD
+    | DATE_SUB
+    | DAY
+    | DEFAULT
+    | EXTRACT
+    | HOUR
+    //| IF  do not include IF: it causes confusion with IF statement on syntax error case
+    | INSERT
+    | MINUTE
+    | MOD
+    | MONTH
+    | POSITION
+    | QUARTER
+    | REPLACE
+    | REVERSE
+    | SECOND
+    | SUBDATE
+    | TIME
+    | TIMESTAMP
+    | TRIM
+    | TRUNCATE
+    | WEEK
+    | YEAR
+    ;
+
+syntaxed_call
+    : CAST LPAREN argument AS type_spec RPAREN                                                # syntaxed_call_cast
+    | CHR LPAREN  argument USING ( UTF8 | ISO88591 ) RPAREN                                   # syntaxed_call_chr
+    | (DATE_ADD | ADDDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_adddate
+    | (DATE_SUB | SUBDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_subdate
+    | EXTRACT LPAREN time_field FROM argument RPAREN                                          # syntaxed_call_extract
+    | POSITION LPAREN sub=argument IN whole=argument RPAREN                                   # syntaxed_call_position
+    | TRIM LPAREN trim_dir? trim_str=argument? FROM str=argument RPAREN                       # syntaxed_call_trim
+    ;
+
+time_unit
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    | SECOND_MILLISECOND
+    | MINUTE_MILLISECOND
+    | MINUTE_SECOND
+    | HOUR_MILLISECOND
+    | HOUR_SECOND
+    | HOUR_MINUTE
+    | DAY_MILLISECOND
+    | DAY_SECOND
+    | DAY_MINUTE
+    | DAY_HOUR
+    | YEAR_MONTH
+    ;
+
+time_field
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    ;
+
+trim_dir
+    : BOTH
+    | LEADING
+    | TRAILING
     ;
 
 relational_operator
@@ -447,10 +559,6 @@ restricted_using_clause
 
 restricted_using_element
     : (IN)? expression
-    ;
-
-routine_name
-    : identifier
     ;
 
 parameter_name
@@ -574,20 +682,6 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
-    ;
-
-function_name
-    : identifier
-    | DATE
-    | DEFAULT
-    | IF
-    | INSERT
-    | MOD
-    | REPLACE
-    | REVERSE
-    | TIME
-    | TIMESTAMP
-    | TRUNCATE
     ;
 
 

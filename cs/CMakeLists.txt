@@ -122,6 +122,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
@@ -187,6 +188,7 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
@@ -306,16 +308,15 @@ set(OBJECT_HEADERS
 )
 
 set(SP_SOURCES
-  ${SP_DIR}/jsp_cl.c
-  ${SP_DIR}/jsp_comm.c
-  ${SP_DIR}/jsp_file.c
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_struct_compile.cpp
+  ${SP_DIR}/sp_catalog.cpp
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_compile_def.cpp
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/method_query_handler.cpp

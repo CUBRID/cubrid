@@ -141,8 +141,6 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))

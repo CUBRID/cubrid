@@ -147,7 +147,7 @@ public class DBTypeAdapter {
             case DBType.DB_CHAR:
                 if (includePrecision) {
                     if (prec == -1) {
-                        prec = TypeChar.MAX_LEN;
+                        prec = TypeChar.DEFAULT_LEN;
                     }
                     assert prec >= 1 && prec <= TypeChar.MAX_LEN : ("invalid precision " + prec);
                     return TypeChar.getInstance(iStore, prec);
@@ -156,7 +156,9 @@ public class DBTypeAdapter {
                 }
             case DBType.DB_STRING:
                 if (includePrecision) {
-                    if (prec == -1 || prec == 0) { // 0 for STRING (by test)
+                    if (prec == -1) {
+                        prec = TypeVarchar.DEFAULT_LEN;
+                    } else if (prec == 0) { // 0 for STRING (by test)
                         prec = TypeVarchar.MAX_LEN;
                     }
                     assert prec >= 1 && prec <= TypeVarchar.MAX_LEN : ("invalid precision " + prec);

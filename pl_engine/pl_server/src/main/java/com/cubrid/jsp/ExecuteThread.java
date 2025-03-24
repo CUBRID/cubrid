@@ -32,41 +32,48 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.code.SourceCode;
+import com.cubrid.jsp.compiler.MemoryJavaCompiler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.jsp.data.CompileRequest;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.protocol.BootstrapRequest;
 import com.cubrid.jsp.protocol.Header;
 import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
-import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
+import java.util.Base64;
 import java.util.List;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
+import java.util.Map;
+import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
+import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
 public class ExecuteThread extends Thread {
-
-    public static String charSet = "UTF-8";
-
     private Socket client;
 
     private DataInputStream input;
@@ -117,150 +124,158 @@ public class ExecuteThread extends Thread {
 
         client = null;
         output = null;
-        // charSet = null;
-    }
-
-    public void setCharSet(String conCharsetName) {
-        // this.charSet = conCharsetName;
     }
 
     @Override
     public void run() {
         /* main routine handling stored procedure */
         Header header = null;
-        while (!Thread.interrupted()) {
-            try {
-                header = listenCommand();
-                ContextManager.registerThread(Thread.currentThread().getId(), ctx.getSessionId());
-                switch (header.code) {
+        try {
+            while (!Thread.interrupted()) {
+                try {
+                    header = listenCommand();
+                    ContextManager.registerThread(
+                            Thread.currentThread().getId(), ctx.getSessionId());
+                    switch (header.code) {
+                            /*
+                             * the following two request codes are for processing java stored procedure
+                             * routine
+                             */
+                        case RequestCode.INVOKE_SP:
+                            {
+                                processStoredProcedure();
+                                ctx = null;
+                                break;
+                            }
+
+                        case RequestCode.COMPILE:
+                            {
+                                processCompile();
+                                break;
+                            }
+
+                        case RequestCode.DESTROY:
+                            {
+                                ContextManager.destroyContext(ctx.getSessionId());
+                                break;
+                            }
+
+                            /* the following request codes are for system requests */
+                        case RequestCode.UTIL_BOOTSTRAP:
+                            {
+                                processBootstrap();
+                                break;
+                            }
+                        case RequestCode.UTIL_PING:
+                            {
+                                String ping = Server.getServer().getServerName();
+
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+                                packer.packString(ping);
+
+                                resultBuffer = packer.getBuffer();
+                                writeBuffer(resultBuffer);
+                                break;
+                            }
+                        case RequestCode.UTIL_STATUS:
+                            {
+                                // TODO: create a packable class for status
+                                resultBuffer.clear(); /* prepare to put */
+                                packer.setBuffer(resultBuffer);
+
+                                packer.packInt(Server.getServer().getServerPort());
+                                packer.packString(Server.getServer().getServerName());
+                                List<String> vm_args = Server.getJVMArguments();
+                                packer.packInt(vm_args.size());
+                                for (String arg : vm_args) {
+                                    packer.packString(arg);
+                                }
+
+                                resultBuffer = packer.getBuffer();
+                                writeBuffer(resultBuffer);
+                                break;
+                            }
+                        case RequestCode.UTIL_TERMINATE_THREAD:
+                            {
+                                // hacky way.. If thread is terminated and socket is closed
+                                // immediately,
+                                // "ping" or "status" command does not work properly
+                                sleep(100);
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        case RequestCode.UTIL_TERMINATE_SERVER:
+                            {
+                                Server.stop(0);
+                                break;
+                            }
+
+                            /* invalid request */
+                        default:
+                            {
+                                // throw new ExecuteException ("invalid request code: " +
+                                // requestCode);
+                            }
+                    }
+                    ContextManager.deregisterThread(Thread.currentThread().getId());
+                } catch (Throwable e) {
+                    if (e instanceof IOException) {
                         /*
-                         * the following two request codes are for processing java stored procedure
-                         * routine
+                         * CAS disconnects socket
+                         * 1) end of the procedure successfully by calling jsp_close_internal_connection
+                         * 2) socket is in invalid status. we do not have to deal with it here.
                          */
-                    case RequestCode.PREPARE_ARGS:
-                        {
-                            processPrepare();
-                            break;
+                        break;
+                    } else {
+                        Throwable throwable = e;
+                        if (e instanceof InvocationTargetException) {
+                            throwable = ((InvocationTargetException) e).getTargetException();
                         }
-                    case RequestCode.INVOKE_SP:
-                        {
-                            processStoredProcedure();
-                            ctx = null;
-                            break;
-                        }
-
-                    case RequestCode.COMPILE:
-                        {
-                            processCompile();
-                            break;
-                        }
-
-                        /* the following request codes are for javasp utility */
-                    case RequestCode.UTIL_PING:
-                        {
-                            String ping = Server.getServer().getServerName();
-
-                            resultBuffer.clear(); /* prepare to put */
-                            packer.setBuffer(resultBuffer);
-                            packer.packString(ping);
-
-                            resultBuffer = packer.getBuffer();
-                            writeBuffer(resultBuffer);
-                            break;
-                        }
-                    case RequestCode.UTIL_STATUS:
-                        {
-                            // TODO: create a packable class for status
-                            resultBuffer.clear(); /* prepare to put */
-                            packer.setBuffer(resultBuffer);
-
-                            packer.packInt(Server.getServer().getServerPort());
-                            packer.packString(Server.getServer().getServerName());
-                            List<String> vm_args = Server.getJVMArguments();
-                            packer.packInt(vm_args.size());
-                            for (String arg : vm_args) {
-                                packer.packString(arg);
-                            }
-
-                            resultBuffer = packer.getBuffer();
-                            writeBuffer(resultBuffer);
-                            break;
-                        }
-                    case RequestCode.UTIL_TERMINATE_THREAD:
-                        {
-                            // hacky way.. If thread is terminated and socket is closed immediately,
-                            // "ping" or "status" command does not work properly
-                            sleep(100);
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    case RequestCode.UTIL_TERMINATE_SERVER:
-                        {
-                            Server.stop(0);
-                            break;
-                        }
-
-                        /* invalid request */
-                    default:
-                        {
-                            // throw new ExecuteException ("invalid request code: " + requestCode);
-                        }
-                }
-                ContextManager.deregisterThread(Thread.currentThread().getId());
-            } catch (Throwable e) {
-                if (e instanceof IOException) {
-                    /*
-                     * CAS disconnects socket
-                     * 1) end of the procedure successfully by calling jsp_close_internal_connection
-                     * 2) socket is in invalid status. we do not have to deal with it here.
-                     */
-                    break;
-                } else {
-                    Throwable throwable = e;
-                    if (e instanceof InvocationTargetException) {
-                        throwable = ((InvocationTargetException) e).getTargetException();
-                    }
-                    Server.log(throwable);
-                    try {
-                        // TODO: error managing module
-                        if (throwable instanceof SQLException) {
-                            String msg = throwable.getMessage();
-                            if (msg == null) {
-                                msg = "";
-                            }
-                            sendError(msg);
-                        } else if (throwable instanceof PlcsqlRuntimeError) {
-                            PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
-                            int line = plcsqlError.getLine();
-                            int col = plcsqlError.getColumn();
-                            String errMsg;
-                            if (line == -1 && col == -1) {
-                                // exception was thrown not in the SP code but in the PL engine code
-                                errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                        Server.log(throwable);
+                        try {
+                            // TODO: error managing module
+                            if (throwable instanceof SQLException) {
+                                String msg = throwable.getMessage();
+                                if (msg == null) {
+                                    msg = "Unexpected sql error";
+                                }
+                                sendError(msg);
+                            } else if (throwable instanceof PlcsqlRuntimeError) {
+                                PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
+                                int line = plcsqlError.getLine();
+                                int col = plcsqlError.getColumn();
+                                String errMsg;
+                                if (line == -1 && col == -1) {
+                                    // exception was thrown not in the SP code but in the PL engine
+                                    // code
+                                    errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                                } else {
+                                    errMsg =
+                                            String.format(
+                                                    "\n  (line %d, column %d) %s",
+                                                    line, col, plcsqlError.getMessage());
+                                }
+                                sendError(errMsg);
                             } else {
-                                errMsg =
-                                        String.format(
-                                                "\n  (line %d, column %d) %s",
-                                                line, col, plcsqlError.getMessage());
+                                String msg = throwable.getMessage();
+                                if (msg == null) {
+                                    msg = "Unexpected internal error";
+                                }
+                                sendError(msg);
                             }
-                            sendError(errMsg);
-                        } else {
-                            String msg = throwable.getMessage();
-                            if (msg == null) {
-                                msg = "";
-                            }
-                            sendError(msg);
+                        } catch (IOException e1) {
+                            Server.log(e1);
                         }
-                    } catch (IOException e1) {
-                        Server.log(e1);
                     }
+                } finally {
+                    ContextManager.deregisterThread(Thread.currentThread().getId());
+                    ctx = null;
                 }
-            } finally {
-                ContextManager.deregisterThread(Thread.currentThread().getId());
-                ctx = null;
             }
+        } finally {
+            closeSocket();
         }
-        closeSocket();
     }
 
     private Header listenCommand() throws Exception {
@@ -273,12 +288,15 @@ public class ExecuteThread extends Thread {
         ctx = ContextManager.getContext(header.id);
         ctx.checkHeader(header);
 
-        ByteBuffer payloadBuffer =
-                ByteBuffer.wrap(
-                        inputBuffer.array(),
-                        unpacker.getCurrentPosition(),
-                        unpacker.getCurrentLimit() - unpacker.getCurrentPosition());
-        ctx.getInboundQueue().add(payloadBuffer);
+        int startOffset = unpacker.getCurrentPosition();
+        int payloadSize = unpacker.getCurrentLimit() - startOffset;
+        if (payloadSize > 0) {
+            ByteBuffer payloadBuffer =
+                    ByteBuffer.wrap(inputBuffer.array(), startOffset, payloadSize);
+
+            ctx.getInboundQueue().add(payloadBuffer);
+        }
+
         return header;
     }
 
@@ -304,75 +322,161 @@ public class ExecuteThread extends Thread {
         return unpacker;
     }
 
-    private void processPrepare() throws Exception {
+    private void readSessionParameter(CUBRIDUnpacker unpacker) {
+        int paramCnt = (int) unpacker.unpackBigint();
+        if (paramCnt > 0) {
+            for (int i = 0; i < paramCnt; i++) {
+                SysParam sysParam = new SysParam(unpacker);
+                ctx.getSystemParameters().put(sysParam.getParamId(), sysParam);
+            }
+        }
+    }
+
+    private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        // session parameters
+        readSessionParameter(unpacker);
+
+        // prepare
         if (prepareArgs == null) {
             prepareArgs = new PrepareArgs(unpacker);
         } else {
             prepareArgs.readArgs(unpacker);
         }
-        ctx.checkTranId(prepareArgs.getTranId());
-    }
 
-    private void processStoredProcedure() throws Exception {
-        unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
 
         ctx.checkTranId(tid);
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
+
         Value result = procedure.invoke();
 
         /* send results */
         sendResult(result, procedure);
     }
 
+    private void writeJar(CompiledCodeSet codeSet, OutputStream jarStream) throws IOException {
+        JarArchiveOutputStream jaos = null;
+        try {
+            jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
+
+            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
+                JarArchiveEntry jae =
+                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
+                byte[] arr = entry.getValue().getByteCode();
+                jae.setSize(arr.length);
+                jaos.putArchiveEntry(jae);
+                jaos.write(arr);
+                jaos.flush();
+                // ByteArrayInputStream bis = new
+                // ByteArrayInputStream(entry.getValue().getByteCode());
+                // IOUtils.copy(bis, jaos);
+                // bis.close();
+
+                jaos.closeArchiveEntry();
+            }
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if (jaos != null) {
+                jaos.flush();
+                jaos.finish();
+                jaos.close();
+            }
+        }
+    }
+
+    private void processBootstrap() throws Exception {
+        unpacker.setBuffer(ctx.getInboundQueue().take());
+
+        int result = 1; // failed
+        try {
+            BootstrapRequest request = new BootstrapRequest(unpacker);
+            Server.bootstrap(request);
+            result = 0; // no error
+        } catch (Exception e) {
+            // ignore, 1 will be returned
+            Server.log(e);
+        }
+
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
+        packer.packInt(result);
+        resultBuffer = packer.getBuffer();
+        writeBuffer(resultBuffer);
+    }
+
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
-        boolean verbose = unpacker.unpackBool();
-        String inSource = unpacker.unpackCString();
+
+        // session parameters
+        readSessionParameter(unpacker);
+
+        CompileRequest request = new CompileRequest(unpacker);
+
+        // TODO: Pass CompileRequest directly to compilePLCSQL ()
+        boolean verbose = false;
+        if (request.mode.contains("v")) {
+            verbose = true;
+        }
+        String inSource = request.code;
+        String owner = request.owner;
 
         CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
+            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
             if (info.errCode == 0) {
-                Path javaFilePath =
-                        ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
-                File file = javaFilePath.toFile();
-                if (file.exists()) {
-                    file.delete();
-                }
-                new FileWriter(file).append(info.translated).close();
+                MemoryJavaCompiler compiler = new MemoryJavaCompiler();
+                SourceCode sCode = new SourceCode(info.className, info.translated);
 
-                JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-                if (compiler == null) {
-                    throw new IllegalStateException(
-                            "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+                // dump translated code into $CUBRID_TMP
+                if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
+
+                    Path dirPath = Paths.get(Server.getConfig().getTmpPath() + "/icode");
+                    if (Files.notExists(dirPath)) {
+                        Files.createDirectories(dirPath);
+                    }
+
+                    Path path = dirPath.resolve(info.className + ".java");
+                    Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
                 }
 
-                Path cubrid_env_root = Server.getServer().getRootPath();
-                String javacOpts[] = {
-                    "-classpath", cubrid_env_root + "/java/pl_server.jar", file.getPath()
-                };
+                CompiledCodeSet codeSet = compiler.compile(sCode);
 
-                if (compiler.run(null, null, null, javacOpts) != 0) {
-                    String command =
-                            "javac "
-                                    + javaFilePath
-                                    + " -cp "
-                                    + cubrid_env_root
-                                    + "/java/pl_server.jar";
-                    throw new RuntimeException(command);
+                int mode = 1; // 0: temp file mode, 1: memory stream mode
+                byte[] data = null;
+
+                // write to persistent
+                if (mode == 0) {
+                    Path jarPath =
+                            ClassLoaderManager.getDynamicPath().resolve(info.className + ".jar");
+                    OutputStream jarStream = Files.newOutputStream(jarPath);
+                    writeJar(codeSet, jarStream);
+                    data = Files.readAllBytes(jarPath);
+                    Files.deleteIfExists(jarPath);
+                } else {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    writeJar(codeSet, baos);
+                    data = baos.toByteArray();
                 }
+
+                info.compiledType = 1; // TODO: always jar
+                info.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
+            boolean hasExceptionMessage = (e.getMessage() != null && !e.getMessage().isEmpty());
             info =
                     new CompileInfo(
-                            -1, 0, 0, e.getMessage().isEmpty() ? "unknown error" : e.getMessage());
-            throw new RuntimeException(e);
+                            -1,
+                            0,
+                            0,
+                            hasExceptionMessage ? e.getMessage() : "unknown compile error");
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+
             info.pack(packer);
             Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
@@ -380,57 +484,47 @@ public class ExecuteThread extends Thread {
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String authUser = unpacker.unpackCString();
+        int lang = unpacker.unpackInt();
         int paramCount = unpacker.unpackInt();
 
         Value[] arguments = prepareArgs.getArgs();
-        Value[] methodArgs = new Value[paramCount];
         for (int i = 0; i < paramCount; i++) {
-            int pos = unpacker.unpackInt();
             int mode = unpacker.unpackInt();
             int type = unpacker.unpackInt();
+            Value val = arguments[i];
 
-            Value val = arguments[pos];
             val.setMode(mode);
             val.setDbType(type);
-
-            methodArgs[i] = val;
         }
         int returnType = unpacker.unpackInt();
 
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
+        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
         return storedProcedure;
     }
 
     private void returnOutArgs(StoredProcedure sp, CUBRIDPacker packer)
             throws IOException, ExecuteException, TypeMismatchException {
         Value[] args = sp.getArgs();
-        for (int i = 0; i < args.length; i++) {
+        for (int i = 0; args != null && i < args.length; i++) {
             if (args[i].getMode() > Value.IN) {
-                Value v = sp.makeOutValue(args[i].getResolved());
-                packer.packValue(
-                        ValueUtilities.resolveValue(args[i].getDbType(), v),
-                        args[i].getDbType(),
-                        this.charSet);
+                Value v = sp.makeOutValue(i);
+                packer.packValue(v, args[i].getDbType());
             }
         }
     }
 
     private void sendResult(Value result, StoredProcedure procedure)
             throws IOException, ExecuteException, TypeMismatchException {
-        Object resolvedResult = null;
-        if (result != null) {
-            resolvedResult = ValueUtilities.resolveValue(procedure.getReturnType(), result);
-        }
-
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
 
         packer.packInt(RequestCode.RESULT);
         packer.align(DataUtilities.MAX_ALIGNMENT);
-        packer.packValue(resolvedResult, procedure.getReturnType(), this.charSet);
+        packer.packValue(result, procedure.getReturnType());
         returnOutArgs(procedure, packer);
 
         resultBuffer = packer.getBuffer();
@@ -471,5 +565,21 @@ public class ExecuteThread extends Thread {
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
+    }
+
+    private void sendAuthCommand(int command, String authName) throws Exception {
+        AuthInfo info = new AuthInfo(command, authName);
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(128));
+        packer.packInt(RequestCode.REQUEST_CHANGE_AUTH_RIGHTS);
+        info.pack(packer);
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+        /* read header, dummy */
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+        int responseCode = unpacker.unpackInt();
     }
 }

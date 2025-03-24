@@ -3,7 +3,7 @@ EXPORTS
 ;
 ; functions
 ;
-    au_change_owner
+    au_change_class_owner_including_partitions
     au_grant
     cfg_free_directory
     cfg_find_db
@@ -43,6 +43,8 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
+    db_set_keep_session
+    db_get_keep_session
     db_find_or_create_session
     db_end_session
     db_set_server_session_key
@@ -132,20 +134,18 @@ EXPORTS
     er_init
     er_final
     er_clear
-    jsp_connect_server
-    jsp_disconnect_server
-    jsp_writen
-    jsp_readn
-    jsp_start_server
-    jsp_server_port
-    javasp_get_info_file
-    javasp_get_error_file
-    javasp_open_info_dir
-    javasp_open_info
-    javasp_read_info
-    javasp_reset_info
-    javasp_write_info
-    javasp_unlink_info
+    pl_connect_server
+    pl_disconnect_server
+    pl_writen
+    pl_readn
+    pl_get_info_file
+    pl_get_error_file
+    pl_open_info_dir
+    pl_open_info
+    pl_read_info
+    pl_reset_info
+    pl_write_info
+    pl_unlink_info
 ;
 ; utility functions
 ;
@@ -829,4 +829,7 @@ EXPORTS
     windows_socket_shutdown
     gethostbyname_uhost
     getnameinfo_uhost
+    pl_get_socket_file_path
+    envvar_vmdir_file
+    envvar_logdir_file
 	

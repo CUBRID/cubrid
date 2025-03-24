@@ -670,14 +670,14 @@ log_get_final_restored_lsa (void)
 static bool
 log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation)
 {
-  INT64 vol_dbcreation;		/* Database creation time in volume */
+  INT64 db_creation;		/* Database creation time in volume */
 
-  if (disk_get_creation_time (thread_p, volid, &vol_dbcreation) != NO_ERROR)
+  if (disk_get_db_creation (thread_p, volid, &db_creation) != NO_ERROR)
     {
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
+  if (difftime ((time_t) db_creation, (time_t) (*log_dbcreation)) == 0)
     {
       return true;
     }
@@ -6228,24 +6228,27 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 static void
 log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
-  time_t tmp_time;
-  char time_val[CTIME_MAX];
+  char db_creation_time_val[CTIME_MAX];
+  char vol_creation_time_val[CTIME_MAX];
+
+  (void) ctime_r ((time_t *) & log_header_p->db_creation, db_creation_time_val);
+  (void) ctime_r ((time_t *) & log_header_p->vol_creation, vol_creation_time_val);
 
   fprintf (out_fp, "\n ** DUMP LOG HEADER **\n");
 
-  tmp_time = (time_t) log_header_p->db_creation;
-  (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
-	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
+	   "HDR: Magic Symbol = %s at disk location = %lld\n"
+	   "     Db_creation_time = %s"
+	   "     Vol_creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
 	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
 	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n", log_header_p->magic,
-	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
-	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
-	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
+	   (long long) offsetof (LOG_PAGE, area), db_creation_time_val, vol_creation_time_val, log_header_p->db_release,
+	   log_header_p->db_compatibility, log_header_p->db_iopagesize, log_header_p->db_logpagesize,
+	   log_header_p->is_shutdown, log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id,
+	   log_header_p->avg_ntrans, log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
 	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
@@ -8842,7 +8845,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   LOG_LSA init_nontemp_lsa;
   int ret = NO_ERROR;
 
-  ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
+  ret = disk_get_db_creation (thread_p, LOG_DBFIRST_VOLID, &db_creation);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -9303,7 +9306,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   int val;
   const char *str;
   char buf[256];
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
 
@@ -9327,8 +9330,8 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
@@ -9646,7 +9649,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   int error = NO_ERROR;
   int idx = 0;
   int val;
-  DB_DATETIME time_val;
+  DB_DATETIME vol_creation;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_ARV_HEADER *header = &ctx->header;
@@ -9671,8 +9674,8 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   db_make_int (out_values[idx], val);
   idx++;
 
-  db_localdatetime ((time_t *) (&header->db_creation), &time_val);
-  error = db_make_datetime (out_values[idx], &time_val);
+  db_localdatetime ((time_t *) (&header->vol_creation), &vol_creation);
+  error = db_make_datetime (out_values[idx], &vol_creation);
   idx++;
   if (error != NO_ERROR)
     {
@@ -13608,6 +13611,8 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   char line[1025] = "\0";
   int line_length = 0;
   int func_type = 0;
+  int error_status = NO_ERROR;
+  int flag = 0;
 
   /*DATE, TIME */
   DB_VALUE format;
@@ -13623,7 +13628,9 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
   const char *timestamp_frmt = "YYYY-MM-DD HH24:MI:SS";
   const char *timestamptz_frmt = "YYYY-MM-DD HH24:MI:SS TZH:TZM";
   const char *timestampltz_frmt = "YYYY-MM-DD HH24:MI:SS TZR";
-  db_make_int (&lang_str, 1);
+
+  lang_set_flag_from_lang (NULL, false, false, &flag);
+  db_make_int (&lang_str, flag);
   db_make_null (&result);
 
   char *ptr = *data_ptr;
@@ -13775,7 +13782,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
 		    strlen (time_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
@@ -13790,7 +13802,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_TIMESTAMP:
       db_make_char (&format, strlen (timestamp_frmt), timestamp_frmt,
 		    strlen (timestamp_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
@@ -13805,7 +13822,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DATETIME:
       db_make_char (&format, strlen (datetime_frmt), datetime_frmt,
 		    strlen (datetime_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
@@ -13820,7 +13842,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_TIMESTAMPTZ:
       db_make_char (&format, strlen (timestamptz_frmt), timestamptz_frmt,
 		    strlen (timestamptz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
@@ -13835,7 +13862,13 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
     case DB_TYPE_DATETIMETZ:
       db_make_char (&format, strlen (datetimetz_frmt), datetimetz_frmt,
 		    strlen (datetimetz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
 
@@ -13851,7 +13884,11 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (timestampltz_frmt), timestampltz_frmt,
 		    strlen (timestampltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
@@ -13867,7 +13904,12 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       db_make_char (&format, strlen (datetimeltz_frmt), datetimeltz_frmt,
 		    strlen (datetimeltz_frmt), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
 
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);
 
@@ -13879,10 +13921,14 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 
       break;
     case DB_TYPE_DATE:
-
       db_make_char (&format, strlen (date_format), date_format,
 		    strlen (date_format), format_codeset, LANG_GET_BINARY_COLLATION (format_codeset));
-      db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+
+      error_status = db_to_char (new_value, &format, &lang_str, &result, &tp_Char_domain);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
 
       line_length = db_get_string_length (&result);
       strncpy (line, db_get_string (&result), line_length);

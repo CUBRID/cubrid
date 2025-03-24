@@ -2549,6 +2549,22 @@ strtof_win (const char *nptr, char **endptr)
   f_val = (float) d_val;
   return f_val;
 }
+
+char *
+strndup_win (const char *src, size_t size)
+{
+  char *dest = (char *) malloc (size + 1);
+  if (dest == NULL)
+    {
+      return NULL;
+    }
+
+  memcpy (dest, src, size);
+  dest[size] = '\0';
+
+  return dest;
+}
+
 #endif
 
 #ifndef HAVE_STRLCPY

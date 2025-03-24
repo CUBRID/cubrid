@@ -1445,8 +1445,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1359 Java VM crashed: %1$s
 1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-
-1361 Son Hata
+1361 Dropping system generated stored procedure is not allowed.
+1362 PL/CSQL Stored procedure/function does not support Invoker's rights
+1363 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1937,7 +1938,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 320 Unsupported return type '%1$s' of the stored procedure
 321 %TYPE type specification is allowed only for PL/CSQL
 322 Table column '%1$s.%2$s' has not been defined
-323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+323 Stored procedure/function "%1$s" does not exist.
+324 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+325 Only trailing default parameter is allowed: invalid at '%1$s'.
+326 Stored procedure/function '%1$s' has OUT or IN OUT arguments
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

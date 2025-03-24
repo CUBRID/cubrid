@@ -79,6 +79,7 @@ struct valcnv_buffer
 };
 
 SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 

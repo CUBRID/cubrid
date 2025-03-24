@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.impl.SUConnection;
 import cubrid.sql.CUBRIDOID;
@@ -41,13 +42,14 @@ import java.sql.Time;
 import java.sql.Timestamp;
 
 public class NullValue extends Value {
-    public NullValue() {
-        super();
+
+    protected String getTypeName() {
+        return TYPE_NAME_NULL;
     }
 
-    public NullValue(int mode, int dbType) {
-        super(mode);
-        this.dbType = dbType;
+    public NullValue() {
+        super();
+        this.dbType = DBType.DB_NULL;
     }
 
     @Override
