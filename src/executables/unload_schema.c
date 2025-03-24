@@ -737,7 +737,7 @@ export_serial (print_output & output_ctx)
 
       if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	{
-	  output_ctx ("SELECT %s%s%s%s.NEXT_VALUE;\n", owner_name,
+	  output_ctx ("SELECT %s%s%s.%s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (owner_name),
 		      PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	}
 
