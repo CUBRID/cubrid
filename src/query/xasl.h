@@ -1039,6 +1039,8 @@ struct xasl_stat
   UINT64 fetches;
   UINT64 ioreads;
   UINT64 fetch_time;
+  UINT64 calls;
+  UINT64 call_time;
 };
 
 /* top-n sorting object */

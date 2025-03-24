@@ -655,6 +655,10 @@ typedef enum
   PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
   PSTAT_LOAD_THREAD_STATS,
 
+  /* Execution statistics for regu var evaluation */
+  PSTAT_REGU_NUM_CALL_EVALS,
+  PSTAT_REGU_CALL_EVAL_TIME_10USEC,
+
   PSTAT_COUNT
 } PERF_STAT_ID;
 

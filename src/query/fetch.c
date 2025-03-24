@@ -4089,9 +4089,17 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case TYPE_SP:		/* fetch stored procedure value */
       {
+	TSC_TICKS start_tick, end_tick;
+	TSCTIMEVAL tv_diff;
+
 	/* clear any value from a previous iteration */
 	pr_clear_value (regu_var->value.sp_ptr->value);
 	fetch_force_not_const_recursive (*regu_var);
+
+	if (thread_is_on_trace (thread_p))
+	  {
+	    tsc_getticks (&start_tick);
+	  }
 
 	cubpl::executor executor (*regu_var->value.sp_ptr->sig);
 	if (er_errid () != NO_ERROR)
@@ -4113,6 +4121,17 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
 		    executor.get_stack ()->get_error_message ().c_str ());
 	    goto exit_on_error;
+	  }
+
+	if (thread_is_on_trace (thread_p))
+	  {
+	    tsc_getticks (&end_tick);
+	    tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+
+	    perfmon_inc_stat (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
+	    UINT64 call_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_CALL_EVAL_TIME_10USEC].start_offset,
+					    call_time);
 	  }
 
 	*peek_dbval = regu_var->value.sp_ptr->value;

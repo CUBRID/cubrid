@@ -3055,6 +3055,11 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      if (xasl_p->xasl_stats.calls > 0)
+	{
+	  json_object_set_new (proc, "call", json_integer (xasl_p->xasl_stats.calls));
+	  json_object_set_new (proc, "call_time", json_integer (xasl_p->xasl_stats.call_time));
+	}
       break;
 
     case UNION_PROC:
@@ -3064,6 +3069,11 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      if (xasl_p->xasl_stats.calls > 0)
+	{
+	  json_object_set_new (proc, "call", json_integer (xasl_p->xasl_stats.calls));
+	  json_object_set_new (proc, "call_time", json_integer (xasl_p->xasl_stats.call_time));
+	}
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
@@ -3471,18 +3481,30 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+      if (xasl_p->xasl_stats.calls > 0)
+	{
+	  fprintf (fp, " (call: %lld, call_time: %lld)", (long long int) xasl_p->xasl_stats.calls,
+		   (long long int) xasl_p->xasl_stats.call_time);
+	}
+      fprintf (fp, "\n");
       indent += 2;
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+      if (xasl_p->xasl_stats.calls > 0)
+	{
+	  fprintf (fp, " (call: %lld, call_time: %lld)", (long long int) xasl_p->xasl_stats.calls,
+		   (long long int) xasl_p->xasl_stats.call_time);
+	}
+      fprintf (fp, "\n");
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  qdump_print_stats_text (fp, xptr, indent);
