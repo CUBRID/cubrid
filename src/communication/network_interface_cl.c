@@ -6140,7 +6140,7 @@ end:
  */
 int
 btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
-		 int deduplicate_key_pos)
+		 int deduplicate_key_pos, int use_rocksdb)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6155,6 +6155,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   request_size += OR_INT_SIZE;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  request_size += OR_INT_SIZE;	/* use rocksdb */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6169,6 +6170,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
   ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  ptr = or_pack_int (ptr, use_rocksdb);
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -6195,7 +6197,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos, use_rocksdb);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);

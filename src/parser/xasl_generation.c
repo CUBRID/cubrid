@@ -22129,6 +22129,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->class_locks = NULL;
       xasl->tcard_list = NULL;
       XASL_CLEAR_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
+      
+      /* TODO: ROCKSDB */
+      if (sm_is_rocksdb_class (class_obj))
+      {
+        XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+      }
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))

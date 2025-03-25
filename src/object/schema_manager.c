@@ -10826,7 +10826,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     {
       error =
 	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index), sm_get_class_flag (classop, SM_CLASSFLAG_ROCKSDB));
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else

@@ -78,22 +78,29 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  LOG_TDES *tdes;
+  int trid;
+  tdes = LOG_FIND_TDES (tran_index);
+  trid = tdes->trid;
 
   struct timespec ts_start, ts_end;
 
-  clock_gettime (CLOCK_MONOTONIC, &ts_start);
+  //clock_gettime (CLOCK_MONOTONIC, &ts_start);
 
   cubrocks::ctx->kv_tran_commit (tran_index);
   
+  /*
   clock_gettime (CLOCK_MONOTONIC, &ts_end);
   thread_p->statistics.rocks_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
 
   clock_gettime (CLOCK_MONOTONIC, &ts_start);
+  */
 
   state = log_commit (thread_p, tran_index, retain_lock);
 
+  /*
   clock_gettime (CLOCK_MONOTONIC, &ts_end);
   thread_p->statistics.cub_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
 
@@ -115,7 +122,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
         "%llu.%06llu\n" \
         "%llu.%06llu\n\n",
 
-        tran_index,
+        trid,
 
         thread_p->statistics.cub_insert / 1000000,
         thread_p->statistics.cub_insert % 1000000,
@@ -148,6 +155,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
       thread_p->statistics.rocks_select = 0;
       thread_p->statistics.rocks_commit = 0;
   }
+  */
 
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)

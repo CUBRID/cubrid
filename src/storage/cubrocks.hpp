@@ -81,7 +81,6 @@ namespace cubrocks
       /* use default value for trid when there is no information about trid */
       void kv_tran_start (int tran_index, int trid = 0);
 
-      void kv_tran_prepare (int tran_index);
       void kv_tran_commit (int tran_index);
       void kv_tran_abort (int tran_index);
 
@@ -124,6 +123,9 @@ namespace cubrocks
       bool alive;
 
       UINT64 virtual_counter;
+
+      void kv_store_void ();
+      void kv_restore_void ();
 
       bool transactions_initialize ();
       void transactions_finalize ();

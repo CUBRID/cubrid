@@ -17695,7 +17695,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -19004,37 +19004,20 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
  */
 SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-	   HEAP_SCANCACHE * scan_cache, int ispeeking)
+	   HEAP_SCANCACHE * scan_cache, int ispeeking, bool use_rocksdb)
 {
-  struct timespec ts_start, ts_end;
-  SCAN_CODE code;
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
   /* if class is user defined or oid is in the user defined class */
-  if (class_oid != NULL && (is_user_class_oid (class_oid) || is_user_oid (next_oid)))
+  if (use_rocksdb)
     {
-      clock_gettime (CLOCK_MONOTONIC, &ts_start);
+      /* in this scope, rocksdb must works. */
+      assert (cubrocks::ctx->is_alive ());
+      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
-      code = cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
- 
-      clock_gettime (CLOCK_MONOTONIC, &ts_end);
-      thread_p->statistics.rocks_select += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-      return code;
+      return cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
     }
 
   /* general */
-  clock_gettime (CLOCK_MONOTONIC, &ts_start);
-
-  code = heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
-
-  clock_gettime (CLOCK_MONOTONIC, &ts_end);
-  thread_p->statistics.cub_select += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-  return code;
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
 
 /*
@@ -23270,39 +23253,19 @@ error:
 }
 
 int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p, bool use_rocksdb)
 {
-  struct timespec ts_start, ts_end;
-  int code;
-
-  assert (context != NULL);
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
-  /* if class is user defined */
-  if (is_user_class_oid (&context->class_oid))
+  if (use_rocksdb)
   {
-    clock_gettime (CLOCK_MONOTONIC, &ts_start);
+    /* in this scope, rocksdb must works. */
+    assert (cubrocks::ctx->is_alive ());
+    assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
-    code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
-    
-    clock_gettime (CLOCK_MONOTONIC, &ts_end);
-    thread_p->statistics.rocks_insert += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-    return code;
+    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
   }
 
   /* general */
-  clock_gettime (CLOCK_MONOTONIC, &ts_start);
-
-  code = heap_insert_logical_internal (thread_p, context, home_hint_p);
-
-  clock_gettime (CLOCK_MONOTONIC, &ts_end);
-  thread_p->statistics.cub_insert += (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-  return code;
+  return heap_insert_logical_internal (thread_p, context, home_hint_p);
 }
 
 /*

@@ -94,7 +94,7 @@ struct iss_range_details
 };
 
 typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
-typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb);
 
 typedef enum
 {
@@ -173,8 +173,8 @@ static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_O
 			       val_list_node * val_list, VAL_DESCR * vd);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
-static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
+static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -189,8 +189,8 @@ static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * s
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
-static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb, QP_SCAN_FUNC next_scan);
+static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
 static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
 static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
@@ -5087,7 +5087,7 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   SCAN_CODE status;
   bool on_trace;
@@ -5109,7 +5109,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_SAMPLING_SCAN:
-      status = scan_next_heap_scan (thread_p, scan_id);
+      status = scan_next_heap_scan (thread_p, scan_id, use_rocksdb);
       break;
 
     case S_HEAP_PAGE_SCAN:
@@ -5199,7 +5199,7 @@ typedef enum
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
@@ -5273,7 +5273,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  sp_scan =
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+			       is_peeking, use_rocksdb);
 		}
 	      else if (scan_id->type == S_HEAP_SAMPLING_SCAN)
 		{
@@ -5283,7 +5283,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	      else
 		{
-		  assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
+		 assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
 		  sp_scan =
 		    heap_next_record_info (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
 					   &hsidp->scan_cache, is_peeking, hsidp->cache_recordinfo);
@@ -6993,7 +6993,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * qualified scan item, the NULL row, is returned.
  */
 static SCAN_CODE
-scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan)
+scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb, QP_SCAN_FUNC next_scan)
 {
   SCAN_CODE result = S_ERROR;
 
@@ -7006,7 +7006,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
   switch (s_id->single_fetch)
     {
     case QPROC_NO_SINGLE_INNER:
-      result = (*next_scan) (thread_p, s_id);
+      result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
       if (result == S_ERROR)
 	{
@@ -7032,7 +7032,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7064,7 +7064,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7087,7 +7087,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7140,9 +7140,9 @@ exit_on_error:
  *   scan_id(in/out): Scan identifier
  */
 SCAN_CODE
-scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
+scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb)
 {
-  return scan_handle_single_scan (thread_p, s_id, scan_next_scan_local);
+  return scan_handle_single_scan (thread_p, s_id, use_rocksdb, scan_next_scan_local);
 }
 
 /*
@@ -7154,7 +7154,7 @@ scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
  * If an error occurs, S_ERROR is returned. This routine currently supports only LIST FILE scans.
  */
 static SCAN_CODE
-scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
@@ -7273,7 +7273,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 SCAN_CODE
 scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 {
-  return scan_handle_single_scan (thread_p, s_id, scan_prev_scan_local);
+  return scan_handle_single_scan (thread_p, s_id, false, scan_prev_scan_local);
 }
 
 /*

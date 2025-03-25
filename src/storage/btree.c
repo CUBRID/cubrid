@@ -5760,7 +5760,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
  */
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys, int deduplicate_key_pos)
+		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys, int deduplicate_key_pos, int use_rocksdb)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
@@ -5775,6 +5775,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
     }
 
   log_sysop_start (thread_p);
+
+  if (use_rocksdb)
+  {
+    printf ("ROCKSDB INDEX\n");
+  }
 
   /* create a file descriptor, allocate and initialize the root page */
   if (btree_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)

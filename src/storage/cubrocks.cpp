@@ -114,7 +114,6 @@ cubrocks::context::kv_config (void)
   opt.db.max_subcompactions = 4;
   opt.db.compaction_readahead_size = 16 * 1024 * 1024;
 
-
   /* this should be set for pair experiment */
   opt.cf.compression = rocksdb::kNoCompression;
 
@@ -128,6 +127,7 @@ cubrocks::context::kv_config (void)
   opt.cf.target_file_size_base = 32 * 1024 * 1024;
 
   opt.cf.optimize_filters_for_hits = true;
+  opt.cf.memtable_whole_key_filtering = true;
   opt.cf.memtable_prefix_bloom_size_ratio = 0.05;
 
 
@@ -220,22 +220,6 @@ cubrocks::context::kv_tran_start (int tran_index, int trid)
 }
 
 void
-cubrocks::context::kv_tran_prepare (int tran_index)
-{
-  rocksdb::Status status;
-
-  assert (alive);
-  assert (tran_index < MAX_NTRANS);
-
-  status = transactions[tran_index].txn->Prepare ();
-  if (!status.ok ())
-  {
-    std::cout << status.ToString () << std::endl;
-  }
-  assert (status.ok ());
-}
-
-void
 cubrocks::context::kv_tran_commit (int tran_index)
 {
   bool status;
@@ -248,8 +232,6 @@ cubrocks::context::kv_tran_commit (int tran_index)
       assert (tran_index == LOG_SYSTEM_TRAN_INDEX);
       return ;
     }
-
-  /* kv_tran_prepare (tran_index); */
 
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
@@ -472,6 +454,9 @@ cubrocks::context::kv_open (std::string path)
 
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
   assert (alive);
+  
+  /* restore the virtual oid */
+  kv_restore_void ();
 }
 
 void
@@ -481,6 +466,10 @@ cubrocks::context::kv_close ()
    * also, check if DestroyColumnFamilyHandle should be called. */
   assert (alive);
 
+  /* remember the virtual oid */
+  kv_store_void ();
+
+  /* finalize */
   transactions_finalize ();
 
   rocksdb::WaitForCompactOptions opt_compact;
@@ -536,6 +525,39 @@ cubrocks::context::kv_destroy (std::string path)
   alive = false;
 }
 
+void
+cubrocks::context::kv_store_void ()
+{
+  char void_key[16] = { 0, };
+  rocksdb::Slice key (void_key, 16);
+  rocksdb::Slice value ((char *) &virtual_counter, 8);
+  rocksdb::Status status;
+
+  status = db->Put (rocksdb::WriteOptions (), key, value);
+  assert (status.ok ());
+}
+
+void
+cubrocks::context::kv_restore_void ()
+{
+  char void_key[16] = { 0, };
+  rocksdb::Slice key (void_key, 16);
+  std::string value;
+  rocksdb::Status status;
+
+  status = db->Get (rocksdb::ReadOptions (), key, &value);
+  if (status.ok ())
+  {
+    assert (value.length () == 8);
+    
+    virtual_counter = *((UINT64 *) value.data ());
+  }
+  else
+  {
+    assert (status.IsNotFound ());
+  }
+}
+
 bool
 cubrocks::context::transactions_initialize (void)
 {
@@ -581,3 +603,4 @@ cubrocks::context::transactions_finalize (void)
 
   delete[] transactions;
 }
+
