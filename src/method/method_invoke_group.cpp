@@ -53,7 +53,12 @@ namespace cubmethod
     assert (sig_list.num_methods > 0);
 
     // init runtime context
-    session_get_method_runtime_context (thread_p, m_rctx);
+    if (session_get_method_runtime_context (thread_p, m_rctx) != NO_ERROR)
+      {
+	// session expired or internal error
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->tran_index);
+	return;
+      }
 
     method_sig_node *sig = sig_list.method_sig;
     while (sig)

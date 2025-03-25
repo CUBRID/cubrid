@@ -34,7 +34,26 @@ namespace cubmethod
   runtime_context *get_rctx (cubthread::entry *thread_p)
   {
     method_runtime_context *rctx = nullptr;
-    session_get_method_runtime_context (thread_p, rctx);
+
+    if (thread_p == nullptr)
+      {
+	thread_p = thread_get_thread_entry_info ();
+      }
+#if defined (SERVER_MODE)
+    // only worker thread can access session
+    if (thread_p && thread_p->type != TT_WORKER)
+      {
+	return nullptr;
+      }
+#endif
+
+    int error = session_get_method_runtime_context (thread_p, rctx);
+    if (error != NO_ERROR)
+      {
+	// session expired or internal error
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->tran_index);
+      }
+
     return rctx;
   }
 
@@ -134,8 +153,8 @@ namespace cubmethod
 	m_interrupt_msg.clear ();
 
 	// notify m_group_stack becomes empty ();
-	ulock.unlock ();
-	m_cond_var.notify_all ();
+	// ulock.unlock ();
+	// m_cond_var.notify_all ();
       }
   }
 
@@ -158,6 +177,12 @@ namespace cubmethod
       }
 
     return it->second;
+  }
+
+  void
+  runtime_context::notify_waiting_stacks ()
+  {
+    m_cond_var.notify_all ();
   }
 
   void

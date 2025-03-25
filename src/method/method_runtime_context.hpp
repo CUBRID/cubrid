@@ -91,6 +91,8 @@ namespace cubmethod
 
       bool is_running ();
 
+      void notify_waiting_stacks ();
+
       connection_pool &get_connection_pool ();
 
     private:

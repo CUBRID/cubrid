@@ -606,8 +606,19 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
 				   DB_VALUE &result)
 {
   int error_code = NO_ERROR;
-  cubmethod::method_invoke_group *method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, sig_list,
-      false);
+  cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+  cubmethod::method_invoke_group *method_group = nullptr;
+  if (rctx != NULL)
+    {
+      method_group = rctx->create_invoke_group (thread_p, sig_list,
+		     false);
+    }
+  else
+    {
+      error_code = er_errid ();
+      assert (error_code != NO_ERROR);
+      return error_code;
+    }
   method_group->begin ();
 
   std::vector<bool> dummy_use_vec (args.size(), true);

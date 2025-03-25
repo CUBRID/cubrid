@@ -339,7 +339,7 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -3175,22 +3175,38 @@ int
 session_get_method_runtime_context (THREAD_ENTRY * thread_p,
 				    REFPTR (method_runtime_context, method_runtime_context_ref_ptr))
 {
+  int error = NO_ERROR;
   SESSION_STATE *state_p = NULL;
 
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
-      return ER_FAILED;
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
-
-  if (state_p->method_rctx_p == NULL)
+  else
     {
-      state_p->method_rctx_p = new method_runtime_context ();
+      if (state_p->method_rctx_p == NULL)
+	{
+	  state_p->method_rctx_p = new method_runtime_context ();
+	}
+      else if (state_p->method_rctx_p->is_interrupted ())
+	{
+	  method_runtime_context_ref_ptr = nullptr;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error = ER_INTERRUPTED;
+	}
+
+      if (state_p->method_rctx_p != NULL)
+	{
+	  method_runtime_context_ref_ptr = state_p->method_rctx_p;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (method_runtime_context));
+	}
     }
 
-  method_runtime_context_ref_ptr = state_p->method_rctx_p;
-
-  return NO_ERROR;
+  return error;
 }
 
 /* 
@@ -3199,7 +3215,7 @@ session_get_method_runtime_context (THREAD_ENTRY * thread_p,
  *
  */
 void
-session_stop_attached_threads (void *session_arg)
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3226,3 +3242,14 @@ session_stop_attached_threads (void *session_arg)
     }
 #endif
 }
+
+#if defined (SERVER_MODE)
+void
+session_notify_method_task_completion (const SESSION_STATE * session)
+{
+  if (session && session->method_rctx_p)
+    {
+      session->method_rctx_p->notify_waiting_stacks ();
+    }
+}
+#endif

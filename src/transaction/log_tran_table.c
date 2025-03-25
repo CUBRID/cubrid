@@ -2760,10 +2760,14 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 
-	      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-	      if (rctx)
+	      // Only TT_WORKER threads use runtime_context
+	      if (thread_p && thread_p->type == TT_WORKER)
 		{
-		  rctx->set_interrupt (ER_INTERRUPTED);
+		  cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
+		  if (rctx)
+		    {
+		      rctx->set_interrupt (ER_INTERRUPTED);
+		    }
 		}
 	    }
 
