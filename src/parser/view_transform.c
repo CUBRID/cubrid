@@ -414,6 +414,7 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5063,6 +5064,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 {
   PT_NODE *node_pointer, *cte;
   PT_HINT_ENUM hint;
+  bool can_rewrite = true;
 
   switch (node->node_type)
     {
@@ -5070,9 +5072,11 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       cte = node->info.with_clause.cte_definition_list;
       while (cte)
 	{
+	  can_rewrite = true;
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
-	  cte->info.cte.referenced_count = hint & PT_HINT_MATERIALIZE_CTE ? 2 : 0;
+	  parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte, &can_rewrite, NULL, NULL);
+	  cte->info.cte.referenced_count = can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? 2 : 0) : 2;
 	  cte = cte->next;
 	}
       *continue_walk = PT_LIST_WALK;
@@ -5090,6 +5094,27 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      node_pointer->info.cte.referenced_count++;
 	    }
+	}
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+static PT_NODE *
+mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *can_rewrite = (bool *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
+	{
+	  *can_rewrite = false;
+	  *continue_walk = PT_STOP_WALK;
 	}
       break;
     default:
