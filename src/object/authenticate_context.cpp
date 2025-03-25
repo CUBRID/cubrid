@@ -43,7 +43,7 @@ void
 authenticate_context::reset (void)
 {
   root = nullptr;
-  authorizations_class = nullptr;
+  root_class = nullptr;
   authorization_class = nullptr;
   user_class = nullptr;
   password_class = nullptr;
@@ -121,7 +121,7 @@ authenticate_context::start (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return (error);
     }
-  authorizations_class = class_mop;
+  root_class = class_mop;
 
   class_mop = sm_find_class (AU_AUTH_CLASS_NAME);
   if (class_mop == NULL)
@@ -150,7 +150,7 @@ authenticate_context::start (void)
     }
   password_class = class_mop;
 
-  mops = db_get_all_objects (authorizations_class);
+  mops = db_get_all_objects (root_class);
   if (mops == NULL)
     {
       error = ER_AU_NO_AUTHORIZATION;
