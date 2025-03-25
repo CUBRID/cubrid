@@ -140,6 +140,12 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
+static T_CONF_TABLE tbl_allow_deny[] = {
+  {"ALLOW", ALLOW},
+  {"DENY", DENY},
+  {NULL, 0}
+};
+
 static T_CONF_TABLE tbl_sql_log_mode[] = {
   {"ALL", SQL_LOG_MODE_ALL},
   {"ON", SQL_LOG_MODE_ALL},
@@ -1835,6 +1841,17 @@ int
 conf_get_value_table_on_off (const char *value)
 {
   return (get_conf_value (value, tbl_on_off));
+}
+
+/*
+* conf_get_value_table_allow_deny - get value from allow/deny table
+*   return: 0, 1 or -1 if fail
+*   value(in):
+*/
+int
+conf_get_value_table_allow_deny (const char *value)
+{
+  return (get_conf_value (value, tbl_allow_deny));
 }
 
 /*

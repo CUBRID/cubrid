@@ -318,6 +318,7 @@ extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int nu
 				char *admin_log_file);
 
 extern int conf_get_value_table_on_off (const char *value);
+extern int conf_get_value_table_allow_deny (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);
 extern int conf_get_value_keep_con (const char *value);
 extern int conf_get_value_access_mode (const char *value);

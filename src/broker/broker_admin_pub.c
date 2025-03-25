@@ -2724,7 +2724,7 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 
   fprintf (stdout, "ACCESS_CONTROL=%s\n", (shm_br->access_control) ? "ON" : "OFF");
   fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n", shm_br->access_control_file);
-  fprintf (stdout, "ACCESS_CONTROL_DEFAULT=%s\n\n", (shm_br->acl_broker_allow) ? "ON" : "OFF");
+  fprintf (stdout, "ACCESS_CONTROL_DEFAULT=%s\n\n", (shm_br->acl_broker_allow) ? "ALLOW" : "DENY");
 
   if (shm_br->access_control == false || shm_br->access_control_file[0] == '\0')
     {
