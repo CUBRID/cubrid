@@ -140,11 +140,11 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
-static T_CONF_TABLE tbl_allow_deny[] = {
-  {"ALLOW", ALLOW},
-  {"DENY", DENY},
-  {NULL, 0}
-};
+// static T_CONF_TABLE tbl_allow_deny[] = {
+//   {"ALLOW", ALLOW},
+//   {"DENY", DENY},
+//   {NULL, 0}
+// };
 
 static T_CONF_TABLE tbl_sql_log_mode[] = {
   {"ALL", SQL_LOG_MODE_ALL},
@@ -217,7 +217,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
-  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
+  "ACCESS_CONTROL_DEFAULT",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -441,11 +441,14 @@ get_conf_string (int value, T_CONF_TABLE * conf_table)
  *   br_shm_id(out):
  *   admin_log_file(out):
  *   admin_flag(in):
+ *   acl_flag(in):
+ *   acl_file(in):
+ *   acl_broker_allow(in):
  *   admin_err_msg(in):
  */
 static int
 broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
-			     char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file,
+			     char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, bool * acl_broker_allow,
 			     char *admin_err_msg)
 {
 #if defined (_UC_ADMIN_SO_)
@@ -589,6 +592,18 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
     }
+
+  if (acl_broker_allow != NULL)
+    {
+      INI_GETSTR_CHK (s, ini, SECTION_NAME, "ACCESS_CONTROL_DEFAULT", "OFF", &lineno);
+      tmp_int = conf_get_value_table_on_off (s);
+      if (tmp_int < 0)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+      *acl_broker_allow = tmp_int;
+    }  
 
   for (i = 0; i < ini->nsec; i++)
     {
@@ -867,14 +882,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
-      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
-      if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1475,11 +1482,14 @@ clear_conf_cache_entry (int cid)
  *   br_shm_id(out):
  *   admin_log_file(out):
  *   admin_flag(in):
+ *   acl_flag(out):
+ *   acl_file(out):
+ *   acl_broker_allow(out):
  *   admin_err_msg(in):
  */
 int
 broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
-		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
+		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, bool *acl_broker_allow, char *admin_err_msg)
 {
   int err = 0;
   char file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
@@ -1545,7 +1555,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
   memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
   err =
     broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
-				 acl_flag, acl_file, admin_err_msg);
+				 acl_flag, acl_file, acl_broker_allow, admin_err_msg);
   if (err == 0)
     {
       write_conf_cache (file_being_dealt_with, acl_flag, num_broker, br_shm_id, admin_log_file, br_info,
@@ -1651,7 +1661,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
-      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1832,17 +1841,6 @@ int
 conf_get_value_table_on_off (const char *value)
 {
   return (get_conf_value (value, tbl_on_off));
-}
-
-/*
-* conf_get_value_table_allow_deny - get value from allow/deny table
-*   return: 0, 1 or -1 if fail
-*   value(in):
-*/
-int
-conf_get_value_table_allow_deny (const char *value)
-{
-  return (get_conf_value (value, tbl_allow_deny));
 }
 
 /*

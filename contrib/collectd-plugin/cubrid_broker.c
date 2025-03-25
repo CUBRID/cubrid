@@ -69,7 +69,7 @@ cubrid_broker_init (void)
   char err_msg[1024], admin_log_file[BROKER_PATH_MAX];
 
   if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
-			  admin_log_file, 0, NULL, NULL, err_msg) < 0)
+			  admin_log_file, 0, NULL, NULL, NULL, err_msg) < 0)
     {
       ERROR ("cubrid_broker: %s", err_msg);
       return -1;

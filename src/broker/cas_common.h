@@ -46,9 +46,6 @@
 #define ON	1
 #define OFF	0
 
-#define ALLOW	1
-#define DENY	0
-
 #define TRUE	1
 #define FALSE	0
 
