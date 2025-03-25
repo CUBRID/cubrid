@@ -5111,7 +5111,8 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   switch (node->node_type)
     {
     case PT_EXPR:
-      if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
+      if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR || node->info.expr.op == PT_ROWNUM
+	  || node->info.expr.op == PT_INST_NUM || node->info.expr.op == PT_ORDERBY_NUM)
 	{
 	  *can_rewrite = false;
 	  *continue_walk = PT_STOP_WALK;
