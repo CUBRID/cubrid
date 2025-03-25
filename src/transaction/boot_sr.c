@@ -88,6 +88,7 @@
 #include "connection_sr.h"
 #include "server_support.h"
 #include "pl_sr.h"
+#include "px_worker_manager_global.hpp"
 #endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -2499,6 +2500,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
   dwb_daemons_init ();
+  parallel_query::worker_manager_global::get_manager ().init ();
 #endif /* SERVER_MODE */
 
   /*
@@ -2844,6 +2846,7 @@ error:
   BO_DISABLE_FLUSH_DAEMONS ();
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
+  parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
 
   log_final (thread_p);
@@ -3158,6 +3161,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();
+  parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
 
 #if defined (SA_MODE)
