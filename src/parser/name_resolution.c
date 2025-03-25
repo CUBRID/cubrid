@@ -9445,6 +9445,10 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 		      /* exclude update for system class or view */
 		      break;
 		    }
+		}
+
+	      if (entity == NULL)
+		{
 		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
 	    }

@@ -7916,6 +7916,10 @@ pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query)
 		{
 		  break;
 		}
+	    }
+
+	  if (entity == NULL)
+	    {
 	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
