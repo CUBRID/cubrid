@@ -16262,6 +16262,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
       old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
+      old_calls = perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
+      old_call_time = perfmon_get_from_statistic (thread_p, PSTAT_REGU_CALL_EVAL_TIME_10USEC);
     }
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xstate, p_class_instance_lock_info);
