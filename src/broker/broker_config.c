@@ -140,12 +140,6 @@ static T_CONF_TABLE tbl_on_off[] = {
   {NULL, 0}
 };
 
-// static T_CONF_TABLE tbl_allow_deny[] = {
-//   {"ALLOW", ALLOW},
-//   {"DENY", DENY},
-//   {NULL, 0}
-// };
-
 static T_CONF_TABLE tbl_sql_log_mode[] = {
   {"ALL", SQL_LOG_MODE_ALL},
   {"ON", SQL_LOG_MODE_ALL},
