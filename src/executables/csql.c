@@ -601,7 +601,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       if (csql_Is_interactive)
 	{
 #if defined(WINDOWS)
-	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
+	  fputs (prompt, csql_Output_fp);	/* display prompt */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
 	  if ((line_read = readline (prompt)) != NULL)

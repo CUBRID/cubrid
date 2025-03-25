@@ -484,7 +484,7 @@ ux_check_connection (void)
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
 			     dbuser);
-	      ux_database_shutdown ();
+	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
 	}
@@ -536,7 +536,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       if (database_name[0] != '\0')
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 	}
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -632,7 +632,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
@@ -761,12 +761,19 @@ ux_set_default_setting ()
 }
 
 void
-ux_database_shutdown ()
+ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
   if (db_get_connect_status () == 1)	// only if connected to db
     {
-      db_shutdown ();
+      if (request_server)
+	{
+	  db_shutdown ();
+	}
+      else
+	{
+	  db_shutdown_without_request_to_server ();
+	}
     }
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
