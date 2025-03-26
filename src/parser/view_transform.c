@@ -1863,7 +1863,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
   orderby_for = subquery->info.query.orderby_for;
-  is_orderby_for = orderby_for && (order_by
+  is_orderby_for = orderby_for && (order_by || subquery->info.query.order_by
 				   || (orderby_for->node_type == PT_EXPR
 				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
 
