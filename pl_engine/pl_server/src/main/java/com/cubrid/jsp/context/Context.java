@@ -295,7 +295,7 @@ public class Context {
     public static String getSystemParameterString(int id) {
         SysParam param = getSystemParam(id);
         if (param != null) {
-            return param.getParamValue();
+            return param.getParamValueString();
         }
 
         return null;
@@ -304,7 +304,7 @@ public class Context {
     public static Boolean getSystemParameterBool(int id) {
         SysParam param = getSystemParam(id);
         if (param != null) {
-            return Boolean.parseBoolean(param.getParamValue());
+            return param.getParamValueBoolean();
         }
 
         return null;
