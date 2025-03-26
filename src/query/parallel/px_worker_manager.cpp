@@ -54,7 +54,7 @@ namespace parallel_query
 
   void worker_manager::release_workers (int parallelism)
   {
-    while (m_working_workers > 0)
+    while (m_working_workers.load () > 0)
       {
 	thread_sleep (1);
       }
@@ -64,9 +64,9 @@ namespace parallel_query
 
   void worker_manager::push_task (cubthread::entry_task *task)
   {
-    m_working_workers++;
+    m_working_workers.fetch_add (1);
     worker_manager_global::get_manager().push_task (task);
-    assert (m_working_workers <= m_reserved_workers);
+    assert (m_working_workers.load () <= m_reserved_workers);
   }
 
 }

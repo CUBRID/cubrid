@@ -30,14 +30,6 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 
-// Forward declarations
-namespace parallel_query
-{
-  template <typename Context>
-  class abstract_task;
-  using task = abstract_task<cubthread::entry>;
-}
-
 namespace parallel_query
 {
   class worker_manager_global
