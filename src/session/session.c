@@ -339,7 +339,7 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (thread_p, session);
+  session_stop_attached_threads (session);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -3229,7 +3229,7 @@ session_has_method_runtime_context (THREAD_ENTRY * thread_p)
  *
  */
 void
-session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
+session_stop_attached_threads (void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3248,7 +3248,7 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   if (session->method_rctx_p != NULL)
     {
-      session->method_rctx_p->set_interrupt (er_errid ());
+      session->method_rctx_p->set_interrupt (er_errid () == NO_ERROR ? ER_SES_SESSION_EXPIRED : er_errid ());
       session->method_rctx_p->wait_for_interrupt ();
 
       delete session->method_rctx_p;

@@ -10440,9 +10440,9 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 }
 
 void
-ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
+ssession_stop_attached_threads (void *session)
 {
-  session_stop_attached_threads (thread_p, session);
+  session_stop_attached_threads (session);
 }
 
 static bool
