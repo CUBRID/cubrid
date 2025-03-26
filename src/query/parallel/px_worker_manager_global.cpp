@@ -68,6 +68,7 @@ namespace parallel_query
 
   void worker_manager_global::destroy()
   {
+    assert (m_current_parallel_workers.load () == 0);
     if (m_worker_pool != nullptr)
       {
 	cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
@@ -78,17 +79,17 @@ namespace parallel_query
 
   bool worker_manager_global::try_reserve_workers (int parallelism)
   {
-    if (m_current_parallel_workers + parallelism > m_max_parallel_workers)
+    if (m_current_parallel_workers.load () + parallelism > m_max_parallel_workers)
       {
 	return false;
       }
-    m_current_parallel_workers += parallelism;
+    m_current_parallel_workers.fetch_add (parallelism);
     return true;
   }
 
   void worker_manager_global::release_workers (int parallelism)
   {
-    m_current_parallel_workers -= parallelism;
+    m_current_parallel_workers.fetch_sub (parallelism);
   }
 
   void worker_manager_global::push_task (cubthread::entry_task *task)
