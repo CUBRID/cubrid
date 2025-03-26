@@ -4091,6 +4091,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       {
 	TSC_TICKS start_tick, end_tick;
 	TSCTIMEVAL tv_diff;
+	UINT64 old_fetches = 0, old_ioreads = 0;
 
 	/* clear any value from a previous iteration */
 	pr_clear_value (regu_var->value.sp_ptr->value);
@@ -4098,6 +4099,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	if (thread_is_on_trace (thread_p))
 	  {
+	    old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+	    old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 	    tsc_getticks (&start_tick);
 	  }
 
@@ -4129,9 +4132,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
 	    perfmon_inc_stat (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
-	    UINT64 call_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_CALL_EVAL_TIME_10USEC].start_offset,
-					    call_time);
+	    UINT64 time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset, time);
+	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,
+					    perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches);
+	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset,
+					    perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads);
 	  }
 
 	*peek_dbval = regu_var->value.sp_ptr->value;

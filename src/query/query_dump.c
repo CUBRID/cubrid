@@ -3024,6 +3024,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
+  json_t *func;
   xasl_node *xptr;
   json_t *sq_cache;
 
@@ -3055,10 +3056,15 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-      if (xasl_p->xasl_stats.calls > 0)
+      if (xasl_p->func_stats.calls > 0)
 	{
-	  json_object_set_new (proc, "call", json_integer (xasl_p->xasl_stats.calls));
-	  json_object_set_new (proc, "call_time", json_integer (xasl_p->xasl_stats.call_time));
+	  func = json_object ();
+	  json_object_set_new (func, "time", json_integer (xasl_p->func_stats.time));
+	  json_object_set_new (func, "fetch", json_integer (xasl_p->func_stats.fetches));
+	  json_object_set_new (func, "ioread", json_integer (xasl_p->func_stats.ioreads));
+	  json_object_set_new (func, "calls", json_integer (xasl_p->func_stats.calls));
+
+	  json_object_set_new (proc, "func", func);
 	}
       break;
 
@@ -3069,11 +3075,6 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-      if (xasl_p->xasl_stats.calls > 0)
-	{
-	  json_object_set_new (proc, "call", json_integer (xasl_p->xasl_stats.calls));
-	  json_object_set_new (proc, "call_time", json_integer (xasl_p->xasl_stats.call_time));
-	}
       subquery = json_array ();
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
@@ -3481,30 +3482,24 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
-      if (xasl_p->xasl_stats.calls > 0)
-	{
-	  fprintf (fp, " (call: %lld, call_time: %lld)", (long long int) xasl_p->xasl_stats.calls,
-		   (long long int) xasl_p->xasl_stats.call_time);
-	}
-      fprintf (fp, "\n");
       indent += 2;
+      if (xasl_p->func_stats.calls > 0)
+	{
+	  fprintf (fp, "%*cFUNC (time: %lld, fetch: %lld, ioread: %lld, calls: %lld)\n", indent, ' ',
+		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
+		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
+	}
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
-      if (xasl_p->xasl_stats.calls > 0)
-	{
-	  fprintf (fp, " (call: %lld, call_time: %lld)", (long long int) xasl_p->xasl_stats.calls,
-		   (long long int) xasl_p->xasl_stats.call_time);
-	}
-      fprintf (fp, "\n");
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  qdump_print_stats_text (fp, xptr, indent);
