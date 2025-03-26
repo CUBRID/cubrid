@@ -31,8 +31,8 @@
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
 //        We need to consider a better way to identify the hnsw index.
-int hnsw_index_id = 0;
-std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
+static int hnsw_index_id = 0;
+static std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
@@ -46,8 +46,10 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   btid->root_pageid = ++hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
-
+  fprintf (stdout, "hnsw_index_map size : %d\n", hnsw_index_map.size());
+  fprintf (stdout, "[add_index] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
+  fprintf (stdout, "HNSW Index added with ID %d\n", hnsw_index_id);
   hnsw_print_index_info (btid);
 
   return btid;
@@ -62,7 +64,6 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 
   int hnsw_id = btid->root_pageid;
   auto it = hnsw_index_map.find (hnsw_id);
-
 
   if (it == hnsw_index_map.end())
     {
@@ -109,6 +110,39 @@ int hnsw_print_index_info (BTID *btid)
       er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", index->hnsw.efConstruction);
       er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", index->hnsw.efSearch);
     }
+
+  return NO_ERROR;
+}
+
+int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
+{
+
+  fprintf (stdout, "Insert vector size : %d\n", vector.size());
+  for (int i = 0; i < vector.size(); i++)
+    {
+      fprintf (stdout, "vector[%d] : %f\n", i, vector[i]);
+    }
+  fprintf (stdout, "hnsw_map size : %d\n", hnsw_index_map.size());
+  fprintf (stdout, "[add_element] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
+
+  if (!btid)
+    {
+      fprintf (stdout, "BTID is NULL\n");
+      return ER_FAILED;
+    }
+
+  int hnsw_id = btid->root_pageid;
+  auto it = hnsw_index_map.find (hnsw_id);
+
+  if (it == hnsw_index_map.end())
+    {
+      fprintf (stdout, "HNSW Index not found with ID %d\n", hnsw_id);
+      return ER_FAILED;
+    }
+
+  std::unique_ptr<faiss::IndexHNSW> &index = it->second;
+
+  index->add (vector.size(), vector.data());
 
   return NO_ERROR;
 }

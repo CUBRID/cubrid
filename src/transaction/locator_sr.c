@@ -38,6 +38,8 @@
 #include "btree_load.h"
 #include "critical_section.h"
 #include "dbtype.h"
+#include "vector_opfunc.hpp"
+#include "hnsw.hpp"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
@@ -7866,12 +7868,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       or_pred = index->filter_predicate;
 
-      if (index->btid.vfid.volid == -1)
-	{
-	  fprintf (stdout, "HNSW INDEX\n");
-	  continue;
-	}
-
       if (or_pred && or_pred->pred_stream)
 	{
 	  error_code =
@@ -7937,7 +7933,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-
+	      if (index->btid.vfid.volid == -1)
+		{
+		  std::vector < float >fvec = db_value_get_stdvector_float (key_dbvalue);
+		  hnsw_add_element (&btid, fvec);
+		  continue;
+		}
 	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
