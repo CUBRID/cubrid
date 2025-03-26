@@ -42,6 +42,8 @@
 struct adj_array;
 // from connection_defs.h
 struct css_conn_entry;
+// from connection_defs.h
+struct dblink_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
 // from log_system_tran.hpp
@@ -228,6 +230,7 @@ namespace cubthread
       adj_array *cnv_adj_buffer[3];	/* conversion buffer */
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
+      dblink_conn_entry *dblink_entry;  /* conn entry ptr for dblink */
 
       xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */

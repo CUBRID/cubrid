@@ -61,16 +61,36 @@ public class ListenerThread extends Thread {
 
     @Override
     public void run() {
-        Socket client = null;
+
+        Socket client;
+        ExecuteThread execThread;
+
         while (!Thread.interrupted() && attempt < MAX_RETRIES) {
+            client = null;
+            execThread = null;
             try {
                 client = serverSocket.accept();
                 client.setTcpNoDelay(true);
-                Thread execThread = new ExecuteThread(client);
+                execThread = new ExecuteThread(client);
                 execThread.start();
                 attempt = 0;
             } catch (Throwable e) {
                 Server.log(e);
+
+                // For the case when execThread.run() is not invoked due to an exception.
+                //   NOTE: execThread.closeSocket() is called at the end of execThread.run()
+                if (execThread == null) {
+                    if (client != null) {
+                        try {
+                            client.close();
+                        } catch (IOException ee) {
+                            // do nothing
+                        }
+                    }
+                } else {
+                    execThread.closeSocket(); // client is closed in this method
+                }
+
                 try {
                     Thread.sleep(backoff_times[attempt]);
                 } catch (InterruptedException ie) {

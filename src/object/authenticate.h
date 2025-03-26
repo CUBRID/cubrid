@@ -194,6 +194,7 @@ extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmo
 extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name - au_check_authorization
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
+extern int au_check_procedure_authorization (MOP procedure_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 //
 
