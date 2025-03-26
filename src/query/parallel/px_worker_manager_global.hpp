@@ -43,6 +43,7 @@ namespace parallel_query
   class worker_manager_global
   {
     private:
+      friend class worker_manager;
       bool m_is_initialized;
       int m_max_parallel_workers;
       std::atomic<int> m_current_parallel_workers;
@@ -52,6 +53,10 @@ namespace parallel_query
 
       worker_manager_global (const worker_manager_global &) = delete;
       worker_manager_global &operator= (const worker_manager_global &) = delete;
+
+      bool try_reserve_workers (int parallelism);
+      void release_workers (int parallelism);
+      void push_task (cubthread::entry_task *task);
     public:
       static worker_manager_global &get_manager()
       {
@@ -61,9 +66,6 @@ namespace parallel_query
 
       void init();
       void destroy();
-      bool try_reserve_workers (int parallelism);
-      void release_workers (int parallelism);
-      void push_task (cubthread::entry_task *task);
   };
 }
 
