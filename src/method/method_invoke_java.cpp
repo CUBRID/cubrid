@@ -88,14 +88,16 @@ namespace cubmethod
 	      }
 
 	    nbytes = jsp_readn (m_group->get_socket(), (char *) &start_code, (int) sizeof (int));
+	    if (errno == ETIMEDOUT && m_group->do_handle_interrupt () != NO_ERROR)
+	      {
+		return er_errid ();
+	      }
 	  }
 	while (nbytes < 0 && errno == ETIMEDOUT);
 
 	if (nbytes != (int) sizeof (int))
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		    nbytes);
-	    return ER_SP_NETWORK_ERROR;
+	    return m_group->do_handle_network_error (nbytes);
 	  }
 
 	start_code = ntohl (start_code);
@@ -156,25 +158,43 @@ namespace cubmethod
 	  }
 
 	nbytes = jsp_readn (m_group->get_socket(), (char *) &res_size, (int) sizeof (int));
+	if (errno == ETIMEDOUT && m_group->do_handle_interrupt () != NO_ERROR)
+	  {
+	    return er_errid ();
+	  }
       }
     while (nbytes < 0 && errno == ETIMEDOUT);
 
     if (nbytes != (int) sizeof (int))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
+	return m_group->do_handle_network_error (nbytes);
       }
     res_size = ntohl (res_size);
 
     blk.extend_to (res_size);
 
-    nbytes = css_readn (m_group->get_socket(), blk.get_ptr (), res_size, -1);
-    if (nbytes != res_size)
+    int offset = 0;
+    do
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		nbytes);
-	return ER_SP_NETWORK_ERROR;
+	// to check interrupt
+	cubmethod::runtime_context *rctx = cubmethod::get_rctx (thread_p);
+	if (rctx && rctx->is_interrupted ())
+	  {
+	    return rctx->get_interrupt_id ();
+	  }
+
+	nbytes = jsp_readn (m_group->get_socket(), blk.get_ptr () + offset, res_size - offset);
+	if (errno == ETIMEDOUT && m_group->do_handle_interrupt () != NO_ERROR)
+	  {
+	    return er_errid ();
+	  }
+	offset += nbytes;
+      }
+    while (nbytes < 0 && errno == ETIMEDOUT);
+
+    if (offset != res_size)
+      {
+	return m_group->do_handle_network_error (nbytes);
       }
 
     m_group->get_data_queue().emplace (std::move (blk));

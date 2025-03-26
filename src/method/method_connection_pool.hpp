@@ -30,6 +30,7 @@
 #include <queue>
 #include <mutex>
 
+#include "jsp_comm.h"
 #include "porting.h" // SOCKET
 
 namespace cubmethod
@@ -79,6 +80,8 @@ namespace cubmethod
       bool is_valid ();
       SOCKET get_socket ();
       bool is_jvm_running ();
+
+      void invalidate ();
 
     private:
       explicit connection (connection_pool *pool, SOCKET socket);

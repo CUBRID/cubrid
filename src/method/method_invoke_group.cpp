@@ -132,6 +132,12 @@ namespace cubmethod
     return m_connection ? m_connection->get_socket () : INVALID_SOCKET;
   }
 
+  connection *
+  method_invoke_group::get_connection () const
+  {
+    return m_connection;
+  }
+
   cubthread::entry *
   method_invoke_group::get_thread_entry () const
   {
@@ -334,16 +340,19 @@ namespace cubmethod
     return error;
   }
 
-  void
+  int
   method_invoke_group::begin ()
   {
     if (m_is_running == true)
       {
-	return;
+	return NO_ERROR;
       }
 
     // push to stack
-    m_rctx->push_stack (m_thread_p, this);
+    if (m_rctx->push_stack (m_thread_p, this) != NO_ERROR)
+      {
+	return ER_FAILED;
+      }
 
     // connect socket for java sp
     bool is_in = m_kind_type.find (METHOD_TYPE_JAVA_SP) != m_kind_type.end ();
@@ -369,6 +378,7 @@ namespace cubmethod
       }
 
     m_is_running = true;
+    return NO_ERROR;
   }
 
   int method_invoke_group::reset (bool is_end_query)
@@ -477,5 +487,37 @@ namespace cubmethod
   method_invoke_group::set_error_msg (const std::string &msg)
   {
     m_err_msg = msg;
+  }
+
+  int
+  method_invoke_group::do_handle_network_error (int nbytes)
+  {
+    if (m_connection)
+      {
+	m_connection->invalidate ();
+      }
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
+    return er_errid ();
+  }
+
+  int
+  method_invoke_group::do_handle_interrupt ()
+  {
+    bool dummy_continue;
+    if (m_thread_p && logtb_is_interrupted (m_thread_p, true, &dummy_continue))
+      {
+	m_connection->invalidate ();
+	cubmethod::runtime_context *rctx = cubmethod::get_rctx (m_thread_p);
+	if (rctx)
+	  {
+	    rctx->set_local_error_for_interrupt ();
+	    return rctx->get_interrupt_id ();
+	  }
+	else
+	  {
+	    return ER_INTERRUPTING;
+	  }
+      }
+    return NO_ERROR;
   }
 }	// namespace cubmethod

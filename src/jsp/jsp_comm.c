@@ -184,7 +184,7 @@ jsp_writen (SOCKET fd, const void *vptr, int n)
 int
 jsp_readn (SOCKET fd, void *vptr, int n)
 {
-  const static int PING_TIMEOUT = 5000;
+  const static int PING_TIMEOUT = 1000;
   return css_readn (fd, (char *) vptr, n, PING_TIMEOUT);
 }
 

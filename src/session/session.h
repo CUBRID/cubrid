@@ -91,6 +91,9 @@ extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_sessi
 
 extern int session_get_method_runtime_context (THREAD_ENTRY * thread_p,
 					       REFPTR (method_runtime_context, method_runtime_context_ref_ptr));
+extern bool session_has_method_runtime_context (THREAD_ENTRY * thread_p);
+
+
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 #if defined (SERVER_MODE)
 extern void session_notify_method_task_completion (const struct session_state *session_arg);

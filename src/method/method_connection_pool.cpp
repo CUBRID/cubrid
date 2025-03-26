@@ -153,4 +153,10 @@ namespace cubmethod
       }
   }
 
+  void
+  connection::invalidate ()
+  {
+    jsp_disconnect_server (m_socket);
+  }
+
 } // namespace cubmethod

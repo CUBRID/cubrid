@@ -72,7 +72,7 @@ namespace cubmethod
 
       ~method_invoke_group ();
 
-      void begin ();
+      int begin ();
       int prepare (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base, const std::vector<bool> &arg_use_vec);
       int execute (std::vector<std::reference_wrapper<DB_VALUE>> &arg_base);
       int reset (bool is_end_query);
@@ -84,6 +84,7 @@ namespace cubmethod
       int get_num_methods () const;
       METHOD_GROUP_ID get_id () const;
       SOCKET get_socket () const;
+      connection *get_connection () const;
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
@@ -104,8 +105,10 @@ namespace cubmethod
       // error
       std::string get_error_msg ();
       void set_error_msg (const std::string &msg);
-      db_parameter_info *get_db_parameter_info () const;
+      int do_handle_network_error (int nbytes);
+      int do_handle_interrupt ();
 
+      db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (db_parameter_info *param_info);
 
     private:

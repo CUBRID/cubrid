@@ -619,7 +619,11 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
       assert (error_code != NO_ERROR);
       return error_code;
     }
-  method_group->begin ();
+  error_code = method_group->begin ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   std::vector<bool> dummy_use_vec (args.size(), true);
   error_code = method_group->prepare (args, dummy_use_vec);
@@ -634,8 +638,12 @@ int xmethod_invoke_fold_constants (THREAD_ENTRY *thread_p, const method_sig_list
       return error_code;
     }
 
-  DB_VALUE &res = method_group->get_return_value (0);
-  db_value_clone (&res, &result);
+  if (method_group->get_num_methods () > 0)
+    {
+      DB_VALUE &res = method_group->get_return_value (0);
+      db_value_clone (&res, &result);
+      db_value_clear (&res);
+    }
   return error_code;
 }
 #endif

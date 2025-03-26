@@ -3189,7 +3189,7 @@ session_get_method_runtime_context (THREAD_ENTRY * thread_p,
 	{
 	  state_p->method_rctx_p = new method_runtime_context ();
 	}
-      else if (state_p->method_rctx_p->is_interrupted ())
+      else if (state_p->method_rctx_p->is_running () && state_p->method_rctx_p->is_interrupted ())
 	{
 	  method_runtime_context_ref_ptr = nullptr;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -3207,6 +3207,20 @@ session_get_method_runtime_context (THREAD_ENTRY * thread_p,
     }
 
   return error;
+}
+
+bool
+session_has_method_runtime_context (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return false;
+    }
+
+  return state_p->method_rctx_p != NULL;
 }
 
 /* 

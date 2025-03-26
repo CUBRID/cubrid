@@ -90,16 +90,49 @@ namespace cubmethod
       {
 	m_group_map [group->get_id ()] = group;
       }
+    else
+      {
+	set_interrupt (er_errid ());
+      }
     return group;
   }
 
-  void
+  int
   runtime_context::push_stack (cubthread::entry *thread_p, method_invoke_group *group)
   {
+    if (thread_p == nullptr)
+      {
+	thread_p = thread_get_thread_entry_info ();
+      }
+
     std::unique_lock<std::mutex> ulock (m_mutex);
+
+    if (m_group_stack.size () >= METHOD_MAX_RECURSION_DEPTH)
+      {
+	ulock.unlock ();
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
+	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
+	return ER_SP_TOO_MANY_NESTED_CALL;
+      }
+
+    if (m_is_running == false && m_group_stack.empty ())
+      {
+	// clear previous interrupt state
+	clear_interrupt ();
+      }
+
+    // check interrupt
+    if (is_interrupted () && !m_group_stack.empty ())
+      {
+	// block creating a new stack
+	set_local_error_for_interrupt ();
+	m_cond_var.notify_all ();
+	return ER_FAILED;
+      }
 
     m_is_running = true;
     m_group_stack.push_back (group->get_id ());
+    return NO_ERROR;
   }
 
   void
@@ -148,14 +181,20 @@ namespace cubmethod
 	m_is_running = false;
 
 	// reset interrupt state
-	m_is_interrupted = false;
-	m_interrupt_id = NO_ERROR;
-	m_interrupt_msg.clear ();
-
-	// notify m_group_stack becomes empty ();
-	// ulock.unlock ();
-	// m_cond_var.notify_all ();
+	clear_interrupt ();
       }
+
+    // notify m_group_stack becomes empty ();
+    ulock.unlock ();
+    m_cond_var.notify_all ();
+  }
+
+  void
+  runtime_context::clear_interrupt ()
+  {
+    m_is_interrupted = false;
+    m_interrupt_id = NO_ERROR;
+    m_interrupt_msg.clear ();
   }
 
   method_invoke_group *
@@ -188,6 +227,12 @@ namespace cubmethod
   void
   runtime_context::set_interrupt (int reason, std::string msg)
   {
+    if (m_is_interrupted)
+      {
+	// do not overwrite interrupt
+	return;
+      }
+
     switch (reason)
       {
       /* no arg */
@@ -212,6 +257,19 @@ namespace cubmethod
       default:
 	/* do nothing */
 	break;
+      }
+
+    if (m_is_interrupted)
+      {
+	std::unique_lock<std::mutex> ulock (m_mutex);
+	for (auto &it : m_group_map)
+	  {
+	    connection *conn = it.second->get_connection ();
+	    if (conn)
+	      {
+		conn->invalidate ();
+	      }
+	  }
       }
   }
 
@@ -245,7 +303,7 @@ namespace cubmethod
     auto pred = [this] () -> bool
     {
       // condition of finish
-      return m_group_stack.empty () && is_running () == false;
+      return m_group_stack.empty () || is_running () == false;
     };
 
     if (pred ())

@@ -125,7 +125,7 @@ namespace cubscan
       error = qfile_open_list_scan (m_list_id, &m_scan_id);
 
       // connect
-      m_method_group->begin ();
+      error = m_method_group->begin ();
       return error;
     }
 
@@ -177,11 +177,14 @@ namespace cubscan
 
 	      db_make_null (dbval_p);
 
-	      DB_VALUE &result = m_method_group->get_return_value (i);
-	      db_value_clone (&result, dbval_p);
+	      if (m_method_group->get_num_methods () > 0)
+		{
+		  DB_VALUE &result = m_method_group->get_return_value (i);
+		  db_value_clone (&result, dbval_p);
+		  db_value_clear (&result);
+		}
 
 	      m_dbval_list[i].val = dbval_p;
-	      db_value_clear (&result);
 	    }
 
 	  m_method_group->reset (false);
