@@ -9247,15 +9247,17 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
-		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-				   "UPDATE", entity->info.name.original);
-		      return NULL;
+		      /* exclude update for system class or view */
+		      break;
 		    }
+		}
+
+	      if (entity == NULL)
+		{
 		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
 	    }
