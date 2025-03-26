@@ -3109,7 +3109,19 @@ session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       return ER_FAILED;
     }
 
-  if (state_p->pl_session_p != NULL)
+// *INDENT-OFF*
+  cubpl::session *s = NULL;
+// *INDENT-ON*
+  if (state_p->pl_session_p == NULL)
+    {
+      session_get_pl_session (thread_p, s);
+    }
+  else
+    {
+      s = state_p->pl_session_p;
+    }
+
+  if (s != NULL)
     {
       state_p->pl_session_p->mark_session_param_changed (id);
     }

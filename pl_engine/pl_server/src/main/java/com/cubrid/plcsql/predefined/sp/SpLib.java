@@ -575,11 +575,11 @@ public class SpLib {
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
 
-    public static void DBMS_OUTPUT$DISABLE() {
+    public static void DBMS_OUTPUT$DISABLE() throws Exception {
         DBMS_OUTPUT.disable();
     }
 
-    public static void DBMS_OUTPUT$ENABLE(Integer size) {
+    public static void DBMS_OUTPUT$ENABLE(Integer size) throws Exception {
         if (size == null) {
             throw new VALUE_ERROR("size must be non-null");
         }

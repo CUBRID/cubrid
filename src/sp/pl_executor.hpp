@@ -120,6 +120,7 @@ namespace cubpl
       int callback_end_transaction (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_get_code_attr (cubthread::entry &thread_ref, packing_unpacker &unpacker);
+      int callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker);
   };
 }
 
