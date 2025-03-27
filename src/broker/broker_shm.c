@@ -417,7 +417,7 @@ uw_shm_destroy (int shm_key)
 
 T_SHM_BROKER *
 broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file,
-				  int acl_broker_allow, char *admin_log_file)
+				  int access_control_default_policy, char *admin_log_file)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
@@ -449,7 +449,7 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, in
 
   shm_br->num_broker = br_num;
   shm_br->access_control = acl_flag;
-  shm_br->acl_broker_allow = acl_broker_allow;
+  shm_br->access_control_default_policy = access_control_default_policy;
 
   if (admin_log_file != NULL)
     {

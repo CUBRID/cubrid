@@ -140,7 +140,8 @@
 
 static void admin_log_write (const char *log_file, const char *msg);
 static int admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file,
-			 char *err_msg, char admin_flag, bool * acl_flag, char *acl_file, bool * acl_broker_allow);
+			 char *err_msg, char admin_flag, bool * acl_flag, char *acl_file,
+			 bool * access_control_default_policy);
 static int copy_job_info (T_JOB_INFO ** job_info, T_MAX_HEAP_NODE * job_q);
 static int conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_file, char *err_msg);
 static int conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf, int num_br, char *err_msg);
@@ -324,15 +325,17 @@ uc_start (char *err_msg)
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
   char acl_file[BROKER_PATH_MAX];
-  bool acl_flag, acl_broker_allow;
+  bool acl_flag, access_control_default_policy;
 
   if (admin_common
-      (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, &acl_flag, acl_file, &acl_broker_allow) < 0)
+      (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, &acl_flag, acl_file,
+       &access_control_default_policy) < 0)
     {
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_broker_allow, admin_log_file) < 0)
+  if (admin_start_cmd
+      (br_info, num_broker, master_shm_id, acl_flag, acl_file, access_control_default_policy, admin_log_file) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
@@ -1148,10 +1151,10 @@ conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_fi
 
 static int
 admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file, char *err_msg,
-	      char admin_flag, bool * acl_flag, char *acl_file, bool * acl_broker_allow)
+	      char admin_flag, bool * acl_flag, char *acl_file, bool * access_control_default_policy)
 {
   if (broker_config_read (NULL, br_info, num_broker, master_shm_id, admin_log_file, admin_flag, acl_flag, acl_file,
-			  acl_broker_allow, err_msg) < 0)
+			  access_control_default_policy, err_msg) < 0)
     {
       return -1;
     }
