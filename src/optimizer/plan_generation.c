@@ -689,7 +689,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
 	  outer_part = QO_SEG_PT_NODE (QO_ENV_SEG (env, found_index));
 
-	  found_index = pt_find_attribute (parser, outer_part, outer_info->expr_name_list);
+	  found_index = pt_find_node (parser, outer_part, outer_info->expr_name_list);
 	  if (found_index == -1)
 	    {
 	      assert (false);
@@ -728,7 +728,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
 	  inner_part = QO_SEG_PT_NODE (QO_ENV_SEG (env, found_index));
 
-	  found_index = pt_find_attribute (parser, inner_part, inner_info->expr_name_list);
+	  found_index = pt_find_node (parser, inner_part, inner_info->expr_name_list);
 	  if (found_index == -1)
 	    {
 	      assert (false);
@@ -2781,16 +2781,21 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 		  inner_part = inner_part->info.expr.arg1;
 		}
 	    }
-	  else
+	  else if (bitset_intersects (&temp_segs_set, &(inner_plan->info->projected_segs)))
 	    {
-	      assert (bitset_intersects (&temp_segs_set, &(inner_plan->info->projected_segs)));
-
 	      inner_part = pt_left_part (term_expr);
 	      outer_part = pt_right_part (term_expr);
 	      if (term_expr->info.expr.op == PT_RANGE && outer_part != NULL)
 		{
 		  outer_part = outer_part->info.expr.arg1;
 		}
+	    }
+	  else
+	    {
+	      bitset_add (&plan->sarged_terms, bitset_index);
+	      bitset_remove (&plan->plan_un.join.join_terms, bitset_index);
+	      bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
+	      continue;
 	    }
 
 	  /**
@@ -2965,7 +2970,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 
       for (seg_index = 0, plan_seg = plan_seg_list; plan_seg != NULL; plan_seg = plan_seg->next, seg_index++)
 	{
-	  seg_pos = pt_find_attribute (parser, plan_seg, outer_info->expr_name_list);	/* TODO: Could it be replaced with outer_segs_list? */
+	  seg_pos = pt_find_node (parser, plan_seg, outer_info->expr_name_list);	/* TODO: Could it be replaced with outer_segs_list? */
 	  if (seg_pos != -1)
 	    {
 	      is_outer_or_inner = QFILE_OUTER_LIST;
@@ -2973,7 +2978,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	  else
 	    {
 	      /* Not found. */
-	      seg_pos = pt_find_attribute (parser, plan_seg, inner_info->expr_name_list);
+	      seg_pos = pt_find_node (parser, plan_seg, inner_info->expr_name_list);
 	      if (seg_pos != -1)
 		{
 		  is_outer_or_inner = QFILE_INNER_LIST;

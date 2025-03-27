@@ -2672,6 +2672,9 @@ exit_on_end:
 					    PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time) / 1000);
     }
 
+  scan_end_scan (thread_p, build_scan_id);
+  scan_end_scan (thread_p, probe_scan_id);
+
   if (overflow_record.tpl)
     {
       db_private_free_and_init (thread_p, overflow_record.tpl);

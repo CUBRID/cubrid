@@ -1313,28 +1313,28 @@ qo_plan_print_projected_segs (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_plan_print_sarged_terms (QO_PLAN * plan, FILE * f, int howfar)
 {
-  if (!bitset_is_empty (&(plan->sarged_terms)))
-    {
-      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
-      qo_termset_fprint ((plan->info)->env, &plan->sarged_terms, f);
-    }
+  BITSET sarged_terms;
+  bitset_init (&sarged_terms, plan->info->env);
 
   if (plan->plan_type == QO_PLANTYPE_JOIN && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
     {
-      BITSET remaining_join_pred_set;
-      bitset_init (&remaining_join_pred_set, plan->info->env);
-      bitset_assign (&remaining_join_pred_set, &(plan->plan_un.join.join_terms));
-      bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.hash_terms));
-      bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.during_join_terms));
-
-      if (bitset_is_empty (&(plan->sarged_terms)))
-	{
-	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
-	}
-
-      qo_termset_fprint ((plan->info)->env, &remaining_join_pred_set, f);
-      bitset_delset (&remaining_join_pred_set);
+      bitset_assign (&sarged_terms, &(plan->plan_un.join.join_terms));
+      bitset_difference (&sarged_terms, &(plan->plan_un.join.hash_terms));
+      bitset_difference (&sarged_terms, &(plan->plan_un.join.during_join_terms));
     }
+
+  if (!bitset_is_empty (&(plan->sarged_terms)))
+    {
+      bitset_union (&sarged_terms, &plan->sarged_terms);
+    }
+
+  if (!bitset_is_empty (&sarged_terms))
+    {
+      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
+      qo_termset_fprint ((plan->info)->env, &sarged_terms, f);
+    }
+
+  bitset_delset (&sarged_terms);
 }
 
 /*
