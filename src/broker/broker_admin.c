@@ -79,7 +79,7 @@ main (int argc, char **argv)
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   char admin_log_file[BROKER_PATH_MAX];
   char acl_file[BROKER_PATH_MAX];
-  bool acl_flag, access_control_default_policy;
+  bool acl_flag, acl_default_policy;
   int num_broker, master_shm_id;
   int err;
   char msg_buf[256];
@@ -103,7 +103,7 @@ main (int argc, char **argv)
 
   err =
     broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, &acl_flag, acl_file,
-			&access_control_default_policy, NULL);
+			&acl_default_policy, NULL);
   if (err < 0)
     {
 #if defined (FOR_ODBC_GATEWAY)
@@ -156,9 +156,8 @@ main (int argc, char **argv)
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  if (admin_start_cmd
-	      (br_info, num_broker, master_shm_id, acl_flag, acl_file, access_control_default_policy,
-	       admin_log_file) < 0)
+	  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file)
+	      < 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
