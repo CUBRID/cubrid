@@ -312,7 +312,11 @@ namespace cubmethod
       }
 
     std::unique_lock<std::mutex> ulock (m_mutex);
-    m_cond_var.wait (ulock, pred);
+    while (!pred ())
+      {
+	m_cond_var.wait_for (ulock, std::chrono::milliseconds (100));
+	m_cond_var.notify_all ();
+      }
   }
 
   bool
@@ -499,10 +503,10 @@ namespace cubmethod
     m_returning_cursors.clear ();
   }
 
-  connection_pool &
+  connection_pool *
   runtime_context::get_connection_pool ()
   {
-    return m_conn_pool;
+    return &m_conn_pool;
   }
 
 } // cubmethod
