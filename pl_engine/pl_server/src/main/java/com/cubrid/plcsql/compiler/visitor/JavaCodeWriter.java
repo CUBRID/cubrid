@@ -1569,15 +1569,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtCursorFetch =
             new String[] {
                 "{ // cursor fetch",
-                "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
-                "    throw new INVALID_CURSOR(\"tried to fetch values with an unopened cursor\");",
+                "  if (%'CURSOR'% == null) {",
+                "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
-                "  if (rs.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
-                "  } else {",
-                "    ;", // TODO: setting nulls to into-variables?
                 "  }",
                 "}"
             };
@@ -1925,8 +1922,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'CURSOR'%.open(conn, %'PSTMT-REF'%);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
-                "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  while (%'CURSOR'%.fetch()) {",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -1948,8 +1944,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    %'+HOST-EXPRS'%);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
-                "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  while (%'CURSOR'%.fetch()) {",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
