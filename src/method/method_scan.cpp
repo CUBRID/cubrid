@@ -134,6 +134,12 @@ namespace cubscan
 
       // connect
       m_method_group->begin ();
+#if 0
+      if (err != NO_ERROR)
+	{
+          clear (false);
+	}
+#endif
       return error;
     }
 
