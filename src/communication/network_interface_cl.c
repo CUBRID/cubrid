@@ -10685,7 +10685,6 @@ method_invoke_fold_constants (const method_sig_list & sig_list,
 	    pr_clear_value_vector (out_args);
 
 	  }
-
       }
     else
       {

@@ -88,7 +88,7 @@ namespace cubmethod
       cubthread::entry *get_thread_entry () const;
       std::queue<cubmem::extensible_block> &get_data_queue ();
       cubmethod::runtime_context *get_runtime_context ();
-      connection_pool &get_connection_pool ();
+      connection_pool *get_connection_pool ();
 
       bool is_running () const;
       bool is_for_scan () const;
@@ -116,7 +116,6 @@ namespace cubmethod
 
       bool is_supported_dbtype (const DB_VALUE &value);
 
-      runtime_context *m_rctx;
       bool m_is_running;
       bool m_is_for_scan;
 

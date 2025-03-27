@@ -94,7 +94,7 @@ namespace cubmethod
       void clear_interrupt ();
       void notify_waiting_stacks ();
 
-      connection_pool &get_connection_pool ();
+      connection_pool *get_connection_pool ();
 
     private:
       void destroy_group (METHOD_GROUP_ID id);
