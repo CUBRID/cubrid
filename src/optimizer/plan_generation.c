@@ -617,7 +617,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   /**
    * STEP 2-2: Set the number of columns used in the join predicate.
    */
-  merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.join_terms));
+  merge_info->ls_column_cnt = bitset_cardinality (&(plan->plan_un.join.hash_terms));
 
   value_cnt = merge_info->ls_column_cnt;
   assert (value_cnt > 0);
@@ -648,12 +648,12 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   outer_expr_pos = 0;
   inner_expr_pos = 0;
 
-  for (value_index = 0, bitset_index = bitset_iterate (&(plan->plan_un.join.join_terms), &bitset_iter);
+  for (value_index = 0, bitset_index = bitset_iterate (&(plan->plan_un.join.hash_terms), &bitset_iter);
        bitset_index != -1; bitset_index = bitset_next_member (&bitset_iter), value_index++)
     {
       term = QO_ENV_TERM (env, bitset_index);
 
-      if (QO_IS_PATH_TERM (term) || merge_info->join_type == JOIN_INNER)
+      if (QO_IS_PATH_TERM (term) && merge_info->join_type == JOIN_INNER)
 	{
 	  merge_info->single_fetch = QPROC_SINGLE_OUTER;
 	}
@@ -762,7 +762,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     {
       goto exit_on_error;
     }
-  memset (all_value_indexes, 0, sizeof (TP_DOMAIN *) * pos_cnt * 2);
+  memset (all_value_indexes, 0, sizeof (int) * pos_cnt * 2);
 
   merge_info->ls_outer_inner_list = all_value_indexes;
   merge_info->ls_pos_list = all_value_indexes + pos_cnt;
@@ -790,94 +790,100 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
    * STEP 3: If the join type is outer join, make XASL for the list scan procedure of the outer and inner.
    *         If there are during join predicates, add them in the XASL for the hash join procedure.
    */
-  if (merge_info->join_type == JOIN_INNER)
-    {
-      proc->outer.spec_list = NULL;
-      proc->outer.val_list = NULL;
+  {
+    PT_NODE *during_join_pred = NULL, *remaining_join_pred = NULL;
+    BITSET remaining_join_pred_set;
+    int *pos_list = NULL;
 
-      proc->inner.spec_list = NULL;
-      proc->inner.val_list = NULL;
-    }
-  else
-    {
-      PT_NODE *during_join_pred = NULL;
-      int *pos_list = NULL;
+    if (outer_info->expr_count > 0)
+      {
+	pos_list = (int *) malloc (outer_info->name_count * sizeof (int));
+	if (pos_list == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    outer_info->name_count * sizeof (int));
+	    goto exit_on_error;
+	  }
 
-      if (outer_info->expr_count > 0)
-	{
-	  pos_list = (int *) malloc (outer_info->name_count * sizeof (int));
-	  if (pos_list == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      outer_info->name_count * sizeof (int));
-	      goto exit_on_error;
-	    }
+	for (pos_index = 0; pos_index < outer_info->name_count; pos_index++)
+	  {
+	    pos_list[pos_index] = outer_info->expr_count + pos_index;
+	  }
+      }
 
-	  for (pos_index = 0; pos_index < outer_info->name_count; pos_index++)
-	    {
-	      pos_list[pos_index] = outer_info->expr_count + pos_index;
-	    }
-	}
+    xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, outer_xasl, outer_info->name_list, NULL, pos_list);
 
-      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, outer_xasl, outer_info->name_list, NULL, pos_list);
+    if (pos_list != NULL)
+      {
+	free_and_init (pos_list);
+      }
 
-      if (pos_list != NULL)
-	{
-	  free_and_init (pos_list);
-	}
+    if (xasl == NULL)
+      {
+	goto exit_on_error;
+      }
 
-      if (xasl == NULL)
-	{
-	  goto exit_on_error;
-	}
+    proc->outer.spec_list = xasl->spec_list;
+    proc->outer.val_list = xasl->val_list;
 
-      proc->outer.spec_list = xasl->spec_list;
-      proc->outer.val_list = xasl->val_list;
+    xasl->spec_list = NULL;
+    xasl->val_list = NULL;
 
-      xasl->spec_list = NULL;
-      xasl->val_list = NULL;
+    if (inner_info->expr_count > 0)
+      {
+	pos_list = (int *) malloc (inner_info->name_count * sizeof (int));
+	if (pos_list == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    inner_info->name_count * sizeof (int));
+	    goto exit_on_error;
+	  }
 
-      if (inner_info->expr_count > 0)
-	{
-	  pos_list = (int *) malloc (inner_info->name_count * sizeof (int));
-	  if (pos_list == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      inner_info->name_count * sizeof (int));
-	      goto exit_on_error;
-	    }
+	for (pos_index = 0; pos_index < inner_info->name_count; pos_index++)
+	  {
+	    pos_list[pos_index] = inner_info->expr_count + pos_index;
+	  }
+      }
 
-	  for (pos_index = 0; pos_index < inner_info->name_count; pos_index++)
-	    {
-	      pos_list[pos_index] = inner_info->expr_count + pos_index;
-	    }
-	}
+    xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, inner_xasl, inner_info->name_list, NULL, pos_list);
 
-      xasl = ptqo_to_list_scan_proc (parser, xasl, SCAN_PROC, inner_xasl, inner_info->name_list, NULL, pos_list);
+    if (pos_list)
+      {
+	free_and_init (pos_list);
+      }
 
-      if (pos_list)
-	{
-	  free_and_init (pos_list);
-	}
+    if (xasl == NULL)
+      {
+	goto exit_on_error;
+      }
 
-      if (xasl == NULL)
-	{
-	  goto exit_on_error;
-	}
+    proc->inner.spec_list = xasl->spec_list;
+    proc->inner.val_list = xasl->val_list;
 
-      proc->inner.spec_list = xasl->spec_list;
-      proc->inner.val_list = xasl->val_list;
+    xasl->spec_list = NULL;
+    xasl->val_list = NULL;
 
-      xasl->spec_list = NULL;
-      xasl->val_list = NULL;
+    during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
+    if (during_join_pred != NULL)
+      {
+	xasl = add_during_join_predicate (env, xasl, during_join_pred);
+	parser_free_tree (parser, during_join_pred);
+      }
 
-      during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
-      if (during_join_pred != NULL)
-	{
-	  xasl = add_during_join_predicate (env, xasl, during_join_pred);
-	  parser_free_tree (parser, during_join_pred);
-	}
-    }
+    bitset_init (&remaining_join_pred_set, env);
+    bitset_assign (&remaining_join_pred_set, &(plan->plan_un.join.join_terms));
+    bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.hash_terms));
+    bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.during_join_terms));
+
+    remaining_join_pred = make_pred_from_bitset (env, &remaining_join_pred_set, is_always_true);
+    if (remaining_join_pred != NULL)
+      {
+	proc->remaining_join_pred = pt_to_pred_expr (parser, remaining_join_pred);
+	parser_free_tree (parser, remaining_join_pred);
+      }
+
+    bitset_delset (&remaining_join_pred_set);
+  }
 
 exit_on_end:
   bitset_delset (&term_segs_set);
@@ -2823,6 +2829,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   bitset_intersect (&(outer_plan->info->projected_segs), &plan_segs_set);
 
   outer_info->name_list = make_namelist_from_projected_segs (env, outer_plan);
+  outer_info->name_list = pt_flatten_expr_list_to_names (parser, outer_info->name_list);
   outer_info->expr_name_list =
     parser_append_node (outer_info->name_list /* node */ , outer_info->expr_list /* list */ );
   outer_info->name_count = pt_length_of_list (outer_info->name_list);
@@ -2851,6 +2858,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   bitset_intersect (&(inner_plan->info->projected_segs), &plan_segs_set);
 
   inner_info->name_list = make_namelist_from_projected_segs (env, inner_plan);
+  inner_info->name_list = pt_flatten_expr_list_to_names (parser, inner_info->name_list);
   inner_info->expr_name_list =
     parser_append_node (inner_info->name_list /* node */ , inner_info->expr_list /* list */ );
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
@@ -2928,6 +2936,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
     }
 
+  plan_seg_list = pt_flatten_expr_list_to_names (parser, plan_seg_list);
   plan_seg_count = pt_length_of_list (plan_seg_list);
 
   /**

@@ -3670,6 +3670,16 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
+  /**
+   * remaining_join_pred
+   */
+  offset = xts_save_pred_expr (node_p->remaining_join_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -6345,7 +6355,8 @@ static int
 xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 {
   ACCESS_SPEC_TYPE *spec = NULL;
-  int size = 0, tmp_size;
+  int size = 0;
+  int tmp_size = 0;
 
   /**
    * outer
@@ -6390,6 +6401,11 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  /**
+   * remaining_join_pred
+   */
+  size += PTR_SIZE;
 
   return size;
 }

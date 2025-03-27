@@ -52,7 +52,7 @@
 #include "dbtype.h"
 #include "regu_var.hpp"
 
-#define CUBRID_DEBUG_DUMP_PLAN_COST 0
+#define TEST_DUMP_PLAN_COST 0
 #define TEST_HASH_JOIN_ENABLE 0
 #define TEST_HASH_JOIN_FORCE_ENABLE 0
 
@@ -195,7 +195,7 @@ static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSE
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				  BITSET *);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-				 BITSET *);
+				 BITSET *, BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
@@ -1317,6 +1317,23 @@ qo_plan_print_sarged_terms (QO_PLAN * plan, FILE * f, int howfar)
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
       qo_termset_fprint ((plan->info)->env, &plan->sarged_terms, f);
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
+    {
+      BITSET remaining_join_pred_set;
+      bitset_init (&remaining_join_pred_set, plan->info->env);
+      bitset_assign (&remaining_join_pred_set, &(plan->plan_un.join.join_terms));
+      bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.hash_terms));
+      bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.during_join_terms));
+
+      if (bitset_is_empty (&(plan->sarged_terms)))
+	{
+	  fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
+	}
+
+      qo_termset_fprint ((plan->info)->env, &remaining_join_pred_set, f);
+      bitset_delset (&remaining_join_pred_set);
     }
 }
 
@@ -3080,7 +3097,7 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
 
-#if CUBRID_DEBUG_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_COST
   fprintf (stdout, "\nNested Loop Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -3158,7 +3175,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 
-#if CUBRID_DEBUG_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_COST
   fprintf (stdout, "\nSort Merge Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -3282,7 +3299,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       assert (false);
     }
 
-#if CUBRID_DEBUG_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_COST
   fprintf (stdout, "\nHash Join Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", plan_p->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", plan_p->fixed_io_cost);
@@ -3346,7 +3363,7 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
   if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
-      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
+      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.hash_terms), f);
     }
 
   qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
@@ -6155,8 +6172,9 @@ exit:
  *   pinned_subqueries(in):
  */
 static int
-qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
-		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
+qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * join_terms,
+		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
+		      BITSET * hash_terms)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -6197,7 +6215,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    * 
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
-  for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
+  for (t = bitset_iterate (hash_terms, &iter); t != -1; t = bitset_next_member (&iter))
     {
       term = QO_ENV_TERM (info->env, t);
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
@@ -6248,8 +6266,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_HASH_JOIN, outer_plan, inner_plan,
-					hash_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
-					hash_join_terms));
+					join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
 
 exit:
   return n;
@@ -7431,8 +7448,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	     * mergeable term: equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a)
 	     */
 	    kept +=
-	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
-				    &sarged_terms, &pinned_subqueries);
+	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
+				    &sarged_terms, &pinned_subqueries, &sm_join_terms);
 	  }
 #endif /* HASH_JOINS */
       }

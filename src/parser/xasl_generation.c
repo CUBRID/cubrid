@@ -4459,6 +4459,128 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
 }
 
 /*
+ * pt_find_node() -
+ *   return: Position of the node in the list, or -1 if not found.
+ *   parser(in): Parser context.
+ *   node(in): Node to find.
+ *   list(in): List to find the node in.
+ */
+int
+pt_find_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
+{
+  PT_NODE *current_ptr, *current;
+  int i = 0;
+
+  CAST_POINTER_TO_NODE (node);
+
+  for (current_ptr = list; current_ptr != NULL; current_ptr = current_ptr->next)
+    {
+      current = current_ptr;
+      CAST_POINTER_TO_NODE (current);
+
+      if (current == node)
+	{
+	  return i;
+	}
+
+      i++;
+    }
+
+  return -1;
+}
+
+/*
+ * pt_append_name_if_not_exists() -
+ *   return: List with a PT_NAME node appended if not already present.
+ *   parser(in): Parser context.
+ *   node(in): Parse tree node being visited during traversal.
+ *   arg(in): List to append a PT_NAME node to.
+ *   continue_walk(in): Flag indicating whether to continue tree traversal.
+ */
+PT_NODE *
+pt_append_name_if_not_exists (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *list = (PT_NODE *) arg;
+  PT_NODE *current_ptr, *current;
+
+  assert (!PT_IS_POINTER_REF_NODE (node));
+
+  if (list == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      for (current_ptr = list; current_ptr != NULL; current_ptr = current_ptr->next)
+	{
+	  current = current_ptr;
+	  CAST_POINTER_TO_NODE (current);
+
+	  if (current == node)
+	    {
+	      /* found */
+	      break;
+	    }
+	}
+
+      if (current_ptr == NULL)
+	{
+	  list = parser_append_node (pt_point (parser, node), list);
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_flatten_expr_list_to_names() -
+ *   return: List with PT_NAME nodes extracted from PT_EXPR nodes.
+ *   parser(in): Parser context.
+ *   list(in): List containing PT_EXPR nodes to flatten into PT_NAME nodes.
+ */
+PT_NODE *
+pt_flatten_expr_list_to_names (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  PT_NODE *prev_ptr, *current_ptr, *current, *save_next;
+
+  for (prev_ptr = list, current_ptr = list; current_ptr != NULL;
+       prev_ptr = current_ptr, current_ptr = current_ptr->next)
+    {
+      current = current_ptr;
+      CAST_POINTER_TO_NODE (current);
+
+      if (current->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      save_next = current->next;
+      current->next = NULL;
+      (void) parser_walk_tree (parser, current, NULL, NULL, pt_append_name_if_not_exists, list);
+      current->next = save_next;
+
+      if (prev_ptr != current_ptr)
+	{
+	  prev_ptr->next = current_ptr->next;
+	  current_ptr->next = NULL;
+	  parser_free_tree (parser, current_ptr);
+	  current_ptr = prev_ptr->next;
+	}
+      else
+	{
+	  list = current_ptr->next;
+	  current_ptr->next = NULL;
+	  parser_free_tree (parser, current_ptr);
+	  current_ptr = list;
+	}
+    }
+
+  return list;
+}
+
+/*
  * pt_index_value () -
  *   return: the DB_VALUE at the index position in a VAL_LIST
  *   value(in):
