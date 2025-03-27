@@ -2251,7 +2251,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
 		{
-		  statement->info.query.order_by = save_next;
+		  order_by = save_next;
 		}
 	      else
 		{
@@ -2290,7 +2290,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       order = save_next;
     }
 
-  statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   /* generate orderby_num(), inst_num() */
   if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
@@ -2310,23 +2309,39 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   ins_num->info.expr.op = PT_INST_NUM;
   PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
-  /* replace rownum of select-list to orderby_num */
-  statement->info.query.q.select.list =
-    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
-
-  /* replace rownum of where to orderby_num */
-  where = statement->info.query.q.select.where;
-  if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY) && statement->info.query.order_by)
+  /* Check whether orderby_num and rownum need to be changed */
+  if (statement->info.query.order_by == NULL && order_by != NULL)
     {
-      where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+      /* case 1 : order by of mainquery is newly added ==> rownum of mainquery is changed to orderby_num */
+      statement->info.query.q.select.list =
+	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
-      /* move prev orderby_for to orderby_for */
-      prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-      statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
-      /* move rownum only predicate to orderby_for */
-      statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
-      statement->info.query.q.select.where = NULL;
+      /* replace rownum of where to orderby_num */
+      where = statement->info.query.q.select.where;
+      if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY))
+	{
+	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
+
+	  /* move prev orderby_for to orderby_for */
+	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+	  /* move rownum only predicate to orderby_for */
+	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
+	  statement->info.query.q.select.where = NULL;
+	}
     }
+  else if (query_spec->info.query.order_by != NULL && order_by == NULL)
+    {
+      /* case 2 : order by of subqery is totally removed ==> orderby_num of subquery is changed to rownum */
+      /* if where of subquery has rownum, orderby_num, can not view-merged. so is not needed to change */
+      query_spec->info.query.q.select.list =
+	pt_lambda_with_arg (parser, query_spec->info.query.q.select.list, ord_num, ins_num, false, 2, false);
+    }
+
+  parser_free_tree (parser, ord_num);
+  parser_free_tree (parser, ins_num);
+
+  statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
 
   if (free_node != NULL)
     {
@@ -7908,7 +7923,20 @@ pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
       else
 	{
-	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	  PT_NODE *entity;
+
+	  for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
+	    {
+	      if (sm_check_system_class_by_name (entity->info.name.original))
+		{
+		  break;
+		}
+	    }
+
+	  if (entity == NULL)
+	    {
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	    }
 	}
     }
 

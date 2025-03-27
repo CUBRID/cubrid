@@ -773,15 +773,16 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
     }
 
 #if defined (SERVER_MODE)
-  assert (session_p->ref_count > 0);
-
   if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
       && thread_p->conn_entry->session_p == session_p)
     {
       thread_p->conn_entry->session_p = NULL;
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
 
-      session_state_decrease_ref_count (thread_p, session_p);
+      if (session_p->ref_count > 0)
+	{
+	  session_state_decrease_ref_count (thread_p, session_p);
+	}
     }
   else
     {
@@ -3108,7 +3109,19 @@ session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       return ER_FAILED;
     }
 
-  if (state_p->pl_session_p != NULL)
+// *INDENT-OFF*
+  cubpl::session *s = NULL;
+// *INDENT-ON*
+  if (state_p->pl_session_p == NULL)
+    {
+      session_get_pl_session (thread_p, s);
+    }
+  else
+    {
+      s = state_p->pl_session_p;
+    }
+
+  if (s != NULL)
     {
       state_p->pl_session_p->mark_session_param_changed (id);
     }
