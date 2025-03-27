@@ -219,7 +219,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
-  "acl_default_policy",
+  "ACCESS_CONTROL_DEFAULT_POLICY",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -597,7 +597,7 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
   if (acl_default_policy != NULL)
     {
-      INI_GETSTR_CHK (s, ini, SECTION_NAME, "acl_default_policy", "DENY", &lineno);
+      INI_GETSTR_CHK (s, ini, SECTION_NAME, "ACCESS_CONTROL_DEFAULT_POLICY", "DENY", &lineno);
       tmp_int = conf_get_value_table_allow_deny (s);
       if (tmp_int < 0)
 	{
