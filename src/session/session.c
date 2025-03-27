@@ -3236,8 +3236,6 @@ session_stop_attached_threads (void *session_arg, bool force_interrupt)
 
   assert (session != NULL);
 
-  pthread_mutex_lock (&session->mutex);
-
   // on uninit abort and delete loaddb session
   if (session->load_session_p != NULL)
     {
@@ -3253,13 +3251,9 @@ session_stop_attached_threads (void *session_arg, bool force_interrupt)
       session->method_rctx_p->set_interrupt (force_interrupt ? ER_SES_SESSION_EXPIRED : er_errid ());
       session->method_rctx_p->wait_for_interrupt ();
 
-      if (session->method_rctx_p)
-	{
-	  delete session->method_rctx_p;
-	  session->method_rctx_p = NULL;
-	}
+      delete session->method_rctx_p;
+      session->method_rctx_p = NULL;
     }
-  pthread_mutex_unlock (&session->mutex);
 #endif
 }
 
