@@ -68,6 +68,11 @@ extern int locator_savepoint_transient_class_name_entries (THREAD_ENTRY * thread
 extern DISK_ISVALID locator_check_class_names (THREAD_ENTRY * thread_p);
 extern void locator_dump_class_names (THREAD_ENTRY * thread_p, FILE * out_fp);
 
+extern DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+							 MVCC_REEV_DATA * mvcc_reev_data_p,
+							 MVCC_REC_HEADER * mvcc_header_p,
+							 const OID * curr_row_version_oid_p, RECDES * recdes);
+
 extern int xlc_fetch_allrefslockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock, int quit_on_errors,
 				     int prune_level, LC_LOCKSET ** lockset, LC_COPYAREA ** fetch_area);
 extern int locator_start_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
@@ -98,7 +103,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID *
 						 const char *btname, bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
-				 bool need_locking);
+				 bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,

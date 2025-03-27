@@ -23464,17 +23464,17 @@ error:
 }
 
 int
-heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb)
 {
   assert (context != NULL);
 
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
   /* if class is user defined or oid is in the user defined class */
-  if (!OID_ISNULL (&context->class_oid) && (is_user_class_oid (&context->class_oid) || is_user_oid (&context->oid)))
+  if (use_rocksdb)
     {
+      /* in this scope, rocksdb must works. */
+      assert (cubrocks::ctx->is_alive ());
+      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
       return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
     }
 
@@ -23724,18 +23724,18 @@ exit:
 }
 
 int
-heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb)
 {
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
 
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
   /* if class is user defined or oid is in the user defined class */
-  if (!OID_ISNULL (&context->class_oid) && (is_user_class_oid (&context->class_oid) || is_user_oid (&context->oid)))
+  if (use_rocksdb)
     {
+      /* in this scope, rocksdb must works. */
+      assert (cubrocks::ctx->is_alive ());
+      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
       context->is_logical_old = true;
 
       /* it may be unnecessary. */

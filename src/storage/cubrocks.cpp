@@ -98,6 +98,9 @@ cubrocks::context::~context ()
 void
 cubrocks::context::kv_config (void)
 {
+  opt.txndb.default_lock_timeout = -1;
+  opt.txndb.transaction_lock_timeout = -1;
+
   opt.db.IncreaseParallelism (std::thread::hardware_concurrency ());
   opt.db.max_open_files = -1;
   opt.db.enable_pipelined_write = true;
@@ -281,7 +284,6 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
   UINT64 oid_uint64;
   char virtual_key[16];
   rocksdb::Slice key (virtual_key, 16);
-  rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
 
   oid = (context->type == HEAP_OPERATION_INSERT) ? kv_get_void (tran_index) : context->oid;
   oid_uint64 = *((UINT64 *) &oid);
@@ -291,10 +293,12 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
   * ((int *) (virtual_key + 2)) = context->class_oid.pageid;
   * ((short *) (virtual_key + 6)) = context->class_oid.slotid;
 
-  * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
-
   if (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE)
     {
+      rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
+
+      * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+
       status = transactions[tran_index].txn->Put (key, value).ok ();
     }
   else
@@ -304,7 +308,8 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
       /* TODO: need to implement table drop and range deletion.                            */
       /* table drop doesn't actually happen in STORAGE, but it can work logically since    */
       /* heap doesn't reuse slots. and it means that inserted records will still be there. */
-
+      * ((UINT64 *) (virtual_key + 8)) = oid_uint64;
+      
       status = transactions[tran_index].txn->Delete (key).ok ();
     }
   assert (status);
@@ -429,6 +434,91 @@ cubrocks::context::kv_logical_scan (int tran_index, OID *class_oid, OID *next_oi
     }
 
   return scan;
+}
+
+SCAN_CODE
+cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (scan_cache != NULL);
+  assert (scan_cache->kv_iter != nullptr);
+
+  assert (ispeeking == PEEK || ispeeking == COPY);
+
+  rocksdb::ReadOptions read_options;
+  char virtual_key[16];
+  rocksdb::Status status;
+  rocksdb::Slice key (virtual_key, 16);
+  std::string value;
+
+  if (OID_ISNULL (class_oid))
+  {
+    assert_release (false);
+  }
+
+  /* memory ordering */
+  * ((short *) virtual_key) = class_oid->volid;
+  * ((int *) (virtual_key + 2)) = class_oid->pageid;
+  * ((short *) (virtual_key + 6)) = class_oid->slotid;
+
+  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
+
+  status = transactions[tran_index].txn->GetForUpdate (read_options, key, &value);
+  if (!status.ok ())
+  {
+    if (status.IsNotFound ())
+    {
+      /* the object is removed when this thread waits for locking */
+      return S_DOESNT_EXIST;
+    }
+
+    /* currently timedout is not set so... */
+    /* abort when status is not ok */
+    std::cout << status.ToString () << std::endl;
+    assert_release (false);
+  }
+
+  recdes->type = REC_HOME;
+  recdes->length = value.length ();
+  if (ispeeking == COPY)
+	{
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+
+	  memcpy (recdes->data, value.data (), recdes->length);
+	}
+  else
+	{
+	  recdes->data = const_cast<char *> (value.data ());
+	  recdes->area_size = recdes->length;
+	}
+
+  return S_SUCCESS;
+}
+
+void
+cubrocks::context::kv_lock_release (int tran_index, OID *class_oid, OID *oid)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  char virtual_key[16];
+  UINT64 oid_uint64;
+  rocksdb::Slice key (virtual_key, 16);
+
+  oid_uint64 = *((UINT64 *) oid);
+
+  /* memory ordering */
+  * ((short *) virtual_key) = class_oid->volid;
+  * ((int *) (virtual_key + 2)) = class_oid->pageid;
+  * ((short *) (virtual_key + 6)) = class_oid->slotid;
+
+  * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+
+  transactions[tran_index].txn->UndoGetForUpdate (key);
 }
 
 void

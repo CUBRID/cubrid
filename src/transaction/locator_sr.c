@@ -41,6 +41,7 @@
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
+#include "cubrocks.hpp"
 #include "error_manager.h"
 #include "deduplicate_key.h"
 #include "fetch.h"
@@ -158,7 +159,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking);
+				 bool need_locking, bool use_rocksdb = false);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
@@ -170,7 +171,7 @@ static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid
 static int locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 					  HEAP_SCANCACHE * scan_cache, int *force_count,
 					  MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_INDEX_ACTION_FLAG idx_action_flag,
-					  OID * new_obj_oid, OID * partition_oid, bool need_locking);
+					  OID * new_obj_oid, OID * partition_oid, bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -233,10 +234,6 @@ static DB_LOGICAL locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, con
 						    UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel);
 static DB_LOGICAL locator_mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
 						   const OID * oid, RECDES * recdes);
-static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
-							 MVCC_REEV_DATA * mvcc_reev_data_p,
-							 MVCC_REC_HEADER * mvcc_header_p,
-							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -5401,7 +5398,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool use_rocksdb)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -6118,10 +6115,10 @@ error:
  */
 int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
-		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking)
+		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking, bool use_rocksdb, OID *class_oid)
 {
   return locator_delete_force_internal (thread_p, hfid, oid, has_index, op_type, scan_cache, force_count,
-					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking);
+					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking, use_rocksdb, class_oid);
 }
 
 /*
@@ -6176,7 +6173,7 @@ static int
 locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 			       HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
 			       LOCATOR_INDEX_ACTION_FLAG idx_action_flag, OID * new_obj_oid, OID * partition_oid,
-			       bool need_locking)
+			       bool need_locking, bool use_rocksdb, OID *cls_oid)
 {
   bool isold_object;		/* Make sure that this is an old object during the deletion */
   OID class_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -6186,6 +6183,11 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   int error_code = NO_ERROR;
   bool deleted = false;
   SCAN_CODE scan_code = S_SUCCESS;
+  int tran_index;
+  DB_LOGICAL ev_res;
+  MVCC_REC_HEADER dummy = {
+    .mvcc_ins_id = 0,
+  };
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
@@ -6208,49 +6210,78 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       mvcc_reev_data = NULL;
     }
 
-  /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
-     not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
-  scan_code =
-    locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
-
-  if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
+  if (cls_oid)
     {
-      return ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      class_oid = *cls_oid;
     }
 
-  if (scan_code != S_SUCCESS)
-    {
-      error_code = er_errid ();
+  if (!use_rocksdb)
+  {
+    /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
+       not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
+    scan_code =
+      locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+               mvcc_reev_data, LOG_WARNING_IF_DELETED);
 
-      if (error_code == ER_HEAP_NODATA_NEWADDRESS)
-	{
-	  isold_object = false;
-	  er_clear ();		/* clear ER_HEAP_NODATA_NEWADDRESS */
+    if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
+      {
+        return ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      }
 
-	  error_code = NO_ERROR;
-	}
-      else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
-	{
-	  isold_object = false;
-	  er_clear ();
+    if (scan_code != S_SUCCESS)
+      {
+        error_code = er_errid ();
 
-	  error_code = NO_ERROR;
-	  goto error;
-	}
-      else
-	{
-	  /*
-	   * Problems reading the object...Maybe, the transaction should be
-	   * aborted by the caller...Quit..
-	   */
-	  if (error_code == NO_ERROR)
-	    {
-	      error_code = ER_FAILED;
-	    }
-	  goto error;
-	}
+        if (error_code == ER_HEAP_NODATA_NEWADDRESS)
+      {
+        isold_object = false;
+        er_clear ();		/* clear ER_HEAP_NODATA_NEWADDRESS */
+
+        error_code = NO_ERROR;
+      }
+        else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
+      {
+        isold_object = false;
+        er_clear ();
+
+        error_code = NO_ERROR;
+        goto error;
+      }
+        else
+      {
+        /*
+         * Problems reading the object...Maybe, the transaction should be
+         * aborted by the caller...Quit..
+         */
+        if (error_code == NO_ERROR)
+          {
+            error_code = ER_FAILED;
+          }
+        goto error;
+      }
     }
+  }
+  else if (need_locking)
+  {
+    tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    scan_code = cubrocks::ctx->kv_lock_and_get (tran_index, &class_oid, oid, &copy_recdes, scan_cache, COPY);
+
+    if (scan_code == S_DOESNT_EXIST || scan_code != S_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+    ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &dummy, oid, &copy_recdes);
+    if (ev_res != V_TRUE)
+    {
+      cubrocks::ctx->kv_lock_release (tran_index, &class_oid, oid);
+      return ER_FAILED;
+    }
+    if (mvcc_reev_data->filter_result == V_FALSE)
+    {
+      return ER_FAILED;
+    }
+  }
 
   if (isold_object == false)
     {
@@ -6328,7 +6359,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
 
 	      /* attempt delete */
-	      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
+	      if (heap_delete_logical (thread_p, &delete_context, use_rocksdb) != NO_ERROR)
 		{
 		  /*
 		   * Problems deleting the object...Maybe, the transaction should be
@@ -6414,7 +6445,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
 
       /* attempt delete */
-      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
+      if (heap_delete_logical (thread_p, &delete_context, use_rocksdb) != NO_ERROR)
 	{
 	  /*
 	   * Problems deleting the object...Maybe, the transaction should be
@@ -7625,7 +7656,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_DELETE:
       error_code =
 	locator_delete_force (thread_p, &class_hfid, oid, true, op_type, scan_cache, force_count, mvcc_reev_data,
-			      need_locking);
+			      need_locking, use_rocksdb, &class_oid);
       break;
 
     default:
@@ -13389,7 +13420,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
  *   recdes(in):
  */
 /* TODO: We need to reevaluate relation between primary key * and foreign key. */
-static DB_LOGICAL
+DB_LOGICAL
 locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 				       MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
 				       const OID * curr_row_version_oid_p, RECDES * recdes)

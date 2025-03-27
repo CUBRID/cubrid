@@ -408,7 +408,7 @@ static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * 
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK * composite_lock, int upd_del_cls_cnt, OID * default_cls_oid);
 static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-							      VALPTR_LIST * outptr_list, VAL_DESCR * vd);
+							      VALPTR_LIST * outptr_list, VAL_DESCR * vd, OID *class_oid = NULL);
 static int qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				    QFILE_TUPLE_RECORD * tplrec);
@@ -972,7 +972,7 @@ exit_on_error:
  */
 static QPROC_TPLDESCR_STATUS
 qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, VALPTR_LIST * outptr_list,
-				 VAL_DESCR * vd)
+				 VAL_DESCR * vd, OID *class_oid)
 {
   QPROC_TPLDESCR_STATUS status;
   size_t size;
@@ -1006,7 +1006,7 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   /* build tuple descriptor */
-  status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &(list_id->tpl_descr));
+  status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &(list_id->tpl_descr), class_oid);
   if (status == QPROC_TPLDESCR_FAILURE)
     {
       goto exit_on_error;
@@ -1222,7 +1222,15 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
+      if (xasl->curr_spec && !OID_ISNULL (&xasl->curr_spec->s.cls_node.cls_oid))
+      {
+        tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd, &xasl->curr_spec->s.cls_node.cls_oid);
+      }
+      else
+      {
+        tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
+      }
+
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -9904,17 +9912,6 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
-  /*
-  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
-    {
-      printf("SCAN: ROCKSDB\n");
-    }
-  else
-    {
-      printf ("SCAN: CUBRID\n");
-    }
-    */
-
   do
     {
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
@@ -11503,18 +11500,10 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  bool use_rocksdb;
 
-  /*
-  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
-    {
-      printf("UPDATE: ROCKSDB\n");
-    }
-  else
-    {
-      printf ("UPDATE: CUBRID\n");
-    }
-    */
-
+  use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
+ 
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -11865,7 +11854,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 						  0, LC_FLUSH_DELETE, current_op_type, internal_class->scan_cache,
 						  &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
 						  DB_NOT_PARTITIONED_CLASS, NULL, NULL, &mvcc_reev_data,
-						  UPDATE_INPLACE_NONE, NULL, need_locking, false);
+						  UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
 
 		  if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		    {
@@ -12046,7 +12035,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 					      &upd_cls->att_id[internal_class->subclass_idx * upd_cls->num_attrs],
 					      upd_cls->num_attrs, LC_FLUSH_UPDATE, op_type, internal_class->scan_cache,
 					      &force_count, false, repl_info, internal_class->needs_pruning, pcontext,
-					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, false);
+					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -12377,17 +12366,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  bool use_rocksdb;
+  HEAP_CACHE_ATTRINFO attr_info;
 
-  /*
-  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB))
-    {
-      printf("DELETE: ROCKSDB\n");
-    }
-  else
-    {
-      printf ("DELETE: CUBRID\n");
-    }
-    */
+  use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -12679,13 +12661,24 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		    }
 		}
-
 	      force_count = 0;
-	      error =
-		locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, NULL, NULL, 0, LC_FLUSH_DELETE,
-					      op_type, internal_class->scan_cache, &force_count, false,
-					      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-					      &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, false);
+        if (xasl->proc.delete_.classes && xasl->proc.delete_.classes->class_oid)
+        {
+          attr_info.class_oid = *xasl->proc.delete_.classes->class_oid;
+          error =
+            locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0, LC_FLUSH_DELETE,
+                  op_type, internal_class->scan_cache, &force_count, false,
+                  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
+        }
+        else
+        {
+          error =
+            locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0, LC_FLUSH_DELETE,
+                  op_type, internal_class->scan_cache, &force_count, false,
+                  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
+        }
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;

@@ -97,6 +97,9 @@ namespace cubrocks
       SCAN_CODE kv_logical_scan (int tran_index, OID *class_oid, OID *next_oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
 				 int ispeeking);
 
+      SCAN_CODE kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
+      void kv_lock_release (int tran_index, OID *class_oid, OID *oid);
+
       /* ================================================================== */
       /* basic                                                              */
       /* ================================================================== */
