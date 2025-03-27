@@ -312,7 +312,11 @@ namespace cubmethod
       }
 
     std::unique_lock<std::mutex> ulock (m_mutex);
-    m_cond_var.wait (ulock, pred);
+    while (!pred ())
+      {
+	m_cond_var.wait_for (ulock, std::chrono::milliseconds (100));
+	m_cond_var.notify_all ();
+      }
   }
 
   bool
