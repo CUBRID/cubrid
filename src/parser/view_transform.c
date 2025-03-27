@@ -339,7 +339,7 @@ extern PT_NODE *mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, P
 static PT_NODE *mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_table,
 				       PT_NODE * corresponding_spec, PT_NODE * class_where_part,
 				       PT_NODE * class_check_part, PT_NODE * class_group_by_part,
-				       PT_NODE * class_having_part);
+				       PT_NODE * class_having_part, PT_NODE * class_orderby_for_part);
 
 static PT_NODE *mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement, UINTPTR spec_id);
 
@@ -1444,7 +1444,7 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
       statement =
 	mq_inline_view_lambda (parser, statement, derived_spec, query_spec_from, subquery->info.query.q.select.where,
 			       subquery->info.query.q.select.check_where, subquery->info.query.q.select.group_by,
-			       subquery->info.query.q.select.having);
+			       subquery->info.query.q.select.having, subquery->info.query.orderby_for);
       if (PT_SELECT_INFO_IS_FLAGED (subquery, PT_SELECT_INFO_HAS_AGG))
 	{
 	  /* mark as agg select */
@@ -1470,7 +1470,7 @@ static PT_NODE *
 mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
 				       PT_NODE ** new_spec)
 {
-  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
+  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_orderby_for, *save_select_list;
   PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
   bool is_unset_hidden_col;
@@ -1563,8 +1563,10 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* cut off select list and order by */
   save_order_by = subquery->info.query.order_by;
+  save_orderby_for = subquery->info.query.orderby_for;
   save_select_list = subquery->info.query.q.select.list;
   subquery->info.query.order_by = NULL;
+  subquery->info.query.orderby_for = NULL;
   subquery->info.query.q.select.list = NULL;
 
   tmp_query = parser_copy_tree (parser, subquery);
@@ -1572,6 +1574,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* revert subquery */
   subquery->info.query.order_by = save_order_by;
+  subquery->info.query.orderby_for = save_orderby_for;
   subquery->info.query.q.select.list = save_select_list;
 
   pred = statement->info.query.q.select.where;
@@ -1863,9 +1866,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
   orderby_for = subquery->info.query.orderby_for;
-  is_orderby_for = orderby_for && (order_by || subquery->info.query.order_by
+  is_orderby_for = orderby_for && (order_by
 				   || (orderby_for->node_type == PT_EXPR
-				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
+				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY))
+				   || pt_is_distinct (mainquery));
 
   /* do not rewrite vclass_query as a derived table if spec belongs to an insert statement. */
   if (mainquery->node_type == PT_INSERT)
@@ -2246,7 +2250,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (pt_is_distinct (statement))
+	  if (pt_is_distinct (statement))	// 뷰 머징 못하도록 수정해야 함...
 	    {
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
@@ -2316,21 +2320,24 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       statement->info.query.q.select.list =
 	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
+      if (query_spec->info.query.orderby_for != NULL)
+	{
+	  prev_orderby_for = query_spec->info.query.orderby_for;
+	  query_spec->info.query.orderby_for = NULL;
+	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+	}
       /* replace rownum of where to orderby_num */
       where = statement->info.query.q.select.where;
       if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY))
 	{
 	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
 
-	  /* move prev orderby_for to orderby_for */
-	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
 	  /* move rownum only predicate to orderby_for */
 	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
 	  statement->info.query.q.select.where = NULL;
 	}
     }
-  else if (query_spec->info.query.order_by != NULL && order_by == NULL)
+  else if (query_spec->info.query.order_by != NULL && order_by == NULL)	// orderby가 없어지는 케이스 찾아보기 ...
     {
       /* case 2 : order by of subqery is totally removed ==> orderby_num of subquery is changed to rownum */
       /* if where of subquery has rownum, orderby_num, can not view-merged. so is not needed to change */
@@ -2342,7 +2349,6 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   parser_free_tree (parser, ins_num);
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
-
   if (free_node != NULL)
     {
       parser_free_tree (parser, free_node);
@@ -7923,20 +7929,7 @@ pt_for_update_prepare_query_internal (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
       else
 	{
-	  PT_NODE *entity;
-
-	  for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
-	    {
-	      if (sm_check_system_class_by_name (entity->info.name.original))
-		{
-		  break;
-		}
-	    }
-
-	  if (entity == NULL)
-	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
-	    }
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	}
     }
 
@@ -10435,12 +10428,13 @@ exit_on_error:
 PT_NODE *
 mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
 		       PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
-		       PT_NODE * class_group_by_part, PT_NODE * class_having_part)
+		       PT_NODE * class_group_by_part, PT_NODE * class_having_part, PT_NODE * class_orderby_for_part)
 {
   PT_NODE *spec;
   PT_NODE **specptr = NULL;
   PT_NODE **where_part = NULL, **where_part_ex = NULL;
   PT_NODE **check_where_part = NULL;
+  PT_NODE *orderby_for_part = NULL;
   PT_NODE *newspec = NULL;
   PT_NODE *oldnext = NULL;
   PT_NODE *assign, *result;
@@ -10931,7 +10925,32 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
 	}
       *check_where_part = parser_append_node (parser_copy_tree_list (parser, class_check_part), *check_where_part);
     }
+  if (class_orderby_for_part)
+    {
+      PT_NODE *ord_num = NULL;
+      PT_NODE *ins_num = NULL;
+      if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
+	{
+	  if (ord_num)
+	    {
+	      parser_free_tree (parser, ord_num);
+	    }
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+      ord_num->type_enum = PT_TYPE_BIGINT;
+      ord_num->info.expr.op = PT_ORDERBY_NUM;
+      PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
 
+      ins_num->type_enum = PT_TYPE_BIGINT;
+      ins_num->info.expr.op = PT_INST_NUM;
+      PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+      orderby_for_part = parser_copy_tree_list (parser, class_orderby_for_part);
+      orderby_for_part = pt_lambda_with_arg (parser, orderby_for_part, ord_num, ins_num, false, 2, false);
+
+      *where_part = parser_append_node (orderby_for_part, *where_part);
+    }
   if (specptr)
     {
       spec = *specptr;
