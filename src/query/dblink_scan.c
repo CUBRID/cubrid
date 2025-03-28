@@ -24,6 +24,7 @@
 // dblink connection handling for distributed transaction
 #include "connection_defs.h"
 #include "thread_manager.hpp"
+#include "query_manager.h"
 #include "dblink_scan.h"
 
 #include "xasl.h"
@@ -626,7 +627,8 @@ dblink_add_conn_handle (int conn_handle, char *conn_url, char *user_name, char *
 }
 
 int
-dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VAL_DESCR * vd,
+		      DBLINK_HOST_VARS * host_vars)
 {
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
   int ret = NO_ERROR, result, conn_handle, stmt_handle;
@@ -637,6 +639,7 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
   char *sql_text = spec->s.dblink_node.conn_sql;
 
   char *find = strstr (spec->s.dblink_node.conn_url, ":?");
+
   if (find)
     {
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
@@ -650,7 +653,7 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
 
   if (!auto_commit)
     {
-      conn_handle = dblink_find_conn_handle (spec->s.dblink_node.conn_url, user_name, password);
+      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
     }
 
   if (conn_handle < 0)
@@ -671,7 +674,7 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
 
       if (!auto_commit)
 	{
-	  ret = dblink_add_conn_handle (conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password);
 	  if (ret < 0)
 	    {
 	      /* malloc error */
@@ -733,7 +736,7 @@ error_exit:
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 		  VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
@@ -759,7 +762,8 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 
   if (!auto_commit)
     {
-      scan_info->conn_handle = dblink_find_conn_handle (spec->s.dblink_node.conn_url, user_name, password);
+      scan_info->conn_handle =
+	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
     }
 
   if (scan_info->conn_handle < 0)
@@ -780,7 +784,9 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 
       if (!auto_commit)
 	{
-	  ret = dblink_add_conn_handle (scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  ret =
+	    qmgr_dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
+					 password);
 	  if (ret < 0)
 	    {
 	      return ER_DBLINK;
