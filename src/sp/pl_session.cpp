@@ -76,6 +76,8 @@ namespace cubpl
     , m_is_running (false)
     , m_req_id {0}
     , m_param_info {nullptr}
+    , m_last_conn_epoch (-1)
+    , m_all_session_params_required {true}
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
   }
@@ -211,6 +213,7 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
+    connection_view cv = nullptr;
     if (m_session_connections.empty ())
       {
 	connection_pool *pool = get_connection_pool ();
@@ -222,12 +225,16 @@ namespace cubpl
 
     if (!m_session_connections.empty ())
       {
-	auto conn = std::move (m_session_connections.front());
+	cv = std::move (m_session_connections.front());
 	m_session_connections.pop_front();
-	return conn;
       }
 
-    return nullptr;
+    if (check_reloading_pl_context_required (cv))
+      {
+	set_session_params_all_required (true);
+      }
+
+    return cv;
   }
 
   void
@@ -237,6 +244,16 @@ namespace cubpl
 
     if (conn != nullptr)
       {
+	// if there was no error, update the connection epoch and session parameters state
+	if (conn->get_last_error () == NO_ERROR)
+	  {
+	    if (m_last_conn_epoch == conn->get_epoch ())
+	      {
+		set_session_params_all_required (false);
+	      }
+	    m_last_conn_epoch = conn->get_epoch ();
+	  }
+
 	m_session_connections.emplace_back (std::move (conn));
       }
   }
@@ -245,6 +262,8 @@ namespace cubpl
   session::destroy_pl_context_jvm ()
   {
     cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
+
+    m_last_conn_epoch = -1;
 
     connection_view cv = claim_connection ();
     if (cv)
@@ -568,15 +587,35 @@ namespace cubpl
     m_param_info = param_info;
   }
 
+  bool
+  session::check_reloading_pl_context_required (const connection_view &conn)
+  {
+    return m_last_conn_epoch == -1 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
+  }
+
   const std::vector <sys_param>
-  session::obtain_session_parameters (bool reset)
+  session::obtain_session_parameters (const connection_view &conn)
   {
     std::vector<sys_param> changed_sys_params;
+
+    if (check_reloading_pl_context_required (conn))
+      {
+	set_session_params_all_required (true);
+      }
+
+    if (m_session_param_changed_ids.size () == 0 && !m_all_session_params_required)
+      {
+	// there was no change in session parameters
+	return changed_sys_params;
+      }
+
+    // obtain DB's session parameters
     SYSPRM_ASSIGN_VALUE *session_params = xsysprm_get_pl_context_parameters (PRM_USER_CHANGE | PRM_FOR_SESSION);
     SYSPRM_ASSIGN_VALUE *next_param = session_params;
     while (next_param != NULL)
       {
-	if (m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ())
+	bool is_param_changed = m_session_param_changed_ids.find (next_param->prm_id) != m_session_param_changed_ids.end ();
+	if (m_all_session_params_required || is_param_changed)
 	  {
 	    changed_sys_params.emplace_back (next_param);
 	  }
@@ -584,46 +623,94 @@ namespace cubpl
 	next_param = next_param->next;
       }
 
+    // obtain PL's session parameters
+    auto to_int = [] (sys_param_id id)
+    {
+      return static_cast<std::underlying_type_t<sys_param_id>> (id);
+    };
+
+    for (auto i = to_int (sys_param_id::PRM_ID_BEGIN);
+	 i < to_int (sys_param_id::PRM_ID_END); ++i)
+      {
+	bool is_param_changed = m_session_param_changed_ids.find (i) != m_session_param_changed_ids.end ();
+	if (m_all_session_params_required || is_param_changed)
+	  {
+	    auto param = m_session_params.find (i);
+	    if (param != m_session_params.end ())
+	      {
+		changed_sys_params.emplace_back (param->second);
+	      }
+	  }
+      }
+
     if (session_params)
       {
 	sysprm_free_assign_values (&session_params);
       }
 
-    if (reset)
+    if (changed_sys_params.size () > 0)
       {
-	m_session_param_changed_ids.clear ();
+	for (auto &param : changed_sys_params)
+	  {
+	    set_session_param (param);
+	  }
       }
 
     return changed_sys_params;
   }
 
   void
-  session::mark_session_param_changed (PARAM_ID prm_id)
+  session::mark_session_param_changed (int prm_id)
   {
     m_session_param_changed_ids.insert (prm_id);
   }
 
-#define SYS_PARAM_PACKER_ARGS() \
-  prm_id, prm_type, prm_value
-
-  sys_param::sys_param (SYSPRM_ASSIGN_VALUE *db_param)
+  void
+  session::set_session_param (const sys_param &param)
   {
-    prm_id = (int) db_param->prm_id;
-    prm_type = GET_PRM_DATATYPE (db_param->prm_id);
+    m_session_params.insert_or_assign (param.prm_id, param);
+  }
 
-    const SYSPRM_PARAM *prm = GET_PRM (db_param->prm_id);
-    set_prm_value (prm);
+  void
+  session::set_session_params_all_required (bool is_required)
+  {
+    m_all_session_params_required = is_required;
+    if (!m_all_session_params_required)
+      {
+	m_session_param_changed_ids.clear ();
+      }
+  }
+
+  sys_param::sys_param (const SYSPRM_ASSIGN_VALUE *db_param)
+    : sys_param (GET_PRM (db_param->prm_id))
+  {
+    //
+  }
+
+  sys_param::sys_param (const SYSPRM_PARAM *db_param)
+    : sys_param ((int) db_param->id, (int) GET_PRM_DATATYPE (db_param->id), "")
+  {
+    if (prm_id < static_cast<int> (sys_param_id::PRM_ID_BEGIN))
+      {
+	set_prm_value (db_param);
+      }
+  }
+
+  sys_param::sys_param (int prm_id, int prm_type, std::string prm_value)
+    : prm_id (prm_id), prm_type (prm_type), prm_value (prm_value)
+  {
+
   }
 
   void
   sys_param::set_prm_value (const SYSPRM_PARAM *prm)
   {
-    if (PRM_IS_BOOLEAN (prm))
+    if (prm_type == PRM_BOOLEAN)
       {
 	bool val = prm_get_bool_value (prm->id);
-	prm_value = val ? "true" : "false";
+	prm_value = val ? "t" : "f";
       }
-    else if (PRM_IS_STRING (prm))
+    else if (prm_type == PRM_STRING)
       {
 	const char *val = prm_get_string_value (prm->id);
 	if (val == NULL)
@@ -647,17 +734,17 @@ namespace cubpl
 	  }
 	prm_value = val;
       }
-    else if (PRM_IS_INTEGER (prm))
+    else if (prm_type == PRM_INTEGER)
       {
 	int val = prm_get_integer_value (prm->id);
 	prm_value = std::to_string (val);
       }
-    else if (PRM_IS_BIGINT (prm))
+    else if (prm_type == PRM_BIGINT)
       {
 	UINT64 val = prm_get_bigint_value (prm->id);
 	prm_value = std::to_string (val);
       }
-    else if (PRM_IS_FLOAT (prm))
+    else if (prm_type == PRM_FLOAT)
       {
 	float val = prm_get_float_value (prm->id);
 	prm_value = std::to_string (val);
@@ -668,6 +755,9 @@ namespace cubpl
 	prm_value = "*unknown*";
       }
   }
+
+#define SYS_PARAM_PACKER_ARGS() \
+  prm_id, prm_type, prm_value
 
   void
   sys_param::pack (cubpacking::packer &serializator) const

@@ -34,6 +34,8 @@ package com.cubrid.plcsql.builtin;
 import java.util.LinkedList;
 
 public class MessageBuffer {
+    public static final int DEFAULT_SIZE = 20000;
+
     private static final int STATUS_SUCCESS = 0;
     private static final int STATUS_FAILURE = 1;
 
@@ -49,6 +51,7 @@ public class MessageBuffer {
         builder = null;
         status = STATUS_FAILURE;
         lines = new LinkedList<String>();
+        size = DEFAULT_SIZE;
     }
 
     public void enable(Integer size) {
@@ -59,6 +62,10 @@ public class MessageBuffer {
         }
         builder = new StringBuilder();
         isEnabled = true;
+    }
+
+    public void enable() {
+        enable(this.size);
     }
 
     public void disable() {
@@ -137,7 +144,6 @@ public class MessageBuffer {
     public void clear() {
         clearBuilder();
         lines.clear();
-        size = 0;
         status = STATUS_FAILURE;
     }
 

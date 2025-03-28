@@ -417,7 +417,7 @@ uw_shm_destroy (int shm_key)
 
 T_SHM_BROKER *
 broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file,
-				  char *admin_log_file)
+				  int acl_default_policy, char *admin_log_file)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
@@ -449,6 +449,7 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, in
 
   shm_br->num_broker = br_num;
   shm_br->access_control = acl_flag;
+  shm_br->acl_default_policy = acl_default_policy;
 
   if (admin_log_file != NULL)
     {
@@ -572,8 +573,6 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   strcpy (shm_as_p->cgw_link_odbc_driver_name, br_info_p->cgw_link_odbc_driver_name);
   strcpy (shm_as_p->cgw_link_connect_url_property, br_info_p->cgw_link_connect_url_property);
 #endif
-
-  shm_as_p->acl_broker_allow = br_info_p->acl_broker_allow;
 
   if (shm_as_p->shard_flag == OFF)
     {
