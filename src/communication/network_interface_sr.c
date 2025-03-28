@@ -4648,15 +4648,8 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 
   return_btid =
     xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, (enum faiss::MetricType) metric_type);
-  if (return_btid == NULL)
-    {
-      (void) return_error_to_client (thread_p, rid);
-      ptr = or_pack_int (reply, er_errid ());
-    }
-  else
-    {
-      ptr = or_pack_int (reply, NO_ERROR);
-    }
+
+  ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

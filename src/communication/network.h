@@ -29,7 +29,6 @@
 #include "perf_monitor.h"
 #include "locator.h"
 #include "log_comm.h"
-#include "hnsw.hpp"
 
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.

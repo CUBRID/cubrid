@@ -6928,11 +6928,6 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
   THREAD_ENTRY *thread_p = enter_server ();
 
   btid = xhnsw_add_index (thread_p, btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
-  if (btid == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
 
   exit_server (*thread_p);
 

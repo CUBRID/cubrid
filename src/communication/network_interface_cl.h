@@ -52,7 +52,6 @@
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
 #include "hnsw.hpp"
-#include "faiss/IndexHNSW.h"
 
 #include "dynamic_array.h"
 #include "flashback_cl.h"
