@@ -274,7 +274,13 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   int i;
   bool usable = false;
 
-  static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+  static int prm_max_entry = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+
+  /*
+   * The maximum number of query entries is increased by 1.5 times
+   * to reflect internal queries such as authorization checks.
+   */
+  static int max_entry = prm_max_entry + ((prm_max_entry < 2) ? 1 : prm_max_entry / 2);
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -284,7 +290,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
     }
-  else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
+  else if (max_entry <= tran_entry_p->num_query_entries)
     {
       return NULL;
     }
@@ -304,7 +310,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   /* assign query id */
   hint_query_id = 0;
-  for (i = 0; i < qmgr_max_query_entry_per_tran; i++)
+  for (i = 0; i < max_entry; i++)
     {
       if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
 	{
