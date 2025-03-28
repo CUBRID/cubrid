@@ -581,51 +581,6 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
   return (tran_error == NO_ERROR) ? rc : tran_error;
 }
 
-static int
-dblink_find_conn_handle (char *conn_url, char *user_name, char *password)
-{
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  DBLINK_CONN_ENTRY *dblink = thread_p->dblink_entry;
-
-  while (dblink)
-    {
-      if (!strcmp (dblink->conn_url, conn_url) && !strcmp (dblink->user_name, user_name)
-	  && !strcmp (dblink->password, password))
-	{
-	  return dblink->conn_handle;
-	}
-
-      dblink = dblink->next;
-    }
-
-  return -1;
-}
-
-static int
-dblink_add_conn_handle (int conn_handle, char *conn_url, char *user_name, char *password)
-{
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  DBLINK_CONN_ENTRY *dblink_conn_entry;
-
-  dblink_conn_entry = (DBLINK_CONN_ENTRY *) malloc (sizeof (DBLINK_CONN_ENTRY));
-  if (dblink_conn_entry == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DBLINK_CONN_ENTRY));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  dblink_conn_entry->conn_handle = conn_handle;
-
-  strcpy (dblink_conn_entry->conn_url, conn_url);
-  strcpy (dblink_conn_entry->user_name, user_name);
-  strcpy (dblink_conn_entry->password, password);
-
-  dblink_conn_entry->next = thread_p->dblink_entry;
-  thread_p->dblink_entry = dblink_conn_entry;
-
-  return NO_ERROR;
-}
-
 int
 dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VAL_DESCR * vd,
 		      DBLINK_HOST_VARS * host_vars)
