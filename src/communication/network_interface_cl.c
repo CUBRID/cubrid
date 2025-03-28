@@ -6916,7 +6916,6 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
     }
   else
     {
-      fprintf (stdout, "error: %d\n", req_error);
       error = req_error;
     }
 
