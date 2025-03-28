@@ -334,7 +334,8 @@ extern PT_NODE *mq_lambda (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, P
 
 extern PT_NODE *mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 				 PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
-				 PT_NODE * class_group_by_part, PT_NODE * class_having_part);
+				 PT_NODE * class_group_by_part, PT_NODE * class_having_part,
+				 PT_NODE * class_orderby_for_part);
 
 static PT_NODE *mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_table,
 				       PT_NODE * corresponding_spec, PT_NODE * class_where_part,
@@ -1329,7 +1330,7 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
       statement =
 	mq_class_lambda (parser, statement, class_, query_spec_from, query_spec->info.query.q.select.where,
 			 query_spec->info.query.q.select.check_where, query_spec->info.query.q.select.group_by,
-			 query_spec->info.query.q.select.having);
+			 query_spec->info.query.q.select.having, query_spec->info.query.orderby_for);
       if (PT_SELECT_INFO_IS_FLAGED (query_spec, PT_SELECT_INFO_HAS_AGG))
 	{
 	  /* mark as agg select */
@@ -2250,7 +2251,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (pt_is_distinct (statement))	// 뷰 머징 못하도록 수정해야 함...
+	  if (pt_is_distinct (statement))
 	    {
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
@@ -2337,7 +2338,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
 	  statement->info.query.q.select.where = NULL;
 	}
     }
-  else if (query_spec->info.query.order_by != NULL && order_by == NULL)	// orderby가 없어지는 케이스 찾아보기 ...
+  else if (query_spec->info.query.order_by != NULL && order_by == NULL)
     {
       /* case 2 : order by of subqery is totally removed ==> orderby_num of subquery is changed to rownum */
       /* if where of subquery has rownum, orderby_num, can not view-merged. so is not needed to change */
@@ -2349,6 +2350,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   parser_free_tree (parser, ins_num);
 
   statement->info.query.order_by = parser_append_node (order_by, statement->info.query.order_by);
+
   if (free_node != NULL)
     {
       parser_free_tree (parser, free_node);
@@ -2757,6 +2759,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
       else if (statement->node_type == PT_SELECT)
 	{
 	  PT_NODE *inside_order_by = NULL;
+	  PT_NODE *inside_orderby_for = NULL;
 
 	  /* the vclasses are rewritten in mq_push_paths->mq_rewrite_vclass_spec_as_derived;
 	   * this should guarantee that vclasses appear only in simple, generated SELECTs, without order_by;
@@ -2776,6 +2779,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		}
 	      inside_order_by = statement->info.query.order_by;
 	      statement->info.query.order_by = NULL;
+
+	      inside_orderby_for = statement->info.query.orderby_for;
+	      statement->info.query.orderby_for = NULL;
 	    }
 
 	  arg1 = mq_substitute_subquery_in_statement (parser, statement, arg1, class_, order_by, what_for);
@@ -2821,11 +2827,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		  result->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
 		}
 
-	      if (query_spec->info.query.orderby_for != NULL)
+	      if (inside_orderby_for != NULL)
 		{
-		  result->info.query.orderby_for =
-		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
-					result->info.query.orderby_for);
+		  result->info.query.orderby_for = inside_orderby_for;
 		}
 
 	      if (query_spec->info.query.limit != NULL)
@@ -3361,7 +3365,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
 	      real_part =
 		mq_class_lambda (parser, parser_copy_tree (parser, tree), real_flat_classes, my_spec, NULL, NULL, NULL,
-				 NULL);
+				 NULL, NULL);
 	    }
 
 	  /* if the class spec had mixed real and virtual parts, recombine them. */
@@ -9762,12 +9766,13 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquer
 PT_NODE *
 mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE * corresponding_spec,
 		 PT_NODE * class_where_part, PT_NODE * class_check_part, PT_NODE * class_group_by_part,
-		 PT_NODE * class_having_part)
+		 PT_NODE * class_having_part, PT_NODE * class_orderby_for_part)
 {
   PT_NODE *spec;
   PT_NODE **specptr = NULL;
   PT_NODE **where_part = NULL, **where_part_ex = NULL;
   PT_NODE **check_where_part = NULL;
+  PT_NODE *orderby_for_part = NULL;
   PT_NODE *newspec = NULL;
   PT_NODE *oldnext = NULL;
   PT_NODE *assign, *result;
@@ -10260,6 +10265,32 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
       *check_where_part = parser_append_node (parser_copy_tree_list (parser, class_check_part), *check_where_part);
     }
 
+  if (class_orderby_for_part)
+    {
+      PT_NODE *ord_num = NULL;
+      PT_NODE *ins_num = NULL;
+      if (!(ord_num = parser_new_node (parser, PT_EXPR)) || !(ins_num = parser_new_node (parser, PT_EXPR)))
+	{
+	  if (ord_num)
+	    {
+	      parser_free_tree (parser, ord_num);
+	    }
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+      ord_num->type_enum = PT_TYPE_BIGINT;
+      ord_num->info.expr.op = PT_ORDERBY_NUM;
+      PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+      ins_num->type_enum = PT_TYPE_BIGINT;
+      ins_num->info.expr.op = PT_INST_NUM;
+      PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+      orderby_for_part = parser_copy_tree_list (parser, class_orderby_for_part);
+      orderby_for_part = pt_lambda_with_arg (parser, orderby_for_part, ord_num, ins_num, false, 2, false);
+
+      *where_part = parser_append_node (orderby_for_part, *where_part);
+    }
   if (specptr)
     {
       spec = *specptr;
