@@ -30,12 +30,19 @@
 #include "thread_manager.hpp"
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
+#include "px_heap_scan_mergable_list.hpp"
 
 namespace parallel_heap_scan
 {
   class manager
   {
     public:
+      enum class RESULT_GET_METHOD
+      {
+	NONE,
+	LIST_PAGE,
+	LIST_MERGE
+      };
       manager() = delete;
       manager (const manager &) = delete;
       manager &operator= (const manager &) = delete;
@@ -48,9 +55,11 @@ namespace parallel_heap_scan
       std::size_t parallelism;
 
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-	       std::size_t core_count, QUERY_ID query_id);
+	       std::size_t core_count, QUERY_ID query_id, RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list,
+	       VALPTR_LIST *outptr_list);
       ~manager();
       SCAN_CODE get_result_from_list_stream ();
+      SCAN_CODE get_result_from_mergable_list ();
       void terminate_tasks();
       void start ();
       void reset ();
@@ -61,6 +70,7 @@ namespace parallel_heap_scan
 	return *m_context;
       }
       QUERY_ID m_query_id;
+      RESULT_GET_METHOD m_result_get_method;
     private :
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
@@ -68,6 +78,10 @@ namespace parallel_heap_scan
       cubthread::entry_workpool *m_workpool;
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_reader> m_list_reader;
+      mergable_list_array *m_mergable_list;
+      std::vector<mergable_list_writer *> m_mergable_list_writers;
+      QFILE_LIST_ID *m_result_list;
+      VALPTR_LIST *m_outptr_list;
   };
 }
 
@@ -91,7 +105,8 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads);
+			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads,
+			      parallel_heap_scan::manager::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 

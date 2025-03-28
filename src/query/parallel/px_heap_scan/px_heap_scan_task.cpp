@@ -43,11 +43,12 @@ namespace parallel_heap_scan
 {
   task::task (std::shared_ptr<context> context,
 	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
-	      std::shared_ptr<list_id_wrapper> list_id_wrapper)
+	      std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer)
     : m_context (context)
     , m_memory_mapper (memory_mapper)
     , m_list_stream (list_stream)
     , m_list_id_wrapper (list_id_wrapper)
+    , m_mergable_list_writer (mergable_list_writer)
   {
 
   }
@@ -102,7 +103,7 @@ namespace parallel_heap_scan
     UINT64 old_fetches = 0, old_ioreads = 0;
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     list_id_data data;
-    QUERY_ID query_id = m_list_stream->get_query_id();
+    bool is_list_merge = m_mergable_list_writer != nullptr;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
     if (m_context->has_error())
       {
@@ -123,9 +124,17 @@ namespace parallel_heap_scan
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
     std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
-    m_list_id_wrapper->open (thread_p);
+    if (is_list_merge)
+      {
+	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list);
+      }
+    else
+      {
+	m_list_id_wrapper->open (thread_p);
+      }
     lock.unlock();
     m_context->add_tasks_list_opened();
+
     list_writer writer (m_list_stream, m_list_id_wrapper.get());
     scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
 			 scan_id->fixed, scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval,
@@ -210,7 +219,14 @@ namespace parallel_heap_scan
 		  {
 		    tsc_getticks (&t1);
 		  }
-		writer.write (thread_p, scan_id, data);
+		if (is_list_merge)
+		  {
+		    m_mergable_list_writer->write (thread_p);
+		  }
+		else
+		  {
+		    writer.write (thread_p, scan_id, data);
+		  }
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
@@ -220,8 +236,15 @@ namespace parallel_heap_scan
 	      }
 	  }
       }
-    writer.close (data);
-    m_list_id_wrapper->close();
+    if (is_list_merge)
+      {
+	m_mergable_list_writer->close (thread_p);
+      }
+    else
+      {
+	writer.close (data);
+	m_list_id_wrapper->close();
+      }
     m_context->add_tasks_scan_ended();
     if (on_trace)
       {

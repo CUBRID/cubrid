@@ -41,7 +41,8 @@
 namespace parallel_heap_scan
 {
   manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-		    std::size_t core_count, QUERY_ID query_id)
+		    std::size_t core_count, QUERY_ID query_id, RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list,
+		    VALPTR_LIST *outptr_list)
   {
     m_is_start_once = false;
     timeout_occurred = false;
@@ -50,8 +51,29 @@ namespace parallel_heap_scan
     parallelism = core_count;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
-    m_list_stream = std::make_shared<list_stream> (thread_p, core_count, 128, query_id, scan_id);
-    m_list_reader = std::make_shared<list_reader> ();
+    m_result_get_method = result_get_method;
+    if (m_result_get_method == RESULT_GET_METHOD::LIST_PAGE)
+      {
+	m_list_stream = std::make_shared<list_stream> (thread_p, core_count, 128, query_id, scan_id);
+	m_list_reader = std::make_shared<list_reader> ();
+	m_mergable_list = nullptr;
+	m_result_list = nullptr;
+	m_outptr_list = nullptr;
+      }
+    else
+      {
+	m_list_stream = std::shared_ptr<list_stream> (nullptr);
+	m_list_reader = std::shared_ptr<list_reader> (nullptr);
+	m_mergable_list = new mergable_list_array (thread_p, core_count);
+	for (size_t i = 0; i < core_count; i++)
+	  {
+	    m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
+					       outptr_list));
+	  }
+	m_result_list = result_list;
+	m_outptr_list = outptr_list;
+      }
+
     m_memory_mappers.reserve (parallelism);
     for (size_t i = 0; i < parallelism; i++)
       {
@@ -66,6 +88,14 @@ namespace parallel_heap_scan
     if (m_workpool != nullptr)
       {
 	thread_get_manager()->destroy_worker_pool (m_workpool);
+      }
+    if (m_mergable_list != nullptr)
+      {
+	delete m_mergable_list;
+      }
+    for (auto &mergable_list_writer : m_mergable_list_writers)
+      {
+	delete mergable_list_writer;
       }
   }
 
@@ -146,6 +176,40 @@ namespace parallel_heap_scan
     return S_SUCCESS;
   }
 
+  SCAN_CODE manager::get_result_from_mergable_list ()
+  {
+    while (!m_context->all_tasks_list_opened())
+      {
+	thread_sleep (1);
+      }
+    while (!m_context->all_tasks_scan_ended())
+      {
+	thread_sleep (1);
+	if (m_context->has_error())
+	  {
+	    return S_ERROR;
+	  }
+	if (qmgr_is_query_interrupted (m_thread_p, m_query_id))
+	  {
+	    m_context->set_has_error();
+	    return S_ERROR;
+	  }
+      }
+    /* all scan ended, merge lists */
+    QFILE_LIST_ID *merged_list_id = m_mergable_list->get_merged_list_id();
+    if (merged_list_id == nullptr)
+      {
+	/* no outputs, return null list_id in xasl */
+	return S_END;
+      }
+    else
+      {
+	/* swap list_id */
+	parallel_query::list_merger::swap_and_destroy_list_id (m_thread_p, &m_result_list, &merged_list_id);
+	return S_END;
+      }
+  }
+
   void manager::start ()
   {
 
@@ -179,12 +243,28 @@ namespace parallel_heap_scan
   void manager::start_tasks ()
   {
     std::unique_ptr<task> taskp = NULL;
-
-    for (size_t i = 0; i < parallelism; i++)
+    if (m_result_get_method == RESULT_GET_METHOD::LIST_PAGE)
       {
-	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i]));
-	thread_get_manager()->push_task (m_workpool, taskp.release());
-	m_context->add_tasks_started();
+	for (size_t i = 0; i < parallelism; i++)
+	  {
+	    taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i],nullptr));
+	    thread_get_manager()->push_task (m_workpool, taskp.release());
+	    m_context->add_tasks_started();
+	  }
+      }
+    else if (m_result_get_method == RESULT_GET_METHOD::LIST_MERGE)
+      {
+	for (size_t i = 0; i < parallelism; i++)
+	  {
+	    taskp.reset (new task (m_context, m_memory_mappers[i], std::shared_ptr<list_stream> (nullptr),
+				   std::shared_ptr<list_id_wrapper> (nullptr), m_mergable_list_writers[i]));
+	    thread_get_manager()->push_task (m_workpool, taskp.release());
+	    m_context->add_tasks_started();
+	  }
+      }
+    else
+      {
+	assert (false);
       }
   }
 
@@ -226,7 +306,18 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       scan_id->s.phsid.manager->terminate_tasks();
       return S_ERROR;
     }
-  ret = scan_id->s.phsid.manager->get_result_from_list_stream();
+  if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_PAGE)
+    {
+      ret = scan_id->s.phsid.manager->get_result_from_list_stream();
+    }
+  else if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE)
+    {
+      ret = scan_id->s.phsid.manager->get_result_from_mergable_list();
+    }
+  else
+    {
+      assert (false);
+    }
   if (thread_is_on_trace (thread_p))
     {
       if (ret == S_SUCCESS)
@@ -263,16 +354,29 @@ scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 extern int
 scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
-  scan_id->s.phsid.manager->reset();
+  if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_PAGE)
+    {
+      scan_id->s.phsid.manager->reset();
+    }
+  else if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE)
+    {
+      assert (false);
+    }
   return NO_ERROR;
 }
 
 extern void
 scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
-  scan_id->s.phsid.manager->end();
+  if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_PAGE)
+    {
+      scan_id->s.phsid.manager->end();
+    }
+  else if (scan_id->s.phsid.manager->m_result_get_method == parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE)
+    {
+      /* do nothing */
+    }
 }
-
 extern void
 scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
@@ -300,7 +404,8 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads)
+			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads,
+			      parallel_heap_scan::manager::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list)
 {
   int ret;
   int parallelism = num_parallel_threads;
@@ -314,7 +419,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
   scan_id->type = S_PARALLEL_HEAP_SCAN;
   orig_heap_id = db_change_private_heap (thread_p, 0);
   scan_id->s.phsid.manager = new parallel_heap_scan::manager (thread_p, scan_id, parallelism, parallelism,
-      parallelism, query_id);
+      parallelism, query_id, result_get_method, result_list, outptr_list);
   db_change_private_heap (thread_p, orig_heap_id);
   return ret;
 }

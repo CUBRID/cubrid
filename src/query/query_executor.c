@@ -571,7 +571,7 @@ STATIC_INLINE int qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 			    bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 			    QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-			    bool * p_mvcc_select_lock_needed);
+			    bool * p_mvcc_select_lock_needed, QFILE_LIST_ID * result_list, VALPTR_LIST * outptr_list);
 static void qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec);
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
@@ -6494,14 +6494,14 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       assert (xasl->scan_op_type == S_SELECT);
       if (qexec_open_scan (thread_p, outer_spec, xasl->proc.mergelist.outer_val_list, &xasl_state->vd, false,
 			   outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
-			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+			   xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id, xasl->outptr_list) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
       if (qexec_open_scan (thread_p, inner_spec, xasl->proc.mergelist.inner_val_list, &xasl_state->vd, false,
 			   inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
-			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+			   xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id, xasl->outptr_list) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -7512,7 +7512,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
    */
   error = qexec_open_scan (thread_p, build_spec, build_val_list, &(xasl_state->vd), false,
 			   build_spec->fixed_scan, build_spec->grouped_scan, true, &(build_spec->s_id),
-			   xasl_state->query_id, S_SELECT, false, NULL);
+			   xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id, xasl->outptr_list);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -7520,7 +7520,7 @@ qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 
   error = qexec_open_scan (thread_p, probe_spec, probe_val_list, &(xasl_state->vd), false,
 			   probe_spec->fixed_scan, probe_spec->grouped_scan, true, &(probe_spec->s_id),
-			   xasl_state->query_id, S_SELECT, false, NULL);
+			   xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id, xasl->outptr_list);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -9088,7 +9088,7 @@ static int
 qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
 		 bool force_select_lock, int fixed, int grouped, bool iscan_oid_order, SCAN_ID * s_id,
 		 QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
-		 bool * p_mvcc_select_lock_needed)
+		 bool * p_mvcc_select_lock_needed, QFILE_LIST_ID * result_list, VALPTR_LIST * outptr_list)
 {
   SCAN_TYPE scan_type;
   INDX_INFO *indx_info;
@@ -9225,6 +9225,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 #if SERVER_MODE && !WINDOWS
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
+	  parallel_heap_scan::manager::RESULT_GET_METHOD result_get_method = parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE;	/* should check LIST_MERGE in checker */
+	  if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	    {
+	      result_get_method = parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE;
+	    }
 	  error_code =
 	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -9236,7 +9241,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 					  scan_type, curr_spec->s.cls_node.cache_reserved,
 					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id,
-					  curr_spec->num_parallel_threads);
+					  curr_spec->num_parallel_threads, result_get_method, result_list, outptr_list);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -11650,7 +11655,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   /* force_select_lock = false */
   assert (xasl->scan_op_type == S_SELECT);
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
-		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id,
+		       xasl->outptr_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -12513,7 +12519,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   assert (xasl->scan_op_type == S_SELECT);
   /* force_select_lock = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
-		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl->list_id,
+		       xasl->outptr_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -14083,7 +14090,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       /* force_select_lock = false */
       if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
 			   specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
-			   NULL) != NO_ERROR)
+			   NULL, xasl->list_id, xasl->outptr_list) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -17023,7 +17030,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
-					       scan_immediately_stop, &mvcc_select_lock_needed) != NO_ERROR)
+					       scan_immediately_stop, &mvcc_select_lock_needed,
+					       xasl->list_id, xasl->outptr_list) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -17049,7 +17057,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
-					       &mvcc_select_lock_needed) != NO_ERROR)
+					       &mvcc_select_lock_needed, xasl->list_id, xasl->outptr_list) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -18072,7 +18080,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   /* start the scanner on "input" */
   if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
-		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL,
+		       xasl->list_id, xasl->outptr_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }

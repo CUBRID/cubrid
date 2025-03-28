@@ -426,6 +426,7 @@ set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
+set(PARALLEL_QUERY_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -454,6 +455,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_heap_scan
+  src/query/parallel
   )
 if(WITH_CCI)
   include_directories(

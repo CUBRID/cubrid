@@ -378,6 +378,7 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
@@ -389,6 +390,15 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  )
+
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
   )
 
 set(METHOD_SOURCES
@@ -628,6 +638,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -668,6 +679,8 @@ add_library(cubridsa SHARED
   ${SP_HEADERS}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_HEADERS}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
