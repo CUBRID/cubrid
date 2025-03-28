@@ -93,7 +93,7 @@
 #include "pl_compile_handler.hpp"
 #include "pl_session.hpp"
 #include "pl_executor.hpp"
-
+#include "hnsw.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4624,6 +4624,40 @@ sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
     }
 
   (void) or_pack_int (reply, (int) success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  BTID *return_btid = NULL;
+  int dimension, hnsw_M, hnsw_efConstruction, metric_type;
+  OID class_oid;
+  char *ptr;
+  int deduplicate_key_pos = -1;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &dimension);
+  ptr = or_unpack_int (ptr, &hnsw_M);
+  ptr = or_unpack_int (ptr, &hnsw_efConstruction);
+  ptr = or_unpack_int (ptr, &metric_type);
+
+  return_btid =
+    xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, (enum faiss::MetricType) metric_type);
+  if (return_btid == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      ptr = or_pack_int (reply, er_errid ());
+    }
+  else
+    {
+      ptr = or_pack_int (reply, NO_ERROR);
+    }
+  ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

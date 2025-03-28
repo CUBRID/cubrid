@@ -31,8 +31,9 @@
 int hnsw_index_id = 0;
 std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
 
-int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
-		    enum faiss::MetricType metric_type = faiss::METRIC_L2)
+BTID *
+xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
+		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
   std::unique_ptr<faiss::IndexHNSW> index = std::make_unique<faiss::IndexHNSW> (dimension, hnsw_M, metric_type);
   index->hnsw.efConstruction = hnsw_efConstruction;
@@ -46,7 +47,7 @@ int hnsw_add_index (BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_e
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
 
-  return NO_ERROR;
+  return btid;
 }
 
 int hnsw_delete_index (BTID *btid)

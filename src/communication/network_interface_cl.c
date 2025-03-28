@@ -49,6 +49,7 @@
 #include "pl_sr.h"
 #include "vacuum.h"
 #include "serial.h"
+#include "hnsw.hpp"
 #endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
@@ -6875,6 +6876,68 @@ btree_class_test_unique (char *buf, int buf_size)
   exit_server (*thread_p);
 
   return success;
+#endif /* !CS_MODE */
+}
+
+int
+hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, enum faiss::MetricType metric_type)
+{
+#if defined(CS_MODE)
+  int error = NO_ERROR;
+  int req_error, request_size;
+  char *ptr;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_int (ptr, dimension);
+  ptr = or_pack_int (ptr, hnsw_M);
+  ptr = or_pack_int (ptr, hnsw_efConstruction);
+  ptr = or_pack_int (ptr, metric_type);
+
+  req_error =
+    net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &error);
+      ptr = or_unpack_btid (ptr, btid);
+    }
+  else
+    {
+      fprintf (stdout, "error: %d\n", req_error);
+      error = req_error;
+    }
+
+  free_and_init (request);
+
+  return error;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  btid = xhnsw_add_index (thread_p, btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
+  if (btid == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+  exit_server (*thread_p);
+
+  return error;
 #endif /* !CS_MODE */
 }
 
