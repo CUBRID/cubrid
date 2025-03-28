@@ -609,7 +609,13 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_dump_in_buffer_Num_dwb_flushed_block_volumes,
 			       &f_load_Num_dwb_flushed_block_volumes),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOAD_THREAD_STATS, "Thread_loaddb_stats_counters_timers",
-			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
+			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
+
+  /* Execution statistics for regu var evaluation */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_REGU_EVAL_TIME_10USEC, "Regu_regu_eval_time_msec"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_REGU_NUM_FETCHES, "Num_regu_fetches"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_REGU_NUM_IOREADS, "Num_regu_ioreads"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_REGU_NUM_CALL_EVALS, "Num_regu_call_evals"),
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
