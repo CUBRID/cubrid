@@ -185,7 +185,6 @@ namespace cubmethod
       }
 
     // notify m_group_stack becomes empty ();
-    ulock.unlock ();
     m_cond_var.notify_all ();
   }
 
@@ -306,15 +305,9 @@ namespace cubmethod
       return m_group_stack.empty () || is_running () == false;
     };
 
-    if (pred ())
-      {
-	return;
-      }
-
     std::unique_lock<std::mutex> ulock (m_mutex);
-    while (!pred ())
+    while (m_cond_var.wait_for (ulock, std::chrono::milliseconds (100), pred) == false)
       {
-	m_cond_var.wait_for (ulock, std::chrono::milliseconds (100));
 	m_cond_var.notify_all ();
       }
   }
