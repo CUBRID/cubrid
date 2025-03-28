@@ -93,7 +93,7 @@ namespace cubpl
     SESSION_ID sid = get_session ()->get_id ();
 
     // get changed session parameters
-    const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
+    const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (m_stack->get_connection ());
 
     m_stack->set_java_command (SP_CODE_COMPILE);
     error_code = m_stack->send_data_to_java (session_params, req);

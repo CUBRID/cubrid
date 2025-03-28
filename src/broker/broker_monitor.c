@@ -501,7 +501,7 @@ main (int argc, char **argv)
       return 3;
     }
 
-  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL);
+  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL, NULL);
   if (err < 0)
     {
       return 2;
