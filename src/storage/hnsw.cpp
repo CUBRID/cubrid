@@ -23,6 +23,8 @@
 #include "hnsw.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
 //        This is not a problem in current implementation, but it may be a problem in the future,
