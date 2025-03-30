@@ -20,6 +20,7 @@
  * cubrocks.cpp - rocksdb for cubrid
  */
 
+#include "storage_common.h"
 #ident "$Id$"
 
 #include <string>
@@ -297,7 +298,14 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
     {
       rocksdb::Slice value (context->recdes_p->data, context->recdes_p->length);
 
-      * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+      if (context->type == HEAP_OPERATION_INSERT)
+	{
+	* ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+	}
+      else
+	{
+	* ((UINT64 *) (virtual_key + 8)) = oid_uint64;
+	}
 
       status = transactions[tran_index].txn->Put (key, value).ok ();
     }
@@ -452,7 +460,6 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
   char virtual_key[16];
   rocksdb::Status status;
   rocksdb::Slice key (virtual_key, 16);
-  std::string value;
 
   if (OID_ISNULL (class_oid))
   {
@@ -466,7 +473,7 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
 
   * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
 
-  status = transactions[tran_index].txn->GetForUpdate (read_options, key, &value);
+  status = transactions[tran_index].txn->GetForUpdate (read_options, key, &transactions[tran_index].pin);
   if (!status.ok ())
   {
     if (status.IsNotFound ())
@@ -482,16 +489,16 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
   }
 
   recdes->type = REC_HOME;
-  recdes->length = value.length ();
+  recdes->length = transactions[tran_index].pin.length ();
   if (ispeeking == COPY)
 	{
 	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
 
-	  memcpy (recdes->data, value.data (), recdes->length);
+	  memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
 	}
   else
 	{
-	  recdes->data = const_cast<char *> (value.data ());
+	  recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
 	  recdes->area_size = recdes->length;
 	}
 
@@ -506,19 +513,74 @@ cubrocks::context::kv_lock_release (int tran_index, OID *class_oid, OID *oid)
   assert (transactions[tran_index].txn != nullptr);
 
   char virtual_key[16];
-  UINT64 oid_uint64;
   rocksdb::Slice key (virtual_key, 16);
-
-  oid_uint64 = *((UINT64 *) oid);
 
   /* memory ordering */
   * ((short *) virtual_key) = class_oid->volid;
   * ((int *) (virtual_key + 2)) = class_oid->pageid;
   * ((short *) (virtual_key + 6)) = class_oid->slotid;
 
-  * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
 
   transactions[tran_index].txn->UndoGetForUpdate (key);
+}
+
+SCAN_CODE
+cubrocks::context::kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (ispeeking == PEEK || ispeeking == COPY);
+
+  rocksdb::ReadOptions read_options;
+  char virtual_key[16];
+  rocksdb::Status status;
+  rocksdb::Slice key (virtual_key, 16);
+
+  if (OID_ISNULL (class_oid))
+  {
+    assert_release (false);
+  }
+
+  /* memory ordering */
+  * ((short *) virtual_key) = class_oid->volid;
+  * ((int *) (virtual_key + 2)) = class_oid->pageid;
+  * ((short *) (virtual_key + 6)) = class_oid->slotid;
+
+  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
+
+  status = transactions[tran_index].txn->Get (read_options, key, &transactions[tran_index].pin);
+  if (!status.ok ())
+  {
+    if (status.IsNotFound ())
+    {
+      /* the object is removed when this thread waits for locking */
+      return S_DOESNT_EXIST;
+    }
+
+    /* currently timedout is not set so... */
+    /* abort when status is not ok */
+    std::cout << status.ToString () << std::endl;
+    assert_release (false);
+  }
+
+  recdes->type = REC_HOME;
+  recdes->length = transactions[tran_index].pin.length ();
+  if (ispeeking == COPY)
+	{
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+
+	  memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
+	}
+  else
+	{
+	  recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
+	  recdes->area_size = recdes->length;
+	}
+
+  return S_SUCCESS;
 }
 
 void

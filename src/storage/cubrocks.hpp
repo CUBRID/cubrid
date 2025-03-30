@@ -45,6 +45,8 @@ namespace cubrocks
     UINT64 reserved_next;
     UINT64 reserved_count;
 
+    std::string pin;
+
     rocksdb::Transaction *txn;
   };
 
@@ -99,6 +101,8 @@ namespace cubrocks
 
       SCAN_CODE kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
       void kv_lock_release (int tran_index, OID *class_oid, OID *oid);
+
+      SCAN_CODE kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
 
       /* ================================================================== */
       /* basic                                                              */

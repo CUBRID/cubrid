@@ -225,6 +225,7 @@ struct recdes
   INT16 type;			/* Type of record (REC_HOME, REC_NEWHOME,... ) */
   char *data;			/* The data */
 };
+
 /* Replace existing data in record at offset_to_data and size old_data_size
  * with new_data of size new_data_size.
  */
