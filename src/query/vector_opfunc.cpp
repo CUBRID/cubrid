@@ -24,6 +24,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim);
 static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim);
 
 /**
@@ -146,7 +147,13 @@ int vector_l1_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 
 int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
-  return vector_distance_internal (result, args, num_args, faiss::fvec_L2sqr);
+  return vector_distance_internal (result, args, num_args, cubvec_l2_distance);
+}
+
+static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
+{
+  float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
+  return std::sqrt (l2);
 }
 
 int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
