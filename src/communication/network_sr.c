@@ -431,6 +431,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_HNSW_ADDINDEX];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = shnsw_add_index;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;

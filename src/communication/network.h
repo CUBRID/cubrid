@@ -30,7 +30,6 @@
 #include "locator.h"
 #include "log_comm.h"
 
-
 /* Server statistics structure size, used to make sure the pack/unpack
    routines follow the current structure definition.
    This must be the byte size of the structure
@@ -148,6 +147,7 @@ enum net_server_request
   NET_SERVER_BTREE_GET_STATISTICS,
   NET_SERVER_BTREE_GET_KEY_TYPE,
   NET_SERVER_BTREE_FIND_MULTI_UNIQUES,
+  NET_SERVER_HNSW_ADDINDEX,
 
   NET_SERVER_DISK_TOTALPGS,
   NET_SERVER_DISK_FREEPGS,

@@ -370,7 +370,6 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw.cpp
   )
 
 set(XASL_SOURCES
