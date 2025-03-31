@@ -23,6 +23,10 @@
 #ifndef _HNSW_HPP_
 #define _HNSW_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include <unordered_map>
 #include <memory>
 

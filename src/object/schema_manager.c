@@ -77,7 +77,6 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
-#include "hnsw.hpp"
 #include "faiss/IndexHNSW.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
