@@ -23,6 +23,7 @@
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include "strict_warnings_on.hpp"
 
 static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim);
 static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim);
@@ -77,38 +78,45 @@ static std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
  */
 int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
-  assert (num_args == 3);
-
-  const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
-  const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
-  assert (!vec1.empty() && !vec2.empty());
-  assert (vec1.size() == vec2.size());
-
-  assert (args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
-  DB_VECTOR_DISTANCE_METRIC metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
-
-  float distance = 0.0f;
+  assert (num_args == 2 || num_args == 3);
 
   try
     {
-      if (metric == DB_VECTOR_DISTANCE_METRIC::EUCLIDEAN)
+      if (num_args == 2)
 	{
-	  distance = faiss::fvec_L2sqr (vec1.data(), vec2.data(), vec1.size());
+	  // TODO: if index exists, use the metric used to create the index
+	  // otherwise, use cosine distance as default
+	  return vector_cosine_distance (result, args, 2);
 	}
-      else
+
+      assert (num_args == 3 && args[2] != nullptr && (DB_VALUE_TYPE (args[2]) == DB_TYPE_INTEGER));
+      DB_VECTOR_DISTANCE_METRIC metric = static_cast<DB_VECTOR_DISTANCE_METRIC> (db_get_int (args[2]));
+
+      // Use a switch statement to handle different metrics
+      switch (metric)
 	{
-	  throw std::runtime_error ("Unsupported distance metric.");
+	case DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE:
+	  return vector_cosine_distance (result, args, 2);
+
+	case DB_VECTOR_DISTANCE_METRIC::METRIC_DOT:
+	  return vector_negative_inner_product (result, args, 2);
+
+	case DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN:
+	  return vector_l2_distance (result, args, 2);
+
+	case DB_VECTOR_DISTANCE_METRIC::METRIC_MANHATTAN:
+	  return vector_l1_distance (result, args, 2);
+
+	default:
+	  throw std::invalid_argument ("Unsupported distance metric.");
 	}
     }
-  catch (const std::exception &e)
+  catch (const std::exception& e)
     {
       // TODO: handle this error with CUBRID error code.
       std::fprintf (stderr, "faiss error: %s\n", e.what());
       std::abort();
     }
-
-  db_make_double (result, static_cast<double> (distance));
-  return NO_ERROR;
 }
 
 static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num_args,
@@ -161,6 +169,13 @@ int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
   return vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
 }
 
+int vector_negative_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  int retval = vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
+  db_make_double (result, -db_get_double (result));
+  return retval;
+}
+
 int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
   return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
@@ -197,3 +212,5 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
   return distance;
 
 }
+
+#include "strict_warnings_off.hpp"
