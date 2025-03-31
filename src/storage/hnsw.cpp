@@ -26,6 +26,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#include "strict_warnings_on.hpp"
 // TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
@@ -111,3 +112,5 @@ int hnsw_print_index_info (BTID *btid)
 
   return NO_ERROR;
 }
+
+#include "strict_warnings_off.hpp"
