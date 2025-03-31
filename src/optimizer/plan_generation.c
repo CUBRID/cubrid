@@ -863,6 +863,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     xasl->spec_list = NULL;
     xasl->val_list = NULL;
 
+    /* during_join_pred */
     during_join_pred = make_pred_from_bitset (env, &(plan->plan_un.join.during_join_terms), is_always_true);
     if (during_join_pred != NULL)
       {
@@ -870,6 +871,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	parser_free_tree (parser, during_join_pred);
       }
 
+    /* remaining_join_pred */
     bitset_init (&remaining_join_pred_set, env);
     bitset_assign (&remaining_join_pred_set, &(plan->plan_un.join.join_terms));
     bitset_difference (&remaining_join_pred_set, &(plan->plan_un.join.hash_terms));
@@ -2740,8 +2742,8 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 
   memset (&projection_info, 0, sizeof (PROJECTION_INFO));
 
-  outer_info = &(projection_info.outer);
-  inner_info = &(projection_info.inner);
+  outer_info = &projection_info.outer;
+  inner_info = &projection_info.inner;
 
   outer_info->exprs_set = &outer_exprs_set;
   inner_info->exprs_set = &inner_exprs_set;
@@ -2751,28 +2753,119 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   bitset_init (&inner_exprs_set, env);
   bitset_init (&plan_segs_set, env);
 
-  /**
-   * STEP 1: Distinguish the left and right parts in the join terms as outer and inner,
-   *         and make separate lists of parts that are expressions or functions for each.
-   */
-  bitset_assign (&plan_segs_set, &(plan->info->projected_segs));
+  bitset_assign (&plan_segs_set, &plan->info->projected_segs);
 
+  /**
+   * STEP 1: Distinguish the left and right parts in the hash join terms as outer and inner,
+   *         and make separate lists of expressions or functions from each side.
+   *         If parts are not on either side, they are evaluated as sarged_term in BUILDLIST_PROC.
+   * 
+   *         Hash terms must be processed before other join terms,
+   *         as they need to be coordinated with QFILE_LIST_MERGE_INFO.
+   */
+  for (bitset_index = bitset_iterate (&plan->plan_un.join.hash_terms, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
+    {
+      assert (BITSET_MEMBER (*pred_set, bitset_index));
+
+      term = QO_ENV_TERM (env, bitset_index);
+
+      BITSET_CLEAR (temp_segs_set);
+
+      term_expr = QO_TERM_PT_EXPR (term);
+      qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
+
+	  /**
+	   * STEP 1-1: Distinguish the left and right parts in the hash join terms as outer and inner.
+	   */
+      if (bitset_intersects (&temp_segs_set, &outer_plan->info->projected_segs))
+	{
+	  outer_part = pt_left_part (term_expr);
+	  inner_part = pt_right_part (term_expr);
+	  if (term_expr->info.expr.op == PT_RANGE && inner_part != NULL)
+	    {
+	      inner_part = inner_part->info.expr.arg1;
+	    }
+	}
+      else if (bitset_intersects (&temp_segs_set, &inner_plan->info->projected_segs))
+	{
+	  inner_part = pt_left_part (term_expr);
+	  outer_part = pt_right_part (term_expr);
+	  if (term_expr->info.expr.op == PT_RANGE && outer_part != NULL)
+	    {
+	      outer_part = outer_part->info.expr.arg1;
+	    }
+	}
+      else
+	{
+	  /* This may occur in non-hash join terms, but is impossible in hash join terms. */
+	  assert (false);
+
+	  /* If parts are not on either side, they are evaluated as sarged_term in BUILDLIST_PROC. */
+	  bitset_add (&plan->sarged_terms, bitset_index);
+
+	  /* Since join terms include hash join terms, they must be removed together. */
+	  bitset_remove (&plan->plan_un.join.hash_terms, bitset_index);
+	  bitset_remove (&plan->plan_un.join.join_terms, bitset_index);
+
+	  bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
+	  continue;
+	}
+
+	  /**
+	   * STEP 1-2: Make separate lists of parts that are expressions or functions for the outer and inner.
+	   */
+      if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
+	{
+	  outer_info->expr_list = parser_append_node (pt_point (parser, outer_part), outer_info->expr_list);
+	  bitset_add (outer_info->exprs_set, bitset_index);
+	}
+      else
+	{
+	  bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
+	}
+
+      if (pt_is_expr_node (inner_part) || pt_is_function (inner_part))
+	{
+	  inner_info->expr_list = parser_append_node (pt_point (parser, inner_part), inner_info->expr_list);
+	  bitset_add (inner_info->exprs_set, bitset_index);
+	}
+      else
+	{
+	  bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
+	}
+    }
+
+  /**
+   * STEP 2: Distinguish the left and right parts in the non-hash join terms as outer and inner,
+   *         and make separate lists of expressions or functions from each side.
+   *         If parts are not on either side, they are evaluated as `sarged_term` in `BUILDLIST_PROC`.
+   *
+   *         Add the segments of non-join terms to the plan segments.
+   *         These are most likely segments from sarged_terms.
+   */
   for (bitset_index = bitset_iterate (pred_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
     {
       term = QO_ENV_TERM (env, bitset_index);
 
+      BITSET_CLEAR (temp_segs_set);
+
       if (BITSET_MEMBER (plan->plan_un.join.join_terms, bitset_index))
 	{
-	  BITSET_CLEAR (temp_segs_set);
+	  if (BITSET_MEMBER (plan->plan_un.join.hash_terms, bitset_index))
+	    {
+	      /* Skip hash terms, as they have already been processed. */
+	      continue;
+	    }
+
+	  term_expr = QO_TERM_PT_EXPR (term);
+	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
 
 	  /**
-	   * STEP 1-1: Distinguish the left and right parts in the join terms as outer and inner.
+	   * STEP 2-1: Distinguish the left and right parts in the non-hash join terms as outer and inner.
 	   */
-	  term_expr = QO_TERM_PT_EXPR (term);
-	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);	/* TODO: Could it be replaced with term_expr->info.expr.arg1? */
-
-	  if (bitset_intersects (&temp_segs_set, &(outer_plan->info->projected_segs)))
+	  if (bitset_intersects (&temp_segs_set, &outer_plan->info->projected_segs))
 	    {
 	      outer_part = pt_left_part (term_expr);
 	      inner_part = pt_right_part (term_expr);
@@ -2781,7 +2874,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 		  inner_part = inner_part->info.expr.arg1;
 		}
 	    }
-	  else if (bitset_intersects (&temp_segs_set, &(inner_plan->info->projected_segs)))
+	  else if (bitset_intersects (&temp_segs_set, &inner_plan->info->projected_segs))
 	    {
 	      inner_part = pt_left_part (term_expr);
 	      outer_part = pt_right_part (term_expr);
@@ -2792,6 +2885,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	    }
 	  else
 	    {
+	      /* If parts are not on either side, they are evaluated as `sarged_term` in `BUILDLIST_PROC`. */
 	      bitset_add (&plan->sarged_terms, bitset_index);
 	      bitset_remove (&plan->plan_un.join.join_terms, bitset_index);
 	      bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
@@ -2799,7 +2893,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	    }
 
 	  /**
-	   * STEP 1-2: Make separate lists of parts that are expressions or functions for the outer and inner.
+	   * STEP 2-2: Make separate lists of parts that are expressions or functions for the outer and inner.
 	   */
 	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
 	    {
@@ -2823,15 +2917,19 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	}
       else
 	{
+	  /**
+	   * STEP 2-3: Add the segments of non-join terms to the plan segments.
+	   *           Most likely segments from sarged_terms.
+	   */
 	  bitset_union (&plan_segs_set, &(QO_TERM_SEGS (term)));
 	}
     }
 
   /**
-   * STEP 2: Make XASL for the outer plan.
+   * STEP 3: Make XASL for the outer plan.
    */
-  bitset_assign (&temp_segs_set /* save */ , &(outer_plan->info->projected_segs));
-  bitset_intersect (&(outer_plan->info->projected_segs), &plan_segs_set);
+  bitset_assign (&temp_segs_set /* save */ , &outer_plan->info->projected_segs);
+  bitset_intersect (&outer_plan->info->projected_segs, &plan_segs_set);
 
   outer_info->name_list = make_namelist_from_projected_segs (env, outer_plan);
   outer_info->name_list = pt_flatten_expr_list_to_names (parser, outer_info->name_list);
@@ -2854,13 +2952,13 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
       goto exit_on_error;
     }
 
-  bitset_assign (&(outer_plan->info->projected_segs), &temp_segs_set /* restore */ );
+  bitset_assign (&outer_plan->info->projected_segs, &temp_segs_set /* restore */ );
 
   /**
-   * STEP 3: Make XASL for the inner plan.
+   * STEP 4: Make XASL for the inner plan.
    */
-  bitset_assign (&temp_segs_set /* save */ , &(inner_plan->info->projected_segs));
-  bitset_intersect (&(inner_plan->info->projected_segs), &plan_segs_set);
+  bitset_assign (&temp_segs_set /* save */ , &inner_plan->info->projected_segs);
+  bitset_intersect (&inner_plan->info->projected_segs, &plan_segs_set);
 
   inner_info->name_list = make_namelist_from_projected_segs (env, inner_plan);
   inner_info->name_list = pt_flatten_expr_list_to_names (parser, inner_info->name_list);
@@ -2883,10 +2981,10 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
       goto exit_on_error;
     }
 
-  bitset_assign (&(inner_plan->info->projected_segs), &temp_segs_set /* restore */ );
+  bitset_assign (&inner_plan->info->projected_segs, &temp_segs_set /* restore */ );
 
   /**
-   * STEP 4: Make XASL for the hash join plan.
+   * STEP 5: Make XASL for the hash join plan.
    */
   hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info);
   if (hashjoin_xasl == NULL)
@@ -2895,24 +2993,43 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
     }
 
   /**
-   * STEP 5: Add XASL for the hash join as an uncorrelated subquery.
+   * STEP 6: Instnum terms can be evaluated at probe time if they are the only non-join terms.
+   */
+  for (bitset_index = bitset_iterate (&plan->sarged_terms, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
+    {
+      term = QO_ENV_TERM (env, bitset_index);
+
+      if (QO_TERM_CLASS (term) != QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  break;
+	}
+    }
+
+  if (bitset_index == -1)
+    {
+      /* TODO: Only instnum terms exist. */
+    }
+
+  /**
+   * STEP 7: Add XASL for the hash join as an uncorrelated subquery.
    */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);
   assert (xasl != NULL);
 
   /**
-   * STEP 6: Filter out predicates used in the hash join plan.
+   * STEP 8: Filter out predicates used in the hash join plan.
    */
-  bitset_difference (pred_set, &(plan->plan_un.join.join_terms));
+  bitset_difference (pred_set, &plan->plan_un.join.join_terms);
   if (IS_OUTER_JOIN_TYPE (plan->plan_un.join.join_type))
     {
-      bitset_difference (pred_set, &(plan->plan_un.join.during_join_terms));
+      bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
     }
 
   /**
-   * STEP 7: Add the segments referenced by the remaining predicates to the final projected segments.
+   * STEP 9: Add the segments referenced by the remaining predicates to the final projected segments.
    */
-  bitset_assign (&plan_segs_set, &(plan->info->projected_segs));
+  bitset_assign (&plan_segs_set, &plan->info->projected_segs);
   for (bitset_index = bitset_iterate (pred_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
     {
@@ -2921,9 +3038,9 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
     }
 
   /**
-   * STEP 8: Make a list of merged segments from the projected segments of the outer and inner plans.
+   * STEP 10: Make a list of merged segments from the projected segments of the outer and inner plans.
    */
-  bitset_assign (&temp_segs_set, &(outer_plan->info->projected_segs));
+  bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &plan_segs_set);
   for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
@@ -2932,7 +3049,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
 	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
     }
 
-  bitset_assign (&temp_segs_set, &(inner_plan->info->projected_segs));
+  bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &plan_segs_set);
   for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
        bitset_index = bitset_next_member (&bitset_iter))
@@ -2945,7 +3062,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   plan_seg_count = pt_length_of_list (plan_seg_list);
 
   /**
-   * STEP 9: Filter out unnecessary join edge segments from the projected segments of the outer and inner plans.
+   * STEP 11: Filter out unnecessary join edge segments from the projected segments of the outer and inner plans.
    *         In this case, the positions of the used segments must be set.
    * 
    *   e.g. drop table if exists probe_input, build_input;
@@ -2959,7 +3076,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
    */
   if (plan_seg_count > 0 && plan_seg_count < (outer_info->name_count + inner_info->name_count))
     {
-      merge_info = &(hashjoin_xasl->proc.hashjoin.merge_info);
+      merge_info = &hashjoin_xasl->proc.hashjoin.merge_info;
 
       plan_seg_pos_list = (int *) malloc (plan_seg_count * sizeof (int));
       if (plan_seg_pos_list == NULL)
@@ -3009,7 +3126,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
     }
 
   /**
-   * STEP 10: Make XASL for the list scan procedure of the hash-joined result.
+   * STEP 12: Make XASL for the list scan procedure of the hash-joined result.
    */
   xasl = init_list_scan_proc (env, xasl, hashjoin_xasl, plan_seg_list, pred_set, plan_seg_pos_list);
   xasl = add_scan_proc (env, xasl, inner_scans);
@@ -3017,7 +3134,7 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
   xasl = add_subqueries (env, xasl, subqueries);
 
   /**
-   * STEP 11: Check if the XASL for the hash join procedure is valid.
+   * STEP 13: Check if the XASL for the hash join procedure is valid.
    */
   xasl = check_hash_join_xasl (env, xasl);
   assert (xasl != NULL);
@@ -3043,10 +3160,10 @@ exit_on_end:
       free_and_init (plan_seg_pos_list);
     }
 
-  bitset_delset (&plan_segs_set);
   bitset_delset (&temp_segs_set);
   bitset_delset (&outer_exprs_set);
   bitset_delset (&inner_exprs_set);
+  bitset_delset (&plan_segs_set);
 
   return xasl;
 

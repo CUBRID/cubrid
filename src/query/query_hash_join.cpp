@@ -98,6 +98,7 @@ struct hashjoin_context
   JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
   PRED_EXPR *remaining_join_pred;
+  PRED_EXPR *instnum_pred;
 
   HASH_LIST_SCAN hash_scan;
   bool is_build_outer;
@@ -922,6 +923,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   context->join_type = merge_info->join_type;
   context->during_join_pred = xasl->during_join_pred;
   context->remaining_join_pred = proc->remaining_join_pred;
+  context->instnum_pred = proc->instnum_pred;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
   assert (context->is_build_outer == false);
@@ -2560,7 +2562,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	  else if (exit_on_next)
 	    {
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-	      fprintf (stdout, "\nNot Matched Key: ");
+	      fprintf (stdout, "\nNot Matched Key (collisions): ");
 	      qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
 
@@ -2612,7 +2614,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	      if (ev_res != V_TRUE)
 		{
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-		  fprintf (stdout, "\nNot Matched Key: ");
+		  fprintf (stdout, "\nNot Matched Key (join_pred): ");
 		  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
 
@@ -2985,7 +2987,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	  else if (exit_on_next)
 	    {
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-	      fprintf (stdout, "\nNot Matched Key: ");
+	      fprintf (stdout, "\nNot Matched Key (collisions): ");
 	      qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
 
@@ -3046,7 +3048,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	      if (ev_res != V_TRUE)
 		{
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-		  fprintf (stdout, "\nNot Matched Key: ");
+		  fprintf (stdout, "\nNot Matched Key (join_pred): ");
 		  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
 #endif
 

@@ -381,6 +381,7 @@ struct hashjoin_proc_node
   HJ_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
   PRED_EXPR *remaining_join_pred;
+  PRED_EXPR *instnum_pred;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HJ_DOMAIN_INFO domain_info;
   HJ_STATS_GROUP stats_group;
