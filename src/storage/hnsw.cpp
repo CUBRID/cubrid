@@ -52,7 +52,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   return btid;
 }
 
-int hnsw_delete_index (BTID *btid)
+int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 {
   if (!btid)
     {

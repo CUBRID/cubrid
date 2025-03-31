@@ -4654,6 +4654,26 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+void
+shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int success;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_btid (request, &btid);
+
+  success = (xhnsw_delete_index (thread_p, &btid) == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  if (success != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, (int) success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 /*
  * sdk_totalpgs -
  *

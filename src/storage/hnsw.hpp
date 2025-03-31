@@ -36,7 +36,7 @@
 
 BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 		       enum faiss::MetricType metric_type);
-int hnsw_delete_index (BTID *btid);
+int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 
 extern int hnsw_index_id;
