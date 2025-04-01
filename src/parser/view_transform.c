@@ -2670,13 +2670,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      derived_table->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
 	    }
 
-	  if (query_spec->info.query.orderby_for)
-	    {
-	      derived_table->info.query.orderby_for =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
-				    derived_table->info.query.orderby_for);
-	    }
-
 	  class_spec->info.spec.derived_table =
 	    mq_substitute_select_in_statement (parser, class_spec->info.spec.derived_table, query_spec, tmp_class);
 
