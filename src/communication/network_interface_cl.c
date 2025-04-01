@@ -6935,6 +6935,47 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 #endif /* !CS_MODE */
 }
 
+int
+hnsw_delete_index (BTID * btid)
+{
+#if defined(CS_MODE)
+  int req_error, status = NO_ERROR;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_btid (request, btid);
+
+  req_error =
+    net_client_request (NET_SERVER_HNSW_DELINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+  else
+    {
+      status = req_error;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xhnsw_delete_index (thread_p, btid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
 /*
  * qfile_get_list_file_page -
  *
