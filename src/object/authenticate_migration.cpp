@@ -129,6 +129,9 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   char encrypt_mode = ENCODE_PREFIX_DEFAULT;
   char *upper_case_name = NULL;
   size_t upper_case_name_size = 0;
+  int save;
+
+  AU_DISABLE (save);
 
   if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
@@ -137,7 +140,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       if (query == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
       sprintf (query, dba_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
     }
@@ -148,7 +152,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       if (upper_case_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       intl_identifier_upper (ctxt.login_user, upper_case_name);
@@ -157,13 +162,9 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       sprintf (query, user_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, upper_case_name);
@@ -173,22 +174,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   /* error is row count if not negative. */
   if (error < NO_ERROR)
     {
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
-
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
-
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
-      return error;
+      goto end;
     }
 
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -423,23 +409,6 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	    }
 	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
 	}
-
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
-
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
-
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
-
     }
   else
     {
@@ -465,7 +434,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       if (upper_case_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       intl_identifier_upper (ctxt.login_user, upper_case_name);
@@ -474,13 +444,9 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       sprintf (query, group_query, upper_case_name);
@@ -490,22 +456,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       /* error is row count if not negative. */
       if (error < NO_ERROR)
 	{
-	  if (query_result != NULL)
-	    {
-	      db_query_end (query_result);
-	      query_result = NULL;
-	    }
-
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
-	  if (query != NULL)
-	    {
-	      free_and_init (query);
-	    }
-	  return error;
+	  goto end;
 	}
 
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -546,22 +497,24 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	      ws_free_string_and_init (gname);
 	    }
 	}
+    }
 
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
+end:
+  AU_ENABLE (save);
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
 
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
+  if (upper_case_name != NULL)
+    {
+      free_and_init (upper_case_name);
+    }
 
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
+  if (query != NULL)
+    {
+      free_and_init (query);
     }
 
   return (error);
