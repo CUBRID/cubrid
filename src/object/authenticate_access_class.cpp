@@ -163,7 +163,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   if (class_new_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   obj = locator_prepare_rename_class (class_mop, class_old_name, class_new_name);

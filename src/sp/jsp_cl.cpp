@@ -1138,8 +1138,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       else
 	{
 	  err = ER_SP_COMPILE_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-		  compile_response.err_column, compile_response.err_msg.c_str ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, compile_response.err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
 			   NULL);
 	  goto error_exit;
@@ -1810,8 +1809,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       else
 	{
 	  err = ER_SP_COMPILE_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_response.err_line,
-		  compile_response.err_column, compile_response.err_msg.c_str ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, compile_response.err_msg.c_str ());
 	  pt_record_error (parser, parser->statement_number, compile_response.err_line, compile_response.err_column, er_msg (),
 			   NULL);
 	  goto error;

@@ -31,6 +31,8 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ContextClassLoader;
+import com.cubrid.jsp.classloader.SessionClassLoader;
 import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.security.Permission;
@@ -67,7 +69,20 @@ public class SpSecurityManager extends SecurityManager {
 
     public void checkExec(String cmd) {}
 
-    public void checkLink(String lib) {}
+    public void checkLink(String lib) {
+        Class<?>[] context = getClassContext();
+
+        for (Class<?> cls : context) {
+            ClassLoader loader = cls.getClassLoader();
+
+            if (loader != null
+                    && ((loader instanceof ContextClassLoader)
+                            || (loader instanceof SessionClassLoader))) {
+                throw new SecurityException(
+                        "Native library loading is not allowed. Please load your class using 'loadjava' with the '-jni' option.");
+            }
+        }
+    }
 
     public void checkListen(int port) {}
 

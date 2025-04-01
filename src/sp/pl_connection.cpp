@@ -244,6 +244,7 @@ namespace cubpl
     , m_index (index)
     , m_socket (INVALID_SOCKET)
     , m_epoch (pool->get_epoch ())
+    , m_error (NO_ERROR)
   {
     //
     do_reconnect ();
@@ -275,6 +276,12 @@ namespace cubpl
     return m_index;
   }
 
+  int
+  connection::get_epoch () const
+  {
+    return m_epoch;
+  }
+
   SOCKET
   connection::get_socket () const
   {
@@ -282,8 +289,16 @@ namespace cubpl
   }
 
   int
+  connection::get_last_error () const
+  {
+    return m_error;
+  }
+
+  int
   connection::send_buffer (const cubmem::block &blk)
   {
+    m_error = NO_ERROR;
+
     if (!is_valid () || m_pool->is_system_pool ())
       {
 	do_reconnect ();
@@ -319,6 +334,8 @@ namespace cubpl
   int
   connection::receive_buffer (cubmem::block &b, const pl_callback_func *interrupt_func, int timeout_ms)
   {
+    m_error = NO_ERROR;
+
     if (!is_valid ())
       {
 	return do_handle_network_error (-1);
@@ -338,7 +355,8 @@ namespace cubpl
 	      {
 		if (interrupt_func && (*interrupt_func)() != NO_ERROR)
 		  {
-		    return er_errid ();
+		    m_error = er_errid ();
+		    return m_error;
 		  }
 		continue;
 	      }
@@ -433,13 +451,15 @@ namespace cubpl
       {
 	// Do not set error message for system pool
 	// To avoid noise in the error log
-	return ER_SP_NETWORK_ERROR;
+	m_error = ER_SP_NETWORK_ERROR;
       }
     else
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
-	return er_errid ();
+	m_error = er_errid ();
       }
+
+    return m_error;
   }
 
 } // namespace cubpl

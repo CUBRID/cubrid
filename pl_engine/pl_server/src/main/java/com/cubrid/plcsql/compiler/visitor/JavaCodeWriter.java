@@ -46,6 +46,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.apache.commons.text.StringEscapeUtils;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
@@ -445,7 +446,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 String.format(
                         "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
                         node.name,
-                        node.staticSql.rewritten,
+                        StringEscapeUtils.escapeJava(node.staticSql.rewritten),
                         Arrays.toString(node.paramRefCounts),
                         Arrays.toString(node.paramNumOfHostExpr));
         return new CodeTemplate("DeclCursor", Misc.UNKNOWN_LINE_COLUMN, code);
@@ -1569,15 +1570,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtCursorFetch =
             new String[] {
                 "{ // cursor fetch",
-                "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
-                "    throw new INVALID_CURSOR(\"tried to fetch values with an unopened cursor\");",
+                "  if (%'CURSOR'% == null) {",
+                "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
-                "  if (rs.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
-                "  } else {",
-                "    ;", // TODO: setting nulls to into-variables?
                 "  }",
                 "}"
             };
@@ -1925,8 +1923,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'CURSOR'%.open(conn, %'PSTMT-REF'%);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
-                "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  while (%'CURSOR'%.fetch()) {",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -1948,8 +1945,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    %'+HOST-EXPRS'%);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
-                "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                "    %'CURSOR'%.updateRowCount();",
+                "  while (%'CURSOR'%.fetch()) {",
                 "    %'RECORD'%[0].set(",
                 "      %'+RECORD-FIELD-VALUES'%",
                 "    );",
@@ -2493,7 +2489,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
                     "%'QUERY'%",
-                    '"' + node.staticSql.rewritten + '"');
+                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"');
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
@@ -2508,7 +2504,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
                     "%'QUERY'%",
-                    '"' + node.staticSql.rewritten + '"',
+                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"',
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }

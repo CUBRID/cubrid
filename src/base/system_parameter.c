@@ -769,7 +769,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
 
+#define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
+
 #define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
+
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2490,11 +2493,21 @@ static bool PRM_DBLINK_AUTO_COMMIT = true;
 static bool prm_dblink_auto_commit_default = true;
 static unsigned int prm_dblink_auto_commit_flag = 0;
 
+#if defined(NDEBUG)
+static bool PRM_ENABLE_JVM_HEAP_DUMP = false;
+static bool prm_enable_jvm_heap_dump_default = false;
+#else
+static bool PRM_ENABLE_JVM_HEAP_DUMP = true;
+static bool prm_enable_jvm_heap_dump_default = true;
+#endif
+static unsigned int prm_enable_jvm_heap_dump_flag = 0;
+
 int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
 static int prm_parallel_heap_scan_threads_default = 0;
 static int prm_parallel_heap_scan_threads_lower = 0;
 static int prm_parallel_heap_scan_threads_upper = 64;
 static unsigned int prm_parallel_heap_scan_threads_flag = 0;
+
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6573,6 +6586,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_dblink_auto_commit_flag,
    (void *) &prm_dblink_auto_commit_default,
    (void *) &PRM_DBLINK_AUTO_COMMIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_JVM_HEAP_DUMP,
+   PRM_NAME_ENABLE_JVM_HEAP_DUMP,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_enable_jvm_heap_dump_flag,
+   (void *) &prm_enable_jvm_heap_dump_default,
+   (void *) &PRM_ENABLE_JVM_HEAP_DUMP,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
