@@ -290,6 +290,10 @@ namespace parallel_heap_scan
     result = merge_check_result (result, temp);
     temp = check (src->thirdptr);
     result = merge_check_result (result, temp);
+    if (src->opcode == T_TRACE_STATS)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+      }
     return result;
   }
 
@@ -540,23 +544,24 @@ namespace parallel_heap_scan
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
       }
-    if (xasl->topn_items)
-      {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
-      }
 
     spec_checker spec_checker (map);
     spec_setter spec_setter (map);
     CHECK_RESULT spec_result = CHECK_RESULT::NONE;
+
+    general_checker general_checker (map);
+    CHECK_RESULT outptr_result = general_checker.check (xasl->outptr_list->valptrp);
     for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
       {
 	spec_result = spec_checker.check (specp);
+	spec_result = merge_check_result (spec_result, outptr_result);
 	spec_setter.set (specp, spec_result);
 	result = merge_check_result (result, spec_result);
       }
     for (ACCESS_SPEC_TYPE *specp = xasl->merge_spec; specp; specp = specp->next)
       {
 	spec_result = spec_checker.check (specp);
+	spec_result = merge_check_result (spec_result, outptr_result);
 	spec_setter.set (specp, spec_result);
 	result = merge_check_result (result, spec_result);
       }
