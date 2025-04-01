@@ -9225,10 +9225,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 #if SERVER_MODE && !WINDOWS
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
-	  parallel_heap_scan::manager::RESULT_GET_METHOD result_get_method = parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE;	/* should check LIST_MERGE in checker */
+	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;	/* should check LIST_MERGE in checker */
 	  if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
 	    {
-	      result_get_method = parallel_heap_scan::manager::RESULT_GET_METHOD::LIST_MERGE;
+	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
 	    }
 	  error_code =
 	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,

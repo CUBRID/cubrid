@@ -34,50 +34,83 @@
 
 namespace parallel_heap_scan
 {
+  enum class RESULT_GET_METHOD
+  {
+    NONE,
+    LIST_PAGE = 0x0,
+    LIST_MERGE = 0x8
+  };
   class manager
   {
     public:
-      enum class RESULT_GET_METHOD
-      {
-	NONE,
-	LIST_PAGE,
-	LIST_MERGE
-      };
-      manager() = delete;
-      manager (const manager &) = delete;
-      manager &operator= (const manager &) = delete;
-      manager (manager &&) = delete;
-      manager &operator= (manager &&) = delete;
+      manager() = default;
+      virtual ~manager() = default;
+      virtual void start() = 0;
+      virtual void start_tasks() = 0;
+      virtual SCAN_CODE get_result() = 0;
+      virtual void reset() = 0;
+      virtual void end() = 0;
+      virtual void terminate_tasks() = 0;
 
-      bool m_is_start_once;
-      bool timeout_occurred;
-      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
-      std::size_t parallelism;
-
-      manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-	       std::size_t core_count, QUERY_ID query_id, RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list,
-	       VALPTR_LIST *outptr_list);
-      ~manager();
-      SCAN_CODE get_result_from_list_stream ();
-      SCAN_CODE get_result_from_mergable_list ();
-      void terminate_tasks();
-      void start ();
-      void reset ();
-      void start_tasks ();
-      void end();
       inline context &get_context()
       {
 	return *m_context;
       }
       QUERY_ID m_query_id;
-      RESULT_GET_METHOD m_result_get_method;
-    private :
+      std::size_t parallelism;
+      bool m_is_start_once;
+      bool timeout_occurred;
+    protected:
+      friend class perf_monitor;
+      std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
-      std::shared_ptr<context> m_context;
       cubthread::entry_workpool *m_workpool;
+      std::shared_ptr<context> m_context;
+      manager (const manager &) = delete;
+      manager &operator= (const manager &) = delete;
+      manager (manager &&) = delete;
+      manager &operator= (manager &&) = delete;
+  };
+
+  class manager_page_by_page : public manager
+  {
+    public:
+      manager_page_by_page() = default;
+      manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
+			    std::size_t core_count, QUERY_ID query_id);
+      ~manager_page_by_page();
+
+      void start() override;
+      void start_tasks() override;
+      SCAN_CODE get_result() override;
+      void reset() override;
+      void end() override;
+      void terminate_tasks() override;
+
+    private:
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_reader> m_list_reader;
+  };
+
+  class manager_merge : public manager
+  {
+    public:
+      manager_merge() = default;
+      manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
+		     std::size_t core_count, QUERY_ID query_id, QFILE_LIST_ID *result_list,
+		     VALPTR_LIST *outptr_list);
+      ~manager_merge();
+
+      void start() override;
+      void start_tasks() override;
+      SCAN_CODE get_result() override;
+      void reset() override;
+      void end() override;
+      void terminate_tasks() override;
+
+    private:
+
       mergable_list_array *m_mergable_list;
       std::vector<mergable_list_writer *> m_mergable_list_writers;
       QFILE_LIST_ID *m_result_list;
@@ -106,7 +139,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
 			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads,
-			      parallel_heap_scan::manager::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list);
+			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 
