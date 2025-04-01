@@ -43,9 +43,12 @@
 #include "rocksdb/db.h"
 
 #include "porting.h"
+#include "btree_load.h"
+#include "dbtype.h"
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "cubrocks.hpp"
+#include "thread_manager.hpp"
 #include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -583,6 +586,96 @@ cubrocks::context::kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *rec
   return S_SUCCESS;
 }
 
+int
+cubrocks::context::kv_logical_write_with_index (int tran_index, HEAP_OPERATION_CONTEXT *context)
+{
+  /* NOTE: the key will be consisted with PK like below.        */
+  /* there is no virtual oid, but this key guarantees uniqeness */
+  /*							        */
+  /* ---------------------------------			        */
+  /* |  cls_oid  |  memcomparble-PK  |			        */
+  /* ---------------------------------			        */
+
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (context != NULL);
+  assert (context->type == HEAP_OPERATION_INSERT);
+  assert (context->recdes_p != NULL && context->recdes_p->data != NULL);
+  assert (!OID_ISNULL (&context->class_oid));
+
+  const int btid_index = 0;
+
+  THREAD_ENTRY *thread_p;
+  char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
+  char key_buf[DBVAL_BUFSIZE];
+  int num_found, num_btids;
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  DB_VALUE *key_dbvalue;
+  DB_VALUE dbvalue;
+  rocksdb::Slice key, value;
+  bool status;
+  BTID btid;
+  int key_size;
+  int error_code;
+
+  key_dbvalue = NULL;
+  db_make_null (&dbvalue);
+
+  aligned_buf = PTR_ALIGN (dbvalue_buf, MAX_ALIGNMENT);
+
+  thread_p = thread_get_thread_entry_info ();
+  num_found = heap_attrinfo_start_with_index (thread_p, &context->class_oid, NULL, &index_attrinfo, &idx_info, false);
+  num_btids = idx_info.num_btids;
+
+  if (num_found == 0)
+    {
+      return ER_FAILED;
+    }
+  else if (num_found < 0)
+    {
+      assert_release (false);
+    }
+
+  assert (idx_info.has_single_col);
+  assert (num_btids == 1);
+  assert (index_attrinfo.last_classrepr->indexes[btid_index].type == BTREE_PRIMARY_KEY);
+
+  error_code = heap_attrinfo_read_dbvalues (thread_p, &context->oid, context->recdes_p, &index_attrinfo);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+    }
+
+  key_dbvalue =
+    heap_attrvalue_get_key (thread_p, btid_index, &index_attrinfo, context->recdes_p, &btid, &dbvalue, aligned_buf,
+			    NULL, NULL, &context->oid, false);
+  if (key_dbvalue == NULL)
+    {
+      assert_release (false);
+    }
+
+  kv_make_key_with_pk (key_buf, DBVAL_BUFSIZE, &context->class_oid, key_dbvalue, key_size);
+
+  key = rocksdb::Slice (key_buf, key_size);
+  value = rocksdb::Slice (context->recdes_p->data, context->recdes_p->length);
+
+  status = transactions[tran_index].txn->Put (key, value).ok ();
+  assert (status);
+
+  heap_attrinfo_end (thread_p, &index_attrinfo);
+
+  if (key_dbvalue == &dbvalue)
+    {
+      pr_clear_value (&dbvalue);
+      key_dbvalue = NULL;
+    }
+
+  return NO_ERROR;
+}
+
 void
 cubrocks::context::kv_create (std::string path)
 {
@@ -708,6 +801,41 @@ cubrocks::context::kv_restore_void ()
   {
     assert (status.IsNotFound ());
   }
+}
+
+void
+cubrocks::context::kv_make_key_with_pk (char *buf, int buf_size, OID *class_oid, DB_VALUE *pk_value, int &key_size)
+{
+  DB_TYPE pk_type;
+
+  assert (buf != NULL);
+  assert (class_oid != NULL);
+  assert (pk_value != NULL);
+
+  /* prefix */
+  * ((short *) buf) = class_oid->volid;
+  * ((int *) (buf + 2)) = class_oid->pageid;
+  * ((short *) (buf + 6)) = class_oid->slotid;
+
+  key_size = sizeof (OID);
+  pk_type = DB_VALUE_DOMAIN_TYPE (pk_value);
+  /* write PK to key */
+  switch (pk_type)
+    {
+      case DB_TYPE_STRING:
+	memcpy (buf + key_size, db_get_string (pk_value), db_get_string_size (pk_value));
+	key_size += db_get_string_size (pk_value);
+	if (key_size >= buf_size)
+	  {
+	    assert_release (false);
+	  }
+	break;
+
+      default:
+	/* if you want to handle pk other than above, need to implement that case */
+	assert_release (false);
+	break;
+    }
 }
 
 bool

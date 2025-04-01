@@ -5063,20 +5063,40 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
 
   /* execute insert */
-  if (heap_insert_logical (thread_p, &context, home_hint_p, use_rocksdb) != NO_ERROR)
+  if (use_rocksdb)
     {
-      /*
-       * Problems inserting the object...Maybe, the transaction should be
-       * aborted by the caller...Quit..
-       */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      if (error_code == NO_ERROR)
+      /* in this scope, rocksdb must works. */
+      assert (cubrocks::ctx->is_alive ());
+      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+      /* errors will be handled in kv scope */
+      if (has_index && cubrocks::ctx->kv_logical_write_with_index (thread_p->tran_index, &context) == NO_ERROR)
 	{
-	  error_code = ER_FAILED;
+	  /* successfully builds index native key */
 	}
-      goto error2;
+      else
+	{
+	  cubrocks::ctx->kv_logical_write (thread_p->tran_index, &context);
+	}
     }
+  else
+    {
+      if (heap_insert_logical (thread_p, &context, home_hint_p) != NO_ERROR)
+	{
+	  /*
+	   * Problems inserting the object...Maybe, the transaction should be
+	   * aborted by the caller...Quit..
+	   */
+	  assert (er_errid () != NO_ERROR);
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
+	  goto error2;
+	}
+    }
+
   COPY_OID (oid, &context.res_oid);
 
 #if 0				/* TODO - dead code; do not delete me */
@@ -5181,7 +5201,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
        */
       skip_checking_fk = locator_Dont_check_foreign_key || dont_check_fk;
 
-      if (has_index
+      if (!use_rocksdb && has_index
 	  && locator_add_or_remove_index (thread_p, recdes, oid, &real_class_oid, true, op_type, local_scan_cache, true,
 					  true, &real_hfid, local_func_preds, has_BU_lock,
 					  skip_checking_fk) != NO_ERROR)
@@ -5196,7 +5216,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* check the foreign key constraints */
-      if (has_index && !skip_checking_fk)
+      if (!use_rocksdb && has_index && !skip_checking_fk)
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,

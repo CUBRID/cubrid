@@ -104,6 +104,9 @@ namespace cubrocks
 
       SCAN_CODE kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
 
+      /* index */
+      int kv_logical_write_with_index (int tran_index, HEAP_OPERATION_CONTEXT *context);
+
       /* ================================================================== */
       /* basic                                                              */
       /* ================================================================== */
@@ -130,6 +133,8 @@ namespace cubrocks
       bool alive;
 
       UINT64 virtual_counter;
+
+      void kv_make_key_with_pk (char *buf, int buf_size, OID *class_oid, DB_VALUE *pk_value, int &key_size);
 
       void kv_store_void ();
       void kv_restore_void ();

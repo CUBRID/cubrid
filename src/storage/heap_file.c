@@ -23047,7 +23047,7 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *         moment.
  */
 int
-heap_insert_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
+heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -23250,22 +23250,6 @@ error:
 
   /* all ok */
   return rc;
-}
-
-int
-heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p, bool use_rocksdb)
-{
-  if (use_rocksdb)
-  {
-    /* in this scope, rocksdb must works. */
-    assert (cubrocks::ctx->is_alive ());
-    assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
-    return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
-  }
-
-  /* general */
-  return heap_insert_logical_internal (thread_p, context, home_hint_p);
 }
 
 /*
