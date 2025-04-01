@@ -307,6 +307,7 @@ static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, voi
 static void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				 int parallel_num);
+static int sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info);
 static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 				       int parallel_num);
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
@@ -4333,8 +4334,23 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's tran_index. */
       px_sort_param[i].px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      /* init get_arg. it'll be copied in sort_split_input_temp_file(). TO_DO : put_arg?? */
-      px_sort_param[i].get_arg = NULL;
+
+      /* deep copy for get_arg, put_arg */
+      if (sort_param->px_type == SORT_ORDER_BY)
+	{
+	 error = sort_copy_sort_info (thread_p, (SORT_INFO **) &px_sort_param[i].get_arg, (SORT_INFO *) sort_param->get_arg);
+	  if (error != NO_ERROR)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      break;
+	    }
+	}
+      else
+	{
+	  /* not implemented yet (group by, analytic fuction, create index) */
+	  error = ER_FAILED;
+	  break;
+	}
     }
 
   if (error != NO_ERROR)
@@ -4360,6 +4376,64 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 }
 
 /*
+ * sort_copy_sort_info () - copy sort info from src_info to dest_info
+ *   return: NO_ERROR
+ *   dest_param(in):
+ *   src_param(in):
+ *   parallel_num(in):
+ */
+static int
+sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info)
+{
+  int error = NO_ERROR;
+  SORT_INFO * sort_info;
+
+  /* TO_DO : put_arg?? */
+  sort_info = *dest_sort_info = (SORT_INFO *)db_private_alloc (thread_p, sizeof (SORT_INFO));
+  if (sort_info == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  memcpy (sort_info, src_sort_info, sizeof (SORT_INFO));
+
+  sort_info->s_id = (QFILE_SORT_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_SORT_SCAN_ID));
+  if (sort_info->s_id == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  memcpy (sort_info->s_id, src_sort_info->s_id, sizeof (QFILE_SORT_SCAN_ID));
+
+  /* input_file will be splitted in sort_split_input_temp_file() */
+  /* sort_info->input_file = NULL; */
+  sort_info->input_file = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
+  memcpy (sort_info->input_file, src_sort_info->input_file, sizeof (QFILE_LIST_ID));
+
+end:
+  if (error != NO_ERROR)
+    {
+      /* free memory */
+      if (sort_info != NULL)
+	{
+	  if (sort_info->s_id != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info->s_id);
+	    }
+	  if (sort_info->input_file != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info->input_file);
+	    }
+	  db_private_free_and_init (thread_p, sort_info);
+	}
+    }
+
+  return error;
+}
+
+
+
+/*
  * sort_split_input_temp_file () - split input temp file
  *   return: NO_ERROR
  *   px_sort_param(in):
@@ -4370,7 +4444,6 @@ static int
 sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			    int parallel_num)
 {
-  /* TO_DO : Need a logic to revert it? */
   int error = NO_ERROR;
   int i = 0, j = 0, splitted_num_page;
   bool is_first_vpid = false;
@@ -4444,34 +4517,9 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   /* add splitted file info */
   for (i = 0; i < parallel_num; i++)
     {
-      px_sort_param[i].get_arg = (void *) db_private_alloc (thread_p, sizeof (SORT_INFO));
-      if (px_sort_param[i].get_arg == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
       sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
       org_sort_info_p = (SORT_INFO *) sort_param->get_arg;
-      memcpy (sort_info_p, org_sort_info_p, sizeof (SORT_INFO));
 
-      sort_info_p->input_file = NULL;
-      sort_info_p->s_id = NULL;
-
-      sort_info_p->s_id = (QFILE_SORT_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_SORT_SCAN_ID));
-      if (sort_info_p->s_id == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
-      memcpy (sort_info_p->s_id, org_sort_info_p->s_id, sizeof (QFILE_SORT_SCAN_ID));
-
-      sort_info_p->input_file = (QFILE_LIST_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID));
-      if (sort_info_p->input_file == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
-      memcpy (sort_info_p->input_file, org_sort_info_p->input_file, sizeof (QFILE_LIST_ID));
       /* tuple_cnt and page_cnt put approximately. */
       /* It can be put precisely through the page header, but not have to be precise for later process. */
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
@@ -4479,28 +4527,6 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       sort_info_p->input_file->first_vpid = (i == 0) ? org_sort_info_p->input_file->first_vpid : first_vpid[i - 1];
       sort_info_p->input_file->last_vpid =
 	(i == parallel_num - 1) ? org_sort_info_p->input_file->last_vpid : last_vpid[i];
-    }
-
-cleanup:
-  if (error != NO_ERROR)
-    {
-      /* free memory */
-      for (i = 0; i < parallel_num; i++)
-	{
-	  if (px_sort_param[i].get_arg != NULL)
-	    {
-	      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-	      if (sort_info_p->s_id != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info_p->s_id);
-		}
-	      if (sort_info_p->input_file != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info_p->input_file);
-		}
-	      db_private_free_and_init (thread_p, px_sort_param[i].get_arg);
-	    }
-	}
     }
 
   return error;
@@ -4794,6 +4820,37 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   TSC_ADD_TIMEVAL (orderby_time, tv_diff);
   printf ("merge time: %d\n", TO_MSEC (orderby_time));
 #endif
+
+#if !defined(NDEBUG)
+  tsc_getticks (&start_tick);
+#endif
+
+  /* 결과 임시 파일 쪼개기 */
+
+  /* Merge the last results. */
+  if (sort_get_numpages_of_active_infiles (sort_param) == 1)
+    {
+      error = sort_put_result_from_tmpfile (thread_p, sort_param);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+
+  /* 결과 임시 파일 합치기 */
+
+#if !defined(NDEBUG)
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("last merge time: %d\n", TO_MSEC (orderby_time));
+#endif
+
 
   return error;
 }
