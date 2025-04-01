@@ -9225,7 +9225,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 #if SERVER_MODE && !WINDOWS
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
-	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;	/* should check LIST_MERGE in checker */
+	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;	/* should check LIST_MERGE in checker */
 	  if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
@@ -26834,7 +26834,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
 
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY) || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)
-      || XASL_IS_FLAGED (xasl, XASL_USES_MRO))
+      || XASL_IS_FLAGED (xasl, XASL_USES_MRO) || XASL_IS_FLAGED (xasl, XASL_SKIP_END_ONE_ITERATION))
     {
       return NO_ERROR;
     }
