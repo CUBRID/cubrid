@@ -244,7 +244,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_method_file ());
   ADD_VIEW_DEFINITION (CTV_INDEX_NAME, system_catalog_initializer::get_view_index ());
   ADD_VIEW_DEFINITION (CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ());
-  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_authorization ());
+  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_classauth ());
   ADD_VIEW_DEFINITION (CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ());
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
@@ -253,7 +253,11 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
+  ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
+  ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
   ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
+  ADD_VIEW_DEFINITION (CTV_AUTHORIZATION_NAME, system_catalog_initializer::get_view_authorization ());
+  ADD_VIEW_DEFINITION (CTV_AUTHORIZATIONS_NAME, system_catalog_initializer::get_view_authorizations ());
 }
 
 int
@@ -993,9 +997,7 @@ namespace cubschema
       // owner
       Au_dba_user,
       // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      {}
     },
 // initializer
     nullptr
@@ -1056,7 +1058,7 @@ namespace cubschema
       Au_dba_user,
       // grants
       {
-	{Au_public_user, AU_SELECT, false}
+	{}
       }
     },
 // initializer
@@ -1690,7 +1692,7 @@ namespace cubschema
    * Is this no problem? */
 
   system_catalog_definition
-  system_catalog_initializer::get_view_authorization ()
+  system_catalog_initializer::get_view_classauth()
   {
 // db_class
     return system_catalog_definition (
@@ -1706,7 +1708,7 @@ namespace cubschema
       {"auth_type", "varchar(7)"},
       {"is_grantable", "varchar(3)"},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_classauth_spec ()}
     },
 // constraint
     {},
@@ -2022,6 +2024,99 @@ namespace cubschema
 	   );
 
   }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_ha_apply_info ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_HA_APPLY_INFO_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"db_creation_time", "datetime"},
+      {"copied_log_path", format_varchar (4096)},
+      {"committed_lsa_pageid", "bigint"},
+      {"committed_lsa_offset", "integer"},
+      {"committed_rep_pageid", "bigint"},
+      {"committed_rep_offset", "integer"},
+      {"append_lsa_pageid", "bigint"},
+      {"append_lsa_offset", "integer"},
+      {"eof_lsa_pageid", "bigint"},
+      {"eof_lsa_offset", "integer"},
+      {"final_lsa_pageid", "bigint"},
+      {"final_lsa_offset", "integer"},
+      {"required_lsa_pageid", "bigint"},
+      {"required_lsa_offset", "integer"},
+      {"log_record_time", "datetime"},
+      {"log_commit_time", "datetime"},
+      {"last_access_time", "datetime"},
+      {"status", "integer"},
+      {"insert_counter", "bigint"},
+      {"update_counter", "bigint"},
+      {"delete_counter", "bigint"},
+      {"schema_counter", "bigint"},
+      {"commit_counter", "bigint"},
+      {"fail_counter", "bigint"},
+      {"start_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_ha_apply_info_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_serial ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SERIAL_NAME,
+		   // columns
+    {
+      {"unique_name", "string"},
+      {"name", "string"},
+      {"owner", AU_USER_CLASS_NAME},
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"cyclic", "integer"},
+      {"started", "integer"},
+      {"class_name", "string"},
+      {"attr_name", "string"},
+      {"cached_num", "integer"},
+      {"comment", format_varchar (1024)},
+      {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()}
+    },
+// constraints
+    {
+    },
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
   system_catalog_definition
   system_catalog_initializer::get_view_user ()
   {
@@ -2044,6 +2139,62 @@ namespace cubschema
     },
 // constraint
     {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_authorization ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_AUTHORIZATION_NAME,
+		   // columns
+    {
+      {"owner", AU_AUTH_CLASS_NAME},
+      {"grants", "sequence of object"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
+    },
+// constraints
+    {
+    },
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_authorizations ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_AUTHORIZATIONS_NAME,
+		   // columns
+    {
+      {attribute_kind::QUERY_SPEC, sm_define_view_authorizations_spec ()}
+    },
+// constraints
+    {
+    },
 // authorization
     {
       // owner

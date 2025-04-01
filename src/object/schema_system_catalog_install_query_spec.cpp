@@ -944,7 +944,7 @@ sm_define_view_index_key_spec (void)
 }
 
 const char *
-sm_define_view_authorization_spec (void)
+sm_define_view_classauth_spec (void)
 {
   static char stmt [4096];
 
@@ -1562,6 +1562,36 @@ sm_define_view_db_server_spec (void)
 }
 
 const char *
+sm_define_view_ha_apply_info_spec (void)
+{
+  static char stmt [2048];
+  sprintf (stmt,
+	   "SELECT "
+	   "* "
+	   "FROM "
+	   "[%s]",
+	   CT_HA_APPLY_INFO_NAME
+	  );
+
+  return stmt;
+}
+
+const char *
+sm_define_view_serial_spec (void)
+{
+  static char stmt [2048];
+  sprintf (stmt,
+	   "SELECT "
+	   "* "
+	   "FROM "
+	   "[%s]",
+	   CT_SERIAL_NAME
+	  );
+
+  return stmt;
+}
+
+const char *
 sm_define_view_user_spec (void)
 {
   static char stmt [2048];
@@ -1595,6 +1625,36 @@ sm_define_view_user_spec (void)
         AU_USER_CLASS_NAME
   );
   // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
+sm_define_view_authorization_spec (void)
+{
+  static char stmt [2048];
+  sprintf (stmt,
+	   "SELECT "
+	   "* "
+	   "FROM "
+	   "[%s]",
+	   CT_AUTHORIZATION_NAME
+	  );
+
+  return stmt;
+}
+
+const char *
+sm_define_view_authorizations_spec (void)
+{
+  static char stmt [2048];
+  sprintf (stmt,
+	   "SELECT "
+	   "* "
+	   "FROM "
+	   "[%s]",
+	   CT_AUTHORIZATIONS_NAME
+	  );
 
   return stmt;
 }

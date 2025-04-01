@@ -111,7 +111,11 @@ namespace cubschema
     CTV_DB_CHARSET_NAME,		// "db_charset"
     CTV_DB_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME,			// "db_synonym"
-    CTV_USER_NAME		// "db_user"
+    CTV_HA_APPLY_INFO_NAME,     // db_ha_apply_info
+    CTV_SERIAL_NAME,            // db_serial
+    CTV_USER_NAME,		// "db_user"
+    CTV_AUTHORIZATION_NAME,	// "db_authorization"
+    CTV_AUTHORIZATIONS_NAME,	// "db_authorizations"
   };
 
   static const identifier_store sm_catalog_class_names (sm_system_class_names, false);

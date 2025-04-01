@@ -70,7 +70,7 @@ namespace cubschema
       static system_catalog_definition get_view_method_file ();
       static system_catalog_definition get_view_index ();
       static system_catalog_definition get_view_index_key ();
-      static system_catalog_definition get_view_authorization ();
+      static system_catalog_definition get_view_classauth();
       static system_catalog_definition get_view_trigger ();
       static system_catalog_definition get_view_partition ();
       static system_catalog_definition get_view_stored_procedure ();
@@ -79,8 +79,11 @@ namespace cubschema
       static system_catalog_definition get_view_db_charset ();
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_db_server ();
-
+      static system_catalog_definition get_view_ha_apply_info ();
+      static system_catalog_definition get_view_serial ();
       static system_catalog_definition get_view_user ();
+      static system_catalog_definition get_view_authorization ();
+      static system_catalog_definition get_view_authorizations ();
   };
 }
 
@@ -96,7 +99,7 @@ const char *sm_define_view_method_argument_set_domain_spec (void);
 const char *sm_define_view_method_file_spec (void);
 const char *sm_define_view_index_spec (void);
 const char *sm_define_view_index_key_spec (void);
-const char *sm_define_view_authorization_spec (void);
+const char *sm_define_view_classauth_spec (void);
 const char *sm_define_view_trigger_spec (void);
 const char *sm_define_view_partition_spec (void);
 const char *sm_define_view_stored_procedure_spec (void);
@@ -105,7 +108,10 @@ const char *sm_define_view_db_collation_spec (void);
 const char *sm_define_view_db_charset_spec (void);
 const char *sm_define_view_synonym_spec (void);
 const char *sm_define_view_db_server_spec (void);
-
+const char *sm_define_view_ha_apply_info_spec (void);
+const char *sm_define_view_serial_spec (void);
 const char *sm_define_view_user_spec (void);
+const char *sm_define_view_authorization_spec (void);
+const char *sm_define_view_authorizations_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */
