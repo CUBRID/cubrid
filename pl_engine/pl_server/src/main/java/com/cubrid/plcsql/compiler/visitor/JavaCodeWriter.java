@@ -1159,7 +1159,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      return ret;",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
-                "      throw new SQL_ERROR(e.getMessage());",
+                "      throw new SQL_ERROR(\"serial value unavailable\");",
                 "    } finally {",
                 "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
                 "        pstmt_%'SQL-SERIAL-NO'%.close();",
@@ -1194,7 +1194,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      return ret;",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
-                "      throw new SQL_ERROR(e.getMessage());",
+                "      throw new SQL_ERROR(\"serial value unavailable\");",
                 // no Statement.close() call in a finally clause: it is done right after the
                 // outermost loop
                 "    }",
