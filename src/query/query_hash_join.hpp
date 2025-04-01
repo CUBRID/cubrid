@@ -147,7 +147,7 @@ struct hashjoin_stats
       struct timeval hash;	/* qdata_hash_scan_key */
       struct timeval search;	/* qexec_hash_join_probe_key */
       struct timeval match;	/* qexec_hash_join_fetch_key */
-      struct timeval add;	/* qexec_merge_tuple_add_list */
+      struct timeval add;	/* qexec_hash_join_merge_tuple_to_list_id */
     } profile;
 #endif
   } probe;
