@@ -94,7 +94,7 @@ extern int session_get_method_runtime_context (THREAD_ENTRY * thread_p,
 extern bool session_has_method_runtime_context (THREAD_ENTRY * thread_p);
 
 
-extern void session_stop_attached_threads (void *session, bool force_interrupt);
+extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool force_interrupt);
 #if defined (SERVER_MODE)
 extern void session_notify_method_task_completion (const struct session_state *session_arg);
 #endif
