@@ -1221,7 +1221,7 @@ sm_define_view_partition_spec (void)
 const char *
 sm_define_view_stored_procedure_spec (void)
 {
-  static char stmt [2500];
+  static char stmt [2200];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1263,24 +1263,6 @@ sm_define_view_stored_procedure_spec (void)
 	      "WHERE "
 	        "[u].[name] = CURRENT_USER"
 	    ") THEN [sp_code].[scode] "
-	    "WHEN {[sp]} SUBSETEQ ("
-	       "SELECT "
-	         "SUM (SET {[au].[object_of]}) "
-	      "FROM "
-	        /* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-	        "{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'EXECUTE'"
-	    ") THEN NULL "
 	    "ELSE NULL "
 	    "END AS [code], "
 	  "[sp].[comment] AS [comment] "
@@ -1331,8 +1313,6 @@ sm_define_view_stored_procedure_spec (void)
 	    ")",
 	CT_DATATYPE_NAME,
 	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
         CT_STORED_PROC_CODE_NAME,
