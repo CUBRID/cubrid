@@ -394,11 +394,13 @@ set(PARALLEL_HEAP_SCAN_HEADERS
 set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   )
 
 set(METHOD_SOURCES
