@@ -3006,7 +3006,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    {
 	      if (!spec->s_id.scan_stats.noscan)
 		{
-		  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name);
+		  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name,
+							       (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
 		}
 	      delete spec->s_id.s.phsid.perf_monitor;
 	      spec->s_id.s.phsid.perf_monitor = NULL;
@@ -3450,7 +3451,8 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		{
 		  if (!spec->s_id.scan_stats.noscan)
 		    {
-		      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name);
+		      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name,
+								   (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
 		    }
 		  delete spec->s_id.s.phsid.perf_monitor;
 		  spec->s_id.s.phsid.perf_monitor = NULL;

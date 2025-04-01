@@ -36,8 +36,8 @@ namespace parallel_heap_scan
     public:
       perf_monitor (SCAN_ID *scan_id, std::size_t parallelism);
       ~perf_monitor();
-      void print_text (FILE *fp, int indent, char *class_name);
-      void print_json (json_t *scan, char *class_name);
+      void print_text (FILE *fp, int indent, char *class_name, bool is_list_merge);
+      void print_json (json_t *scan, char *class_name, bool is_list_merge);
     private:
       std::vector<SCAN_STATS> m_scan_stats;
       std::vector<memory_mapper::px_stats> m_memory_mapper_stats;
