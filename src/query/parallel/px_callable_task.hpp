@@ -22,6 +22,10 @@
 #ifndef _PX_CALLABLE_TASK_HPP_
 #define _PX_CALLABLE_TASK_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 #include "thread_task.hpp"
 #include "thread_entry.hpp"
 #include <functional>
