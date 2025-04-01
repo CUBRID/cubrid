@@ -26,6 +26,7 @@
 #include "regu_var.hpp"
 #include "object_representation.h"
 #include "query_manager.h"
+#include "thread_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -42,7 +43,11 @@ namespace parallel_heap_scan
   {
     for (QFILE_LIST_ID *list_id : m_list_ids)
       {
-	qfile_clear_list_id (list_id);
+	if (list_id->type_list.type_cnt != 0)
+	  {
+	    qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
+	    qfile_clear_list_id (list_id);
+	  }
       }
   }
 
