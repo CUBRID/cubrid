@@ -253,6 +253,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
+  ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
 }
 
 int
@@ -2020,5 +2021,40 @@ namespace cubschema
     nullptr
 	   );
 
+  }
+  system_catalog_definition
+  system_catalog_initializer::get_view_user ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_USER_NAME,
+		   // columns
+    {
+      {"name", "varchar(255)"},
+      {"id", "integer"},
+      {"password", "varchar(255)"},
+      {"direct_groups", "varchar(255)"},
+      {"groups", "varchar(255)"},
+//       autorization, triggers are not determined yet.
+//       {"authorization", "varchar(255)"},
+//       {"triggers", "varchar(255)"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_user_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
   }
 }

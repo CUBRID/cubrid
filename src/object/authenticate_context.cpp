@@ -108,6 +108,7 @@ int
 authenticate_context::start (void)
 {
   int error = NO_ERROR;
+  int save;
 
   MOPLIST mops;
   MOP class_mop;
@@ -406,8 +407,8 @@ authenticate_context::install (void)
   smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "direct_groups", "set of (db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
@@ -530,8 +531,7 @@ authenticate_context::install (void)
    */
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_EXECUTE, false);
   au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   au_add_method_check_authorization ();
@@ -724,7 +724,9 @@ authenticate_context::set_user (MOP newuser)
   int error = NO_ERROR;
   int index;
   AU_USER_CACHE *user_cache;
+  int save;
 
+  AU_DISABLE (save);
   if (newuser != NULL && !ws_is_same_object (newuser, current_user))
     {
       user_cache = caches.find_user_cache_by_mop (newuser);
@@ -760,6 +762,7 @@ authenticate_context::set_user (MOP newuser)
 	  assert (false);
 	}
     }
+  AU_ENABLE (save);
   return (error);
 }
 

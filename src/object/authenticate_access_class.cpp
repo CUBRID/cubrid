@@ -591,7 +591,8 @@ au_fetch_class_internal (MOP op, SM_CLASS **class_ptr, AU_FETCHMODE fetchmode, D
 	}
     }
 
-  if ((Au_disable && type != DB_AUTH_ALTER) || ! (error = check_authorization (classmop, class_, type)))
+  if ((Au_disable && type != DB_AUTH_ALTER) || ws_is_same_object (op, Au_user) ||
+      ! (error = check_authorization (classmop, class_, type)))
     {
       if (class_ptr != NULL)
 	{

@@ -46,7 +46,7 @@ namespace cubschema
      * AU_GRANT_CLASS_NAME
      */
     CT_ROOT_NAME,		// "db_root"
-    CT_USER_NAME,		// "db_user"
+    CT_USER_NAME,		// "_db_user"
     CT_PASSWORD_NAME,	// "db_password"
     CT_AUTHORIZATION_NAME,		// "db_authorization"
     CT_AUTHORIZATIONS_NAME,	// "db_authorizations"
@@ -110,7 +110,8 @@ namespace cubschema
     CTV_DB_COLLATION_NAME,	// "db_collation"
     CTV_DB_CHARSET_NAME,		// "db_charset"
     CTV_DB_SERVER_NAME,		// "db_server"
-    CTV_SYNONYM_NAME			// "db_synonym"
+    CTV_SYNONYM_NAME,			// "db_synonym"
+    CTV_USER_NAME		// "db_user"
   };
 
   static const identifier_store sm_catalog_class_names (sm_system_class_names, false);

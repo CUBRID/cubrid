@@ -127,7 +127,7 @@ au_find_user (const char *user_name)
    * if the query processing resources are all used up at the moment.
    * This is primarily of importance during logging in.
    */
-  user_class = db_find_class ("db_user");
+  user_class = db_find_class (AU_USER_CLASS_NAME);
   if (user_class)
     {
       db_make_string (&user_name_string, upper_case_name);

@@ -49,6 +49,7 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "schema_system_catalog_constants.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -1318,7 +1319,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       return ERR_WITH_MSG;
     }
-  p_class_db_user = db_find_class ("db_user");
+  p_class_db_user = db_find_class (CT_USER_NAME);
   if (p_class_db_user == NULL)
     {
       goto error_return;

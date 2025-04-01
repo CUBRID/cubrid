@@ -45,7 +45,7 @@
 #define CT_SERIAL_NAME             "db_serial"
 #define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
 #define CT_COLLATION_NAME          "_db_collation"
-#define CT_USER_NAME               "db_user"
+#define CT_USER_NAME               "_db_user"
 #define CT_TRIGGER_NAME            "db_trigger"
 #define CT_ROOT_NAME               "db_root"
 #define CT_PASSWORD_NAME           "db_password"
@@ -77,6 +77,7 @@
 #define CTV_DB_CHARSET_NAME	   "db_charset"
 #define CTV_DB_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
+#define CTV_USER_NAME              "db_user"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"

@@ -1560,3 +1560,41 @@ sm_define_view_db_server_spec (void)
 
   return stmt;
 }
+
+const char *
+sm_define_view_user_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+          "[u].[name] AS [name], "
+          "[u].[id] AS [id], "
+          "[u].[password] AS [password], "
+          "( "
+            "SELECT "
+              "GROUP_CONCAT ([t1].[g].[name] SEPARATOR ', ')"
+            "FROM TABLE ([u].[groups]) AS [t1] ([g])"
+          ") AS [groups], "
+          "( "
+            "SELECT "
+              "GROUP_CONCAT ([t2].[g].[name] SEPARATOR ', ')"
+            "FROM TABLE ([u].[direct_groups]) AS [t2] ([g])"
+          ") AS [direct_groups], "
+        // authorization column: you can see authorization using db_auth
+        // triggers column: is not yet testd
+        //   "( "
+        //     "SELECT "
+        //       "GROUP_CONCAT ([t3].[g].[name] SEPARATOR ', ')"
+        //     "FROM TABLE ([u].[triggers]) AS [t3] ([g])"
+        //   ") AS [triggers], "
+          "[u].[comment] AS [comment] "
+        "FROM [%s] AS [u] "
+        "WHERE [u].[name] = CURRENT_USER",
+        AU_USER_CLASS_NAME
+  );
+  // *INDENT-ON*
+
+  return stmt;
+}

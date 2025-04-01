@@ -7695,8 +7695,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, AU_USER_CLASS_NAME, "U", DB_AUTH_SELECT);
 
 
   {

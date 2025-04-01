@@ -79,6 +79,8 @@ namespace cubschema
       static system_catalog_definition get_view_db_charset ();
       static system_catalog_definition get_view_synonym ();
       static system_catalog_definition get_view_db_server ();
+
+      static system_catalog_definition get_view_user ();
   };
 }
 
@@ -103,5 +105,7 @@ const char *sm_define_view_db_collation_spec (void);
 const char *sm_define_view_db_charset_spec (void);
 const char *sm_define_view_synonym_spec (void);
 const char *sm_define_view_db_server_spec (void);
+
+const char *sm_define_view_user_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */
