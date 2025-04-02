@@ -7933,12 +7933,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
+              // *INDENT-OFF*
 	      if (index->btid.vfid.volid == -1)
 		{
-		  std::vector < float >fvec = db_value_get_stdvector_float (key_dbvalue);
+		  std::vector<float> fvec = db_value_get_stdvector_float (key_dbvalue);
 		  hnsw_add_element (&btid, fvec);
 		  continue;
 		}
+              // *INDENT-ON*
 	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
