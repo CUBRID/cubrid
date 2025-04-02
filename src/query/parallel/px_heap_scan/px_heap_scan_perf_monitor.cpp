@@ -73,11 +73,11 @@ namespace parallel_heap_scan
 
   void perf_monitor::print_json (json_t *scan, char *class_name, bool is_list_merge)
   {
-    UINT64 min_elapsed_scan = 0;
+    UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
     UINT64 max_elapsed_scan = 0;
-    UINT64 min_read_rows = 0;
+    UINT64 min_read_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_read_rows = 0;
-    UINT64 min_qualified_rows = 0;
+    UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
 
     for (std::size_t i = 0; i < m_parallelism; i++)
