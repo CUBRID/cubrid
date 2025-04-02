@@ -836,7 +836,9 @@ typedef enum
 typedef enum
 {
   ACCESS_SPEC_FLAG_NONE = 0,
-  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01,	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x02,	/* used with parallel heap scan. */
+  ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x04	/* used with parallel heap scan. */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node
@@ -1091,6 +1093,7 @@ struct access_spec_node
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   int pruning_type;		/* how pruning should be performed on this access spec performed */
   ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */

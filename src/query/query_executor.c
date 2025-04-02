@@ -82,6 +82,10 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 
+#if SERVER_MODE && !WINDOWS
+#include "px_heap_scan_manager.hpp"
+#endif /* SERVER_MODE && !WINDOWS */
+
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1931,6 +1935,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_HEAP_SCAN_RECORD_INFO:
 	case S_CLASS_ATTR_SCAN:
 	case S_HEAP_SAMPLING_SCAN:
+	case S_PARALLEL_HEAP_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.rest_regu_list, is_final);
 
@@ -9132,6 +9137,31 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  /* open a sequential heap file scan */
 	  scan_type = S_HEAP_SCAN;
 	  indx_info = NULL;
+#if SERVER_MODE && !WINDOWS
+	  if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+	    {
+	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS))
+		{
+		  curr_spec->num_parallel_threads = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
+		}
+	      else
+		{
+		  /* use the number of parallel heap scan threads set by hint */
+		}
+
+	      if (curr_spec->num_parallel_threads > 0)
+		{
+		  if (!curr_spec->parts && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0 && (curr_spec->s.cls_node.cls_regu_list_pred || curr_spec->s.cls_node.cls_regu_list_rest))	/* Only for User table */
+		    {
+		      /* Why thread_p->private_heap_id != 0? 
+		       * Because, if it is 0, it means that the scan is not executed in main thread.
+		       * So, we can't use parallel heap scan.
+		       */
+		      scan_type = S_PARALLEL_HEAP_SCAN;
+		    }
+		}
+	    }
+#endif /* SERVER_MODE && !WINDOWS */
 	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	{
@@ -9192,6 +9222,28 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	}
+#if SERVER_MODE && !WINDOWS
+      else if (scan_type == S_PARALLEL_HEAP_SCAN)
+	{
+	  error_code =
+	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+					  &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+					  curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+					  curr_spec->s.cls_node.cls_regu_list_rest,
+					  curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
+					  curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
+					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
+					  scan_type, curr_spec->s.cls_node.cache_reserved,
+					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id,
+					  curr_spec->num_parallel_threads);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	}
+#endif /* SERVER_MODE && !WINDOWS */
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
 	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),
