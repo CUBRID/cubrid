@@ -10516,9 +10516,9 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       /* 4) pack */
       packer.set_buffer_and_pack_all (eb, ret_value, out_args);
     }
-  else if (rctx)
+  else
     {
-      if (rctx->is_interrupted ())
+      if (rctx && rctx->is_interrupted ())
 	{
 	  rctx->set_local_error_for_interrupt ();
 	}
