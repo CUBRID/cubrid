@@ -3192,7 +3192,7 @@ session_get_method_runtime_context (THREAD_ENTRY * thread_p,
       else if (state_p->method_rctx_p->is_running () && state_p->method_rctx_p->is_interrupted ())
 	{
 	  method_runtime_context_ref_ptr = nullptr;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  state_p->method_rctx_p->set_local_error_for_interrupt ();
 	  error = ER_INTERRUPTED;
 	}
 

@@ -333,7 +333,10 @@ namespace cubmethod
 	if (error != NO_ERROR)
 	  {
 	    // if error is not interrupt reason, interrupt is not set
-	    rctx->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
+	    if (rctx)
+	      {
+		rctx->set_interrupt (error, (er_has_error () && er_msg ()) ? er_msg () : "");
+	      }
 	    break;
 	  }
       }
@@ -375,6 +378,10 @@ namespace cubmethod
 	      {
 		m_connection = pool->claim();
 	      }
+	    else
+	      {
+		return ER_FAILED;
+	      }
 	  }
 
 	// check javasp server's status
@@ -388,6 +395,7 @@ namespace cubmethod
 	      {
 		rctx->set_interrupt (ER_SP_NOT_RUNNING_JVM);
 	      }
+	    return ER_FAILED;
 	  }
       }
 
