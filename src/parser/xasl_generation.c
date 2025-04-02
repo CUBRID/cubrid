@@ -4464,6 +4464,9 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
  *   parser(in): Parser context.
  *   node(in): Node to find.
  *   list(in): List to find the node in.
+ *
+ *   This function was added to find the position of a node in a list
+ *   linked via PT_NODE_POINTER. Nodes are compared by pointer, not content.
  */
 int
 pt_find_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
@@ -4496,6 +4499,10 @@ pt_find_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
  *   node(in): Parse tree node being visited during traversal.
  *   arg(in): List to append a PT_NAME node to.
  *   continue_walk(in): Flag indicating whether to continue tree traversal.
+ * 
+ *   When a PT_NAME node is found during traversal, it is added to the list
+ *   only if it is not already present. This helps avoid duplicate entries
+ *   while collecting PT_NAME nodes.
  */
 PT_NODE *
 pt_append_name_if_not_exists (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -4539,6 +4546,9 @@ pt_append_name_if_not_exists (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
  *   return: List with PT_NAME nodes extracted from PT_EXPR nodes.
  *   parser(in): Parser context.
  *   list(in): List containing PT_EXPR nodes to flatten into PT_NAME nodes.
+ * 
+ *   This function was added to collect only the PT_NAME nodes required
+  *  for function execution.
  */
 PT_NODE *
 pt_flatten_expr_list_to_names (PARSER_CONTEXT * parser, PT_NODE * list)

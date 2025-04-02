@@ -42,6 +42,7 @@
 #define HASH_JOIN_DUMP_HASH_TABLE 0
 #define HASH_JOIN_DUMP_PROBE 0
 #define HASH_JOIN_DUMP_BUILD 0
+#define HASH_JOIN_DIRECT_LIST_SCAN 1
 
 /**
  * Forward Declarations

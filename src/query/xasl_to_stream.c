@@ -3670,16 +3670,6 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
-  /**
-   * remaining_join_pred
-   */
-  offset = xts_save_pred_expr (node_p->remaining_join_pred);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   return ptr;
 }
 
@@ -6401,11 +6391,6 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
-
-  /**
-   * remaining_join_pred
-   */
-  size += PTR_SIZE;
 
   return size;
 }

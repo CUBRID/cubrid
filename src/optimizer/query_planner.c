@@ -195,7 +195,7 @@ static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSE
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				  BITSET *);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-				 BITSET *, BITSET *);
+				 BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
@@ -1313,28 +1313,11 @@ qo_plan_print_projected_segs (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_plan_print_sarged_terms (QO_PLAN * plan, FILE * f, int howfar)
 {
-  BITSET sarged_terms;
-  bitset_init (&sarged_terms, plan->info->env);
-
-  if (plan->plan_type == QO_PLANTYPE_JOIN && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
-    {
-      bitset_assign (&sarged_terms, &(plan->plan_un.join.join_terms));
-      bitset_difference (&sarged_terms, &(plan->plan_un.join.hash_terms));
-      bitset_difference (&sarged_terms, &(plan->plan_un.join.during_join_terms));
-    }
-
   if (!bitset_is_empty (&(plan->sarged_terms)))
     {
-      bitset_union (&sarged_terms, &plan->sarged_terms);
-    }
-
-  if (!bitset_is_empty (&sarged_terms))
-    {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "sargs:");
-      qo_termset_fprint ((plan->info)->env, &sarged_terms, f);
+      qo_termset_fprint ((plan->info)->env, &plan->sarged_terms, f);
     }
-
-  bitset_delset (&sarged_terms);
 }
 
 /*
@@ -3363,7 +3346,7 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
   if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
-      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.hash_terms), f);
+      qo_termset_fprint (plan->info->env, &plan->plan_un.join.join_terms, f);
     }
 
   qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
@@ -6172,9 +6155,8 @@ exit:
  *   pinned_subqueries(in):
  */
 static int
-qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * join_terms,
-		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
-		      BITSET * hash_terms)
+qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
+		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -6186,7 +6168,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
-  if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
+  if (bitset_intersects (sarged_terms, &info->env->fake_terms))
     {
       goto exit;
     }
@@ -6215,7 +6197,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    * 
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
-  for (t = bitset_iterate (hash_terms, &iter); t != -1; t = bitset_next_member (&iter))
+  for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
     {
       term = QO_ENV_TERM (info->env, t);
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
@@ -6225,7 +6207,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     }
 
   /* At here, inner is single class spec */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&inner->nodes));
 
   if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
     {
@@ -6266,7 +6248,8 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_HASH_JOIN, outer_plan, inner_plan,
-					join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
+					hash_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					hash_join_terms));
 
 exit:
   return n;
@@ -7448,8 +7431,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	     * mergeable term: equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a)
 	     */
 	    kept +=
-	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
-				    &sarged_terms, &pinned_subqueries, &sm_join_terms);
+	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
+				    &sarged_terms, &pinned_subqueries);
 	  }
 #endif /* HASH_JOINS */
       }

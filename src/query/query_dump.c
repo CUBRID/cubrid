@@ -3626,7 +3626,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
-	  current_stats = &(part_stats[part_index]);
+	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
 	  fprintf (fp,
@@ -3680,7 +3680,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
-	  current_stats = &(part_stats[part_index]);
+	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
 	  fprintf (fp,
@@ -3797,7 +3797,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
-	  current_stats = &(part_stats[part_index]);
+	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
 	  input = json_object ();
@@ -3855,7 +3855,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
-	  current_stats = &(part_stats[part_index]);
+	  current_stats = &part_stats[part_index];
 	  assert (current_stats != NULL);
 
 	  input = json_object ();

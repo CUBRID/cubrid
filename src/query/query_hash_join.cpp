@@ -97,8 +97,6 @@ struct hashjoin_context
 
   JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
-  PRED_EXPR *remaining_join_pred;
-  PRED_EXPR *instnum_pred;
 
   HASH_LIST_SCAN hash_scan;
   bool is_build_outer;
@@ -173,8 +171,13 @@ static int qexec_hash_join_build_key (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *ha
 				      QFILE_TUPLE_RECORD *tuple_record, QFILE_LIST_SCAN_ID *list_scan_id);
 
 /* Probe Phase */
+#if HASH_JOIN_DIRECT_LIST_SCAN
+static int qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
+				  QFILE_LIST_SCAN_ID *build_scan_id, QFILE_LIST_SCAN_ID *probe_scan_id, QFILE_LIST_ID *list_id);
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
 static int qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
 				  SCAN_ID *build_scan_id, SCAN_ID *probe_scan_id, QFILE_LIST_ID *list_id);
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 static int qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
 					SCAN_ID *build_scan_id, SCAN_ID *probe_scan_id, QFILE_LIST_ID *list_id);
 static int qexec_hash_join_probe_key (THREAD_ENTRY *thread_p, HASH_LIST_SCAN *hash_scan,
@@ -576,12 +579,21 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
   ACCESS_SPEC_TYPE *build_spec = NULL, *probe_spec = NULL;
   VAL_LIST *build_val_list, *probe_val_list;
   QFILE_LIST_ID *build_list_id = NULL, *probe_list_id = NULL;
+#if HASH_JOIN_DIRECT_LIST_SCAN
+  QFILE_LIST_SCAN_ID build_list_scan_id, probe_list_scan_id;
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
+
+#if HASH_JOIN_DIRECT_LIST_SCAN
+  /* Prevent faults when qfile_close_scan is called */
+  build_list_scan_id.status = S_CLOSED;
+  probe_list_scan_id.status = S_CLOSED;
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
   if (list_id == NULL)
@@ -616,6 +628,31 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
       probe_list_id = context->outer_list_id;
     }
 
+#if HASH_JOIN_DIRECT_LIST_SCAN
+  error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = qexec_hash_join_build (thread_p, manager, context, &build_list_scan_id);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = qfile_open_list_scan (probe_list_id, &probe_list_scan_id);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = qexec_hash_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
   error =  scan_open_list_scan (thread_p, &build_spec->s_id, build_spec->grouped_scan,
 				build_spec->single_fetch, build_spec->s_dbval, build_val_list, manager->vd, build_list_id,
 				build_spec->s.list_node.list_regu_list_pred,
@@ -663,10 +700,16 @@ qexec_hash_join_internal (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEX
     {
       goto exit_on_error;
     }
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
 exit_on_end:
+#if HASH_JOIN_DIRECT_LIST_SCAN
+  qfile_close_scan (thread_p, &build_list_scan_id);
+  qfile_close_scan (thread_p, &probe_list_scan_id);
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
   scan_close_scan (thread_p, &build_spec->s_id);
   scan_close_scan (thread_p, &probe_spec->s_id);
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
   qfile_close_list (thread_p, build_list_id);
   qfile_destroy_list (thread_p, build_list_id);
@@ -904,8 +947,6 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
 
   context->join_type = merge_info->join_type;
   context->during_join_pred = xasl->during_join_pred;
-  context->remaining_join_pred = proc->remaining_join_pred;
-  context->instnum_pred = proc->instnum_pred;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
   assert (context->is_build_outer == false);
@@ -1980,7 +2021,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY *thread_p, HJ_FETCH_INFO *fetch_info, QF
 	}
 
       /* Skip the current tuple. */
-      tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + value_size;
+      tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
 
       /* When ptr reaches endptr, exit this routine. */
     }
@@ -2332,9 +2373,15 @@ exit_on_error:
   goto exit_on_end;
 }
 
+#if HASH_JOIN_DIRECT_LIST_SCAN
+static int
+qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
+		       QFILE_LIST_SCAN_ID *build_scan_id, QFILE_LIST_SCAN_ID *probe_scan_id, QFILE_LIST_ID *list_id)
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
 static int
 qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context,
 		       SCAN_ID *build_scan_id, SCAN_ID *probe_scan_id, QFILE_LIST_ID *list_id)
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 {
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD found_record = { NULL, 0 };
@@ -2405,6 +2452,10 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
       old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
+#if HASH_JOIN_DIRECT_LIST_SCAN
+  while ((scan_code = qfile_scan_list_next (thread_p, probe_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
+    {
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
   build_scan_id->s.llsid.tplrecp = &found_record;
   probe_scan_id->s.llsid.tplrecp = &tuple_record;
 
@@ -2428,6 +2479,7 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	  assert (false);
 	  goto exit_on_error;
 	}
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
       qfile_print_tuple (&probe_scan_id->s.llsid.list_id->type_list, tuple_record.tpl);
@@ -2490,11 +2542,19 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	    }
 #endif
 
+#if HASH_JOIN_DIRECT_LIST_SCAN
+	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_record, build_scan_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN */
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_record, &build_scan_id->s.llsid.lsid);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN */
 
 #if HASH_JOIN_PROFILE_TIME
 	  if (thread_is_on_trace (thread_p))
@@ -2550,51 +2610,6 @@ qexec_hash_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	      /* fall through */
 	    }
 
-	  if (context->remaining_join_pred != NULL)
-	    {
-	      DB_LOGICAL ev_res;
-
-#if HASH_JOIN_PROFILE_TIME
-	      if (thread_is_on_trace (thread_p))
-		{
-		  tsc_getticks (&profile_start_tick);	/* probe.profile.match */
-		}
-#endif
-
-	      error = fetch_val_list (thread_p, build_scan_id->s.llsid.scan_pred.regu_list, build_scan_id->vd, NULL, NULL,
-				      found_record.tpl, PEEK);
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      ev_res = eval_pred (thread_p, context->remaining_join_pred, build_scan_id->vd, NULL);
-	      if (ev_res == V_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-#if HASH_JOIN_PROFILE_TIME
-	      if (thread_is_on_trace (thread_p))
-		{
-		  tsc_getticks (&profile_end_tick);
-		  tsc_elapsed_time_usec (&profile_tv_diff, profile_end_tick, profile_start_tick);
-		  TSC_ADD_TIMEVAL (stats->probe.profile.match, profile_tv_diff);
-		}
-#endif
-
-	      if (ev_res != V_TRUE)
-		{
-#if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-		  fprintf (stdout, "\nNot Matched Key (join_pred): ");
-		  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
-#endif
-
-		  /* Give up and read the next hash value. */
-		  continue;
-		}
-	    }
-
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 	  fprintf (stdout, "\nMatched Key: ");
 	  qfile_print_tuple (&build_scan_id->s.llsid.list_id->type_list, found_record.tpl);
@@ -2646,8 +2661,11 @@ exit_on_end:
 					    PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time) / 1000);
     }
 
+#if HASH_JOIN_DIRECT_LIST_SCAN
+#else	/* HASH_JOIN_DIRECT_LIST_SCAN*/
   scan_end_scan (thread_p, build_scan_id);
   scan_end_scan (thread_p, probe_scan_id);
+#endif	/* HASH_JOIN_DIRECT_LIST_SCAN*/
 
   if (overflow_record.tpl != NULL)
     {
@@ -2966,7 +2984,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	      /* fall through */
 	    }
 
-	  if (context->during_join_pred != NULL || context->remaining_join_pred != NULL)
+	  if (context->during_join_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res;
 
@@ -2987,15 +3005,6 @@ qexec_hash_outer_join_probe (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CON
 	      if (context->during_join_pred != NULL)
 		{
 		  ev_res = eval_pred (thread_p, context->during_join_pred, build_scan_id->vd, NULL);
-		  if (ev_res == V_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-		}
-
-	      if (context->remaining_join_pred != NULL)
-		{
-		  ev_res = eval_pred (thread_p, context->remaining_join_pred, build_scan_id->vd, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      goto exit_on_error;
