@@ -22,6 +22,9 @@
 #include "px_callable_task.hpp"
 #include "px_worker_manager.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace parallel_query
 {
   void callable_task::set_worker_manager (worker_manager *manager_p)
