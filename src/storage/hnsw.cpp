@@ -46,10 +46,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   btid->root_pageid = ++hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
-  fprintf (stdout, "hnsw_index_map size : %zu\n", hnsw_index_map.size());
-  fprintf (stdout, "[add_index] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
-  fprintf (stdout, "HNSW Index added with ID %d\n", hnsw_index_id);
   hnsw_print_index_info (btid);
 
   return btid;
@@ -116,18 +113,8 @@ int hnsw_print_index_info (BTID *btid)
 
 int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
 {
-
-  fprintf (stdout, "Insert vector size : %zu\n", vector.size());
-  for (unsigned int i = 0; i < vector.size(); i++)
-    {
-      fprintf (stdout, "vector[%d] : %f\n", i, vector[i]);
-    }
-  fprintf (stdout, "hnsw_map size : %zu\n", hnsw_index_map.size());
-  fprintf (stdout, "[add_element] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
-
   if (!btid)
     {
-      fprintf (stdout, "BTID is NULL\n");
       return ER_FAILED;
     }
 
@@ -136,7 +123,7 @@ int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
 
   if (it == hnsw_index_map.end())
     {
-      fprintf (stdout, "HNSW Index not found with ID %d\n", hnsw_id);
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
       return ER_FAILED;
     }
 

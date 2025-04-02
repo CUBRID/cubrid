@@ -7821,7 +7821,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    */
   num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
   num_btids = idx_info.num_btids;
-  fprintf (stdout, "num_found = %d\n", num_found);
 
   if (num_found == 0)
     {
