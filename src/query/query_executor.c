@@ -13817,7 +13817,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 }
 
 static int
-qexec_execute_dblink_query (XASL_NODE * xasl, XASL_STATE * xasl_state)
+qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   int res;
   DBLINK_HOST_VARS host_vars;
@@ -13825,7 +13825,7 @@ qexec_execute_dblink_query (XASL_NODE * xasl, XASL_STATE * xasl_state)
   host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
   host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
 
-  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+  res = dblink_execute_query (thread_p, xasl->spec_list, &xasl_state->vd, &host_vars);
   if (res < 0)
     {
       return res;
@@ -13915,7 +13915,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -13949,7 +13949,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -13985,7 +13985,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -14040,7 +14040,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* execute merge */
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{

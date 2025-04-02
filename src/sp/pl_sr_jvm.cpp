@@ -439,8 +439,6 @@ pl_jvm_options ()
 
   envvar_vmdir_file (buffer, PATH_MAX, "");
   std::string pl_file_path (buffer);
-  envvar_logdir_file (buffer, PATH_MAX, "jvmheapdump.hprof");
-  std::string jvm_heap_dump_file_path (buffer);
 
   std::vector <std::string> options;
 
@@ -450,8 +448,13 @@ pl_jvm_options ()
 #endif // !NDEBUG
 
   // CBRD-25659: dump heap memory on JVM OutOfMemory error
-  options.push_back ("-XX:+HeapDumpOnOutOfMemoryError");
-  options.push_back ("-XX:HeapDumpPath=" + jvm_heap_dump_file_path);
+  if (prm_get_bool_value (PRM_ID_ENABLE_JVM_HEAP_DUMP))
+    {
+      envvar_logdir_file (buffer, PATH_MAX, "jvmheapdump.hprof");
+      std::string jvm_heap_dump_file_path (buffer);
+      options.push_back ("-XX:+HeapDumpOnOutOfMemoryError");
+      options.push_back ("-XX:HeapDumpPath=" + jvm_heap_dump_file_path);
+    }
 
   // defaults
   options.push_back ("-Djava.awt.headless=true");

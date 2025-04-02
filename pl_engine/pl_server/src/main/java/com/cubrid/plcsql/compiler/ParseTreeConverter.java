@@ -63,7 +63,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
-import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
@@ -3122,8 +3121,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         }
 
-        String rewritten = StringEscapeUtils.escapeJava(sws.rewritten);
-        return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
+        return new StaticSql(ctx, sws.kind, sws.rewritten, hostExprs, selectList, intoTargetList);
     }
 
     private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =

@@ -18,7 +18,7 @@
 
 
 /*
- * pl_comm.c - Functions to communicate with Procedure Language Server
+ * pl_comm.c - Functions to communicate with Procedural Language Server
  *
  * Note:
  */
