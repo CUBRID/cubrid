@@ -107,14 +107,6 @@ namespace cubmethod
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    if (m_group_stack.size () >= METHOD_MAX_RECURSION_DEPTH)
-      {
-	ulock.unlock ();
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
-	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
-	return ER_SP_TOO_MANY_NESTED_CALL;
-      }
-
     if (m_is_running == false && m_group_stack.empty ())
       {
 	// clear previous interrupt state
