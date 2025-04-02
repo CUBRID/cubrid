@@ -3840,7 +3840,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
       for (i = 0; i < n_btstats; i++)
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[i];
-	  if (btree_stats_p->btid.vfid.volid == -1)
+	  if (BTID_IS_VECTOR_INDEX (&btree_stats_p->btid))
 	    {
 	      continue;
 	    }

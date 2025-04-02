@@ -316,6 +316,8 @@ struct lorecdes
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
 
+#define BTID_IS_VECTOR_INDEX(btid)  ((btid)->vfid.volid == -1)
+
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 
 /* Types and defines of transaction management */

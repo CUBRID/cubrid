@@ -23,6 +23,7 @@
 #include "hnsw.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
+#include "vector_opfunc.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -56,6 +57,7 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 {
   if (!btid)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -111,25 +113,32 @@ int hnsw_print_index_info (BTID *btid)
   return NO_ERROR;
 }
 
-int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
+int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue)
 {
+  std::vector<float> fvec;
+  int hnsw_id;
+
   if (!btid)
     {
+      assert (false);
       return ER_FAILED;
     }
 
-  int hnsw_id = btid->root_pageid;
+  fvec = db_value_get_stdvector_float (key_dbvalue);
+  hnsw_id = btid->root_pageid;
+
   auto it = hnsw_index_map.find (hnsw_id);
 
   if (it == hnsw_index_map.end())
     {
       er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+      assert (false);
       return ER_FAILED;
     }
 
   std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
 
-  index->add (vector.size(), vector.data());
+  index->add (fvec.size(), fvec.data());
 
   return NO_ERROR;
 }
