@@ -1044,6 +1044,7 @@ static int g_plcsql_text_pos;
 %type <node> opt_sp_default_value
 %type <node> table_column
 
+%type <node> opt_vector_distance_metric
 %type <node> vector_distance_metric
 
 /*}}}*/
@@ -18915,18 +18916,18 @@ reserved_func
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_SUBSTR, $3, 2, 5);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-	| VECTOR_DISTANCE '(' expression_ ',' expression_ ',' vector_distance_metric ')'
+	| VECTOR_DISTANCE '(' expression_ ',' expression_ opt_vector_distance_metric ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func,  | VECTOR_DISTANCE '(' expression_ ',' expression_ ',' identifier ')' );
 			PT_NODE *arg1 = $3;
 			PT_NODE *arg2 = $5;
-			PT_NODE *metric = $7;
+			PT_NODE *metric = $6;
 
 			// Connect arguments as linked list.
 			arg1->next = arg2;
 			arg2->next = metric;
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 3, 3);
+			$$ = parser_make_func_with_arg_count (this_parser, F_VECTOR_DISTANCE, arg1, 2, 3);
 		DBG_PRINT}}
 	;
 
@@ -25816,6 +25817,16 @@ opt_alter_synonym
 
 		DBG_PRINT}}
 
+opt_vector_distance_metric
+	: /*empty*/
+		{{
+			$$ = NULL;
+		}}
+	| ',' vector_distance_metric
+		{{
+			$$ = $2;
+		}}
+
 vector_distance_metric
 	: identifier
 		{{ DBG_TRACE_GRAMMAR(vector_distance_metric,  : identifier );
@@ -25830,14 +25841,27 @@ vector_distance_metric
 			// This is a hack to map vector metric name to an ENUM value.
 			// Conversion starts.
 
-			enum DB_VECTOR_DISTANCE_METRIC metric = 0;
+			enum DB_VECTOR_DISTANCE_METRIC metric;
 			const char* metric_name = identifier->info.name.original;
+
 			assert(metric_name != NULL);
-			if (strcmp(metric_name, "euclidean")) 
+			if (strcmp(metric_name, "cosine") == 0)
 			  {
-			    metric = EUCLIDEAN;
-			  } 
-			else 
+			    metric = METRIC_COSINE;
+			  }
+			else if (strcmp(metric_name, "dot") == 0)
+			  {
+			    metric = METRIC_DOT;
+			  }
+			else if (strcmp(metric_name, "euclidean") == 0)
+			  {
+			    metric = METRIC_EUCLIDEAN;
+			  }
+			else if (strcmp(metric_name, "manhattan") == 0)
+			  {
+			    metric = METRIC_MANHATTAN;
+			  }
+			else
 			  {
 			    assert(false);
 			  }
@@ -25852,6 +25876,7 @@ vector_distance_metric
 
 			parser_free_node (this_parser, identifier);
 			// Conversion ends.
+
 			$$ = ret;
 
 		DBG_PRINT}}

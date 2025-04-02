@@ -392,6 +392,7 @@ func_all_signatures sig_of_regexp_substr =
 
 func_all_signatures sig_of_vector_distance =
 {
+  {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR}, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_VECTOR, PT_TYPE_VECTOR, PT_TYPE_INTEGER}, {}},
 };
 
