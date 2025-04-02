@@ -27,6 +27,7 @@
 #include "px_worker_manager.hpp"
 #include "px_worker_manager_global.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_query
