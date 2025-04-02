@@ -4701,6 +4701,9 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   ptr = or_unpack_int (ptr, &val);
   access_spec->flags = (ACCESS_SPEC_FLAG) val;
 
+  ptr = or_unpack_int (ptr, &val);
+  access_spec->num_parallel_threads = val;
+
   return ptr;
 
 error:

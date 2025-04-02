@@ -499,9 +499,10 @@ enum param_id
   PRM_ID_DBLINK_AUTO_COMMIT,
 
   PRM_ID_ENABLE_JVM_HEAP_DUMP,
+  PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_ENABLE_JVM_HEAP_DUMP
+  PRM_LAST_ID = PRM_ID_PARALLEL_HEAP_SCAN_THREADS
 };
 typedef enum param_id PARAM_ID;
 
