@@ -421,6 +421,10 @@ namespace parallel_heap_scan
 	  }
 	map->set_pbp ((void *)spec);
 	map->set_lm ((void *)spec);
+	if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	  {
+	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
+	  }
       }
     else if (result == CHECK_RESULT::CANNOT_PARALLEL)
       {
@@ -454,9 +458,14 @@ namespace parallel_heap_scan
       case BUILDLIST_PROC:
 	if (xasl->proc.buildlist.g_hash_eligible)
 	  {
-	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 	  }
+	break;
       case BUILDVALUE_PROC:
+	if (xasl->proc.buildvalue.agg_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	  }
 	break;
       case CTE_PROC:
 	if (xasl->proc.cte.non_recursive_part)
@@ -624,10 +633,6 @@ namespace parallel_heap_scan
       case SCAN_PROC:
       default:
 	break;
-      }
-    for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
-      {
-	set (xaslp, result);
       }
     spec_setter spec_setter (map);
     for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
