@@ -31,14 +31,14 @@
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
 //        We need to consider a better way to identify the hnsw index.
-static int hnsw_index_id = 0;
-static std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
+int hnsw_index_id = 0;
+std::unordered_map<int, std::unique_ptr<faiss::IndexHNSWFlat>> hnsw_index_map;
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
-  std::unique_ptr<faiss::IndexHNSW> index = std::make_unique<faiss::IndexHNSW> (dimension, hnsw_M, metric_type);
+  std::unique_ptr<faiss::IndexHNSWFlat> index = std::make_unique<faiss::IndexHNSWFlat> (dimension, hnsw_M, metric_type);
   index->hnsw.efConstruction = hnsw_efConstruction;
 
   btid->vfid.volid = -1;
@@ -46,7 +46,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   btid->root_pageid = ++hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
-  fprintf (stdout, "hnsw_index_map size : %d\n", hnsw_index_map.size());
+  fprintf (stdout, "hnsw_index_map size : %zu\n", hnsw_index_map.size());
   fprintf (stdout, "[add_index] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   fprintf (stdout, "HNSW Index added with ID %d\n", hnsw_index_id);
@@ -101,7 +101,7 @@ int hnsw_print_index_info (BTID *btid)
 
   else
     {
-      std::unique_ptr<faiss::IndexHNSW> &index = it->second;
+      std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
 
       er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
       er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
@@ -117,12 +117,12 @@ int hnsw_print_index_info (BTID *btid)
 int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
 {
 
-  fprintf (stdout, "Insert vector size : %d\n", vector.size());
-  for (int i = 0; i < vector.size(); i++)
+  fprintf (stdout, "Insert vector size : %zu\n", vector.size());
+  for (unsigned int i = 0; i < vector.size(); i++)
     {
       fprintf (stdout, "vector[%d] : %f\n", i, vector[i]);
     }
-  fprintf (stdout, "hnsw_map size : %d\n", hnsw_index_map.size());
+  fprintf (stdout, "hnsw_map size : %zu\n", hnsw_index_map.size());
   fprintf (stdout, "[add_element] hnsw_index_map addr: %p\n", (void *)&hnsw_index_map);
 
   if (!btid)
@@ -140,7 +140,7 @@ int hnsw_add_element (BTID *btid, const std::vector<float> &vector)
       return ER_FAILED;
     }
 
-  std::unique_ptr<faiss::IndexHNSW> &index = it->second;
+  std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
 
   index->add (vector.size(), vector.data());
 

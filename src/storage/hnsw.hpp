@@ -40,4 +40,7 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 int hnsw_add_element (BTID *btid, const std::vector<float> &vector);
 
+extern std::unordered_map<int, std::unique_ptr<faiss::IndexHNSWFlat>> hnsw_index_map;
+extern int hnsw_index_id;
+
 #endif
