@@ -369,7 +369,7 @@ static const char *get_authorization_name (DB_AUTH auth);
 
 static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
-				    PT_NODE * class_, PT_NODE * derived_spec);
+				    PT_NODE * class_, PT_NODE * derived_spec, bool skip_adding_hidden_col);
 
 static bool mq_is_order_dependent_node (PT_NODE * node);
 
@@ -1470,7 +1470,7 @@ static PT_NODE *
 mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
 				       PT_NODE ** new_spec)
 {
-  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list;
+  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list, *save_order_by_for;
   PT_NODE *attributes, *attr, *as_attr_list;
   PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
   bool is_unset_hidden_col;
@@ -1563,9 +1563,11 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* cut off select list and order by */
   save_order_by = subquery->info.query.order_by;
+  save_order_by_for = subquery->info.query.orderby_for;
   save_select_list = subquery->info.query.q.select.list;
   subquery->info.query.order_by = NULL;
   subquery->info.query.q.select.list = NULL;
+  subquery->info.query.orderby_for = NULL;
 
   tmp_query = parser_copy_tree (parser, subquery);
   tmp_query->info.query.q.select.list = new_select_list;
@@ -1573,14 +1575,12 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   /* revert subquery */
   subquery->info.query.order_by = save_order_by;
   subquery->info.query.q.select.list = save_select_list;
+  subquery->info.query.orderby_for = save_order_by_for;
 
   pred = statement->info.query.q.select.where;
-  if (subquery->info.query.order_by &&
-      (!pt_has_aggregate (parser, statement) || pt_has_inst_in_where_and_select_list (parser, subquery)
-       || pt_has_analytic (parser, statement) || pt_has_order_sensitive_agg (parser, statement)
-       || pt_has_inst_num (parser, pred)))
+  if (subquery->info.query.order_by)
     {
-      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec);
+      tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec, false);
       if (tmp_query == NULL)
 	{
 	  goto exit_on_error;
@@ -1864,6 +1864,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
   orderby_for = subquery->info.query.orderby_for;
   is_orderby_for = orderby_for && (order_by
+				   || pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery)
 				   || (orderby_for->node_type == PT_EXPR
 				       && !PT_EXPR_INFO_IS_FLAGED (orderby_for, PT_EXPR_INFO_ROWNUM_ONLY)));
 
@@ -2142,7 +2143,7 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
  */
 static PT_NODE *
 mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec, PT_NODE * class_,
-		    PT_NODE * derived_spec)
+		    PT_NODE * derived_spec, bool skip_adding_hidden_col)
 {
   PT_NODE *order, *val;
   PT_NODE *attributes, *attr, *prev_order;
@@ -2186,6 +2187,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
     }
 
   prev_order = NULL;
+
   /* update the position number of order by clause */
   order = order_by;
   while (order != NULL)
@@ -2246,7 +2248,7 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if attr is not found in output list, append a hidden column at the end of the output list. */
       if (node == NULL)
 	{
-	  if (pt_is_distinct (statement))
+	  if (skip_adding_hidden_col)
 	    {
 	      /* remove unnecessary order */
 	      if (prev_order == NULL)
@@ -2316,15 +2318,19 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       statement->info.query.q.select.list =
 	pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 2, false);
 
+      /* move prev orderby_for to orderby_for */
+      if (query_spec->info.query.orderby_for)
+	{
+	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
+	}
+
       /* replace rownum of where to orderby_num */
       where = statement->info.query.q.select.where;
       if (where != NULL && PT_EXPR_INFO_IS_FLAGED (where, PT_EXPR_INFO_ROWNUM_ONLY))
 	{
 	  where = pt_lambda_with_arg (parser, where, ins_num, ord_num, false, 2, false);
 
-	  /* move prev orderby_for to orderby_for */
-	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
-	  statement->info.query.orderby_for = parser_append_node (prev_orderby_for, statement->info.query.orderby_for);
 	  /* move rownum only predicate to orderby_for */
 	  statement->info.query.orderby_for = parser_append_node (where, statement->info.query.orderby_for);
 	  statement->info.query.q.select.where = NULL;
@@ -2336,6 +2342,20 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
       /* if where of subquery has rownum, orderby_num, can not view-merged. so is not needed to change */
       query_spec->info.query.q.select.list =
 	pt_lambda_with_arg (parser, query_spec->info.query.q.select.list, ord_num, ins_num, false, 2, false);
+
+      /* move orderby_for of subquery to where of mainquery */
+      if (query_spec->info.query.orderby_for)
+	{
+	  prev_orderby_for = parser_copy_tree (parser, query_spec->info.query.orderby_for);
+	  prev_orderby_for = pt_lambda_with_arg (parser, prev_orderby_for, ord_num, ins_num, false, 2, false);
+	  statement->info.query.q.select.where =
+	    parser_append_node (prev_orderby_for, statement->info.query.q.select.where);
+	}
+    }
+  else
+    {
+      /* impossible case : if both the main and subqueries have order by, can't be view-merged */
+      assert (false);
     }
 
   parser_free_tree (parser, ord_num);
@@ -2440,11 +2460,13 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 
       if (tmp_result->node_type == PT_SELECT)
 	{
-	  if (!order_by && subquery->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
+	  if (!order_by && subquery->info.query.order_by)
 	    {
 	      /* update the position number of order by clause and add a hidden column into the output list if
 	       * necessary. */
-	      tmp_result = mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec);
+	      tmp_result =
+		mq_update_order_by (parser, tmp_result, subquery, NULL, derived_spec,
+				    pt_is_distinct (tmp_result) || pt_has_aggregate (parser, tmp_result));
 	      if (tmp_result == NULL)
 		{
 		  goto exit_on_error;
@@ -2640,19 +2662,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  if (query_spec->info.query.order_by)
 	    {
 	      /* update the position number of order by clause */
-	      derived_table = mq_update_order_by (parser, derived_table, query_spec, tmp_class, NULL);
+	      derived_table = mq_update_order_by (parser, derived_table, query_spec, tmp_class, NULL, false);
 	      if (derived_table == NULL)
 		{
 		  goto exit_on_error;
 		}
 	      derived_table->info.query.flag.order_siblings = query_spec->info.query.flag.order_siblings;
-	    }
-
-	  if (query_spec->info.query.orderby_for)
-	    {
-	      derived_table->info.query.orderby_for =
-		parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
-				    derived_table->info.query.orderby_for);
 	    }
 
 	  class_spec->info.spec.derived_table =
@@ -2708,11 +2723,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 	  if (tmp_result->node_type == PT_SELECT)
 	    {
-	      if (!order_by && query_spec->info.query.order_by && !pt_has_aggregate (parser, tmp_result))
+	      if (!order_by && query_spec->info.query.order_by)
 		{
 		  /* update the position number of order by clause and add a hidden column into the output list if
 		   * necessary. */
-		  tmp_result = mq_update_order_by (parser, tmp_result, query_spec, class_, NULL);
+		  tmp_result =
+		    mq_update_order_by (parser, tmp_result, query_spec, class_, NULL,
+					pt_is_distinct (tmp_result) || pt_has_aggregate (parser, tmp_result));
 		  if (tmp_result == NULL)
 		    {
 		      goto exit_on_error;
@@ -2763,7 +2780,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	  if (query_spec->info.query.order_by != NULL)
 	    {
 	      /* update the position number of order by clause */
-	      statement = mq_update_order_by (parser, statement, query_spec, class_, NULL);
+	      statement =
+		mq_update_order_by (parser, statement, query_spec, class_, NULL, pt_is_distinct (statement)
+				    || pt_has_aggregate (parser, statement));
 	      if (statement == NULL)
 		{
 		  goto exit_on_error;
