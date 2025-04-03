@@ -452,6 +452,26 @@ qmgr_deallocate_query_entries (QMGR_QUERY_ENTRY * query_p)
 }
 
 /*
+ * qmgr_deallocate_dblink_entries () -
+ *   return:
+ *   dblink_p(in)  : dblink entry pointer
+ *
+ * Note: Free the area allocated for the dblink entry list
+ */
+static void
+qmgr_deallocate_dblink_entries (DBLINK_CONN_ENTRY * dblink_p)
+{
+  DBLINK_CONN_ENTRY *p;
+
+  while (dblink_p)
+    {
+      p = dblink_p;
+      dblink_p = dblink_p->next;
+      free (p);
+    }
+}
+
+/*
  * qmgr_add_query_entry () -
  *   return:
  *   q_ptr(in)  : Query Entry Pointer
@@ -729,6 +749,7 @@ qmgr_free_tran_entries (void)
       qmgr_deallocate_query_entries (tran_entry_p->query_entry_list_p);
       qmgr_deallocate_query_entries (tran_entry_p->free_query_entry_list_p);
       qmgr_deallocate_oid_blocks (tran_entry_p->modified_classes_p);
+      qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
 
       pthread_mutex_destroy (&tran_entry_p->mutex);
 
