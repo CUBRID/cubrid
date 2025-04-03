@@ -3430,8 +3430,8 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	}
 #endif /* SERVER_MODE */
 
-      /* If the transaction is active abort it */
-      if (LOG_ISTRAN_ACTIVE (tdes))	/* logtb_is_current_active (thread_p) */
+      /* If the transaction is active or unactive_2pc_prepare abort it */
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE(tdes))	/* logtb_is_current_active (thread_p) */
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
