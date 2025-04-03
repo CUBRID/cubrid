@@ -125,7 +125,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   const char *dba_query = "select [%s] from [%s];";
   const char *user_query = "select [%s] from [%s] where name='%s';";
   const char *group_query =
-	  "select u.name, [t].[g].name from [db_user] [u], TABLE([u].[groups]) [t]([g]) where [t].[g].name = '%s';";
+	  "select u.name, [t].[g].name from [%s] [u], TABLE([u].[groups]) [t]([g]) where [t].[g].name = '%s';";
   char encrypt_mode = ENCODE_PREFIX_DEFAULT;
   char *upper_case_name = NULL;
   size_t upper_case_name_size = 0;
@@ -297,7 +297,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	    {
 	      if (strlen (passbuf))
 		{
-		  output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n", uname);
+		  output_ctx ("call [find_user]('%s') on class [%s] to [auser];\n", uname, AU_USER_CLASS_NAME);
 		  if (encrypt_mode == ENCODE_PREFIX_DES)
 		    {
 		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
@@ -392,7 +392,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
 		  if (gname != NULL)
 		    {
-		      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		      output_ctx ("call [find_user]('%s') on class [%s] to [g_%s];\n", gname, AU_USER_CLASS_NAME, gname);
 		      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 		    }
 		}
@@ -441,7 +441,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
       intl_identifier_upper (ctxt.login_user, upper_case_name);
 
-      query_size = strlen (group_query) + strlen (upper_case_name);
+      query_size = strlen (group_query) + strlen (AU_USER_CLASS_NAME) + strlen (upper_case_name);
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
@@ -450,7 +450,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	  goto end;
 	}
 
-      sprintf (query, group_query, upper_case_name);
+      sprintf (query, group_query, AU_USER_CLASS_NAME, upper_case_name);
 
       AU_DISABLE (save);
       error = db_compile_and_execute_local (query, &query_result, &query_error);
@@ -486,7 +486,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
 	  if (uname != NULL && gname != NULL)
 	    {
-	      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+	      output_ctx ("call [find_user]('%s') on class [%s] to [g_%s];\n", gname, AU_USER_CLASS_NAME, gname);
 	      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 	    }
 
