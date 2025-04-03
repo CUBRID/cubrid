@@ -635,7 +635,7 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->num_query_entries = 0;
   tran_entry_p->query_entry_list_p = NULL;
   tran_entry_p->free_query_entry_list_p = NULL;
-  tran_entry_p->dblink_entry = NULL:
+  tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
