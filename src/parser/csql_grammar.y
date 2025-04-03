@@ -25845,19 +25845,19 @@ vector_distance_metric
 			const char* metric_name = identifier->info.name.original;
 
 			assert(metric_name != NULL);
-			if (strcmp(metric_name, "cosine") == 0)
+			if (strcasecmp(metric_name, "cosine") == 0)
 			  {
 			    metric = METRIC_COSINE;
 			  }
-			else if (strcmp(metric_name, "dot") == 0)
+			else if (strcasecmp(metric_name, "dot") == 0)
 			  {
 			    metric = METRIC_DOT;
 			  }
-			else if (strcmp(metric_name, "euclidean") == 0)
+			else if (strcasecmp(metric_name, "euclidean") == 0)
 			  {
 			    metric = METRIC_EUCLIDEAN;
 			  }
-			else if (strcmp(metric_name, "manhattan") == 0)
+			else if (strcasecmp(metric_name, "manhattan") == 0)
 			  {
 			    metric = METRIC_MANHATTAN;
 			  }
