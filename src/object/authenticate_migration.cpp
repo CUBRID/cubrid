@@ -131,8 +131,6 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   size_t upper_case_name_size = 0;
   int save;
 
-  AU_DISABLE (save);
-
   if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
       query_size = strlen (dba_query) + strlen (AU_USER_CLASS_NAME) * 2;
@@ -170,7 +168,10 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       sprintf (query, user_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, upper_case_name);
     }
 
+  AU_DISABLE (save);
   error = db_compile_and_execute_local (query, &query_result, &query_error);
+  AU_ENABLE (save);
+
   /* error is row count if not negative. */
   if (error < NO_ERROR)
     {
@@ -451,7 +452,9 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
       sprintf (query, group_query, upper_case_name);
 
+      AU_DISABLE (save);
       error = db_compile_and_execute_local (query, &query_result, &query_error);
+      AU_ENABLE (save);
 
       /* error is row count if not negative. */
       if (error < NO_ERROR)
@@ -500,7 +503,6 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
     }
 
 end:
-  AU_ENABLE (save);
   if (query_result != NULL)
     {
       db_query_end (query_result);
