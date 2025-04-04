@@ -551,7 +551,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 int
 dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 {
-  int tran_error = NO_ERROR, rc;
+  int tran_error = NO_ERROR, rc = NO_ERROR;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_ENTRY *prev;
 
