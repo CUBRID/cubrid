@@ -2796,10 +2796,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 SESSION_PARAM *
 session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 {
-  int i, count;
-  SESSION_STATE *session_p = NULL;
-
-  session_p = session_get_session_state (thread_p);
+  SESSION_STATE *session_p = session_get_session_state (thread_p);
   if (session_p == NULL)
     {
       return NULL;
@@ -2807,16 +2804,24 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 
   assert (id <= PRM_LAST_ID);
 
+#define SESSION_INDIRECT_TEST
+#if defined(SESSION_INDIRECT_TEST)	// TODO: ctshim
+  int i, count;
+
   count = sysprm_get_session_parameters_count ();
   for (i = 0; i < count; i++)
     {
       if (session_p->session_parameters[i].prm_id == id)
 	{
+	  assert (prm_Def_session_idx[id] == i);
 	  return &session_p->session_parameters[i];
 	}
     }
-
+  assert (prm_Def_session_idx[id] == -1);
   return NULL;
+#else
+  return ((prm_Def_session_idx[id] < 0) ? NULL : &session_p->session_parameters[prm_Def_session_idx[id]]);
+#endif
 }
 
 /*
