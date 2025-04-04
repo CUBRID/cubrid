@@ -6982,7 +6982,7 @@ static void init_server_timezone_parameter (void);
 
 
 /* conf files that have been loaded */
-#define MAX_NUM_OF_PRM_FILES_LOADED	(3)
+#define MAX_NUM_OF_PRM_FILES_LOADED	(10)
 typedef struct
 {
   char *conf_path;
@@ -7025,12 +7025,18 @@ public:
   void file_has_been_loaded (const char *conf_path, const char *db_name)
   {
     assert (conf_path != NULL);
-    assert (m_used >= 0 && m_used < MAX_NUM_OF_PRM_FILES_LOADED);
-    assert (m_loaded[m_used].conf_path == NULL);
+    assert (m_used >= 0);
 
-    m_loaded[m_used].conf_path = strdup (conf_path);
-    m_loaded[m_used].db_name = db_name ? strdup (db_name) : NULL;
-    m_used++;
+    // TODO: 
+    if (m_used < MAX_NUM_OF_PRM_FILES_LOADED)
+      {
+	assert (m_used < MAX_NUM_OF_PRM_FILES_LOADED);
+	assert (m_loaded[m_used].conf_path == NULL);
+
+	m_loaded[m_used].conf_path = strdup (conf_path);
+	m_loaded[m_used].db_name = db_name ? strdup (db_name) : NULL;
+	m_used++;
+      }
   }
 
   void dump (FILE * fp)
@@ -7351,14 +7357,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     {
       for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
 	{
-#if defined (CS_MODE)
 	  prm_Def_session_idx[i] = (PRM_IS_FOR_SESSION (GET_PRM (i))) ? num_session_parameters++ : -1;
-#else
-	  if (PRM_IS_FOR_SESSION (GET_PRM (i)))
-	    {
-	      num_session_parameters++;
-	    }
-#endif
 	}
     }
 
