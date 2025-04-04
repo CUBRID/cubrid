@@ -965,6 +965,7 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
