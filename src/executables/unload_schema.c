@@ -1171,7 +1171,12 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	{
 	  emit_class_meta (output_ctx, cl->op);
 	}
-      output_ctx ("\n");
+
+      if (do_auth)
+	{
+	  emit_class_owner (output_ctx, cl->op);
+	  output_ctx ("\n");
+	}
     }
 
   output_ctx ("\n");
@@ -1219,16 +1224,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       if (is_partitioned)
 	{
 	  emit_partition_info (output_ctx, cl->op);
-	}
-
-      /*
-       * change_owner method should be called after adding all columns.
-       * If some column has auto_increment attribute, change_owner method
-       * will change serial object's owner related to that attribute.
-       */
-      if (do_auth)
-	{
-	  emit_class_owner (output_ctx, cl->op);
 	}
     }
 
@@ -1941,10 +1936,10 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      output_ctx ("ALTER SERIAL %s%s%s START WITH %s;\n",
 			  PRINT_IDENTIFIER (db_get_string (&sr_name)), start_with);
 
-          if (db_get_int (&started_val) == 1)
-           {
-             output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&sr_name)));
-           }
+	      if (db_get_int (&started_val) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&sr_name)));
+		}
 	      pr_clear_value (&sr_name);
 	    }
 	}
