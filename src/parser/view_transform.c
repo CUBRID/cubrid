@@ -2354,8 +2354,8 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
     }
   else
     {
-      /* impossible case : if both the main and subqueries have order by, can't be view-merged */
-      assert (false);
+      /* if both the main and subqueries have order by, should not have orderby_for. can't be view-merged */
+      assert (query_spec->info.query.orderby_for == NULL);
     }
 
   parser_free_tree (parser, ord_num);
