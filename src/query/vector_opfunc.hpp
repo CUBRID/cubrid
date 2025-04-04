@@ -25,6 +25,8 @@
 #define _VECTOR_OPFUNC_H_
 
 #include "dbtype_def.h"
+#include <vector>
+std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value);
 
 int
 vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args);

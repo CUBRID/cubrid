@@ -330,8 +330,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;
 	      root_vpid.volid = bt_statsp->btid.vfid.volid;
-
-	      if (VPID_ISNULL (&root_vpid))
+	      if (VPID_ISNULL (&root_vpid) || root_vpid.volid == -1)
 		{
 		  /* after create the catalog record of the class, and before create the catalog record of the
 		   * constraints for the class currently, does not know BTID */
@@ -2297,7 +2296,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
     {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
     {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
     {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
-    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0}
+    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
+    {SM_PROPERTY_VECTOR_INDEX, NULL, VECTOR_INDEX, 0}
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];

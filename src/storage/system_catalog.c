@@ -1522,14 +1522,13 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
 
   root_vpid.pageid = btree_stats_p->btid.root_pageid;
   root_vpid.volid = btree_stats_p->btid.vfid.volid;
-  if (VPID_ISNULL (&root_vpid))
+  if (VPID_ISNULL (&root_vpid) || root_vpid.volid == -1)
     {
       /* after create the catalog record of the class, and before create the catalog record of the constraints for the
        * class currently, does not know BTID */
       btree_stats_p->key_type = &tp_Null_domain;
       goto exit_on_end;
     }
-
   root_page_p = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (root_page_p == NULL)
     {
@@ -3841,7 +3840,10 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
       for (i = 0; i < n_btstats; i++)
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[i];
-
+	  if (BTID_IS_VECTOR_INDEX (&btree_stats_p->btid))
+	    {
+	      continue;
+	    }
 	  if (catalog_fetch_btree_statistics (thread_p, btree_stats_p, catalog_record_p) != NO_ERROR)
 	    {
 	      return ER_FAILED;

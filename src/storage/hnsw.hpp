@@ -31,6 +31,7 @@
 #include <memory>
 
 #include "storage_common.h"
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 #include "faiss/IndexHNSW.h"
 
@@ -38,7 +39,7 @@ BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hn
 		       enum faiss::MetricType metric_type);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
+int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue);
 
-extern int hnsw_index_id;
-extern std::unordered_map<int, std::unique_ptr<faiss::IndexHNSW>> hnsw_index_map;
+
 #endif

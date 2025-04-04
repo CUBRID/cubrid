@@ -38,6 +38,7 @@
 #include "btree_load.h"
 #include "critical_section.h"
 #include "dbtype.h"
+#include "hnsw.hpp"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
@@ -7865,6 +7866,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
     {
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       or_pred = index->filter_predicate;
+
       if (or_pred && or_pred->pred_stream)
 	{
 	  error_code =
@@ -7930,31 +7932,43 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-
-	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+              // *INDENT-OFF*
+	      if (BTID_IS_VECTOR_INDEX (&index->btid))
 		{
-		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		  error_code = hnsw_add_element (&btid, key_dbvalue);
+		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
 		}
-
-	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-		{
-		  /* Online index is currently loading. */
-		  error_code =
-		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
-						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
-		}
+              // *INDENT-ON*
 	      else
-		{
-		  error_code =
-		    btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-				  &unique_pk, p_mvcc_rec_header);
-		}
+	      {
+		if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+		  {
+		    if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		      {
+			goto error;
+		      }
+		  }
+
+		if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		  {
+		    /* Online index is currently loading. */
+		    error_code =
+		      btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
+						     BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+		  }
+		else
+		  {
+		    error_code =
+		      btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+				    &unique_pk, p_mvcc_rec_header);
+		  }
 #if defined(ENABLE_SYSTEMTAP)
-	      CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
+		CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
+	      }
 	    }
 	  else
 	    {
