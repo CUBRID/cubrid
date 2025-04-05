@@ -90,7 +90,6 @@ namespace parallel_query
   QFILE_LIST_ID *list_merger::get_merged_list_id ()
   {
     QFILE_LIST_ID *ret = m_head_list_id;
-    assert (ret != NULL);
     m_head_list_id = NULL;
     return ret;
   }

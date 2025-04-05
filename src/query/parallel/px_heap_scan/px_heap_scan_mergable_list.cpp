@@ -27,6 +27,7 @@
 #include "object_representation.h"
 #include "query_manager.h"
 #include "thread_manager.hpp"
+#include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -43,10 +44,13 @@ namespace parallel_heap_scan
   {
     for (QFILE_LIST_ID *list_id : m_list_ids)
       {
-	if (list_id->type_list.type_cnt != 0)
+	if (list_id)
 	  {
-	    qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
-	    qfile_clear_list_id (list_id);
+	    if (list_id->type_list.type_cnt != 0)
+	      {
+		qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
+		qfile_clear_list_id (list_id);
+	      }
 	  }
       }
   }
@@ -73,7 +77,6 @@ namespace parallel_heap_scan
     m_outptr_list = outptr_list;
     m_tpl_buf.tpl = (char *) malloc (DB_PAGESIZE);
     m_tpl_buf.size = DB_PAGESIZE;
-    m_dbv_arr.resize (outptr_list->valptr_cnt);
   }
 
   mergable_list_writer::~mergable_list_writer()
@@ -82,12 +85,14 @@ namespace parallel_heap_scan
   }
 
   bool mergable_list_writer::open (THREAD_ENTRY *thread_p, PARALLEL_HEAP_SCAN_ID *phsid,
-				   REGU_VARIABLE_LIST regu_list_pred, REGU_VARIABLE_LIST regu_list_rest)
+				   REGU_VARIABLE_LIST regu_list_pred, REGU_VARIABLE_LIST regu_list_rest, VAL_DESCR *vd)
   {
     QFILE_TUPLE_VALUE_TYPE_LIST type_list;
     REGU_VARIABLE_LIST valptr, orig_pred_regu, new_pred_regu, orig_rest_regu, new_rest_regu;
     int valptr_idx;
+    m_vd = vd;
     qdata_get_valptr_type_list (thread_p, m_outptr_list, &type_list);
+    m_dbv_arr.resize (type_list.type_cnt);
 
     (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL, NULL);
     (*m_list_id_p)->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
@@ -102,7 +107,24 @@ namespace parallel_heap_scan
       {
 	bool found = false;
 	REGU_VARIABLE *valptr_var = &valptr->value;
-	assert (valptr_var->type == TYPE_CONSTANT);
+	if (REGU_VARIABLE_IS_FLAGED (valptr_var, REGU_VARIABLE_HIDDEN_COLUMN))
+	  {
+	    continue;
+	  }
+	assert (valptr_var->type == TYPE_CONSTANT || valptr_var->type == TYPE_DBVAL || valptr_var->type == TYPE_POS_VALUE);
+
+	if (valptr_var->type == TYPE_DBVAL)
+	  {
+	    m_dbv_arr[valptr_idx] = &valptr_var->value.dbval;
+	    continue;
+	  }
+
+	if (valptr_var->type == TYPE_POS_VALUE)
+	  {
+	    m_dbv_arr[valptr_idx] = (DB_VALUE *) (vd->dbval_ptr + valptr_var->value.val_pos);
+	    continue;
+	  }
+
 
 	for (orig_pred_regu = phsid->scan_pred.regu_list, new_pred_regu = regu_list_pred;
 	     orig_pred_regu != NULL
@@ -134,10 +156,16 @@ namespace parallel_heap_scan
 		  }
 	      }
 
-	    assert (found); /* NOT FOUND : assert() */
+
 	  }
 
+	if (!found)
+	  {
+	    m_dbv_arr[valptr_idx] = valptr_var->value.dbvalptr;
+	    found = true;
+	  }
 
+	assert (found); /* NOT FOUND : assert() */
       }
 
 
@@ -149,21 +177,30 @@ namespace parallel_heap_scan
     qfile_close_list (thread_p, *m_list_id_p);
   }
 
-  void mergable_list_writer::write (THREAD_ENTRY *thread_p)
+  void mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p)
   {
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p);
+    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, outptr_dbvals_p);
     int err = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
     assert (err == NO_ERROR);
   }
 
-  QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p)
+  QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p,
+      std::vector<DB_VALUE> *outptr_dbvals_p)
   {
     REGU_VARIABLE_LIST p;
     int n_preds, n_rests, n_all;
     char *tuple_p;
     int i = 0, tval_size = 0, tlen, tpl_size;
+    int type_list_index = 0;
+    DB_TYPE dom_type;
     int n_size, toffset;
     bool clear_compressed_string = true;
+    REGU_VARIABLE_LIST outptr_list_p = NULL;
+    if (outptr_dbvals_p != nullptr)
+      {
+	outptr_list_p = m_outptr_list->valptrp;
+	outptr_dbvals_p->resize (m_dbv_arr.size());
+      }
 
     tpl_size = 0;
     tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -186,6 +223,33 @@ namespace parallel_heap_scan
 	    assert_release (m_tpl_buf.tpl != NULL);
 	    tuple_p = (char *) (m_tpl_buf.tpl) + toffset;
 	  }
+	if (outptr_dbvals_p != nullptr)
+	  {
+	    while (outptr_list_p->value.flags & REGU_VARIABLE_HIDDEN_COLUMN)
+	      {
+		outptr_list_p = outptr_list_p->next;
+	      }
+	    if (!DB_IS_NULL (dbval_p) && (*m_list_id_p)->is_domain_resolved == false)
+	      {
+		dom_type = TP_DOMAIN_TYPE ((*m_list_id_p)->type_list.domp[type_list_index]);
+		if (dom_type == DB_TYPE_VARIABLE
+		    || (*m_list_id_p)->type_list.domp[type_list_index]->collation_flag != TP_DOMAIN_COLL_NORMAL)
+		  {
+		    (*m_list_id_p)->type_list.domp[type_list_index] = tp_domain_resolve_value (dbval_p, NULL);
+		  }
+
+		assert (outptr_list_p != NULL);
+		outptr_list_p->value.domain = (*m_list_id_p)->type_list.domp[type_list_index];
+
+	      }
+	    if (outptr_list_p->value.type == TYPE_CONSTANT)
+	      {
+		DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
+		db_value_clone (dbval_p, vecp);
+		i++;
+	      }
+	    outptr_list_p = outptr_list_p->next;
+	  }
 
 	if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
 	  {
@@ -195,9 +259,11 @@ namespace parallel_heap_scan
 	tlen += tval_size;
 	tuple_p += tval_size;
 	toffset += tval_size;
+	type_list_index++;
       }
 
     QFILE_PUT_TUPLE_LENGTH (m_tpl_buf.tpl, tlen);
+
 
     return &m_tpl_buf;
   }

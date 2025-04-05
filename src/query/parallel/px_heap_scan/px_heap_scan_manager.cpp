@@ -26,6 +26,7 @@
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
 #include "query_manager.h"
+#include "query_executor.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 
@@ -64,8 +65,7 @@ namespace parallel_heap_scan
   }
 
   manager_merge::manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-				std::size_t core_count, QUERY_ID query_id, QFILE_LIST_ID *result_list,
-				VALPTR_LIST *outptr_list)
+				std::size_t core_count, QUERY_ID query_id, XASL_NODE *xasl)
   {
     m_is_start_once = false;
     timeout_occurred = false;
@@ -74,14 +74,16 @@ namespace parallel_heap_scan
     parallelism = core_count;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
+    m_context->m_outptr_dbvals_p = &m_outptr_dbvals;
     m_mergable_list = new mergable_list_array (thread_p, core_count);
     for (size_t i = 0; i < core_count; i++)
       {
 	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
-					   outptr_list));
+					   xasl->outptr_list));
       }
-    m_result_list = result_list;
-    m_outptr_list = outptr_list;
+    m_result_list = xasl->list_id;
+    m_outptr_list = xasl->outptr_list;
+    m_xasl = xasl;
     m_memory_mappers.reserve (parallelism);
     for (size_t i = 0; i < parallelism; i++)
       {
@@ -105,6 +107,17 @@ namespace parallel_heap_scan
       {
 	thread_get_manager()->destroy_worker_pool (m_workpool);
       }
+    /*
+    if (m_outptr_list != nullptr)
+    {
+    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
+      {
+        if (plist->value.type == TYPE_CONSTANT)
+          {
+    	db_value_clear (plist->value.value.dbvalptr);
+          }
+      }
+    }*/
     if (m_mergable_list != nullptr)
       {
 	delete m_mergable_list;
@@ -217,7 +230,86 @@ namespace parallel_heap_scan
 	  }
       }
     /* all scan ended, merge lists */
+    if (m_context->has_error())
+      {
+	return S_ERROR;
+      }
+    if (qmgr_is_query_interrupted (m_thread_p, m_query_id))
+      {
+	m_context->set_has_error();
+	return S_ERROR;
+      }
     QFILE_LIST_ID *merged_list_id = m_mergable_list->get_merged_list_id();
+    QFILE_TUPLE_RECORD tpl;
+    std::vector<DB_VALUE> outptr_orig_dbvals;
+    int i=0;
+
+    if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL
+	&& !m_xasl->proc.buildlist.g_agg_domains_resolved)
+      {
+
+	if (m_context->m_outptr_dbvals_p->size() > 0)
+	  {
+	    outptr_orig_dbvals.resize (m_context->m_outptr_dbvals_p->size());
+	    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
+	      {
+		while (plist && (plist->value.flags & REGU_VARIABLE_HIDDEN_COLUMN || plist->value.type != TYPE_CONSTANT))
+		  {
+		    plist = plist->next;
+		  }
+		if (!plist)
+		  {
+		    break;
+		  }
+		DB_VALUE *vecp = &outptr_orig_dbvals[i];
+		DB_VALUE *fetched_dbval_p = & (m_context->m_outptr_dbvals_p->at (i));
+		db_value_clone (plist->value.value.dbvalptr, vecp);
+		db_value_clone (fetched_dbval_p, plist->value.value.dbvalptr);
+		i++;
+	      }
+	  }
+
+
+	/* search in aggregate list by comparing DB_VALUE pointers */
+	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl,
+	    &m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+
+
+
+	if (m_context->m_outptr_dbvals_p->size() > 0)
+	  {
+	    i=0;
+	    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
+	      {
+		while (plist && (plist->value.flags & REGU_VARIABLE_HIDDEN_COLUMN || plist->value.type != TYPE_CONSTANT))
+		  {
+		    plist = plist->next;
+		  }
+		if (!plist)
+		  {
+		    break;
+		  }
+		DB_VALUE *vecp = & (outptr_orig_dbvals[i]);
+		i++;
+		db_value_clear (plist->value.value.dbvalptr);
+		db_value_clone (vecp, plist->value.value.dbvalptr);
+		db_value_clear (vecp);
+	      }
+
+	    HL_HEAPID orig_heap_id;
+	    orig_heap_id = db_change_private_heap (m_thread_p, 0);
+
+	    for (auto &dbval : m_outptr_dbvals)
+	      {
+		db_value_clear (&dbval);
+	      }
+
+	    (void) db_change_private_heap (m_thread_p, orig_heap_id);
+	  }
+      }
     if (merged_list_id == nullptr)
       {
 	/* no outputs, return null list_id in xasl */
@@ -438,7 +530,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
 			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads,
-			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list)
+			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, XASL_NODE *xasl)
 {
   int ret;
   int parallelism = num_parallel_threads;
@@ -459,7 +551,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
   else if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE)
     {
       scan_id->s.phsid.manager = new parallel_heap_scan::manager_merge (thread_p, scan_id, parallelism, parallelism,
-	  parallelism, query_id, result_list, outptr_list);
+	  parallelism, query_id, xasl);
     }
   else
     {

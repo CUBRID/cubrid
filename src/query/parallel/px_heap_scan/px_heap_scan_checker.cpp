@@ -140,6 +140,7 @@ namespace parallel_heap_scan
     public:
       xasl_setter (check_and_set_map *map) : map (map) {}
       void set (XASL_NODE *xasl, CHECK_RESULT result);
+      void set_cannot_parallel_recursive (XASL_NODE *xasl);
     private:
       void set_pbp (XASL_NODE *xasl);
       void set_lm (XASL_NODE *xasl);
@@ -160,6 +161,7 @@ namespace parallel_heap_scan
   CHECK_RESULT general_checker::check (REGU_VARIABLE *src)
   {
     CHECK_RESULT result = CHECK_RESULT::PARALLEL_LIST_MERGE, temp = CHECK_RESULT::NONE;
+    DB_TYPE var_type;
     if (!src)
       {
 	return result;
@@ -170,6 +172,20 @@ namespace parallel_heap_scan
 	xasl_setter setter (map);
 	setter.set (src->xasl, result);
 	return result;
+      }
+
+    var_type = TP_DOMAIN_TYPE (src->domain);
+    switch (var_type)
+      {
+      case DB_TYPE_SET:
+      case DB_TYPE_MULTISET:
+      case DB_TYPE_SEQUENCE:
+      case DB_TYPE_VOBJ:
+	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	break;
+      default:
+	result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	break;
       }
 
     switch (src->type)
@@ -460,6 +476,10 @@ namespace parallel_heap_scan
 	  {
 	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 	  }
+	if (xasl->proc.buildlist.a_eval_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	  }
 	break;
       case BUILDVALUE_PROC:
 	if (xasl->proc.buildvalue.agg_list)
@@ -476,6 +496,7 @@ namespace parallel_heap_scan
 	if (xasl->proc.cte.recursive_part)
 	  {
 	    setter.set (xasl->proc.cte.recursive_part, CHECK_RESULT::CANNOT_PARALLEL);
+	    (void) check (xasl->proc.cte.recursive_part);
 	  }
 	break;
       case HASHJOIN_PROC:
@@ -504,11 +525,15 @@ namespace parallel_heap_scan
       case BUILD_SCHEMA_PROC:
       case SCAN_PROC:
       default:
-	setter.set (xasl, CHECK_RESULT::CANNOT_PARALLEL);
+	for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+	  {
+	    setter.set_cannot_parallel_recursive (xaslp);
+	  }
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	break;
       }
-    if (xasl->selected_upd_list)
+    if (xasl->selected_upd_list || xasl->scan_op_type != S_SELECT || xasl->upd_del_class_cnt > 0
+	|| XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	setter.set (xasl, CHECK_RESULT::CANNOT_PARALLEL);
@@ -524,32 +549,37 @@ namespace parallel_heap_scan
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
+	(void) check (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
+	(void) check (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
+	(void) check (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
       {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
+	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
+	(void) check (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
+	(void) check (xaslp);
       }
     if (xasl->if_pred)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
       }
-    if (xasl->instnum_pred)
+    if (xasl->instnum_pred || xasl->instnum_val)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
       }
@@ -559,7 +589,11 @@ namespace parallel_heap_scan
     CHECK_RESULT spec_result = CHECK_RESULT::NONE;
 
     general_checker general_checker (map);
-    CHECK_RESULT outptr_result = general_checker.check (xasl->outptr_list->valptrp);
+    CHECK_RESULT outptr_result = CHECK_RESULT::NONE;
+    if (xasl->outptr_list)
+      {
+	outptr_result = general_checker.check (xasl->outptr_list->valptrp);
+      }
     for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
       {
 	spec_result = spec_checker.check (specp);
@@ -645,6 +679,83 @@ namespace parallel_heap_scan
       }
   }
 
+  void xasl_setter::set_cannot_parallel_recursive (XASL_NODE *xasl)
+  {
+    set_cannot_parallel (xasl);
+    switch (xasl->type)
+      {
+      case BUILDLIST_PROC:
+      case BUILDVALUE_PROC:
+	break;
+      case CTE_PROC:
+	if (xasl->proc.cte.non_recursive_part)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.cte.non_recursive_part);
+	  }
+	break;
+      case HASHJOIN_PROC:
+	if (xasl->proc.hashjoin.outer.xasl)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.hashjoin.outer.xasl);
+	  }
+	if (xasl->proc.hashjoin.inner.xasl)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.hashjoin.inner.xasl);
+	  }
+	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+      case OBJFETCH_PROC:
+      case MERGELIST_PROC:
+      case UPDATE_PROC:
+      case DELETE_PROC:
+      case INSERT_PROC:
+      case CONNECTBY_PROC:
+      case DO_PROC:
+      case MERGE_PROC:
+      case BUILD_SCHEMA_PROC:
+      case SCAN_PROC:
+      default:
+	break;
+      }
+    for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+
+    for (XASL_NODE *xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+
+    spec_setter spec_setter (map);
+    for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, CHECK_RESULT::CANNOT_PARALLEL);
+      }
+    for (ACCESS_SPEC_TYPE *specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, CHECK_RESULT::CANNOT_PARALLEL);
+      }
+  }
+
   void xasl_setter::set_cannot_parallel (XASL_NODE *xasl)
   {
     if (map->is_setted_cannot_parallel ((void *)xasl))
@@ -683,7 +794,6 @@ namespace parallel_heap_scan
 	return;
       }
     map->set_lm ((void *)xasl);
-    XASL_SET_FLAG (xasl, XASL_SKIP_END_ONE_ITERATION);
   }
 
   int checker::check (XASL_NODE *xasl)

@@ -26,7 +26,7 @@
 #if SERVER_MODE && !WINDOWS
 
 #include "px_list_merger.hpp"
-
+#include "query_executor.h"
 namespace parallel_heap_scan
 {
   class mergable_list_array
@@ -52,9 +52,9 @@ namespace parallel_heap_scan
       ~mergable_list_writer();
 
       bool open (THREAD_ENTRY *thread_p, PARALLEL_HEAP_SCAN_ID *phsid,
-		 REGU_VARIABLE_LIST regu_list_pred, REGU_VARIABLE_LIST regu_list_rest);
+		 REGU_VARIABLE_LIST regu_list_pred, REGU_VARIABLE_LIST regu_list_rest, VAL_DESCR *vd);
       void close (THREAD_ENTRY *thread_p);
-      void write (THREAD_ENTRY *thread_p);
+      void write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p);
 
     private:
       QFILE_LIST_ID **m_list_id_p;
@@ -62,8 +62,9 @@ namespace parallel_heap_scan
       QFILE_TUPLE_RECORD m_tpl_buf;
       std::vector<DB_VALUE *> m_dbv_arr;
       QUERY_ID m_query_id;
+      VAL_DESCR *m_vd;
 
-      QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p);
+      QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p);
   };
 }
 

@@ -31,6 +31,7 @@
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
 #include "px_heap_scan_mergable_list.hpp"
+#include "xasl.h"
 
 namespace parallel_heap_scan
 {
@@ -98,8 +99,7 @@ namespace parallel_heap_scan
     public:
       manager_merge() = default;
       manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-		     std::size_t core_count, QUERY_ID query_id, QFILE_LIST_ID *result_list,
-		     VALPTR_LIST *outptr_list);
+		     std::size_t core_count, QUERY_ID query_id, XASL_NODE *xasl);
       ~manager_merge();
 
       void start() override;
@@ -113,8 +113,10 @@ namespace parallel_heap_scan
 
       mergable_list_array *m_mergable_list;
       std::vector<mergable_list_writer *> m_mergable_list_writers;
+      XASL_NODE *m_xasl;
       QFILE_LIST_ID *m_result_list;
       VALPTR_LIST *m_outptr_list;
+      std::vector<DB_VALUE> m_outptr_dbvals;
   };
 }
 
@@ -139,7 +141,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
 			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads,
-			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, QFILE_LIST_ID *result_list, VALPTR_LIST *outptr_list);
+			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, XASL_NODE *xasl);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 

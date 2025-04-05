@@ -104,6 +104,7 @@ namespace parallel_heap_scan
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     list_id_data data;
     bool is_list_merge = m_mergable_list_writer != nullptr;
+    bool is_outptr_domain_resolved = m_context->m_is_outptr_domain_resolved.load();
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
     if (m_context->has_error())
       {
@@ -126,7 +127,7 @@ namespace parallel_heap_scan
     std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
-	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list);
+	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
       }
     else
       {
@@ -221,7 +222,24 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
-		    m_mergable_list_writer->write (thread_p);
+		    if (!is_outptr_domain_resolved)
+		      {
+			HL_HEAPID parent_heap_id = m_context->m_orig_thread_p->private_heap_id;
+			std::lock_guard<std::mutex> lock (m_context->m_outptr_domain_resolve_mutex);
+			if (!m_context->m_is_outptr_domain_resolved.exchange (true))
+			  {
+			    m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p);
+			  }
+			else
+			  {
+			    m_mergable_list_writer->write (thread_p, nullptr);
+			  }
+			is_outptr_domain_resolved = true;
+		      }
+		    else
+		      {
+			m_mergable_list_writer->write (thread_p, nullptr);
+		      }
 		  }
 		else
 		  {
