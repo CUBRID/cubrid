@@ -127,8 +127,8 @@ namespace cubscan
       error = qfile_open_list_scan (m_list_id, &m_scan_id);
 
       // connect
-      error = m_method_group->begin ();
-      return error;
+      (void) m_method_group->begin ();
+      return NO_ERROR;
     }
 
     int
