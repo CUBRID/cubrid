@@ -315,39 +315,14 @@ qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
    * outer
    */
   fprintf (foutput, "[outer xasl:%p]\n", node_p->outer.xasl);
-
-  if (node_p->outer.spec_list)
-    {
-      fprintf (foutput, "-->outer access spec:");
-      qdump_print_access_spec (node_p->outer.spec_list);
-      fprintf (foutput, "\n");
-    }
-
-  if (node_p->outer.val_list)
-    {
-      fprintf (foutput, "-->outer val_list:");
-      qdump_print_value_list (node_p->outer.val_list);
-      fprintf (foutput, "\n");
-    }
-
+  fprintf (foutput, "\n	regu_list_pred:");
+  qdump_print_regu_variable_list (node_p->outer.regu_list_pred);
   /**
    * inner
    */
   fprintf (foutput, "[inner xasl:%p]\n", node_p->inner.xasl);
-
-  if (node_p->inner.spec_list)
-    {
-      fprintf (foutput, "-->inner access spec:");
-      qdump_print_access_spec (node_p->inner.spec_list);
-      fprintf (foutput, "\n");
-    }
-
-  if (node_p->inner.val_list)
-    {
-      fprintf (foutput, "-->inner val_list:");
-      qdump_print_value_list (node_p->inner.val_list);
-      fprintf (foutput, "\n");
-    }
+  fprintf (foutput, "\n	regu_list_pred:");
+  qdump_print_regu_variable_list (node_p->inner.regu_list_pred);
 
   qdump_print_list_merge_info (&node_p->merge_info);
   fprintf (foutput, "\n");

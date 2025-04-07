@@ -2663,6 +2663,9 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       break;
 
     case HASHJOIN_PROC:
+      pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.outer.regu_list_pred, is_final);
+      pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.inner.regu_list_pred, is_final);
+
       if (xasl->proc.hashjoin.stats_group.context_stats != NULL)
 	{
 	  db_private_free_and_init (thread_p, xasl->proc.hashjoin.stats_group.context_stats);
@@ -14189,7 +14192,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  else if (xptr->type == HASHJOIN_PROC)
 	    {
-	      merge_infop = &(xptr->proc.hashjoin.merge_info);
+	      merge_infop = &xptr->proc.hashjoin.merge_info;
 
 	      outer_xasl = xptr->proc.hashjoin.outer.xasl;
 	      inner_xasl = xptr->proc.hashjoin.inner.xasl;

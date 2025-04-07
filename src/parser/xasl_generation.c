@@ -4459,138 +4459,6 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
 }
 
 /*
- * pt_find_node() -
- *   return: Position of the node in the list, or -1 if not found.
- *   parser(in): Parser context.
- *   node(in): Node to find.
- *   list(in): List to find the node in.
- *
- *   This function was added to find the position of a node in a list
- *   linked via PT_NODE_POINTER. Nodes are compared by pointer, not content.
- */
-int
-pt_find_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
-{
-  PT_NODE *current_ptr, *current;
-  int i = 0;
-
-  CAST_POINTER_TO_NODE (node);
-
-  for (current_ptr = list; current_ptr != NULL; current_ptr = current_ptr->next)
-    {
-      current = current_ptr;
-      CAST_POINTER_TO_NODE (current);
-
-      if (current == node)
-	{
-	  return i;
-	}
-
-      i++;
-    }
-
-  return -1;
-}
-
-/*
- * pt_append_name_if_not_exists() -
- *   return: List with a PT_NAME node appended if not already present.
- *   parser(in): Parser context.
- *   node(in): Parse tree node being visited during traversal.
- *   arg(in): List to append a PT_NAME node to.
- *   continue_walk(in): Flag indicating whether to continue tree traversal.
- * 
- *   When a PT_NAME node is found during traversal, it is added to the list
- *   only if it is not already present. This helps avoid duplicate entries
- *   while collecting PT_NAME nodes.
- */
-PT_NODE *
-pt_append_name_if_not_exists (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE *list = (PT_NODE *) arg;
-  PT_NODE *current_ptr, *current;
-
-  assert (!PT_IS_POINTER_REF_NODE (node));
-
-  if (list == NULL)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-
-  if (node->node_type == PT_NAME)
-    {
-      for (current_ptr = list; current_ptr != NULL; current_ptr = current_ptr->next)
-	{
-	  current = current_ptr;
-	  CAST_POINTER_TO_NODE (current);
-
-	  if (current == node)
-	    {
-	      /* found */
-	      break;
-	    }
-	}
-
-      if (current_ptr == NULL)
-	{
-	  list = parser_append_node (pt_point (parser, node), list);
-	}
-    }
-
-  return node;
-}
-
-/*
- * pt_flatten_expr_list_to_names() -
- *   return: List with PT_NAME nodes extracted from PT_EXPR nodes.
- *   parser(in): Parser context.
- *   list(in): List containing PT_EXPR nodes to flatten into PT_NAME nodes.
- * 
- *   This function was added to collect only the PT_NAME nodes required
-  *  for function execution.
- */
-PT_NODE *
-pt_flatten_expr_list_to_names (PARSER_CONTEXT * parser, PT_NODE * list)
-{
-  PT_NODE *prev_ptr, *current_ptr, *current, *save_next;
-
-  for (prev_ptr = list, current_ptr = list; current_ptr != NULL;
-       prev_ptr = current_ptr, current_ptr = current_ptr->next)
-    {
-      current = current_ptr;
-      CAST_POINTER_TO_NODE (current);
-
-      if (current->node_type != PT_EXPR)
-	{
-	  continue;
-	}
-
-      save_next = current->next;
-      current->next = NULL;
-      (void) parser_walk_tree (parser, current, NULL, NULL, pt_append_name_if_not_exists, list);
-      current->next = save_next;
-
-      if (prev_ptr != current_ptr)
-	{
-	  prev_ptr->next = current_ptr->next;
-	  current_ptr->next = NULL;
-	  parser_free_tree (parser, current_ptr);
-	  current_ptr = prev_ptr->next;
-	}
-      else
-	{
-	  list = current_ptr->next;
-	  current_ptr->next = NULL;
-	  parser_free_tree (parser, current_ptr);
-	  current_ptr = list;
-	}
-    }
-
-  return list;
-}
-
-/*
  * pt_index_value () -
  *   return: the DB_VALUE at the index position in a VAL_LIST
  *   value(in):
@@ -14613,33 +14481,50 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 
 
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
+ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl, PROJECTION_INFO * info)
 {
-  XASL_NODE *xasl;
+  PROJECTION_PART_INFO *outer_info;
+  PROJECTION_PART_INFO *inner_info;
 
-  if ((parser == NULL) || (outer_xasl == NULL) || (inner_xasl == NULL))
-    {
-      assert (false);
-      return NULL;
-    }
+  XASL_NODE *xasl;
+  HASHJOIN_PROC_NODE *proc;
+
+  assert (parser != NULL);
+  assert (outer_xasl != NULL);
+  assert (inner_xasl != NULL);
+  assert (info != NULL);
+
+  outer_info = &info->outer;
+  inner_info = &info->inner;
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
-  if (!xasl)
+  if (xasl == NULL)
     {
-      PT_NODE dummy;
-
-      memset (&dummy, 0, sizeof (dummy));
-      PT_ERROR (parser, &dummy,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-
       return NULL;
     }
 
-  xasl->aptr_list = outer_xasl;
-  xasl->aptr_list->next = inner_xasl;
+  outer_xasl->next = inner_xasl;
+  inner_xasl->next = NULL;
 
-  xasl->proc.hashjoin.outer.xasl = outer_xasl;
-  xasl->proc.hashjoin.inner.xasl = inner_xasl;
+  xasl->aptr_list = outer_xasl;
+
+  proc = &xasl->proc.hashjoin;
+
+  proc->outer.xasl = outer_xasl;
+  if (outer_info->pred_count > 0)
+    {
+      proc->outer.regu_list_pred =
+	pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_xasl->val_list,
+					   outer_info->pred_pos_list);
+    }
+
+  proc->inner.xasl = inner_xasl;
+  if (inner_info->pred_count > 0)
+    {
+      proc->inner.regu_list_pred =
+	pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_xasl->val_list,
+					   inner_info->pred_pos_list);
+    }
 
   return xasl;
 }

@@ -408,9 +408,6 @@ extern "C"
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
-  extern int pt_find_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list);
-  extern PT_NODE *pt_append_name_if_not_exists (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-  extern PT_NODE *pt_flatten_expr_list_to_names (PARSER_CONTEXT * parser, PT_NODE * list);
 
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 

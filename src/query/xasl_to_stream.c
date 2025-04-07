@@ -3596,8 +3596,7 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
 static char *
 xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 {
-  ACCESS_SPEC_TYPE *spec = NULL;
-  int offset, spec_count;
+  int offset;
 
   /**
    * outer
@@ -3609,19 +3608,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  spec_count = 0;
-  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
-    {
-      spec_count++;
-    }
-  ptr = or_pack_int (ptr, spec_count);
-
-  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
-    {
-      ptr = xts_process_access_spec_type (ptr, spec);
-    }
-
-  offset = xts_save_val_list (node_p->outer.val_list);
+  offset = xts_save_regu_variable_list (node_p->outer.regu_list_pred);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3638,23 +3625,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  spec_count = 0;
-  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
-    {
-      spec_count++;
-    }
-  ptr = or_pack_int (ptr, spec_count);
-
-  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
-    {
-      ptr = xts_process_access_spec_type (ptr, spec);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  offset = xts_save_val_list (node_p->inner.val_list);
+  offset = xts_save_regu_variable_list (node_p->inner.regu_list_pred);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6352,35 +6323,13 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
    * outer
    */
   size += (PTR_SIZE		/* Offset of outer.xasl. */
-	   + PTR_SIZE		/* Offset of outer.val_list */
-	   + OR_INT_SIZE);	/* The count of access specs in outer.spec_list. */
-
-  for (spec = node_p->outer.spec_list; spec != NULL; spec = spec->next)
-    {
-      tmp_size = xts_sizeof_access_spec_type (spec);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
-    }
+	   + PTR_SIZE);		/* Offset of outer.regu_list_pred */
 
   /**
    * inner
    */
   size += (PTR_SIZE		/* Offset of inner.xasl */
-	   + PTR_SIZE		/* Offset of inner.val_list */
-	   + OR_INT_SIZE);	/* The count of access specs in inner.spec_list. */
-
-  for (spec = node_p->inner.spec_list; spec != NULL; spec = spec->next)
-    {
-      tmp_size = xts_sizeof_access_spec_type (spec);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
-    }
+	   + PTR_SIZE);		/* Offset of inner.regu_list_pred */
 
   /**
    * merge_info

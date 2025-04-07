@@ -34,7 +34,7 @@
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
-/**
+/*
  * Debug Macros
  */
 
@@ -42,9 +42,8 @@
 #define HASH_JOIN_DUMP_HASH_TABLE 0
 #define HASH_JOIN_DUMP_PROBE 0
 #define HASH_JOIN_DUMP_BUILD 0
-#define HASH_JOIN_DIRECT_LIST_SCAN 1
 
-/**
+/*
  * Forward Declarations
  */
 
@@ -60,7 +59,7 @@ typedef struct val_list_node VAL_LIST;
 struct tp_domain;
 typedef struct tp_domain TP_DOMAIN;
 
-/**
+/*
  * Struct & Typedef Definitions
  */
 
@@ -69,8 +68,7 @@ typedef struct hashjoin_input HJ_INPUT;
 struct hashjoin_input
 {
   XASL_NODE *xasl;
-  ACCESS_SPEC_TYPE *spec_list;
-  VAL_LIST *val_list;
+  REGU_VARIABLE_LIST regu_list_pred;
 };
 
 typedef struct hashjoin_input_domain_info HASHJOIN_INPUT_DOMAIN_INFO;
@@ -163,7 +161,7 @@ struct hashjoin_stats_group
   int context_cnt;
 };
 
-/**
+/*
  * Function Declarations
  */
 

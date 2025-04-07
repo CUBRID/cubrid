@@ -3193,21 +3193,15 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-  if (ptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->outer.val_list = NULL;
+      node_p->outer.regu_list_pred = NULL;
     }
   else
     {
-      node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->outer.val_list == NULL)
+      node_p->outer.regu_list_pred = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.regu_list_pred == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -3232,21 +3226,15 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-  if (ptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->inner.val_list = NULL;
+      node_p->inner.regu_list_pred = NULL;
     }
   else
     {
-      node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->inner.val_list == NULL)
+      node_p->inner.regu_list_pred = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.regu_list_pred == NULL)
 	{
 	  goto exit_on_error;
 	}

@@ -97,25 +97,6 @@ struct symbol_info
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
 };
 
-typedef struct projection_part_info PROJECTION_PART_INFO;
-struct projection_part_info
-{
-  PT_NODE *name_list;
-  PT_NODE *expr_list;
-  PT_NODE *expr_name_list;
-  BITSET *exprs_set;
-  int name_count;
-  int expr_count;
-  int expr_name_count;
-};
-
-typedef struct projection_info PROJECTION_INFO;
-struct projection_info
-{
-  PROJECTION_PART_INFO outer;
-  PROJECTION_PART_INFO inner;
-};
-
 typedef struct aggregate_info AGGREGATE_INFO;
 struct aggregate_info
 {
@@ -200,7 +181,8 @@ extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * x
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);
-extern XASL_NODE *ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl);
+extern XASL_NODE *ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
+					  PROJECTION_INFO * info);
 extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
