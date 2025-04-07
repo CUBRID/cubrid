@@ -10205,7 +10205,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 		  {
 		    save = *s;
 		    *s = '\0';
-		    if (intl_mbs_casecmp ("default", p) == 0)
+		    if (intl_mbs_casecmp ("default", p) == 0)	// TODO: strcasecmp
 		      {
 			if (SYSPRM_GET_ID (prm) == PRM_ID_CALL_STACK_DUMP_ACTIVATION)
 			  {
@@ -10716,7 +10716,7 @@ prm_find (const char *pname, const char *section)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
-      if (intl_mbs_casecmp (GET_PRM (i)->name, key) == 0)
+      if (intl_mbs_casecmp (GET_PRM (i)->name, key) == 0)	// TODO: strcasecmp
 	{
 	  return GET_PRM (i);
 	}
@@ -13136,7 +13136,7 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
   if (prm_Def_session_idx[prm_id] >= 0)
     {
       cached_session_prm = &cached_session_parameters[prm_Def_session_idx[prm_id]];
-      assert (cached_session_prm->prm_id != prm_id);
+      assert (cached_session_prm->prm_id == prm_id);
 
       cached_session_prm->flag = *sys_prm->dynamic_flag;
       sysprm_set_sysprm_value_from_parameter (&cached_session_prm->value, sys_prm);
