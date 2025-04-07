@@ -892,6 +892,43 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
+
+/*
+ * Macros to access bit fields
+ */
+#define PRM_USER_CAN_CHANGE(x)     ((x)->static_flag & PRM_USER_CHANGE)
+#define PRM_IS_FOR_CLIENT(x)       ((x)->static_flag & PRM_FOR_CLIENT)
+#define PRM_IS_FOR_SERVER(x)       ((x)->static_flag & PRM_FOR_SERVER)
+#define PRM_IS_HIDDEN(x)           ((x)->static_flag & PRM_HIDDEN)
+#define PRM_IS_RELOADABLE(x)       ((x)->static_flag & PRM_RELOADABLE)
+#define PRM_IS_COMPOUND(x)         ((x)->static_flag & PRM_COMPOUND)
+#define PRM_TEST_CHANGE_ONLY(x)    ((x)->static_flag & PRM_TEST_CHANGE)
+#define PRM_IS_FOR_HA(x)           ((x)->static_flag & PRM_FOR_HA)
+#define PRM_IS_FOR_SESSION(x)	   ((x)->static_flag & PRM_FOR_SESSION)
+#define PRM_GET_FROM_SERVER(x)	   ((x)->static_flag & PRM_FORCE_SERVER)
+#define PRM_IS_FOR_QRY_STRING(x)   ((x)->static_flag & PRM_FOR_QRY_STRING)
+#define PRM_CLIENT_SESSION_ONLY(x) ((x)->static_flag & PRM_CLIENT_SESSION)
+#define PRM_HAS_SIZE_UNIT(x)       ((x)->static_flag & PRM_SIZE_UNIT)
+#define PRM_HAS_TIME_UNIT(x)       ((x)->static_flag & PRM_TIME_UNIT)
+#define PRM_DIFFERENT_UNIT(x)      ((x)->static_flag & PRM_DIFFER_UNIT)
+#define PRM_IS_FOR_HA_CONTEXT(x)   ((x)->static_flag & PRM_FOR_HA_CONTEXT)
+#define PRM_IS_FOR_PL_CONTEXT(x)   ((x)->static_flag & PRM_FOR_PL_CONTEXT)
+#define PRM_IS_GET_SERVER(x)       ((x)->static_flag & PRM_GET_SERVER)
+#define PRM_IS_DEPRECATED(x)       ((x)->static_flag & PRM_DEPRECATED)
+#define PRM_IS_OBSOLETED(x)        ((x)->static_flag & PRM_OBSOLETED)
+
+#define PRM_IS_SET(x)              (*((x)->dynamic_flag) & PRM_SET)
+#define PRM_DEFAULT_VAL_USED(x)    (*((x)->dynamic_flag) & PRM_DEFAULT_USED)
+#define PRM_IS_DIFFERENT(x)	   (*((x)->dynamic_flag) & PRM_DIFFERENT)
+#define PRM_IS_ALLOCATED(x)        (*((x)->dynamic_flag) & PRM_ALLOCATED)
+
+/*
+* Macros to manipulate bit fields
+*/
+#define PRM_CLEAR_BIT(this, here)  (here &= ~this)
+#define PRM_SET_BIT(this, here)    (here |= this)
+
+
 /*
  * Other macros
  */
@@ -10648,7 +10685,7 @@ prm_set_default (SYSPRM_PARAM * prm)
     {
       char *val, **valp;
 
-      if (PRM_IS_ALLOCATED (*prm->dynamic_flag))
+      if (PRM_IS_ALLOCATED (prm))
 	{
 	  char *str = PRM_GET_STRING (prm->value);
 	  free_and_init (str);
@@ -10663,7 +10700,7 @@ prm_set_default (SYSPRM_PARAM * prm)
     {
       int *val, **valp;
 
-      if (PRM_IS_ALLOCATED (*prm->dynamic_flag))
+      if (PRM_IS_ALLOCATED (prm))
 	{
 	  int *int_list = PRM_GET_INTEGER_LIST (prm->value);
 
@@ -10886,7 +10923,7 @@ sysprm_final (void)
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
       prm = GET_PRM (i);
-      if (PRM_IS_ALLOCATED (*prm->dynamic_flag))
+      if (PRM_IS_ALLOCATED (prm))
 	{
 	  switch (prm->datatype)
 	    {
@@ -11120,7 +11157,7 @@ prm_tune_parameters (void)
       int dim;
       int *integer_list = NULL;
 
-      if (PRM_IS_ALLOCATED (*call_stack_dump_activation_prm->dynamic_flag))
+      if (PRM_IS_ALLOCATED (call_stack_dump_activation_prm))
 	{
 	  free_and_init (PRM_GET_INTEGER_LIST (call_stack_dump_activation_prm->value));
 	}
@@ -11151,7 +11188,7 @@ prm_tune_parameters (void)
 
       group_code = PRM_GET_INT (fault_injection_test_prm->value);
 
-      if (PRM_IS_ALLOCATED (*fault_injection_ids_prm->dynamic_flag))
+      if (PRM_IS_ALLOCATED (fault_injection_ids_prm))
 	{
 	  free_and_init (PRM_GET_INTEGER_LIST (fault_injection_ids_prm->value));
 	}
@@ -11594,7 +11631,7 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (GET_PRM (prm_id)));
 
-  if (PRM_IS_ALLOCATED (*(GET_PRM (prm_id)->dynamic_flag)))
+  if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_STRING (GET_PRM (prm_id)->value));
       PRM_CLEAR_BIT (PRM_ALLOCATED, *(GET_PRM (prm_id)->dynamic_flag));
@@ -11622,7 +11659,7 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
-  if (PRM_IS_ALLOCATED (*(GET_PRM (prm_id)->dynamic_flag)))
+  if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value));
       PRM_CLEAR_BIT (PRM_ALLOCATED, *(GET_PRM (prm_id)->dynamic_flag));
@@ -12512,7 +12549,7 @@ sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, S
       break;
 
     case PRM_STRING:
-      if (PRM_IS_ALLOCATED (session_parameter->flag))
+      if (session_parameter->flag & PRM_ALLOCATED)
 	{
 	  free_and_init (session_parameter->value.str);
 	  PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
@@ -12525,7 +12562,7 @@ sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, S
       break;
 
     case PRM_INTEGER_LIST:
-      if (PRM_IS_ALLOCATED (session_parameter->flag))
+      if (session_parameter->flag & PRM_ALLOCATED)
 	{
 	  free_and_init (session_parameter->value.integer_list);
 	  PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
@@ -12574,7 +12611,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_I
       break;
     case PRM_STRING:
       {
-	if (PRM_IS_ALLOCATED (session_parameter->flag))
+	if (session_parameter->flag & PRM_ALLOCATED)
 	  {
 	    free_and_init (session_parameter->value.str);
 	    PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
@@ -12584,7 +12621,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_I
       }
     case PRM_INTEGER_LIST:
       {
-	if (PRM_IS_ALLOCATED (session_parameter->flag))
+	if (session_parameter->flag & PRM_ALLOCATED)
 	  {
 	    free_and_init (session_parameter->value.integer_list);
 	    PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);

@@ -2908,25 +2908,13 @@ db_set_system_parameters (const char *data)
     {
       if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
-	  if (tmp->value.i > 0)
-	    {
-	      tran_reset_wait_times (tmp->value.i * 1000);
-	    }
-	  else
-	    {
-	      tran_reset_wait_times (tmp->value.i);
-	    }
+	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LK_TIMEOUT));
+	  tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}
       else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
-
-	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
+	  tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
 	}
     }
 

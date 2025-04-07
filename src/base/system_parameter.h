@@ -565,35 +565,6 @@ extern "C"
 {
 #endif
 
-/*
- * Macros to access bit fields
- */
-
-#define PRM_USER_CAN_CHANGE(x)     ((x)->static_flag & PRM_USER_CHANGE)
-#define PRM_IS_FOR_CLIENT(x)       ((x)->static_flag & PRM_FOR_CLIENT)
-#define PRM_IS_FOR_SERVER(x)       ((x)->static_flag & PRM_FOR_SERVER)
-#define PRM_IS_HIDDEN(x)           ((x)->static_flag & PRM_HIDDEN)
-#define PRM_IS_RELOADABLE(x)       ((x)->static_flag & PRM_RELOADABLE)
-#define PRM_IS_COMPOUND(x)         ((x)->static_flag & PRM_COMPOUND)
-#define PRM_TEST_CHANGE_ONLY(x)    ((x)->static_flag & PRM_TEST_CHANGE)
-#define PRM_IS_FOR_HA(x)           ((x)->static_flag & PRM_FOR_HA)
-#define PRM_IS_FOR_SESSION(x)	   ((x)->static_flag & PRM_FOR_SESSION)
-#define PRM_GET_FROM_SERVER(x)	   ((x)->static_flag & PRM_FORCE_SERVER)
-#define PRM_IS_FOR_QRY_STRING(x)   ((x)->static_flag & PRM_FOR_QRY_STRING)
-#define PRM_CLIENT_SESSION_ONLY(x) ((x)->static_flag & PRM_CLIENT_SESSION)
-#define PRM_HAS_SIZE_UNIT(x)       ((x)->static_flag & PRM_SIZE_UNIT)
-#define PRM_HAS_TIME_UNIT(x)       ((x)->static_flag & PRM_TIME_UNIT)
-#define PRM_DIFFERENT_UNIT(x)      ((x)->static_flag & PRM_DIFFER_UNIT)
-#define PRM_IS_FOR_HA_CONTEXT(x)   ((x)->static_flag & PRM_FOR_HA_CONTEXT)
-#define PRM_IS_FOR_PL_CONTEXT(x)   ((x)->static_flag & PRM_FOR_PL_CONTEXT)
-#define PRM_IS_GET_SERVER(x)       ((x)->static_flag & PRM_GET_SERVER)
-#define PRM_IS_DEPRECATED(x)       ((x)->static_flag & PRM_DEPRECATED)
-#define PRM_IS_OBSOLETED(x)        ((x)->static_flag & PRM_OBSOLETED)
-
-#define PRM_IS_SET(x)              (*((x)->dynamic_flag) & PRM_SET)
-#define PRM_DEFAULT_VAL_USED(x)    (*((x)->dynamic_flag) & PRM_DEFAULT_USED)
-#define PRM_IS_DIFFERENT(x)	   (*((x)->dynamic_flag) & PRM_DIFFERENT)
-#define PRM_IS_ALLOCATED(x)        ((x) & PRM_ALLOCATED)
 
 /*
  * Static flags
@@ -638,13 +609,6 @@ extern "C"
 #define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
 #define PRM_DIFFERENT	    0x00000008	/* mark those parameters that have values different than their default.
 					 * currently used by parameters that should be printed to query string */
-
-/*
- * Macros to manipulate bit fields
- */
-
-#define PRM_CLEAR_BIT(this, here)  (here &= ~this)
-#define PRM_SET_BIT(this, here)    (here |= this)
 
 /*
  * Macros to get values
@@ -824,15 +788,12 @@ extern "C"
     assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INT (GET_PRM (prm_id)->value);
+	return PRM_GET_INT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_INT (prm_get_value (prm_id));
-#else				/* SERVER_MODE */
-      return PRM_GET_INT (GET_PRM (prm_id)->value);
-#endif				/* SERVER_MODE */
+#endif
+    return PRM_GET_INT (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -847,15 +808,12 @@ extern "C"
     assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BOOL (GET_PRM (prm_id)->value);
+	return PRM_GET_BOOL (prm_get_value (prm_id));
       }
-
-    return PRM_GET_BOOL (prm_get_value (prm_id));
-#else /* SERVER_MODE */
+#endif
     return PRM_GET_BOOL (GET_PRM (prm_id)->value);
-#endif /* SERVER_MODE */
   }
 
 /*
@@ -870,15 +828,12 @@ extern "C"
     assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_FLOAT (GET_PRM (prm_id)->value);
+	return PRM_GET_FLOAT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_FLOAT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
+#endif
     return PRM_GET_FLOAT (GET_PRM (prm_id)->value);
-#endif /* SERVER_MODE */
   }
 
 /*
@@ -893,15 +848,12 @@ extern "C"
     assert (PRM_IS_STRING (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_STRING (GET_PRM (prm_id)->value);
+	return PRM_GET_STRING (prm_get_value (prm_id));
       }
-
-    return PRM_GET_STRING (prm_get_value (prm_id));
-#else /* SERVER_MODE */
+#endif
     return PRM_GET_STRING (GET_PRM (prm_id)->value);
-#endif /* SERVER_MODE */
   }
 
 /*
@@ -917,15 +869,12 @@ extern "C"
     assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value);
+	return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
       }
-
-    return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
-#else /* SERVER_MODE */
+#endif
     return PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value);
-#endif /* SERVER_MODE */
   }
 
 /*
@@ -940,15 +889,12 @@ extern "C"
     assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BIGINT (GET_PRM (prm_id)->value);
+	return PRM_GET_BIGINT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_BIGINT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
+#endif
     return PRM_GET_BIGINT (GET_PRM (prm_id)->value);
-#endif /* SERVER_MODE */
   }
 
 #endif /* window */
