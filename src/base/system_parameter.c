@@ -928,6 +928,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_CLEAR_BIT(this, here)  (here &= ~this)
 #define PRM_SET_BIT(this, here)    (here |= this)
 
+#if defined (CS_MODE)
+#define PRM_PRINT_QRY_STRING(id) (PRM_IS_DIFFERENT (GET_PRM (id)) && PRM_IS_FOR_QRY_STRING (GET_PRM (id)))
+#else
+#define PRM_PRINT_QRY_STRING(id) (PRM_IS_FOR_QRY_STRING (GET_PRM (id)))
+#endif
 
 /*
  * Other macros
