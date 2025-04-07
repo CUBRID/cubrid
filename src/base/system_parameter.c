@@ -12842,6 +12842,7 @@ int
 sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length)
 {
   int n = 0;
+  char *ptr = buffer;
 
   if (length == 0)
     {
@@ -12851,13 +12852,21 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int 
 
   for (; prm_values != NULL; prm_values = prm_values->next)
     {
-      n += sysprm_print_sysprm_value (prm_values->prm_id, prm_values->value, buffer + n, length - n, PRM_PRINT_NAME);
+      n = sysprm_print_sysprm_value (prm_values->prm_id, prm_values->value, ptr, length, PRM_PRINT_NAME);
+      ptr += n;
+      length -= n;
+
       if (prm_values->next)
 	{
-	  n += snprintf (buffer + n, length - n, "; ");
+	  *ptr++ = ';';
+	  *ptr++ = ' ';
+	  length -= 2;
 	}
+      assert (length > 0);
     }
-  return n;
+  *ptr = '\0';
+
+  return (int) (ptr - buffer);
 }
 
 #if !defined (SERVER_MODE)
@@ -12887,11 +12896,17 @@ sysprm_print_parameters_for_qry_string (void)
 	  ptr += n;
 	  len -= n;
 
-	  n = snprintf (ptr, len, ";");
-	  ptr += n;
-	  len -= n;
+	  *ptr++ = ';';
+	  len--;
+	  assert (len > 0);
 	}
     }
+  *ptr = '\0';
+
+  /* TODO: 
+   *     If we pass the buffer and its size as arguments,
+   *    we can reduce the cost of allocating new memory and copying it here.
+   */
 
   /* verify the length of the printed parameters does not exceed LINE_MAX */
   assert (len > 0);
@@ -12948,16 +12963,19 @@ sysprm_print_parameters_for_ha_repl (void)
 	      continue;
 	    }
 
-	  if (i == PRM_ID_INTL_COLLATION
-	      && strcasecmp (val, lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET))) == 0)
+	  if (i == PRM_ID_INTL_COLLATION)
 	    {
-	      continue;
+	      if (strcasecmp (val, lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET))) == 0)
+		{
+		  continue;
+		}
 	    }
-
-	  if ((i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
-	      && strcasecmp (val, lang_get_Lang_name ()) == 0)
+	  else
 	    {
-	      continue;
+	      if (strcasecmp (val, lang_get_Lang_name ()) == 0)
+		{
+		  continue;
+		}
 	    }
 	}
       else if (!PRM_IS_DIFFERENT (GET_PRM (i)))
@@ -12969,10 +12987,11 @@ sysprm_print_parameters_for_ha_repl (void)
       ptr += n;
       len -= n;
 
-      n = snprintf (ptr, len, ";");
-      ptr += n;
-      len -= n;
+      *ptr++ = ';';
+      len--;
+      assert (len > 0);
     }
+  *ptr = '\0';
 
   /* verify the length of the printed parameters does not exceed LINE_MAX */
   assert (len > 0);
