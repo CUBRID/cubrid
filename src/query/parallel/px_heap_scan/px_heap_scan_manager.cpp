@@ -107,17 +107,6 @@ namespace parallel_heap_scan
       {
 	thread_get_manager()->destroy_worker_pool (m_workpool);
       }
-    /*
-    if (m_outptr_list != nullptr)
-    {
-    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
-      {
-        if (plist->value.type == TYPE_CONSTANT)
-          {
-    	db_value_clear (plist->value.value.dbvalptr);
-          }
-      }
-    }*/
     if (m_mergable_list != nullptr)
       {
 	delete m_mergable_list;
