@@ -5070,7 +5070,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
       /* errors will be handled in kv scope */
-      if (has_index && cubrocks::ctx->kv_logical_write_with_index (thread_p->tran_index, &context) == NO_ERROR)
+      if (has_index && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &context) == NO_ERROR)
 	{
 	  /* successfully builds index native key */
 	}

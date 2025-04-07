@@ -387,6 +387,8 @@ struct scan_id_struct
   ((iscan_id_p)->indx_info != NULL \
    && (iscan_id_p)->indx_info->ils_prefix_len > 0)
 
+typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
+
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
@@ -492,6 +494,15 @@ extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SC
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
 extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_list,
 				  MVCC_SNAPSHOT * mvcc_snapshot);
+
+extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
+				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
+
+extern int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
+
 extern int scan_initialize (void);
 extern void scan_finalize (void);
 extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,

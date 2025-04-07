@@ -157,15 +157,9 @@ static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term);
 static int key_val_compare (const void *p1, const void *p2);
-static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
 				   int key_minmax, bool is_iss);
-static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
-				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
@@ -1306,7 +1300,7 @@ key_val_compare (const void *p1, const void *p2)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
@@ -1341,7 +1335,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int cur_n, next_n;
@@ -1461,7 +1455,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   key_cnt (in): number of keys; size of key_vals
  *   chk_fn (in): check function for key_vals
  */
-static int
+int
 check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn)
 {
   if (key_cnt <= 1)
@@ -1907,7 +1901,7 @@ err_exit:
 /*
  * scan_regu_key_to_index_key:
  */
-static int
+int
 scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 			    INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd)
 {
@@ -5121,6 +5115,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocks
       break;
 
     case S_INDX_SCAN:
+      if (use_rocksdb)
+	{
+	  status = cubrocks::ctx->kv_logical_scan_with_PK (thread_p->tran_index, scan_id);
+	  break;
+	}
       status = scan_next_index_scan (thread_p, scan_id);
       break;
 
@@ -7531,7 +7530,7 @@ scan_finalize (void)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int i, j;
