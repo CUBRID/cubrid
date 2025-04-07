@@ -3431,7 +3431,7 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif /* SERVER_MODE */
 
       /* If the transaction is active or unactive_2pc_prepare abort it */
-      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE(tdes))
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
