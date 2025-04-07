@@ -2804,7 +2804,7 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 
   assert (id <= PRM_LAST_ID);
 
-#ifdef NDEBUG
+#ifndef NDEBUG
   int i, count;
 
   count = sysprm_get_session_parameters_count ();

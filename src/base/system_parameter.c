@@ -12443,8 +12443,9 @@ update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * s
   session_tz_region = session_get_session_tz_region (thread_p);
   if (session_tz_region != NULL)
     {
-#ifdef NDEBUG
-      for (int i = 0; i < NUM_SESSION_PRM; i++)
+#ifndef NDEBUG
+      int i;
+      for (i = 0; i < NUM_SESSION_PRM; i++)
 	{
 	  if (session_params[i].prm_id == PRM_ID_TIMEZONE)
 	    {
@@ -13173,7 +13174,7 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
 
   assert (NUM_SESSION_PRM > 0);
 
-#ifdef NDEBUG
+#ifndef NDEBUG
   int i;
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {
