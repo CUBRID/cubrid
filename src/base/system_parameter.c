@@ -6616,8 +6616,6 @@ static int prm_Def_size = (int) (DIM (prm_Def));
 static int num_session_parameters = 0;
 #define NUM_SESSION_PRM num_session_parameters
 
-
-
 #if defined (CS_MODE)
 /*
  * Session parameters should be cached with the default values or the values
@@ -7374,12 +7372,17 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     {
       if (PRM_IS_FOR_SESSION (GET_PRM (i)))
 	{
+	  assert (prm_Def_session_idx[i] == num_session_prms);
 	  sprm = &cached_session_parameters[num_session_prms++];
 	  sprm->prm_id = (PARAM_ID) i;
 	  sprm->flag = *(GET_PRM (i)->dynamic_flag);
 	  sprm->datatype = GET_PRM (i)->datatype;
 	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
 	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+      else
+	{
+	  assert (prm_Def_session_idx[i] == -1);
 	}
     }
 #endif /* CS_MODE */
@@ -12399,18 +12402,30 @@ static void
 update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * session_params)
 {
   TZ_REGION *session_tz_region;
-  int i;
 
   session_tz_region = session_get_session_tz_region (thread_p);
   if (session_tz_region != NULL)
     {
-      for (i = 0; i < NUM_SESSION_PRM; i++)
+#ifdef NDEBUG
+      for (int i = 0; i < NUM_SESSION_PRM; i++)
 	{
 	  if (session_params[i].prm_id == PRM_ID_TIMEZONE)
 	    {
-	      tz_str_to_region (session_params[i].value.str, strlen (session_params[i].value.str), session_tz_region);
+	      assert (prm_Def_session_idx[PRM_ID_TIMEZONE] == i);
 	      break;
 	    }
+	}
+      if (i >= NUM_SESSION_PRM)
+	{
+	  assert (prm_Def_session_idx[PRM_ID_TIMEZONE] == -1);
+	}
+#endif
+
+      if (prm_Def_session_idx[PRM_ID_TIMEZONE] >= 0)
+	{
+	  SESSION_PARAM *ssession_prm = &(session_params[prm_Def_session_idx[PRM_ID_TIMEZONE]]);
+	  assert (ssession_prm->prm_id == PRM_ID_TIMEZONE);
+	  tz_str_to_region (ssession_prm->value.str, strlen (ssession_prm->value.str), session_tz_region);
 	}
     }
 }
@@ -13098,25 +13113,34 @@ static void
 sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
 {
   SESSION_PARAM *cached_session_prm;
-  SYSPRM_PARAM *sys_prm;
-  int i;
+  SYSPRM_PARAM *sys_prm = GET_PRM (prm_id);
 
   assert (NUM_SESSION_PRM > 0);
 
-  sys_prm = GET_PRM (prm_id);
-
+#ifdef NDEBUG
+  int i;
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {
-      cached_session_prm = &cached_session_parameters[i];
-      if (cached_session_prm->prm_id != prm_id)
+      if (cached_session_parameters[i].prm_id == prm_id)
 	{
-	  continue;
+	  assert (prm_Def_session_idx[prm_id] == i);
+	  break;
 	}
+    }
+  if (i >= NUM_SESSION_PRM)
+    {
+      assert (prm_Def_session_idx[prm_id] == -1);
+    }
+#endif
+
+  if (prm_Def_session_idx[prm_id] >= 0)
+    {
+      cached_session_prm = &cached_session_parameters[prm_Def_session_idx[prm_id]];
+      assert (cached_session_prm->prm_id != prm_id);
 
       cached_session_prm->flag = *sys_prm->dynamic_flag;
       sysprm_set_sysprm_value_from_parameter (&cached_session_prm->value, sys_prm);
       sysprm_update_session_prm_flag_allocated (cached_session_prm);
-      break;
     }
 }
 #endif /* CS_MODE */

@@ -2804,8 +2804,7 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 
   assert (id <= PRM_LAST_ID);
 
-#define SESSION_INDIRECT_TEST
-#if defined(SESSION_INDIRECT_TEST)	// TODO: ctshim
+#ifdef NDEBUG
   int i, count;
 
   count = sysprm_get_session_parameters_count ();
@@ -2814,14 +2813,16 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       if (session_p->session_parameters[i].prm_id == id)
 	{
 	  assert (prm_Def_session_idx[id] == i);
-	  return &session_p->session_parameters[i];
+	  break;
 	}
     }
-  assert (prm_Def_session_idx[id] == -1);
-  return NULL;
-#else
-  return ((prm_Def_session_idx[id] < 0) ? NULL : &session_p->session_parameters[prm_Def_session_idx[id]]);
+  if (i >= count)
+    {
+      assert (prm_Def_session_idx[id] == -1);
+    }
 #endif
+
+  return ((prm_Def_session_idx[id] < 0) ? NULL : &session_p->session_parameters[prm_Def_session_idx[id]]);
 }
 
 /*
