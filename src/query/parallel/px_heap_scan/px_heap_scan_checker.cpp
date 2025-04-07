@@ -548,32 +548,27 @@ namespace parallel_heap_scan
     for (XASL_NODE *xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
-	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
-	(void) check (xaslp);
+	setter.set_cannot_parallel_recursive (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
-	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
-	(void) check (xaslp);
+	setter.set_cannot_parallel_recursive (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
-	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
-	(void) check (xaslp);
+	setter.set_cannot_parallel_recursive (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
-	(void) check (xaslp);
+	setter.set_cannot_parallel_recursive (xaslp);
       }
     for (XASL_NODE *xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
-	setter.set (xaslp, CHECK_RESULT::CANNOT_PARALLEL);
-	(void) check (xaslp);
+	setter.set_cannot_parallel_recursive (xaslp);
       }
     if (xasl->if_pred)
       {

@@ -54,7 +54,8 @@ namespace parallel_heap_scan
       bool open (THREAD_ENTRY *thread_p, PARALLEL_HEAP_SCAN_ID *phsid,
 		 REGU_VARIABLE_LIST regu_list_pred, REGU_VARIABLE_LIST regu_list_rest, VAL_DESCR *vd);
       void close (THREAD_ENTRY *thread_p);
-      void write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p);
+      void write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p = nullptr,
+		  bool *is_outptr_domain_resolved = nullptr);
 
     private:
       QFILE_LIST_ID **m_list_id_p;
@@ -64,7 +65,8 @@ namespace parallel_heap_scan
       QUERY_ID m_query_id;
       VAL_DESCR *m_vd;
 
-      QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p);
+      QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p = nullptr,
+					     bool *is_outptr_domain_resolved = nullptr);
   };
 }
 

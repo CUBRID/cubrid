@@ -74,7 +74,15 @@ namespace parallel_heap_scan
     parallelism = core_count;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
-    m_context->m_outptr_dbvals_p = &m_outptr_dbvals;
+    if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
+	&& !xasl->proc.buildlist.g_agg_domains_resolved)
+      {
+	m_context->m_outptr_dbvals_p = &m_outptr_dbvals;
+      }
+    else
+      {
+	m_context->m_outptr_dbvals_p = nullptr;
+      }
     m_mergable_list = new mergable_list_array (thread_p, core_count);
     for (size_t i = 0; i < core_count; i++)
       {

@@ -226,19 +226,23 @@ namespace parallel_heap_scan
 		      {
 			HL_HEAPID parent_heap_id = m_context->m_orig_thread_p->private_heap_id;
 			std::lock_guard<std::mutex> lock (m_context->m_outptr_domain_resolve_mutex);
-			if (!m_context->m_is_outptr_domain_resolved.exchange (true))
+			if (!m_context->m_is_outptr_domain_resolved.load())
 			  {
-			    m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p);
+			    m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p, &is_outptr_domain_resolved);
 			  }
 			else
 			  {
-			    m_mergable_list_writer->write (thread_p, nullptr);
+			    m_mergable_list_writer->write (thread_p);
+			    is_outptr_domain_resolved = true;
 			  }
-			is_outptr_domain_resolved = true;
+			if (is_outptr_domain_resolved)
+			  {
+			    m_context->m_is_outptr_domain_resolved.store (true);
+			  }
 		      }
 		    else
 		      {
-			m_mergable_list_writer->write (thread_p, nullptr);
+			m_mergable_list_writer->write (thread_p);
 		      }
 		  }
 		else

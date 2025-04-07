@@ -177,15 +177,16 @@ namespace parallel_heap_scan
     qfile_close_list (thread_p, *m_list_id_p);
   }
 
-  void mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p)
+  void mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p,
+				    bool *is_outptr_domain_resolved)
   {
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, outptr_dbvals_p);
+    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, outptr_dbvals_p, is_outptr_domain_resolved);
     int err = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
     assert (err == NO_ERROR);
   }
 
   QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p,
-      std::vector<DB_VALUE> *outptr_dbvals_p)
+      std::vector<DB_VALUE> *outptr_dbvals_p, bool *is_outptr_domain_resolved)
   {
     REGU_VARIABLE_LIST p;
     int n_preds, n_rests, n_all;
@@ -198,8 +199,19 @@ namespace parallel_heap_scan
     REGU_VARIABLE_LIST outptr_list_p = NULL;
     if (outptr_dbvals_p != nullptr)
       {
-	outptr_list_p = m_outptr_list->valptrp;
+	if (outptr_dbvals_p->size() != 0)
+	  {
+	    for (auto &dbval : *outptr_dbvals_p)
+	      {
+		db_value_clear (&dbval);
+	      }
+	  }
 	outptr_dbvals_p->resize (m_dbv_arr.size());
+      }
+    if (is_outptr_domain_resolved != nullptr)
+      {
+	*is_outptr_domain_resolved = true;
+	outptr_list_p = m_outptr_list->valptrp;
       }
 
     tpl_size = 0;
@@ -223,7 +235,7 @@ namespace parallel_heap_scan
 	    assert_release (m_tpl_buf.tpl != NULL);
 	    tuple_p = (char *) (m_tpl_buf.tpl) + toffset;
 	  }
-	if (outptr_dbvals_p != nullptr)
+	if (is_outptr_domain_resolved != nullptr)
 	  {
 	    while (outptr_list_p->value.flags & REGU_VARIABLE_HIDDEN_COLUMN)
 	      {
@@ -242,11 +254,21 @@ namespace parallel_heap_scan
 		outptr_list_p->value.domain = (*m_list_id_p)->type_list.domp[type_list_index];
 
 	      }
-	    if (outptr_list_p->value.type == TYPE_CONSTANT)
+	    if (outptr_dbvals_p != nullptr)
 	      {
-		DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
-		db_value_clone (dbval_p, vecp);
-		i++;
+		if (outptr_list_p->value.type == TYPE_CONSTANT)
+		  {
+		    if (!DB_IS_NULL (dbval_p))
+		      {
+			DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
+			db_value_clone (dbval_p, vecp);
+		      }
+		    else
+		      {
+			*is_outptr_domain_resolved = false;
+		      }
+		    i++;
+		  }
 	      }
 	    outptr_list_p = outptr_list_p->next;
 	  }
@@ -267,9 +289,6 @@ namespace parallel_heap_scan
 
     return &m_tpl_buf;
   }
-
-
-
 }
 
 #endif /* SERVER_MODE && !WINDOWS */
