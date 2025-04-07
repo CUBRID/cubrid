@@ -7005,7 +7005,7 @@ public:
 
   void clear ()
   {
-    assert (m_used >= 0 && m_used < MAX_NUM_OF_PRM_FILES_LOADED);
+    assert (m_used >= 0 && m_used <= MAX_NUM_OF_PRM_FILES_LOADED);
     while (m_used > 0)
       {
 	m_used--;
