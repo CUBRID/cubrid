@@ -7062,7 +7062,7 @@ public:
       }
   }
 
-  void file_has_been_loaded (const char *conf_path, const char *db_name)
+  void add (const char *conf_path, const char *db_name)
   {
     assert (conf_path != NULL);
     assert (m_used >= 0);
@@ -7100,7 +7100,7 @@ public:
   }
 };				// struct prm_config_files_loaded
 
-static struct prm_config_files_loaded prm_conf_file_loaded;
+static struct prm_config_files_loaded prm_file_has_been_loaded;
 
 
 /*
@@ -7118,7 +7118,7 @@ sysprm_dump_parameters (FILE * fp)
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
 
-  prm_conf_file_loaded.dump (fp);
+  prm_file_has_been_loaded.dump (fp);
 
   fprintf (fp, "\n# system parameters\n");
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
@@ -7307,11 +7307,10 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   else
     {
       r = prm_read_and_parse_ini_file (file_path_ptr, base_db_name, reload, load_flags | SYSPRM_IGNORE_HA);
-    }
-
-  if (r != NO_ERROR)
-    {
-      return r;
+      if (r != NO_ERROR)
+	{
+	  return r;
+	}
     }
 
   if (PRM_HA_MODE != HA_MODE_OFF)
@@ -7330,12 +7329,11 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       if (stat (file_path_ptr, &stat_buf) == 0)
 	{
 	  r = prm_read_and_parse_ini_file (file_path_ptr, NULL, reload, load_flags);
+	  if (r != NO_ERROR)
+	    {
+	      return r;
+	    }
 	}
-    }
-
-  if (r != NO_ERROR)
-    {
-      return r;
     }
 
   /*
@@ -7818,7 +7816,7 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
 
   ini_parser_free (ini);
 
-  prm_conf_file_loaded.file_has_been_loaded (prm_file_name, db_name);
+  prm_file_has_been_loaded.add (prm_file_name, db_name);
 
   return error;
 }
@@ -10952,8 +10950,7 @@ sysprm_final (void)
       *prm->dynamic_flag = 0;
     }
 
-  prm_conf_file_loaded.clear ();
-
+  prm_file_has_been_loaded.clear ();
 }
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
