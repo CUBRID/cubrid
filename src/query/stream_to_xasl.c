@@ -3166,8 +3166,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 {
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   TP_DOMAIN **all_domains = NULL;
-  int domain_cnt, domain_index;
-  int need_coerce_domains;
+  int domain_cnt;
   int offset;
 
   int error = NO_ERROR;

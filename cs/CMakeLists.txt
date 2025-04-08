@@ -258,7 +258,6 @@ set(QUERY_SOURCES
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
-  ${QUERY_DIR}/query_hash_join.hpp
 )
 
 set(OBJECT_SOURCES

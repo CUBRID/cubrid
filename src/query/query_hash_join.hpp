@@ -42,6 +42,7 @@
 #define HASH_JOIN_DUMP_HASH_TABLE 0
 #define HASH_JOIN_DUMP_PROBE 0
 #define HASH_JOIN_DUMP_BUILD 0
+#define HASH_JOIN_DUMP_PARTITION 0
 
 /*
  * Forward Declarations
@@ -49,12 +50,6 @@
 
 struct xasl_node;
 typedef struct xasl_node XASL_NODE;
-
-struct access_spec_node;
-typedef struct access_spec_node ACCESS_SPEC_TYPE;
-
-struct val_list_node;
-typedef struct val_list_node VAL_LIST;
 
 struct tp_domain;
 typedef struct tp_domain TP_DOMAIN;
@@ -117,6 +112,7 @@ struct hashjoin_stats
     UINT64 fetches;
     UINT64 fetch_time;
     UINT64 ioreads;
+    UINT64 rows;
 
 #if HASH_JOIN_PROFILE_TIME
     struct

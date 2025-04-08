@@ -442,7 +442,8 @@ exit_on_error:
 static QFILE_LIST_ID *
 qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *context)
 {
-  QFILE_LIST_ID *outer_list_id, *list_id = NULL;
+  QFILE_LIST_ID *list_id = NULL;
+  QFILE_LIST_ID *outer_list_id, *inner_list_id;
   QFILE_LIST_SCAN_ID outer_scan_id;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
@@ -469,12 +470,14 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
     {
     case JOIN_LEFT:
       outer_list_id = context->outer_list_id;
+      inner_list_id = context->inner_list_id;
       left_record = &tuple_record;
       right_record = NULL;
       break;
 
     case JOIN_RIGHT:
       outer_list_id = context->inner_list_id;
+      inner_list_id = context->outer_list_id;
       left_record = NULL;
       right_record = &tuple_record;
       break;
@@ -515,7 +518,7 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
 
       if (thread_is_on_trace (thread_p))
 	{
-	  stats->probe.rows++;
+	  stats->probe.readkeys++;
 	}
     }
 
@@ -529,6 +532,9 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, H
       stats->probe.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
       stats->probe.fetch_time += (UINT64) ((perfmon_get_from_statistic (thread_p,
 					    PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time) / 1000);
+
+      stats->probe.rows = stats->probe.readkeys;
+      stats->build.rows = inner_list_id->tuple_cnt;
     }
 
   qfile_close_scan (thread_p, &outer_scan_id);
@@ -838,6 +844,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY *thread_p, XASL_NODE *xasl, HJ_MANAGE
   context->inner_fetch_info.coerce_domains = domain_info->coerce_domains;
   context->inner_fetch_info.need_coerce_domains = domain_info->need_coerce_domains;
   context->inner_fetch_info.regu_list_pred = proc->inner.regu_list_pred;
+
   context->key_cnt = merge_info->ls_column_cnt;
 
   context->join_type = merge_info->join_type;
@@ -1953,6 +1960,7 @@ qexec_hash_join_merge_stats (HJ_STATS *stats, HJ_STATS *context_stats)
   stats->build.fetches += context_stats->build.fetches;
   stats->build.fetch_time += context_stats->build.fetch_time;
   stats->build.ioreads += context_stats->build.ioreads;
+  stats->build.rows += context_stats->build.rows;
 
 #if HASH_JOIN_PROFILE_TIME
   TSC_ADD_TIMEVAL (stats->build.profile.fetch, context_stats->build.profile.fetch);
@@ -2103,14 +2111,16 @@ qexec_hash_join_build (THREAD_ENTRY *thread_p, HJ_MANAGER *manager, HJ_CONTEXT *
 	  goto exit_on_error;
 	}
 
-#if HASH_JOIN_PROFILE_TIME
       if (thread_is_on_trace (thread_p))
 	{
+#if HASH_JOIN_PROFILE_TIME
 	  tsc_getticks (&profile_end_tick);
 	  tsc_elapsed_time_usec (&profile_tv_diff, profile_end_tick, profile_start_tick);
 	  TSC_ADD_TIMEVAL (stats->build.profile.insert, profile_tv_diff);
-	}
 #endif
+
+	  stats->build.rows++;
+	}
     }
 
   if (scan_code == S_ERROR)

@@ -2440,7 +2440,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  break;
 
 	case QO_JOINMETHOD_HASH_JOIN:
-	  /**
+	  /*
 	   * In this case, we have to hold on to the accumulated predicates and subqueries,
 	   * and tack them on to the scan proc that eventually reads the result of the join.
 	   * The subplans for the two join components should start with clean slates.
