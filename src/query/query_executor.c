@@ -11548,7 +11548,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int regu_idx;
   HEAP_CACHE_ATTRINFO index_attrinfo;
   HEAP_IDX_ELEMENTS_INFO idx_info;
-  bool use_rocksdb, read_rocksdb;
+  bool use_rocksdb, read_rocksdb, is_PK_based;
   int pk_length;
   char *pk_ptr;
   OR_BUF pk_buf;
@@ -11556,6 +11556,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int num_found;
 
   use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
+  is_PK_based = false;
  
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -11869,7 +11870,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			      return ER_FAILED;
 			    }
 			}
-
+		      is_PK_based = true;
 		    }
 		  heap_attrinfo_end (thread_p, &index_attrinfo);
 		}
