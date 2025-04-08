@@ -7185,11 +7185,16 @@ sysprm_set_er_log_file (const char *db_name)
 static void
 sysprm_check_id_order ()
 {
-  assert (GET_PRM (0)->id == PRM_FIRST_ID);
-  for (int i = 1; i < MAX_SYSTEM_PARAMS; i++)
+  static bool is_first = true;
+  if (is_first)
     {
-      assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
-      assert (GET_PRM (i)->id == (PARAM_ID) i);
+      assert (GET_PRM (0)->id == PRM_FIRST_ID);
+      for (int i = 1; i < MAX_SYSTEM_PARAMS; i++)
+	{
+	  assert (GET_PRM (i - 1)->id == ((GET_PRM (i)->id) - 1));
+	  assert (GET_PRM (i)->id == (PARAM_ID) i);
+	}
+      is_first = false;
     }
 }
 #endif
@@ -7224,12 +7229,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   assert (conf_file == NULL);
 
 #ifndef NDEBUG
-  static bool is_first = true;
-  if (is_first)
-    {
-      sysprm_check_id_order ();
-      is_first = false;
-    }
+  sysprm_check_id_order ();
 #endif
 
   if (reload)
