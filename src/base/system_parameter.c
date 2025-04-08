@@ -9827,11 +9827,11 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
     {
       set_default = true;
     }
-  if (strcasecmp (value, PRM_VALUE_MAX) == 0)
+  else if (strcasecmp (value, PRM_VALUE_MAX) == 0)
     {
       set_max = true;
     }
-  if (strcasecmp (value, PRM_VALUE_MIN) == 0)
+  else if (strcasecmp (value, PRM_VALUE_MIN) == 0)
     {
       set_min = true;
     }
