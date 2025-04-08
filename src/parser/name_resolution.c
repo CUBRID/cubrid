@@ -9244,23 +9244,9 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
       else
 	{
-	  /* Flag all specs */
-	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
-	    {
-	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
-		{
-		  if (sm_check_system_class_by_name (entity->info.name.original))
-		    {
-		      /* exclude update for system class or view */
-		      break;
-		    }
-		}
-
-	      if (entity == NULL)
-		{
-		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
-		}
-	    }
+	  /* to process the clause "FOR UPDATE"
+	   * it will be checked at pt_for_update_prepare_query
+	   */
 	}
     }
 
