@@ -71,9 +71,9 @@ namespace cubpl
     , m_cursor_map {}
     , m_req_id {0}
     , m_param_info {nullptr}
+    , m_all_session_params_required {true}
     , m_last_conn_epoch (-1)
     , m_stack_idx {-1}
-    , m_all_session_params_required {true}
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
