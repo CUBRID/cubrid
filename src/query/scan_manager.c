@@ -176,7 +176,7 @@ static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID
 static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
-static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb = false);
 static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -6492,7 +6492,7 @@ scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;

@@ -983,7 +983,7 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   /* make f_valp array */
   if (list_id->tpl_descr.f_valp == NULL && list_id->type_list.type_cnt > 0)
     {
-      size = list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
+      size = (list_id->type_list.type_cnt + 1) * DB_SIZEOF (DB_VALUE *);
 
       list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
       if (list_id->tpl_descr.f_valp == NULL)
@@ -992,14 +992,14 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	  goto exit_on_error;
 	}
 
-      size = list_id->type_list.type_cnt * sizeof (bool);
+      size = (list_id->type_list.type_cnt + 1) * sizeof (bool);
       list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
       if (list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
 	}
-      for (i = 0; i < list_id->type_list.type_cnt; i++)
+      for (i = 0; i < list_id->type_list.type_cnt + 1; i++)
 	{
 	  list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
 	}
@@ -1165,9 +1165,15 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 			 QFILE_TUPLE_RECORD * tplrec)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
+  QFILE_TUPLE_DESCRIPTOR *tuple_desc_p;
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  int num_found;
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
+  int value_size;
   int ret = NO_ERROR;
   bool output_tuple = true;
+  bool use_rocksdb;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -1234,6 +1240,44 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
 	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* In regulartor part, there is too many verification and constraint check. */
+      /* therefore, it is not good idea to add new regulator block from XASL. */
+      /* but, just add new block to qfile after all the step to create regulator are completed. */
+      if (!OID_ISNULL (&xasl->curr_spec->s.cls_node.cls_oid))
+	{
+	  num_found = heap_attrinfo_start_with_index (thread_p, &xasl->curr_spec->s.cls_node.cls_oid, NULL, &index_attrinfo, &idx_info, false);
+
+	  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB) && num_found == 1 && idx_info.num_btids == 1 &&
+	       index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY &&
+	       xasl->curr_spec->s_id.mvcc_select_lock_needed)
+	    {
+	      tuple_desc_p = &xasl->list_id->tpl_descr;
+	      
+	      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = &xasl->curr_spec->s_id.s.isid.pk_val;
+	      if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* Set clear_f_val_at_clone_decache to avoid memory issues */
+	      assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
+	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = false;
+
+	      /* add aligned field size to tuple size */
+	      value_size = qdata_get_tuple_value_size_from_dbval (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
+	      if (value_size == ER_FAILED)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* The compressed string will be deallocated later, after copying db_value into tuple. */
+	      tuple_desc_p->tpl_size += value_size;
+	      tuple_desc_p->f_cnt += 1;
+	    }
+
+	  heap_attrinfo_end (thread_p, &index_attrinfo);
 	}
 
       /* update aggregation domains */
@@ -11500,7 +11544,16 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
-  bool use_rocksdb;
+  regu_variable_list_node *regup;
+  int regu_idx;
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  bool use_rocksdb, read_rocksdb;
+  int pk_length;
+  char *pk_ptr;
+  OR_BUF pk_buf;
+  DB_VALUE pk_value;
+  int num_found;
 
   use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
  
@@ -11606,14 +11659,76 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       GOTO_EXIT_ON_ERROR;
     }
-
+  
   scan_open = true;
 
   tuple_cnt = 1;
   while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
       s_id = &xasl->curr_spec->s_id;
-      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
+      read_rocksdb = XASL_IS_FLAGED (xasl->curr_spec->s.list_node.xasl_node, XASL_USES_ROCKSDB);
+
+      /*
+
+  const int btid_index = 0;
+
+  THREAD_ENTRY *thread_p;
+  char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
+  char key_buf[DBVAL_BUFSIZE];
+  int num_found, num_btids;
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  DB_VALUE *key_dbvalue;
+  DB_VALUE dbvalue;
+  rocksdb::Slice key, value;
+  bool status;
+  BTID btid;
+  int key_size;
+  int error_code;
+
+  key_dbvalue = NULL;
+  db_make_null (&dbvalue);
+
+  aligned_buf = PTR_ALIGN (dbvalue_buf, MAX_ALIGNMENT);
+
+  num_found = heap_attrinfo_start_with_index (thread_p, &context->class_oid, NULL, &index_attrinfo, &idx_info, false);
+  num_btids = idx_info.num_btids;
+
+      if (num_btids == 1 && index_attrinfo.last_classrepr->indexes[btid_index].type == BTREE_PRIMARY_KEY
+	  && XASL_IS_FLAGED (xasl->curr_spec->s.list_node.xasl_node, XASL_USES_ROCKSDB)
+	  && xasl->curr_spec->s.list_node.xasl_node->spec_list->s_id.mvcc_select_lock_needed)
+	{
+	  DB_VALUE vfetch_to;
+	  TP_DOMAIN dom;
+
+	  // PK is located at the end of tuple
+	  for (regup = s_id->s.llsid.scan_pred.regu_list; regup->next != NULL; regup = regup->next);
+
+	  // I don't want to use this kind trick but...
+	  dom = tp_String_domain;
+
+	  dom.type = &tp_String;
+	  dom.collation_flag = regup->value.domain->collation_flag;
+
+	  regup->next = (REGU_VARIABLE_LIST) malloc (sizeof (REGU_VARIABLE_LIST));
+	  assert_release (regup->next != NULL);
+
+	  regup->next->value.type = TYPE_POSITION;
+	  regup->next->value.vfetch_to = &vfetch_to;
+
+	  regup->next->value.domain = &dom;
+	  regup->next->value.original_domain = &dom;
+	  regup->next->value.domain->collation_flag = regup->value.domain->collation_flag;
+
+	  regup->next->value.value.pos_descr.dom = &dom;
+	  regup->next->value.value.pos_descr.original_domain = &dom;
+	  regup->next->value.value.pos_descr.pos_no = regup->value.value.pos_descr.pos_no + 1;
+
+	  regup->next->next = NULL;
+	}
+  */
+
+      while ((ls_scan = scan_next_scan (thread_p, s_id, use_rocksdb)) == S_SUCCESS)
 	{
 	  if (op_type == MULTI_ROW_UPDATE)
 	    {
@@ -11738,6 +11853,26 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  continue;
 		}
 	      class_oid = db_get_oid (valp);
+
+	      if (read_rocksdb)
+		{
+		  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+		  if (num_found == 1 && idx_info.num_btids == 1 && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+		    {
+		      for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL; regu_idx++, regup = regup->next);
+
+		      if (qfile_locate_tuple_value_r (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr, &pk_length) == V_BOUND)
+			{
+			  or_init (&pk_buf, pk_ptr, pk_length);
+			  if (tp_Char.data_readval (&pk_buf, &pk_value, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
+			    {
+			      return ER_FAILED;
+			    }
+			}
+
+		    }
+		  heap_attrinfo_end (thread_p, &index_attrinfo);
+		}
 
 	      /* class has changed to a new subclass */
 	      if (class_oid

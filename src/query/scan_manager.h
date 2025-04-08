@@ -223,6 +223,7 @@ struct indx_scan_id
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
   key_val_range *key_vals;	/* for eliminating duplicate ranges */
+  DB_VALUE pk_val;
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */

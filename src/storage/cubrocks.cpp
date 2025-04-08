@@ -20,6 +20,7 @@
  * cubrocks.cpp - rocksdb for cubrid
  */
 
+#include "object_primitive.h"
 #ident "$Id$"
 
 #include <string>
@@ -997,6 +998,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID * scan_id)
 		}
 	    }
 	}
+      isidp->pk_val = key_vals[0].key1;
 
       scan_id->scan_stats.data_qualified_rows++;
       iscan_id->curr_keyno++;
@@ -1157,6 +1159,7 @@ cubrocks::context::kv_make_key_with_PK (char *buf, int buf_size, OID *class_oid,
   key_size = sizeof (OID);
   pk_type = DB_VALUE_DOMAIN_TYPE (pk_value);
   /* write PK to key */
+  /* have to care about each memory ordering. */
   switch (pk_type)
     {
       case DB_TYPE_STRING:
