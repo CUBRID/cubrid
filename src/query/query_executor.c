@@ -9227,7 +9227,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
 	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;	/* should check LIST_MERGE in checker */
-	  if (!xasl->topn_items && curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	  if (xasl->topn_items)
+	    {
+	      curr_spec->flags &= ~ACCESS_SPEC_FLAG_MERGED_LIST;
+	    }
+	  else if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
 	    }
