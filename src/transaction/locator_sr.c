@@ -38,10 +38,10 @@
 #include "btree_load.h"
 #include "critical_section.h"
 #include "dbtype.h"
+#include "cubrocks.hpp"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-#include "cubrocks.hpp"
 #include "error_manager.h"
 #include "deduplicate_key.h"
 #include "fetch.h"
@@ -159,7 +159,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking, bool use_rocksdb = false);
+				 bool need_locking, bool use_rocksdb = false, DB_VALUE *pk_value = NULL);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
@@ -171,7 +171,7 @@ static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid
 static int locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 					  HEAP_SCANCACHE * scan_cache, int *force_count,
 					  MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_INDEX_ACTION_FLAG idx_action_flag,
-					  OID * new_obj_oid, OID * partition_oid, bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL);
+					  OID * new_obj_oid, OID * partition_oid, bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL, DB_VALUE *pk_value = NULL);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5418,7 +5418,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool use_rocksdb)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool use_rocksdb, DB_VALUE *pk_value)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -6002,7 +6002,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* AN INSTANCE: Update indices if any */
-      if (has_index)
+      if (!use_rocksdb && has_index)
 	{
 	  if (scan == S_SUCCESS)
 	    {
@@ -6065,22 +6065,48 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
-      error_code = heap_update_logical (thread_p, &update_context, use_rocksdb);
-      if (error_code != NO_ERROR)
+      if (use_rocksdb)
 	{
-	  /*
-	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
-	   */
-	  if (error_code == ER_FAILED)
+	  /* in this scope, rocksdb must works. */
+	  assert (cubrocks::ctx->is_alive ());
+	  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+	  update_context.is_logical_old = true;
+	  update_context.pk = NULL;
+	  if (pk_value != NULL)
 	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      assert (error_code == ER_INTERRUPTED);
+	      update_context.pk = pk_value;
+	    }
+
+	  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context) == NO_ERROR)
+	    {
+	      /* success */
+	      error_code = NO_ERROR;
 	    }
 	  else
 	    {
-	      ASSERT_ERROR ();
+	      error_code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, &update_context);
 	    }
-	  goto error;
+	}
+      else
+	{
+	  error_code = heap_update_logical (thread_p, &update_context);
+	  if (error_code != NO_ERROR)
+	    {
+	      /*
+	       * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
+	       */
+	      if (error_code == ER_FAILED)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  assert (error_code == ER_INTERRUPTED);
+		}
+	      else
+		{
+		  ASSERT_ERROR ();
+		}
+	      goto error;
+	    }
 	}
       isold_object = update_context.is_logical_old;
 
@@ -6154,10 +6180,10 @@ error:
  */
 int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
-		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking, bool use_rocksdb, OID *class_oid)
+		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking, bool use_rocksdb, OID *class_oid, DB_VALUE *pk_value)
 {
   return locator_delete_force_internal (thread_p, hfid, oid, has_index, op_type, scan_cache, force_count,
-					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking, use_rocksdb, class_oid);
+					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking, use_rocksdb, class_oid, pk_value);
 }
 
 /*
@@ -6212,7 +6238,7 @@ static int
 locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 			       HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
 			       LOCATOR_INDEX_ACTION_FLAG idx_action_flag, OID * new_obj_oid, OID * partition_oid,
-			       bool need_locking, bool use_rocksdb, OID *cls_oid)
+			       bool need_locking, bool use_rocksdb, OID *cls_oid, DB_VALUE *pk_value)
 {
   bool isold_object;		/* Make sure that this is an old object during the deletion */
   OID class_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -6397,37 +6423,64 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      /* build operation context */
 	      heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
 
-	      /* attempt delete */
-	      if (heap_delete_logical (thread_p, &delete_context, use_rocksdb) != NO_ERROR)
+	      if (use_rocksdb)
 		{
-		  /*
-		   * Problems deleting the object...Maybe, the transaction should be
-		   * aborted by the caller...Quit..
-		   */
-		  error_code = er_errid ();
-		  er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
-				LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-		  if (error_code == NO_ERROR)
+		  /* in this scope, rocksdb must works. */
+		  assert (cubrocks::ctx->is_alive ());
+		  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+		  delete_context.pk = NULL;
+		  if (pk_value != NULL)
 		    {
-		      error_code = ER_FAILED;
+		      delete_context.pk = pk_value;
 		    }
-		  goto error;
+
+		  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+		    {
+		      /* success */
+		    }
+		  else
+		    {
+		      cubrocks::ctx->kv_logical_write (thread_p->tran_index, &delete_context);
+		    }
+		}
+	      else
+		{
+		  /* attempt delete */
+		  if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
+		    {
+		      /*
+		       * Problems deleting the object...Maybe, the transaction should be
+		       * aborted by the caller...Quit..
+		       */
+		      error_code = er_errid ();
+		      er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
+				    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+		      if (error_code == NO_ERROR)
+			{
+			  error_code = ER_FAILED;
+			}
+		      goto error;
+		    }
 		}
 
 	      deleted = true;
 	    }
 
-	  if (idx_action_flag == FOR_INSERT_OR_DELETE)
+	  if (!use_rocksdb)
 	    {
-	      error_code =
-		locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache, true,
-					     true, hfid, NULL, false, false);
-	    }
-	  else
-	    {
-	      error_code =
-		locator_add_or_remove_index_for_moving (thread_p, &copy_recdes, oid, &class_oid, false, op_type,
-							scan_cache, true, true, hfid, NULL, false);
+	      if (idx_action_flag == FOR_INSERT_OR_DELETE)
+		{
+		  error_code =
+		    locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache, true,
+						 true, hfid, NULL, false, false);
+		}
+	      else
+		{
+		  error_code =
+		    locator_add_or_remove_index_for_moving (thread_p, &copy_recdes, oid, &class_oid, false, op_type,
+							    scan_cache, true, true, hfid, NULL, false);
+		}
 	    }
 
 	  if (error_code != NO_ERROR)
@@ -6483,22 +6536,47 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       /* build operation context */
       heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
 
-      /* attempt delete */
-      if (heap_delete_logical (thread_p, &delete_context, use_rocksdb) != NO_ERROR)
+      if (use_rocksdb)
 	{
-	  /*
-	   * Problems deleting the object...Maybe, the transaction should be
-	   * aborted by the caller...Quit..
-	   */
-	  er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
-			LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
-	  if (error_code == NO_ERROR)
+	  /* in this scope, rocksdb must works. */
+	  assert (cubrocks::ctx->is_alive ());
+	  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+
+	  delete_context.pk = NULL;
+	  if (pk_value != NULL)
 	    {
-	      error_code = ER_FAILED;
+	      /* I think this scope must be not called because the item not consisted in PK still uses oid */
+	      delete_context.pk = pk_value;
 	    }
-	  goto error;
+
+	  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+	    {
+	      /* success */
+	    }
+	  else
+	    {
+	      cubrocks::ctx->kv_logical_write (thread_p->tran_index, &delete_context);
+	    }
+	}
+      else
+	{
+	  /* attempt delete */
+	  if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
+	    {
+	      /*
+	       * Problems deleting the object...Maybe, the transaction should be
+	       * aborted by the caller...Quit..
+	       */
+	      er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
+			    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	      assert (er_errid () != NO_ERROR);
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+	      goto error;
+	    }
 	}
       deleted = true;
     }
@@ -7537,7 +7615,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 			      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 			      REPL_INFO_TYPE repl_info, int pruning_type, PRUNING_CONTEXT * pcontext,
 			      FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
-			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking, bool use_rocksdb)
+			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking, bool use_rocksdb, DB_VALUE *pk_value)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
@@ -7548,6 +7626,9 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+  rocksdb::Slice pk_key;
+  char pk_buf[DBVAL_BUFSIZE];
+  int pk_size;
   int tran_index;
 
   /*
@@ -7581,7 +7662,17 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-	      cubrocks::ctx->kv_get (tran_index, &class_oid, oid, &copy_recdes, scan_cache, COPY);
+	      if (pk_value != NULL)
+		{
+		  cubrocks::ctx->kv_make_key_with_PK (pk_buf, DBVAL_BUFSIZE, &class_oid, pk_value, pk_size);
+		  pk_key = rocksdb::Slice (pk_buf, pk_size);
+
+		  cubrocks::ctx->kv_get (tran_index, pk_key, &copy_recdes, scan_cache, COPY);
+		}
+	      else
+		{
+		  cubrocks::ctx->kv_get (tran_index, &class_oid, oid, &copy_recdes, scan_cache, COPY);
+		}
 	    }
 	  else
 	    {
@@ -7697,7 +7788,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  error_code =
 	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
 				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
-				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking, use_rocksdb);
+				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking, use_rocksdb, pk_value);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -7716,7 +7807,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_DELETE:
       error_code =
 	locator_delete_force (thread_p, &class_hfid, oid, true, op_type, scan_cache, force_count, mvcc_reev_data,
-			      need_locking, use_rocksdb, &class_oid);
+			      need_locking, use_rocksdb, &class_oid, pk_value);
       break;
 
     default:

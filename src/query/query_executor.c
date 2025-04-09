@@ -367,6 +367,7 @@ struct upddel_class_info_internal
   int subclass_idx;		/* active subclass index */
   OID *oid;			/* instance oid of current class */
   OID *class_oid;		/* oid of current class */
+  DB_VALUE pk;			/* PK (for general usage) */
   HFID *class_hfid;		/* hfid of current class */
   HEAP_SCANCACHE *scan_cache;
 
@@ -11552,7 +11553,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int pk_length;
   char *pk_ptr;
   OR_BUF pk_buf;
-  DB_VALUE pk_value;
   int num_found;
 
   use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
@@ -11668,66 +11668,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       s_id = &xasl->curr_spec->s_id;
       read_rocksdb = XASL_IS_FLAGED (xasl->curr_spec->s.list_node.xasl_node, XASL_USES_ROCKSDB);
-
-      /*
-
-  const int btid_index = 0;
-
-  THREAD_ENTRY *thread_p;
-  char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
-  char key_buf[DBVAL_BUFSIZE];
-  int num_found, num_btids;
-  HEAP_CACHE_ATTRINFO index_attrinfo;
-  HEAP_IDX_ELEMENTS_INFO idx_info;
-  DB_VALUE *key_dbvalue;
-  DB_VALUE dbvalue;
-  rocksdb::Slice key, value;
-  bool status;
-  BTID btid;
-  int key_size;
-  int error_code;
-
-  key_dbvalue = NULL;
-  db_make_null (&dbvalue);
-
-  aligned_buf = PTR_ALIGN (dbvalue_buf, MAX_ALIGNMENT);
-
-  num_found = heap_attrinfo_start_with_index (thread_p, &context->class_oid, NULL, &index_attrinfo, &idx_info, false);
-  num_btids = idx_info.num_btids;
-
-      if (num_btids == 1 && index_attrinfo.last_classrepr->indexes[btid_index].type == BTREE_PRIMARY_KEY
-	  && XASL_IS_FLAGED (xasl->curr_spec->s.list_node.xasl_node, XASL_USES_ROCKSDB)
-	  && xasl->curr_spec->s.list_node.xasl_node->spec_list->s_id.mvcc_select_lock_needed)
-	{
-	  DB_VALUE vfetch_to;
-	  TP_DOMAIN dom;
-
-	  // PK is located at the end of tuple
-	  for (regup = s_id->s.llsid.scan_pred.regu_list; regup->next != NULL; regup = regup->next);
-
-	  // I don't want to use this kind trick but...
-	  dom = tp_String_domain;
-
-	  dom.type = &tp_String;
-	  dom.collation_flag = regup->value.domain->collation_flag;
-
-	  regup->next = (REGU_VARIABLE_LIST) malloc (sizeof (REGU_VARIABLE_LIST));
-	  assert_release (regup->next != NULL);
-
-	  regup->next->value.type = TYPE_POSITION;
-	  regup->next->value.vfetch_to = &vfetch_to;
-
-	  regup->next->value.domain = &dom;
-	  regup->next->value.original_domain = &dom;
-	  regup->next->value.domain->collation_flag = regup->value.domain->collation_flag;
-
-	  regup->next->value.value.pos_descr.dom = &dom;
-	  regup->next->value.value.pos_descr.original_domain = &dom;
-	  regup->next->value.value.pos_descr.pos_no = regup->value.value.pos_descr.pos_no + 1;
-
-	  regup->next->next = NULL;
-	}
-  */
 
       while ((ls_scan = scan_next_scan (thread_p, s_id, use_rocksdb)) == S_SUCCESS)
 	{
@@ -11865,9 +11805,11 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      if (qfile_locate_tuple_value_r (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr, &pk_length) == V_BOUND)
 			{
 			  or_init (&pk_buf, pk_ptr, pk_length);
-			  if (tp_Char.data_readval (&pk_buf, &pk_value, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
+			  /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
+			  /* I do not want to use this kind of trick, but... */
+			  if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
 			    {
-			      return ER_FAILED;
+			      GOTO_EXIT_ON_ERROR;
 			    }
 			}
 		      is_PK_based = true;
@@ -12017,70 +11959,74 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	    }
 
-	  /* Get info for MVCC condition reevaluation */
-	  for (; mvcc_reev_class_idx < mvcc_reev_class_cnt; mvcc_reev_class_idx++)
+	  if (!read_rocksdb)
 	    {
-	      mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx];
+	      /* Get info for MVCC condition reevaluation */
+	      for (; mvcc_reev_class_idx < mvcc_reev_class_cnt; mvcc_reev_class_idx++)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx];
 
-	      /* instance OID */
-	      valp = vallist->val;
-	      if (valp == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      /* FIXME: Function version of db_get_oid returns (probably) NULL_OID when the value is NULL,
-	       * while macro version returns NULL pointer. This may cause different behavior.
-	       * As a quick fix, I'm going to add DB_IS_NULL block to keep the existing behavior.
-	       * We need to investigate and get rid of differences of two implementation.
-	       * Inlining would be a good choice.
-	       */
-	      if (DB_IS_NULL (valp))
-		{
-		  OID_SET_NULL (mvcc_reev_class->inst_oid);
-		}
-	      else
-		{
-		  mvcc_reev_class->inst_oid = db_get_oid (valp);
-		}
-
-	      /* class OID */
-	      valp = vallist->next->val;
-	      if (valp == NULL)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      /* FIXME: please see above FIXME */
-	      if (DB_IS_NULL (valp))
-		{
-		  OID_SET_NULL (class_oid);
-		}
-	      else
-		{
-		  class_oid = db_get_oid (valp);
-		}
-
-	      /* class has changed to a new subclass */
-	      if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
-		{
-		  error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
-		  if (error != NO_ERROR)
+		  /* instance OID */
+		  valp = vallist->val;
+		  if (valp == NULL)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
+		  /* FIXME: Function version of db_get_oid returns (probably) NULL_OID when the value is NULL,
+		   * while macro version returns NULL pointer. This may cause different behavior.
+		   * As a quick fix, I'm going to add DB_IS_NULL block to keep the existing behavior.
+		   * We need to investigate and get rid of differences of two implementation.
+		   * Inlining would be a good choice.
+		   */
+		  if (DB_IS_NULL (valp))
+		    {
+		      OID_SET_NULL (mvcc_reev_class->inst_oid);
+		    }
+		  else
+		    {
+		      mvcc_reev_class->inst_oid = db_get_oid (valp);
+		    }
+
+		  /* class OID */
+		  valp = vallist->next->val;
+		  if (valp == NULL)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  /* FIXME: please see above FIXME */
+		  if (DB_IS_NULL (valp))
+		    {
+		      OID_SET_NULL (class_oid);
+		    }
+		  else
+		    {
+		      class_oid = db_get_oid (valp);
+		    }
+
+		  /* class has changed to a new subclass */
+		  if (class_oid && !OID_EQ (&mvcc_reev_class->cls_oid, class_oid))
+		    {
+		      error = qexec_upddel_mvcc_set_filters (thread_p, aptr, mvcc_reev_class, class_oid);
+		      if (error != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		  vallist = vallist->next->next;
 		}
-	      vallist = vallist->next->next;
+
+	      if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL && mvcc_reev_class_cnt > 0)
+		{
+		  /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
+		   * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
+		   * (in mvcc_reev_classes) prior to this operation */
+		  mvcc_upddel_reev_data.mvcc_cond_reev_list =
+		    qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes, mvcc_reev_class_cnt, update->classes,
+							 update->num_classes);
+		}
 	    }
 
-	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL && mvcc_reev_class_cnt > 0)
-	    {
-	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
-	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
-	       * (in mvcc_reev_classes) prior to this operation */
-	      mvcc_upddel_reev_data.mvcc_cond_reev_list =
-		qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes, mvcc_reev_class_cnt, update->classes,
-						     update->num_classes);
-	    }
 	  if (has_delete)
 	    {
 	      vallist = vallist->next;	/* skip should_delete */
@@ -12171,7 +12117,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 					      &upd_cls->att_id[internal_class->subclass_idx * upd_cls->num_attrs],
 					      upd_cls->num_attrs, LC_FLUSH_UPDATE, op_type, internal_class->scan_cache,
 					      &force_count, false, repl_info, internal_class->needs_pruning, pcontext,
-					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
+					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking,
+					      use_rocksdb, is_PK_based ? &internal_class->pk : NULL);
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -12502,10 +12449,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
-  bool use_rocksdb;
   HEAP_CACHE_ATTRINFO attr_info;
+  regu_variable_list_node *regup;
+  int regu_idx;
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  bool use_rocksdb, read_rocksdb, is_PK_based;
+  int pk_length;
+  char *pk_ptr;
+  OR_BUF pk_buf;
+  int num_found;
 
   use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
+  is_PK_based = false;
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -12615,6 +12571,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
       s_id = &xasl->curr_spec->s_id;
+      read_rocksdb = XASL_IS_FLAGED (xasl->curr_spec->s.list_node.xasl_node, XASL_USES_ROCKSDB);
 
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
@@ -12674,6 +12631,28 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 		  internal_class->oid = oid;
 
+		  if (read_rocksdb)
+		    {
+		      num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+		      if (num_found == 1 && idx_info.num_btids == 1 && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+			{
+			  for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL; regu_idx++, regup = regup->next);
+
+			  if (qfile_locate_tuple_value_r (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr, &pk_length) == V_BOUND)
+			    {
+			      or_init (&pk_buf, pk_ptr, pk_length);
+			      /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
+			      /* I do not want to use this kind of trick, but... */
+			      if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
+				{
+				  GOTO_EXIT_ON_ERROR;
+				}
+			    }
+			  is_PK_based = true;
+			}
+		      heap_attrinfo_end (thread_p, &index_attrinfo);
+		    }
+
 		  if (class_oid
 		      && (internal_class->class_oid == NULL || !OID_EQ (internal_class->class_oid, class_oid)))
 		    {
@@ -12719,7 +12698,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
-	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
+	  if (!read_rocksdb && mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
 	    {
 	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
 	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
@@ -12805,7 +12784,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
             locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0, LC_FLUSH_DELETE,
                   op_type, internal_class->scan_cache, &force_count, false,
                   REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
+                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb, is_PK_based ? &internal_class->pk : NULL);
         }
         else
         {

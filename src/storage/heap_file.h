@@ -279,6 +279,7 @@ struct heap_operation_context
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
+  DB_VALUE *pk;
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
 
@@ -662,8 +663,8 @@ extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID *
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint_p);
-extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb = false);
-extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb = false);
+extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
+extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
 extern int heap_initialize_hfid_table (void);
 extern void heap_finalize_hfid_table (void);

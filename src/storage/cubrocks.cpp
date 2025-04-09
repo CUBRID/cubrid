@@ -618,8 +618,9 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
   assert (transactions[tran_index].txn != nullptr);
 
   assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_INSERT);
-  assert (context->recdes_p != NULL && context->recdes_p->data != NULL);
+  assert (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE
+	  || context->type == HEAP_OPERATION_DELETE);
+  assert (context->type == HEAP_OPERATION_INSERT || context->pk != NULL);
   assert (!OID_ISNULL (&context->class_oid));
 
   const int btid_index = 0;
@@ -660,27 +661,60 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
   assert (num_btids == 1);
   assert (index_attrinfo.last_classrepr->indexes[btid_index].type == BTREE_PRIMARY_KEY);
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, &context->oid, context->recdes_p, &index_attrinfo);
-  if (error_code != NO_ERROR)
+  if (context->type == HEAP_OPERATION_DELETE)
     {
-      assert_release (false);
-    }
+      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
+      key = rocksdb::Slice (key_buf, key_size);
 
-  key_dbvalue =
-    heap_attrvalue_get_key (thread_p, btid_index, &index_attrinfo, context->recdes_p, &btid, &dbvalue, aligned_buf,
-			    NULL, NULL, &context->oid, false);
-  if (key_dbvalue == NULL)
+      printf ("DELETE: key: [%s]\n", db_get_string (context->pk));
+ 
+      status = transactions[tran_index].txn->Delete (key).ok ();
+      assert (status);
+    }
+  else
     {
-      assert_release (false);
+      /* INSERT or UPDATE */
+      assert (context->recdes_p != NULL && context->recdes_p->data != NULL);
+
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &context->oid, context->recdes_p, &index_attrinfo);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	}
+
+      key_dbvalue =
+	heap_attrvalue_get_key (thread_p, btid_index, &index_attrinfo, context->recdes_p, &btid, &dbvalue, aligned_buf,
+				NULL, NULL, &context->oid, false);
+      if (key_dbvalue == NULL)
+	{
+	  assert_release (false);
+	}
+
+      /* TODO: add dup key check */
+
+      if (context->pk && context->type == HEAP_OPERATION_UPDATE)
+	{
+	  printf ("UPDATE: key: [%s] -> [%s]\n", db_get_string (context->pk), db_get_string (key_dbvalue));
+	  if (strcmp (db_get_string (context->pk), db_get_string (key_dbvalue)) != 0)
+	    {
+	      printf ("UPDATE: DELETE key: [%s]\n", db_get_string (context->pk));
+	      /* if PK must be changed, previous key should be deleted (context->pk) */
+	      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
+	      key = rocksdb::Slice (key_buf, key_size);
+
+	      status = transactions[tran_index].txn->Delete (key).ok ();
+	      assert (status);
+	    }
+	}
+
+      /* new from record */
+      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, key_dbvalue, key_size);
+      key = rocksdb::Slice (key_buf, key_size);
+      value = rocksdb::Slice (context->recdes_p->data, context->recdes_p->length);
+
+      status = transactions[tran_index].txn->Put (key, value).ok ();
+      assert (status);
     }
-
-  kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, key_dbvalue, key_size);
-
-  key = rocksdb::Slice (key_buf, key_size);
-  value = rocksdb::Slice (context->recdes_p->data, context->recdes_p->length);
-
-  status = transactions[tran_index].txn->Put (key, value).ok ();
-  assert (status);
 
   heap_attrinfo_end (thread_p, &index_attrinfo);
 

@@ -23263,7 +23263,7 @@ error:
  * overflow, both the relocation and the relocated record are deleted.
  */
 int
-heap_delete_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -23447,25 +23447,6 @@ error:
   return rc;
 }
 
-int
-heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb)
-{
-  assert (context != NULL);
-
-  /* if class is user defined or oid is in the user defined class */
-  if (use_rocksdb)
-    {
-      /* in this scope, rocksdb must works. */
-      assert (cubrocks::ctx->is_alive ());
-      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
-      return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
-    }
-
-  /* general */
-  return heap_delete_logical_internal (thread_p, context);
-}
-
 /*
  * heap_update_logical () - update a record in a heap file
  *   thread_p(in): thread entry
@@ -23473,7 +23454,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
  *   return: error code or NO_ERROR
  */
 int
-heap_update_logical_internal (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
@@ -23705,36 +23686,6 @@ exit:
 #endif /* ENABLE_SYSTEMTAP */
 
   return rc;
-}
-
-int
-heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool use_rocksdb)
-{
-  assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_UPDATE);
-
-  /* if class is user defined or oid is in the user defined class */
-  if (use_rocksdb)
-    {
-      /* in this scope, rocksdb must works. */
-      assert (cubrocks::ctx->is_alive ());
-      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
-      context->is_logical_old = true;
-
-      /* it may be unnecessary. */
-      /*
-         if (heap_update_adjust_recdes_header (thread_p, context, !mvcc_is_mvcc_disabled_class (&context->class_oid)) != NO_ERROR)
-         {
-         assert (false);
-         }
-       */
-
-      return cubrocks::ctx->kv_logical_write (thread_p->tran_index, context);
-    }
-
-  /* general */
-  return heap_update_logical_internal (thread_p, context);
 }
 
 /*

@@ -85,7 +85,7 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 					 int pruning_type, PRUNING_CONTEXT * pcontext,
 					 FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 					 UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor,
-					 bool need_locking, bool use_rocksdb);
+					 bool need_locking, bool use_rocksdb, DB_VALUE *pk_value = NULL);
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint, int lob_create_flag);
@@ -103,7 +103,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID *
 						 const char *btname, bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
-				 bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL);
+				 bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL, DB_VALUE *pk_value = NULL);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
