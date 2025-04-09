@@ -11818,9 +11818,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			  or_init (&pk_buf, pk_ptr, pk_length);
 			  /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			  /* I do not want to use this kind of trick, but... */
-			  if (tp_Char.
-			      data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
-					    0) != NO_ERROR)
+			  if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
+						    0) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
@@ -12661,9 +12660,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			      or_init (&pk_buf, pk_ptr, pk_length);
 			      /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			      /* I do not want to use this kind of trick, but... */
-			      if (tp_Char.
-				  data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
-						0) != NO_ERROR)
+			      if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
+							0) != NO_ERROR)
 				{
 				  GOTO_EXIT_ON_ERROR;
 				}
