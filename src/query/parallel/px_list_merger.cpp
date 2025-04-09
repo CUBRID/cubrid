@@ -64,15 +64,14 @@ namespace parallel_query
 					  PGBUF_UNCONDITIONAL_LATCH);
     assert (head_last_pgptr != NULL);
     QFILE_PUT_NEXT_VPID (head_last_pgptr, &list_id->first_vpid);
-    pgbuf_unfix (m_thread_p, head_last_pgptr);
+    pgbuf_set_dirty (m_thread_p, head_last_pgptr, FREE);
 
     /* list_id first page -> head last page (prev) */
     PAGE_PTR list_id_first_pgptr = pgbuf_fix (m_thread_p, &list_id->first_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 				   PGBUF_UNCONDITIONAL_LATCH);
     assert (list_id_first_pgptr != NULL);
     QFILE_PUT_PREV_VPID (list_id_first_pgptr, &m_head_list_id->last_vpid);
-    pgbuf_unfix (m_thread_p, list_id_first_pgptr);
-
+    pgbuf_set_dirty (m_thread_p, list_id_first_pgptr, FREE);
     /* append list_id to m_head_list_id */
     m_head_list_id->tuple_cnt += list_id->tuple_cnt;
     m_head_list_id->page_cnt += list_id->page_cnt;

@@ -407,6 +407,11 @@ namespace parallel_heap_scan
 	return result;
       }
     general_checker general_checker (map);
+    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	return result;
+      }
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
     result = merge_check_result (result, general_checker.check (spec->where_pred));
