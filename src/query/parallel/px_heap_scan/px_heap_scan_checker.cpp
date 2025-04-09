@@ -593,7 +593,7 @@ namespace parallel_heap_scan
       }
     if (xasl->instnum_pred || xasl->instnum_val)
       {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
+	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
       }
 
     spec_checker spec_checker (map);
