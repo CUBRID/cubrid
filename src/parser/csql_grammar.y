@@ -2959,7 +2959,7 @@ create_stmt
                             // TODO: this breaks CS mode when creating vector index with 'with' clause.
                             // int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
-			    int with_online_ret = 0;
+                            int with_online_ret = 0;
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
 
