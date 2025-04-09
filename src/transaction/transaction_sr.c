@@ -80,7 +80,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   cubrocks::ctx->kv_tran_commit (tran_index);
-  
+
   state = log_commit (thread_p, tran_index, retain_lock);
 
 #if defined(ENABLE_SYSTEMTAP)

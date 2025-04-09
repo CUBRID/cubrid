@@ -153,7 +153,7 @@ cubrocks::context::kv_config (void)
 
   opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
   opt.table.metadata_cache_options.partition_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
-  opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar; 
+  opt.table.metadata_cache_options.unpartitioned_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
 
   opt.cf.table_factory.reset (NewBlockBasedTableFactory (opt.table));
   opt.cf.prefix_extractor.reset (rocksdb::NewFixedPrefixTransform (8));
@@ -178,14 +178,14 @@ cubrocks::context::kv_reserve_void (int tran_index, int count)
 {
   assert (alive);
   assert (tran_index < MAX_NTRANS);
- 
+
   UINT64 vcounter, vcounter_next;
 
   do
-  {
-    vcounter = virtual_counter;
-    vcounter_next = vcounter + count;
-  }
+    {
+      vcounter = virtual_counter;
+      vcounter_next = vcounter + count;
+    }
   while (!ATOMIC_CAS_64 (&virtual_counter, vcounter, vcounter_next));
 
   transactions[tran_index].reserved_count = count;
@@ -200,8 +200,8 @@ cubrocks::context::kv_get_void (int tran_index)
   assert (transactions[tran_index].reserved_count > 0);
 
   OID oid;
- 
-  oid = *((OID *) &transactions[tran_index].reserved_next);
+
+  oid = * ((OID *) &transactions[tran_index].reserved_next);
   transactions[tran_index].reserved_count--;
   transactions[tran_index].reserved_next++;
 
@@ -292,7 +292,7 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
   rocksdb::Slice key (virtual_key, 16);
 
   oid = (context->type == HEAP_OPERATION_INSERT) ? kv_get_void (tran_index) : context->oid;
-  oid_uint64 = *((UINT64 *) &oid);
+  oid_uint64 = * ((UINT64 *) &oid);
 
   /* memory ordering */
   * ((short *) virtual_key) = context->class_oid.volid;
@@ -305,11 +305,11 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
 
       if (context->type == HEAP_OPERATION_INSERT)
 	{
-	* ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
+	  * ((UINT64 *) (virtual_key + 8)) = htobe64 (oid_uint64);
 	}
       else
 	{
-	* ((UINT64 *) (virtual_key + 8)) = oid_uint64;
+	  * ((UINT64 *) (virtual_key + 8)) = oid_uint64;
 	}
 
       status = transactions[tran_index].txn->Put (key, value).ok ();
@@ -322,7 +322,7 @@ cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *con
       /* table drop doesn't actually happen in STORAGE, but it can work logically since    */
       /* heap doesn't reuse slots. and it means that inserted records will still be there. */
       * ((UINT64 *) (virtual_key + 8)) = oid_uint64;
-      
+
       status = transactions[tran_index].txn->Delete (key).ok ();
     }
   assert (status);
@@ -450,7 +450,8 @@ cubrocks::context::kv_logical_scan (int tran_index, OID *class_oid, OID *next_oi
 }
 
 SCAN_CODE
-cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking)
+cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes,
+				    HEAP_SCANCACHE *scan_cache, int ispeeking)
 {
   assert (alive);
   assert (tran_index < MAX_NTRANS);
@@ -467,45 +468,45 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
   rocksdb::Slice key (virtual_key, 16);
 
   if (OID_ISNULL (class_oid))
-  {
-    assert_release (false);
-  }
+    {
+      assert_release (false);
+    }
 
   /* memory ordering */
   * ((short *) virtual_key) = class_oid->volid;
   * ((int *) (virtual_key + 2)) = class_oid->pageid;
   * ((short *) (virtual_key + 6)) = class_oid->slotid;
 
-  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
+  * ((UINT64 *) (virtual_key + 8)) = * ((UINT64 *) oid);
 
   status = transactions[tran_index].txn->GetForUpdate (read_options, key, &transactions[tran_index].pin);
   if (!status.ok ())
-  {
-    if (status.IsNotFound ())
     {
-      /* the object is removed when this thread waits for locking */
-      return S_DOESNT_EXIST;
-    }
+      if (status.IsNotFound ())
+	{
+	  /* the object is removed when this thread waits for locking */
+	  return S_DOESNT_EXIST;
+	}
 
-    /* currently timedout is not set so... */
-    /* abort when status is not ok */
-    std::cout << status.ToString () << std::endl;
-    assert_release (false);
-  }
+      /* currently timedout is not set so... */
+      /* abort when status is not ok */
+      std::cout << status.ToString () << std::endl;
+      assert_release (false);
+    }
 
   recdes->type = REC_HOME;
   recdes->length = transactions[tran_index].pin.length ();
   if (ispeeking == COPY)
-	{
-	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+    {
+      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
 
-	  memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
-	}
+      memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
+    }
   else
-	{
-	  recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
-	  recdes->area_size = recdes->length;
-	}
+    {
+      recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
+      recdes->area_size = recdes->length;
+    }
 
   return S_SUCCESS;
 }
@@ -525,13 +526,14 @@ cubrocks::context::kv_lock_release (int tran_index, OID *class_oid, OID *oid)
   * ((int *) (virtual_key + 2)) = class_oid->pageid;
   * ((short *) (virtual_key + 6)) = class_oid->slotid;
 
-  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
+  * ((UINT64 *) (virtual_key + 8)) = * ((UINT64 *) oid);
 
   transactions[tran_index].txn->UndoGetForUpdate (key);
 }
 
 SCAN_CODE
-cubrocks::context::kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking)
+cubrocks::context::kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
+			   int ispeeking)
 {
   assert (alive);
   assert (tran_index < MAX_NTRANS);
@@ -545,22 +547,23 @@ cubrocks::context::kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *rec
   rocksdb::Slice key (virtual_key, 16);
 
   if (OID_ISNULL (class_oid))
-  {
-    assert_release (false);
-  }
+    {
+      assert_release (false);
+    }
 
   /* memory ordering */
   * ((short *) virtual_key) = class_oid->volid;
   * ((int *) (virtual_key + 2)) = class_oid->pageid;
   * ((short *) (virtual_key + 6)) = class_oid->slotid;
 
-  * ((UINT64 *) (virtual_key + 8)) = *((UINT64 *) oid);
+  * ((UINT64 *) (virtual_key + 8)) = * ((UINT64 *) oid);
 
   return kv_get (tran_index, key, recdes, scan_cache, ispeeking);
 }
 
 SCAN_CODE
-cubrocks::context::kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking)
+cubrocks::context::kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
+			   int ispeeking)
 {
   assert (alive);
   assert (tran_index < MAX_NTRANS);
@@ -573,32 +576,32 @@ cubrocks::context::kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, 
 
   status = transactions[tran_index].txn->Get (read_options, key, &transactions[tran_index].pin);
   if (!status.ok ())
-  {
-    if (status.IsNotFound ())
     {
-      /* the object is removed when this thread waits for locking */
-      return S_DOESNT_EXIST;
-    }
+      if (status.IsNotFound ())
+	{
+	  /* the object is removed when this thread waits for locking */
+	  return S_DOESNT_EXIST;
+	}
 
-    /* currently timedout is not set so... */
-    /* abort when status is not ok */
-    std::cout << status.ToString () << std::endl;
-    assert_release (false);
-  }
+      /* currently timedout is not set so... */
+      /* abort when status is not ok */
+      std::cout << status.ToString () << std::endl;
+      assert_release (false);
+    }
 
   recdes->type = REC_HOME;
   recdes->length = transactions[tran_index].pin.length ();
   if (ispeeking == COPY)
-	{
-	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+    {
+      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
 
-	  memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
-	}
+      memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
+    }
   else
-	{
-	  recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
-	  recdes->area_size = recdes->length;
-	}
+    {
+      recdes->data = const_cast<char *> (transactions[tran_index].pin.data ());
+      recdes->area_size = recdes->length;
+    }
 
   return S_SUCCESS;
 }
@@ -667,7 +670,7 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
       key = rocksdb::Slice (key_buf, key_size);
 
       printf ("DELETE: key: [%s]\n", db_get_string (context->pk));
- 
+
       status = transactions[tran_index].txn->Delete (key).ok ();
       assert (status);
     }
@@ -683,8 +686,8 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 	}
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, btid_index, &index_attrinfo, context->recdes_p, &btid, &dbvalue, aligned_buf,
-				NULL, NULL, &context->oid, false);
+	      heap_attrvalue_get_key (thread_p, btid_index, &index_attrinfo, context->recdes_p, &btid, &dbvalue, aligned_buf,
+				      NULL, NULL, &context->oid, false);
       if (key_dbvalue == NULL)
 	{
 	  assert_release (false);
@@ -728,7 +731,7 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 }
 
 void
-cubrocks::context::kv_resolve_index_key (SCAN_ID * scan_id, int &key_cnt)
+cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt)
 {
   THREAD_ENTRY *thread_p;
   KEY_VAL_RANGE *key_vals;
@@ -773,8 +776,8 @@ cubrocks::context::kv_resolve_index_key (SCAN_ID * scan_id, int &key_cnt)
 	}
 
       ret =
-	scan_regu_key_to_index_key (thread_p, &key_ranges[i], &key_vals[i], iscan_id, bts->btid_int.key_type,
-				    scan_id->vd);
+	      scan_regu_key_to_index_key (thread_p, &key_ranges[i], &key_vals[i], iscan_id, bts->btid_int.key_type,
+					  scan_id->vd);
 
       if (ret != NO_ERROR)
 	{
@@ -816,7 +819,7 @@ cubrocks::context::kv_resolve_index_key (SCAN_ID * scan_id, int &key_cnt)
 }
 
 SCAN_CODE
-cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID * scan_id)
+cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 {
   INDX_SCAN_ID *isidp;
   FILTER_INFO data_filter;
@@ -923,7 +926,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID * scan_id)
 	{
 	  if (iscan_id->multi_range_opt.top_n_items[i] != NULL)
 	    {
-	      pr_clear_value (&(iscan_id->multi_range_opt.top_n_items[i]->index_value));
+	      pr_clear_value (& (iscan_id->multi_range_opt.top_n_items[i]->index_value));
 	      db_private_free_and_init (thread_p, iscan_id->multi_range_opt.top_n_items[i]);
 	    }
 	}
@@ -1072,7 +1075,7 @@ cubrocks::context::kv_open (std::string path)
 
   alive = rocksdb::TransactionDB::Open (opt.db, opt.txndb, path, opt.cf_descriptor, &opt.cf_handles, &db).ok();
   assert (alive);
-  
+
   /* restore the virtual oid */
   kv_restore_void ();
 }
@@ -1101,18 +1104,18 @@ cubrocks::context::kv_close ()
 
   /* release all references */
   for (auto cf_handle : opt.cf_handles)
-  {
+    {
       if (cf_handle->GetName () != rocksdb::kDefaultColumnFamilyName)
-      {
-          db->DropColumnFamily (cf_handle);
-      }
-  }
+	{
+	  db->DropColumnFamily (cf_handle);
+	}
+    }
 
   /* release itself */
   for (auto cf_handle : opt.cf_handles)
-  {
+    {
       db->DestroyColumnFamilyHandle (cf_handle);
-  }
+    }
 
   opt_compact.close_db = true;
   if (!db->WaitForCompact (opt_compact).ok ())
@@ -1165,15 +1168,15 @@ cubrocks::context::kv_restore_void ()
 
   status = db->Get (rocksdb::ReadOptions (), key, &value);
   if (status.ok ())
-  {
-    assert (value.length () == 8);
-    
-    virtual_counter = *((UINT64 *) value.data ());
-  }
+    {
+      assert (value.length () == 8);
+
+      virtual_counter = * ((UINT64 *) value.data ());
+    }
   else
-  {
-    assert (status.IsNotFound ());
-  }
+    {
+      assert (status.IsNotFound ());
+    }
 }
 
 void
@@ -1196,20 +1199,20 @@ cubrocks::context::kv_make_key_with_PK (char *buf, int buf_size, OID *class_oid,
   /* have to care about each memory ordering. */
   switch (pk_type)
     {
-      case DB_TYPE_STRING:
-      case DB_TYPE_CHAR:
-	memcpy (buf + key_size, db_get_string (pk_value), db_get_string_size (pk_value));
-	key_size += db_get_string_size (pk_value);
-	if (key_size >= buf_size)
-	  {
-	    assert_release (false);
-	  }
-	break;
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      memcpy (buf + key_size, db_get_string (pk_value), db_get_string_size (pk_value));
+      key_size += db_get_string_size (pk_value);
+      if (key_size >= buf_size)
+	{
+	  assert_release (false);
+	}
+      break;
 
-      default:
-	/* if you want to handle pk other than above, need to implement that case */
-	assert_release (false);
-	break;
+    default:
+      /* if you want to handle pk other than above, need to implement that case */
+      assert_release (false);
+      break;
     }
 }
 

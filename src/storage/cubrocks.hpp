@@ -100,7 +100,8 @@ namespace cubrocks
       SCAN_CODE kv_logical_scan (int tran_index, OID *class_oid, OID *next_oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
 				 int ispeeking);
 
-      SCAN_CODE kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
+      SCAN_CODE kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
+				 int ispeeking);
       void kv_lock_release (int tran_index, OID *class_oid, OID *oid);
 
       SCAN_CODE kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
@@ -110,7 +111,7 @@ namespace cubrocks
       void kv_make_key_with_PK (char *buf, int buf_size, OID *class_oid, DB_VALUE *pk_value, int &key_size);
 
       int kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONTEXT *context);
-      SCAN_CODE kv_logical_scan_with_PK (int tran_index, SCAN_ID * scan_id);
+      SCAN_CODE kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id);
 
       /* ================================================================== */
       /* basic                                                              */
@@ -139,7 +140,7 @@ namespace cubrocks
 
       UINT64 virtual_counter;
 
-      void kv_resolve_index_key (SCAN_ID * scan_id, int &key_cnt);
+      void kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt);
 
       void kv_store_void ();
       void kv_restore_void ();
