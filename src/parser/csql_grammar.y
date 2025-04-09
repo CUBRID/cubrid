@@ -22843,7 +22843,7 @@ opt_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
-            // SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
