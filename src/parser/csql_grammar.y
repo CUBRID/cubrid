@@ -2944,7 +2944,8 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            node->info.index.deduplicate_level = NULL;
 			    // TODO: node->info.index.hnsw.m = 30;
 			    // TODO: node->info.index.hnsw.ef_con = 100;
 
@@ -2955,8 +2956,10 @@ create_stmt
 
 			    node->info.index.comment = $15;
 
-                            int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
+                            // TODO: this breaks CS mode when creating vector index with 'with' clause.
+                            // int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
+			    int with_online_ret = 0;
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
 
@@ -22840,7 +22843,7 @@ opt_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
-            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            // SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
@@ -22852,7 +22855,7 @@ opt_vector_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
-            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            // SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
         | WITH '(' vector_index_with_item_list ')'
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
