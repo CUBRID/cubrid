@@ -4132,7 +4132,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_int (ptr, &use_rocksdb);
 
   return_btid =
-    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos, use_rocksdb);
+    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos,
+		      use_rocksdb);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);

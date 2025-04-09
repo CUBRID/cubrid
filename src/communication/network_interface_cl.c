@@ -6197,7 +6197,9 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos, use_rocksdb);
+  btid =
+    xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos,
+		      use_rocksdb);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);

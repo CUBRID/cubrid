@@ -409,7 +409,8 @@ static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * 
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK * composite_lock, int upd_del_cls_cnt, OID * default_cls_oid);
 static QPROC_TPLDESCR_STATUS qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-							      VALPTR_LIST * outptr_list, VAL_DESCR * vd, OID *class_oid = NULL);
+							      VALPTR_LIST * outptr_list, VAL_DESCR * vd,
+							      OID * class_oid = NULL);
 static int qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				    QFILE_TUPLE_RECORD * tplrec);
@@ -973,7 +974,7 @@ exit_on_error:
  */
 static QPROC_TPLDESCR_STATUS
 qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, VALPTR_LIST * outptr_list,
-				 VAL_DESCR * vd, OID *class_oid)
+				 VAL_DESCR * vd, OID * class_oid)
 {
   QPROC_TPLDESCR_STATUS status;
   size_t size;
@@ -1230,13 +1231,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
 
       if (xasl->curr_spec && !OID_ISNULL (&xasl->curr_spec->s.cls_node.cls_oid))
-      {
-        tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd, &xasl->curr_spec->s.cls_node.cls_oid);
-      }
+	{
+	  tpldescr_status =
+	    qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd,
+					     &xasl->curr_spec->s.cls_node.cls_oid);
+	}
       else
-      {
-        tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
-      }
+	{
+	  tpldescr_status =
+	    qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
+	}
 
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
@@ -1248,14 +1252,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       /* but, just add new block to qfile after all the step to create regulator are completed. */
       if (!OID_ISNULL (&xasl->curr_spec->s.cls_node.cls_oid))
 	{
-	  num_found = heap_attrinfo_start_with_index (thread_p, &xasl->curr_spec->s.cls_node.cls_oid, NULL, &index_attrinfo, &idx_info, false);
+	  num_found =
+	    heap_attrinfo_start_with_index (thread_p, &xasl->curr_spec->s.cls_node.cls_oid, NULL, &index_attrinfo,
+					    &idx_info, false);
 
 	  if (XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB) && num_found == 1 && idx_info.num_btids == 1 &&
-	       index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY &&
-	       xasl->curr_spec->s_id.mvcc_select_lock_needed)
+	      index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY &&
+	      xasl->curr_spec->s_id.mvcc_select_lock_needed)
 	    {
 	      tuple_desc_p = &xasl->list_id->tpl_descr;
-	      
+
 	      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = &xasl->curr_spec->s_id.s.isid.pk_val;
 	      if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 		{
@@ -11557,7 +11563,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
   is_PK_based = false;
- 
+
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -11660,7 +11666,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     {
       GOTO_EXIT_ON_ERROR;
     }
-  
+
   scan_open = true;
 
   tuple_cnt = 1;
@@ -11797,17 +11803,24 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 	      if (read_rocksdb)
 		{
-		  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
-		  if (num_found == 1 && idx_info.num_btids == 1 && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+		  num_found =
+		    heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+		  if (num_found == 1 && idx_info.num_btids == 1
+		      && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
 		    {
-		      for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL; regu_idx++, regup = regup->next);
+		      for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL;
+			   regu_idx++, regup = regup->next);
 
-		      if (qfile_locate_tuple_value_r (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr, &pk_length) == V_BOUND)
+		      if (qfile_locate_tuple_value_r
+			  (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr,
+			   &pk_length) == V_BOUND)
 			{
 			  or_init (&pk_buf, pk_ptr, pk_length);
 			  /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			  /* I do not want to use this kind of trick, but... */
-			  if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
+			  if (tp_Char.
+			      data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
+					    0) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
@@ -12633,17 +12646,24 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 		  if (read_rocksdb)
 		    {
-		      num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
-		      if (num_found == 1 && idx_info.num_btids == 1 && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+		      num_found =
+			heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+		      if (num_found == 1 && idx_info.num_btids == 1
+			  && index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
 			{
-			  for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL; regu_idx++, regup = regup->next);
+			  for (regu_idx = 0, regup = s_id->s.llsid.scan_pred.regu_list; regup != NULL;
+			       regu_idx++, regup = regup->next);
 
-			  if (qfile_locate_tuple_value_r (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr, &pk_length) == V_BOUND)
+			  if (qfile_locate_tuple_value_r
+			      (s_id->s.llsid.lsid.curr_tpl + QFILE_TUPLE_LENGTH_SIZE, regu_idx, &pk_ptr,
+			       &pk_length) == V_BOUND)
 			    {
 			      or_init (&pk_buf, pk_ptr, pk_length);
 			      /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			      /* I do not want to use this kind of trick, but... */
-			      if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL, 0) != NO_ERROR)
+			      if (tp_Char.
+				  data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
+						0) != NO_ERROR)
 				{
 				  GOTO_EXIT_ON_ERROR;
 				}
@@ -12777,23 +12797,25 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		}
 	      force_count = 0;
-        if (xasl->proc.delete_.classes && xasl->proc.delete_.classes->class_oid)
-        {
-          attr_info.class_oid = *xasl->proc.delete_.classes->class_oid;
-          error =
-            locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0, LC_FLUSH_DELETE,
-                  op_type, internal_class->scan_cache, &force_count, false,
-                  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb, is_PK_based ? &internal_class->pk : NULL);
-        }
-        else
-        {
-          error =
-            locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0, LC_FLUSH_DELETE,
-                  op_type, internal_class->scan_cache, &force_count, false,
-                  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-                  &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking, use_rocksdb);
-        }
+	      if (xasl->proc.delete_.classes && xasl->proc.delete_.classes->class_oid)
+		{
+		  attr_info.class_oid = *xasl->proc.delete_.classes->class_oid;
+		  error =
+		    locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0,
+						  LC_FLUSH_DELETE, op_type, internal_class->scan_cache, &force_count,
+						  false, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL,
+						  NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking,
+						  use_rocksdb, is_PK_based ? &internal_class->pk : NULL);
+		}
+	      else
+		{
+		  error =
+		    locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &attr_info, NULL, 0,
+						  LC_FLUSH_DELETE, op_type, internal_class->scan_cache, &force_count,
+						  false, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL,
+						  NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, need_locking,
+						  use_rocksdb);
+		}
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -13674,7 +13696,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   error =
     locator_attribute_info_force (thread_p, hfid, &unique_oid, attr_info, odku->attr_ids, odku->num_assigns,
 				  LC_FLUSH_UPDATE, local_op_type, local_scan_cache, force_count, false, repl_info,
-				  pruning_type, pcontext, NULL, NULL, UPDATE_INPLACE_NONE, &rec_descriptor, false, false);
+				  pruning_type, pcontext, NULL, NULL, UPDATE_INPLACE_NONE, &rec_descriptor, false,
+				  false);
   if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
     {
       er_clear ();
@@ -13838,14 +13861,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
    * example, one row insert might update one heap record, zero or more index keys, catalog info of object count, and
    * other things. So, the insert statement must be performed atomically. */
   if (!use_rocksdb)
-  {
-    if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
-      {
-        qexec_failure_line (__LINE__, xasl_state);
-        return ER_FAILED;
-      }
-    savepoint_used = 1;
-  }
+    {
+      if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+      savepoint_used = 1;
+    }
 
   (void) session_begin_insert_values (thread_p);
 
@@ -14184,11 +14207,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
 	{
 	  s_id = &xasl->curr_spec->s_id;
-    if (use_rocksdb)
-    {
-      /* reserve virtual oids for insert */
-      cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), s_id->s.llsid.list_id->tuple_cnt);
-    }
+	  if (use_rocksdb)
+	    {
+	      /* reserve virtual oids for insert */
+	      cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), s_id->s.llsid.list_id->tuple_cnt);
+	    }
 	  while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	    {
 	      for (k = num_default_expr, vallist = s_id->val_list->valp; k < val_no; k++, vallist = vallist->next)
@@ -14295,7 +14318,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      if (locator_attribute_info_force (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation,
 						scan_cache_op_type, &scan_cache, &force_count, false,
 						REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext,
-						func_indx_preds, NULL, UPDATE_INPLACE_NONE, NULL, false, use_rocksdb) != NO_ERROR)
+						func_indx_preds, NULL, UPDATE_INPLACE_NONE, NULL, false,
+						use_rocksdb) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -14357,11 +14381,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-    if (use_rocksdb)
-  {
-    /* reserve virtual oids for insert */
-    cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), insert->num_val_lists);
-  }
+      if (use_rocksdb)
+	{
+	  /* reserve virtual oids for insert */
+	  cubrocks::ctx->kv_reserve_void (LOG_FIND_THREAD_TRAN_INDEX (thread_p), insert->num_val_lists);
+	}
 
       for (i = 0; i < insert->num_val_lists; i++)
 	{

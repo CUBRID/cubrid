@@ -199,13 +199,13 @@ static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * d
 static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							      VAL_DESCR * val_desc_p, OID *class_oid = NULL);
+							      VAL_DESCR * val_desc_p, OID * class_oid = NULL);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					    OID * obj_oid_p, QFILE_TUPLE tuple);
 static int qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					OID * obj_oid_p, QFILE_TUPLE tuple, OID *class_oid);
+					OID * obj_oid_p, QFILE_TUPLE tuple, OID * class_oid);
 
 static int qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 				       VAL_DESCR * val_desc_p);
@@ -538,7 +538,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
  */
 QPROC_TPLDESCR_STATUS
 qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p, OID *class_oid)
+					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p,
+					   OID * class_oid)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i;
@@ -6477,7 +6478,7 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
-					     VAL_DESCR * val_desc_p, OID *class_oid)
+					     VAL_DESCR * val_desc_p, OID * class_oid)
 {
   DB_VALUE *peek_value_p;
   DB_TYPE dom_type, val_type;
@@ -6706,7 +6707,7 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
  */
 static int
 qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-			     OID * obj_oid_p, QFILE_TUPLE tuple, OID *cls_oid)
+			     OID * obj_oid_p, QFILE_TUPLE tuple, OID * cls_oid)
 {
   OID class_oid;
   OID *instance_oid_p;
@@ -6744,20 +6745,20 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
     }
 
   if (cls_oid == NULL)
-  {
-    instance_oid_p = db_get_oid (val_p);
-    err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
-    if (err != S_SUCCESS)
-      {
-        ASSERT_ERROR_AND_SET (err);
-        return err;
-      }
-    db_make_oid (function_p->value, &class_oid);
-  }
+    {
+      instance_oid_p = db_get_oid (val_p);
+      err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
+      if (err != S_SUCCESS)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  return err;
+	}
+      db_make_oid (function_p->value, &class_oid);
+    }
   else
-  {
-    db_make_oid (function_p->value, cls_oid);
-  }
+    {
+      db_make_oid (function_p->value, cls_oid);
+    }
 
   return NO_ERROR;
 }
@@ -6774,7 +6775,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
  */
 int
 qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_p, val_descr * val_desc_p,
-			 OID * obj_oid_p, QFILE_TUPLE tuple, OID *class_oid)
+			 OID * obj_oid_p, QFILE_TUPLE tuple, OID * class_oid)
 {
   FUNCTION_TYPE *funcp;
 

@@ -9002,7 +9002,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_COMMENT:
 	      tbl_opt_comment = tbl_opt;
 	      break;
-      case PT_TABLE_OPTION_ROCKSDB:
+	    case PT_TABLE_OPTION_ROCKSDB:
 	      use_rocksdb = true;
 	      break;
 	    default:
@@ -9218,7 +9218,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-    if (use_rocksdb)
+      if (use_rocksdb)
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ROCKSDB, 1);
 	  if (error == NO_ERROR)

@@ -18739,10 +18739,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  XASL_SET_FLAG (xasl, XASL_RETURN_GENERATED_KEYS);
 	}
 
-     if (sm_is_rocksdb_class (class_obj))
-  {
+      if (sm_is_rocksdb_class (class_obj))
+	{
 	  XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
-  }
+	}
 
       insert = &xasl->proc.insert;
       insert->class_hfid = *hfid;
@@ -20591,10 +20591,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      goto error_return;
 	    }
 
-    if (sm_is_rocksdb_class (class_obj))
-    {
-      XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
-    }
+	  if (sm_is_rocksdb_class (class_obj))
+	    {
+	      XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+	    }
 
 	  num_subclasses = 0;
 	  while (cl_name_node)
@@ -21331,9 +21331,9 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	}
 
       if (sm_is_rocksdb_class (class_obj))
-  {
+	{
 	  XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
-  }
+	}
 
       upd_cls->has_uniques = (p->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
 
@@ -22130,16 +22130,16 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->class_locks = NULL;
       xasl->tcard_list = NULL;
       XASL_CLEAR_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
-      
+
       if (node->info.query.q.select.from->info.spec.flat_entity_list)
-      {
-        /* this scope is executed when the scanning target is an actual class, not a temporary class. */
-        class_obj = node->info.query.q.select.from->info.spec.flat_entity_list->info.name.db_object;
-        if (class_obj && sm_is_rocksdb_class (class_obj))
-        {
-          XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
-        }
-      }
+	{
+	  /* this scope is executed when the scanning target is an actual class, not a temporary class. */
+	  class_obj = node->info.query.q.select.from->info.spec.flat_entity_list->info.name.db_object;
+	  if (class_obj && sm_is_rocksdb_class (class_obj))
+	    {
+	      XASL_SET_FLAG (xasl, XASL_USES_ROCKSDB);
+	    }
+	}
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))

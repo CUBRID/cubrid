@@ -62,7 +62,7 @@ extern int qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list
 					    qfile_tuple_record * tplrec);
 extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p,
 									valptr_list_node * valptr_list, val_descr * vd,
-									qfile_tuple_descriptor * tdp, OID *class_oid);
+									qfile_tuple_descriptor * tdp, OID * class_oid);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
@@ -81,7 +81,7 @@ extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_l
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
 				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
-				    QFILE_TUPLE tpl, OID *class_oid);
+				    QFILE_TUPLE tpl, OID * class_oid);
 
 
 #if defined (ENABLE_UNUSED_FUNCTION)

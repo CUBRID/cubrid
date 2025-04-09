@@ -298,16 +298,6 @@ namespace cubthread
       int m_qlist_count;
       int read_ovfl_pages_count; // For Vacuum only.
 
-      struct
-      {
-        UINT64 cub_insert;
-        UINT64 cub_select;
-        UINT64 cub_commit;
-        UINT64 rocks_insert;
-        UINT64 rocks_select;
-        UINT64 rocks_commit;
-      } statistics;
-
       cubload::driver *m_loaddb_driver;
 
       thread_id_t get_id ();

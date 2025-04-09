@@ -183,7 +183,8 @@ static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * s
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb, QP_SCAN_FUNC next_scan);
+static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb,
+					  QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
 static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
 static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
@@ -5286,7 +5287,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
 		}
 	      else
 		{
-		 assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
+		  assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
 		  sp_scan =
 		    heap_next_record_info (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
 					   &hsidp->scan_cache, is_peeking, hsidp->cache_recordinfo);
@@ -5392,54 +5393,59 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
 	      recdes.data = NULL;
 	    }
 
-    if (use_rocksdb)
-    {
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      sp_scan = cubrocks::ctx->kv_lock_and_get (tran_index, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache, is_peeking);
-      if (sp_scan == S_DOESNT_EXIST)
-        {
-          continue;
-        }
-      if (sp_scan != S_SUCCESS)
-        {
-          return S_ERROR;
-        }
+	  if (use_rocksdb)
+	    {
+	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	      sp_scan =
+		cubrocks::ctx->kv_lock_and_get (tran_index, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+						&hsidp->scan_cache, is_peeking);
+	      if (sp_scan == S_DOESNT_EXIST)
+		{
+		  continue;
+		}
+	      if (sp_scan != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
 
-      ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, &hsidp->scan_cache, &mvcc_reev_data, &dummy, &hsidp->curr_oid, &recdes);
-      if (ev_res != V_TRUE)
-      {
-        cubrocks::ctx->kv_lock_release (tran_index, &hsidp->cls_oid, &hsidp->curr_oid);
-        if (ev_res == V_ERROR)
-        {
-           return S_ERROR;
-        }
-        continue;
-      }
-      if (mvcc_reev_data.filter_result == V_FALSE)
-      {
-        continue;
-      }
-    }
-    else
-    {
-      /* get with lock and reevaluate if the visible version wasn't the latest version */
-      sp_scan =
-        locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
-                 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
-      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
-        {
-          continue;
-        }
-      else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
-        {
-          er_clear ();
-          continue;
-        }
-      else if (sp_scan != S_SUCCESS)
-        {
-          return S_ERROR;
-        }
-    }
+	      ev_res =
+		locator_mvcc_reev_cond_and_assignment (thread_p, &hsidp->scan_cache, &mvcc_reev_data, &dummy,
+						       &hsidp->curr_oid, &recdes);
+	      if (ev_res != V_TRUE)
+		{
+		  cubrocks::ctx->kv_lock_release (tran_index, &hsidp->cls_oid, &hsidp->curr_oid);
+		  if (ev_res == V_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  continue;
+		}
+	      if (mvcc_reev_data.filter_result == V_FALSE)
+		{
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      /* get with lock and reevaluate if the visible version wasn't the latest version */
+	      sp_scan =
+		locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
+							     is_peeking, NULL_CHN, &mvcc_reev_data,
+							     LOG_WARNING_IF_DELETED);
+	      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
+		{
+		  continue;
+		}
+	      else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
+		{
+		  er_clear ();
+		  continue;
+		}
+	      else if (sp_scan != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	    }
 	}
 
       if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))

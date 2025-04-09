@@ -8449,7 +8449,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	  }
 	  break;
-  case PT_TABLE_OPTION_ROCKSDB:
+	case PT_TABLE_OPTION_ROCKSDB:
 	  {
 	    if (found_tbl_rocksdb)
 	      {
@@ -8485,7 +8485,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-if (found_tbl_rocksdb && entity_type == PT_CLASS)
+  if (found_tbl_rocksdb && entity_type == PT_CLASS)
     {
       PT_NODE *tmp;
 

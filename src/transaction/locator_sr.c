@@ -159,7 +159,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking, bool use_rocksdb = false, DB_VALUE *pk_value = NULL);
+				 bool need_locking, bool use_rocksdb = false, DB_VALUE * pk_value = NULL);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
@@ -171,7 +171,8 @@ static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid
 static int locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 					  HEAP_SCANCACHE * scan_cache, int *force_count,
 					  MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_INDEX_ACTION_FLAG idx_action_flag,
-					  OID * new_obj_oid, OID * partition_oid, bool need_locking, bool use_rocksdb = false, OID *class_oid = NULL, DB_VALUE *pk_value = NULL);
+					  OID * new_obj_oid, OID * partition_oid, bool need_locking, bool use_rocksdb =
+					  false, OID * class_oid = NULL, DB_VALUE * pk_value = NULL);
 static int locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5418,7 +5419,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool use_rocksdb, DB_VALUE *pk_value)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool use_rocksdb, DB_VALUE * pk_value)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -5745,11 +5746,15 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  if (use_rocksdb)
 		    {
 		      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-		      scan = cubrocks::ctx->kv_lock_and_get (tran_index, class_oid, oid, &copy_recdes, local_scan_cache, COPY);
+		      scan =
+			cubrocks::ctx->kv_lock_and_get (tran_index, class_oid, oid, &copy_recdes, local_scan_cache,
+							COPY);
 		      if (scan == S_SUCCESS)
 			{
-			    DB_LOGICAL ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, local_scan_cache, mvcc_reev_data, &dummy, oid, &copy_recdes);
-			    if (ev_res != V_TRUE)
+			  DB_LOGICAL ev_res =
+			    locator_mvcc_reev_cond_and_assignment (thread_p, local_scan_cache, mvcc_reev_data, &dummy,
+								   oid, &copy_recdes);
+			  if (ev_res != V_TRUE)
 			    {
 			      cubrocks::ctx->kv_lock_release (tran_index, class_oid, oid);
 			    }
@@ -5757,9 +5762,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    }
 		  else
 		    {
-			scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
-								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED);
+		      scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
+									  local_scan_cache, COPY, NULL_CHN,
+									  mvcc_reev_data, LOG_ERROR_IF_DELETED);
 		    }
 		}
 	      else if (use_rocksdb)
@@ -6078,7 +6083,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      update_context.pk = pk_value;
 	    }
 
-	  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context) == NO_ERROR)
+	  if (pk_value != NULL
+	      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context) == NO_ERROR)
 	    {
 	      /* success */
 	      error_code = NO_ERROR;
@@ -6180,10 +6186,12 @@ error:
  */
 int
 locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
-		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking, bool use_rocksdb, OID *class_oid, DB_VALUE *pk_value)
+		      HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
+		      bool use_rocksdb, OID * class_oid, DB_VALUE * pk_value)
 {
   return locator_delete_force_internal (thread_p, hfid, oid, has_index, op_type, scan_cache, force_count,
-					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking, use_rocksdb, class_oid, pk_value);
+					mvcc_reev_data, FOR_INSERT_OR_DELETE, NULL, NULL, need_locking, use_rocksdb,
+					class_oid, pk_value);
 }
 
 /*
@@ -6238,7 +6246,7 @@ static int
 locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 			       HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
 			       LOCATOR_INDEX_ACTION_FLAG idx_action_flag, OID * new_obj_oid, OID * partition_oid,
-			       bool need_locking, bool use_rocksdb, OID *cls_oid, DB_VALUE *pk_value)
+			       bool need_locking, bool use_rocksdb, OID * cls_oid, DB_VALUE * pk_value)
 {
   bool isold_object;		/* Make sure that this is an old object during the deletion */
   OID class_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -6281,72 +6289,72 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
     }
 
   if (!use_rocksdb)
-  {
-    /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
-       not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
-    scan_code =
-      locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-               mvcc_reev_data, LOG_WARNING_IF_DELETED);
+    {
+      /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
+         not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
+      scan_code =
+	locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY,
+						     NULL_CHN, mvcc_reev_data, LOG_WARNING_IF_DELETED);
 
-    if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
-      {
-        return ER_MVCC_NOT_SATISFIED_REEVALUATION;
-      }
+      if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
+	{
+	  return ER_MVCC_NOT_SATISFIED_REEVALUATION;
+	}
 
-    if (scan_code != S_SUCCESS)
-      {
-        error_code = er_errid ();
+      if (scan_code != S_SUCCESS)
+	{
+	  error_code = er_errid ();
 
-        if (error_code == ER_HEAP_NODATA_NEWADDRESS)
-      {
-        isold_object = false;
-        er_clear ();		/* clear ER_HEAP_NODATA_NEWADDRESS */
+	  if (error_code == ER_HEAP_NODATA_NEWADDRESS)
+	    {
+	      isold_object = false;
+	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 
-        error_code = NO_ERROR;
-      }
-        else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
-      {
-        isold_object = false;
-        er_clear ();
+	      error_code = NO_ERROR;
+	    }
+	  else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
+	    {
+	      isold_object = false;
+	      er_clear ();
 
-        error_code = NO_ERROR;
-        goto error;
-      }
-        else
-      {
-        /*
-         * Problems reading the object...Maybe, the transaction should be
-         * aborted by the caller...Quit..
-         */
-        if (error_code == NO_ERROR)
-          {
-            error_code = ER_FAILED;
-          }
-        goto error;
-      }
+	      error_code = NO_ERROR;
+	      goto error;
+	    }
+	  else
+	    {
+	      /*
+	       * Problems reading the object...Maybe, the transaction should be
+	       * aborted by the caller...Quit..
+	       */
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+	      goto error;
+	    }
+	}
     }
-  }
   else if (need_locking)
-  {
-    tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    scan_code = cubrocks::ctx->kv_lock_and_get (tran_index, &class_oid, oid, &copy_recdes, scan_cache, COPY);
+    {
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      scan_code = cubrocks::ctx->kv_lock_and_get (tran_index, &class_oid, oid, &copy_recdes, scan_cache, COPY);
 
-    if (scan_code == S_DOESNT_EXIST || scan_code != S_SUCCESS)
-    {
-      return ER_FAILED;
-    }
+      if (scan_code == S_DOESNT_EXIST || scan_code != S_SUCCESS)
+	{
+	  return ER_FAILED;
+	}
 
-    ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &dummy, oid, &copy_recdes);
-    if (ev_res != V_TRUE)
-    {
-      cubrocks::ctx->kv_lock_release (tran_index, &class_oid, oid);
-      return ER_FAILED;
+      ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &dummy, oid, &copy_recdes);
+      if (ev_res != V_TRUE)
+	{
+	  cubrocks::ctx->kv_lock_release (tran_index, &class_oid, oid);
+	  return ER_FAILED;
+	}
+      if (mvcc_reev_data->filter_result == V_FALSE)
+	{
+	  return ER_FAILED;
+	}
     }
-    if (mvcc_reev_data->filter_result == V_FALSE)
-    {
-      return ER_FAILED;
-    }
-  }
 
   if (isold_object == false)
     {
@@ -6435,7 +6443,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		      delete_context.pk = pk_value;
 		    }
 
-		  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+		  if (pk_value != NULL
+		      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
 		    {
 		      /* success */
 		    }
@@ -6472,8 +6481,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      if (idx_action_flag == FOR_INSERT_OR_DELETE)
 		{
 		  error_code =
-		    locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache, true,
-						 true, hfid, NULL, false, false);
+		    locator_add_or_remove_index (thread_p, &copy_recdes, oid, &class_oid, false, op_type, scan_cache,
+						 true, true, hfid, NULL, false, false);
 		}
 	      else
 		{
@@ -6549,7 +6558,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      delete_context.pk = pk_value;
 	    }
 
-	  if (pk_value != NULL && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+	  if (pk_value != NULL
+	      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
 	    {
 	      /* success */
 	    }
@@ -7615,7 +7625,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 			      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 			      REPL_INFO_TYPE repl_info, int pruning_type, PRUNING_CONTEXT * pcontext,
 			      FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
-			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking, bool use_rocksdb, DB_VALUE *pk_value)
+			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking,
+			      bool use_rocksdb, DB_VALUE * pk_value)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
@@ -7697,22 +7708,22 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	  else
 	    {
-	    /* The oid has been already locked in select phase, however need to get the last object that may differ by
-	     * the current one in case that transaction updates same OID many times during command execution */
-	    /* TODO: investigate if this is still true */
-	    if (scan_cache && scan_cache->mvcc_snapshot != NULL)
-	      {
-		/* Why is snapshot set to NULL? */
-		saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
-		scan_cache->mvcc_snapshot = NULL;
-	      }
+	      /* The oid has been already locked in select phase, however need to get the last object that may differ by
+	       * the current one in case that transaction updates same OID many times during command execution */
+	      /* TODO: investigate if this is still true */
+	      if (scan_cache && scan_cache->mvcc_snapshot != NULL)
+		{
+		  /* Why is snapshot set to NULL? */
+		  saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
+		  scan_cache->mvcc_snapshot = NULL;
+		}
 
-	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-						NULL_CHN, LOG_ERROR_IF_DELETED);
-	    if (saved_mvcc_snapshot != NULL)
-	      {
-		scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
-	      }
+	      scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
+						  NULL_CHN, LOG_ERROR_IF_DELETED);
+	      if (saved_mvcc_snapshot != NULL)
+		{
+		  scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
+		}
 	    }
 	}
 
@@ -7788,7 +7799,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  error_code =
 	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
 				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
-				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking, use_rocksdb, pk_value);
+				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking,
+				  use_rocksdb, pk_value);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
