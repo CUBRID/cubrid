@@ -24,6 +24,8 @@
 
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include <set>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -484,6 +486,16 @@ namespace parallel_heap_scan
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
 	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	  }
+	if (xasl->proc.buildlist.g_agg_list)
+	  {
+	    for (AGGREGATE_TYPE *aggp = xasl->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
+	      {
+		if (QPROC_IS_INTERPOLATION_FUNC (aggp) || aggp->function == PT_CUME_DIST || aggp->function == PT_PERCENT_RANK)
+		  {
+		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+		  }
+	      }
 	  }
 	break;
       case BUILDVALUE_PROC:
