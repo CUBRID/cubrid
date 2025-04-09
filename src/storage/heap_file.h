@@ -163,6 +163,8 @@ struct heap_scancache
 						 * in the scan */
 
     rocksdb::Iterator* kv_iter;
+    rocksdb::Slice kv_lower;
+    rocksdb::Slice kv_upper;
 
     void start_area ();
     void end_area ();

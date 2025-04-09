@@ -336,18 +336,67 @@ void
 cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
 {
   assert (alive);
-
   assert (scan_cache != NULL);
 
   /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
   /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
   rocksdb::ReadOptions readopt;
 
+  /* read committed */
+  readopt.tailing = true;
+
   readopt.prefix_same_as_start = true;
   readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
-//  readopt.rate_limiter_priority = rocksdb::Env::IOPriority::IO_HIGH;
 
-//  readopt.pin_data = true;
+//  readopt.fill_cache = false;
+  readopt.async_io = true;
+  readopt.readahead_size = 2 * 1024 * 1024;
+
+  readopt.background_purge_on_iterator_cleanup = true;
+
+  scan_cache->kv_iter = db->NewIterator (readopt);
+  assert (scan_cache->kv_iter != nullptr);
+}
+
+void
+cubrocks::context::kv_scan_start_with_bound (HEAP_SCANCACHE *scan_cache, OID *class_oid, DB_VALUE *lower,
+    DB_VALUE *upper)
+{
+  assert (alive);
+  assert (scan_cache != NULL);
+
+  /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
+  /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
+  rocksdb::ReadOptions readopt;
+  char *key_buf;
+  int key_size;
+  int dummy;
+
+  if (lower != NULL)
+    {
+      key_size = kv_get_key_size (lower);
+      key_buf = (char *) malloc (key_size * sizeof (char));
+      kv_make_key_with_PK (key_buf, key_size, class_oid, lower, dummy);
+
+      scan_cache->kv_lower = rocksdb::Slice (key_buf, key_size);
+      readopt.iterate_lower_bound = &scan_cache->kv_lower;
+    }
+  if (upper != NULL)
+    {
+      key_size = kv_get_key_size (upper);
+      key_buf = (char *) malloc (key_size * sizeof (char));
+      kv_make_key_with_PK (key_buf, key_size, class_oid, upper, dummy);
+
+      scan_cache->kv_upper = rocksdb::Slice (key_buf, key_size);
+      readopt.iterate_upper_bound = &scan_cache->kv_upper;
+    }
+
+  /* read committed */
+  readopt.tailing = true;
+
+  readopt.prefix_same_as_start = true;
+  readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
+
 //  readopt.fill_cache = false;
   readopt.async_io = true;
   readopt.readahead_size = 2 * 1024 * 1024;
@@ -367,8 +416,16 @@ cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
   assert (scan_cache->kv_iter != nullptr);
 
   delete scan_cache->kv_iter;
-
   scan_cache->kv_iter = nullptr;
+
+  if (!scan_cache->kv_lower.empty ())
+    {
+      free ((void *) scan_cache->kv_lower.data ());
+    }
+  if (!scan_cache->kv_upper.empty ())
+    {
+      free ((void *) scan_cache->kv_upper.data ());
+    }
 }
 
 SCAN_CODE
@@ -669,8 +726,6 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
       kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
       key = rocksdb::Slice (key_buf, key_size);
 
-      printf ("DELETE: key: [%s]\n", db_get_string (context->pk));
-
       status = transactions[tran_index].txn->Delete (key).ok ();
       assert (status);
     }
@@ -697,10 +752,8 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 
       if (context->pk && context->type == HEAP_OPERATION_UPDATE)
 	{
-	  printf ("UPDATE: key: [%s] -> [%s]\n", db_get_string (context->pk), db_get_string (key_dbvalue));
 	  if (strcmp (db_get_string (context->pk), db_get_string (key_dbvalue)) != 0)
 	    {
-	      printf ("UPDATE: DELETE key: [%s]\n", db_get_string (context->pk));
 	      /* if PK must be changed, previous key should be deleted (context->pk) */
 	      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
 	      key = rocksdb::Slice (key_buf, key_size);
@@ -730,8 +783,8 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
   return NO_ERROR;
 }
 
-void
-cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt)
+int
+cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id)
 {
   THREAD_ENTRY *thread_p;
   KEY_VAL_RANGE *key_vals;
@@ -739,19 +792,16 @@ cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt)
   INDX_SCAN_ID *iscan_id;
   indx_info *indx_infop;
   BTREE_SCAN *bts;
-  int ret = NO_ERROR;
+  int error_code;
+  int key_cnt;
   int i;
 
   thread_p = thread_get_thread_entry_info ();
 
-  /* pointer to INDX_SCAN_ID structure */
   iscan_id = &scan_id->s.isid;
-
-  /* pointer to indx_info in INDX_SCAN_ID structure */
   indx_infop = iscan_id->indx_info;
-
-  /* pointer to index scan info. structure */
   bts = &iscan_id->bt_scan;
+  key_cnt = indx_infop->key_info.key_cnt;
 
   /* key values */
   key_vals = scan_id->s.isid.key_vals;
@@ -775,11 +825,11 @@ cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt)
 	  continue;
 	}
 
-      ret =
+      error_code =
 	      scan_regu_key_to_index_key (thread_p, &key_ranges[i], &key_vals[i], iscan_id, bts->btid_int.key_type,
 					  scan_id->vd);
 
-      if (ret != NO_ERROR)
+      if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
 	}
@@ -815,29 +865,148 @@ cubrocks::context::kv_resolve_index_key (SCAN_ID *scan_id, int &key_cnt)
       assert_release (false);
     }
 
-  iscan_id->curr_keyno = 0;
+  return key_cnt;
+}
+
+int
+cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
+{
+  INDX_SCAN_ID *isidp;
+  indx_info *indx_infop;
+  KEY_VAL_RANGE *key_vals;
+  RANGE range;
+  int i;
+
+  isidp = &scan_id->s.isid;
+  indx_infop = isidp->indx_info;
+  key_vals = isidp->key_vals;
+
+  for (i = 0; i < isidp->key_cnt; i++)
+    {
+      switch (indx_infop->range_type)
+	{
+	case R_KEY:
+	  range = key_vals[0].range;
+	  if (range == NA_NA)
+	    {
+	      isidp->curr_keyno = isidp->key_cnt;
+	      continue;
+	    }
+	  if (isidp->key_cnt != 1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      return ER_FAILED;
+	    }
+	  break;
+
+	case R_KEYLIST:
+	  range = key_vals[i].range;
+	  if (range == NA_NA)
+	    {
+	      isidp->curr_keyno = isidp->key_cnt;
+	      continue;
+	    }
+	  break;
+
+	case R_RANGE:
+	  range = key_vals[0].range;
+
+	  if (range == NA_NA || range == INF_INF)
+	    {
+	      isidp->curr_keyno = isidp->key_cnt;
+	      continue;
+	    }
+	  if (isidp->key_cnt != 1 || range < GE_LE || range > INF_INF)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      return ER_FAILED;
+	    }
+	  if (range >= GE_INF && range <= GT_INF)
+	    {
+	      pr_clear_value (&key_vals[0].key2);
+	      PRIM_SET_NULL (&key_vals[0].key2);
+	    }
+	  if (range >= INF_LE && range <= INF_LT)
+	    {
+	      pr_clear_value (&key_vals[0].key1);
+	      PRIM_SET_NULL (&key_vals[0].key1);
+	    }
+	  if (key_vals[0].is_truncated == true)
+	    {
+	      range = GE_LE;
+	    }
+	  key_vals[0].range = range;
+	  break;
+
+	case R_RANGELIST:
+	  range = key_vals[i].range;
+
+	  if (range == NA_NA || range == INF_INF)
+	    {
+	      isidp->curr_keyno = isidp->key_cnt;
+	      continue;
+	    }
+	  if (range < GE_LE || range > INF_INF)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      return ER_FAILED;
+	    }
+	  if (range >= GE_INF && range <= GT_INF)
+	    {
+	      pr_clear_value (&key_vals[i].key2);
+	      PRIM_SET_NULL (&key_vals[i].key2);
+	    }
+	  if (range >= INF_LE && range <= INF_LT)
+	    {
+	      pr_clear_value (&key_vals[i].key1);
+	      PRIM_SET_NULL (&key_vals[i].key1);
+	    }
+	  if (key_vals[i].is_truncated == true)
+	    {
+	      range = GE_LE;
+	    }
+	  key_vals[i].range = range;
+	  break;
+
+	default:
+	  assert_release (false);
+	}
+    }
+
+  return NO_ERROR;
 }
 
 SCAN_CODE
 cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 {
-  INDX_SCAN_ID *isidp;
-  FILTER_INFO data_filter;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-  SCAN_CODE lookup_status;
-  TRAN_ISOLATION isolation;
-  DB_LOGICAL ev_res;
   THREAD_ENTRY *thread_p;
+
+  INDX_SCAN_ID *isidp;
+  indx_info *indx_infop;
+
+  FILTER_INFO data_filter;
+
+  KEY_VAL_RANGE *key_vals;
+  RANGE range;
+  int key_cnt;
+
+  DB_LOGICAL ev_res;
+
+  rocksdb::Slice key;
+  RECDES recdes = RECDES_INITIALIZER;
   char key_buf[DBVAL_BUFSIZE];
   int key_size;
-  RECDES recdes;
-  rocksdb::Slice key;
 
-  isidp = &scan_id->s.isid;
+  SCAN_CODE scan;
+  int i;
 
-  assert (!OID_ISNULL (&isidp->cls_oid));
+  assert (!OID_ISNULL (&scan_id->s.isid.cls_oid));
 
   thread_p = thread_get_thread_entry_info ();
+
+  isidp = &scan_id->s.isid;
+  indx_infop = isidp->indx_info;
+
   /* multi range optimization safe guard : fall-back to normal output (OID list or covering index instead of "on the
    * fly" lists), if sorting column is not yet set at this stage; also 'grouped' is not supported */
   if (isidp->multi_range_opt.use && (isidp->multi_range_opt.sort_att_idx == NULL || scan_id->grouped))
@@ -850,206 +1019,150 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
   scan_init_filter_info (&data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list, scan_id->vd,
 			 &isidp->cls_oid, 0, NULL, NULL, NULL);
 
-
-  INDX_SCAN_ID *iscan_id;
-  FILTER_INFO key_filter;
-  indx_info *indx_infop;
-  BTREE_SCAN *bts;
-  int key_cnt, i;
-  KEY_VAL_RANGE *key_vals;
-  KEY_RANGE *key_ranges;
-  RANGE range, saved_range;
-  int ret = NO_ERROR;
-  int curr_key_prefix_length = 0;
-
-  /* pointer to INDX_SCAN_ID structure */
-  iscan_id = &scan_id->s.isid;
-
-  /* pointer to indx_info in INDX_SCAN_ID structure */
-  indx_infop = iscan_id->indx_info;
-
-  /* pointer to index scan info. structure */
-  bts = &iscan_id->bt_scan;
-
-  /* number of keys */
-  if (iscan_id->curr_keyno == -1)	/* very first time */
+  key_vals = isidp->key_vals;
+  key_cnt = isidp->key_cnt;
+  if (isidp->curr_keyno == -1)
     {
-      key_cnt = indx_infop->key_info.key_cnt;
-    }
-  else
-    {
-      key_cnt = iscan_id->key_cnt;
+      key_cnt = kv_resolve_index_key (scan_id);
+      if (kv_assist_index_key (scan_id) != NO_ERROR ||
+	  key_cnt < 1 || !isidp->key_vals)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  scan = S_ERROR;
+	  goto clear_and_exit;
+	}
+
+      isidp->curr_keyno = 0;
     }
 
-  /* key values */
-  key_vals = iscan_id->key_vals;
-
-  /* key ranges */
-  key_ranges = indx_infop->key_info.key_ranges;
-
-  if (key_cnt < 1 || !key_vals || !key_ranges)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      assert_release (false);
-    }
-
-  if (iscan_id->bt_attrs_prefix_length && iscan_id->bt_num_attrs == 1)
-    {
-      curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
-    }
-
-  /* if it is the first time of this scan */
-  if (iscan_id->curr_keyno == -1 && indx_infop->key_info.key_cnt == key_cnt)
-    {
-      kv_resolve_index_key (scan_id, key_cnt);
-    }
-
-  /*
-   * init vars to execute B+tree key range search
-   */
-
-  ret = NO_ERROR;
-
-  /* set key filter information */
-  scan_init_filter_info (&key_filter, &iscan_id->key_pred, &iscan_id->key_attrs, scan_id->val_list, scan_id->vd,
-			 &iscan_id->cls_oid, iscan_id->bt_num_attrs, iscan_id->bt_attr_ids, &iscan_id->num_vstr,
-			 iscan_id->vstr_ids);
-  iscan_id->oids_count = 0;
-  key_filter.func_idx_col_id = iscan_id->indx_info->func_idx_col_id;
-
-  if (iscan_id->multi_range_opt.use && iscan_id->multi_range_opt.cnt > 0)
+  /* clear top n */
+  if (isidp->multi_range_opt.use && isidp->multi_range_opt.cnt > 0)
     {
       /* reset any previous results for multiple range optimization */
       int i;
 
-      for (i = 0; i < iscan_id->multi_range_opt.cnt; i++)
+      for (i = 0; i < isidp->multi_range_opt.cnt; i++)
 	{
-	  if (iscan_id->multi_range_opt.top_n_items[i] != NULL)
+	  if (isidp->multi_range_opt.top_n_items[i] != NULL)
 	    {
-	      pr_clear_value (& (iscan_id->multi_range_opt.top_n_items[i]->index_value));
-	      db_private_free_and_init (thread_p, iscan_id->multi_range_opt.top_n_items[i]);
+	      pr_clear_value (& (isidp->multi_range_opt.top_n_items[i]->index_value));
+	      db_private_free_and_init (thread_p, isidp->multi_range_opt.top_n_items[i]);
 	    }
 	}
 
-      iscan_id->multi_range_opt.cnt = 0;
+      isidp->multi_range_opt.cnt = 0;
     }
 
   /* if the end of this scan */
-  if (iscan_id->curr_keyno > key_cnt)
+  while (1)
     {
-      return S_END;
-    }
-  else
-    {
-      /* Clear output val list to avoid memory leak. */
-      regu_variable_list_node *p;
-      for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
+      if (isidp->curr_keyno >= key_cnt)
 	{
-	  pr_clear_value (p->value.vfetch_to);
-	}
-    }
-
-
-  /* if the end of this scan */
-  if (iscan_id->curr_keyno == key_cnt)
-    {
-      for (i = 0; i < key_cnt; i++)
-	{
-	  pr_clear_value (&key_vals[i].key1);
-	  pr_clear_value (&key_vals[i].key2);
-	}
-      iscan_id->curr_keyno++;	/* to prevent duplicate frees */
-      return S_END;
-    }
-
-
-  switch (indx_infop->range_type)
-    {
-    case R_KEY:
-      /* key value search */
-
-      /* check prerequisite condition */
-      range = key_vals[0].range;
-
-      if (range == NA_NA)
-	{
-	  /* skip this key value */
-	  iscan_id->curr_keyno++;
-	  break;
+	  scan = S_END;
+	  goto clear_and_exit;
 	}
 
-      if (key_cnt != 1)
+      /* get next data */
+      switch (indx_infop->range_type)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  assert_release (false);
-	}
+	case R_KEY:
+	  scan_id->scan_stats.key_qualified_rows++;
 
-      scan_id->scan_stats.key_qualified_rows++;
+	  kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &isidp->cls_oid, &key_vals[0].key1, key_size);
+	  key = rocksdb::Slice (key_buf, key_size);
 
-      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &iscan_id->cls_oid, &key_vals[0].key1, key_size);
-      key = rocksdb::Slice (key_buf, key_size);
-
-      if (kv_get (tran_index, key, &recdes, &isidp->scan_cache, scan_id->fixed) == S_DOESNT_EXIST)
-	{
-	  for (i = 0; i < key_cnt; i++)
+	  if (kv_get (tran_index, key, &recdes, &isidp->scan_cache, scan_id->fixed) == S_DOESNT_EXIST)
 	    {
-	      pr_clear_value (&key_vals[i].key1);
-	      pr_clear_value (&key_vals[i].key2);
+	      /* skip this key value */
+	      isidp->curr_keyno++;
+	      continue;
 	    }
+
+	  /* evaluate the predicates to see if the object qualifies */
+	  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, &data_filter);
+	  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
+	  if (ev_res == V_ERROR)
+	    {
+	      scan = S_ERROR;
+	      goto clear_and_exit;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      /* skip this key value */
+	      isidp->curr_keyno++;
+	      continue;
+	    }
+
+	  /* it is not oid but this should be set to upper scope */
+	  isidp->oids_count = 1;
+	  /* give PK for temp */
+	  isidp->pk_val = key_vals[0].key1;
+	  /* advance */
+	  isidp->curr_keyno++;
+
+	  /* make tuple */
+	  goto fall_through;
+
+	case R_RANGE:
+	  scan_id->scan_stats.key_qualified_rows++;
+
+	  /* get data */
+	  //scan_id->s.isid.scan_cache.kv_iter;
+
+	  /* it is not oid but this should be set to upper scope */
+	  isidp->oids_count = 1;
+	  /* give PK for temp */
+	  isidp->pk_val = key_vals[0].key1;
+	  /* advance */
+	  isidp->curr_keyno++;
+
 	  return S_END;
+
+	default:
+	  scan = S_ERROR;
+	  goto clear_and_exit;
 	}
-
-      /* evaluate the predicates to see if the object qualifies */
-      ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, &data_filter);
-
-      // no key filter evaluation is required here.
-
-      ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
-      if (ev_res == V_ERROR)
-	{
-	  return S_ERROR;
-	}
-      else if (ev_res != V_TRUE)
-	{
-	  return S_DOESNT_EXIST;
-	}
-
-      iscan_id->oids_count = 1;
-      assert (iscan_id->oids_count >= 0);
-
-      if (isidp->rest_regu_list)
-	{
-	  /* read the rest of the values from the heap into the attribute cache */
-	  if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
-	    {
-	      return S_ERROR;
-	    }
-
-	  /* fetch the rest of the values from the object instance */
-	  if (scan_id->val_list)
-	    {
-	      if (fetch_val_list (thread_p, isidp->rest_regu_list, scan_id->vd, &isidp->cls_oid, isidp->curr_oidp, NULL,
-				  PEEK) != NO_ERROR)
-		{
-		  return S_ERROR;
-		}
-	    }
-	}
-      isidp->pk_val = key_vals[0].key1;
-
-      scan_id->scan_stats.data_qualified_rows++;
-      iscan_id->curr_keyno++;
-
-      return S_SUCCESS;
-
-    default:
-      break;
     }
 
+fall_through:
 
+  /* recdes */
+  assert (recdes.data != NULL);
 
+  scan_id->scan_stats.data_qualified_rows++;
+  if (isidp->rest_regu_list)
+    {
+      /* read the rest of the values from the heap into the attribute cache */
+      if (heap_attrinfo_read_dbvalues (thread_p, isidp->curr_oidp, &recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
+	{
+	  scan = S_ERROR;
+	  goto clear_and_exit;
+	}
 
-  return S_END;
+      /* fetch the rest of the values from the object instance */
+      if (scan_id->val_list)
+	{
+	  if (fetch_val_list (thread_p, isidp->rest_regu_list, scan_id->vd, &isidp->cls_oid, isidp->curr_oidp, NULL,
+			      PEEK) != NO_ERROR)
+	    {
+	      scan = S_ERROR;
+	      goto clear_and_exit;
+	    }
+	}
+    }
+
+  return S_SUCCESS;
+
+clear_and_exit:
+
+  for (i = 0; isidp->curr_keyno <= key_cnt && i < key_cnt; i++)
+    {
+      pr_clear_value (&key_vals[i].key1);
+      pr_clear_value (&key_vals[i].key2);
+    }
+  isidp->curr_keyno++;
+
+  return scan;
 }
 
 void
@@ -1203,7 +1316,7 @@ cubrocks::context::kv_make_key_with_PK (char *buf, int buf_size, OID *class_oid,
     case DB_TYPE_CHAR:
       memcpy (buf + key_size, db_get_string (pk_value), db_get_string_size (pk_value));
       key_size += db_get_string_size (pk_value);
-      if (key_size >= buf_size)
+      if (key_size > buf_size)
 	{
 	  assert_release (false);
 	}
@@ -1214,6 +1327,32 @@ cubrocks::context::kv_make_key_with_PK (char *buf, int buf_size, OID *class_oid,
       assert_release (false);
       break;
     }
+}
+
+int
+cubrocks::context::kv_get_key_size (DB_VALUE *pk_value)
+{
+  DB_TYPE pk_type;
+  int key_size;
+
+  key_size = sizeof (OID);
+  pk_type = DB_VALUE_DOMAIN_TYPE (pk_value);
+  /* write PK to key */
+  /* have to care about each memory ordering. */
+  switch (pk_type)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      key_size += db_get_string_size (pk_value);
+      break;
+
+    default:
+      /* if you want to handle pk other than above, need to implement that case */
+      assert_release (false);
+      break;
+    }
+
+  return key_size;
 }
 
 bool
