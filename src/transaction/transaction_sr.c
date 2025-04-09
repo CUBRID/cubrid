@@ -79,83 +79,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    * the commit
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  LOG_TDES *tdes;
-  int trid;
-  tdes = LOG_FIND_TDES (tran_index);
-  trid = tdes->trid;
-
-  struct timespec ts_start, ts_end;
-
-  //clock_gettime (CLOCK_MONOTONIC, &ts_start);
-
   cubrocks::ctx->kv_tran_commit (tran_index);
   
-  /*
-  clock_gettime (CLOCK_MONOTONIC, &ts_end);
-  thread_p->statistics.rocks_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-  clock_gettime (CLOCK_MONOTONIC, &ts_start);
-  */
-
   state = log_commit (thread_p, tran_index, retain_lock);
-
-  /*
-  clock_gettime (CLOCK_MONOTONIC, &ts_end);
-  thread_p->statistics.cub_commit = (ts_end.tv_sec - ts_start.tv_sec) * 1000000000LL + (ts_end.tv_nsec - ts_start.tv_nsec);
-
-  if (thread_p)
-  {
-      UINT64 cub_sum = thread_p->statistics.cub_insert + thread_p->statistics.cub_select + thread_p->statistics.cub_commit;
-      UINT64 rocks_sum = thread_p->statistics.rocks_insert + thread_p->statistics.rocks_select + thread_p->statistics.rocks_commit;
-
-      printf ("\n" \
-        "transaction end (%d)\n" \
-        "CUBRID insert select commit sum\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n" \
-        "RocksDB insert select commit sum\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n" \
-        "%llu.%06llu\n\n",
-
-        trid,
-
-        thread_p->statistics.cub_insert / 1000000,
-        thread_p->statistics.cub_insert % 1000000,
-
-        thread_p->statistics.cub_select / 1000000,
-        thread_p->statistics.cub_select % 1000000,
-
-        thread_p->statistics.cub_commit / 1000000,
-        thread_p->statistics.cub_commit % 1000000,
-
-        cub_sum / 1000000,
-        cub_sum % 1000000,
-
-        thread_p->statistics.rocks_insert / 1000000,
-        thread_p->statistics.rocks_insert % 1000000,
-
-        thread_p->statistics.rocks_select / 1000000,
-        thread_p->statistics.rocks_select % 1000000,
-
-        thread_p->statistics.rocks_commit / 1000000,
-        thread_p->statistics.rocks_commit % 1000000,
-
-        rocks_sum / 1000000,
-        rocks_sum % 1000000);
-
-      thread_p->statistics.cub_insert = 0;
-      thread_p->statistics.cub_select = 0;
-      thread_p->statistics.cub_commit = 0;
-      thread_p->statistics.rocks_insert = 0;
-      thread_p->statistics.rocks_select = 0;
-      thread_p->statistics.rocks_commit = 0;
-  }
-  */
 
 #if defined(ENABLE_SYSTEMTAP)
   if (state == TRAN_UNACTIVE_COMMITTED || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
