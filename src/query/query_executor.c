@@ -81,7 +81,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
-#include "query_hash_join.hpp"
+#include "query_hash_join.h"
 
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER

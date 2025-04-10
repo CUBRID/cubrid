@@ -3173,7 +3173,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
-  /**
+  /*
    * outer
    */
   ptr = or_unpack_int (ptr, &offset);
@@ -3206,7 +3206,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  /**
+  /*
    * inner
    */
   ptr = or_unpack_int (ptr, &offset);
@@ -3239,7 +3239,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  /**
+  /*
    * merge_info
    */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
@@ -3248,7 +3248,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       goto exit_on_error;
     }
 
-  /**
+  /*
    * domain_info
    */
   domain_cnt = node_p->merge_info.ls_column_cnt;

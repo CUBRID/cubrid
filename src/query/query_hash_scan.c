@@ -1358,8 +1358,9 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
     }
 
 #if HASH_LIST_SCAN_DUMP_FILE_HASH
+  /* for debug */
   fhs_dump (thread_p, fhsid_p);
-#endif /* for debug */
+#endif /* HASH_LIST_SCAN_DUMP_FILE_HASH */
 
   if (file_destroy (thread_p, &(fhsid_p->bucket_file), true) != NO_ERROR)
     {

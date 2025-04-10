@@ -32,7 +32,7 @@
 #include "memory_hash.h"
 
 #include "query_hash_scan.h"
-#include "query_hash_join.hpp"
+#include "query_hash_join.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
@@ -383,7 +383,7 @@ struct hashjoin_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HJ_DOMAIN_INFO domain_info;
   HJ_STATS_GROUP stats_group;
-#endif
+#endif	/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;

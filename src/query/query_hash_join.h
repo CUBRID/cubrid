@@ -58,25 +58,19 @@ typedef struct tp_domain TP_DOMAIN;
  * Struct & Typedef Definitions
  */
 
-typedef struct hashjoin_input HASHJOIN_INPUT;
-typedef struct hashjoin_input HJ_INPUT;
-struct hashjoin_input
+typedef struct hashjoin_input
 {
   XASL_NODE *xasl;
   REGU_VARIABLE_LIST regu_list_pred;
-};
+} HASHJOIN_INPUT, HJ_INPUT;
 
-typedef struct hashjoin_input_domain_info HASHJOIN_INPUT_DOMAIN_INFO;
-typedef struct hashjoin_input_domain_info HJ_INPUT_DOMAIN_INFO;
-struct hashjoin_input_domain_info
+typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
-};
+} HASHJOIN_INPUT_DOMAIN_INFO, HJ_INPUT_DOMAIN_INFO;
 
-typedef struct hashjoin_domain_info HASHJOIN_DOMAIN_INFO;
-typedef struct hashjoin_domain_info HJ_DOMAIN_INFO;
-struct hashjoin_domain_info
+typedef struct hashjoin_domain_info
 {
   HJ_INPUT_DOMAIN_INFO outer;
   HJ_INPUT_DOMAIN_INFO inner;
@@ -84,84 +78,75 @@ struct hashjoin_domain_info
   /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether there is a need to use the coerce domain. */
+  /* Whether the coerce domain needs to be used. */
   bool need_coerce_domains;
-};
+} HASHJOIN_DOMAIN_INFO, HJ_DOMAIN_INFO;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-typedef struct hashjoin_stats HASHJOIN_STATS;
-typedef struct hashjoin_stats HJ_STATS;
-struct hashjoin_stats
+typedef struct hashjoin_common_stats
 {
-  HASH_METHOD hash_method;
-  bool is_build_outer;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-  } part;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    struct timeval build_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-    UINT64 rows;
+  struct timeval elapsed_time;
+  struct timeval time;
+  UINT64 fetches;
+  UINT64 fetch_time;
+  UINT64 ioreads;
+  UINT64 part_rows;
+  UINT64 readkeys;
+  UINT64 rows;
+  UINT64 max_collisions;
+} HASHJOIN_COMMON_STATS, HJ_COMMON_STATS;
 
 #if HASH_JOIN_PROFILE_TIME
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval insert;	/* qexec_hash_join_build_key */
-    } profile;
-#endif
+typedef struct hashjoin_profile_stats
+{
+  struct
+  {
+    struct timeval fetch;	/* qexec_hash_join_fetch_key */
+    struct timeval hash;	/* qdata_hash_scan_key */
+    struct timeval insert;	/* qexec_hash_join_build_key */
   } build;
 
   struct
   {
-    struct timeval elapsed_time;
-    struct timeval probe_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-    UINT64 readkeys;
-    UINT64 rows;
-    UINT32 max_collisions;
+    struct timeval fetch;	/* qexec_hash_join_fetch_key */
+    struct timeval hash;	/* qdata_hash_scan_key */
+    struct timeval search;	/* qexec_hash_join_probe_key */
+    struct timeval match;	/* qexec_hash_join_fetch_key */
+    struct timeval add;		/* qexec_hash_join_merge_tuple_to_list_id */
+  } probe;
+} HASHJOIN_PROFILE_STATS, HJ_PROFILE_STATS;
+#endif /* HASH_JOIN_PROFILE_TIME */
+
+typedef struct hashjoin_stats
+{
+  HASH_METHOD hash_method;
+  bool is_build_outer;
+
+  HJ_COMMON_STATS part;
+  double outer_skew;
+  double inner_skew;
+
+  HJ_COMMON_STATS build;
+  HJ_COMMON_STATS probe;
 
 #if HASH_JOIN_PROFILE_TIME
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval search;	/* qexec_hash_join_probe_key */
-      struct timeval match;	/* qexec_hash_join_fetch_key */
-      struct timeval add;	/* qexec_hash_join_merge_tuple_to_list_id */
-    } profile;
-#endif
-  } probe;
-};
+  HJ_PROFILE_STATS profile;
+#endif				/* HASH_JOIN_PROFILE_TIME */
+} HASHJOIN_STATS, HJ_STATS;
 
-typedef struct hashjoin_stats_group HASHJOIN_STATS_GROUP;
-typedef struct hashjoin_stats_group HJ_STATS_GROUP;
-struct hashjoin_stats_group
+typedef struct hashjoin_stats_group
 {
   HJ_STATS stats;
   HJ_STATS *context_stats;
   int context_cnt;
-};
+} HASHJOIN_STATS_GROUP, HJ_STATS_GROUP;
 
 /*
  * Function Declarations
  */
 
-int qexec_hash_join (THREAD_ENTRY *thread_p, XASL_NODE *xasl, QUERY_ID query_id, VAL_DESCR *vd);
+int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * vd);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

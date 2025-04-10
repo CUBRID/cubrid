@@ -350,10 +350,10 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
 #if TEST_HASH_JOIN_FORCE_ENABLE
   qo_zero_cost,
   qo_zero_cost,
-#else
+#else /* TEST_HASH_JOIN_FORCE_ENABLE */
   qo_hjoin_cost,
   qo_hjoin_cost,
-#endif
+#endif /* TEST_HASH_JOIN_FORCE_ENABLE */
   qo_join_info,
   "Hash join"
 };
@@ -3094,7 +3094,7 @@ qo_nljoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3172,7 +3172,7 @@ qo_mjoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3214,7 +3214,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_cardinality = inner_plan_p->info->cardinality;
   outer_cardinality = outer_plan_p->info->cardinality;
 
-  /**
+  /*
    * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
    */
   plan_p->fixed_cpu_cost = outer_plan_p->fixed_cpu_cost + inner_plan_p->fixed_cpu_cost;
@@ -3223,7 +3223,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   plan_p->variable_cpu_cost = outer_plan_p->variable_cpu_cost + inner_plan_p->variable_cpu_cost;
   plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
 
-  /**
+  /*
    * STEP 2: Calculate the cost when inner is used as build input.
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
@@ -3236,7 +3236,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
 
-  /**
+  /*
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
@@ -3249,7 +3249,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
 
-  /**
+  /*
    * STEP 4: Choose the lowest cost.
    */
   switch (plan_p->plan_un.join.join_type)
@@ -3296,7 +3296,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -6228,9 +6228,9 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
       /* default: disable hash-join */
 #if TEST_HASH_JOIN_ENABLE
       /* fall through */
-#else
+#else /* TEST_HASH_JOIN_ENABLE */
       goto exit;
-#endif
+#endif /* TEST_HASH_JOIN_ENABLE */
     }
 
   outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
@@ -7423,7 +7423,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-5: examine hash-join */
 	if (!bitset_is_empty (&sm_join_terms))
 	  {
-	    /**
+	    /*
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
 	     * The mergeable term and the hash join term have the same characteristics. If the characteristics
 	     * for mergeable terms are changed, the logic for hash join terms should be separated.

@@ -3598,7 +3598,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
 {
   int offset;
 
-  /**
+  /*
    * outer
    */
   offset = xts_save_xasl_node (node_p->outer.xasl);
@@ -3615,7 +3615,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /**
+  /*
    * inner
    */
   offset = xts_save_xasl_node (node_p->inner.xasl);
@@ -3632,7 +3632,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /**
+  /*
    * merge_info
    */
   ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
@@ -6319,19 +6319,19 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
   int size = 0;
   int tmp_size = 0;
 
-  /**
+  /*
    * outer
    */
   size += (PTR_SIZE		/* Offset of outer.xasl. */
 	   + PTR_SIZE);		/* Offset of outer.regu_list_pred */
 
-  /**
+  /*
    * inner
    */
   size += (PTR_SIZE		/* Offset of inner.xasl */
 	   + PTR_SIZE);		/* Offset of inner.regu_list_pred */
 
-  /**
+  /*
    * merge_info
    */
   tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
