@@ -5088,6 +5088,9 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   switch (node->node_type)
     {
     case PT_WITH_CLAUSE:
+      (void) parser_walk_tree (parser, node->info.with_clause.cte_definition_list, mq_count_cte_references, NULL,
+			       pt_continue_walk, NULL);
+
       cte = node->info.with_clause.cte_definition_list;
       while (cte)
 	{
@@ -5095,7 +5098,8 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
 	  parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte, &can_rewrite, NULL, NULL);
-	  cte->info.cte.referenced_count = can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? 2 : 0) : 2;
+	  cte->info.cte.referenced_count =
+	    can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? (cte->info.cte.referenced_count == -1 ? 1 : 2) : 0) : 1;
 	  cte = cte->next;
 	}
       *continue_walk = PT_LIST_WALK;
@@ -5181,11 +5185,12 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      return node;
 	    }
 
+	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
+
 	  /* If the referenced count is -1, the current spec node is placed in the WITH clause.
 	   * In the WITH clause, always rewrite CTE as a derived table, except when the CTE has a MATERIALIZE hint. */
 	  if (cte->info.cte.referenced_count == -1)
 	    {
-	      hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 	      if (hint & PT_HINT_MATERIALIZE_CTE)
 		{
 		  return node;
@@ -5199,7 +5204,10 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  else
 	    {
 	      /* If the referenced count is less than 2, it is treated as a inline CTE. */
-	      ;
+	      if (hint & PT_HINT_MATERIALIZE_CTE)
+		{
+		  return node;
+		}
 	    }
 
 	  attributes = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
