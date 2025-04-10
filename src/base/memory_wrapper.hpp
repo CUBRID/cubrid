@@ -20,8 +20,6 @@
  * memory_wrapper.hpp - Overloading operator new, delete with all wrapping allocation functions
  */
 
-#if 0
-
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
@@ -84,5 +82,3 @@ inline void operator delete [] (void *ptr, size_t sz) noexcept
 #endif // !WINDOWS
 
 #endif // _MEMORY_WRAPPER_HPP_
-
-#endif

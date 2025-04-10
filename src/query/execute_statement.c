@@ -3636,6 +3636,11 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
+      /* 
+       * This condition is identical to the one used in parser_print_tree.
+       * Both functions must maintain the same condition to ensure consistency.
+       * Be careful not to modify only one of them.
+       */
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
