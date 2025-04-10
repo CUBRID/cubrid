@@ -2814,6 +2814,13 @@ create_stmt
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
+			// TODO: CUBVEC - Old opt_index_with_clause ($13) not handled in this CREATE VECTOR INDEX statement.
+			// Therefore we cannot set deduplication level for the index.
+			// Also, we cannot specify online / offline option for the index.
+			container_2 rule_13;
+			// TODO: CUBVEC - Initialize the rule 13 as it was not set.
+			SET_CONTAINER_2 (rule_13, 0, DEDUPLICATE_OPTION_AUTO);
+
 			assert(node != NULL);
 
 			/* Initialize vector_index_info (now an embedded structure) */
@@ -2944,8 +2951,12 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
-                            node->info.index.deduplicate_level = NULL;
+			    // TODO: CUBVEC - Use rule_13 instead of $13
+                            // original code: 
+			    // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            node->info.index.deduplicate_level = CONTAINER_AT_1(rule_13);
+
+			    // TODO: CUBVEC - $13 contains parameter infos such as m and ef_construction
 			    // TODO: node->info.index.hnsw.m = 30;
 			    // TODO: node->info.index.hnsw.ef_con = 100;
 
@@ -2956,10 +2967,12 @@ create_stmt
 
 			    node->info.index.comment = $15;
 
-                            // TODO: this breaks CS mode when creating vector index with 'with' clause.
+			    // TODO: CUBVEC - Use rule_13 instead of $13
+			    // original code:
                             // int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
-                            int with_online_ret = 0;
+                            int with_online_ret = CONTAINER_AT_0(rule_13);  // 0 for normal, 1 for online no parallel,
+                                                        // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
 
