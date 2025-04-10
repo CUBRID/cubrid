@@ -7059,10 +7059,8 @@ public:
     assert (conf_path != NULL);
     assert (m_used >= 0);
 
-    // TODO: 
     if (m_used < MAX_NUM_OF_PRM_FILES_LOADED)
       {
-	assert (m_used < MAX_NUM_OF_PRM_FILES_LOADED);
 	assert (m_loaded[m_used].conf_path == NULL);
 
 	m_loaded[m_used].conf_path = strdup (conf_path);
@@ -9253,8 +9251,9 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  break;
 	}
+      memset (prm_value, 0x00, sizeof (SYSPRM_ASSIGN_VALUE));
       prm_value->prm_id = prm->id;
-      prm_value->next = NULL;
+
 #if defined (CS_MODE)
       if (PRM_IS_FOR_CLIENT (prm))
 	{
@@ -9333,7 +9332,7 @@ xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values)
       if ((PRM_IS_FOR_SERVER (prm) && !PRM_IS_FOR_CLIENT (prm)) || PRM_IS_GET_SERVER (prm))
 	{
 	  /* set value */
-	  sysprm_set_sysprm_value_from_parameter (&prm_values->value, prm);	// TODO: ctshim
+	  sysprm_set_sysprm_value_from_parameter (&prm_values->value, prm);
 	}
     }
 }
@@ -9364,8 +9363,8 @@ xsysprm_get_force_server_parameters (void)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	      goto cleanup;
 	    }
+	  memset (change_val, 0x00, sizeof (SYSPRM_ASSIGN_VALUE));
 	  change_val->prm_id = (PARAM_ID) i;
-	  change_val->next = NULL;
 	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
 	  if (force_values != NULL)
 	    {
@@ -9422,8 +9421,8 @@ xsysprm_get_pl_context_parameters (int flag)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	      goto cleanup;
 	    }
+	  memset (change_val, 0x00, sizeof (SYSPRM_ASSIGN_VALUE));
 	  change_val->prm_id = (PARAM_ID) i;
-	  change_val->next = NULL;
 	  sysprm_set_sysprm_value_from_parameter (&change_val->value, prm);
 	  if (pl_ctx_values != NULL)
 	    {
@@ -12746,34 +12745,52 @@ sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value, SYSPRM_PARAM *
       prm_value->bi = PRM_GET_BIGINT (prm->value);
       break;
     case PRM_STRING:
-      if (PRM_GET_STRING (prm->value) != NULL)
-	{
-	  prm_value->str = strdup (PRM_GET_STRING (prm->value));	// TODO:  prm_value == prm->value 인 경우는 leak 발생 위험이 있음.
-	  if (prm_value->str == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) (strlen (PRM_GET_STRING (prm->value)) + 1));
-	    }
-	}
-      else
-	{
-	  prm_value->str = NULL;
-	}
+      {
+	char *str = PRM_GET_STRING (prm->value);
+	char *old_str;
+	if (str != NULL)
+	  {
+	    assert (prm_value != prm->value);
+	    old_str = prm_value->str;
+
+	    prm_value->str = strdup (str);
+	    if (prm_value->str == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			(size_t) (strlen (PRM_GET_STRING (prm->value)) + 1));
+		prm_value->str = old_str;
+	      }
+	    else
+	      {
+		free (old_str);
+	      }
+	  }
+	else
+	  {
+	    prm_value->str = NULL;
+	  }
+      }
       break;
     case PRM_INTEGER_LIST:
       {
 	int *integer_list = PRM_GET_INTEGER_LIST (prm->value);
+	int *old_list;
 	if (integer_list != NULL)
 	  {
+	    assert (prm_value != prm->value);
+	    old_list = prm_value->integer_list;
+
 	    size = (integer_list[0] + 1) * sizeof (int);
-	    prm_value->integer_list = (int *) malloc (size);	// TODO:  prm_value == prm->value 인 경우는 leak 발생 위험이 있음.
+	    prm_value->integer_list = (int *) malloc (size);
 	    if (prm_value->integer_list == NULL)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		prm_value->integer_list = old_list;
 	      }
 	    else
 	      {
 		memcpy (prm_value->integer_list, integer_list, size);
+		free (old_list);
 	      }
 	  }
 	else
