@@ -5088,9 +5088,6 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   switch (node->node_type)
     {
     case PT_WITH_CLAUSE:
-      (void) parser_walk_tree (parser, node->info.with_clause.cte_definition_list, mq_count_cte_references, NULL,
-			       pt_continue_walk, NULL);
-
       cte = node->info.with_clause.cte_definition_list;
       while (cte)
 	{
@@ -5098,8 +5095,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
 	  parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte, &can_rewrite, NULL, NULL);
-	  cte->info.cte.referenced_count =
-	    can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? (cte->info.cte.referenced_count == -1 ? 1 : 2) : 0) : 1;
+	  cte->info.cte.referenced_count = can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? 1 : 0) : 1;
 	  cte = cte->next;
 	}
       *continue_walk = PT_LIST_WALK;
@@ -5112,6 +5108,8 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  CAST_POINTER_TO_NODE (node_pointer);
 
 	  hint = pt_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
+	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
+				   pt_continue_walk, NULL);
 
 	  if (!(hint & PT_HINT_INLINE_CTE))
 	    {
