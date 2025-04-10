@@ -42,8 +42,10 @@
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/db.h"
 
+#include "locator_sr.h"
 #include "porting.h"
 #include "query_evaluator.h"
+#include "query_reevaluation.hpp"
 #include "fetch.h"
 #include "btree_load.h"
 #include "dbtype.h"
@@ -418,6 +420,7 @@ cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
   delete scan_cache->kv_iter;
   scan_cache->kv_iter = nullptr;
 
+  /*
   if (!scan_cache->kv_lower.empty ())
     {
       free ((void *) scan_cache->kv_lower.data ());
@@ -426,6 +429,7 @@ cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
     {
       free ((void *) scan_cache->kv_upper.data ());
     }
+    */
 }
 
 SCAN_CODE
@@ -515,13 +519,10 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
   assert (transactions[tran_index].txn != nullptr);
 
   assert (scan_cache != NULL);
-  assert (scan_cache->kv_iter != nullptr);
 
   assert (ispeeking == PEEK || ispeeking == COPY);
 
-  rocksdb::ReadOptions read_options;
   char virtual_key[16];
-  rocksdb::Status status;
   rocksdb::Slice key (virtual_key, 16);
 
   if (OID_ISNULL (class_oid))
@@ -535,6 +536,24 @@ cubrocks::context::kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RE
   * ((short *) (virtual_key + 6)) = class_oid->slotid;
 
   * ((UINT64 *) (virtual_key + 8)) = * ((UINT64 *) oid);
+
+  return kv_lock_and_get (tran_index, key, recdes, scan_cache, ispeeking);
+}
+
+SCAN_CODE
+cubrocks::context::kv_lock_and_get (int tran_index, rocksdb::Slice &key, RECDES *recdes,
+				    HEAP_SCANCACHE *scan_cache, int ispeeking)
+{
+  assert (alive);
+  assert (tran_index < MAX_NTRANS);
+  assert (transactions[tran_index].txn != nullptr);
+
+  assert (scan_cache != NULL);
+
+  assert (ispeeking == PEEK || ispeeking == COPY);
+
+  rocksdb::ReadOptions read_options;
+  rocksdb::Status status;
 
   status = transactions[tran_index].txn->GetForUpdate (read_options, key, &transactions[tran_index].pin);
   if (!status.ok ())
@@ -585,6 +604,12 @@ cubrocks::context::kv_lock_release (int tran_index, OID *class_oid, OID *oid)
 
   * ((UINT64 *) (virtual_key + 8)) = * ((UINT64 *) oid);
 
+  kv_lock_release (tran_index, key);
+}
+
+void
+cubrocks::context::kv_lock_release (int tran_index, rocksdb::Slice &key)
+{
   transactions[tran_index].txn->UndoGetForUpdate (key);
 }
 
@@ -980,25 +1005,28 @@ SCAN_CODE
 cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 {
   THREAD_ENTRY *thread_p;
-
   INDX_SCAN_ID *isidp;
   indx_info *indx_infop;
-
   FILTER_INFO data_filter;
-
   KEY_VAL_RANGE *key_vals;
-  RANGE range;
   int key_cnt;
-
   DB_LOGICAL ev_res;
-
   rocksdb::Slice key;
   RECDES recdes = RECDES_INITIALIZER;
   char key_buf[DBVAL_BUFSIZE];
   int key_size;
-
   SCAN_CODE scan;
   int i;
+  MVCC_REC_HEADER dummy_mvcc =
+  {
+    .mvcc_ins_id = 0,
+  };
+  OID dummy_oid =
+  {
+    .pageid = -1,
+    .slotid = -1,
+    .volid = -1
+  };
 
   assert (!OID_ISNULL (&scan_id->s.isid.cls_oid));
 
@@ -1053,6 +1081,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
       isidp->multi_range_opt.cnt = 0;
     }
 
+scan_and_advacne:
   /* if the end of this scan */
   while (1)
     {
@@ -1096,7 +1125,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 	  /* it is not oid but this should be set to upper scope */
 	  isidp->oids_count = 1;
 	  /* give PK for temp */
-	  isidp->pk_val = key_vals[0].key1;
+	  pr_clone_value (&key_vals[0].key1, &isidp->pk_val);
 	  /* advance */
 	  isidp->curr_keyno++;
 
@@ -1104,15 +1133,15 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 	  goto fall_through;
 
 	case R_RANGE:
+	case R_KEYLIST:
+	case R_RANGELIST:
 	  scan_id->scan_stats.key_qualified_rows++;
 
 	  /* get data */
 	  //scan_id->s.isid.scan_cache.kv_iter;
 
 	  /* it is not oid but this should be set to upper scope */
-	  isidp->oids_count = 1;
-	  /* give PK for temp */
-	  isidp->pk_val = key_vals[0].key1;
+	  isidp->oids_count = 0;
 	  /* advance */
 	  isidp->curr_keyno++;
 
@@ -1128,6 +1157,46 @@ fall_through:
 
   /* recdes */
   assert (recdes.data != NULL);
+  assert (!key.empty ());
+
+  if (scan_id->mvcc_select_lock_needed)
+    {
+      UPDDEL_MVCC_COND_REEVAL upd_reev;
+      MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
+      MVCC_REEV_DATA mvcc_reev_data;
+
+      upd_reev.init (*scan_id);
+      mvcc_sel_reev_data.set_filters (upd_reev);
+      mvcc_sel_reev_data.qualification = &scan_id->qualification;
+      mvcc_reev_data.set_scan_reevaluation (mvcc_sel_reev_data);
+
+      scan =
+	      kv_lock_and_get (tran_index, key, &recdes, &isidp->scan_cache, scan_id->fixed);
+      if (scan == S_DOESNT_EXIST)
+	{
+	  /* no match, advance */
+	  goto scan_and_advacne;
+	}
+
+      ev_res =
+	      locator_mvcc_reev_cond_and_assignment (thread_p, &isidp->scan_cache, &mvcc_reev_data, &dummy_mvcc,
+		  &dummy_oid, &recdes);
+      if (ev_res != V_TRUE)
+	{
+	  cubrocks::ctx->kv_lock_release (tran_index, key);
+	  if (ev_res == V_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  /* no match, advance */
+	  goto scan_and_advacne;
+	}
+      if (mvcc_reev_data.filter_result == V_FALSE)
+	{
+	  /* no match, advance */
+	  goto scan_and_advacne;
+	}
+    }
 
   scan_id->scan_stats.data_qualified_rows++;
   if (isidp->rest_regu_list)

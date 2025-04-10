@@ -102,6 +102,7 @@ struct dblink_scan_id
 typedef struct heap_scan_id HEAP_SCAN_ID;
 struct heap_scan_id
 {
+  DB_VALUE pk_val;
   OID curr_oid;			/* current object identifier */
   OID cls_oid;			/* class object identifier */
   HFID hfid;			/* heap file identifier */
@@ -195,6 +196,7 @@ struct index_skip_scan
 /* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
+  DB_VALUE pk_val;
   INDX_INFO *indx_info;		/* index information */
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
@@ -223,7 +225,6 @@ struct indx_scan_id
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
   key_val_range *key_vals;	/* for eliminating duplicate ranges */
-  DB_VALUE pk_val;
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */

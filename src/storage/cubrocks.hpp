@@ -103,7 +103,10 @@ namespace cubrocks
 
       SCAN_CODE kv_lock_and_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
 				 int ispeeking);
+      SCAN_CODE kv_lock_and_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
+				 int ispeeking);
       void kv_lock_release (int tran_index, OID *class_oid, OID *oid);
+      void kv_lock_release (int tran_index, rocksdb::Slice &key);
 
       SCAN_CODE kv_get (int tran_index, OID *class_oid, OID *oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);
       SCAN_CODE kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, HEAP_SCANCACHE *scan_cache, int ispeeking);

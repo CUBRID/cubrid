@@ -1175,7 +1175,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   int value_size;
   int ret = NO_ERROR;
   bool output_tuple = true;
-  bool use_rocksdb;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -1261,11 +1260,14 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      xasl->curr_spec->s_id.mvcc_select_lock_needed)
 	    {
 	      tuple_desc_p = &xasl->list_id->tpl_descr;
-
+	      /* heap scan id and index scan id have PK DB_VALUE at same position. */
+	      /* so I can access the PK value whatever scan_next_scan uses the read path. */
 	      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = &xasl->curr_spec->s_id.s.isid.pk_val;
 	      if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 		{
-		  GOTO_EXIT_ON_ERROR;
+		  /* both is NULL */
+		  /* something was wrong */
+		  assert_release (false);
 		}
 
 	      /* Set clear_f_val_at_clone_decache to avoid memory issues */
@@ -1276,6 +1278,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      value_size = qdata_get_tuple_value_size_from_dbval (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
 	      if (value_size == ER_FAILED)
 		{
+		  heap_attrinfo_end (thread_p, &index_attrinfo);
 		  GOTO_EXIT_ON_ERROR;
 		}
 
@@ -1441,9 +1444,19 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
     }
 
+  if (!DB_IS_NULL (&xasl->curr_spec->s_id.s.isid.pk_val))
+    {
+      pr_clear_value (&xasl->curr_spec->s_id.s.isid.pk_val);
+    }
+
   return ret;
 
 exit_on_error:
+
+  if (!DB_IS_NULL (&xasl->curr_spec->s_id.s.isid.pk_val))
+    {
+      pr_clear_value (&xasl->curr_spec->s_id.s.isid.pk_val);
+    }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -10642,6 +10655,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	}
       use_rocksdb = XASL_IS_FLAGED (xasl, XASL_USES_ROCKSDB);
 
+      /* same position (union) */
+      /* xasl->curr_spec->s_id.s.hsid.pk_val */
+      /* xasl->curr_spec->s_id.s.isid.pk_val */
+      PRIM_SET_NULL (&xasl->curr_spec->s_id.s.hsid.pk_val);
+
       while ((ls_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id, use_rocksdb)) == S_SUCCESS)
 	{
 	  if (xasl->max_iterations != -1)
@@ -11816,12 +11834,20 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			   &pk_length) == V_BOUND)
 			{
 			  or_init (&pk_buf, pk_ptr, pk_length);
+
 			  /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			  /* I do not want to use this kind of trick, but... */
 			  if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
 						    0) != NO_ERROR)
 			    {
-			      GOTO_EXIT_ON_ERROR;
+			      or_init (&pk_buf, pk_ptr, pk_length);
+			      if (tp_String.
+				  data_readval (&pk_buf, &internal_class->pk, &tp_String_domain, -1, false, NULL,
+						0) != NO_ERROR)
+				{
+				  heap_attrinfo_end (thread_p, &index_attrinfo);
+				  GOTO_EXIT_ON_ERROR;
+				}
 			    }
 			}
 		      is_PK_based = true;
@@ -12663,6 +12689,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			      if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
 							0) != NO_ERROR)
 				{
+				  heap_attrinfo_end (thread_p, &index_attrinfo);
 				  GOTO_EXIT_ON_ERROR;
 				}
 			    }

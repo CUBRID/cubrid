@@ -5220,6 +5220,23 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
     .mvcc_ins_id = 0,
   };
 
+  /* for PK based */
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  DB_VALUE dbvalue;
+  int key_size;
+  char key_buf[DBVAL_BUFSIZE];
+  rocksdb::Slice key;
+  BTID btid;
+  char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
+  int num_found;
+  DB_VALUE *pk_value = NULL;
+  bool is_pk_based = false;
+
+  db_make_null (&dbvalue);
+  aligned_buf = PTR_ALIGN (dbvalue_buf, MAX_ALIGNMENT);
+
+  /* scan id */
   hsidp = &scan_id->s.hsid;
   p_current_oid = &hsidp->curr_oid;
 
@@ -5396,9 +5413,48 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
 	  if (use_rocksdb)
 	    {
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	      sp_scan =
-		cubrocks::ctx->kv_lock_and_get (tran_index, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
-						&hsidp->scan_cache, is_peeking);
+
+	      num_found =
+		heap_attrinfo_start_with_index (thread_p, &hsidp->cls_oid, NULL, &index_attrinfo, &idx_info, false);
+
+	      if (num_found == 1 && idx_info.num_btids == 1 &&
+		  index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+		{
+		  /* PK based */
+		  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, &index_attrinfo) != NO_ERROR)
+		    {
+		      assert_release (false);
+		    }
+
+		  pk_value =
+		    heap_attrvalue_get_key (thread_p, 0 /* PK index */ , &index_attrinfo, &recdes, &btid, &dbvalue,
+					    aligned_buf,
+					    NULL, NULL, p_current_oid, false);
+		  if (pk_value == NULL)
+		    {
+		      assert_release (false);
+		    }
+
+		  cubrocks::ctx->kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &hsidp->cls_oid, pk_value, key_size);
+		  key = rocksdb::Slice (key_buf, key_size);
+
+		  pr_clone_value (pk_value, &hsidp->pk_val);
+
+		  is_pk_based = true;
+		}
+
+	      heap_attrinfo_end (thread_p, &index_attrinfo);
+
+	      if (is_pk_based)
+		{
+		  sp_scan = cubrocks::ctx->kv_lock_and_get (tran_index, key, &recdes, &hsidp->scan_cache, is_peeking);
+		}
+	      else
+		{
+		  sp_scan =
+		    cubrocks::ctx->kv_lock_and_get (tran_index, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+						    &hsidp->scan_cache, is_peeking);
+		}
 	      if (sp_scan == S_DOESNT_EXIST)
 		{
 		  continue;
@@ -5407,19 +5463,26 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
 		{
 		  return S_ERROR;
 		}
-
 	      ev_res =
 		locator_mvcc_reev_cond_and_assignment (thread_p, &hsidp->scan_cache, &mvcc_reev_data, &dummy,
 						       &hsidp->curr_oid, &recdes);
 	      if (ev_res != V_TRUE)
 		{
-		  cubrocks::ctx->kv_lock_release (tran_index, &hsidp->cls_oid, &hsidp->curr_oid);
+		  if (is_pk_based)
+		    {
+		      cubrocks::ctx->kv_lock_release (tran_index, key);
+		    }
+		  else
+		    {
+		      cubrocks::ctx->kv_lock_release (tran_index, &hsidp->cls_oid, &hsidp->curr_oid);
+		    }
 		  if (ev_res == V_ERROR)
 		    {
 		      return S_ERROR;
 		    }
 		  continue;
 		}
+
 	      if (mvcc_reev_data.filter_result == V_FALSE)
 		{
 		  continue;
