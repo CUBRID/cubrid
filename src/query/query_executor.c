@@ -12683,13 +12683,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			       &pk_length) == V_BOUND)
 			    {
 			      or_init (&pk_buf, pk_ptr, pk_length);
+			      /* same as update */
 			      /* if you wanna handle general PK, add new regulator or just add INTEGER block (for PK type info) in front of PK block */
 			      /* I do not want to use this kind of trick, but... */
 			      if (tp_Char.data_readval (&pk_buf, &internal_class->pk, &tp_Char_domain, -1, false, NULL,
 							0) != NO_ERROR)
 				{
-				  heap_attrinfo_end (thread_p, &index_attrinfo);
-				  GOTO_EXIT_ON_ERROR;
+				  or_init (&pk_buf, pk_ptr, pk_length);
+				  if (tp_String.data_readval
+				      (&pk_buf, &internal_class->pk, &tp_String_domain, -1, false, NULL, 0) != NO_ERROR)
+				    {
+				      heap_attrinfo_end (thread_p, &index_attrinfo);
+				      GOTO_EXIT_ON_ERROR;
+				    }
 				}
 			    }
 			  is_PK_based = true;
