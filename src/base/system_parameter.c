@@ -112,13 +112,13 @@ static const char sysprm_error_log_file[] = "cub_client.err";
 static const char sysprm_conf_file_name[] = "cubrid.conf";
 static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
+
 /*
  * System variable names
  */
 
-// *INDENT-OFF* //========================================================================
-#if 1		// [START] To fold source code for readability in development tools
-// *INDENT-ON*  //========================================================================
+#pragma region PRM_NAME_DEFINE
+
 #define PRM_NAME_ER_LOG_DEBUG "er_log_debug"
 
 #define PRM_NAME_ER_BTREE_DEBUG "er_btree_debug"
@@ -774,9 +774,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
-// *INDENT-OFF* //========================================================================
-#endif          // [END] To fold source code for readability in development tools
-// *INDENT-ON*  //========================================================================
+#pragma endregion		//PRM_NAME_DEFINE
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -947,9 +945,9 @@ static int int_list_initial[1] = { 0 };
  * Default values for the parameters
  * Upper and lower bounds for the parameters
  */
-// *INDENT-OFF* //========================================================================
-#if 1		// [START] To fold source code for readability in development tools
-// *INDENT-ON*  //========================================================================
+
+#pragma region PRM_INITIALIZE_VALUE_DEFINE
+
 bool PRM_ER_LOG_DEBUG = false;
 #if !defined(NDEBUG)
 static bool prm_er_log_debug_default = true;
@@ -2551,9 +2549,7 @@ static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
-// *INDENT-OFF* //========================================================================
-#endif          // [END] To fold source code for readability in development tools
-// *INDENT-ON*  //========================================================================
+#pragma endregion		//PRM_INITIALIZE_VALUE_DEFINE
 
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
