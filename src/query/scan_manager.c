@@ -5428,8 +5428,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksd
 
 		  pk_value =
 		    heap_attrvalue_get_key (thread_p, 0 /* PK index */ , &index_attrinfo, &recdes, &btid, &dbvalue,
-					    aligned_buf,
-					    NULL, NULL, p_current_oid, false);
+					    aligned_buf, NULL, NULL, p_current_oid, false);
 		  if (pk_value == NULL)
 		    {
 		      assert_release (false);
