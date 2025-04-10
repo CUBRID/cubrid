@@ -74,8 +74,6 @@ get_allocated_size (void *ptr)
     }
 }
 
-#if 0
-
 inline void
 cub_free (void *ptr)
 {
@@ -193,5 +191,3 @@ cub_strdup (const char *str, const char *file, const int line)
 #endif // !WINDOWS
 
 #endif // _MEMORY_CWRAPPER_H_
-
-#endif

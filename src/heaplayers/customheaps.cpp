@@ -141,9 +141,5 @@ hl_ostk_free (UINTPTR heap_id, void *ptr)
     }
 }
 
-#if 0
-
 #define malloc(sz) cub_alloc(sz, __FILE__, __LINE__)
 #define free(ptr) cub_free(ptr)
-
-#endif
