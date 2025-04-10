@@ -11696,10 +11696,10 @@ sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code)
     {
       return false;
     }
-  // TODO: error_code코드는 abs()를 이용해서 양수로 넘어 오고 있다. 
-  // 그렇지만 여기의 integer_list에는 음수인 에러코드가 들어 있을 것이다.
+
   for (i = 1; i <= integer_list[0]; i++)
     {
+      // TODO: Is "integer_list[i] == -error_code" necessary? Why is it necessary?
       if (integer_list[i] == error_code || integer_list[i] == -error_code)
 	{
 	  return true;
