@@ -8326,7 +8326,6 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      /* "entity is NULL" means inline view, UPDATE FOR should exclude inline view */
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
@@ -8335,8 +8334,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
-		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }
