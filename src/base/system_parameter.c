@@ -7507,7 +7507,7 @@ static bool
 prm_section_cmp (const char *key1, const char *key2, int key_len, bool ignore_case)
 {
   const char *s1 = strchr (key1, ':');
-  int len = (int) ((s1) ? CAST_STRLEN (s1 - key1) : strlen (key1));
+  int len = (s1) ? CAST_STRLEN (s1 - key1) : strlen (key1);
 
   if (len != key_len)
     {
@@ -7545,7 +7545,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
   int sec_key_len;
 
   sec_p = strchr (section, ':');
-  sec_key_len = (int) ((sec_p) ? CAST_STRLEN (sec_p - section) : strlen (section));
+  sec_key_len = (sec_p) ? CAST_STRLEN (sec_p - section) : strlen (section);
 
   sec_p = (ignore_section) ? NULL : section;
 
