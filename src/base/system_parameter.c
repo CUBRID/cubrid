@@ -7001,7 +7001,7 @@ static int sysprm_packed_sysprm_value_length (SYSPRM_VALUE value, SYSPRM_DATATYP
 static char *sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value, SYSPRM_DATATYPE datatype);
 
 #if defined (SERVER_MODE)
-static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value);
+static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
 
@@ -7012,14 +7012,6 @@ static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
 #if defined (SA_MODE) || defined (SERVER_MODE)
 static void init_server_timezone_parameter (void);
 #endif
-
-#ifndef NDEBUG
-#define SYSPRM_ID_VALID(p)  (((int) ((p) - prm_Def)) >= PRM_FIRST_ID && ((int) ((p) - prm_Def)) <= PRM_LAST_ID)
-#define SYSPRM_GET_ID(prm)  (assert (SYSPRM_ID_VALID(prm)), assert(((PARAM_ID) ((prm) - prm_Def)) == (prm)->id), ((prm)->id))
-#else
-#define SYSPRM_GET_ID(prm)  ((prm)->id)
-#endif
-
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	(10)
@@ -7081,7 +7073,7 @@ public:
 
   void dump (FILE * fp)
   {
-    assert (m_used >= 0 && m_used < MAX_NUM_OF_PRM_FILES_LOADED);
+    assert (m_used >= 0 && m_used <= MAX_NUM_OF_PRM_FILES_LOADED);
 
     for (int i = 0; i < m_used; i++)
       {
@@ -8467,7 +8459,7 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	      break;
 	    }
 	}
-      assign->prm_id = SYSPRM_GET_ID (prm);
+      assign->prm_id = prm->id;
       assign->next = NULL;
 
       /* append to assignments list */
@@ -8545,20 +8537,20 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 	  break;
 	}
 
-      if (PRM_ID_INTL_COLLATION == SYSPRM_GET_ID (prm))
+      if (PRM_ID_INTL_COLLATION == prm->id)
 	{
 	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_COLLATION,
 			lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)));
 	}
-      else if (PRM_ID_INTL_DATE_LANG == SYSPRM_GET_ID (prm))
+      else if (PRM_ID_INTL_DATE_LANG == prm->id)
 	{
 	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_DATE_LANG, lang_get_Lang_name ());
 	}
-      else if (PRM_ID_INTL_NUMBER_LANG == SYSPRM_GET_ID (prm))
+      else if (PRM_ID_INTL_NUMBER_LANG == prm->id)
 	{
 	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_NUMBER_LANG, lang_get_Lang_name ());
 	}
-      else if (PRM_ID_TIMEZONE == SYSPRM_GET_ID (prm))
+      else if (PRM_ID_TIMEZONE == prm->id)
 	{
 	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_TIMEZONE, tz_get_system_timezone ());
 	}
@@ -8621,7 +8613,7 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
 #endif
       sysprm_set_value (prm, assignments->value, set_flag, true);
 #if defined (SERVER_MODE)
-      if (SYSPRM_GET_ID (prm) == PRM_ID_ACCESS_IP_CONTROL)
+      if (prm->id == PRM_ID_ACCESS_IP_CONTROL)
 	{
 	  css_set_accessible_ip_info ();
 	}
@@ -8735,7 +8727,6 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 	   PRM_PRINT_VALUE_MODE print_value_mode)
 {
   int n = 0;
-  PARAM_ID id;
   int error = NO_ERROR;
   char left_side[PRM_DEFAULT_BUFFER_SIZE];
   void *prm_value;
@@ -8757,8 +8748,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
   if (print_mode == PRM_PRINT_ID)
     {
-      id = SYSPRM_GET_ID (prm);
-      snprintf (left_side, PRM_DEFAULT_BUFFER_SIZE, "%d=", id);
+      snprintf (left_side, PRM_DEFAULT_BUFFER_SIZE, "%d=", prm->id);
     }
   else if (print_mode == PRM_PRINT_NAME)
     {
@@ -9263,7 +9253,7 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  break;
 	}
-      prm_value->prm_id = SYSPRM_GET_ID (prm);
+      prm_value->prm_id = prm->id;
       prm_value->next = NULL;
 #if defined (CS_MODE)
       if (PRM_IS_FOR_CLIENT (prm))
@@ -10136,7 +10126,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    val = PRM_GET_STRING (prm->default_value);
 	    if (val == NULL)
 	      {
-		switch (SYSPRM_GET_ID (prm))
+		switch (prm->id)
 		  {
 		  case PRM_ID_INTL_COLLATION:
 		    val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
@@ -10192,7 +10182,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	/* convert string into an array of integers */
 	int *val = NULL;
 
-	if (set_default && SYSPRM_GET_ID (prm) != PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+	if (set_default && prm->id != PRM_ID_CALL_STACK_DUMP_ACTIVATION)
 	  {
 	    val = PRM_GET_INTEGER_LIST (prm->default_value);
 	    if (val == NULL)
@@ -10247,7 +10237,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 		    *s = '\0';
 		    if (intl_mbs_casecmp ("default", p) == 0)	// TODO: strcasecmp
 		      {
-			if (SYSPRM_GET_ID (prm) == PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+			if (prm->id == PRM_ID_CALL_STACK_DUMP_ACTIVATION)
 			  {
 			    memcpy (&val[list_size + 1], call_stack_dump_error_codes,
 				    sizeof (call_stack_dump_error_codes));
@@ -10284,7 +10274,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	    val[0] = list_size;
 	  }
 
-	if (SYSPRM_GET_ID (prm) == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
+	if (prm->id == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
 	  {
 	    /*  
 	     *  The length of the parameter must be 2
@@ -10387,7 +10377,6 @@ static int
 sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate)
 {
 #if defined (SERVER_MODE)
-  PARAM_ID id;
   THREAD_ENTRY *thread_p;
 #endif
   void *tmp_ptr = NULL;
@@ -10445,10 +10434,9 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
       TZ_REGION *session_tz_region;
 
       /* update session parameter */
-      id = SYSPRM_GET_ID (prm);
       thread_p = thread_get_thread_entry_info ();
 
-      param = session_get_session_parameter (thread_p, id);
+      param = session_get_session_parameter (thread_p, prm->id);
       if (param == NULL)
 	{
 	  if (tmp_ptr != NULL)
@@ -10459,7 +10447,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
 
-      if (id == PRM_ID_TIMEZONE)
+      if (prm->id == PRM_ID_TIMEZONE)
 	{
 	  session_tz_region = session_get_session_tz_region (thread_p);
 	  if (session_tz_region != NULL)
@@ -10468,12 +10456,12 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	    }
 	}
 
-      SYSPRM_ERR err = sysprm_set_session_parameter_value (param, id, value);
+      SYSPRM_ERR err = sysprm_set_session_parameter_value (param, value);
 
       // err always returns PRM_ERR_NO_ERROR
-      if (PRM_IS_FOR_PL_CONTEXT (GET_PRM (id)))
+      if (PRM_IS_FOR_PL_CONTEXT (prm))
 	{
-	  (void) session_set_pl_session_parameter (thread_p, id);
+	  (void) session_set_pl_session_parameter (thread_p, prm->id);
 	}
 
       return err;
@@ -10486,7 +10474,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
   sysprm_set_system_parameter_value (prm, value);
 
   /* Set the cached parsed system timezone region on the server */
-  if (SYSPRM_GET_ID (prm) == PRM_ID_SERVER_TIMEZONE)
+  if (prm->id == PRM_ID_SERVER_TIMEZONE)
     {
       TZ_REGION tz_region_system;
       int err_status = 0;
@@ -10501,7 +10489,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 
   /* Set the cached parsed session timezone region on the client */
 #if !defined(SERVER_MODE)
-  if (SYSPRM_GET_ID (prm) == PRM_ID_TIMEZONE)
+  if (prm->id == PRM_ID_TIMEZONE)
     {
       int err_status = 0;
       err_status = tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ());
@@ -10538,32 +10526,31 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 static void
 sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
 {
-  PARAM_ID prm_id = SYSPRM_GET_ID (prm);
   switch (prm->datatype)
     {
     case PRM_INTEGER:
     case PRM_KEYWORD:
-      prm_set_integer_value (prm_id, value.i);
+      prm_set_integer_value (prm->id, value.i);
       break;
 
     case PRM_FLOAT:
-      prm_set_float_value (prm_id, value.f);
+      prm_set_float_value (prm->id, value.f);
       break;
 
     case PRM_BOOLEAN:
-      prm_set_bool_value (prm_id, value.b);
+      prm_set_bool_value (prm->id, value.b);
       break;
 
     case PRM_STRING:
-      prm_set_string_value (prm_id, value.str);
+      prm_set_string_value (prm->id, value.str);
       break;
 
     case PRM_INTEGER_LIST:
-      prm_set_integer_list_value (prm_id, value.integer_list);
+      prm_set_integer_list_value (prm->id, value.integer_list);
       break;
 
     case PRM_BIGINT:
-      prm_set_bigint_value (prm_id, value.bi);
+      prm_set_bigint_value (prm->id, value.bi);
       break;
 
     default:
@@ -10585,7 +10572,7 @@ prm_compound_has_changed (SYSPRM_PARAM * prm, bool set_flag)
 {
   assert (PRM_IS_COMPOUND (prm));
 
-  if (SYSPRM_GET_ID (prm) == PRM_ID_COMPAT_MODE)
+  if (prm->id == PRM_ID_COMPAT_MODE)
     {
       prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values), set_flag);
     }
@@ -10632,18 +10619,16 @@ prm_set_default (SYSPRM_PARAM * prm)
 #if defined (SERVER_MODE)
   if (PRM_IS_FOR_SESSION (prm) && BO_IS_SERVER_RESTARTED ())
     {
-      PARAM_ID id;
       SESSION_PARAM *sprm = NULL;
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      id = SYSPRM_GET_ID (prm);
-      sprm = session_get_session_parameter (thread_p, id);
+      sprm = session_get_session_parameter (thread_p, prm->id);
       if (sprm == NULL)
 	{
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
 
-      return sysprm_set_session_parameter_default (sprm, id);
+      return sysprm_set_session_parameter_default (sprm, prm->id);
     }
 #endif /* SERVER_MODE */
 
@@ -10758,6 +10743,7 @@ prm_find (const char *pname, const char *section)
     {
       if (intl_mbs_casecmp (GET_PRM (i)->name, key) == 0)	// TODO: strcasecmp
 	{
+	  assert ((PARAM_ID) i == GET_PRM (i)->id);
 	  return GET_PRM (i);
 	}
     }
@@ -12530,11 +12516,10 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
  *					parameter identified by id.
  * return : PRM_ERR_NO_ERROR or error_code
  * session_parameter (in)  : session parameter to set the value of
- * id (in)		   : id for the session parameter that needs changed
  * value (in)		   : new value
  */
 static SYSPRM_ERR
-sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value)
+sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value)
 {
   switch (session_parameter->datatype)
     {
