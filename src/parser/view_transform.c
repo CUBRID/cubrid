@@ -5095,6 +5095,10 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
 	  parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte, &can_rewrite, NULL, NULL);
+
+	  /* the threshold value for CTE transformation is 2 references.
+	   * initialize referenced_count to 1 for CTE with materialize hint to enable removal 
+	   * when not referenced from main query. */
 	  cte->info.cte.referenced_count = can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? 1 : 0) : 1;
 	  cte = cte->next;
 	}
@@ -5108,6 +5112,14 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  CAST_POINTER_TO_NODE (node_pointer);
 
 	  hint = pt_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
+
+	  /* increment the referenced_count of the CTE when it is referenced directly or indirectly from the main query.
+	   * e.g.
+	   * with 
+	   *   cte1 as (select /*+ materialize * / c1, c2 from t1),    : indirectly, referenced_count = 2
+	   *   cte2 as (select * from cte1)                            : directly, referenced_count = 1
+	   * select /*+ recompile * / * from cte2;
+	   */
 	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
 				   pt_continue_walk, NULL);
 
@@ -5199,14 +5211,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      /* If the referenced count is 2 or more, it is treated as a materialized CTE. */
 	      return node;
 	    }
-	  else
-	    {
-	      /* If the referenced count is less than 2, it is treated as a inline CTE. */
-	      if (hint & PT_HINT_MATERIALIZE_CTE)
-		{
-		  return node;
-		}
-	    }
+	  /* If the referenced count is less than 2, it is treated as a inline CTE. */
 
 	  attributes = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
 	  derived = parser_copy_tree (parser, cte->info.cte.non_recursive_part);
