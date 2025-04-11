@@ -400,7 +400,7 @@ flashback_process_column_data (char **data, char **sql, int *max_sql_size, DB_TY
 	  return error;
 	}
 
-      sprintf (*sql + sql_length, "%lld", b_data);
+      sprintf (*sql + sql_length, "%" PRId64, b_data);
       break;
     case PACK_FLOAT:
       ptr = or_unpack_float (ptr, &f_data);

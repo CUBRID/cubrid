@@ -499,7 +499,7 @@ freeaddrinfo_uhost (struct addrinfo *res)
 static void
 strcpy_ucase (char *dst, size_t len, const char *src)
 {
-  int i;
+  size_t i;
 
   if (dst == NULL || src == NULL || len == 0)
     {

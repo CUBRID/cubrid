@@ -70,7 +70,7 @@
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
-  char *dbms_name;
+  const char *dbms_name;
   T_DBMS_TYPE dbms_type;
 };
 
@@ -117,7 +117,7 @@ static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_s
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
-static char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
+static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
 int
 cgw_init ()
@@ -1322,7 +1322,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    if (src_type == CCI_U_TYPE_BIGINT)
 	      {
 		net_arg_get_bigint (&bi_val, net_value);
-		snprintf (tmp, sizeof (tmp), "%lld", bi_val);
+		snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
 	      }
 	    else
 	      {
@@ -1845,7 +1845,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
   char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
   char num_val[DECIMAL_DIGIT_MAX_LEN + 1] = { 0 };
   short i;
-  size_t num_add_zero;
+  int num_add_zero;
   UINT64 number = 0;
   char *endptr = NULL;
   int error;
@@ -1887,7 +1887,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
       return ER_CGW_INVALID_NUMERIC_VALUE;
     }
 
-  sprintf (hexstr, "%llX", number);
+  sprintf (hexstr, "%" PRIX64, number);
 
   error = hex_to_numeric_val (numeric, hexstr);
   if (error < 0)
@@ -2674,7 +2674,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   ret = iconv (cd, (char **) &iconv_in, &inlen, &iconv_out, &outlen);
 
-  if (ret == -1)
+  if (ret == (size_t) (-1))
     {
       iconv_close (cd);
       return (-1);
@@ -2722,7 +2722,7 @@ cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t 
       return -1;
     }
 
-  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == -1)
+  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == (size_t) (-1))
     {
       iconv_close (conv);
       return -1;
@@ -2798,7 +2798,7 @@ cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
   return NULL;
 }
 
-static char *
+static const char *
 cgw_get_dbms_name (T_DBMS_TYPE db_type)
 {
   for (int i = 0; i < supported_dbms_max_num; i++)
