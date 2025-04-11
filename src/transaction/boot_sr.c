@@ -143,7 +143,7 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT **
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
-extern void boot_client_all_finalize (bool is_er_final);
+extern void boot_client_all_finalize (int final_level);
 #endif /* SA_MODE */
 
 
