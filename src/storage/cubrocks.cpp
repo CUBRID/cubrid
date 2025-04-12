@@ -116,15 +116,13 @@ cubrocks::context::kv_config (void)
 
   opt.db.max_total_wal_size = 4 * 1024 * 1024 * 1024LL;
 
-  /* sync is currently enabled
-   *
-   * opt.db.bytes_per_sync = 16777216;
-   * opt.db.wal_bytes_per_sync = 4194304;
-   *
-   */
+  /* sync is currently enabled */
+  opt.db.bytes_per_sync = 4 * 1024 * 1024; /* 16 MB might be a good choice if your SSD has better performance */
+  opt.db.wal_bytes_per_sync = 4 * 1024 * 1024;
 
   /* Option 1 */
-  opt.db.use_direct_reads = true;
+  opt.db.use_direct_reads = false;
+
   opt.db.use_direct_io_for_flush_and_compaction = true;
 
   opt.db.max_subcompactions = 4;
