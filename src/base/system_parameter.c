@@ -2139,8 +2139,10 @@ static int prm_extended_statistics_lower = 0;
 static int prm_extended_statistics_upper = PERFMON_ACTIVATION_FLAG_MAX_VALUE;
 static unsigned int prm_extended_statistics_flag = 0;
 
-bool PRM_ENABLE_STRING_COMPRESSION = false;
-static bool prm_enable_string_compression_default = false;
+/* NOTE: COMPRESSION */
+bool PRM_ENABLE_STRING_COMPRESSION = true;
+static bool prm_enable_string_compression_default = true;
+
 static unsigned int prm_enable_string_compression_flag = 0;
 
 int PRM_XASL_CACHE_TIME_THRESHOLD_IN_MINUTES = 360;

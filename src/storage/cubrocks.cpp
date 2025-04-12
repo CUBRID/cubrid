@@ -116,20 +116,25 @@ cubrocks::context::kv_config (void)
 
   opt.db.max_total_wal_size = 4 * 1024 * 1024 * 1024LL;
 
-  opt.db.bytes_per_sync = 16777216;
-  opt.db.wal_bytes_per_sync = 4194304;
+  /* sync is currently enabled
+   *
+   * opt.db.bytes_per_sync = 16777216;
+   * opt.db.wal_bytes_per_sync = 4194304;
+   *
+   */
 
+  /* Option 1 */
   opt.db.use_direct_reads = true;
   opt.db.use_direct_io_for_flush_and_compaction = true;
 
   opt.db.max_subcompactions = 4;
   opt.db.compaction_readahead_size = 16 * 1024 * 1024;
 
-  /* this should be set for pair experiment */
-  opt.cf.compression = rocksdb::kNoCompression;
+  /* Option 2 */
+  //opt.cf.compression = rocksdb::kNoCompression;
 
   opt.cf.write_buffer_size = 256 * 1024 * 1024;
-  opt.cf.max_write_buffer_number = 2;
+  opt.cf.max_write_buffer_number = 4;
 
   opt.cf.max_bytes_for_level_base = 512 * 1024 * 1024;
 
@@ -143,7 +148,8 @@ cubrocks::context::kv_config (void)
 
 
   /* use CRC32 if the machine supports acceleration functions */
-  opt.table.checksum = rocksdb::kCRC32c;
+  /* opt.table.checksum = rocksdb::kCRC32c; */
+
   opt.table.data_block_index_type = rocksdb::BlockBasedTableOptions::kDataBlockBinaryAndHash;
   opt.table.filter_policy.reset (rocksdb::NewBloomFilterPolicy (10, false));
   opt.table.index_type = rocksdb::BlockBasedTableOptions::kBinarySearchWithFirstKey;
