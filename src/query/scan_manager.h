@@ -231,6 +231,7 @@ struct indx_scan_id
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   /* TODO: Can we use these instead of BTS pointers to limits? */
+  DB_BIGINT key_num;
   DB_BIGINT key_limit_lower;	/* lower key limit */
   DB_BIGINT key_limit_upper;	/* upper key limit */
   INDX_COV indx_cov;		/* index covering information */

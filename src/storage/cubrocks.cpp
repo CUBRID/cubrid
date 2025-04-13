@@ -1028,14 +1028,6 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
   isidp = &scan_id->s.isid;
   indx_infop = isidp->indx_info;
 
-  /* multi range optimization safe guard : fall-back to normal output (OID list or covering index instead of "on the
-   * fly" lists), if sorting column is not yet set at this stage; also 'grouped' is not supported */
-  if (isidp->multi_range_opt.use && (isidp->multi_range_opt.sort_att_idx == NULL || scan_id->grouped))
-    {
-      isidp->multi_range_opt.use = false;
-      scan_id->scan_stats.multi_range_opt = false;
-    }
-
   /* set data filter information */
   scan_init_filter_info (&data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list, scan_id->vd,
 			 &isidp->cls_oid, 0, NULL, NULL, NULL);
@@ -1053,25 +1045,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 	  goto clear_and_exit;
 	}
       isidp->curr_keyno = 0;
-      isidp->curr_oidno = -1;
-    }
-
-  /* clear top n */
-  if (isidp->multi_range_opt.use && isidp->multi_range_opt.cnt > 0)
-    {
-      /* reset any previous results for multiple range optimization */
-      int i;
-
-      for (i = 0; i < isidp->multi_range_opt.cnt; i++)
-	{
-	  if (isidp->multi_range_opt.top_n_items[i] != NULL)
-	    {
-	      pr_clear_value (& (isidp->multi_range_opt.top_n_items[i]->index_value));
-	      db_private_free_and_init (thread_p, isidp->multi_range_opt.top_n_items[i]);
-	    }
-	}
-
-      isidp->multi_range_opt.cnt = 0;
+      isidp->key_num = 0;
     }
 
 scan_and_advance:
@@ -1083,12 +1057,23 @@ scan_and_advance:
 	  scan = S_END;
 	  goto clear_and_exit;
 	}
+      if (isidp->key_limit_upper != -1 && isidp->key_num == isidp->key_limit_upper)
+	{
+	  scan = S_END;
+	  goto clear_and_exit;
+	}
 
       /* get next data */
       switch (indx_infop->range_type)
 	{
 	case R_KEY:
 	  scan_id->scan_stats.read_keys++;
+	  if (isidp->key_limit_lower >= 1)
+	    {
+	      /* no need to search */
+	      isidp->curr_keyno++;
+	      continue;
+	    }
 
 	  kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &isidp->cls_oid, &key_vals[0].key1, key_size);
 	  key = rocksdb::Slice (key_buf, key_size);
@@ -1101,6 +1086,7 @@ scan_and_advance:
 	    }
 
 	  scan_id->scan_stats.key_qualified_rows++;
+	  isidp->key_num++;
 
 	  /* evaluate the predicates to see if the object qualifies */
 	  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, &data_filter);
@@ -1281,6 +1267,7 @@ scan_and_advance:
 	      continue;
 	    }
 
+	  isidp->key_num++;
 	  scan_id->scan_stats.data_qualified_rows++;
 
 	  /* it is not oid but this should be set to upper scope */
@@ -1379,7 +1366,7 @@ clear_and_exit:
       pr_clear_value (&key_vals[i].key1);
       pr_clear_value (&key_vals[i].key2);
     }
-  isidp->curr_keyno++;
+  isidp->curr_keyno = key_cnt + 1;
 
   return scan;
 }
