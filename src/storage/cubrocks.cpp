@@ -972,6 +972,7 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
 	      key_size = kv_get_key_size (&key_vals[i].key2);
 	      key_buf = (char *) malloc (key_size * sizeof (char));
 	      kv_make_key_with_PK (key_buf, key_size, &isidp->cls_oid, &key_vals[i].key2, key_size);
+	      key_buf[key_size - 1]++;
 	      upper = new rocksdb::Slice (key_buf, key_size);
 	    }
 	  break;
@@ -1073,7 +1074,7 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
       isidp->multi_range_opt.cnt = 0;
     }
 
-scan_and_advacne:
+scan_and_advance:
   /* if the end of this scan */
   while (1)
     {
@@ -1181,7 +1182,21 @@ scan_and_advacne:
 		       key_vals[isidp->curr_keyno].range == GT_INF) && isidp->scan_cache.kv_iter->Valid ())
 		    {
 		      assert (!DB_IS_NULL (&key_vals[isidp->curr_keyno].key1));
-		      isidp->scan_cache.kv_iter->Next();
+
+		      key1 = isidp->scan_cache.kv_iter->key ().data () + sizeof (OID);
+		      key2 = db_get_string (&key_vals[isidp->curr_keyno].key1);
+
+		      key1_length = isidp->scan_cache.kv_iter->key ().size () - 8;
+		      key2_length = db_get_string_size (&key_vals[isidp->curr_keyno].key1);
+
+		      length = key1_length < key2_length ? key1_length : key2_length;
+
+		      key_size = memcmp (key1, key2, length);
+
+		      if (key_size == 0)
+			{
+			  isidp->scan_cache.kv_iter->Next();
+			}
 		    }
 
 		  scan_id->position = S_ON;
@@ -1194,7 +1209,7 @@ scan_and_advacne:
 	      if (isidp->scan_cache.kv_iter->Valid ())
 		{
 		  scan_id->scan_stats.read_keys++;
-		  if (!DB_IS_NULL (&key_vals[0].key2))
+		  if (!DB_IS_NULL (&key_vals[isidp->curr_keyno].key2))
 		    {
 		      key1 = isidp->scan_cache.kv_iter->key ().data () + sizeof (OID);
 		      key2 = db_get_string (&key_vals[isidp->curr_keyno].key2);
@@ -1205,14 +1220,21 @@ scan_and_advacne:
 		      length = key1_length < key2_length ? key1_length : key2_length;
 
 		      key_size = memcmp (key1, key2, length);
-		      if (key_size > 0 || (key_size == 0 && (key_vals[isidp->curr_keyno].range == GE_LT
-							     || key_vals[isidp->curr_keyno].range == GT_LT || key_vals[isidp->curr_keyno].range == INF_LT)))
+		      if (key_size > 0 || (key_size == 0 &&
+					   (key1_length > key2_length ||
+					    (key1_length == key2_length &&
+					     (key_vals[isidp->curr_keyno].range == GE_LT ||
+					      key_vals[isidp->curr_keyno].range == GT_LT ||
+					      key_vals[isidp->curr_keyno].range == INF_LT)))))
 			{
 			  isidp->curr_keyno++;
 			  scan_id->position = S_BEFORE;
-			  goto scan_and_advacne;
+			  goto scan_and_advance;
 			}
 		    }
+		  /* the key is valid */
+		  key = isidp->scan_cache.kv_iter->key ();
+		  break;
 		}
 	      else
 		{
@@ -1223,7 +1245,7 @@ scan_and_advacne:
 
 		  isidp->curr_keyno++;
 		  scan_id->position = S_BEFORE;
-		  goto scan_and_advacne;
+		  goto scan_and_advance;
 		}
 	    }
 
@@ -1271,8 +1293,6 @@ scan_and_advacne:
 	  db_make_string (&current_key, key_buf);
 
 	  pr_clone_value (&current_key, &isidp->pk_val);
-	  /* advance */
-	  isidp->curr_keyno++;
 
 	  /* make tuple */
 	  goto fall_through;
@@ -1305,7 +1325,7 @@ fall_through:
       if (scan == S_DOESNT_EXIST)
 	{
 	  /* no match, advance */
-	  goto scan_and_advacne;
+	  goto scan_and_advance;
 	}
 
       ev_res =
@@ -1319,12 +1339,12 @@ fall_through:
 	      return S_ERROR;
 	    }
 	  /* no match, advance */
-	  goto scan_and_advacne;
+	  goto scan_and_advance;
 	}
       if (mvcc_reev_data.filter_result == V_FALSE)
 	{
 	  /* no match, advance */
-	  goto scan_and_advacne;
+	  goto scan_and_advance;
 	}
     }
 
