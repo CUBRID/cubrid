@@ -20,7 +20,6 @@
  * cubrocks.cpp - rocksdb for cubrid
  */
 
-#include "object_primitive.h"
 #ident "$Id$"
 
 #include <string>
@@ -42,6 +41,7 @@
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/db.h"
 
+#include "object_primitive.h"
 #include "locator_sr.h"
 #include "porting.h"
 #include "query_evaluator.h"
@@ -117,7 +117,7 @@ cubrocks::context::kv_config (void)
   opt.db.max_total_wal_size = 4 * 1024 * 1024 * 1024LL;
 
   /* sync is currently enabled */
-  opt.db.bytes_per_sync = 4 * 1024 * 1024; /* 16 MB might be a good choice if your SSD has better performance */
+  opt.db.bytes_per_sync = 16 * 1024 * 1024; /* 16 MB might be a good choice if your SSD has better performance */
   opt.db.wal_bytes_per_sync = 4 * 1024 * 1024;
 
   /* Option 1 */
@@ -354,19 +354,20 @@ cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache)
   readopt.prefix_same_as_start = true;
   readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
 
-//  readopt.fill_cache = false;
   readopt.async_io = true;
-  readopt.readahead_size = 2 * 1024 * 1024;
+  readopt.readahead_size = 512 * 1024;
 
   readopt.background_purge_on_iterator_cleanup = true;
+
+  scan_cache->kv_lower = nullptr;
+  scan_cache->kv_upper = nullptr;
 
   scan_cache->kv_iter = db->NewIterator (readopt);
   assert (scan_cache->kv_iter != nullptr);
 }
 
 void
-cubrocks::context::kv_scan_start_with_bound (HEAP_SCANCACHE *scan_cache, OID *class_oid, DB_VALUE *lower,
-    DB_VALUE *upper)
+cubrocks::context::kv_scan_start (HEAP_SCANCACHE *scan_cache, rocksdb::Slice *lower, rocksdb::Slice *upper)
 {
   assert (alive);
   assert (scan_cache != NULL);
@@ -374,28 +375,6 @@ cubrocks::context::kv_scan_start_with_bound (HEAP_SCANCACHE *scan_cache, OID *cl
   /* scan_cache has no constructor, so we can't figure out the member in scan_cache is garbage value or not. */
   /* BUT, since this function is called from heap_scancache_start family, we can consider the values in scan_cache is just garbage. */
   rocksdb::ReadOptions readopt;
-  char *key_buf;
-  int key_size;
-  int dummy;
-
-  if (lower != NULL)
-    {
-      key_size = kv_get_key_size (lower);
-      key_buf = (char *) malloc (key_size * sizeof (char));
-      kv_make_key_with_PK (key_buf, key_size, class_oid, lower, dummy);
-
-      scan_cache->kv_lower = rocksdb::Slice (key_buf, key_size);
-      readopt.iterate_lower_bound = &scan_cache->kv_lower;
-    }
-  if (upper != NULL)
-    {
-      key_size = kv_get_key_size (upper);
-      key_buf = (char *) malloc (key_size * sizeof (char));
-      kv_make_key_with_PK (key_buf, key_size, class_oid, upper, dummy);
-
-      scan_cache->kv_upper = rocksdb::Slice (key_buf, key_size);
-      readopt.iterate_upper_bound = &scan_cache->kv_upper;
-    }
 
   /* read committed */
   readopt.tailing = true;
@@ -403,11 +382,16 @@ cubrocks::context::kv_scan_start_with_bound (HEAP_SCANCACHE *scan_cache, OID *cl
   readopt.prefix_same_as_start = true;
   readopt.io_activity = rocksdb::Env::IOActivity::kDBIterator;
 
-//  readopt.fill_cache = false;
   readopt.async_io = true;
-  readopt.readahead_size = 2 * 1024 * 1024;
+  readopt.readahead_size = 512 * 1024;
 
   readopt.background_purge_on_iterator_cleanup = true;
+
+  readopt.iterate_lower_bound = lower;
+  readopt.iterate_upper_bound = upper;
+
+  scan_cache->kv_lower = lower;
+  scan_cache->kv_upper = upper;
 
   scan_cache->kv_iter = db->NewIterator (readopt);
   assert (scan_cache->kv_iter != nullptr);
@@ -424,16 +408,19 @@ cubrocks::context::kv_scan_end (HEAP_SCANCACHE *scan_cache)
   delete scan_cache->kv_iter;
   scan_cache->kv_iter = nullptr;
 
-  /*
-  if (!scan_cache->kv_lower.empty ())
+  if (scan_cache->kv_lower)
     {
-      free ((void *) scan_cache->kv_lower.data ());
+      free ((void *) scan_cache->kv_lower->data ());
+      delete scan_cache->kv_lower;
+      scan_cache->kv_lower = nullptr;
     }
-  if (!scan_cache->kv_upper.empty ())
+  if (scan_cache->kv_upper)
     {
-      free ((void *) scan_cache->kv_upper.data ());
+      free ((void *) scan_cache->kv_upper->data ());
+      delete scan_cache->kv_upper;
+      scan_cache->kv_upper = nullptr;
     }
-    */
+
 }
 
 SCAN_CODE
@@ -781,6 +768,7 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 
       if (context->pk && context->type == HEAP_OPERATION_UPDATE)
 	{
+	  /* handle these as string (varchar) */
 	  if (strcmp (db_get_string (context->pk), db_get_string (key_dbvalue)) != 0)
 	    {
 	      /* if PK must be changed, previous key should be deleted (context->pk) */
@@ -904,29 +892,28 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
   indx_info *indx_infop;
   KEY_VAL_RANGE *key_vals;
   RANGE range;
+  rocksdb::Slice *lower, *upper;
+  char *key_buf;
+  int key_size;
   int i;
 
   isidp = &scan_id->s.isid;
   indx_infop = isidp->indx_info;
   key_vals = isidp->key_vals;
 
+  lower = nullptr;
+  upper = nullptr;
   for (i = 0; i < isidp->key_cnt; i++)
     {
       switch (indx_infop->range_type)
 	{
 	case R_KEY:
-	  range = key_vals[0].range;
-	  if (range == NA_NA)
-	    {
-	      isidp->curr_keyno = isidp->key_cnt;
-	      continue;
-	    }
 	  if (isidp->key_cnt != 1)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  break;
+	/* fall through */
 
 	case R_KEYLIST:
 	  range = key_vals[i].range;
@@ -938,47 +925,24 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
 	  break;
 
 	case R_RANGE:
-	  range = key_vals[0].range;
-
-	  if (range == NA_NA || range == INF_INF)
-	    {
-	      isidp->curr_keyno = isidp->key_cnt;
-	      continue;
-	    }
-	  if (isidp->key_cnt != 1 || range < GE_LE || range > INF_INF)
+	  if (isidp->key_cnt != 1)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  if (range >= GE_INF && range <= GT_INF)
-	    {
-	      pr_clear_value (&key_vals[0].key2);
-	      PRIM_SET_NULL (&key_vals[0].key2);
-	    }
-	  if (range >= INF_LE && range <= INF_LT)
-	    {
-	      pr_clear_value (&key_vals[0].key1);
-	      PRIM_SET_NULL (&key_vals[0].key1);
-	    }
-	  if (key_vals[0].is_truncated == true)
-	    {
-	      range = GE_LE;
-	    }
-	  key_vals[0].range = range;
-	  break;
+	/* fall through */
 
 	case R_RANGELIST:
 	  range = key_vals[i].range;
-
-	  if (range == NA_NA || range == INF_INF)
-	    {
-	      isidp->curr_keyno = isidp->key_cnt;
-	      continue;
-	    }
 	  if (range < GE_LE || range > INF_INF)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
+	    }
+	  if (range == NA_NA || range == INF_INF)
+	    {
+	      isidp->curr_keyno = isidp->key_cnt;
+	      continue;
 	    }
 	  if (range >= GE_INF && range <= GT_INF)
 	    {
@@ -995,11 +959,31 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
 	      range = GE_LE;
 	    }
 	  key_vals[i].range = range;
+
+	  if (i == 0 && !DB_IS_NULL (&key_vals[i].key1))
+	    {
+	      key_size = kv_get_key_size (&key_vals[i].key1);
+	      key_buf = (char *) malloc (key_size * sizeof (char));
+	      kv_make_key_with_PK (key_buf, key_size, &isidp->cls_oid, &key_vals[i].key1, key_size);
+	      lower = new rocksdb::Slice (key_buf, key_size);
+	    }
+	  if (i == isidp->key_cnt - 1 && !DB_IS_NULL (&key_vals[i].key2))
+	    {
+	      key_size = kv_get_key_size (&key_vals[i].key2);
+	      key_buf = (char *) malloc (key_size * sizeof (char));
+	      kv_make_key_with_PK (key_buf, key_size, &isidp->cls_oid, &key_vals[i].key2, key_size);
+	      upper = new rocksdb::Slice (key_buf, key_size);
+	    }
 	  break;
 
 	default:
 	  assert_release (false);
 	}
+    }
+  if (indx_infop->range_type == R_RANGE || indx_infop->range_type == R_RANGELIST)
+    {
+      kv_scan_end (&isidp->scan_cache);
+      kv_scan_start (&isidp->scan_cache, lower, upper);
     }
 
   return NO_ERROR;
@@ -1015,11 +999,15 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
   KEY_VAL_RANGE *key_vals;
   int key_cnt;
   DB_LOGICAL ev_res;
-  rocksdb::Slice key;
   RECDES recdes = RECDES_INITIALIZER;
+  rocksdb::Slice key;
   char key_buf[DBVAL_BUFSIZE];
   int key_size;
+  const char *key1, *key2;
+  int key1_length, key2_length;
+  int length;
   SCAN_CODE scan;
+  DB_VALUE current_key;
   int i;
   MVCC_REC_HEADER dummy_mvcc =
   {
@@ -1063,8 +1051,8 @@ cubrocks::context::kv_logical_scan_with_PK (int tran_index, SCAN_ID *scan_id)
 	  scan = S_ERROR;
 	  goto clear_and_exit;
 	}
-
       isidp->curr_keyno = 0;
+      isidp->curr_oidno = -1;
     }
 
   /* clear top n */
@@ -1099,7 +1087,7 @@ scan_and_advacne:
       switch (indx_infop->range_type)
 	{
 	case R_KEY:
-	  scan_id->scan_stats.key_qualified_rows++;
+	  scan_id->scan_stats.read_keys++;
 
 	  kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &isidp->cls_oid, &key_vals[0].key1, key_size);
 	  key = rocksdb::Slice (key_buf, key_size);
@@ -1109,6 +1097,151 @@ scan_and_advacne:
 	      /* skip this key value */
 	      isidp->curr_keyno++;
 	      continue;
+	    }
+
+	  scan_id->scan_stats.key_qualified_rows++;
+
+	  /* evaluate the predicates to see if the object qualifies */
+	  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, &data_filter);
+	  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
+	  if (ev_res == V_ERROR)
+	    {
+	      scan = S_ERROR;
+	      goto clear_and_exit;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      /* skip this key value */
+	      isidp->curr_keyno++;
+	      continue;
+	    }
+
+	  scan_id->scan_stats.data_qualified_rows++;
+
+	  /* it is not oid but this should be set to upper scope */
+	  isidp->oids_count = 1;
+	  /* give PK for temp */
+	  pr_clone_value (&key_vals[0].key1, &isidp->pk_val);
+	  /* advance */
+	  isidp->curr_keyno++;
+
+	  /* make tuple */
+	  goto fall_through;
+
+	case R_KEYLIST:
+	  /* we can use multiget for fast read */
+	  scan_id->scan_stats.key_qualified_rows++;
+
+	  /* get data */
+	  //scan_id->s.isid.scan_cache.kv_iter;
+
+	  /* it is not oid but this should be set to upper scope */
+	  isidp->oids_count = 0;
+	  /* advance */
+	  isidp->curr_keyno++;
+
+	  continue;
+
+	case R_RANGE:
+	case R_RANGELIST:
+	  while (1)
+	    {
+	      if (scan_id->position == S_BEFORE)
+		{
+		  /* first of this range */
+		  if (isidp->curr_keyno == 0)
+		    {
+		      if (DB_IS_NULL (&key_vals[0].key1))
+			{
+			  /* memory ordering */
+			  * ((short *) key_buf) = isidp->cls_oid.volid;
+			  * ((int *) (key_buf + 2)) = isidp->cls_oid.pageid;
+			  * ((short *) (key_buf + 6)) = isidp->cls_oid.slotid;
+
+			  key = rocksdb::Slice (key_buf, 8);
+
+			  /* there is no lower bound */
+			  isidp->scan_cache.kv_iter->Seek (key);
+			}
+		      else
+			{
+			  isidp->scan_cache.kv_iter->Seek (*isidp->scan_cache.kv_lower);
+			}
+		    }
+		  else
+		    {
+		      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &isidp->cls_oid, &key_vals[isidp->curr_keyno].key1, key_size);
+		      key = rocksdb::Slice (key_buf, key_size);
+
+		      isidp->scan_cache.kv_iter->Seek (key);
+		    }
+
+		  /* advance */
+		  if ((key_vals[isidp->curr_keyno].range == GT_LE || key_vals[isidp->curr_keyno].range == GT_LT ||
+		       key_vals[isidp->curr_keyno].range == GT_INF) && isidp->scan_cache.kv_iter->Valid ())
+		    {
+		      assert (!DB_IS_NULL (&key_vals[isidp->curr_keyno].key1));
+		      isidp->scan_cache.kv_iter->Next();
+		    }
+
+		  scan_id->position = S_ON;
+		}
+	      else
+		{
+		  isidp->scan_cache.kv_iter->Next();
+		}
+
+	      if (isidp->scan_cache.kv_iter->Valid ())
+		{
+		  scan_id->scan_stats.read_keys++;
+		  if (!DB_IS_NULL (&key_vals[0].key2))
+		    {
+		      key1 = isidp->scan_cache.kv_iter->key ().data () + sizeof (OID);
+		      key2 = db_get_string (&key_vals[isidp->curr_keyno].key2);
+
+		      key1_length = isidp->scan_cache.kv_iter->key ().size () - 8;
+		      key2_length = db_get_string_size (&key_vals[isidp->curr_keyno].key2);
+
+		      length = key1_length < key2_length ? key1_length : key2_length;
+
+		      key_size = memcmp (key1, key2, length);
+		      if (key_size > 0 || (key_size == 0 && (key_vals[isidp->curr_keyno].range == GE_LT
+							     || key_vals[isidp->curr_keyno].range == GT_LT || key_vals[isidp->curr_keyno].range == INF_LT)))
+			{
+			  isidp->curr_keyno++;
+			  scan_id->position = S_BEFORE;
+			  goto scan_and_advacne;
+			}
+		    }
+		}
+	      else
+		{
+		  if (!isidp->scan_cache.kv_iter->status ().ok ())
+		    {
+		      assert_release (false);
+		    }
+
+		  isidp->curr_keyno++;
+		  scan_id->position = S_BEFORE;
+		  goto scan_and_advacne;
+		}
+	    }
+
+	  scan_id->scan_stats.key_qualified_rows++;
+
+	  /* make recdes */
+	  recdes.type = REC_HOME;
+	  recdes.length = isidp->scan_cache.kv_iter->value ().size ();
+	  if (scan_id->fixed == COPY)
+	    {
+	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE);
+
+	      memcpy (recdes.data, isidp->scan_cache.kv_iter->value ().data (), recdes.length);
+	    }
+	  else
+	    {
+	      recdes.data = const_cast<char *> (isidp->scan_cache.kv_iter->value ().data ());
+	      recdes.area_size = recdes.length;
 	    }
 
 	  /* evaluate the predicates to see if the object qualifies */
@@ -1126,30 +1259,23 @@ scan_and_advacne:
 	      continue;
 	    }
 
+	  scan_id->scan_stats.data_qualified_rows++;
+
 	  /* it is not oid but this should be set to upper scope */
 	  isidp->oids_count = 1;
+
 	  /* give PK for temp */
-	  pr_clone_value (&key_vals[0].key1, &isidp->pk_val);
+	  memcpy (key_buf, isidp->scan_cache.kv_iter->key ().data () + sizeof (OID),
+		  isidp->scan_cache.kv_iter->key ().size () - 8);
+	  key_buf[isidp->scan_cache.kv_iter->key ().size () - 8] = '\0';
+	  db_make_string (&current_key, key_buf);
+
+	  pr_clone_value (&current_key, &isidp->pk_val);
 	  /* advance */
 	  isidp->curr_keyno++;
 
 	  /* make tuple */
 	  goto fall_through;
-
-	case R_RANGE:
-	case R_KEYLIST:
-	case R_RANGELIST:
-	  scan_id->scan_stats.key_qualified_rows++;
-
-	  /* get data */
-	  //scan_id->s.isid.scan_cache.kv_iter;
-
-	  /* it is not oid but this should be set to upper scope */
-	  isidp->oids_count = 0;
-	  /* advance */
-	  isidp->curr_keyno++;
-
-	  return S_END;
 
 	default:
 	  scan = S_ERROR;

@@ -96,7 +96,7 @@ namespace cubrocks
 
       /* scan */
       void kv_scan_start (HEAP_SCANCACHE *scan_cache);
-      void kv_scan_start_with_bound (HEAP_SCANCACHE *scan_cache, OID *class_oid, DB_VALUE *lower, DB_VALUE *upper);
+      void kv_scan_start (HEAP_SCANCACHE *scan_cache, rocksdb::Slice *lower, rocksdb::Slice *upper);
       void kv_scan_end (HEAP_SCANCACHE *scan_cache);
       SCAN_CODE kv_logical_scan (int tran_index, OID *class_oid, OID *next_oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
 				 int ispeeking);
