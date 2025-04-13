@@ -893,6 +893,8 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
   KEY_VAL_RANGE *key_vals;
   RANGE range;
   rocksdb::Slice *lower, *upper;
+  rocksdb::ReadOptions read_options;
+  int reserve_size;
   char *key_buf;
   int key_size;
   int i;
@@ -981,6 +983,38 @@ cubrocks::context::kv_assist_index_key (SCAN_ID *scan_id)
 	  assert_release (false);
 	}
     }
+
+  if (indx_infop->range_type == R_KEYLIST)
+    {
+      isidp->scan_cache.kv_keys.clear ();
+      isidp->scan_cache.kv_values.clear ();
+      isidp->scan_cache.kv_statuses.clear ();
+
+      reserve_size = isidp->key_cnt;
+      if (isidp->key_limit_upper != -1 && isidp->key_limit_upper < reserve_size)
+	{
+	  reserve_size = isidp->key_limit_upper;
+	}
+
+      isidp->scan_cache.kv_keys.reserve (reserve_size);
+      for (i = 0; i < reserve_size; i++)
+	{
+	  key_size = kv_get_key_size (&key_vals[i].key1);
+	  key_buf = (char *) malloc (key_size * sizeof (char));
+	  kv_make_key_with_PK (key_buf, key_size, &isidp->cls_oid, &key_vals[i].key1, key_size);
+
+	  isidp->scan_cache.kv_keys.push_back (rocksdb::Slice (key_buf, key_size));
+	}
+      read_options.prefix_same_as_start = true;
+      read_options.io_activity = rocksdb::Env::IOActivity::kMultiGet;
+
+      read_options.async_io = true;
+      read_options.adaptive_readahead = true;
+
+      isidp->scan_cache.kv_statuses =
+	      db->MultiGet (read_options, isidp->scan_cache.kv_keys, &isidp->scan_cache.kv_values);
+    }
+
   if (indx_infop->range_type == R_RANGE || indx_infop->range_type == R_RANGELIST)
     {
       kv_scan_end (&isidp->scan_cache);
@@ -1116,18 +1150,75 @@ scan_and_advance:
 	  goto fall_through;
 
 	case R_KEYLIST:
+	  while (1)
+	    {
+	      if (isidp->scan_cache.kv_statuses[isidp->curr_keyno].ok ())
+		{
+		  key = isidp->scan_cache.kv_keys[isidp->curr_keyno];
+		  break;
+		}
+
+	      assert_release (isidp->scan_cache.kv_statuses[isidp->curr_keyno].IsNotFound ());
+
+	      isidp->curr_keyno++;
+	      if (isidp->curr_keyno >= key_cnt)
+		{
+		  scan = S_END;
+		  goto clear_and_exit;
+		}
+	    }
+
 	  /* we can use multiget for fast read */
 	  scan_id->scan_stats.key_qualified_rows++;
 
-	  /* get data */
-	  //scan_id->s.isid.scan_cache.kv_iter;
+	  /* make recdes */
+	  recdes.type = REC_HOME;
+	  recdes.length = isidp->scan_cache.kv_values[isidp->curr_keyno].size ();
+	  if (scan_id->fixed == COPY)
+	    {
+	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE);
+
+	      memcpy (recdes.data, isidp->scan_cache.kv_values[isidp->curr_keyno].data (), recdes.length);
+	    }
+	  else
+	    {
+	      recdes.data = const_cast<char *> (isidp->scan_cache.kv_values[isidp->curr_keyno].data ());
+	      recdes.area_size = recdes.length;
+	    }
+
+	  /* evaluate the predicates to see if the object qualifies */
+	  ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, &data_filter);
+	  ev_res = update_logical_result (thread_p, ev_res, (int *) &scan_id->qualification);
+	  if (ev_res == V_ERROR)
+	    {
+	      scan = S_ERROR;
+	      goto clear_and_exit;
+	    }
+	  else if (ev_res != V_TRUE)
+	    {
+	      /* skip this key value */
+	      isidp->curr_keyno++;
+	      continue;
+	    }
+
+	  scan_id->scan_stats.data_qualified_rows++;
+	  isidp->key_num++;
 
 	  /* it is not oid but this should be set to upper scope */
-	  isidp->oids_count = 0;
-	  /* advance */
+	  isidp->oids_count = 1;
+
+	  /* give PK for temp */
+	  memcpy (key_buf, isidp->scan_cache.kv_keys[isidp->curr_keyno].data () + sizeof (OID),
+		  isidp->scan_cache.kv_keys[isidp->curr_keyno].size () - 8);
+	  key_buf[isidp->scan_cache.kv_keys[isidp->curr_keyno].size () - 8] = '\0';
+	  db_make_string (&current_key, key_buf);
+
+	  pr_clone_value (&current_key, &isidp->pk_val);
+
 	  isidp->curr_keyno++;
 
-	  continue;
+	  /* make tuple */
+	  goto fall_through;
 
 	case R_RANGE:
 	case R_RANGELIST:

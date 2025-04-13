@@ -166,6 +166,10 @@ struct heap_scancache
     rocksdb::Slice *kv_lower;
     rocksdb::Slice *kv_upper;
 
+    std::vector<rocksdb::Slice> kv_keys;
+    std::vector<std::string> kv_values;
+    std::vector<rocksdb::Status> kv_statuses;
+
     void start_area ();
     void end_area ();
     void reserve_area (size_t size = 0);
