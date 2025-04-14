@@ -23,6 +23,11 @@
 #include "system.h"
 #include "vacuum.h"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "base_flag.hpp"
 #include "boot_sr.h"
 #include "btree.h"
@@ -58,7 +63,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <stack>
-#include <cinttypes>
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
