@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "cubvec_assert.h"
 
 #include <float.h>
 #include <time.h>
@@ -1402,6 +1403,8 @@ conv_double_to_string (char *double_str, int *length)
 char *
 csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg)
 {
+
+  printf ("csql_db_value_as_string: value type %d\n", DB_VALUE_TYPE (value));
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
@@ -1669,6 +1672,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VECTOR:
+      assert (false);
+      ASSERT_CUBVEC (false);
       result =
 	set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
 		       default_vector_profile.max_entries, csql_arg);

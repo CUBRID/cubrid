@@ -527,7 +527,7 @@ void db_value_printer::describe_data (const db_value *value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VECTOR:
+      // case DB_TYPE_VECTOR: assert(false);
       set = db_get_set (value);
       if (set != NULL)
 	{
@@ -539,6 +539,10 @@ void db_value_printer::describe_data (const db_value *value)
 	}
       break;
 
+    case DB_TYPE_VECTOR:
+      assert (false);
+      m_buf ("hello world!");
+      break;
     case DB_TYPE_JSON:
       json_body = db_get_json_raw_body (value);
       m_buf ("%s", json_body);

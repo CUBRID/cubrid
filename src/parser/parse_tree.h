@@ -23,6 +23,7 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
+#include "dbtype_def.h"
 #if defined (SERVER_MODE)
 #error Does not belong to server module
 #endif /* SERVER_MODE */
@@ -3309,6 +3310,7 @@ union pt_data_value
   DB_ELO elo;			/* ??? */
   int b;
   PT_ENUM_ELEMENT enumeration;
+  DB_VECTOR_FLOAT vector_float;
 };
 
 /* Info for the VALUE node */

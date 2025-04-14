@@ -21,6 +21,7 @@
  *                          the disk representation of
  */
 
+#include "cubvec_assert.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -44,6 +45,7 @@
 #include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
+#include "vector_float.hpp"
 #include "access_spec.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -3003,6 +3005,10 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  printf ("passing or_put_domain() with DB_TYPE_VECTOR\n");
+	  break;
+
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
@@ -3962,6 +3968,7 @@ or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids, int is_nul
     }
   else
     {
+      ASSERT_CUBVEC (false);
       return NULL;
     }
 }

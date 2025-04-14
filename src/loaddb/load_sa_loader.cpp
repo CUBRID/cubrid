@@ -21,6 +21,8 @@
  */
 
 #include "config.h"
+#include "cubvec_assert.h"
+#include "dbtype_def.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -4102,8 +4104,8 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE *table, int id)
 
       ldr_Mop_tempoid_maps->mop_tempoid_maps =
 	      (LDR_MOP_TEMPOID_MAP *) realloc (ldr_Mop_tempoid_maps->mop_tempoid_maps,
-		  sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
-		      LDR_MOP_TEMPOID_MAPS_PRESIZE));
+		sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
+		  LDR_MOP_TEMPOID_MAPS_PRESIZE));
 
       if (ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
 	{
@@ -5405,6 +5407,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_STR] = &ldr_json_db_json;
       break;
     case DB_TYPE_VECTOR:
+      assert (false);
       attdesc->setter[LDR_STR] = &ldr_vector_db_vector;
     default:
       break;
@@ -5662,7 +5665,7 @@ construct_instance (LDR_CONTEXT *context)
     {
       err =
 	      (* (elem_converter[context->attrs[a].parser_type])) (context, context->attrs[a].parser_str,
-		  context->attrs[a].parser_str_len, &vals[i]);
+		context->attrs[a].parser_str_len, &vals[i]);
       meth_args[i] = & (vals[i]);
     }
 
@@ -5693,7 +5696,7 @@ construct_instance (LDR_CONTEXT *context)
 	    {
 	      err =
 		      (* (attdesc->setter[attdesc->parser_type])) (context, attdesc->parser_str, attdesc->parser_str_len,
-			  attdesc->att);
+			attdesc->att);
 	    }
 	}
     }
@@ -6147,7 +6150,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
-  db_make_vector (&ldr_vector_tmpl, NULL);
+  // db_make_vector (&ldr_vector_tmpl, NULL);
 
   /*
    * Set up the conversion functions for collection elements.  These
@@ -6824,7 +6827,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   int count = 0;
   const int max_vector_size = 2000;
   float float_array[max_vector_size];
-  DB_SET *vec = NULL;
+  // DB_SET *vec = NULL;
   DB_VALUE e_val;
 
   int error_code = db_string_to_vector (str, len, float_array, &count);
@@ -6834,14 +6837,16 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
     }
 
   // Create vector and populate it
-  vec = db_vec_create (NULL, NULL, 0);
-  if (vec == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
+  // vec = db_vec_create (NULL, NULL, 0);
+  // if (vec == NULL)
+  //   {
+  //     assert (er_errid () != NO_ERROR);
+  //     return er_errid ();
+  //   }
 
-  db_make_vector (val, vec);
+  ASSERT_CUBVEC (false);
+  DB_VECTOR_FLOAT vf;
+  db_make_vector (val, vf);
   for (int i = 0; i < count; ++i)
     {
       db_make_float (&e_val, float_array[i]);

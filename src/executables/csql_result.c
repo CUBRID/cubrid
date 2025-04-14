@@ -562,6 +562,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      || value_type == result_info->attr_types[i]
 	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i])));
 
+      printf ("get_current_result: value_type %d\n", value_type);
+
       switch (value_type)
 	{
 	case DB_TYPE_NULL:	/* null value */

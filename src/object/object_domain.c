@@ -21,6 +21,8 @@
  * This module primarily defines support for domain structures.
  */
 
+#include "cubvec_assert.h"
+#include "dbtype_def.h"
 #ident "$Id$"
 
 
@@ -256,7 +258,7 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT3 };
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -379,7 +381,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Null_domain,
+  &tp_Vector_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -5015,33 +5017,20 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   char number_buffer[number_buffer_size];
   int buffer_idx;
   const int max_vector_size = 2000;
-  float float_array[max_vector_size];
-  DB_SET *vec = NULL;
+  // DB_SET *vec = NULL;
   DB_VALUE e_val;
 
-  int error = db_string_to_vector (p, db_get_string_size (src), float_array, &count);
+  DB_VECTOR_FLOAT vector_float = { 0, NULL };
+  vector_float.float_array = new float[max_vector_size];
+
+  int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  // Create vector and populate it
-  vec = db_vec_create (NULL, NULL, 0);
-  if (vec == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
+  db_make_vector (result, vector_float);
 
-  db_make_vector (result, vec);
-  for (int i = 0; i < count; ++i)
-    {
-      db_make_float (&e_val, float_array[i]);
-      if (db_seq_put (db_get_set (result), i, &e_val) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
 
   return NO_ERROR;
 }
@@ -9609,6 +9598,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 
 	case DB_TYPE_VECTOR:
+	  assert (false);
 	  {
 	    DB_VALUE element;
 	    SETREF *setref = db_get_set (src);
@@ -11279,6 +11269,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (domain == NULL)
     {
+      ASSERT_CUBVEC (false);
       /* shouldn't happen ? */
       db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }

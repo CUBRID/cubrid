@@ -861,6 +861,7 @@ col_new (long size, int settype)
 	      col->domain = &tp_Sequence_domain;
 	      break;
 	    case DB_TYPE_VECTOR:
+	      assert (false);
 	      col->domain = &tp_Vector_domain;
 	      break;
 	    case DB_TYPE_VOBJ:

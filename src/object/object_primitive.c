@@ -22,6 +22,7 @@
  *                      the disk representation.
  */
 
+#include "dbtype_def.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -46,6 +47,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#include "cubvec_assert.h"
 
 #include <utility>
 
@@ -826,9 +828,42 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_sequence (void *mem1, void *mem2,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						   int total_order, int *start_colp, int collation);
-static void mr_initval_vector (DB_VALUE * value, int precision, int scale);
-static int mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+// static void mr_initval_vector (DB_VALUE * value, int precision, int scale);
+// static int mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+// static int mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+
+/******************************************************************************
+ * TYPE VECTOR (FLOAT)
+ *****************************************************************************/
+static void mr_initmem_vector_float (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk);
+static int mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain);
+static void mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_vector_float (void *memptr);
+static void mr_initval_vector_float (DB_VALUE * value, int precision, int scale);
+static int mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_vector_float (DB_VALUE * value, int disk);
+static int mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					 char *copy_buf, int copy_buf_len);
+static int mr_index_lengthval_vector_float (DB_VALUE * value);
+static int mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value);
+static int mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					  char *copy_buf, int copy_buf_len);
+static int mr_lengthval_vector_float_internal (DB_VALUE * value, int disk, int align);
+static int mr_writeval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, int align);
+static int mr_readval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					     char *copy_buf, int copy_buf_len, int align);
+static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain,
+							      int do_coercion, int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain,
+							     int do_coercion, int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+						       int total_order, int *start_colp, int collation);
+
 static void mr_initval_midxkey (DB_VALUE * value, int precision, int scale);
 static int mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk);
@@ -1643,27 +1678,57 @@ PR_TYPE tp_Sequence = {
 
 PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
+// PR_TYPE tp_Vector = {
+//   "vector", DB_TYPE_VECTOR, 1, sizeof (SETOBJ *), 0, 4,
+//   mr_initmem_set,
+//   mr_initval_vector,
+//   mr_setmem_set,
+//   mr_getmem_vector,
+//   mr_setval_vector,
+//   mr_data_lengthmem_set,
+//   mr_data_lengthval_set,
+//   mr_data_writemem_set,
+//   mr_data_readmem_set,
+//   mr_data_writeval_set,
+//   mr_data_readval_set,
+//   NULL,
+//   NULL,
+//   NULL,
+//   NULL,
+//   NULL,
+//   mr_freemem_set,
+//   mr_data_cmpdisk_sequence,
+//   mr_cmpval_sequence
+// };
+
 PR_TYPE tp_Vector = {
-  "vector", DB_TYPE_VECTOR, 1, sizeof (SETOBJ *), 0, 4,
-  mr_initmem_set,
-  mr_initval_vector,
-  mr_setmem_set,
-  mr_getmem_vector,
-  mr_setval_vector,
-  mr_data_lengthmem_set,
-  mr_data_lengthval_set,
-  mr_data_writemem_set,
-  mr_data_readmem_set,
-  mr_data_writeval_set,
-  mr_data_readval_set,
+  "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR_FLOAT), 0, 1,
+  mr_initmem_vector_float,
+  mr_initval_vector_float,
+  mr_setmem_vector_float,
+  mr_getmem_vector_float,
+  mr_setval_vector_float,
+  NULL,
+  mr_data_lengthval_vector_float,
+  NULL,
+  // mr_data_lengthmem_vector_float,
+  // mr_data_writemem_vector_float,
+  mr_data_readmem_vector_float,
+  mr_data_writeval_vector_float,
+  mr_data_readval_vector_float,
   NULL,
   NULL,
   NULL,
   NULL,
   NULL,
-  mr_freemem_set,
-  mr_data_cmpdisk_sequence,
-  mr_cmpval_sequence
+  // mr_index_lengthmem_vector_float,
+  // mr_index_lengthval_vector_float,
+  // mr_index_writeval_vector_float,
+  // mr_index_readval_vector_float,
+  // mr_index_cmpdisk_vector_float,
+  mr_freemem_vector_float,
+  mr_data_cmpdisk_vector_float,
+  mr_cmpval_vector_float
 };
 
 PR_TYPE *tp_Type_vector = &tp_Vector;
@@ -2007,10 +2072,15 @@ pr_clear_value (DB_VALUE * value)
       value->data.op = NULL;
       break;
 
+    case DB_TYPE_VECTOR:
+      printf ("pr_clear_value: freeing vector\n");
+      db_private_free (NULL, value->data.vector_float.float_array);
+      value->data.vector_float.float_array = NULL;
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VECTOR:
     case DB_TYPE_VOBJ:
       set_free (db_get_set (value));
       value->data.set = NULL;
@@ -6987,9 +7057,9 @@ mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYP
 	case DB_TYPE_SEQUENCE:
 	  db_make_sequence (dest, ref);
 	  break;
-	case DB_TYPE_VECTOR:
-	  db_make_vector (dest, ref);
-	  break;
+	  // case DB_TYPE_VECTOR: assert(false);
+	  //   db_make_vector (dest, ref);
+	  //   break;
 	default:
 	  break;
 	}
@@ -7293,9 +7363,9 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 		    case DB_TYPE_SEQUENCE:
 		      db_make_sequence (value, ref);
 		      break;
-		    case DB_TYPE_VECTOR:
-		      db_make_vector (value, ref);
-		      break;
+		      // case DB_TYPE_VECTOR: assert(false);
+		      //   db_make_vector (value, ref);
+		      //   break;
 		    default:
 		      break;
 		    }
@@ -7357,9 +7427,9 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 		case DB_TYPE_SEQUENCE:
 		  db_make_sequence (value, ref);
 		  break;
-		case DB_TYPE_VECTOR:
-		  db_make_vector (value, ref);
-		  break;
+		  // case DB_TYPE_VECTOR: assert(false);
+		  //   db_make_vector (value, ref);
+		  //   break;
 		default:
 		  break;
 		}
@@ -7560,48 +7630,261 @@ static void
 mr_initval_vector (DB_VALUE * value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  db_make_vector (value, NULL);
+  // db_make_vector (value, NULL);
 }
 
-static int
-mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-{
-  SETOBJ **mem = (SETOBJ **) memptr;
-  int error = NO_ERROR;
-  SETOBJ *set;
-  SETREF *ref;
-
-  set = *mem;
-  if (set == NULL)
-    {
-      error = db_make_vector (value, NULL);
-    }
-  else
-    {
-      ref = setobj_get_reference (set);
-      if (ref)
-	{
-	  error = db_make_vector (value, ref);
-	}
-      else
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  (void) db_make_vector (value, NULL);
-	}
-    }
-  /*
-   * NOTE: assumes that ownership info will already have been set or will
-   * be set by the caller
-   */
-
-  return error;
-}
+// static int
+// mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+// {
+//   SETOBJ **mem = (SETOBJ **) memptr;
+//   int error = NO_ERROR;
+//   SETOBJ *set;
+//   SETREF *ref;
+// 
+//   set = *mem;
+//   if (set == NULL)
+//     {
+//       error = db_make_vector (value, NULL);
+//     }
+//   else
+//     {
+//       ref = setobj_get_reference (set);
+//       if (ref)
+//      {
+//        error = db_make_vector (value, ref);
+//      }
+//       else
+//      {
+//        assert (er_errid () != NO_ERROR);
+//        error = er_errid ();
+//        (void) db_make_vector (value, NULL);
+//      }
+//     }
+//   /*
+//    * NOTE: assumes that ownership info will already have been set or will
+//    * be set by the caller
+//    */
+// 
+//   return error;
+// }
 
 static int
 mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   return mr_setval_set_internal (dest, src, copy, DB_TYPE_VECTOR);
+}
+
+/******************************************************************************
+ * TYPE VECTOR (FLOAT)
+ *****************************************************************************/
+static void
+mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  char **mem, *cur;
+  int len;
+
+  len = 0;
+  if (!disk)
+    {
+      len = tp_Vector.size;
+    }
+  else if (memptr != NULL)
+    {
+      assert (false);
+      mem = (char **) memptr;
+      cur = *mem;
+      if (cur != NULL)
+	{
+	  len = *(int *) cur;
+	  len = or_packed_varbit_length (sizeof (float) * len);
+	}
+    }
+  return len;
+}
+
+static int
+mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static void
+mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  assert (false);
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static void
+mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static void
+mr_freemem_vector_float (void *memptr)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static void
+mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
+{
+  printf ("mr_initval_vector_float\n");
+  db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
+  value->need_clear = false;
+}
+
+static int
+mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error = NO_ERROR;
+  if (src && !DB_IS_NULL (src))
+    {
+      db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return db_make_vector (dest,
+			     {
+			     0, NULL}
+      );
+    }
+  else
+    {
+
+      db_make_vector (dest,
+		      {
+		      0, NULL}
+      );
+
+      dest->data.vector_float.dim = 3;
+      dest->data.vector_float.float_array = (float *) db_private_alloc (NULL, sizeof (float) * 3);
+      dest->data.vector_float.float_array[0] = 333.0;
+      dest->data.vector_float.float_array[1] = 222.0;
+      dest->data.vector_float.float_array[2] = 111.0;
+
+      error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      assert (error == NO_ERROR);
+
+      return error;
+    }
+}
+
+static int
+mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
+{
+  ASSERT_CUBVEC (disk == 1);
+  printf ("mr data lengthval vector float %d\n", value->data.vector_float.dim);
+
+  int dim = value->data.vector_float.dim;
+
+  return sizeof dim + dim * sizeof (float);
+}
+
+static int
+mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
+{
+  printf ("mr_data_writeval_vector_float\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+			      char *copy_buf, int copy_buf_len)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_lengthval_vector_float (DB_VALUE * value)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+			       char *copy_buf, int copy_buf_len)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_lengthval_vector_float_internal (DB_VALUE * value, int disk, int align)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_writeval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, int align)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static int
+mr_readval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				  char *copy_buf, int copy_buf_len, int align)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+			       int total_order, int *start_colp)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+			      int total_order, int *start_colp)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+			int total_order, int *start_colp, int collation)
+{
+  printf ("hello\n");
+  ASSERT_CUBVEC (false);
 }
 
 /*

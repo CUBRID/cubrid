@@ -6268,6 +6268,14 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	{
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
 #if !defined(NDEBUG)
+	  if (type_p == &tp_Vector)
+	    {
+	      assert (false);
+	    }
+	  if (dbval_type == DB_TYPE_VECTOR)
+	    {
+	      assert (false);
+	    }
 	  if (type_p->is_size_computed ())
 	    {
 	      if (pr_is_string_type (dbval_type))
