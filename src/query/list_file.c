@@ -4010,6 +4010,8 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   info.output_file = srlist_id;
   info.input_file = list_id_p;
   info.extra_arg = extra_arg;
+  info.sort_list_p = sort_list_p;
+  info.flag = flag;
 
   if (get_func == NULL)
     {
