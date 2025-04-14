@@ -321,6 +321,8 @@ extern int free_space (const char *, int);
 #error "HAVE_DRAND48_R"
 #endif
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 #endif /* WINDOWS */
 

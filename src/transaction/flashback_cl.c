@@ -24,6 +24,11 @@
 
 #include "config.h"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include <stdio.h>
 #if defined(WINDOWS)
 #include <windows.h>
@@ -43,9 +48,6 @@
 #include "utility.h"
 #include "csql.h"
 #include "system_parameter.h"
-
-#define __STDC_FORMAT_MACROS
-#include <cinttypes>
 
 typedef enum
 {
