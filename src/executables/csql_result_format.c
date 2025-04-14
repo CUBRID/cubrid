@@ -20,6 +20,7 @@
  * csql_result_format.c : string formatting function
  */
 
+#include "vector_float.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -1672,16 +1673,20 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VECTOR:
-      assert (false);
-      ASSERT_CUBVEC (false);
-      result =
-	set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
-		       default_vector_profile.max_entries, csql_arg);
-      if (result)
+	//      result =
+	// set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
+	// 	       default_vector_profile.max_entries, csql_arg);
+	//      if (result)
+	// {
+	//   len = strlen (result);
+	// }
+	//      break;
 	{
-	  len = strlen (result);
+	  std::string result_str = db_vector_float_to_string(db_get_vector_float(value)).c_str();
+	  result = strdup(result_str.c_str());
+	  len = strlen(result);
+	  break;
 	}
-      break;
     case DB_TYPE_TIME:
       {
 	char buf[TIME_BUF_SIZE];

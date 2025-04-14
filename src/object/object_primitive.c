@@ -2077,8 +2077,9 @@ pr_clear_value (DB_VALUE * value)
 	  const auto [dim, arr] = db_get_vector_float (value);
 	  printf ("pr_clear_value: freeing vector at %p\n", value);
 	  printf ("pr_clear_value: freeing arr at %p with dim = %d\n", arr, dim);
-	  db_private_free (NULL, value->data.vector_float.float_array);
-	  value->data.vector_float.float_array = NULL;
+	  printf ("WARNING: but I dont clear it.\n");
+	  // db_private_free (NULL, value->data.vector_float.float_array);
+	  // value->data.vector_float.float_array = NULL;
 	  break;
 
 	}
@@ -7762,7 +7763,7 @@ mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
   printf ("mr_initval_vector_float\n");
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  value->need_clear = false;
+  db_make_vector (value, {0, NULL});
 }
 
 static int
