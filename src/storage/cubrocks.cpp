@@ -473,7 +473,7 @@ cubrocks::context::kv_logical_scan (int tran_index, OID *class_oid, OID *next_oi
       /* NOTE: using PinnableSlice can reduce the latency by skipping the process of allocating the heap and copying data into the heap. */
       if (ispeeking == COPY)
 	{
-	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+	  scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE * 2);
 
 	  memcpy (recdes->data, scan_cache->kv_iter->value ().data (), recdes->length);
 	}
@@ -565,7 +565,7 @@ cubrocks::context::kv_lock_and_get (int tran_index, rocksdb::Slice &key, RECDES 
   recdes->length = transactions[tran_index].pin.length ();
   if (ispeeking == COPY)
     {
-      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE * 2);
 
       memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
     }
@@ -666,7 +666,7 @@ cubrocks::context::kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, 
   recdes->length = transactions[tran_index].pin.length ();
   if (ispeeking == COPY)
     {
-      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE);
+      scan_cache->assign_recdes_to_area (*recdes, (size_t) DB_PAGESIZE * 2);
 
       memcpy (recdes->data, transactions[tran_index].pin.data (), recdes->length);
     }
@@ -1191,7 +1191,7 @@ scan_and_advance:
 	  recdes.length = isidp->scan_cache.kv_values[isidp->curr_keyno].size ();
 	  if (scan_id->fixed == COPY)
 	    {
-	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE);
+	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE * 2);
 
 	      memcpy (recdes.data, isidp->scan_cache.kv_values[isidp->curr_keyno].data (), recdes.length);
 	    }
@@ -1348,7 +1348,7 @@ scan_and_advance:
 	  recdes.length = isidp->scan_cache.kv_iter->value ().size ();
 	  if (scan_id->fixed == COPY)
 	    {
-	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE);
+	      isidp->scan_cache.assign_recdes_to_area (recdes, (size_t) DB_PAGESIZE * 2);
 
 	      memcpy (recdes.data, isidp->scan_cache.kv_iter->value ().data (), recdes.length);
 	    }
