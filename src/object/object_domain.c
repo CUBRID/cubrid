@@ -23,6 +23,7 @@
 
 #include "cubvec_assert.h"
 #include "dbtype_def.h"
+#include "memory_alloc.h"
 #ident "$Id$"
 
 
@@ -3250,6 +3251,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
     {
       switch (value_type)
 	{
+	case DB_TYPE_VECTOR:
 	case DB_TYPE_NULL:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
@@ -5021,7 +5023,9 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   DB_VALUE e_val;
 
   DB_VECTOR_FLOAT vector_float = { 0, NULL };
-  vector_float.float_array = new float[max_vector_size];
+  vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
+  printf (">>> tp_atovector\n");
+  printf ("private allocated: vector_float.float_array = %p\n", vector_float.float_array);
 
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
@@ -5029,8 +5033,8 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
       return ER_FAILED;
     }
 
+  db_value_domain_init (result, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   db_make_vector (result, vector_float);
-
 
   return NO_ERROR;
 }

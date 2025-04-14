@@ -335,6 +335,9 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
       return false;
     }
 
+  printf (">>> qdata_copy_db_value: %p %p\n", dest_p, src_p);
+  printf ("src_type %d\n", src_type);
+
   if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
     {
       return true;
@@ -6315,7 +6318,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
     }
 
   printf ("qdata_get_tuple_value_size_from_dbval: dbval_type = %s, tuple_value_size = %d\n",
-	      pr_type_name (dbval_type), tuple_value_size);
+	  pr_type_name (dbval_type), tuple_value_size);
 
   return tuple_value_size;
 }

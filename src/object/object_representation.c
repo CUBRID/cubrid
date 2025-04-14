@@ -3800,6 +3800,11 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      break;
 
+	    case DB_TYPE_VECTOR:
+	      printf (">>> unpack_domain: DB_TYPE_VECTOR\n");
+	      printf ("WARNING: no handling...\n");
+	      break;
+
 	    default:
 	      break;
 	    }
