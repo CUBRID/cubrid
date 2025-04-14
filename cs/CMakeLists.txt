@@ -304,6 +304,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_description.cpp
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/vector_float.cpp
   ${OBJECT_DIR}/work_space.c
   )
 set(OBJECT_HEADERS
