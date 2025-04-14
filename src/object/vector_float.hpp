@@ -23,11 +23,9 @@
 #ifndef _VECTOR_FLOAT_HPP_
 #define _VECTOR_FLOAT_HPP_
 
-#include "object_representation.h"
+#include "dbtype_def.h"
+#include <string>
 
-namespace vector_float
-{
-
-}
+std::string db_vector_float_to_string(const db_vector_float vf);
 
 #endif // _VECTOR_FLOAT_HPP_

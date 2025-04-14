@@ -23,6 +23,8 @@
  */
 
 #include "dbtype_def.h"
+#include "vector_float.hpp"
+#include <cstdio>
 #ident "$Id$"
 
 #include "config.h"
@@ -1708,11 +1710,9 @@ PR_TYPE tp_Vector = {
   mr_setmem_vector_float,
   mr_getmem_vector_float,
   mr_setval_vector_float,
-  NULL,
+  mr_data_lengthmem_vector_float,
   mr_data_lengthval_vector_float,
-  NULL,
-  // mr_data_lengthmem_vector_float,
-  // mr_data_writemem_vector_float,
+  mr_data_writemem_vector_float,
   mr_data_readmem_vector_float,
   mr_data_writeval_vector_float,
   mr_data_readval_vector_float,
@@ -2073,11 +2073,15 @@ pr_clear_value (DB_VALUE * value)
       break;
 
     case DB_TYPE_VECTOR:
-      printf ("pr_clear_value: freeing vector\n");
-      db_private_free (NULL, value->data.vector_float.float_array);
-      value->data.vector_float.float_array = NULL;
-      break;
+	{
+	  const auto [dim, arr] = db_get_vector_float (value);
+	  printf ("pr_clear_value: freeing vector at %p\n", value);
+	  printf ("pr_clear_value: freeing arr at %p with dim = %d\n", arr, dim);
+	  db_private_free (NULL, value->data.vector_float.float_array);
+	  value->data.vector_float.float_array = NULL;
+	  break;
 
+	}
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -7701,6 +7705,7 @@ mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool
 static int
 mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
 {
+  printf ("mr_data_lengthmem_vector_float\n");
   char **mem, *cur;
   int len;
 
@@ -7708,6 +7713,7 @@ mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
   if (!disk)
     {
       len = tp_Vector.size;
+      printf ("WARNING: returning the size of the DB_VECTOR_FLOAT = %d\n", len);
     }
   else if (memptr != NULL)
     {
@@ -7733,7 +7739,6 @@ mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  assert (false);
   printf ("hello\n");
   ASSERT_CUBVEC (false);
 }
@@ -7763,33 +7768,46 @@ mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 static int
 mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
+  assert(copy == true);
+
+  printf (">>> mr_setval_vector_float\n");
   int error = NO_ERROR;
   if (src && !DB_IS_NULL (src))
     {
-      db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      return db_make_vector (dest,
-			     {
-			     0, NULL}
-      );
+      printf ("src is not null\n");
+
+      const auto src_vf = db_get_vector_float(src);
+      const auto [dim, arr] = src_vf;
+
+      // print vector_float for debugging
+      const auto vfstr = db_vector_float_to_string(src_vf);
+      printf("vector_float: %s\n", vfstr.c_str());
+
+      error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      ASSERT_CUBVEC (error == NO_ERROR);
+
+      auto vf = db_get_vector_float(dest);
+      vf.dim = dim;
+      vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
+      ASSERT_CUBVEC (vf.float_array != NULL);
+
+      printf ("db_private_alloc = %p, size = %lu\n", vf.float_array, dim * sizeof (float));
+      memcpy (vf.float_array, arr, dim * sizeof (float));
+
+      error = db_make_vector (dest, vf);
+      ASSERT_CUBVEC (vf.float_array != NULL);
+
+      return error;
     }
   else
     {
-
-      db_make_vector (dest,
-		      {
-		      0, NULL}
-      );
-
-      dest->data.vector_float.dim = 3;
-      dest->data.vector_float.float_array = (float *) db_private_alloc (NULL, sizeof (float) * 3);
-      dest->data.vector_float.float_array[0] = 333.0;
-      dest->data.vector_float.float_array[1] = 222.0;
-      dest->data.vector_float.float_array[2] = 111.0;
+      printf ("src is null\n");
 
       error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      assert (error == NO_ERROR);
-
-      return error;
+      DB_VECTOR_FLOAT vector_float;
+      vector_float.dim = 0;
+      vector_float.float_array = NULL;
+      return db_make_vector (dest, vector_float);
     }
 }
 
@@ -7797,26 +7815,65 @@ static int
 mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
 {
   ASSERT_CUBVEC (disk == 1);
-  printf ("mr data lengthval vector float %d\n", value->data.vector_float.dim);
+  printf (">>> mr data lengthval vector float with dim = %d\n", value->data.vector_float.dim);
 
   int dim = value->data.vector_float.dim;
-
-  return sizeof dim + dim * sizeof (float);
+  int byte_length = sizeof dim + dim * sizeof (float);
+  printf ("return byte_length = %d\n", byte_length);
+  return byte_length;
 }
 
 static int
 mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
-  printf ("mr_data_writeval_vector_float\n");
-  ASSERT_CUBVEC (false);
+  printf (">>> mr data writeval vector float\n");
+
+  const DB_VECTOR_FLOAT vector_float = db_get_vector_float(value);
+  const auto [dim, arr] = vector_float;
+
+  printf("%s\n", db_vector_float_to_string(vector_float).c_str());
+
+  or_put_int (buf, dim);
+  or_put_data (buf, (char *) arr, dim * sizeof (float));
+
+  return NO_ERROR;
 }
 
 static int
 mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 			      char *copy_buf, int copy_buf_len)
 {
-  printf ("hello\n");
-  ASSERT_CUBVEC (false);
+  int error = NO_ERROR;
+
+  printf (">>> mr_data_readval_vector_float\n");
+
+  printf("value type: %d\n", DB_VALUE_TYPE(value));
+
+  error = db_value_domain_init (value, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  ASSERT_CUBVEC(error == NO_ERROR);
+
+  DB_VECTOR_FLOAT vector_float = {0, nullptr};
+  vector_float.dim = or_get_int(buf, &error);
+  ASSERT_CUBVEC(error == NO_ERROR);
+
+  vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
+  printf ("db_private_alloc = %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
+  ASSERT_CUBVEC(vector_float.float_array != NULL);
+
+  or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
+  ASSERT_CUBVEC(error == NO_ERROR);
+
+  error = db_make_vector (value, vector_float);
+  ASSERT_CUBVEC(error == NO_ERROR);
+
+  // print vector_float for debugging
+  const auto vfstr = db_vector_float_to_string(vector_float);
+  printf("vector_float: %s\n", vfstr.c_str());
+
+  ASSERT_CUBVEC(error == NO_ERROR);
+
+  return error;
+
 }
 
 static int

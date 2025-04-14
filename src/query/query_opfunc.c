@@ -6270,11 +6270,9 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 #if !defined(NDEBUG)
 	  if (type_p == &tp_Vector)
 	    {
-	      assert (false);
-	    }
-	  if (dbval_type == DB_TYPE_VECTOR)
-	    {
-	      assert (false);
+	      printf ("qdata_get_tuple_value_size_from_dbval\n");
+	      printf ("type_p = tp_Vector\n");
+	      printf ("val_size = %d\n", val_size);
 	    }
 	  if (type_p->is_size_computed ())
 	    {
@@ -6315,6 +6313,9 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	  tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
 	}
     }
+
+  printf ("qdata_get_tuple_value_size_from_dbval: dbval_type = %s, tuple_value_size = %d\n",
+	      pr_type_name (dbval_type), tuple_value_size);
 
   return tuple_value_size;
 }
