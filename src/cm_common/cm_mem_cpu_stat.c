@@ -19,6 +19,12 @@
 /*
  * cm_mem_cpu_stat.c -
  */
+
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 #include "cm_stat.h"
 #include "cm_dep.h"
