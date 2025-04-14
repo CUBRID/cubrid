@@ -5070,6 +5070,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (cubrocks::ctx->is_alive ());
       assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
+      context.pk = NULL;
+
       /* errors will be handled in kv scope */
       if (has_index)
 	{
@@ -6086,12 +6088,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
 	  update_context.is_logical_old = true;
-	  update_context.pk = NULL;
-	  if (pk_value != NULL)
-	    {
-	      update_context.pk = pk_value;
-	    }
-
+	  update_context.pk = pk_value;
 	  if (pk_value != NULL)
 	    {
 	      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context);
@@ -6448,12 +6445,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		  assert (cubrocks::ctx->is_alive ());
 		  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
-		  delete_context.pk = NULL;
-		  if (pk_value != NULL)
-		    {
-		      delete_context.pk = pk_value;
-		    }
-
+		  delete_context.pk = pk_value;
 		  if (pk_value != NULL)
 		    {
 		      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context);
@@ -6565,13 +6557,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  assert (cubrocks::ctx->is_alive ());
 	  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
-	  delete_context.pk = NULL;
-	  if (pk_value != NULL)
-	    {
-	      /* I think this scope must be not called because the item not consisted in PK still uses oid */
-	      delete_context.pk = pk_value;
-	    }
-
+	  delete_context.pk = pk_value;
 	  if (pk_value != NULL)
 	    {
 	      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context);
