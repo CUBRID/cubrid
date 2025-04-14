@@ -44,6 +44,9 @@
 #include "csql.h"
 #include "system_parameter.h"
 
+#define __STDC_FORMAT_MACROS
+#include <cinttypes>
+
 typedef enum
 {
   FLASHBACK_INSERT = 0,
