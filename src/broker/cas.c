@@ -1670,11 +1670,15 @@ cas_sig_handler (int signo)
   is_doing_signal_handler = 1;
 
   signal (signo, SIG_IGN);
-  cas_free (true);
-  as_info->pid = 0;
-  as_info->uts_status = UTS_STATUS_RESTART;
 
   er_print_crash_callstack (signo);
+
+  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
+    {
+      cas_free (true);
+    }
+  as_info->pid = 0;
+  as_info->uts_status = UTS_STATUS_RESTART;
 
 #ifdef _GCOV
   exit (0);
