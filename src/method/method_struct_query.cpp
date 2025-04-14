@@ -15,6 +15,12 @@
  *  limitations under the License.
  *
  */
+#ident "$Id$"
+
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 
 #include "method_struct_query.hpp"
 
