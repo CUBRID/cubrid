@@ -20,13 +20,13 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
-#include "system.h"
-#include "vacuum.h"
-
 #if !defined(WINDOWS)
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #endif
+
+#include "system.h"
+#include "vacuum.h"
 
 #include "base_flag.hpp"
 #include "boot_sr.h"
@@ -1136,8 +1136,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  //fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
-  fprintf (outfp, "First log page ID referenced = %ld ", min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
 
   if (logpb_is_page_in_archive (min_log_pageid))
     {
