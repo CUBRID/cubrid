@@ -703,14 +703,17 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 
   THREAD_ENTRY *thread_p;
   char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
+  char newkey_buf[DBVAL_BUFSIZE];
   char key_buf[DBVAL_BUFSIZE];
   int num_found, num_btids;
   HEAP_CACHE_ATTRINFO index_attrinfo;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   DB_VALUE *key_dbvalue;
   DB_VALUE dbvalue;
-  rocksdb::Slice key, value;
-  bool status;
+  rocksdb::ReadOptions read_options;
+  rocksdb::Slice newkey, key, value;
+  rocksdb::Status status;
+  int is_pk_changed;
   BTID btid;
   int key_size;
   int error_code;
@@ -739,11 +742,13 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 
   if (context->type == HEAP_OPERATION_DELETE)
     {
+      assert (context->pk);
+
       kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
       key = rocksdb::Slice (key_buf, key_size);
 
-      status = transactions[tran_index].txn->Delete (key).ok ();
-      assert (status);
+      status = transactions[tran_index].txn->Delete (key);
+      assert (status.ok ());
     }
   else
     {
@@ -764,38 +769,48 @@ cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONT
 	  assert_release (false);
 	}
 
-      /* TODO: add dup key check */
+      /* new from record */
+      kv_make_key_with_PK (newkey_buf, DBVAL_BUFSIZE, &context->class_oid, key_dbvalue, key_size);
+      newkey = rocksdb::Slice (newkey_buf, key_size);
 
-      if (context->pk && context->type == HEAP_OPERATION_UPDATE)
+      /* duplicate key check */
+      if (context->pk)
 	{
-	  /* handle these as string (varchar) */
-	  if (strcmp (db_get_string (context->pk), db_get_string (key_dbvalue)) != 0)
-	    {
-	      /* if PK must be changed, previous key should be deleted (context->pk) */
-	      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
-	      key = rocksdb::Slice (key_buf, key_size);
-
-	      status = transactions[tran_index].txn->Delete (key).ok ();
-	      assert (status);
-	    }
+	  is_pk_changed = strcmp (db_get_string (context->pk), db_get_string (key_dbvalue));
 	}
 
-      /* new from record */
-      kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, key_dbvalue, key_size);
-      key = rocksdb::Slice (key_buf, key_size);
+      if (context->type == HEAP_OPERATION_INSERT || (context->type == HEAP_OPERATION_UPDATE && is_pk_changed != 0))
+	{
+	  status = transactions[tran_index].txn->Get (read_options, newkey, &transactions[tran_index].pin);
+	  if (status.ok ())
+	    {
+	      /* unique constraint violation */
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key_dbvalue, NULL, &context->class_oid, &btid,
+						index_attrinfo.last_classrepr->indexes[btid_index].btname);
+
+	      heap_attrinfo_end (thread_p, &index_attrinfo);
+	      return ER_BTREE_UNIQUE_FAILED;
+	    }
+	  assert (status.IsNotFound ());
+	}
+
+      if (context->type == HEAP_OPERATION_UPDATE && is_pk_changed != 0)
+	{
+	  /* if PK must be changed, previous key should be deleted (context->pk) */
+	  kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &context->class_oid, context->pk, key_size);
+	  key = rocksdb::Slice (key_buf, key_size);
+
+	  status = transactions[tran_index].txn->Delete (key);
+	  assert (status.ok ());
+	}
+
       value = rocksdb::Slice (context->recdes_p->data, context->recdes_p->length);
 
-      status = transactions[tran_index].txn->Put (key, value).ok ();
-      assert (status);
+      status = transactions[tran_index].txn->Put (newkey, value);
+      assert (status.ok ());
     }
 
   heap_attrinfo_end (thread_p, &index_attrinfo);
-
-  if (key_dbvalue == &dbvalue)
-    {
-      pr_clear_value (&dbvalue);
-      key_dbvalue = NULL;
-    }
 
   return NO_ERROR;
 }

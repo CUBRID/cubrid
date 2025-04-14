@@ -5071,13 +5071,22 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
       /* errors will be handled in kv scope */
-      if (has_index && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &context) == NO_ERROR)
+      if (has_index)
 	{
-	  /* successfully builds index native key */
+	  error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &context);
+	  if (error_code == ER_BTREE_UNIQUE_FAILED)
+	    {
+	      goto error1;
+	    }
+
+	  if (error_code == ER_FAILED)
+	    {
+	      error_code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, &context);
+	    }
 	}
       else
 	{
-	  cubrocks::ctx->kv_logical_write (thread_p->tran_index, &context);
+	  error_code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, &context);
 	}
     }
   else
@@ -6083,11 +6092,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      update_context.pk = pk_value;
 	    }
 
-	  if (pk_value != NULL
-	      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context) == NO_ERROR)
+	  if (pk_value != NULL)
 	    {
-	      /* success */
-	      error_code = NO_ERROR;
+	      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &update_context);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	  else
 	    {
@@ -6443,10 +6454,13 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		      delete_context.pk = pk_value;
 		    }
 
-		  if (pk_value != NULL
-		      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+		  if (pk_value != NULL)
 		    {
-		      /* success */
+		      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error;
+			}
 		    }
 		  else
 		    {
@@ -6558,14 +6572,17 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      delete_context.pk = pk_value;
 	    }
 
-	  if (pk_value != NULL
-	      && cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context) == NO_ERROR)
+	  if (pk_value != NULL)
 	    {
-	      /* success */
+	      error_code = cubrocks::ctx->kv_logical_write_with_PK (thread_p->tran_index, &delete_context);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
 	    }
 	  else
 	    {
-	      cubrocks::ctx->kv_logical_write (thread_p->tran_index, &delete_context);
+	      error_code = cubrocks::ctx->kv_logical_write (thread_p->tran_index, &delete_context);
 	    }
 	}
       else
