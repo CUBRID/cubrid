@@ -58,6 +58,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <stack>
+#include <cinttypes>
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
