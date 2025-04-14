@@ -22,6 +22,7 @@
  *            functions
  */
 
+#include "dbtype_def.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -616,7 +617,21 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
     case DB_TYPE_VECTOR:
-      result->info.value.data_value.vector_float = db_get_vector_float (val);
+	{
+	  printf (">>> pt_dbval_to_value\n");
+	  DB_VECTOR_FLOAT src_vector_float = db_get_vector_float(val);
+	  int dim = src_vector_float.dim;
+	  float *arr = src_vector_float.float_array;
+
+	  DB_VECTOR_FLOAT dest_vector_float;
+	  dest_vector_float.dim = dim;
+	  dest_vector_float.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
+	  printf ("db_private_alloc %p\n", dest_vector_float.float_array);
+	  printf ("WARNING: memory leak is possible\n");
+	  memcpy (dest_vector_float.float_array, arr, dim * sizeof (float));
+
+	  result->info.value.data_value.vector_float = dest_vector_float;
+	}
       break;
 
     case DB_TYPE_INTEGER:

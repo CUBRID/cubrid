@@ -2074,7 +2074,7 @@ db_make_vector (DB_VALUE * value, const DB_VECTOR_FLOAT vector_float)
   int error = NO_ERROR;
   value->domain.general_info.type = DB_TYPE_VECTOR;
   value->domain.general_info.is_null = 0;
-  value->need_clear = false;
+  value->need_clear = true;
   value->data.vector_float = vector_float;
   return error;
 }
