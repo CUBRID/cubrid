@@ -17,7 +17,11 @@
  */
 #ident "$Id$"
 
-#include <cinttypes>
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "method_struct_query.hpp"
 
 #include "dbtype.h"

@@ -320,10 +320,6 @@ extern int free_space (const char *, int);
 #if !defined (HAVE_DRAND48_R)
 #error "HAVE_DRAND48_R"
 #endif
-
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-
 #endif /* WINDOWS */
 
 #define snprintf_dots_truncate(dest, max_len, ...) \
