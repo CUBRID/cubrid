@@ -9597,6 +9597,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   const char *default_value_print = NULL;
+  DB_VALUE tmp;
 
   default_value_node = param->info.sp_param.default_value =
     pt_check_data_default (parser, param->info.sp_param.default_value);
@@ -9617,6 +9618,20 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
       return error;
+    }
+
+  if (default_value->node_type == PT_EXPR && default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+    {
+      db_make_null (&tmp);
+      pt_evaluate_tree (parser, default_value, &tmp, 1);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  return ER_FAILED;;
+	}
+      parser_free_node (parser, default_value_node->info.data_default.default_value);
+      default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
+      db_value_clear (&tmp);
     }
 
   {
