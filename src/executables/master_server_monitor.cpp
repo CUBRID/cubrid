@@ -492,5 +492,5 @@ server_monitor::server_entry::proc_make_arg (const std::string &args)
       m_argv[i][arg.size()] = '\0';
       i++;
     }
-  m_argv[args.size()] = nullptr;
+  m_argv[i] = NULL;
 }
