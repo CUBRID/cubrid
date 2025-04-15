@@ -43,6 +43,15 @@
 #define ASSERT_CUBVEC(expr) ((void)0)
 #endif
 
+#if defined(CUBVEC_TEAM) && !defined(NDEBUG)
+  #define cubvec_log(...) \
+    do { \
+      fprintf(stderr, __VA_ARGS__); \
+    } while (0)
+#else
+  #define cubvec_log(...) do {} while (0)
+#endif
+
 #ifdef HORNETMJ
 #define ASSERT_HORNETMJ(expr) assert(expr)
 #else
