@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
+#include "dbtype_def.h"
 #include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -42,21 +43,19 @@ std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 {
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
-  DB_SET *set_ref = db_get_set (value);
+  // DB_SET *set_ref = db_get_set (value);
+  // int size = db_set_size (set_ref);
 
-  int size = db_set_size (set_ref);
+  const auto vf = db_get_vector_float (value);
+  const auto dim = vf.dim;
+  const auto arr = vf.float_array;
 
   std::vector<float> result;
-  result.reserve (static_cast<size_t> (size));
+  result.resize (static_cast<size_t> (dim));
 
-  DB_VALUE element;
-  for (int i = 0; i < size; ++i)
+  for (int i = 0; i < dim; ++i)
     {
-      if (db_set_get (set_ref, i, &element) != NO_ERROR)
-	{
-	  assert (false);
-	}
-      result.push_back (db_get_float (&element));
+      result[i] = arr[i];
     }
 
   return result;
