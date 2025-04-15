@@ -56,6 +56,33 @@ namespace parallel_query
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
+
+  class worker_manager_with_task_queue
+  {
+    public:
+      static worker_manager &get_manager()
+      {
+	thread_local static worker_manager_with_task_queue instance;
+	return instance;
+      }
+
+      bool try_reserve_workers (int parallelism);
+      void release_workers ();
+      void push_task (cubthread::entry_task *task);
+      void pop_task ()
+      {
+	m_active_tasks--;
+      }
+
+    private:
+      int m_reserved_workers;
+      std::atomic<int> m_active_tasks;
+      cubthread::entry_workpool *m_worker_pool;
+      worker_manager_with_task_queue();
+      ~worker_manager_with_task_queue();
+      worker_manager_with_task_queue (const worker_manager_with_task_queue &) = delete;
+      worker_manager_with_task_queue &operator= (const worker_manager_with_task_queue &) = delete;
+  };
 }
 
 #endif /*_PX_WORKER_MANAGER_HPP_ */

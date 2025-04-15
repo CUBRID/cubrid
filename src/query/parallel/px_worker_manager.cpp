@@ -70,4 +70,45 @@ namespace parallel_query
     assert (m_working_workers.load () <= m_reserved_workers);
   }
 
+  worker_manager_with_task_queue::worker_manager_with_task_queue()
+  {
+    m_reserved_workers = 0;
+    m_active_tasks = 0;
+    m_worker_pool = nullptr;
+  }
+
+  worker_manager_with_task_queue::~worker_manager_with_task_queue()
+  {
+    assert (m_reserved_workers == 0);
+    assert (m_active_tasks.load () == 0);
+    assert (m_worker_pool == nullptr);
+  }
+
+  bool worker_manager_with_task_queue::try_reserve_workers (int parallelism, int task_queue_size)
+  {
+    bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
+    if (result)
+      {
+	assert (m_worker_pool == nullptr);
+	m_reserved_workers += parallelism;
+	m_worker_pool = cubthread::get_manager()->create_worker_pool (parallelism, task_queue_size,
+			"parallel_query_worker_pool_with_task_queue", NULL, 1, false);
+      }
+    return result;
+  }
+
+  void worker_manager_with_task_queue::release_workers ()
+  {
+    cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
+    m_worker_pool = nullptr;
+    worker_manager_global::get_manager().release_workers (m_reserved_workers);
+    m_reserved_workers = 0;
+    assert (m_active_tasks.load () == 0);
+  }
+
+  void worker_manager_with_task_queue::push_task (cubthread::entry_task *task)
+  {
+    m_active_tasks.fetch_add (1);
+    cubthread::get_manager()->push_task (m_worker_pool, task);
+  }
 }

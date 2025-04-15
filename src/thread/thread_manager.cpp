@@ -430,7 +430,7 @@ namespace cubthread
     //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
     //       rather unlikely.
 
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_parallel_workers + max_daemons;
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_parallel_workers * 2 + max_daemons;
   }
 
   void
