@@ -57,12 +57,12 @@ namespace parallel_query
       worker_manager &operator= (const worker_manager &) = delete;
   };
 
-  class worker_manager_with_task_queue
+  class worker_manager_with_dedicated_pool
   {
     public:
-      static worker_manager_with_task_queue &get_manager()
+      static worker_manager_with_dedicated_pool &get_manager()
       {
-	thread_local static worker_manager_with_task_queue instance;
+	thread_local static worker_manager_with_dedicated_pool instance;
 	return instance;
       }
 
@@ -78,10 +78,10 @@ namespace parallel_query
       int m_reserved_workers;
       std::atomic<int> m_active_tasks;
       cubthread::entry_workpool *m_worker_pool;
-      worker_manager_with_task_queue();
-      ~worker_manager_with_task_queue();
-      worker_manager_with_task_queue (const worker_manager_with_task_queue &) = delete;
-      worker_manager_with_task_queue &operator= (const worker_manager_with_task_queue &) = delete;
+      worker_manager_with_dedicated_pool();
+      ~worker_manager_with_dedicated_pool();
+      worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
+      worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
   };
 }
 
