@@ -26,6 +26,6 @@
 #include "dbtype_def.h"
 #include <string>
 
-std::string db_vector_float_to_string(const db_vector_float vf);
+std::string db_vector_float_to_string (const db_vector_float vf);
 
 #endif // _VECTOR_FLOAT_HPP_

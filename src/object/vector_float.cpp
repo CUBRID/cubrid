@@ -27,24 +27,27 @@
 int
 or_put_float_array_internal (OR_BUF *buf, const float *float_array, int array_length, int align)
 {
-  ASSERT_CUBVEC(false);
+  ASSERT_CUBVEC (false);
 }
 
-std::string db_vector_float_to_string(const db_vector_float vf) {
+std::string db_vector_float_to_string (const db_vector_float vf)
+{
 
-    const int dim = vf.dim;
-    const float* float_array = vf.float_array;
+  const int dim = vf.dim;
+  const float *float_array = vf.float_array;
 
-    std::string result = "dim:";
-    result += std::to_string(dim);
-    result += " [";
-    for (int i = 0; i < dim; ++i) {
-	result += std::to_string(float_array[i]);
-	if (i < dim - 1) {
-	    result += ", ";
+  std::string result = "dim:";
+  result += std::to_string (dim);
+  result += " [";
+  for (int i = 0; i < dim; ++i)
+    {
+      result += std::to_string (float_array[i]);
+      if (i < dim - 1)
+	{
+	  result += ", ";
 	}
     }
-    result += "]";
-    return result;
+  result += "]";
+  return result;
 }
 
