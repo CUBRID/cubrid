@@ -2504,7 +2504,7 @@ static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 int PRM_MAX_PARALLEL_WORKERS = 0;
 static int prm_max_parallel_workers_default = 0;
 static int prm_max_parallel_workers_lower = 0;
-static int prm_max_parallel_workers_upper = 64;
+static int prm_max_parallel_workers_upper = (int) cubthread::system_core_count ();
 static unsigned int prm_max_parallel_workers_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
