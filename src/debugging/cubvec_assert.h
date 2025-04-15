@@ -44,12 +44,16 @@
 #endif
 
 #if defined(CUBVEC_TEAM) && !defined(NDEBUG)
-  #define cubvec_log(...) \
-    do { \
-      fprintf(stderr, __VA_ARGS__); \
-    } while (0)
+#define cubvec_log(...) \
+  do { \
+      FILE *logfile = fopen("cubvec.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
 #else
-  #define cubvec_log(...) do {} while (0)
+#define cubvec_log(...) do {} while (0)
 #endif
 
 #ifdef HORNETMJ

@@ -20,6 +20,7 @@
  * query_opfunc.c - The manipulation of data stored in the XASL nodes
  */
 
+#include "cubvec_assert.h"
 #include "db_function.hpp"
 #ident "$Id$"
 
@@ -335,8 +336,11 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
       return false;
     }
 
-  printf (">>> qdata_copy_db_value: %p %p\n", dest_p, src_p);
-  printf ("src_type %d\n", src_type);
+  if (src_type == DB_TYPE_VECTOR)
+    {
+      cubvec_log (">>> qdata_copy_db_value: %p %p\n", dest_p, src_p);
+      cubvec_log (">>> src_type is DB_TYPE_VECTOR\n");
+    }
 
   if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
     {
@@ -6273,9 +6277,8 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 #if !defined(NDEBUG)
 	  if (type_p == &tp_Vector)
 	    {
-	      printf ("qdata_get_tuple_value_size_from_dbval\n");
-	      printf ("type_p = tp_Vector\n");
-	      printf ("val_size = %d\n", val_size);
+	      cubvec_log (">>> qdata_get_tuple_value_size_from_dbval\n");
+	      cubvec_log ("vector val_size = %d\n", val_size);
 	    }
 	  if (type_p->is_size_computed ())
 	    {
@@ -6316,9 +6319,6 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	  tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
 	}
     }
-
-  printf ("qdata_get_tuple_value_size_from_dbval: dbval_type = %s, tuple_value_size = %d\n",
-	  pr_type_name (dbval_type), tuple_value_size);
 
   return tuple_value_size;
 }

@@ -1405,7 +1405,6 @@ char *
 csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg)
 {
 
-  printf ("csql_db_value_as_string: value type %d\n", DB_VALUE_TYPE (value));
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
@@ -1673,20 +1672,20 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VECTOR:
-	//      result =
-	// set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
-	// 	       default_vector_profile.max_entries, csql_arg);
-	//      if (result)
-	// {
-	//   len = strlen (result);
-	// }
-	//      break;
-	{
-	  std::string result_str = db_vector_float_to_string(db_get_vector_float(value)).c_str();
-	  result = strdup(result_str.c_str());
-	  len = strlen(result);
-	  break;
-	}
+      //      result =
+      // set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
+      //             default_vector_profile.max_entries, csql_arg);
+      //      if (result)
+      // {
+      //   len = strlen (result);
+      // }
+      //      break;
+      {
+	std::string result_str = db_vector_float_to_string (db_get_vector_float (value)).c_str ();
+	result = strdup (result_str.c_str ());
+	len = strlen (result);
+	break;
+      }
     case DB_TYPE_TIME:
       {
 	char buf[TIME_BUF_SIZE];

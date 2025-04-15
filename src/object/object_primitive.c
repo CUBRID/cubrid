@@ -2076,9 +2076,7 @@ pr_clear_value (DB_VALUE * value)
       {
 	if (value->need_clear)
 	  {
-	    const auto[dim, arr] = db_get_vector_float (value);
-	    printf ("pr_clear_value: freeing vector at %p\n", value);
-	    printf ("pr_clear_value: freeing arr at %p with dim = %d\n", arr, dim);
+	    cubvec_log ("pr_clear_value: freeing vector at %p\n", value);
 	    db_private_free (NULL, value->data.vector_float.float_array);
 	  }
 	value->data.vector_float.dim = 0;
@@ -7690,28 +7688,28 @@ mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static void
 mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
 {
-  printf ("hello\n");
+  cubvec_log (">>> mr_initmem_vector_float\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  printf ("hello\n");
+  cubvec_log (">>> mr_setmem_vector_float\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  printf ("hello\n");
+  cubvec_log (">>> mr_getmem_vector_float\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  printf ("mr_data_lengthmem_vector_float\n");
+  cubvec_log ("mr_data_lengthmem_vector_float\n");
   char **mem, *cur;
   int len;
 
@@ -7719,7 +7717,7 @@ mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
   if (!disk)
     {
       len = tp_Vector.size;
-      printf ("WARNING: returning the size of the DB_VECTOR_FLOAT = %d\n", len);
+      cubvec_log ("WARNING: returning the size of the DB_VECTOR_FLOAT = %d\n", len);
     }
   else if (memptr != NULL)
     {
@@ -7739,35 +7737,35 @@ mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static void
 mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static void
 mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static void
 mr_freemem_vector_float (void *memptr)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static void
 mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
-  printf ("mr_initval_vector_float\n");
+  cubvec_log ("mr_initval_vector_float\n");
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
   db_make_vector (value,
 		  {
@@ -7782,8 +7780,8 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   ASSERT_CUBVEC (copy == true);	// why?
 #endif
 
-  printf (">>> mr_setval_vector_float\n");
-  printf ("src %p, dest %p, copy %d\n", src, dest, copy);
+  cubvec_log (">>> mr_setval_vector_float\n");
+  cubvec_log ("src %p, dest %p, copy %d\n", src, dest, copy);
   int error = NO_ERROR;
   if (src && !DB_IS_NULL (src))
     {
@@ -7795,7 +7793,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
 	  // print vector_float for debugging
 	  const auto vfstr = db_vector_float_to_string (src_vf);
-	  printf ("vector_float: %s\n", vfstr.c_str ());
+	  cubvec_log ("vector_float: %s\n", vfstr.c_str ());
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
@@ -7805,8 +7803,8 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
 	  ASSERT_CUBVEC (vf.float_array != NULL);
 
-	  printf ("db_private_alloc = %p, size = %lu\n", vf.float_array, dim * sizeof (float));
-	  printf ("on db value dest: %p\n", dest);
+	  cubvec_log ("db_private_alloc = %p, size = %lu\n", vf.float_array, dim * sizeof (float));
+	  cubvec_log ("on db value dest: %p\n", dest);
 	  memcpy (vf.float_array, arr, dim * sizeof (float));
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -7819,7 +7817,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  printf ("moving src to dest\n");
+	  cubvec_log ("moving src to dest\n");
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
@@ -7831,11 +7829,11 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      printf ("src is null, what is this logic?: %p %d\n", src, DB_IS_NULL (src));
+      cubvec_log ("src is null, what is this logic?: %p %d\n", src, DB_IS_NULL (src));
 
       DB_VECTOR_FLOAT vf = db_get_vector_float (dest);
-      printf ("on db value dest: %p\n", dest);
-      printf ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
+      cubvec_log ("on db value dest: %p\n", dest);
+      cubvec_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
 
       assert (false);
 
@@ -7849,25 +7847,25 @@ static int
 mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
 {
   ASSERT_CUBVEC (disk == 1);
-  printf (">>> mr data lengthval vector float with dim = %d\n", value->data.vector_float.dim);
-  printf ("value: %p\n", value);
+  cubvec_log (">>> mr data lengthval vector float with dim = %d\n", value->data.vector_float.dim);
+  cubvec_log ("value: %p\n", value);
 
   int dim = value->data.vector_float.dim;
   int byte_length = sizeof dim + dim * sizeof (float);
-  printf ("return byte_length = %d\n", byte_length);
+  cubvec_log ("return byte_length = %d\n", byte_length);
   return byte_length;
 }
 
 static int
 mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
-  printf (">>> mr data writeval vector float\n");
-  printf ("value: %p\n", value);
+  cubvec_log (">>> mr data writeval vector float\n");
+  cubvec_log ("value: %p\n", value);
 
   const DB_VECTOR_FLOAT vector_float = db_get_vector_float (value);
   const auto[dim, arr] = vector_float;
 
-  printf ("%s\n", db_vector_float_to_string (vector_float).c_str ());
+  cubvec_log ("%s\n", db_vector_float_to_string (vector_float).c_str ());
 
   or_put_int (buf, dim);
   or_put_data (buf, (char *) arr, dim * sizeof (float));
@@ -7881,17 +7879,17 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 {
   int error = NO_ERROR;
 
-  printf (">>> mr_data_readval_vector_float\n");
-  printf ("%p\n", value);
+  cubvec_log (">>> mr_data_readval_vector_float\n");
+  cubvec_log ("%p\n", value);
 
-  printf ("value type: %d\n", DB_VALUE_TYPE (value));
+  cubvec_log ("value type: %d\n", DB_VALUE_TYPE (value));
 
   DB_VECTOR_FLOAT vector_float = { 0, nullptr };
   vector_float.dim = or_get_int (buf, &error);
   ASSERT_CUBVEC (error == NO_ERROR);
 
   vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
-  printf ("db_private_alloc = %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
+  cubvec_log ("db_private_alloc = %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
   ASSERT_CUBVEC (vector_float.float_array != NULL);
 
   or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
@@ -7905,7 +7903,7 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
   // print vector_float for debugging
   const auto vfstr = db_vector_float_to_string (vector_float);
-  printf ("vector_float: %s\n", vfstr.c_str ());
+  cubvec_log ("vector_float: %s\n", vfstr.c_str ());
 
   ASSERT_CUBVEC (error == NO_ERROR);
 
@@ -7916,14 +7914,14 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 static int
 mr_index_lengthval_vector_float (DB_VALUE * value)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7931,21 +7929,21 @@ static int
 mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 			       char *copy_buf, int copy_buf_len)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_lengthval_vector_float_internal (DB_VALUE * value, int disk, int align)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_writeval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, int align)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7953,7 +7951,7 @@ static int
 mr_readval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len, int align)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7961,7 +7959,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 			       int total_order, int *start_colp)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7969,7 +7967,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 			      int total_order, int *start_colp)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7977,7 +7975,7 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 			int total_order, int *start_colp, int collation)
 {
-  printf ("hello\n");
+  cubvec_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
