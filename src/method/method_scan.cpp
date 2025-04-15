@@ -217,7 +217,6 @@ namespace cubscan
 	{
 	  db_value_clear (&m_arg_vector[i]);
 	  db_make_null (&m_arg_vector[i]);
-	  m_arg_dom_vector[i] = nullptr;
 	}
 
       return scan_code;
