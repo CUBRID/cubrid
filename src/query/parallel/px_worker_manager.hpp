@@ -60,13 +60,13 @@ namespace parallel_query
   class worker_manager_with_task_queue
   {
     public:
-      static worker_manager &get_manager()
+      static worker_manager_with_task_queue &get_manager()
       {
 	thread_local static worker_manager_with_task_queue instance;
 	return instance;
       }
 
-      bool try_reserve_workers (int parallelism);
+      bool try_reserve_workers (int parallelism, int task_queue_size);
       void release_workers ();
       void push_task (cubthread::entry_task *task);
       void pop_task ()

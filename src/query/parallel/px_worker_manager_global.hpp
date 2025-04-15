@@ -37,6 +37,7 @@ namespace parallel_query
     private:
       static const int TASK_QUEUE_SIZE_PER_CORE = 2;
       friend class worker_manager;
+      friend class worker_manager_with_task_queue;
       bool m_is_initialized;
       int m_max_parallel_workers;
       std::atomic<int> m_current_parallel_workers;
