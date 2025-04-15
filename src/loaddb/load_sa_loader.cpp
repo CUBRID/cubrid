@@ -4104,8 +4104,8 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE *table, int id)
 
       ldr_Mop_tempoid_maps->mop_tempoid_maps =
 	      (LDR_MOP_TEMPOID_MAP *) realloc (ldr_Mop_tempoid_maps->mop_tempoid_maps,
-		sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
-		  LDR_MOP_TEMPOID_MAPS_PRESIZE));
+		  sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
+		      LDR_MOP_TEMPOID_MAPS_PRESIZE));
 
       if (ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
 	{
@@ -5665,7 +5665,7 @@ construct_instance (LDR_CONTEXT *context)
     {
       err =
 	      (* (elem_converter[context->attrs[a].parser_type])) (context, context->attrs[a].parser_str,
-		context->attrs[a].parser_str_len, &vals[i]);
+		  context->attrs[a].parser_str_len, &vals[i]);
       meth_args[i] = & (vals[i]);
     }
 
@@ -5696,7 +5696,7 @@ construct_instance (LDR_CONTEXT *context)
 	    {
 	      err =
 		      (* (attdesc->setter[attdesc->parser_type])) (context, attdesc->parser_str, attdesc->parser_str_len,
-			attdesc->att);
+			  attdesc->att);
 	    }
 	}
     }
