@@ -7634,7 +7634,7 @@ mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 static void
 mr_initval_vector (DB_VALUE * value, int precision, int scale)
 {
-  printf ("mr_initval_vector at value %p\n", value);
+  cubvec_log (">>> mr_initval_vector at value %p\n", value);
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
   db_make_vector (value,
 		  {
@@ -7765,7 +7765,7 @@ mr_freemem_vector_float (void *memptr)
 static void
 mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
-  cubvec_log ("mr_initval_vector_float\n");
+  cubvec_log (">>> mr_initval_vector_float\n");
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
   db_make_vector (value,
 		  {
