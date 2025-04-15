@@ -45,7 +45,7 @@ namespace parallel_heap_scan
       bool m_is_start_once;
       bool timeout_occurred;
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
-      std::size_t parallelism;
+      std::size_t m_parallelism;
 
       manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t parallelism, QUERY_ID query_id);
       ~manager();
