@@ -35,7 +35,6 @@ namespace parallel_query
   class worker_manager_global
   {
     private:
-      static const int TASK_QUEUE_SIZE_PER_CORE = 2;
       friend class worker_manager;
       bool m_is_initialized;
       int m_max_parallel_workers;
