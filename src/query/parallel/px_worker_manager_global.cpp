@@ -60,8 +60,8 @@ namespace parallel_query
       {
 	return;
       }
-    int pool_size = m_max_parallel_workers * 2;
-    int task_max_count = m_max_parallel_workers * 10;
+    int pool_size = m_max_parallel_workers;
+    int task_max_count = m_max_parallel_workers * TASK_QUEUE_SIZE_PER_CORE;
     int core_count = m_max_parallel_workers;
     m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, task_max_count,
 		    "parallel_query_worker_pool", NULL, core_count, true);
