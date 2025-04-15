@@ -41,7 +41,7 @@ namespace parallel_query
       }
 
       bool try_reserve_workers (int parallelism);
-      void release_workers (int parallelism);
+      void release_workers ();
       void push_task (cubthread::entry_task *task);
       void pop_task ()
       {

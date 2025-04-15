@@ -53,14 +53,14 @@ namespace parallel_query
     return result;
   }
 
-  void worker_manager::release_workers (int parallelism)
+  void worker_manager::release_workers ()
   {
     while (m_working_workers.load () > 0)
       {
 	thread_sleep (1);
       }
-    worker_manager_global::get_manager().release_workers (parallelism);
-    m_reserved_workers -= parallelism;
+    worker_manager_global::get_manager().release_workers (m_reserved_workers);
+    m_reserved_workers = 0;
   }
 
   void worker_manager::push_task (cubthread::entry_task *task)
