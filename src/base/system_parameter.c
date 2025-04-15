@@ -2504,7 +2504,7 @@ static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 int PRM_MAX_PARALLEL_WORKERS = 0;
 static int prm_max_parallel_workers_default = 0;
 static int prm_max_parallel_workers_lower = 0;
-static int prm_max_parallel_workers_upper = (int) cubthread::system_core_count ();
+static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -11074,6 +11074,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *max_parallel_worker_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -11142,6 +11143,15 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+      max_parallel_worker_prm = prm_find (PRM_NAME_MAX_PARALLEL_WORKERS, NULL);
+      if (max_parallel_worker_prm != NULL)
+	{
+	  if (PRM_GET_INT (max_parallel_worker_prm->value) > core_upper_limit)
+	    {
+	      sprintf (newval, "%d", core_upper_limit);
+	      (void) prm_set (max_parallel_worker_prm, newval, false);
+	    }
 	}
 #endif
     }

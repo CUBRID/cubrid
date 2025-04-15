@@ -80,11 +80,19 @@ namespace parallel_query
 
   bool worker_manager_global::try_reserve_workers (int parallelism)
   {
-    if (m_current_parallel_workers.load () + parallelism > m_max_parallel_workers)
+    int expected;
+    while (true)
       {
-	return false;
+	expected = m_current_parallel_workers.load ();
+	if (expected + parallelism > m_max_parallel_workers)
+	  {
+	    return false;
+	  }
+	if (m_current_parallel_workers.compare_exchange_weak (expected, expected + parallelism))
+	  {
+	    break;
+	  }
       }
-    m_current_parallel_workers.fetch_add (parallelism);
     return true;
   }
 
