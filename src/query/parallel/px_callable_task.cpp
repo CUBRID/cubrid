@@ -28,24 +28,17 @@
 
 namespace parallel_query
 {
-  void callable_task::set_worker_manager (worker_manager *manager_p)
-  {
-    m_worker_manager_p = manager_p;
-  }
-
   void callable_task::execute (cubthread::entry &context)
   {
+    assert (m_worker_manager_p != nullptr);
     m_exec_f (context);
   }
 
   void callable_task::retire ()
   {
-    if (m_worker_manager_p != nullptr)
-      {
-	m_worker_manager_p->pop_task ();
-	m_worker_manager_p=nullptr;
-      }
-
+    assert (m_worker_manager_p != nullptr);
+    m_worker_manager_p->pop_task ();
+    m_worker_manager_p = nullptr;
     m_retire_f ();
   }
 } // namespace parallel_query

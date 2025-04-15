@@ -46,17 +46,15 @@ namespace parallel_query
 
       // constructor with default retire (delete/do nothing)
       template <typename F>
-      callable_task (const F &f, bool delete_on_retire = true);
+      callable_task (worker_manager *worker_manager_p, const F &f, bool delete_on_retire = true);
       template <typename F>
-      callable_task (F &&f, bool delete_on_retire = true);
+      callable_task (worker_manager *worker_manager_p, F &&f, bool delete_on_retire = true);
 
       // constructor with custom retire
       template <typename FuncExec, typename FuncRetire>
-      callable_task (const FuncExec &fe, const FuncRetire &fr);
+      callable_task (worker_manager *worker_manager_p, const FuncExec &fe, const FuncRetire &fr);
       template <typename FuncExec, typename FuncRetire>
-      callable_task (FuncExec &&fe, FuncRetire &&fr);
-
-      void set_worker_manager (worker_manager *manager_p);
+      callable_task (worker_manager *worker_manager_p, FuncExec &&fe, FuncRetire &&fr);
 
       void execute (cubthread::entry &context) override;
       void retire () override;
@@ -64,12 +62,13 @@ namespace parallel_query
     private:
       exec_func_type m_exec_f;
       retire_func_type m_retire_f;
-      worker_manager *m_worker_manager_p = nullptr;
+      worker_manager *m_worker_manager_p;
   };
 
   template <typename F>
-  callable_task::callable_task (const F &f, bool delete_on_retire)
-    : m_exec_f (f)
+  callable_task::callable_task (worker_manager *worker_manager_p, const F &f, bool delete_on_retire)
+    : m_worker_manager_p (worker_manager_p)
+    , m_exec_f (f)
   {
     if (delete_on_retire)
       {
@@ -82,8 +81,9 @@ namespace parallel_query
   }
 
   template <typename F>
-  callable_task::callable_task (F &&f, bool delete_on_retire)
-    : m_exec_f (std::move (f))
+  callable_task::callable_task (worker_manager *worker_manager_p, F &&f, bool delete_on_retire)
+    : m_worker_manager_p (worker_manager_p)
+    , m_exec_f (std::move (f))
   {
     if (delete_on_retire)
       {
@@ -96,15 +96,17 @@ namespace parallel_query
   }
 
   template <typename FuncExec, typename FuncRetire>
-  callable_task::callable_task (const FuncExec &fe, const FuncRetire &fr)
-    : m_exec_f (fe)
+  callable_task::callable_task (worker_manager *worker_manager_p, const FuncExec &fe, const FuncRetire &fr)
+    : m_worker_manager_p (worker_manager_p)
+    , m_exec_f (fe)
     , m_retire_f (fr)
   {
   }
 
   template <typename FuncExec, typename FuncRetire>
-  callable_task::callable_task (FuncExec &&fe, FuncRetire &&fr)
-    : m_exec_f (std::move (fe))
+  callable_task::callable_task (worker_manager *worker_manager_p, FuncExec &&fe, FuncRetire &&fr)
+    : m_worker_manager_p (worker_manager_p)
+    , m_exec_f (std::move (fe))
     , m_retire_f (std::move (fr))
   {
   }
