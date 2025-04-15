@@ -45,7 +45,7 @@ static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE *
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-				      PROJECTION_INFO * info);
+				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -121,7 +121,7 @@ static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_
 static void qo_clean_projection_info (QO_ENV * env, PROJECTION_INFO * info);
 static void qo_clean_projection_part_info (PARSER_CONTEXT * parser, PROJECTION_PART_INFO * part_info);
 static void qo_clean_projection_final_info (PARSER_CONTEXT * parser, PROJECTION_FINAL_INFO * final_info);
-static int qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * info,
+static int qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_info,
 			       QFILE_LIST_MERGE_INFO * merge_info);
 
 /*
@@ -542,7 +542,7 @@ exit_on_error:
 
 static XASL_NODE *
 make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-		    PROJECTION_INFO * info)
+		    PROJECTION_INFO * projection_info)
 {
   PARSER_CONTEXT *parser = NULL;
   PT_NODE *during_join_pred = NULL;
@@ -561,7 +561,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   assert (plan != NULL);
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
-  assert (info != NULL);
+  assert (projection_info != NULL);
 
   assert (plan->plan_type == QO_PLANTYPE_JOIN);
   assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
@@ -573,7 +573,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       return NULL;
     }
 
-  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl, info);
+  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl, projection_info);
   if (xasl == NULL)
     {
       return NULL;
@@ -597,7 +597,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   /*
    * merge_info
    */
-  error = qo_init_merge_info (env, plan, info, &proc->merge_info);
+  error = qo_init_merge_info (env, plan, projection_info, &proc->merge_info);
   if (error != NO_ERROR)
     {
       return NULL;
@@ -1737,7 +1737,7 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
       return NULL;
     }
 
-  /*
+  /**
    * The hashjoin proc isn't necessarily the first thing on the aptr_list;
    * some other procs may have found their way in front of it, and that's not incorrect.
    * Search until we find a hashjoin proc; is there any way to have more than one?
@@ -1770,7 +1770,7 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
       goto exit_on_error;
     }
 
-  proc = &(hashjoin_xasl->proc.hashjoin);
+  proc = &hashjoin_xasl->proc.hashjoin;
 
   /* Make sure the merge_info looks plausible. */
   if (proc->outer.xasl == NULL || proc->inner.xasl == NULL)
@@ -1780,7 +1780,7 @@ check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
 
   merge_info = &proc->merge_info;
 
-  if (merge_info == NULL || merge_info->ls_column_cnt <= 0)
+  if (merge_info->ls_column_cnt <= 0)
     {
       goto exit_on_error;
     }
@@ -2490,7 +2490,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 {
   QO_PLAN *outer_plan, *inner_plan;
 
-  PROJECTION_INFO info;
+  PROJECTION_INFO projection_info;
   PROJECTION_PART_INFO *outer_info, *inner_info;
   PROJECTION_FINAL_INFO *final_info;
 
@@ -2515,15 +2515,15 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   /*
    * projection_info
    */
-  error = qo_init_projection_info (env, plan, pred_set, &info);
+  error = qo_init_projection_info (env, plan, pred_set, &projection_info);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  outer_info = &info.outer;
-  inner_info = &info.inner;
-  final_info = &info.final;
+  outer_info = &projection_info.outer;
+  inner_info = &projection_info.inner;
+  final_info = &projection_info.final;
 
   /*
    * outer_xasl
@@ -2560,7 +2560,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   /*
    * hashjoin_xasl
    */
-  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &info);
+  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info);
   if (hashjoin_xasl == NULL)
     {
       goto exit_on_error;
@@ -2587,7 +2587,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     }
 
 exit_on_end:
-  qo_clean_projection_info (env, &info);
+  qo_clean_projection_info (env, &projection_info);
 
   return xasl;
 
@@ -5697,7 +5697,7 @@ qo_clean_projection_final_info (PARSER_CONTEXT * parser, PROJECTION_FINAL_INFO *
 }
 
 static int
-qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * info, QFILE_LIST_MERGE_INFO * merge_info)
+qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_info, QFILE_LIST_MERGE_INFO * merge_info)
 {
   PARSER_CONTEXT *parser = NULL;
   PT_NODE *outer_part, *inner_part;
@@ -5722,7 +5722,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * info, QFILE_
 
   assert (env != NULL);
   assert (plan != NULL);
-  assert (info != NULL);
+  assert (projection_info != NULL);
   assert (merge_info != NULL);
 
   parser = QO_ENV_PARSER (env);
@@ -5735,9 +5735,9 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * info, QFILE_
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
-  outer_info = &info->outer;
-  inner_info = &info->inner;
-  final_info = &info->final;
+  outer_info = &projection_info->outer;
+  inner_info = &projection_info->inner;
+  final_info = &projection_info->final;
 
   /*
    * join_type

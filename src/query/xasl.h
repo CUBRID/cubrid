@@ -31,8 +31,8 @@
 #include "access_spec.hpp"
 #include "memory_hash.h"
 
-#include "query_hash_scan.h"
 #include "query_hash_join.h"
+#include "query_hash_scan.h"
 #include "query_list.h"
 #include "regu_var.hpp"
 #include "storage_common.h"
@@ -374,17 +374,16 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
-typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
-struct hashjoin_proc_node
+typedef struct hashjoin_proc_node
 {
-  HJ_INPUT outer;
-  HJ_INPUT inner;
+  HASHJOIN_INPUT outer;
+  HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  HJ_DOMAIN_INFO domain_info;
-  HJ_STATS_GROUP stats_group;
-#endif	/* defined (SERVER_MODE) || defined (SA_MODE) */
-};
+  HASHJOIN_DOMAIN_INFO domain_info;
+  HASHJOIN_STATS_GROUP stats_group;
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
+} HASHJOIN_PROC_NODE;
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node

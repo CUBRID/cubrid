@@ -62,25 +62,25 @@ typedef struct hashjoin_input
 {
   XASL_NODE *xasl;
   REGU_VARIABLE_LIST regu_list_pred;
-} HASHJOIN_INPUT, HJ_INPUT;
+} HASHJOIN_INPUT;
 
 typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
-} HASHJOIN_INPUT_DOMAIN_INFO, HJ_INPUT_DOMAIN_INFO;
+} HASHJOIN_INPUT_DOMAIN_INFO;
 
 typedef struct hashjoin_domain_info
 {
-  HJ_INPUT_DOMAIN_INFO outer;
-  HJ_INPUT_DOMAIN_INFO inner;
+  HASHJOIN_INPUT_DOMAIN_INFO outer;
+  HASHJOIN_INPUT_DOMAIN_INFO inner;
 
   /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
   /* Whether the coerce domain needs to be used. */
   bool need_coerce_domains;
-} HASHJOIN_DOMAIN_INFO, HJ_DOMAIN_INFO;
+} HASHJOIN_DOMAIN_INFO;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
@@ -95,7 +95,7 @@ typedef struct hashjoin_common_stats
   UINT64 readkeys;
   UINT64 rows;
   UINT64 max_collisions;
-} HASHJOIN_COMMON_STATS, HJ_COMMON_STATS;
+} HASHJOIN_COMMON_STATS;
 
 #if HASH_JOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
@@ -115,7 +115,7 @@ typedef struct hashjoin_profile_stats
     struct timeval match;	/* qexec_hash_join_fetch_key */
     struct timeval add;		/* qexec_hash_join_merge_tuple_to_list_id */
   } probe;
-} HASHJOIN_PROFILE_STATS, HJ_PROFILE_STATS;
+} HASHJOIN_PROFILE_STATS;
 #endif /* HASH_JOIN_PROFILE_TIME */
 
 typedef struct hashjoin_stats
@@ -123,24 +123,24 @@ typedef struct hashjoin_stats
   HASH_METHOD hash_method;
   bool is_build_outer;
 
-  HJ_COMMON_STATS part;
+  HASHJOIN_COMMON_STATS part;
   double outer_skew;
   double inner_skew;
 
-  HJ_COMMON_STATS build;
-  HJ_COMMON_STATS probe;
+  HASHJOIN_COMMON_STATS build;
+  HASHJOIN_COMMON_STATS probe;
 
 #if HASH_JOIN_PROFILE_TIME
-  HJ_PROFILE_STATS profile;
+  HASHJOIN_PROFILE_STATS profile;
 #endif				/* HASH_JOIN_PROFILE_TIME */
-} HASHJOIN_STATS, HJ_STATS;
+} HASHJOIN_STATS;
 
 typedef struct hashjoin_stats_group
 {
-  HJ_STATS stats;
-  HJ_STATS *context_stats;
+  HASHJOIN_STATS stats;
+  HASHJOIN_STATS *context_stats;
   int context_cnt;
-} HASHJOIN_STATS_GROUP, HJ_STATS_GROUP;
+} HASHJOIN_STATS_GROUP;
 
 /*
  * Function Declarations

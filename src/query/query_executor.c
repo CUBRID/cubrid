@@ -14192,7 +14192,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  else if (xptr->type == HASHJOIN_PROC)
 	    {
-	      merge_infop = &xptr->proc.hashjoin.merge_info;
+	      merge_infop = &(xptr->proc.hashjoin.merge_info);
 
 	      outer_xasl = xptr->proc.hashjoin.outer.xasl;
 	      inner_xasl = xptr->proc.hashjoin.inner.xasl;

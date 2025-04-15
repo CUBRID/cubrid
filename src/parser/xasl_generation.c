@@ -14509,21 +14509,29 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NO
   xasl->aptr_list = outer_xasl;
 
   proc = &xasl->proc.hashjoin;
-
   proc->outer.xasl = outer_xasl;
+  proc->inner.xasl = inner_xasl;
+
   if (outer_info->pred_count > 0)
     {
       proc->outer.regu_list_pred =
 	pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_xasl->val_list,
 					   outer_info->pred_pos_list);
     }
+  else
+    {
+      proc->outer.regu_list_pred = NULL;
+    }
 
-  proc->inner.xasl = inner_xasl;
   if (inner_info->pred_count > 0)
     {
       proc->inner.regu_list_pred =
 	pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_xasl->val_list,
 					   inner_info->pred_pos_list);
+    }
+  else
+    {
+      proc->inner.regu_list_pred = NULL;
     }
 
   return xasl;

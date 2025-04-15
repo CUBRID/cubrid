@@ -3214,7 +3214,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_cardinality = inner_plan_p->info->cardinality;
   outer_cardinality = outer_plan_p->info->cardinality;
 
-  /*
+  /**
    * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
    */
   plan_p->fixed_cpu_cost = outer_plan_p->fixed_cpu_cost + inner_plan_p->fixed_cpu_cost;
@@ -3223,7 +3223,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   plan_p->variable_cpu_cost = outer_plan_p->variable_cpu_cost + inner_plan_p->variable_cpu_cost;
   plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
 
-  /*
+  /**
    * STEP 2: Calculate the cost when inner is used as build input.
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
@@ -3236,7 +3236,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
 
-  /*
+  /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
@@ -3249,7 +3249,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
 
-  /*
+  /**
    * STEP 4: Choose the lowest cost.
    */
   switch (plan_p->plan_un.join.join_type)
@@ -3346,7 +3346,7 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
   if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
-      qo_termset_fprint (plan->info->env, &plan->plan_un.join.join_terms, f);
+      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
 
   qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
@@ -6168,7 +6168,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
-  if (bitset_intersects (sarged_terms, &info->env->fake_terms))
+  if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
     {
       goto exit;
     }
@@ -6207,7 +6207,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     }
 
   /* At here, inner is single class spec */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&inner->nodes));
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
   if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
     {
@@ -7423,7 +7423,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-5: examine hash-join */
 	if (!bitset_is_empty (&sm_join_terms))
 	  {
-	    /*
+	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
 	     * The mergeable term and the hash join term have the same characteristics. If the characteristics
 	     * for mergeable terms are changed, the logic for hash join terms should be separated.
