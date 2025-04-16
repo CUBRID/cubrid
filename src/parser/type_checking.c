@@ -6847,10 +6847,12 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	{
 	  /* If the conjunct is not a NULL or a logical type, then there's a problem. But don't say anything if
 	   * somebody else has already complained */
+#if 0
 	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORm (parser, where, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_LOGICAL_WHERE);
 	    }
+#endif
 	  break;
 	}
 
@@ -10457,7 +10459,7 @@ error:
 	  return node;
 	}
     }
-
+#if 0
   if (node->type_enum == PT_TYPE_NONE)
     {
       if (!pt_has_error (parser))
@@ -10488,6 +10490,7 @@ error:
 	    }
 	}
     }
+#endif
 
   return node;
 }
@@ -19275,6 +19278,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       sc_info_ptr = &sc_info;
     }
+
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   if (pt_has_error (parser))

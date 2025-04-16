@@ -1182,6 +1182,8 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
     return NULL;
   statement = *statement_p;
 
+  //pt_rewrite_for_dblink (parser, statement->info.scope.stmt->info.trigger_action.expression);
+
   /* If this is an update object statement, setup a spec to allow binding to the :obj parameter.  This code was copied
    * from some other pt_ function, should consider making this a subroutine if it is generally useful. */
   if (is_update_object)
