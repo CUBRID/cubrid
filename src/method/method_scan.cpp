@@ -66,8 +66,14 @@ namespace cubscan
 	  m_list_id = list_id;
 	  int arg_count = m_arg_count = m_list_id->type_list.type_cnt;
 
+	  if (m_arg_vector)
+	    {
 	  m_arg_vector = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * arg_count);
+	    }
+	  if (m_arg_dom_vector)
+	    {
 	  m_arg_dom_vector = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * arg_count);
+	    }
 
 	  for (int i = 0; i < arg_count; i++)
 	    {
