@@ -204,6 +204,7 @@ namespace cubpl
 
   struct bootstrap_request : public cubpacking::packable_object
   {
+    cubmethod::header req_header;
     std::vector <sys_param> server_params;
 
     bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
@@ -628,10 +629,9 @@ exit:
       }
 
     cubmem::block bootstrap_response;
-    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
     connection_view cv = m_sys_conn_pool->claim ();
 
-    error = cv->send_buffer_args (header, *m_bootstrap_request);
+    error = cv->send_buffer_args (*m_bootstrap_request);
     if (error == NO_ERROR)
       {
 	error = cv->receive_buffer (bootstrap_response);
@@ -651,8 +651,12 @@ exit:
   /*********************************************************************
    * bootstrap_request - definition
    *********************************************************************/
+#define BOOTSTRAP_REQ_ARGS() \
+  req_header, server_params
+
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : server_params ()
+    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0)
+    , server_params ()
   {
     while (pl_ctx_values != nullptr)
       {
@@ -664,7 +668,7 @@ exit:
   void
   bootstrap_request::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (server_params);
+    serializator.pack_all (BOOTSTRAP_REQ_ARGS ());
   }
 
   void
@@ -676,7 +680,7 @@ exit:
   size_t
   bootstrap_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, server_params);
+    return serializator.get_all_packed_size_starting_offset (start_offset, BOOTSTRAP_REQ_ARGS ());
   }
 } // namespace cubpl
 

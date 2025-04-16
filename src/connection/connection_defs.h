@@ -418,6 +418,7 @@ struct css_queue_entry
 #if defined(SERVER_MODE)
 struct session_state;
 #endif
+
 /*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.

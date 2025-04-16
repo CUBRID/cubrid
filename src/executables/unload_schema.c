@@ -858,7 +858,8 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
 
 	  if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	    {
-	      output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	      output_ctx ("SELECT %s%s%s%s.NEXT_VALUE;\n", output_owner,
+			  PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
 	    }
 
 	  db_value_clear (&diff_value);
@@ -3849,7 +3850,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
 
-      if ((reserved_col_buf[0] == '\0') && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+      if ((reserved_col_buf[0] == '\0') && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
 	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
 	}

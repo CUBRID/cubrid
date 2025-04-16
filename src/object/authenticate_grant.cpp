@@ -26,6 +26,7 @@
 #include "authenticate_cache.hpp"
 #include "authenticate_access_auth.hpp"
 
+#include "boot.h"
 #include "db.h" /* db_compile_and_execute_local () */
 #include "dbtype.h" /* DB_IS_STRING */
 // #include "dbtype_function.h"
@@ -446,10 +447,10 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		}
 
 	      /*
-	       * clear the cache for this user/class pair to make sure we
+	       * clear the cache for this user/procedure pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      //reset_cache_for_user_and_class (classobj);
+	      Au_cache.reset_cache_for_user_and_procedure (obj_mop);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -943,7 +944,7 @@ check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type)
 
   if (*cache_bits == AU_CACHE_INVALID)
     {
-      if (Au_cache.update (classop, sm_class))
+      if (Au_cache.update (DB_OBJECT_CLASS, classop, sm_class))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -2051,6 +2052,54 @@ au_print_grants (MOP auth, FILE *fp)
 	}
       set_free (grants);
     }
+}
+
+int
+au_check_procedure_authorization (MOP procedure_mop)
+{
+  int error = NO_ERROR;
+  DB_VALUE owner;
+  MOP owner_mop;
+
+  // if procedure cache does not exist, update the procedure cache
+  uint32_t *bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
+
+  if ((*bits & AU_EXECUTE) != AU_EXECUTE)
+    {
+      if (*bits == AU_CACHE_INVALID)
+	{
+	  error = db_get (procedure_mop, SP_ATTR_OWNER, &owner);
+	  owner_mop = db_get_object (&owner);
+
+	  /* update the cache and try again */
+	  error = Au_cache.update (DB_OBJECT_PROCEDURE, procedure_mop, owner_mop);
+	  if (error == NO_ERROR)
+	    {
+	      bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+	      if (bits == NULL)
+		{
+		  return er_errid ();
+		}
+	      if ((*bits & AU_EXECUTE) != AU_EXECUTE)
+		{
+		  error = appropriate_error (*bits, AU_EXECUTE);
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		}
+	    }
+	}
+      else
+	{
+	  error = appropriate_error (*bits, AU_EXECUTE);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+    }
+
+  return error;
 }
 
 #if defined (SA_MODE)

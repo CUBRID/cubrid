@@ -61,9 +61,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
-import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
@@ -137,7 +138,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                gpc.decl = new DeclProc(null, ps.name, paramList);
+                gpc.decl = new DeclProc(null, ps.name, null, paramList);
 
             } else if (q instanceof ServerAPI.FunctionSignature) {
                 ServerAPI.FunctionSignature fs = (ServerAPI.FunctionSignature) q;
@@ -182,7 +183,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
                 gfc.decl =
-                        new DeclFunc(null, fs.name, paramList, TypeSpec.getBogus(iStore, retType));
+                        new DeclFunc(
+                                null, fs.name, null, paramList, TypeSpec.getBogus(iStore, retType));
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
 
@@ -1036,7 +1038,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                ExprLocalFuncCall ret =
+                        new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                if (decl.isNotContainedInLoop()) {
+                    addToLocalRoutineCalls(ret);
+                }
+                return ret;
             }
         }
     }
@@ -1399,8 +1406,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
-
             boolean isFunction = (ctx.PROCEDURE() == null);
+
+            DeclRoutine ret =
+                    isFunction ? symbolStack.getDeclFunc(name) : symbolStack.getDeclProc(name);
+            assert ret != null; // by the previsit
+
+            StmtLoop.LoopOptimizables routineLoopOptimizables = ret.loopOptimizables;
+            if (routineLoopOptimizables != null) {
+                loopOptimizables = routineLoopOptimizables;
+            }
+
             symbolStack.pushSymbolTable(
                     name, isFunction ? Misc.RoutineType.FUNC : Misc.RoutineType.PROC);
 
@@ -1418,21 +1434,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             symbolStack.popSymbolTable();
 
-            DeclRoutine ret;
-            if (isFunction) {
-                ret = symbolStack.getDeclFunc(name);
-                if (!controlFlowBlocked) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s016
-                            "function "
-                                    + ret.name
-                                    + " can reach its end without returning a value");
-                }
-            } else {
-                // procedure
-                ret = symbolStack.getDeclProc(name);
+            if (routineLoopOptimizables != null) {
+                // It is not null because loopOptimizables was null: see the previsitRoutine().
+                // Restore the null.
+                loopOptimizables = null;
             }
-            assert ret != null; // by the previsit
+
+            if (isFunction && !controlFlowBlocked) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s016
+                        "function " + ret.name + " can reach its end without returning a value");
+            }
+
             ret.decls = decls;
             ret.body = body;
 
@@ -1605,7 +1618,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     addToSqlUses(egfc);
                     egfc.decl =
                             new DeclFunc(
-                                    null, name, EMPTY_PARAMS, TypeSpec.getBogus(iStore, retType));
+                                    null,
+                                    name,
+                                    null,
+                                    EMPTY_PARAMS,
+                                    TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
                 }
             }
@@ -2369,7 +2386,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT"));
 
     @Override
-    public AstNode visitProcedure_call(Procedure_callContext ctx) {
+    public Stmt visitProcedure_call(Procedure_callContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.proc_call_name().name);
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
@@ -2436,7 +2453,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + " must be updatable because it is to an OUT parameter");
             }
 
-            return new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            StmtLocalProcCall ret =
+                    new StmtLocalProcCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            if (decl.isNotContainedInLoop()) {
+                addToLocalRoutineCalls(ret);
+            }
+            return ret;
         }
     }
 
@@ -2571,6 +2593,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // --------------------------------------------------------
     // Private Static
     // --------------------------------------------------------
+
+    private static String regexId =
+            "^[A-Za-z_\uAC00-\uD7A3][A-Za-z_0-9\uAC00-\uD7A3]*$"; // \uAC00-\uD7A3: Korean
+    private static Pattern patternId = Pattern.compile(regexId);
 
     private static final int ID_LEN_MAX = 222; // see User Manual
 
@@ -2785,12 +2811,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void previsitRoutine_definition(
             Routine_definitionContext ctx, Map<String, DeclRoutine> store) {
 
+        int scopeLevel = symbolStack.getCurrentScope().level;
+
+        StmtLoop.LoopOptimizables routineLoopOptimizables = null;
+        if (scopeLevel > SymbolStack.LEVEL_MAIN && loopOptimizables == null) {
+            // This declaration part is not included in a loop.
+            // Prepare my own loop optimizables bag.
+            loopOptimizables = routineLoopOptimizables = new StmtLoop.LoopOptimizables();
+        }
+
         previsiting = true;
         try {
 
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
 
-            if (symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
+            if (scopeLevel > SymbolStack.LEVEL_MAIN) {
 
                 // local procedure/function
 
@@ -2813,7 +2848,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 // SP being defined
 
-                assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN;
+                assert scopeLevel == SymbolStack.LEVEL_MAIN;
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
             }
@@ -2847,7 +2882,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 Type retType = retTypeSpec.type;
-                if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
+                if (scopeLevel == SymbolStack.LEVEL_MAIN) { // at top level
                     if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx.type_spec()), // s065
@@ -2856,7 +2891,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                         + " cannot be used as a return type of stored functions");
                     }
                 }
-                DeclFunc ret = new DeclFunc(ctx, name, paramList, retTypeSpec);
+                DeclFunc ret =
+                        new DeclFunc(ctx, name, routineLoopOptimizables, paramList, retTypeSpec);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);
@@ -2868,7 +2904,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             Misc.getLineColumnOf(ctx), // s051
                             "procedure " + name + " may not specify a return type");
                 }
-                DeclProc ret = new DeclProc(ctx, name, paramList);
+                DeclProc ret = new DeclProc(ctx, name, routineLoopOptimizables, paramList);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);
@@ -2876,6 +2912,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         } finally {
             previsiting = false;
+            if (routineLoopOptimizables != null) {
+                // it is not null because loopOptimizables was null; restore the null
+                loopOptimizables = null;
+            }
         }
     }
 
@@ -2914,11 +2954,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String afterDot = colName.substring(dotIdx + 1);
             if (afterDot.equalsIgnoreCase(ci.attrName)) {
                 // In this case, colName must be of the form <table name alias>.<attr name>
-                return ci.attrName;
+                colName = ci.attrName;
             }
         }
 
-        return colName;
+        Matcher matcher = patternId.matcher(colName);
+        return matcher.matches() ? colName : null;
     }
 
     private Expr getHostExprFromText(String s, ParserRuleContext ctx) {
@@ -2984,8 +3025,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // convert select list
             selectList = new ArrayList<>();
+            int i = 0;
             for (ColumnInfo ci : sws.selectList) {
-                String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
+
+                i++;
+
+                String col = getColumnNameInSelectList(ci);
+                if (col == null) {
+                    // column name cannot be a Java identifier
+                    col = "$anonymous" + i;
+                } else {
+                    col = Misc.getNormalizedText(col);
+                }
 
                 // get type of the column
                 Type ty;
@@ -3087,8 +3138,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         }
 
-        String rewritten = StringEscapeUtils.escapeJava(sws.rewritten);
-        return new StaticSql(ctx, sws.kind, rewritten, hostExprs, selectList, intoTargetList);
+        return new StaticSql(ctx, sws.kind, sws.rewritten, hostExprs, selectList, intoTargetList);
     }
 
     private static final Expr SP_PARAM_DEFAULT_VAL_DUMMY =
@@ -3365,12 +3415,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private void addToSqlUses(SqlUse node) {
 
         if (loopOptimizables != null) {
-            if (routineDefNestLevel > 0 && !node.usingRef()) {
+
+            if (routineDefNestLevel > 1 && !node.usingRef()) {
                 // this sql-using construct resides in a routine definition, in which case
                 // it must use reference of Statement regardless of its default setting of usingRef
                 node.setToUseRef();
             }
             loopOptimizables.sqlUses.add(node);
+        }
+    }
+
+    private void addToLocalRoutineCalls(LocalRoutineCall node) {
+
+        if (loopOptimizables != null) {
+            loopOptimizables.localRoutineCalls.add(node);
         }
     }
 }

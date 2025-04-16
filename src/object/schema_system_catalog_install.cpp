@@ -752,7 +752,7 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false}
     },
 // authorization
     {

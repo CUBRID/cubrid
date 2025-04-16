@@ -2742,6 +2742,29 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      string = pt_append_nulstring (parser, string, user_text_buffer);
 	    }
 	}
+      if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+	{
+	  char host_var_count[12];
+	  if ((node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_QUERY
+	       || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+	       || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && node->info.query.correlation_level == 0
+	      && (node->info.query.hint & PT_HINT_QUERY_CACHE))
+	    {
+	      /* 
+	       * This condition is identical to the one used in do_prepare_subquery_pre function to call do_prepare_subquery.
+	       * Both functions must maintain the same condition to ensure consistency.
+	       * Be careful not to modify only one of them.
+	       */
+	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
+	    }
+	  else
+	    {
+	      snprintf (host_var_count, sizeof (host_var_count), "%d",
+			parser->host_var_count + parser->auto_param_count);
+	    }
+	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
+	  string = pt_append_nulstring (parser, string, host_var_count);
+	}
       return (char *) string->bytes;
     }
   return NULL;
@@ -8610,35 +8633,35 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, buf);
 	}
       break;
+
     case PT_TYPE_NCHAR:
-      if (parser->flag.is_parsing_unload_schema)
-	{
-	  q = pt_append_nulstring (parser, q, "national character");
-	  break;
-	}
     case PT_TYPE_VARNCHAR:
-      if (parser->flag.is_parsing_unload_schema)
-	{
-	  q = pt_append_nulstring (parser, q, "national character varying");
-	  break;
-	}
     case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
       if (parser->flag.is_parsing_unload_schema)
 	{
-	  q = pt_append_nulstring (parser, q, "character");
+	  switch (p->type_enum)
+	    {
+	    case PT_TYPE_CHAR:
+	      q = pt_append_nulstring (parser, q, "character");
+	      break;
+	    case PT_TYPE_VARCHAR:
+	      q = pt_append_nulstring (parser, q, "character varying");
+	      break;
+	    case PT_TYPE_NCHAR:
+	      q = pt_append_nulstring (parser, q, "national character");
+	      break;
+	    case PT_TYPE_VARNCHAR:
+	      q = pt_append_nulstring (parser, q, "national character varying");
+	      break;
+	    default:
+	      assert (false);
+	    }
 	  break;
 	}
-    case PT_TYPE_VARCHAR:
-      if (!parser->flag.is_parsing_unload_schema)
-	{
-	  show_collation = true;
-	  /* FALLTHRU */
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, "character varying");
-	  break;
-	}
+
+      show_collation = true;
+      /* FALLTHRU */
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:

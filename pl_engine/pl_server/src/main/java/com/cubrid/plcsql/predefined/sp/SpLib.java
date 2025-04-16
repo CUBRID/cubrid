@@ -575,11 +575,11 @@ public class SpLib {
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
 
-    public static void DBMS_OUTPUT$DISABLE() {
+    public static void DBMS_OUTPUT$DISABLE() throws Exception {
         DBMS_OUTPUT.disable();
     }
 
-    public static void DBMS_OUTPUT$ENABLE(Integer size) {
+    public static void DBMS_OUTPUT$ENABLE(Integer size) throws Exception {
         if (size == null) {
             throw new VALUE_ERROR("size must be non-null");
         }
@@ -609,7 +609,7 @@ public class SpLib {
     public static class Query {
         public final String query;
         public ResultSet rs;
-        public int rowCount;
+        public int rowCount = -1;
 
         private PreparedStatement myStmt;
 
@@ -685,26 +685,49 @@ public class SpLib {
             }
         }
 
-        public boolean found() {
+        public boolean fetch() {
+
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("tried to fetch values with an unopened cursor");
+            }
+
             try {
-                if (!isOpen()) {
-                    throw new INVALID_CURSOR(
-                            "attempted to read an attribute of an unopened cursor");
+                if (rs.next()) {
+                    rowCount = rs.getRow();
+                    return true;
+                } else {
+                    if (rowCount < 0) {
+                        // never fetched
+                        rowCount = 0;
+                    }
+                    return false;
                 }
-                return rs.getRow() > 0;
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
 
-        public boolean notFound() {
+        public Boolean found() {
             try {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR(
                             "attempted to read an attribute of an unopened cursor");
                 }
-                return rs.getRow() == 0;
+                return rowCount < 0 ? null : (rs.getRow() > 0);
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
+            }
+        }
+
+        public Boolean notFound() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
+                }
+                return rowCount < 0 ? null : (rs.getRow() == 0);
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
@@ -715,7 +738,7 @@ public class SpLib {
             if (!isOpen()) {
                 throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
             }
-            return (long) rowCount;
+            return (long) rowCount < 0 ? 0 : rowCount;
         }
 
         public void updateRowCount() {

@@ -7796,11 +7796,13 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
+      break;
     case PT_EXPR:
       if (pt_is_dblink_related (node))
 	{
 	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
 	}
+      break;
     default:
       // nope
       break;
@@ -17270,6 +17272,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      cmp = 1;
 	      break;
 	    }
+	  /* fall through */
 	case PT_NE_ALL:
 	  cmp = set_issome (arg1, db_get_set (arg2), PT_EQ_SOME, 1);
 	  if (cmp == 1)

@@ -7278,6 +7278,17 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	    }
 
 	  tran_set_latest_query_status (end_query_result, tran_state, should_conn_reset);
+
+	  /* check if dblink transaction is aborted */
+	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+	    {
+	      if (replydata_listid)
+		{
+		  free_and_init (replydata_listid);
+		}
+
+	      return NULL;
+	    }
 	}
 
       if (replydata_listid && replydata_size_listid)
