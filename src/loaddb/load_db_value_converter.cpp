@@ -604,7 +604,7 @@ namespace cubload
   {
     int count = 0;
     const int max_vector_size = 2000;
-    float float_array[max_vector_size];
+    float *float_array = (float *) db_private_alloc (NULL, max_vector_size * sizeof (float));
     // DB_SET *vec = NULL;
     DB_VALUE e_val;
 
@@ -622,17 +622,13 @@ namespace cubload
     // return er_errid ();
     //      }
 
-    ASSERT_CUBVEC (false);
+    // ASSERT_CUBVEC (false);
+    db_value_domain_init(val, DB_TYPE_VECTOR, 0, 0);
     DB_VECTOR_FLOAT vector_float;
+    vector_float.dim = count;
+    vector_float.float_array = float_array;
     db_make_vector (val, vector_float);
-    for (int i = 0; i < count; ++i)
-      {
-	db_make_float (&e_val, float_array[i]);
-	if (db_seq_put (db_get_set (val), i, &e_val) != NO_ERROR)
-	  {
-	    return ER_FAILED;
-	  }
-      }
+    val->need_clear = true;
 
     return NO_ERROR;
   }

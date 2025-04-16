@@ -5407,7 +5407,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_STR] = &ldr_json_db_json;
       break;
     case DB_TYPE_VECTOR:
-      assert (false);
+      cubvec_log(">>> ldr_act_add_attr: DB_TYPE_VECTOR");
       attdesc->setter[LDR_STR] = &ldr_vector_db_vector;
     default:
       break;
@@ -6150,7 +6150,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
-  // db_make_vector (&ldr_vector_tmpl, NULL);
+  db_make_vector (&ldr_vector_tmpl, {0, nullptr});
 
   /*
    * Set up the conversion functions for collection elements.  These
@@ -6826,7 +6826,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
 {
   int count = 0;
   const int max_vector_size = 2000;
-  float float_array[max_vector_size];
+  float *float_array = (float *) db_private_alloc(NULL, sizeof (float) * max_vector_size);
   // DB_SET *vec = NULL;
   DB_VALUE e_val;
 
@@ -6844,17 +6844,12 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   //     return er_errid ();
   //   }
 
-  ASSERT_CUBVEC (false);
+  db_value_domain_init(val, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   DB_VECTOR_FLOAT vf;
+  vf.dim = count;
+  vf.float_array = float_array;
+  val->need_clear = true;
   db_make_vector (val, vf);
-  for (int i = 0; i < count; ++i)
-    {
-      db_make_float (&e_val, float_array[i]);
-      if (db_seq_put (db_get_set (val), i, &e_val) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
 
   return NO_ERROR;
 }
