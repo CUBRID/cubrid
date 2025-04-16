@@ -45,23 +45,23 @@ public class ContextManager {
     private static ConcurrentMap<Long, Context> contextMap = new ConcurrentHashMap<Long, Context>();
 
     public static Context getContext(long id) {
-        //synchronized (contextMap) {
-            Context ret = contextMap.get(id);
-            if (ret == null) {
-                ret = new Context(id);
-                contextMap.put(id, ret);
-            }
-            return ret;
-        //}
+        // synchronized (contextMap) {
+        Context ret = contextMap.get(id);
+        if (ret == null) {
+            ret = new Context(id);
+            contextMap.put(id, ret);
+        }
+        return ret;
+        // }
     }
 
     public static void destroyContext(long id) {
-        //synchronized (contextMap) {
-            Context ctx = contextMap.remove(id);
-            if (ctx != null) {
-                ctx.destroy();
-            }
-        //}
+        // synchronized (contextMap) {
+        Context ctx = contextMap.remove(id);
+        if (ctx != null) {
+            ctx.destroy();
+        }
+        // }
     }
 
     // Java Thread ID => Context ID
