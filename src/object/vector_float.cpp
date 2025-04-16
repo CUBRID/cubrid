@@ -23,6 +23,7 @@
 #include "vector_float.hpp"
 #include "cubvec_assert.h"
 #include "object_representation.h"
+#include <sstream>
 
 int
 or_put_float_array_internal (OR_BUF *buf, const float *float_array, int array_length, int align)
@@ -32,22 +33,49 @@ or_put_float_array_internal (OR_BUF *buf, const float *float_array, int array_le
 
 std::string db_vector_float_to_string (const db_vector_float vf)
 {
-
+  const int kElementsToShow = 5;
   const int dim = vf.dim;
   const float *float_array = vf.float_array;
+  std::ostringstream result;
 
-  std::string result = "dim:";
-  result += std::to_string (dim);
-  result += " [";
-  for (int i = 0; i < dim; ++i)
+  // Add dimension information
+  result << "dim:" << dim << " [";
+
+  // If vector is small enough, show all elements
+  if (dim <= kElementsToShow * 2)
     {
-      result += std::to_string (float_array[i]);
-      if (i < dim - 1)
+      for (int i = 0; i < dim; ++i)
 	{
-	  result += ", ";
+	  result << float_array[i];
+	  if (i < dim - 1)
+	    {
+	      result << ", ";
+	    }
 	}
     }
-  result += "]";
-  return result;
-}
+  // Otherwise show first and last kElementsToShow elements
+  else
+    {
+      // First kElementsToShow elements
+      for (int i = 0; i < kElementsToShow; ++i)
+	{
+	  result << float_array[i] << ", ";
+	}
 
+      // Add ellipsis for skipped elements
+      result << "... ";
+
+      // Last kElementsToShow elements
+      for (int i = dim - kElementsToShow; i < dim; ++i)
+	{
+	  result << float_array[i];
+	  if (i < dim - 1)
+	    {
+	      result << ", ";
+	    }
+	}
+    }
+
+  result << "]";
+  return result.str();
+}
