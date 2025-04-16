@@ -411,6 +411,18 @@ server_entry (int pid, const std::string &exec_path, const std::string &args,
     }
 }
 
+server_monitor::server_entry::~server_entry ()
+{
+  if (m_argv)
+    {
+      for (int i = 0; m_argv[i] != nullptr; i++)
+	{
+	  delete[] m_argv[i];
+	}
+      m_argv.reset();
+    }
+}
+
 int
 server_monitor::server_entry::get_pid () const
 {
@@ -477,7 +489,8 @@ server_monitor::server_entry::proc_make_arg (const std::string &args)
     {
       m_argv[i] = new char[arg.size () + 1];
       std::copy (arg.begin (), arg.end (), m_argv[i]);
+      m_argv[i][arg.size()] = '\0';
       i++;
     }
-  m_argv[args.size()] = nullptr;
+  m_argv[i] = NULL;
 }

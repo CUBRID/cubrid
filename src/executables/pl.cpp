@@ -558,7 +558,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 exit:
   if (status != NO_ERROR)
     {
-      fprintf (stdout, "Procedure Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
+      fprintf (stdout, "Procedural Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
   if (buffer.ptr)
@@ -609,11 +609,11 @@ pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 {
   if (status_info.port == PL_PORT_UDS_MODE)
     {
-      fprintf (fp, "Procedure Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
+      fprintf (fp, "Procedural Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
     }
   else
     {
-      fprintf (fp, "Procedure Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
+      fprintf (fp, "Procedural Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
 	       status_info.port);
     }
   auto vm_args_len = status_info.vm_args.size();

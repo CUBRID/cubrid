@@ -140,7 +140,7 @@
 
 static void admin_log_write (const char *log_file, const char *msg);
 static int admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file,
-			 char *err_msg, char admin_flag, bool * acl_flag, char *acl_file);
+			 char *err_msg, char admin_flag, bool * acl_flag, char *acl_file, bool * acl_default_policy);
 static int copy_job_info (T_JOB_INFO ** job_info, T_MAX_HEAP_NODE * job_q);
 static int conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_file, char *err_msg);
 static int conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf, int num_br, char *err_msg);
@@ -168,7 +168,7 @@ uc_broker_shm_open (char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   void *ret_val;
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return NULL;
     }
@@ -324,14 +324,15 @@ uc_start (char *err_msg)
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
   char acl_file[BROKER_PATH_MAX];
-  bool acl_flag;
+  bool acl_flag, acl_default_policy;
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, &acl_flag, acl_file) < 0)
+  if (admin_common
+      (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, &acl_flag, acl_file, &acl_default_policy) < 0)
     {
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, admin_log_file) < 0)
+  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
@@ -349,7 +350,7 @@ uc_stop (char *err_msg)
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -373,7 +374,7 @@ uc_add (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -398,7 +399,7 @@ uc_restart (const char *br_name, int as_index, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -423,7 +424,7 @@ uc_drop (const char *br_name, char *err_msg)
   char admin_log_file[256];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -448,7 +449,7 @@ uc_on (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -473,7 +474,7 @@ uc_off (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -503,7 +504,7 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
   T_AS_INFO *as_info = NULL;
   char client_ip_str[16];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -689,7 +690,7 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
   T_BR_INFO *br_info = NULL;
   char *p;
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -845,7 +846,7 @@ uc_unicas_conf (T_UC_CONF * unicas_conf, int *ret_mst_shmid, char *err_msg)
 
   memset (unicas_conf, 0, sizeof (T_UC_CONF));
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -999,7 +1000,7 @@ uc_del_cas_log (const char *br_name, int asid, char *err_msg)
 
   err_msg[0] = '\0';
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -1147,10 +1148,10 @@ conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_fi
 
 static int
 admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file, char *err_msg,
-	      char admin_flag, bool * acl_flag, char *acl_file)
+	      char admin_flag, bool * acl_flag, char *acl_file, bool * acl_default_policy)
 {
   if (broker_config_read (NULL, br_info, num_broker, master_shm_id, admin_log_file, admin_flag, acl_flag, acl_file,
-			  err_msg) < 0)
+			  acl_default_policy, err_msg) < 0)
     {
       return -1;
     }
@@ -1325,7 +1326,7 @@ uc_changer_internal (const char *br_name, const char *name, const char *value, i
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL, NULL) < 0)
     {
       return -1;
     }

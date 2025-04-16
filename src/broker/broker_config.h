@@ -309,13 +309,11 @@ struct t_broker_info
   char cgw_link_server_port[CGW_LINK_SERVER_PORT_LEN];
   char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
   char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
-
-  char acl_broker_allow;
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 			       char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file,
-			       char *admin_err_msg);
+			       bool * acl_default_policy, char *admin_err_msg);
 extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id,
 				char *admin_log_file);
 

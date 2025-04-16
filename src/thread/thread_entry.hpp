@@ -230,7 +230,6 @@ namespace cubthread
       adj_array *cnv_adj_buffer[3];	/* conversion buffer */
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
-      dblink_conn_entry *dblink_entry;  /* conn entry ptr for dblink */
 
       xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
