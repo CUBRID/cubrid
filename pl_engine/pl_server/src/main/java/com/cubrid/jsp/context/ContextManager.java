@@ -44,59 +44,46 @@ public class ContextManager {
     // Context ID => Context Object
     private static ConcurrentMap<Long, Context> contextMap = new ConcurrentHashMap<Long, Context>();
 
-    public static boolean hasContext(long id) {
-        return contextMap.containsKey(id);
-    }
-
     public static Context getContext(long id) {
-        if (hasContext(id)) {
-            return contextMap.get(id);
-        } else {
-            synchronized (ContextManager.class) {
-                Context newCtx = new Context(id);
-                contextMap.put(id, newCtx);
-                // System.out.println ("new session =" + id); // for debug
-                return newCtx;
+        //synchronized (contextMap) {
+            Context ret = contextMap.get(id);
+            if (ret == null) {
+                ret = new Context(id);
+                contextMap.put(id, ret);
             }
-        }
+            return ret;
+        //}
     }
 
-    public static synchronized void destroyContext(long id) {
-        if (hasContext(id)) {
-            Context ctx = contextMap.get(id);
-            contextMap.remove(id);
+    public static void destroyContext(long id) {
+        //synchronized (contextMap) {
+            Context ctx = contextMap.remove(id);
             if (ctx != null) {
                 ctx.destroy();
             }
-            // System.out.println ("deleted session =" + id); // for debug
-        }
+        //}
     }
 
     // Java Thread ID => Context ID
     private static ConcurrentMap<Long, Long> contextThreadMap = new ConcurrentHashMap<Long, Long>();
 
     public static void registerThread(long threadId, long ctxId) {
-        if (contextThreadMap.containsKey(threadId) == false) {
-            contextThreadMap.put(threadId, ctxId);
-        }
+        Long prev = contextThreadMap.put(threadId, ctxId);
+        assert prev == null;
     }
 
     public static void deregisterThread(long threadId) {
-        if (contextThreadMap.containsKey(threadId) == true) {
-            contextThreadMap.remove(threadId);
-        }
+        contextThreadMap.remove(threadId);
     }
 
     public static Long getContextIdByThreadId(long threadId) {
-        if (contextThreadMap.containsKey(threadId)) {
-            return contextThreadMap.get(threadId);
-        }
-        return null;
+        return contextThreadMap.get(threadId);
     }
 
     public static Context getContextofCurrentThread() {
         Thread t = Thread.currentThread();
         Long ctxId = ContextManager.getContextIdByThreadId(t.getId());
+        assert ctxId != null;
         return ContextManager.getContext(ctxId);
     }
 }

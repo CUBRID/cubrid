@@ -218,7 +218,6 @@ public class ExecuteThread extends Thread {
                                 // requestCode);
                             }
                     }
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
                 } catch (Throwable e) {
                     if (e instanceof IOException) {
                         /*
