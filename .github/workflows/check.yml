@@ -137,7 +137,7 @@ jobs:
         run: |
           sudo apt-get install -yq wget build-essential
 
-          # Download cppcheck-2.13.0 source 
+          # Download cppcheck-2.13.0 source
           wd=`pwd`
           cd ..
           wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.13.0.tar.gz
