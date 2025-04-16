@@ -146,7 +146,7 @@ jobs:
 
           # build cppcheck-2.4.1
           cd cppcheck-2.13.0
-          make -j4 SRCDIR=build CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
+          make -j4 MATCHCOMPILER=yes CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
           echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
 
           cd $wd
