@@ -137,14 +137,13 @@ jobs:
         run: |
           sudo apt-get install -yq wget build-essential
 
-          # Download cppcheck-2.4.1 source
+          # Download cppcheck-2.13.0 source
           wd=`pwd`
           cd ..
-          # wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.4.1.tar.gz
-          wget https://github.com/danmar/cppcheck/archive/refs/tags/2.13.0.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.13.0.tar.gz
           tar xf 2.13.0.tar.gz
 
-          # build cppcheck-2.4.1
+          # build cppcheck-2.13.0
           cd cppcheck-2.13.0
           make -j4 MATCHCOMPILER=yes CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
           echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
