@@ -8300,7 +8300,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	    {
 	      spec = pt_find_spec (parser, statement->info.query.q.select.from, node);
 	      /* table or view name is invalid or inline view */
-	      if (spec == NULL || spec->info.spec.flat_entity_list == NULL)
+	      if (spec == NULL)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
 			      node->info.name.original);
