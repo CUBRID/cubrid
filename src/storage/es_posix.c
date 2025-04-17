@@ -91,8 +91,10 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *
   r = rand ();
 #endif
 
+#if defined (WINDOWS)
   /* defensive, we don't want minus in filename */
   r = r < 0 ? r * (-1) : r;
+#endif
 
   /* get unique numbers */
   unum = es_get_unique_num ();
