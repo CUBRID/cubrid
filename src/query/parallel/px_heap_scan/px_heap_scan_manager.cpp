@@ -380,6 +380,7 @@ namespace parallel_heap_scan
 	scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
 	OID_SET_NULL (&scan_id->s.hsid.curr_oid);
       }
+    /* When using mergable lists, reset is not needed since join operations are not handled here. */
     assert (false);
   }
 
