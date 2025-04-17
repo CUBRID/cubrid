@@ -91,6 +91,10 @@ namespace parallel_query
 	  {
 	    break;
 	  }
+	else
+	  {
+	    std::this_thread::yield();
+	  }
       }
     return true;
   }
