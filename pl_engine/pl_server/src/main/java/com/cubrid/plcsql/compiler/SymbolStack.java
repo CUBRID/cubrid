@@ -290,6 +290,7 @@ public class SymbolStack {
                         "FLOOR",
                         "HEX",
                         "LN",
+                        "LOG",
                         "LOG2",
                         "LOG10",
                         "MOD",
