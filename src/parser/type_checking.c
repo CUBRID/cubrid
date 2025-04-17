@@ -19282,13 +19282,16 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       sc_info_ptr = &sc_info;
     }
 
-  sc_info_ptr->remote_server_name = NULL;
-
-  if (tree->node_type == PT_DELETE)
+  if (tree)
     {
-      if (tree->info.delete_.spec)
+      sc_info_ptr->remote_server_name = NULL;
+
+      if (tree->node_type == PT_DELETE)
 	{
-	  sc_info_ptr->remote_server_name = tree->info.delete_.spec->info.spec.remote_server_name;
+	  if (tree->info.delete_.spec)
+	    {
+	      sc_info_ptr->remote_server_name = tree->info.delete_.spec->info.spec.remote_server_name;
+	    }
 	}
     }
 
