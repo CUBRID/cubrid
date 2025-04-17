@@ -6847,12 +6847,10 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	{
 	  /* If the conjunct is not a NULL or a logical type, then there's a problem. But don't say anything if
 	   * somebody else has already complained */
-#if 0
 	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORm (parser, where, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_LOGICAL_WHERE);
 	    }
-#endif
 	  break;
 	}
 
@@ -7888,7 +7886,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   switch (node->node_type)
     {
     case PT_EXPR:
-      node = pt_eval_expr_type (parser, node);
+      if (sc_info->remote_server_name == NULL)
+	{
+	  node = pt_eval_expr_type (parser, node);
+	}
 #if 1				//original code but it doesn't check for errors
       if (node == NULL)
 	{
@@ -7943,7 +7944,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       break;
 
     case PT_DELETE:
-      node->info.delete_.search_cond = pt_where_type (parser, node->info.delete_.search_cond);
+      if (sc_info->remote_server_name == NULL)
+	{
+	  node->info.delete_.search_cond = pt_where_type (parser, node->info.delete_.search_cond);
+	}
       break;
 
     case PT_UPDATE:
@@ -10459,7 +10463,7 @@ error:
 	  return node;
 	}
     }
-#if 0
+
   if (node->type_enum == PT_TYPE_NONE)
     {
       if (!pt_has_error (parser))
@@ -10490,7 +10494,6 @@ error:
 	    }
 	}
     }
-#endif
 
   return node;
 }
@@ -19268,7 +19271,7 @@ end:
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, NULL };
 
   if (pt_has_error (parser))
     {
@@ -19277,6 +19280,16 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   if (sc_info_ptr == NULL)
     {
       sc_info_ptr = &sc_info;
+    }
+
+  sc_info_ptr->remote_server_name = NULL;
+
+  if (tree->node_type == PT_DELETE)
+    {
+      if (tree->info.delete_.spec)
+	{
+	  sc_info_ptr->remote_server_name = tree->info.delete_.spec->info.spec.remote_server_name;
+	}
     }
 
   /* do type checking */

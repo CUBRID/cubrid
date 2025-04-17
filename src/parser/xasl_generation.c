@@ -18497,8 +18497,8 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
   PT_NODE *server_spec = spec->info.spec.remote_server_name;
   PT_DBLINK_INFO *pdblink = &(server_spec->info.dblink_table);
 
-  //assert (server_spec->node_type == PT_DBLINK_TABLE_DML);
-  //assert (server_spec->info.dblink_table.is_name);
+  assert (server_spec->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_spec->info.dblink_table.is_name);
 
   if (pdblink->host_vars.count > 0)
     {

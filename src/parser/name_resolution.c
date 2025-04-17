@@ -3047,10 +3047,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      //if (node->info.delete_.spec->info.spec.remote_server_name == NULL)
-      {
-	parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-      }
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -4148,6 +4146,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	{
 	  if (spec->info.spec.remote_server_name)
 	    {
+	      /* for dblink processing */
 	      return 1;
 	    }
 	  else
@@ -6267,12 +6266,9 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	   * path expression. */
 	  if (arg1->type_enum != PT_TYPE_OBJECT)
 	    {
-	      return in_node;
-#if 0
 	      PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_OBJECT_TYPE,
 			   pt_short_print (parser, arg1), pt_show_type_enum (arg1->type_enum));
 	      return NULL;
-#endif
 	    }
 	  else if (!arg1->data_type)
 	    {
