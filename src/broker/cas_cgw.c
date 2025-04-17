@@ -1219,12 +1219,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
   net_arg_get_char (type, net_type);
   net_arg_get_size (&data_size, net_value);
 
-  if (data_size <= 0)
-    {
-      type = CCI_U_TYPE_NULL;
-      data_size = 0;
-    }
-
   // Oracle ODBC does not support the BIGINT type.
   // So, change it to Numeric type.
   if (curr_dbms_type == CAS_CGW_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
@@ -1278,6 +1272,28 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  SQL_PARAM_INPUT,
 						  c_data_type,
 						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
+      }
+      break;
+    case CCI_U_TYPE_NULL:
+      {
+	char *value;
+	int val_size;
+	SQLLEN cbValue = SQL_NULL_DATA;
+
+	net_arg_get_str (&value, &val_size, net_value);
+
+	c_data_type = SQL_C_CHAR;
+	sql_bind_type = SQL_VARCHAR;
+
+	value_list->string_val = value;
+
+	SQL_CHK_ERR (handle->hstmt,
+		     SQL_HANDLE_STMT,
+		     err_code = SQLBindParameter (handle->hstmt,
+						  bind_num,
+						  SQL_PARAM_INPUT,
+						  c_data_type,
+						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, &cbValue));
       }
       break;
 
@@ -1665,7 +1681,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
       /* Not Support Type  */
-    case CCI_U_TYPE_NULL:
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_MONETARY:

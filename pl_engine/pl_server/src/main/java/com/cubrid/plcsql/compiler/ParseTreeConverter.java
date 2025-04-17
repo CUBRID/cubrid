@@ -61,6 +61,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
@@ -2592,6 +2594,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private Static
     // --------------------------------------------------------
 
+    private static String regexId =
+            "^[A-Za-z_\uAC00-\uD7A3][A-Za-z_0-9\uAC00-\uD7A3]*$"; // \uAC00-\uD7A3: Korean
+    private static Pattern patternId = Pattern.compile(regexId);
+
     private static final int ID_LEN_MAX = 222; // see User Manual
 
     private static final BigInteger UINT_LITERAL_MAX =
@@ -2948,11 +2954,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String afterDot = colName.substring(dotIdx + 1);
             if (afterDot.equalsIgnoreCase(ci.attrName)) {
                 // In this case, colName must be of the form <table name alias>.<attr name>
-                return ci.attrName;
+                colName = ci.attrName;
             }
         }
 
-        return colName;
+        Matcher matcher = patternId.matcher(colName);
+        return matcher.matches() ? colName : null;
     }
 
     private Expr getHostExprFromText(String s, ParserRuleContext ctx) {
@@ -3018,8 +3025,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // convert select list
             selectList = new ArrayList<>();
+            int i = 0;
             for (ColumnInfo ci : sws.selectList) {
-                String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
+
+                i++;
+
+                String col = getColumnNameInSelectList(ci);
+                if (col == null) {
+                    // column name cannot be a Java identifier
+                    col = "$anonymous" + i;
+                } else {
+                    col = Misc.getNormalizedText(col);
+                }
 
                 // get type of the column
                 Type ty;
