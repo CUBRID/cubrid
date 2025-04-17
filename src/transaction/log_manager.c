@@ -7202,7 +7202,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 	  type = log_rec->type;
 
-	  if (LSA_ISNULL (&log_rec->forw_lsa) && type != LOG_END_OF_LOG)
+	  if (type != LOG_END_OF_LOG)
 	    {
 	      /*
 	       * The following is just for debugging next address calculations
