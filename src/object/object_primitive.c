@@ -7993,7 +7993,7 @@ mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int d
 			       int total_order, int *start_colp)
 {
   cubvec_log ("hello\n");
-  ASSERT_CUBVEC (false);
+  assert (false);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -8001,7 +8001,7 @@ mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do
 			      int total_order, int *start_colp)
 {
   cubvec_log ("hello\n");
-  ASSERT_CUBVEC (false);
+  assert (false);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -8009,7 +8009,7 @@ mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 			int total_order, int *start_colp, int collation)
 {
   cubvec_log ("hello\n");
-  ASSERT_CUBVEC (false);
+  assert (false);
 }
 
 /*
