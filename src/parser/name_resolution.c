@@ -8292,12 +8292,14 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       PT_NODE *spec = NULL;
       PT_NODE *entity;
 
+      /* to process the clause "FOR UPDATE OF" */
       if (statement->info.query.q.select.for_update != NULL)
 	{
 	  /* Flag only the specified specs */
 	  for (; node != NULL; node = node->next)
 	    {
 	      spec = pt_find_spec (parser, statement->info.query.q.select.from, node);
+	      /* table or view name is invalid or inline view */
 	      if (spec == NULL)
 		{
 		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
@@ -8313,8 +8315,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
+		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	  parser_free_tree (parser, statement->info.query.q.select.for_update);
 	  statement->info.query.q.select.for_update = NULL;
@@ -8324,7 +8326,6 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
@@ -8333,8 +8334,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
-		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }
