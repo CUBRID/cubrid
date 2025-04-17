@@ -11074,7 +11074,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
   SYSPRM_PARAM *thread_core_count_prm;
-  SYSPRM_PARAM *max_parallel_worker_prm;
 
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -11143,15 +11142,6 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
-	}
-      max_parallel_worker_prm = prm_find (PRM_NAME_MAX_PARALLEL_WORKERS, NULL);
-      if (max_parallel_worker_prm != NULL)
-	{
-	  if (PRM_GET_INT (max_parallel_worker_prm->value) > core_upper_limit)
-	    {
-	      sprintf (newval, "%d", core_upper_limit);
-	      (void) prm_set (max_parallel_worker_prm, newval, false);
-	    }
 	}
 #endif
     }
