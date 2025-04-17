@@ -7935,8 +7935,10 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   ASSERT_CUBVEC (error == NO_ERROR);
 
   // print vector_float for debugging
+#if !defined(NDEBUG)
   const auto vfstr = db_vector_float_to_string (vector_float);
   cubvec_log ("vector_float: %s\n", vfstr.c_str ());
+#endif
 
   ASSERT_CUBVEC (error == NO_ERROR);
 
