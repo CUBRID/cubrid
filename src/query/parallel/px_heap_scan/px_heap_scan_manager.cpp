@@ -212,6 +212,15 @@ namespace parallel_heap_scan
     while (!m_context->all_tasks_list_opened())
       {
 	thread_sleep (1);
+	if (m_context->has_error())
+	  {
+	    return S_ERROR;
+	  }
+	if (qmgr_is_query_interrupted (m_thread_p, m_query_id))
+	  {
+	    m_context->set_has_error();
+	    return S_ERROR;
+	  }
       }
     while (!m_context->all_tasks_scan_ended())
       {
@@ -239,7 +248,7 @@ namespace parallel_heap_scan
     QFILE_LIST_ID *merged_list_id = m_mergable_list->get_merged_list_id();
     QFILE_TUPLE_RECORD tpl;
     std::vector<DB_VALUE> outptr_orig_dbvals;
-    int i=0;
+    int i = 0;
 
     if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL
 	&& !m_xasl->proc.buildlist.g_agg_domains_resolved)
@@ -266,15 +275,12 @@ namespace parallel_heap_scan
 	      }
 	  }
 
-
 	/* search in aggregate list by comparing DB_VALUE pointers */
 	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl,
 	    &m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	  {
 	    return S_ERROR;
 	  }
-
-
 
 	if (m_context->m_outptr_dbvals_p->size() > 0)
 	  {
