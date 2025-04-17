@@ -1117,7 +1117,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL);
+  sysprm_load_and_init (server_name, NULL, SYSPRM_LOAD_ALL);
   sysprm_set_er_log_file (server_name);
 
   if (sync_initialize_sync_stats () != NO_ERROR)

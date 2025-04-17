@@ -2104,7 +2104,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2222,13 +2222,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      error_code = ER_BO_CANT_LOAD_SYSPRM;
-      goto error;
-    }
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
