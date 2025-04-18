@@ -106,6 +106,7 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
+#include "backup_worker_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7601,6 +7602,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char time_val[CTIME_MAX];
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  size_t read_thread_count = 0;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7647,6 +7649,20 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     }
 
 #if defined (SERVER_MODE)
+  read_thread_count = session.read_thread_info.num_threads - 1;
+
+  cubbackup::g_backup_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (read_thread_count, read_thread_count, "backup read workers", NULL,
+						   read_thread_count / 3, false, true);
+  if (cubbackup::g_backup_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
+  cubbackup::worker_create_task_capper ();
+
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
