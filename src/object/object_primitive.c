@@ -7843,8 +7843,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  const auto[dim, arr] = src_vf;
 
 	  // print vector_float for debugging
-	  const auto vfstr = db_vector_float_to_string (src_vf);
-	  cubvec_log ("vector_float: %s\n", vfstr.c_str ());
+	  cubvec_log ("vector_float: %s\n", db_vector_float_to_string(src_vf).c_str ());
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
