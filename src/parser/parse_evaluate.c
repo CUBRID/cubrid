@@ -923,7 +923,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
   PT_NODE *or_next;
   DB_VALUE *val, opd1, opd2, opd3;
   PT_OP_TYPE op;
-  PT_TYPE_ENUM type1, type2, type3;
+  PT_TYPE_ENUM type1 = PT_TYPE_NONE, type2 = PT_TYPE_NONE, type3 = PT_TYPE_NONE, common_type = PT_TYPE_NONE;
   TP_DOMAIN *domain;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
   QUERY_ID query_id_self = parser->query_id;
@@ -1253,6 +1253,19 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    }
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
 	  domain = tp_domain_cache (domain);
+
+	  /* recheck type of expr for host_var */
+	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL
+	      && (pt_is_hostvar (arg1) || pt_is_hostvar (arg2) || pt_is_hostvar (arg3)))
+	    {
+	      common_type = pt_common_type (type1, type2);
+	      if (type3 != PT_TYPE_NONE)
+		{
+		  common_type = pt_common_type (common_type, type3);
+		}
+	      domain = pt_type_enum_to_db_domain (common_type);
+	      domain = tp_domain_cache (domain);
+	    }
 
 	  /* PT_BETWEEN_xxxx, PT_ASSIGN, PT_LIKE_ESCAPE do not need to be evaluated and will return 0 from
 	   * 'pt_evaluate_db_value_expr()' */
