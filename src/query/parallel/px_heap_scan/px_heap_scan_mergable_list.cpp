@@ -94,13 +94,7 @@ namespace parallel_heap_scan
     qdata_get_valptr_type_list (thread_p, m_outptr_list, &type_list);
     m_dbv_arr.resize (type_list.type_cnt);
 
-    (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL, NULL);
-    (*m_list_id_p)->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-    (*m_list_id_p)->tfile_vfid->membuf = NULL;
-    (*m_list_id_p)->tfile_vfid->membuf_npages = 0;
-    (*m_list_id_p)->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
-    (*m_list_id_p)->tfile_vfid->preserved = false;
-    (*m_list_id_p)->tfile_vfid->tde_encrypted = false;
+    (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL);
 
     for (valptr_idx = 0, valptr = m_outptr_list->valptrp; valptr != NULL;
 	 valptr_idx++, valptr = valptr->next)
