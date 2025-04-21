@@ -7701,23 +7701,41 @@ mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
 static int
 mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  cubvec_log (">>> mr_setmem_vector_float\n");
   cubvec_log ("memptr %p, domain %p, value %p\n", memptr, domain, value);
+
+  char **mem;
+  char *new_;
+  char *cur;
+
+  mem = (char**) memptr;
 
   int error = NO_ERROR;
 
-  DB_VECTOR_FLOAT *mem = (DB_VECTOR_FLOAT *) memptr;
-
   if (value == NULL)
     {
+      cubvec_log ("value is null\n");
       mr_initmem_vector_float (memptr, domain);
     }
   else
     {
       DB_VECTOR_FLOAT vf = db_get_vector_float (value);
+      cubvec_log ("inspecting vf: %s\n", db_vector_float_to_string(vf).c_str());
 
-      DB_VECTOR_FLOAT *pvf = (DB_VECTOR_FLOAT *) memptr;
-      *pvf = vf;
+      auto [dim, arr] = vf;
+
+      char *new_ = (char *) db_private_alloc (NULL, sizeof (int) + dim * sizeof (float));
+      cubvec_log ("db_private_alloc new_: %p\n", new_);
+      ASSERT_CUBVEC (new_ != nullptr);
+      
+      cur = new_;
+      cubvec_log ("cur = %p, dim = %d\n", cur, dim);
+
+      *(int *)cur = dim;
+      cur += sizeof (int);
+
+      memcpy (cur, arr, dim * sizeof (float));
+
+      *mem = new_;
     }
 
   return error;
@@ -7746,10 +7764,9 @@ mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
     {
       cubvec_log ("disk = 0 and memptr is not null\n");
 
-      DB_VECTOR_FLOAT vf = *(DB_VECTOR_FLOAT *) memptr;
-
-      const int dim = vf.dim;
-      const float *arr = vf.float_array;
+      char * mem = *(char **)memptr;
+      const int dim = *(int*)mem;
+      cubvec_log ("mem = %p, dim = %d\n", mem, dim);
 
       len = sizeof (int) + dim * sizeof (float);
     }
@@ -7770,32 +7787,30 @@ mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   cubvec_log (">>> mr_data_writemem_vector_float\n");
   cubvec_log ("buf %p, memptr %p, domain %p\n", buf, memptr, domain);
 
-  DB_VECTOR_FLOAT vf = *(DB_VECTOR_FLOAT *) memptr;
+  char *mem = *(char**) memptr;
 
-  or_put_int (buf, vf.dim);
-  or_put_data (buf, (char *) vf.float_array, vf.dim * sizeof (float));
+  int dim = *(int*)mem;
+  mem += sizeof (int);
 
+  float *arr = (float*) mem;
+
+  or_put_int (buf, dim);
+  or_put_data (buf, (char *) arr, dim * sizeof (float));
 }
 
 static void
 mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
   cubvec_log (">>> mr_data_readmem_vector_float\n");
-  cubvec_log ("buf %p, memptr %p, domain %p, size %d\n", buf, memptr, domain, size);
-
-  DB_VECTOR_FLOAT *vf = (DB_VECTOR_FLOAT *) memptr;
-
-  or_get_int (buf, &vf->dim);
-  or_get_data (buf, (char *) vf->float_array, vf->dim * sizeof (float));
-
+  ASSERT_CUBVEC (false);
 }
 
 static void
 mr_freemem_vector_float (void *memptr)
 {
-  cubvec_log (">>> mr_freemem_vector_float %p\n", memptr);
-  DB_VECTOR_FLOAT *vf = (DB_VECTOR_FLOAT *) memptr;
-  cubvec_log ("WARNING: not freeing vf->float_array %p\n", vf->float_array);
+  char * mem = *(char**) memptr;
+  cubvec_log ("freeing %p\n", mem);
+  db_private_free_and_init (NULL, mem);
 }
 
 static void
