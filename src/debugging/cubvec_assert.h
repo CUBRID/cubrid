@@ -24,6 +24,7 @@
 #define CUBVEC_ASSERT_H
 
 #include <assert.h>
+#include <unistd.h>
 
 #ifdef CUBVEC_TEAM
 #ifdef NDEBUG
@@ -48,6 +49,7 @@
   do { \
       FILE *logfile = fopen("cubvec.log", "a"); \
       if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
