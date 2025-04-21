@@ -2077,9 +2077,12 @@ pr_clear_value (DB_VALUE * value)
       {
 	if (value->need_clear)
 	  {
-	    cubvec_log ("pr_clear_value: freeing vector at %p\n", value);
+	    cubvec_log ("freeing addr: %p, vector: %s\n", value, db_vector_float_to_string(value->data.vector_float).c_str());
 	    db_private_free (NULL, value->data.vector_float.float_array);
 	  }
+	else {
+	    cubvec_log ("not freeing addr: %p, vector: %s\n", value, db_vector_float_to_string(value->data.vector_float).c_str());
+	}
 	value->data.vector_float.dim = 0;
 	value->data.vector_float.float_array = NULL;
 	break;
