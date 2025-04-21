@@ -7544,7 +7544,7 @@ logpb_push_backup_read_task (cubthread::entry_task * task)
 extern void
 logpb_destroy_backup_read_worker_pool ()
 {
-  delete g_backup_read_worker_pool;
+  thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
 }
 
 /*
