@@ -3954,11 +3954,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
     {
       json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
 
-      if (stats->hash_method == HASH_METH_NOT_USE)
-	{
-	  /* Nothing to do. */
-	}
-      else
+      if (stats->hash_method != HASH_METH_NOT_USE)
 	{
 	  if (stats->is_build_outer)
 	    {
@@ -3999,11 +3995,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  json_object_set_new (input, "rows", json_integer (current_stats->build.rows));
 	  json_object_set_new (input, "method", json_string (qdump_hashjoin_type_string (current_stats->hash_method)));
 
-	  if (current_stats->hash_method == HASH_METH_NOT_USE)
-	    {
-	      /* Nothing to do. */
-	    }
-	  else
+	  if (current_stats->hash_method != HASH_METH_NOT_USE)
 	    {
 	      if (current_stats->is_build_outer)
 		{

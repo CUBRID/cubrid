@@ -545,15 +545,17 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 		    PROJECTION_INFO * projection_info)
 {
   PARSER_CONTEXT *parser = NULL;
-  PT_NODE *during_join_pred = NULL;
+  PT_NODE *during_join_pred = NULL, *pred;;
+
+  PROJECTION_PART_INFO *outer_info, *inner_info;
 
   XASL_NODE *xasl = NULL;
   HASHJOIN_PROC_NODE *proc;
-  QFILE_LIST_MERGE_INFO *merge_info;
 
-  int *all_value_indexes;
-  int value_cnt, value_index, found_index;
-  int pos_cnt, pos_index;
+  REGU_VARIABLE_LIST regu;
+
+  int *pos_list = NULL;
+  int pos_cnt, pos_index, found_index;
 
   int error = NO_ERROR;
 
@@ -566,20 +568,110 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   assert (plan->plan_type == QO_PLANTYPE_JOIN);
   assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
 
+  outer_info = &projection_info->outer;
+  inner_info = &projection_info->inner;
+
   parser = QO_ENV_PARSER (env);
   if (parser == NULL)
     {
-      assert (false);
-      return NULL;
+      goto exit_on_error;
     }
 
-  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl, projection_info);
+  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl);
   if (xasl == NULL)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   proc = &xasl->proc.hashjoin;
+
+  /*
+   * proc->outer.regu_list_pred
+   */
+  if (outer_info->pred_count > 0)
+    {
+      pos_cnt = outer_info->pred_count;
+
+      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      if (pos_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * pos_cnt);
+	  goto exit_on_error;
+	}
+
+      pred = outer_info->pred_list;
+      for (pos_index = 0; pos_index < pos_cnt; pos_index++)
+	{
+	  found_index = pt_find_attribute (parser, pred, outer_info->name_list);
+	  if (found_index == -1)
+	    {
+	      free_and_init (pos_list);
+	      goto exit_on_error;
+	    }
+
+	  pos_list[pos_index] = found_index;
+	  pred = pred->next;
+	}
+
+      proc->outer.regu_list_pred =
+	pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_xasl->val_list, pos_list);
+
+      free_and_init (pos_list);
+
+      if (proc->outer.regu_list_pred == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      for (regu = proc->outer.regu_list_pred; regu != NULL; regu = regu->next)
+	{
+	  regu->value.value.pos_descr.pos_no += outer_info->expr_count;
+	}
+    }
+
+  /*
+   * proc->inner.regu_list_pred
+   */
+  if (inner_info->pred_count > 0)
+    {
+      pos_cnt = inner_info->pred_count;
+
+      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      if (pos_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * pos_cnt);
+	  goto exit_on_error;
+	}
+
+      pred = inner_info->pred_list;
+      for (pos_index = 0; pos_index < pos_cnt; pos_index++)
+	{
+	  found_index = pt_find_attribute (parser, pred, inner_info->name_list);
+	  if (found_index == -1)
+	    {
+	      free_and_init (pos_list);
+	      goto exit_on_error;
+	    }
+
+	  pos_list[pos_index] = found_index;
+	  pred = pred->next;
+	}
+
+      proc->inner.regu_list_pred =
+	pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_xasl->val_list, pos_list);
+
+      free_and_init (pos_list);
+
+      if (proc->inner.regu_list_pred == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      for (regu = proc->inner.regu_list_pred; regu != NULL; regu = regu->next)
+	{
+	  regu->value.value.pos_descr.pos_no += inner_info->expr_count;
+	}
+    }
 
   /*
    * during join predicate
@@ -587,11 +679,13 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
     {
       during_join_pred = make_pred_from_bitset (env, &plan->plan_un.join.during_join_terms, is_always_true);
-      if (during_join_pred != NULL)
+      if (during_join_pred == NULL)
 	{
-	  xasl = add_during_join_predicate (env, xasl, during_join_pred);
-	  parser_free_tree (parser, during_join_pred);
+	  goto exit_on_error;
 	}
+
+      xasl = add_during_join_predicate (env, xasl, during_join_pred);
+      parser_free_tree (parser, during_join_pred);
     }
 
   /*
@@ -600,10 +694,20 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   error = qo_init_merge_info (env, plan, projection_info, &proc->merge_info);
   if (error != NO_ERROR)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   return xasl;
+
+exit_on_error:
+  if (error == NO_ERROR && pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      pt_reset_error (parser);
+    }
+  assert_release (er_errid ());
+
+  return NULL;
 }
 
 /*
@@ -5336,7 +5440,6 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 {
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
-
   BITSET plan_segs_set, during_segs_set, temp_segs_set;
   BITSET_ITERATOR term_iter, during_iter;
   int term_index, during_index;
@@ -5344,12 +5447,12 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   PARSER_CONTEXT *parser;
   PT_NODE *term_expr, *pred_node;
   PT_NODE *outer_part, *inner_part;
-  PT_NODE *final_list, *name_list;
+  PT_NODE *name_list;
 
   PROJECTION_PART_INFO *outer_info, *inner_info;
   PROJECTION_FINAL_INFO *final_info;
 
-  int pos_index, found_index;
+  int error = NO_ERROR;
 
   assert (env != NULL);
   assert (plan != NULL);
@@ -5411,9 +5514,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	    }
 	  else
 	    {
-	      assert (false);
-	      bitset_union (&plan_segs_set, &QO_TERM_SEGS (term));
-	      continue;
+	      goto exit_on_error;
 	    }
 
 	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
@@ -5519,34 +5620,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   assert (outer_info->expr_name_count == outer_info->expr_count + outer_info->name_count);
   assert (outer_info->expr_count == bitset_cardinality (&outer_info->exprs_set));
 
-  if (outer_info->pred_list != NULL)
-    {
-      outer_info->pred_count = pt_length_of_list (outer_info->pred_list);
-      outer_info->pred_pos_list = (int *) pt_alloc_packing_buf (sizeof (int) * outer_info->pred_count);
-      if (outer_info->pred_pos_list == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      pred_node = outer_info->pred_list;
-      for (pos_index = 0; pos_index < outer_info->pred_count; pos_index++)
-	{
-	  found_index = pt_find_attribute (parser, pred_node, outer_info->name_list);
-	  if (found_index == -1)
-	    {
-	      assert (false);
-	      goto exit_on_error;
-	    }
-
-	  outer_info->pred_pos_list[pos_index] = found_index;
-	  pred_node = pred_node->next;
-	}
-    }
-  else
-    {
-      outer_info->pred_count = 0;
-      outer_info->pred_pos_list = NULL;
-    }
+  outer_info->pred_count = pt_length_of_list (outer_info->pred_list);
 
   /*
    * inner info
@@ -5555,7 +5629,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &plan_segs_set);
-  inner_info->name_list = make_namelist_from_projected_segs (env, inner_plan);
+  inner_info->name_list = make_namelist_from_bitset (env, &temp_segs_set);
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
 
   inner_info->expr_name_list =
@@ -5567,34 +5641,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   assert (inner_info->expr_name_count == inner_info->expr_count + inner_info->name_count);
   assert (inner_info->expr_count == bitset_cardinality (&inner_info->exprs_set));
 
-  if (inner_info->pred_list != NULL)
-    {
-      inner_info->pred_count = pt_length_of_list (inner_info->pred_list);
-      inner_info->pred_pos_list = (int *) pt_alloc_packing_buf (sizeof (int) * inner_info->pred_count);
-      if (inner_info->pred_pos_list == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      pred_node = inner_info->pred_list;
-      for (pos_index = 0; pos_index < inner_info->pred_count; pos_index++)
-	{
-	  found_index = pt_find_attribute (parser, pred_node, inner_info->name_list);
-	  if (found_index == -1)
-	    {
-	      assert (false);
-	      goto exit_on_error;
-	    }
-
-	  inner_info->pred_pos_list[pos_index] = found_index;
-	  pred_node = pred_node->next;
-	}
-    }
-  else
-    {
-      inner_info->pred_count = 0;
-      inner_info->pred_pos_list = NULL;
-    }
+  inner_info->pred_count = pt_length_of_list (inner_info->pred_list);
 
   /*
    * final info
@@ -5630,12 +5677,22 @@ exit_on_end:
   bitset_delset (&during_segs_set);
   bitset_delset (&temp_segs_set);
 
-  return NO_ERROR;
+  return error;
 
 exit_on_error:
   qo_clean_projection_info (env, info);
 
-  return ER_FAILED;
+  if (error == NO_ERROR && pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      pt_reset_error (parser);
+
+      error = er_errid ();
+    }
+  assert_release (er_errid ());
+  error = er_errid ();
+
+  goto exit_on_end;
 }
 
 static void
@@ -5720,6 +5777,8 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
   int value_cnt, value_index, found_index;
   int pos_cnt, pos_index;
 
+  int error = NO_ERROR;
+
   assert (env != NULL);
   assert (plan != NULL);
   assert (projection_info != NULL);
@@ -5782,11 +5841,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
       assert (value_index < value_cnt);
 
       term = QO_ENV_TERM (env, term_index);
-
-      if (QO_IS_PATH_TERM (term) && merge_info->join_type == JOIN_INNER)
-	{
-	  merge_info->single_fetch = QPROC_SINGLE_OUTER;
-	}
+      assert (!QO_IS_PATH_TERM (term));
 
       if (BITSET_MEMBER (outer_info->exprs_set, term_index) && outer_expr != NULL)
 	{
@@ -5813,7 +5868,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  seg_index = bitset_iterate (&term_segs_set, &seg_iter);
 	  if (seg_index == -1)
 	    {
-	      assert (false);
 	      goto exit_on_error;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5823,7 +5877,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  found_index = pt_find_attribute (parser, outer_part, outer_info->expr_name_list);
 	  if (found_index == -1)
 	    {
-	      assert (false);
 	      goto exit_on_error;
 	    }
 
@@ -5853,7 +5906,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  seg_index = bitset_iterate (&term_segs_set, &seg_iter);
 	  if (seg_index == -1)
 	    {
-	      assert (false);
 	      goto exit_on_error;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5863,7 +5915,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  found_index = pt_find_attribute (parser, inner_part, inner_info->expr_name_list);
 	  if (found_index == -1)
 	    {
-	      assert (false);
 	      goto exit_on_error;
 	    }
 
@@ -5946,7 +5997,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	      else
 		{
 		  /* Impossible. */
-		  assert (false);
 		  goto exit_on_error;
 		}
 	    }
@@ -5982,8 +6032,18 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 exit_on_end:
   bitset_delset (&term_segs_set);
 
-  return NO_ERROR;
+  return error;
 
 exit_on_error:
-  return ER_FAILED;
+  if (error == NO_ERROR && pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      pt_reset_error (parser);
+
+      error = er_errid ();
+    }
+  assert_release (er_errid ());
+  error = er_errid ();
+
+  goto exit_on_end;
 }

@@ -159,7 +159,6 @@ struct projection_part_info
   int name_count;
   int expr_name_count;		/* expr_count + name_count */
   int pred_count;
-  int *pred_pos_list;
 };
 #define PROJECTION_PART_INFO_INITIALIZER { NULL, NULL, NULL, NULL, EMPTY_SET, 0, 0, 0, 0, NULL}
 

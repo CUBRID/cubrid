@@ -6158,17 +6158,17 @@ static int
 qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
-  int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *inner_node;
-  int t;
-  BITSET_ITERATOR iter;
   QO_TERM *term;
+  BITSET_ITERATOR term_iter;
+  int term_index;
+  int n = 0;
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
-  if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
+  if (bitset_intersects (sarged_terms, &info->env->fake_terms))
     {
       goto exit;
     }
@@ -6197,10 +6197,11 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    * 
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
-  for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
+  for (term_index = bitset_iterate (hash_join_terms, &term_iter); term_index != -1;
+       term_index = bitset_next_member (&term_iter))
     {
-      term = QO_ENV_TERM (info->env, t);
-      if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
+      term = QO_ENV_TERM (info->env, term_index);
+      if (QO_IS_PATH_TERM (term))
 	{
 	  goto exit;		/* give up */
 	}
@@ -6243,6 +6244,22 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (inner_plan == NULL)
     {
       goto exit;
+    }
+
+  if (qo_is_iscan (outer_plan) || qo_is_iscan_from_orderby (outer_plan))
+    {
+      if (outer_plan->plan_un.scan.index->head->key_limit != NULL)
+	{
+	  goto exit;		/* give up */
+	}
+    }
+
+  if (qo_is_iscan (inner_plan) || qo_is_iscan_from_orderby (inner_plan))
+    {
+      if (inner_plan->plan_un.scan.index->head->key_limit != NULL)
+	{
+	  goto exit;		/* give up */
+	}
     }
 
   n =

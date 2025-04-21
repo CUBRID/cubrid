@@ -472,9 +472,6 @@ static REGU_VARIABLE *pt_join_term_to_regu_variable (PARSER_CONTEXT * parser, PT
 
 static PT_NODE *pt_query_set_reference (PARSER_CONTEXT * parser, PT_NODE * node);
 
-static REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
-							     VAL_LIST * value_list, int *attr_offsets);
-
 static DB_VALUE *pt_regu_to_dbvalue (PARSER_CONTEXT * parser, REGU_VARIABLE * regu);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -9665,7 +9662,7 @@ pt_make_pos_regu_var_from_scratch (TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos
  *   value_list(in):
  *   attr_offsets(in):
  */
-static REGU_VARIABLE_LIST
+REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list, VAL_LIST * value_list,
 				   int *attr_offsets)
 {
@@ -14481,25 +14478,19 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 
 
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl, PROJECTION_INFO * info)
+ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
 {
-  PROJECTION_PART_INFO *outer_info;
-  PROJECTION_PART_INFO *inner_info;
-
   XASL_NODE *xasl;
   HASHJOIN_PROC_NODE *proc;
 
   assert (parser != NULL);
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
-  assert (info != NULL);
-
-  outer_info = &info->outer;
-  inner_info = &info->inner;
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
   if (xasl == NULL)
     {
+      assert_release (er_errid ());
       return NULL;
     }
 
@@ -14511,28 +14502,6 @@ ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NO
   proc = &xasl->proc.hashjoin;
   proc->outer.xasl = outer_xasl;
   proc->inner.xasl = inner_xasl;
-
-  if (outer_info->pred_count > 0)
-    {
-      proc->outer.regu_list_pred =
-	pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_xasl->val_list,
-					   outer_info->pred_pos_list);
-    }
-  else
-    {
-      proc->outer.regu_list_pred = NULL;
-    }
-
-  if (inner_info->pred_count > 0)
-    {
-      proc->inner.regu_list_pred =
-	pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_xasl->val_list,
-					   inner_info->pred_pos_list);
-    }
-  else
-    {
-      proc->inner.regu_list_pred = NULL;
-    }
 
   return xasl;
 }

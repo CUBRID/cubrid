@@ -38,6 +38,15 @@
 #include "memory_wrapper.hpp"
 
 /*
+ * Debug Macros
+ */
+
+#define PARTITION_FILL_FACTOR 0.8
+
+#define DUMP_HASH_TABLE_LIMIT 100
+#define DUMP_PROBE_LIMIT 20
+
+/*
  * Enum & Typedef Definitions
  */
 
@@ -91,15 +100,13 @@ typedef struct hashjoin_start_stats
 
 typedef struct hashjoin_fetch_info
 {
+  /* Pointers to members of HASHJOIN_DOMAIN_INFO,
+   * which is a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT_DOMAIN_INFO *input;
-
-  /* The common domains between the domains of values used in the build and probe inputs. */
   TP_DOMAIN **coerce_domains;
-
-  /* Whether the coerce domain needs to be used. */
   bool need_coerce_domains;
 
-  /* The list of regular variables used for the evaluation of predicates during hash join processing. */
+  /* Pointer to a member of HASHJOIN_INPUT. */
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
 #define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, false }
@@ -122,7 +129,6 @@ typedef struct hashjoin_context
   int key_cnt;
 
   JOIN_TYPE join_type;
-  QPROC_SINGLE_FETCH single_fetch;
   PRED_EXPR *during_join_pred;
 
   HASH_LIST_SCAN hash_scan;
@@ -134,6 +140,7 @@ typedef struct hashjoin_context
 
 typedef struct hashjoin_manager
 {
+  /* Pointers to members of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
@@ -146,6 +153,7 @@ typedef struct hashjoin_manager
   VAL_DESCR *vd;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 
+  /* Pointer to a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_STATS_GROUP *stats_group;
 } HASHJOIN_MANAGER;
 
@@ -177,10 +185,10 @@ typedef struct hashjoin_manager
 #endif /* HASH_JOIN_DUMP_HASH_TABLE */
 
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
-#define QEXEC_HASH_JOIN_PRINT_TUPLE(type_list_p, tuple, step) \
-  qexec_hash_join_print_tuple ((type_list_p), (tuple), (step))
+#define QEXEC_HASH_JOIN_PRINT_TUPLE(list_scan_id, tuple, step) \
+  qexec_hash_join_print_tuple ((list_scan_id), (tuple), (step))
 #else
-#define QEXEC_HASH_JOIN_PRINT_TUPLE(type_list_p, tuple, step) ((void) 0)
+#define QEXEC_HASH_JOIN_PRINT_TUPLE(list_scan_id, tuple, step) ((void) 0)
 #endif /* !NDEBUG && HASH_JOIN_DUMP_PROBE */
 
 /*
@@ -195,8 +203,6 @@ static QFILE_LIST_ID *qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p,
 							HASHJOIN_CONTEXT * context);
 static QFILE_LIST_ID *qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 						HASHJOIN_CONTEXT * context);
-static QFILE_LIST_ID *qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-						      HASHJOIN_CONTEXT * context);
 
 /* Hash Join Manager */
 static int qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOIN_MANAGER * manager,
@@ -227,7 +233,7 @@ static void qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN 
 static HASHJOIN_STATUS qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context);
 static int qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info,
 				      QFILE_TUPLE_RECORD * tuple_record, HASH_SCAN_KEY * key,
-				      HASH_SCAN_KEY * compare_key, bool * exit_on_next);
+				      HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 
 /* Build Phase */
 static int qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
@@ -291,13 +297,10 @@ static void qexec_hash_join_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list
 /*
  * qexec_hash_join() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
+ *   thread_p(in): Thread entry.
  *   xasl(in): XASL node containing the hash join specification.
- *   query_id(in): Identifier of the query.
- *   vd(in): Value descriptor for evaluating expressions.
- *
-*   Executes a hash join and stores the result in xasl->list_id.
-*   Chooses a join strategy based on input state.
+ *   query_id(in): Query identifier.
+ *   vd(in): Value descriptor for positional values.
  */
 int
 qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * vd)
@@ -317,8 +320,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
   error = qexec_hash_join_init_manager (thread_p, xasl, &manager, query_id, vd);
   if (error != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return error;
+      goto error_exit;
     }
 
   single_context = &manager.single_context;
@@ -328,7 +330,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
     {
     case HASHJOIN_STATUS_FILL_EMPTY:
       list_id = qexec_hash_outer_join_fill_empty (thread_p, &manager, single_context);
-      break;			/* HASHJOIN_STATUS_FILL_EMPTY */
+      break;
 
     case HASHJOIN_STATUS_TRY:
       part_status = qexec_hash_join_partition_inputs (thread_p, &manager);
@@ -336,76 +338,75 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	{
 	case HASHJOIN_STATUS_SINGLE:
 	  list_id = qexec_hash_join_context (thread_p, &manager, single_context);
-	  break;		/* HASHJOIN_STATUS_SINGLE */
+	  break;
 
 	case HASHJOIN_STATUS_PARTITION:
 	  list_id = qexec_hash_join_partition (thread_p, &manager);
-	  break;		/* HASHJOIN_STATUS_PARTITION/ */
+	  break;
 
 	case HASHJOIN_STATUS_END:
-	  /* fall through - unreachable */
+	  /* fall through */
+	  /* qexec_hash_join_check_empty_inputs guarantees STATUS_END cannot occur here */
 	case HASHJOIN_STATUS_ERROR:
-	  /* fall through - unreachable
-	   * qexec_hash_join_partition_inputs sets part_status to HASHJOIN_STATUS_SINGLE
-	   * even when it fails, to attempt a single hash join. */
+	  /* fall through */
+	  /* qexec_hash_join_partition_inputs always retries as HASHJOIN_STATUS_SINGLE;
+	   * never returns HASHJOIN_STATUS_ERROR */
 	default:
-	  /* unreachable */
-	  assert (false);
-	  goto exit_on_error;
+	  /* impossible case */
+	  assert_release (false);
+	  goto error_exit;
 	}
-      break;			/* HASHJOIN_STATUS_TRY */
+      break;
 
     case HASHJOIN_STATUS_END:
-      break;			/* HASHJOIN_STATUS_END */
+      /* Nothing to do */
+      assert (list_id == NULL);
+      break;
 
     case HASHJOIN_STATUS_ERROR:
       /* fall through */
     default:
-      goto exit_on_error;
+      /* impossible case */
+      assert_release (false);
+      goto error_exit;
     }
 
-exit_on_end:
-  if (status == HASHJOIN_STATUS_END)
+  if (list_id != NULL)
     {
-      ASSERT_NO_ERROR ();
-      assert (list_id == NULL);
-    }
-  else if (list_id != NULL)
-    {
-      qfile_destroy_list (thread_p, xasl->list_id);
+      qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
       qfile_copy_list_id (xasl->list_id, list_id, false);
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
+  else if (status == HASHJOIN_STATUS_END)
+    {
+      ASSERT_NO_ERROR ();
+    }
   else
     {
-      /* If state is not HASHJOIN_STATUS_END and list_id is NULL, an error has occurred. */
+      /* list_id can be NULL when join result is empty */
       error = er_errid ();
     }
 
+cleanup:
   qexec_hash_join_clear_manager (thread_p, &manager);
 
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
-  assert (list_id == NULL);
-
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_partition() -
- *   return: Combined list identifier containing the final result, or NULL on error.
- *   thread_p(in): Thread context.
- *   manager(in): Hash join manager containing partitioned contexts.
+ *   return: List identifier containing the join result; NULL if no result or on error.
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
  */
 static QFILE_LIST_ID *
 qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
@@ -441,7 +442,7 @@ qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  error = er_errid ();
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      goto error_exit;
 	    }
 	  else
 	    {
@@ -457,7 +458,7 @@ qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
 	  if (t_list_id == NULL)
 	    {
-	      goto exit_on_error;
+	      goto error_exit;
 	    }
 
 	  qfile_destroy_list (thread_p, list_id);
@@ -475,17 +476,15 @@ qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	}
     }
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   return list_id;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      assert_release (false);
     }
 
   if (context_list_id != NULL)
@@ -502,13 +501,13 @@ exit_on_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_context() -
- *   return: List identifier containing the join result, or NULL if no result or an error occurs.
- *   thread_p(in): Thread context.
+ *   return: List identifier containing the join result; NULL if no result or on error.
+ *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
  */
@@ -518,18 +517,14 @@ qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   QFILE_LIST_ID *list_id = NULL;
   HASHJOIN_STATUS status;
 
-  int error = NO_ERROR;
-
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
 
   status = qexec_hash_join_check_empty_inputs (context);
 
-  /*
-   * In outer joins, tuples with NULL in any join column are placed in the last partition.
-   * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition.
-   */
+  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
+   * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition. */
   if (context->is_last_context && IS_OUTER_JOIN_TYPE (context->join_type))
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_EMPTY : status;
@@ -543,53 +538,32 @@ qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       break;
 
     case HASHJOIN_STATUS_TRY:
-      if (IS_OUTER_JOIN_TYPE (context->join_type))
-	{
-	  list_id = qexec_hash_outer_join_internal (thread_p, manager, context);
-	}
-      else
-	{
-	  list_id = qexec_hash_join_internal (thread_p, manager, context);
-	}
+      list_id = qexec_hash_join_internal (thread_p, manager, context);
       break;
 
     case HASHJOIN_STATUS_END:
+      /* Nothing to do */
+      assert (list_id == NULL);
       break;
 
     case HASHJOIN_STATUS_ERROR:
     default:
-      goto exit_on_error;
-    }
-
-exit_on_end:
-  if (list_id == NULL)
-    {
-      error = er_errid ();
+      if (er_errid () == NO_ERROR)
+	{
+	  assert_release (false);
+	}
+      return NULL;
     }
 
   return list_id;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  assert (list_id == NULL);
-
-  goto exit_on_end;
 }
 
 /*
  * qexec_hash_outer_join_fill_empty() -
- *   return: List identifier containing the join result, or NULL on error.
- *   thread_p(in): Thread context.
+ *   return: List identifier containing the join result; NULL if no result or on error.
+ *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   context(in): Hash join context containing per-partition private state.
+ *   context(in): Hash join context containing per-partition state.
  */
 static QFILE_LIST_ID *
 qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
@@ -616,37 +590,37 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   /* Prevent faults when qfile_close_scan is called */
   outer_scan_id.status = S_CLOSED;
 
-  switch (context->join_type)
+  if (context->join_type == JOIN_LEFT)
     {
-    case JOIN_LEFT:
       outer_list_id = context->outer_list_id;
       inner_list_id = context->inner_list_id;
       left_record = &tuple_record;
       right_record = NULL;
-      break;
-
-    case JOIN_RIGHT:
+    }
+  else if (context->join_type == JOIN_RIGHT)
+    {
       outer_list_id = context->inner_list_id;
       inner_list_id = context->outer_list_id;
       left_record = NULL;
       right_record = &tuple_record;
-      break;
-
-    default:
-      assert (false);
-      goto exit_on_error;
+    }
+  else
+    {
+      /* impossible case */
+      assert_release (false);
+      goto error_exit;
     }
 
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
   if (list_id == NULL)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   error = qfile_open_list_scan (outer_list_id, &outer_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if (thread_is_on_trace (thread_p))
@@ -682,10 +656,12 @@ qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   if (overflow_record.tpl != NULL)
     {
       db_private_free_and_init (thread_p, overflow_record.tpl);
@@ -696,14 +672,10 @@ exit_on_end:
 
   return list_id;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (er_errid () == NO_ERROR)
     {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      assert_release (false);
     }
 
   if (list_id != NULL)
@@ -713,15 +685,15 @@ exit_on_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_internal() -
- *   return: List identifier containing the join result, or NULL on error.
- *   thread_p(in): Thread context.
+ *   return: List identifier containing the join result; NULL if no result or on error.
+ *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   context(in): Hash join context containing per-partition private state.
+ *   context(in): Hash join context containing per-partition state.
  */
 static QFILE_LIST_ID *
 qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
@@ -743,13 +715,13 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
   if (list_id == NULL)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   error = qexec_hash_join_init_context (thread_p, manager, context);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if (context->is_build_outer)
@@ -766,132 +738,38 @@ qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   error = qexec_hash_join_build (thread_p, manager, context, &build_list_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   error = qfile_open_list_scan (probe_list_id, &probe_list_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
-  error = qexec_hash_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
-  if (error != NO_ERROR)
+  if (IS_OUTER_JOIN_TYPE (context->join_type))
     {
-      goto exit_on_error;
-    }
-
-exit_on_end:
-  qfile_close_scan (thread_p, &build_list_scan_id);
-  qfile_close_scan (thread_p, &probe_list_scan_id);
-
-  qfile_close_list (thread_p, build_list_id);
-  qfile_destroy_list (thread_p, build_list_id);
-
-  qfile_close_list (thread_p, probe_list_id);
-  qfile_destroy_list (thread_p, probe_list_id);
-
-  qexec_hash_join_scan_clear (thread_p, &context->hash_scan);
-
-  return list_id;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  if (list_id != NULL)
-    {
-      qfile_close_list (thread_p, list_id);
-      qfile_destroy_list (thread_p, list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (list_id);
-    }
-
-  goto exit_on_end;
-}
-
-/*
- * qexec_hash_outer_join_internal() -
- *   return: List identifier containing the join result, or NULL on error.
- *   thread_p(in): Thread context.
- *   manager(in): Hash join manager containing shared state.
- *   context(in): Hash join context containing join-specific information.
- */
-static QFILE_LIST_ID *
-qexec_hash_outer_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
-{
-  QFILE_LIST_ID *list_id = NULL;
-  QFILE_LIST_ID *build_list_id = NULL, *probe_list_id = NULL;
-  QFILE_LIST_SCAN_ID build_list_scan_id, probe_list_scan_id;
-
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (manager != NULL);
-  assert (context != NULL);
-
-  build_list_scan_id.status = S_CLOSED;
-  probe_list_scan_id.status = S_CLOSED;
-
-  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
-  if (list_id == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  error = qexec_hash_join_init_context (thread_p, manager, context);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  if (context->is_build_outer)
-    {
-      build_list_id = context->outer_list_id;
-      probe_list_id = context->inner_list_id;
+      error =
+	qexec_hash_outer_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
     }
   else
     {
-      build_list_id = context->inner_list_id;
-      probe_list_id = context->outer_list_id;
+      error = qexec_hash_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
     }
-
-  error = qfile_open_list_scan (build_list_id, &build_list_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
-  error = qexec_hash_join_build (thread_p, manager, context, &build_list_scan_id);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  ASSERT_NO_ERROR ();
 
-  error = qfile_open_list_scan (probe_list_id, &probe_list_scan_id);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = qexec_hash_outer_join_probe (thread_p, manager, context, &build_list_scan_id, &probe_list_scan_id, list_id);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-exit_on_end:
+cleanup:
   qfile_close_scan (thread_p, &build_list_scan_id);
   qfile_close_scan (thread_p, &probe_list_scan_id);
 
@@ -905,14 +783,10 @@ exit_on_end:
 
   return list_id;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (er_errid () == NO_ERROR)
     {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      assert_release (false);
     }
 
   if (list_id != NULL)
@@ -922,17 +796,17 @@ exit_on_error:
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_init_manager() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   xasl(in): XASL node containing the hash join specification.
+ *   thread_p(in): Thread entry.
+ *   xasl(in): XASL node for hash join processing.
  *   manager(out): Hash join manager to initialize.
- *   query_id(in): Identifier of the current query.
- *   vd(in): Value descriptor used during join execution.
+ *   query_id(in): Query identifier.
+ *   vd(in): Value descriptor for positional values.
  */
 static int
 qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOIN_MANAGER * manager, QUERY_ID query_id,
@@ -972,15 +846,13 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOI
   assert (outer_list_id != NULL);
   assert (inner_list_id != NULL);
 
-  /*
-   * When aptr_list is executed in qexec_execute_mainblock_internal,
+  /* When aptr_list is executed in qexec_execute_mainblock_internal,
    * it checks the results from outer_xasl and inner_xasl in merge_info.
-   * If either has no result, the other is skipped.
-   * In that case, the skipped node may have a type count of 0 in list_id.type_list.
-   */
+   * If either has no result, the other is skipped,
+   * and the skipped node can have a type count of 0 in list_id.type_list. */
   if (outer_list_id->type_list.type_cnt == 0 || inner_list_id->type_list.type_cnt == 0)
     {
-      goto exit_on_end;
+      return NO_ERROR;
     }
 
   assert (outer_list_id->type_list.domp != NULL);
@@ -990,7 +862,12 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOI
   error = qexec_hash_join_init_domain_info (thread_p, manager, domain_info);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      if (er_errid () == NO_ERROR)
+	{
+	  assert_release (false);
+	  return er_errid ();
+	}
+      return error;
     }
 
   /* single_context */
@@ -1012,7 +889,6 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOI
   context->key_cnt = merge_info->ls_column_cnt;
 
   context->join_type = merge_info->join_type;
-  context->single_fetch = merge_info->single_fetch;
   context->during_join_pred = xasl->during_join_pred;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
@@ -1039,7 +915,7 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOI
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * type_cnt);
-      goto exit_on_error;
+      return error;
     }
 
   type_list->type_cnt = type_cnt;
@@ -1062,28 +938,14 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, XASL_NODE * xasl, HASHJOI
 
   context->stats = &manager->stats_group->stats;
 
-exit_on_end:
-  return error;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  assert (type_list == NULL || type_list->domp == NULL);
-
-  goto exit_on_end;
+  ASSERT_NO_ERROR ();
+  return NO_ERROR;
 }
 
 /*
  * qexec_hash_join_clear_manager() -
  *   return: None.
- *   thread_p(in): Thread context.
+ *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager to be cleared.
  */
 static void
@@ -1121,6 +983,13 @@ qexec_hash_join_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
     }
 }
 
+/*
+ * qexec_hash_join_clear_manager() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager to be cleared.
+ *   domain_info(in): Domain information for join columns.
+ */
 static int
 qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				  HASHJOIN_DOMAIN_INFO * domain_info)
@@ -1141,20 +1010,17 @@ qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   int outer_integral, inner_integral;
   int common_precision, common_scale;
 
-  int error = NO_ERROR;
-
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (domain_info != NULL);
 
-  /* NULL checks not needed. HASHJOIN_MANAGER is already verified in qexec_hash_join_init_manager. */
+  /* Do not perform NULL checks; 
+   * validation is expected to be handled by the caller */
   merge_info = manager->merge_info;
   outer_list_id = manager->outer->xasl->list_id;
   inner_list_id = manager->inner->xasl->list_id;
 
-  /*
-   * domain_info
-   */
+  /* domain_info */
   domain_cnt = merge_info->ls_column_cnt;
 
   outer_domains = domain_info->outer.domains;
@@ -1191,34 +1057,26 @@ qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 	{
 	  common_type = outer_type;
 	}
-      else if (outer_type == DB_TYPE_NULL)
-	{
-	  assert (false);
-	  need_coerce_domains = true;
-	  coerce_domains[domain_index] = inner_domains[domain_index];
-	  continue;
-	}
-      else if (inner_type == DB_TYPE_NULL)
-	{
-	  assert (false);
-	  need_coerce_domains = true;
-	  coerce_domains[domain_index] = outer_domains[domain_index];
-	  continue;
-	}
-      else if ((TP_IS_BIT_TYPE (outer_type) && TP_IS_BIT_TYPE (inner_type))
-	       || (TP_IS_CHAR_TYPE (outer_type) && TP_IS_CHAR_TYPE (inner_type))
-	       || (TP_IS_DATE_TYPE (outer_type) && TP_IS_DATE_TYPE (inner_type))
-	       || (TP_IS_SET_TYPE (outer_type) && TP_IS_SET_TYPE (inner_type))
-	       || (TP_IS_NUMERIC_TYPE (outer_type) && TP_IS_NUMERIC_TYPE (inner_type)))
-	{
-	  common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
-	}
       else
 	{
-	  assert (false);
 	  need_coerce_domains = true;
-	  coerce_domains[domain_index] = &tp_String_domain;
-	  continue;
+
+	  if (outer_type == DB_TYPE_NULL)
+	    {
+	      assert (false);
+	      coerce_domains[domain_index] = inner_domains[domain_index];
+	      continue;
+	    }
+	  else if (inner_type == DB_TYPE_NULL)
+	    {
+	      assert (false);
+	      coerce_domains[domain_index] = outer_domains[domain_index];
+	      continue;
+	    }
+	  else
+	    {
+	      common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;
+	    }
 	}
 
       /* outer_precision, outer_scale */
@@ -1230,60 +1088,67 @@ qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 
       if (outer_precision == inner_precision && outer_scale == inner_scale)
 	{
-	  coerce_domains[domain_index] = NULL;
-	  continue;
+	  common_precision = inner_precision;
+	  common_scale = inner_scale;
 	}
       else
 	{
 	  need_coerce_domains = true;
-	}
 
-      if (outer_precision == TP_FLOATING_PRECISION_VALUE || inner_precision == TP_FLOATING_PRECISION_VALUE)
-	{
-	  common_precision = TP_FLOATING_PRECISION_VALUE;
-	  common_scale = 0;
-	}
-      else if (common_type == DB_TYPE_NUMERIC)
-	{
-	  common_scale = MAX (outer_scale, inner_scale);
+	  if (outer_precision == TP_FLOATING_PRECISION_VALUE || inner_precision == TP_FLOATING_PRECISION_VALUE)
+	    {
+	      common_precision = TP_FLOATING_PRECISION_VALUE;
+	      common_scale = 0;
+	    }
+	  else if (common_type == DB_TYPE_NUMERIC)
+	    {
+	      common_scale = MAX (outer_scale, inner_scale);
 
-	  outer_integral = outer_precision - outer_scale;
-	  inner_integral = inner_precision - inner_scale;
+	      outer_integral = outer_precision - outer_scale;
+	      inner_integral = inner_precision - inner_scale;
 
-	  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-	  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
-	}
-      else
-	{
-	  common_precision = MAX (outer_precision, inner_precision);
-	  common_scale = 0;
+	      common_precision = MAX (outer_integral, inner_integral) + common_scale;
+	      common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+	    }
+	  else
+	    {
+	      common_precision = MAX (outer_precision, inner_precision);
+	      common_scale = 0;
+	    }
 	}
 
       /* need_coerce_domains, coerce_domains */
-      if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
+      if (need_coerce_domains)
 	{
-	  coerce_domains[domain_index] = outer_domains[domain_index];
-	}
-      else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
-	{
-	  coerce_domains[domain_index] = inner_domains[domain_index];
-	}
-      else
-	{
-	  coerce_domains[domain_index] =
-	    tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
-			    false);
-	  if (coerce_domains[domain_index] == NULL)
+	  if (common_type == outer_type && common_precision == outer_precision && common_scale == outer_scale)
 	    {
-	      goto exit_on_error;
+	      coerce_domains[domain_index] = outer_domains[domain_index];
 	    }
+	  else if (common_type == inner_type && common_precision == inner_precision && common_scale == inner_scale)
+	    {
+	      coerce_domains[domain_index] = inner_domains[domain_index];
+	    }
+	  else
+	    {
+	      coerce_domains[domain_index] =
+		tp_domain_copy ((common_type == outer_type) ? outer_domains[domain_index] : inner_domains[domain_index],
+				false);
+	      if (coerce_domains[domain_index] == NULL)
+		{
+		  if (er_errid () == NO_ERROR)
+		    {
+		      assert_release (false);
+		    }
+		  return er_errid ();
+		}
 
-	  coerce_domains[domain_index]->precision = common_precision;
-	  coerce_domains[domain_index]->scale = common_scale;
+	      coerce_domains[domain_index]->precision = common_precision;
+	      coerce_domains[domain_index]->scale = common_scale;
 
-	  coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
+	      coerce_domains[domain_index] = tp_domain_cache (coerce_domains[domain_index]);
+	    }
 	}
-    }
+    }				/* for (domain_index < domain_cnt) */
 
 #if !defined (NDEBUG)
   if (!need_coerce_domains)
@@ -1295,41 +1160,27 @@ qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
     }
 #endif /* !NDEBUG */
 
-  /*
-   * If any join predicate compares different types, need_coerce_domains is set to true.
-   * Otherwise, need_coerce_domains is false.
-   *
-   * If need_coerce_domains is true, coerce_domains is either inner_domains,
+  /* If join predicates compare different types, need_coerce_domains is set to true;
+   * otherwise, it is false.
+   * 
+   * When need_coerce_domains is true, coerce_domains is set to inner_domains,
    * outer_domains, or a common domain for comparison.
    *
-   * If either inner_domains or outer_domains matches coerce_domains,
-   * value coercion is unnecessary for that domain.
-   * Otherwise, values must be coerced to the common domain.
-   */
+   * If either inner_domains or outer_domains matches coerce_domains, 
+   * no coercion is needed. Otherwise, values are coerced to the common domain. */
   domain_info->need_coerce_domains = need_coerce_domains;
 
-exit_on_end:
-  return error;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  goto exit_on_end;
+  ASSERT_NO_ERROR ();
+  return NO_ERROR;
 }
 
 /*
  * qexec_hash_join_partition_inputs() -
- *   return: HASHJOIN_STATUS_PARTITION if partitioning is applied,
- *           HASHJOIN_STATUS_SINGLE if partitioning is unnecessary or fails.
- *   thread_p(in): Thread context
- *   manager(in/out): Hash join manager containing join state and context info
+ *   return: One of the following HASHJOIN_STATUS values:
+ *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
+ *           - HASHJOIN_STATUS_SINGLE:    Partitioning is not needed or falls back on error.
+ *   thread_p(in): Thread entry.
+ *   manager(in/out): Hash join manager containing shared state.
  */
 static HASHJOIN_STATUS
 qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
@@ -1357,7 +1208,8 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   HASHJOIN_STATS *stats = &manager->stats_group->stats;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
-  /* NULL checks not needed. Already verified in qexec_hash_join_init_manager. */
+  /* Do not perform NULL checks; 
+   * validation is expected to be handled by the caller */
   merge_info = manager->merge_info;
   single_context = &manager->single_context;
   outer_list_id = single_context->outer_list_id;
@@ -1367,25 +1219,20 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   max_tuple_cnt = (outer_list_id->tuple_cnt > inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt :
     inner_list_id->tuple_cnt;
 
-#define RESERVE_RATIO 0.8
   part_cnt = CEIL_PTVDIV (max_tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)),
-			  mem_limit * RESERVE_RATIO);
-#undef RESERVE_RATIO
-
+			  mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt <= 1)
     {
       /* give up */
       assert (manager->context_cnt == 0);
       status = HASHJOIN_STATUS_SINGLE;
-      goto exit_on_end;
+      goto cleanup;
     }
 
-  /*
-   * In outer joins, one additional partition is added to store tuples with NULL in any join column.
-   * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition.
-   */
   if (is_outer_join)
     {
+      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
+       * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in this partition. */
       part_cnt += 1;
     }
 
@@ -1396,7 +1243,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (HASHJOIN_CONTEXT) * part_cnt);
-      goto exit_on_error;
+      goto error_exit;
     }
   memset (contexts, 0, sizeof (HASHJOIN_CONTEXT) * part_cnt);
 
@@ -1405,7 +1252,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (QFILE_LIST_ID *) * part_cnt);
-      goto exit_on_error;
+      goto error_exit;
     }
   memset (outer_part_list_id, 0, sizeof (QFILE_LIST_ID *) * part_cnt);
 
@@ -1414,7 +1261,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (QFILE_LIST_ID *) * part_cnt);
-      goto exit_on_error;
+      goto error_exit;
     }
   memset (inner_part_list_id, 0, sizeof (QFILE_LIST_ID *) * part_cnt);
 
@@ -1426,7 +1273,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id, QFILE_FLAG_ALL, NULL);
       if (outer_part_list_id[part_index] == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
       contexts[part_index].outer_list_id = outer_part_list_id[part_index];
 
@@ -1434,7 +1281,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id, QFILE_FLAG_ALL, NULL);
       if (inner_part_list_id[part_index] == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
       contexts[part_index].inner_list_id = inner_part_list_id[part_index];
 
@@ -1454,7 +1301,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (HASHJOIN_STATS) * part_cnt);
-	  goto exit_on_error;
+	  goto error_exit;
 	}
       memset (manager->stats_group->context_stats, 0, sizeof (HASHJOIN_STATS) * part_cnt);
 
@@ -1469,7 +1316,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   part_key = qdata_alloc_hscan_key (thread_p, merge_info->ls_column_cnt, true);
   if (part_key == NULL)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   /* common */
@@ -1483,12 +1330,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 					   is_outer_join, part_key);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
-    }
-
-  if (thread_is_on_trace (thread_p))
-    {
-      qexec_hash_join_trace_skew (outer_list_id, outer_part_list_id, part_cnt, &stats->outer_skew);
+      goto error_exit;
     }
 
   /* inner */
@@ -1499,20 +1341,26 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 					   is_outer_join, part_key);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if (thread_is_on_trace (thread_p))
     {
+      qexec_hash_join_trace_skew (outer_list_id, outer_part_list_id, part_cnt, &stats->outer_skew);
       qexec_hash_join_trace_skew (inner_list_id, inner_part_list_id, part_cnt, &stats->inner_skew);
     }
 
+  qfile_close_list (thread_p, outer_list_id);
   qfile_destroy_list (thread_p, outer_list_id);
+
+  qfile_close_list (thread_p, inner_list_id);
   qfile_destroy_list (thread_p, inner_list_id);
 
   status = HASHJOIN_STATUS_PARTITION;
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   if (part_key != NULL)
     {
       qdata_free_hscan_key (thread_p, part_key, merge_info->ls_column_cnt);
@@ -1530,15 +1378,8 @@ exit_on_end:
 
   return status;
 
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
+error_exit:
+  er_clear ();			/* reset error for retry */
 
   if (contexts != NULL)
     {
@@ -1558,29 +1399,24 @@ exit_on_error:
       if (manager->stats_group->context_stats != NULL)
 	{
 	  db_private_free_and_init (thread_p, manager->stats_group->context_stats);
-
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      contexts[part_index].stats = NULL;
-	    }
 	}
     }
 
   /* retry */
   status = HASHJOIN_STATUS_SINGLE;
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_partition_input() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
- *   thread_p(in): Thread context
- *   manager(in): Hash join manager
- *   part_info(in): Partitioning information including list identifiers
- *   fetch_info(in): Metadata for extracting hash keys from tuples
- *   is_null_allowed(in): Whether NULL join keys should be handled specially
- *   key(in): Buffer to store extracted hash key values
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   part_info(in): Partitioning information.
+ *   fetch_info(in): Information for reading join column values.
+ *   is_null_allowed(in): Whether to include tuples with NULL in any join column in partitioning.
+ *   key(in): Space for reading join column values.
  */
 static int
 qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
@@ -1590,7 +1426,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
   QFILE_LIST_SCAN_ID list_scan_id;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   SCAN_CODE scan_code;
-  bool exit_on_next = false;
+  bool need_skip_next = false;
 
   unsigned int hash_key, part_id;
 
@@ -1607,10 +1443,13 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
+  /* Prevent faults when qfile_close_scan is called */
+  list_scan_id.status = S_CLOSED;
+
   error = qfile_open_list_scan (part_info->list_id, &list_scan_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if (thread_is_on_trace (thread_p))
@@ -1621,49 +1460,43 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
   while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
       error =
-	qexec_hash_join_fetch_key (thread_p, fetch_info, &tuple_record, key, NULL /* compare_key */ , &exit_on_next);
+	qexec_hash_join_fetch_key (thread_p, fetch_info, &tuple_record, key, NULL /* compare_key */ , &need_skip_next);
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  break;		/* error_exit */
 	}
-      else if (exit_on_next)
+      else if (need_skip_next)
 	{
 	  if (is_null_allowed)
 	    {
-	      /*
-	       * In outer joins, tuples with NULL in any join column are placed in the last partition.
-	       * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition.
-	       */
+	      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
+	       * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition. */
 	      error =
 		qfile_add_tuple_to_list (thread_p, part_info->part_list_id[part_info->part_cnt - 1], tuple_record.tpl);
 	      if (error != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  break;	/* error_exit */
 		}
 	    }
-	  else
-	    {
-	      /* Skip the tuple if any value is NULL */
-	    }
 
-	  exit_on_next = false;
+	  need_skip_next = false;	/* init */
 	  continue;
-	}
+	}			/* else if (need_skip_next) */
       else
 	{
-	  /* Nothing to do. */
+	  /* fall through */
 	}
 
+      /* part_id */
       hash_key = qdata_hash_scan_key (key, UINT_MAX, HASH_METH_IN_MEM);
-
       part_id = (is_null_allowed) ? hash_key % (part_info->part_cnt - 1) : hash_key % (part_info->part_cnt);
 
       error = qfile_add_tuple_to_list (thread_p, part_info->part_list_id[part_id], tuple_record.tpl);
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  break;		/* error_exit */
 	}
-    }
+    }				/* while (qfile_scan_list_next (list_scan_id)) */
 
   if (thread_is_on_trace (thread_p))
     {
@@ -1674,36 +1507,30 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
-  qfile_close_list (thread_p, part_info->list_id);
+  ASSERT_NO_ERROR ();
 
-exit_on_end:
+cleanup:
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_init_context() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
+ *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context to initialize.
- *
-*   Initializes the hash join context by selecting the build input,
-*   and initializing the hash scan structure with a hash method.
  */
 static int
 qexec_hash_join_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
@@ -1718,18 +1545,15 @@ qexec_hash_join_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   assert (context != NULL);
   assert (context->stats != NULL || !thread_is_on_trace (thread_p));
 
-  /*
-   * No NULL checks needed.
-   * It must be validated by the caller.
-   */
+  /* Do not perform NULL checks; 
+   * validation is expected to be handled by the caller */
   outer_list_id = context->outer_list_id;
   inner_list_id = context->inner_list_id;
   assert (outer_list_id != NULL && outer_list_id->tuple_cnt > 0);
   assert (inner_list_id != NULL && inner_list_id->tuple_cnt > 0);
 
-  switch (context->join_type)
+  if (context->join_type == JOIN_INNER)
     {
-    case JOIN_INNER:
       if (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt)
 	{
 	  context->is_build_outer = true;
@@ -1743,21 +1567,20 @@ qexec_hash_join_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 	{
 	  context->is_build_outer = false;
 	}
-      break;
-
-    case JOIN_LEFT:
+    }
+  else if (context->join_type == JOIN_LEFT)
+    {
       context->is_build_outer = false;
-      break;
-
-    case JOIN_RIGHT:
+    }
+  else if (context->join_type == JOIN_RIGHT)
+    {
       context->is_build_outer = true;
-      break;
-
-    case JOIN_OUTER:		/* FULL OUTER JOIN is not supported. */
-      /* fall through */
-    default:
-      assert (false);
-      goto exit_on_error;
+    }
+  else
+    {
+      /* impossible case */
+      assert_release (false);
+      goto error_exit;
     }
 
   if (context->is_build_outer)
@@ -1774,43 +1597,39 @@ qexec_hash_join_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   error = qexec_hash_join_scan_init (thread_p, &context->hash_scan, context->key_cnt, build_list_id);
   if (error != NO_ERROR)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if (thread_is_on_trace (thread_p))
     {
       context->stats->hash_method = context->hash_scan.hash_list_scan_type;
       context->stats->is_build_outer = context->is_build_outer;
-
       context->stats->build.part_rows = build_list_id->tuple_cnt;
       context->stats->probe.part_rows = probe_list_id->tuple_cnt;
     }
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
   qexec_hash_join_scan_clear (thread_p, &context->hash_scan);
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_clear_contexts() -
  *   return: None.
- *   thread_p(in): Thread context.
+ *   thread_p(in): Thread entry.
  *   context(in): Hash join context to be cleared.
- *
- *   Frees the outer and inner list identifiers and the hash scan state of the given hash join context.
  */
 static void
 qexec_hash_join_clear_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
@@ -1838,13 +1657,10 @@ qexec_hash_join_clear_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * cont
 /*
  * qexec_hash_join_scan_init() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   hash_scan(in): Hash scan structure used for hash table operations.
- *   key_cnt(in): Number of key values to allocate for hash operations.
- *   list_id(in): List identifier used to determine the hash join method.
- *
- *   Initializes the hash scan structure for hash table operations, allocates space for temporary hash keys,
- *   and selects a hash join method based on tuple and page counts and the memory limit.
+ *   thread_p(in): Thread entry.
+ *   hash_scan(in): Hash scan structure to initialize.
+ *   key_cnt(in): Number of join columns.
+ *   list_id(in): List identifier to be used as build input.
  */
 static int
 qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id)
@@ -1861,26 +1677,23 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
   mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   assert (mem_limit > 0);
 
-  assert (hash_scan->build_regu_list == NULL);	/* Unused. */
-  assert (hash_scan->probe_regu_list == NULL);	/* Unused. */
+  assert (hash_scan->build_regu_list == NULL);	/* Unused */
+  assert (hash_scan->probe_regu_list == NULL);	/* Unused */
 
   hash_scan->temp_key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
   if (hash_scan->temp_key == NULL)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   hash_scan->temp_new_key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
   if (hash_scan->temp_new_key == NULL)
     {
-      goto exit_on_error;
+      goto error_exit;
     }
 
   if ((UINT64) list_id->page_cnt * DB_PAGESIZE <= mem_limit)
     {
-      /*
-       * HASH_METH_IN_MEM
-       */
 #if HASH_JOIN_DUMP_BUILD
       fprintf (stdout, "\nHash Join Method: In Memory\n");
       fprintf (stdout, "  - Page Count: %d <= %lu\n", list_id->page_cnt, mem_limit / 16344);
@@ -1891,16 +1704,13 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
       hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
       if (hash_scan->memory.hash_table == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
 
       hash_scan->memory.curr_hash_entry = NULL;
     }
   else if ((UINT64) list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
     {
-      /*
-       * HASH_METH_HYBRID
-       */
 #if HASH_JOIN_DUMP_BUILD
       fprintf (stdout, "\nHash Join Method: Hybrid\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
@@ -1913,16 +1723,13 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
       hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
       if (hash_scan->memory.hash_table == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
 
       hash_scan->memory.curr_hash_entry = NULL;
     }
   else
     {
-      /*
-       * HASH_METH_HASH_FILE
-       */
 #if HASH_JOIN_DUMP_BUILD
       fprintf (stdout, "\nHash Join Method: File\n");
       fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
@@ -1935,12 +1742,12 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
       hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
       if (hash_scan->file.hash_table == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
 
       if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
-	  goto exit_on_error;
+	  goto error_exit;
 	}
 
       hash_scan->file.curr_oid = OID_INITIALIZER;
@@ -1950,31 +1757,28 @@ qexec_hash_join_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
   hash_scan->curr_hash_key = 0;
   hash_scan->need_coerce_type = false;
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
   qexec_hash_join_scan_clear (thread_p, hash_scan);
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_scan_clear() -
  *   return: None.
- *   thread_p(in): Thread context.
+ *   thread_p(in): Thread entry.
  *   hash_scan(in): Hash scan structure to be cleared.
- *
- *   Frees resources associated with the hash scan structure, including temporary keys and the hash table.
  */
 static void
 qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
@@ -2016,7 +1820,7 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 
     case HASH_METH_NOT_USE:
     default:
-      /* Nothing to do. */
+      /* Nothing to do */
       break;
     }
 
@@ -2025,11 +1829,11 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 
 /*
  * qexec_hash_join_check_empty_inputs() -
- *   return: Hash join status indicating how to proceed with the join.
- *           (HASHJOIN_STATUS_END, HASHJOIN_STATUS_FILL_EMPTY, or HASHJOIN_STATUS_TRY)
- *   context(in): Hash join context containing input list identifiers and join type.
- *
- *   Checks for empty inputs and returns join status based on join type.
+ *   return: One of the following HASHJOIN_STATUS values:
+ *           - HASHJOIN_STATUS_END:        Inner join with one empty input, or outer join with empty preserved side.
+ *           - HASHJOIN_STATUS_FILL_EMPTY: Outer join with empty null-supplying side.
+ *           - HASHJOIN_STATUS_TRY:        Both inputs are non-empty; proceed with the join.
+ *   context(in): Hash join context containing per-partition state.
  */
 static HASHJOIN_STATUS
 qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context)
@@ -2039,12 +1843,10 @@ qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context)
 
   assert (context != NULL);
 
-  /*
-   * When aptr_list is executed in qexec_execute_mainblock_internal,
+  /* When aptr_list is executed in qexec_execute_mainblock_internal,
    * it checks the results from outer_xasl and inner_xasl in merge_info.
-   * If either has no result, the other is skipped.
-   * In that case, the skipped node may have a type count of 0 in list_id.type_list.
-   */
+   * If either has no result, the other is skipped,
+   * and the skipped node can have a type count of 0 in list_id.type_list. */
   if (context->outer_list_id == NULL || context->inner_list_id == NULL)
     {
       return HASHJOIN_STATUS_END;
@@ -2054,30 +1856,27 @@ qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context)
   inner_tuple_cnt = context->inner_list_id->tuple_cnt;
 
   /* HASHJOIN_STATUS_END must be checked first. */
-  switch (context->join_type)
+  if (context->join_type == JOIN_INNER)
     {
-    case JOIN_INNER:
       status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : HASHJOIN_STATUS_TRY;
-      break;
-
-    case JOIN_LEFT:
+    }
+  else if (context->join_type == JOIN_LEFT)
+    {
       status =
 	(outer_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (inner_tuple_cnt ==
 							0) ? HASHJOIN_STATUS_FILL_EMPTY : HASHJOIN_STATUS_TRY;
-      break;
-
-    case JOIN_RIGHT:
+    }
+  else if (context->join_type == JOIN_RIGHT)
+    {
       status =
 	(inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (outer_tuple_cnt ==
 							0) ? HASHJOIN_STATUS_FILL_EMPTY : HASHJOIN_STATUS_TRY;
-      break;
-
-    case JOIN_OUTER:		/* FULL OUTER JOIN is not supported. */
-      /* fall through */
-    default:
-      assert (false);
+    }
+  else
+    {
+      /* impossible case */
+      assert_release (false);
       status = HASHJOIN_STATUS_ERROR;
-      break;
     }
 
   return status;
@@ -2086,19 +1885,16 @@ qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context)
 /*
  * qexec_hash_join_fetch_key() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   fetch_info(in): Information for extracting values from the tuple.
+ *   thread_p(in): Thread entry.
+ *   fetch_info(in): Information for reading join column values. 
  *   tuple_record(in): Tuple to read values from.
- *   key(out): Hash key to store extracted values.
- *   compare_key(in): Optional key to compare against extracted values (can be NULL).
- *   exit_on_next(out): Set to true if the current tuple should be skipped.
- *
- *   Extracts hash key values from the tuple and performs coercion if needed.
- *   Skips the tuple on NULL or mismatch with 'compare_key'.
+ *   key(in/out): Space for reading join column values.
+ *   compare_key(in): Key for comparison with the read key. (can be NULL).
+ *   need_skip_next(in/out): Set to true if the current tuple should be skipped.
  */
 static int
 qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
-			   HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * exit_on_next)
+			   HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next)
 {
   TP_DOMAIN **domains, **coerce_domains;
   int *value_indexes;
@@ -2121,12 +1917,10 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_
   assert (fetch_info != NULL && fetch_info->input != NULL);
   assert (tuple_record != NULL && tuple_record->tpl != NULL);
   assert (key != NULL);
-  assert (exit_on_next != NULL && *exit_on_next == false);
+  assert (need_skip_next != NULL && *need_skip_next == false);
 
-  /*
-   * NULL checks not needed.
-   * HASHJOIN_FETCH_KEY_INFO must be validated by the caller.
-   */
+  /* Do not perform NULL checks; 
+   * validation is expected to be handled by the caller */
   domains = fetch_info->input->domains;
   value_indexes = fetch_info->input->value_indexes;
   coerce_domains = fetch_info->coerce_domains;
@@ -2136,7 +1930,7 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_
 
   tuple_record_end = tuple_record->tpl + QFILE_GET_TUPLE_LENGTH (tuple_record->tpl);
 
-  /* Skip the tuple header. */
+  /* Skip the tuple header */
   tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
 
   for (value_index = 0; tuple_value < tuple_record_end; value_index++)
@@ -2159,13 +1953,13 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_
 	  /* Skip the tuple if any value is NULL */
 	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
 	    {
-	      goto exit_on_next;
+	      goto skip_next;
 	    }
 
 	  value_size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
 	  assert (value_size > 0);
 
-	  /* Skip the tuple value header. */
+	  /* Skip the tuple value header */
 	  or_init (&buf, tuple_value + QFILE_TUPLE_VALUE_HEADER_SIZE, value_size);
 
 	  pr_clear_value (key->values[key_index]);
@@ -2178,17 +1972,19 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_
 							0);
 	      if (error != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  goto error_exit;
 		}
 
 	      domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
-
-	      pr_clear_value (&pre_coerce_value);
-
 	      if (domain_status != DOMAIN_COMPATIBLE)
 		{
-		  goto exit_on_error;
+		  tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);
+		  error = er_errid ();
+		  pr_clear_value (&pre_coerce_value);
+		  goto error_exit;
 		}
+
+	      pr_clear_value (&pre_coerce_value);
 	    }
 	  else
 	    {
@@ -2197,49 +1993,49 @@ qexec_hash_join_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_
 							NULL, 0);
 	      if (error != NO_ERROR)
 		{
-		  goto exit_on_error;
+		  goto error_exit;
 		}
 	    }
 
 	  if (compare_key != NULL)
 	    {
-	      /* Skip the tuple if any value does not match. */
+	      /* Skip the tuple if any value does not match */
 	      compare_result = tp_value_compare (key->values[key_index], compare_key->values[key_index], 0, 0);
 	      if (compare_result != DB_EQ)
 		{
-		  goto exit_on_next;
+		  goto skip_next;
 		}
 	    }
 	}
 
-      /* Skip the current tuple value. */
+      /* Skip the current tuple value */
       tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
     }
 
-exit_on_end:
+  ASSERT_NO_ERROR ();
+
+cleanup:
   return error;
 
-exit_on_next:
-  *exit_on_next = true;
-  goto exit_on_end;
+skip_next:
+  ASSERT_NO_ERROR ();
+  *need_skip_next = true;
+  return NO_ERROR;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_check_valid_part_info() -
- *   return: void
- *   info(in): Partitioning information to be validated
+ *   return: None.
+ *   info(in): Partition information to be validated.
  */
 static void
 qexec_hash_join_check_valid_part_info (HASHJOIN_PARTITION_INFO * info)
@@ -2257,10 +2053,10 @@ qexec_hash_join_check_valid_part_info (HASHJOIN_PARTITION_INFO * info)
 /*
  * qexec_hash_join_build() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
- *   thread_p(in): Thread context
- *   manager(in): Hash join manager
- *   context(in): Hash join context containing scan state and buffers
- *   list_scan_id(in): Scan descriptor for the build input list
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context containing per-partition state.
+ *   list_scan_id(in): Scan identifier for the build input.
  */
 static int
 qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
@@ -2268,7 +2064,7 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 {
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   SCAN_CODE scan_code;
-  bool exit_on_next = false;
+  bool need_skip_next = false;
 
   HASHJOIN_FETCH_INFO *fetch_info;
 
@@ -2315,92 +2111,84 @@ qexec_hash_join_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   while ((scan_code = qfile_scan_list_next (thread_p, list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
       QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
-
       error =
-	qexec_hash_join_fetch_key (thread_p, fetch_info, &tuple_record, key, NULL /* compare_key */ , &exit_on_next);
-
+	qexec_hash_join_fetch_key (thread_p, fetch_info, &tuple_record, key, NULL /* compare_key */ , &need_skip_next);
       QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
-      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
 
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  break;		/* error_exit */
 	}
-      else if (exit_on_next)
+      else if (need_skip_next)
 	{
-	  /* Skip the tuple if any value is NULL */
-	  exit_on_next = false;
+	  need_skip_next = false;	/* init */
 	  continue;
 	}
       else
 	{
-	  /* Nothing to do. */
+	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
+	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
+
+	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
+	  error = qexec_hash_join_build_key (thread_p, hash_scan, &tuple_record, list_scan_id);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
+
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      stats->build.rows++;
+	    }
 	}
+    }				/* while (qfile_scan_list_next (list_scan_id)) */
 
-      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-
-      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
-      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
-
-      error = qexec_hash_join_build_key (thread_p, hash_scan, &tuple_record, list_scan_id);
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
-
-      if (thread_is_on_trace (thread_p))
-	{
-	  stats->build.rows++;
-	}
-    }
-
-  if (scan_code == S_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  assert (scan_code == S_END);
-
-  QEXEC_HASH_JOIN_DUMP_HASH_TABLE (thread_p, hash_scan, &list_scan_id->list_id);
-
-exit_on_end:
   if (thread_is_on_trace (thread_p))
     {
       qexec_hash_join_trace_end (thread_p, &stats->build, &start_stats);
     }
 
-  return error;
+  /* qfile_close_scan is called by the caller. */
 
-exit_on_error:
-  if (error == NO_ERROR)
+  if (scan_code == S_ERROR || error != NO_ERROR)
     {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      goto error_exit;
     }
 
-  goto exit_on_end;
+  ASSERT_NO_ERROR ();
+
+  QEXEC_HASH_JOIN_DUMP_HASH_TABLE (thread_p, hash_scan, &list_scan_id->list_id);
+
+cleanup:
+  return error;
+
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
+    {
+      assert_release (false);
+      error = er_errid ();
+    }
+
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_build_key() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
- *   thread_p(in): Thread context
- *   hash_scan(in): Hash scan structure containing the hash table and scan state
+ *   thread_p(in): Thread entry.
+ *   hash_scan(in): Hash scan structure used for hash table operations.
  *   tuple_record(in): Tuple to be inserted into the hash table
- *   list_scan_id(in): Scan descriptor used to locate the tuple in hybrid or file mode
+ *   list_scan_id(in): Scan identifier for the build input.
  */
 static int
 qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_TUPLE_RECORD * tuple_record,
 			   QFILE_LIST_SCAN_ID * list_scan_id)
 {
   HASH_SCAN_VALUE *hash_value = NULL;
-
-  int error = NO_ERROR;
+  TFTID tftid;
 
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
@@ -2415,14 +2203,22 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
       hash_value = qdata_alloc_hscan_value (thread_p, tuple_record->tpl);
       if (hash_value == NULL)
 	{
-	  goto exit_on_error;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  return er_errid ();
 	}
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
-	  goto exit_on_error;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  qdata_free_hscan_value (thread_p, hash_value);
+	  return er_errid ();
 	}
-
       break;
 
     case HASH_METH_HYBRID:
@@ -2431,66 +2227,59 @@ qexec_hash_join_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
       hash_value = qdata_alloc_hscan_value_OID (thread_p, list_scan_id);
       if (hash_value == NULL)
 	{
-	  goto exit_on_error;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  return er_errid ();
 	}
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
-	  goto exit_on_error;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  qdata_free_hscan_value (thread_p, hash_value);
+	  return er_errid ();
 	}
-
       break;
 
     case HASH_METH_HASH_FILE:
-      TFTID tftid;
-
       assert (hash_scan->file.hash_table != NULL);
 
       SET_TFTID (tftid, list_scan_id->curr_vpid.volid, list_scan_id->curr_vpid.pageid, list_scan_id->curr_offset);
-
       if (fhs_insert (thread_p, hash_scan->file.hash_table, (void *) &hash_scan->curr_hash_key, &tftid) == NULL)
 	{
-	  goto exit_on_error;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  return er_errid ();
 	}
-
       break;
 
     case HASH_METH_NOT_USE:
+      /* fall through */
     default:
-      assert (false);
-      goto exit_on_error;
+      /* impossible case */
+      assert_release (false);
+      return er_errid ();
     }
 
-exit_on_end:
-  return error;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  if (hash_value != NULL)
-    {
-      qdata_free_hscan_value (thread_p, hash_value);
-    }
-
-  goto exit_on_end;
+  ASSERT_NO_ERROR ();
+  return NO_ERROR;
 }
 
 /*
  * qexec_hash_join_probe() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
- *   thread_p(in): Thread context
- *   manager(in): Hash join manager
- *   context(in): Hash join context containing scan and join state
- *   build_scan_id(in): Scan descriptor for the build input list
- *   probe_scan_id(in): Scan descriptor for the probe input list
- *   list_id(out): Output list identifier for storing the join result
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context containing per-partition state.
+ *   build_scan_id(in): Scan identifier for the build input.
+ *   probe_scan_id(in): Scan identifier for the probe input.
+ *   list_id(out): List identifier containing the join result.
  */
 static int
 qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
@@ -2504,7 +2293,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   SCAN_CODE scan_code;
 
   HASHJOIN_FETCH_INFO *build_fetch_info, *probe_fetch_info;
-  bool exit_on_next = false;
+  bool need_skip_next = false;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -2561,33 +2350,29 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 
   while ((scan_code = qfile_scan_list_next (thread_p, probe_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      QEXEC_HASH_JOIN_PRINT_TUPLE (&probe_scan_id->list_id.type_list, tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
+      QEXEC_HASH_JOIN_PRINT_TUPLE (probe_scan_id, tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
       QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
-
       error = qexec_hash_join_fetch_key (thread_p, probe_fetch_info, &tuple_record, key, NULL /* compare_key */ ,
-					 &exit_on_next);
-
+					 &need_skip_next);
       QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
-      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  break;		/* error_exit */
 	}
-      else if (exit_on_next)
+      else if (need_skip_next)
 	{
-	  /* Skip the tuple if any value is NULL */
-	  exit_on_next = false;
+	  need_skip_next = false;	/* init */
 	  continue;
 	}
       else
 	{
-	  /* Nothing to do. */
+	  /* fall through */
 	}
 
+      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
       hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-
       QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
       if (thread_is_on_trace (thread_p))
@@ -2598,65 +2383,57 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
       do
 	{
 	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
-
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_record, build_scan_id);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
+
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-
-	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
-	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (found_record.tpl == NULL)
 	    {
-	      /* Not found, probe next. */
-	      break;
+	      break;		/* not found */
 	    }
 
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      max_collisions++;
+	      max_collisions++;	/* found */
 	    }
 
+	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, build_fetch_info, &found_record, found_key, key /* compare_key */ ,
-				       &exit_on_next);
-
+				       &need_skip_next);
 	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-	  else if (exit_on_next)
+	  else if (need_skip_next)
 	    {
-	      QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-					   HASHJOIN_PRINT_NOT_MATCHED_KEY);
-
-	      /* Skip the tuple if any value is NULL */
-	      exit_on_next = false;
+	      QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
 	    {
-	      /* Nothing to do. */
+	      /* fall through */
 	    }
 
-	  QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-				       HASHJOIN_PRINT_QUALIFIED_KEY);
+	  QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	  error =
 	    qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, left_record, right_record, manager->merge_info,
 						    &overflow_record);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-
-	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	  if (thread_is_on_trace (thread_p))
 	    {
@@ -2670,14 +2447,28 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 	  stats->probe.readkeys += max_collisions;
 	  stats->probe.max_collisions = MAX (stats->probe.max_collisions, max_collisions);
 	}
-    }
 
-exit_on_end:
+      if (error != NO_ERROR)
+	{
+	  break;		/* error_exit */
+	}
+    }				/* while (qfile_scan_list_next (list_scan_id)) */
+
   if (thread_is_on_trace (thread_p))
     {
       qexec_hash_join_trace_end (thread_p, &stats->probe, &start_stats);
     }
 
+  /* qfile_close_scan is called by the caller. */
+
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR ();
+
+cleanup:
   if (overflow_record.tpl != NULL)
     {
       db_private_free_and_init (thread_p, overflow_record.tpl);
@@ -2685,28 +2476,25 @@ exit_on_end:
 
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_outer_join_probe() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
- *   thread_p(in): Thread context
- *   manager(in): Hash join manager
- *   context(in): Hash join context
- *   build_scan_id(in): Scan descriptor for the build input list
- *   probe_scan_id(in): Scan descriptor for the probe input list
- *   list_id(out): List identifier for storing the join result
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context containing per-partition state.
+ *   build_scan_id(in): Scan identifier for the build input.
+ *   probe_scan_id(in): Scan identifier for the probe input.
+ *   list_id(out): List identifier containing the join result.
  */
 static int
 qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
@@ -2721,7 +2509,7 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
   SCAN_CODE scan_code;
 
   HASHJOIN_FETCH_INFO *build_fetch_info, *probe_fetch_info;
-  bool exit_on_next = false;
+  bool need_skip_next = false;
   bool any_record_added;
 
   HASH_LIST_SCAN *hash_scan;
@@ -2779,91 +2567,64 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
 
   while ((scan_code = qfile_scan_list_next (thread_p, probe_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      QEXEC_HASH_JOIN_PRINT_TUPLE (&probe_scan_id->list_id.type_list, tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
+      QEXEC_HASH_JOIN_PRINT_TUPLE (probe_scan_id, tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
       QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
-
       error = qexec_hash_join_fetch_key (thread_p, probe_fetch_info, &tuple_record, key, NULL /* compare_key */ ,
-					 &exit_on_next);
-
+					 &need_skip_next);
       QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  break;		/* error_exit */
 	}
-      else if (exit_on_next)
+      else if (need_skip_next)
 	{
-	  QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-				       HASHJOIN_PRINT_NOT_MATCHED_KEY);
-	  QEXEC_HASH_JOIN_PRINT_TUPLE (&probe_scan_id->list_id.type_list, tuple_record.tpl,
-				       HASHJOIN_PRINT_FILL_EMPTY_KEY);
+	  QEXEC_HASH_JOIN_PRINT_TUPLE (probe_scan_id, tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	  switch (context->join_type)
+	  if (context->join_type == JOIN_LEFT)
 	    {
-	    case JOIN_LEFT:
 	      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	      error =
 		qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, &tuple_record, NULL, manager->merge_info,
 							&overflow_record);
-
 	      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
-	      if (thread_is_on_trace (thread_p))
-		{
-		  stats->probe.rows++;
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      break;
-
-	    case JOIN_RIGHT:
+	    }
+	  else if (context->join_type == JOIN_RIGHT)
+	    {
 	      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	      error =
 		qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, NULL, &tuple_record, manager->merge_info,
 							&overflow_record);
-
 	      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
-	      if (thread_is_on_trace (thread_p))
-		{
-		  stats->probe.rows++;
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      break;
-
-	    case JOIN_INNER:
-	      break;		/* exit_on_next */
-
-	    case JOIN_OUTER:	/* FULL OUTER JOIN is not supported. */
-	      /* fall through */
-	    default:
-	      assert (false);
-	      goto exit_on_error;
+	    }
+	  else
+	    {
+	      assert_release (false);
+	      error = er_errid ();
+	      break;		/* error_exit */
 	    }
 
-	  /* Skip the tuple if any value is NULL */
-	  exit_on_next = false;
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      stats->probe.rows++;
+	    }
+
+	  need_skip_next = false;	/* init */
 	  continue;
-	}
+	}			/* else if (need_skip_next) */
       else
 	{
-	  /* Nothing to do. */
+	  /* fall through */
 	}
 
       QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
-
       hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-
       QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
       if (thread_is_on_trace (thread_p))
@@ -2876,49 +2637,44 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
       do
 	{
 	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
-
 	  error = qexec_hash_join_probe_key (thread_p, hash_scan, &found_record, build_scan_id);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
+
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-
-	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
-	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (found_record.tpl == NULL)
 	    {
-	      /* Not found, probe next. */
-	      break;
+	      break;		/* not found */
 	    }
 
 	  if (thread_is_on_trace (thread_p))
 	    {
-	      max_collisions++;
+	      max_collisions++;	/* found */
 	    }
 
+	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	  error =
 	    qexec_hash_join_fetch_key (thread_p, build_fetch_info, &found_record, found_key, key /* compare_key */ ,
-				       &exit_on_next);
-
+				       &need_skip_next);
 	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-	  else if (exit_on_next)
+	  else if (need_skip_next)
 	    {
-	      QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-					   HASHJOIN_PRINT_NOT_MATCHED_KEY);
+	      QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
-	      /* Skip the tuple if any value is NULL */
-	      exit_on_next = false;
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
 	    {
-	      /* Nothing to do. */
+	      /* fall through */
 	    }
 
 	  if (context->during_join_pred != NULL)
@@ -2926,55 +2682,61 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
 	      DB_LOGICAL ev_res;
 
 	      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-
-	      error =
-		fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, manager->vd, NULL, NULL, tuple_record.tpl,
-				PEEK);
-	      if (error != NO_ERROR)
+	      do
 		{
-		  goto exit_on_error;
-		}
+		  error =
+		    fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, manager->vd, NULL, NULL,
+				    tuple_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
 
-	      error =
-		fetch_val_list (thread_p, build_fetch_info->regu_list_pred, manager->vd, NULL, NULL, found_record.tpl,
-				PEEK);
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
+		  error =
+		    fetch_val_list (thread_p, build_fetch_info->regu_list_pred, manager->vd, NULL, NULL,
+				    found_record.tpl, PEEK);
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
 
-	      ev_res = eval_pred (thread_p, context->during_join_pred, manager->vd, NULL);
-	      if (ev_res == V_ERROR)
-		{
-		  goto exit_on_error;
+		  ev_res = eval_pred (thread_p, context->during_join_pred, manager->vd, NULL);
+		  if (ev_res == V_ERROR)
+		    {
+		      error = ER_FAILED;
+		      break;	/* error_exit */
+		    }
 		}
-
+	      while (false);
 	      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats,
 					   HASHJOIN_PROFILE_PROBE_MATCH);
+
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
 
 	      /* Search the next hash entry if additional conditions are not satisfied */
 	      if (ev_res != V_TRUE)
 		{
-		  QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-					       HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
+		  QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
+		  assert (need_skip_next == false);
 		  continue;
 		}
-	    }
+	    }			/* if (context->during_join_pred != NULL) */
 
-	  QEXEC_HASH_JOIN_PRINT_TUPLE (&build_scan_id->list_id.type_list, found_record.tpl,
-				       HASHJOIN_PRINT_QUALIFIED_KEY);
+	  QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 	  QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	  error =
 	    qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, left_record, right_record, manager->merge_info,
 						    &overflow_record);
+	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+
 	  if (error != NO_ERROR)
 	    {
-	      goto exit_on_error;
+	      break;		/* error_exit */
 	    }
-
-	  QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	  if (thread_is_on_trace (thread_p))
 	    {
@@ -2982,11 +2744,6 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
 	    }
 
 	  any_record_added = true;
-
-	  if (context->single_fetch == QPROC_SINGLE_OUTER)
-	    {
-	      goto exit_on_end;
-	    }
 	}
       while (true);
 
@@ -2996,71 +2753,65 @@ qexec_hash_outer_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
 	  stats->probe.max_collisions = MAX (stats->probe.max_collisions, max_collisions);
 	}
 
+      if (error != NO_ERROR)
+	{
+	  break;		/* error_exit */
+	}
+
       if (!any_record_added)
 	{
-	  QEXEC_HASH_JOIN_PRINT_TUPLE (&probe_scan_id->list_id.type_list, tuple_record.tpl,
-				       HASHJOIN_PRINT_FILL_EMPTY_KEY);
+	  QEXEC_HASH_JOIN_PRINT_TUPLE (probe_scan_id, tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	  switch (context->join_type)
+	  if (context->join_type == JOIN_LEFT)
 	    {
-	    case JOIN_LEFT:
 	      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	      error =
 		qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, &tuple_record, NULL, manager->merge_info,
 							&overflow_record);
-
 	      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
-	      if (thread_is_on_trace (thread_p))
-		{
-		  stats->probe.rows++;
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      break;
-
-	    case JOIN_RIGHT:
+	    }
+	  else if (context->join_type == JOIN_RIGHT)
+	    {
 	      QEXEC_HASH_JOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
 	      error =
 		qexec_hash_join_merge_tuple_to_list_id (thread_p, list_id, NULL, &tuple_record, manager->merge_info,
 							&overflow_record);
-
 	      QEXEC_HASH_JOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-
-	      if (thread_is_on_trace (thread_p))
-		{
-		  stats->probe.rows++;
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	      break;
-
-	    case JOIN_INNER:
-	      break;		/* exit_on_next */
-
-	    case JOIN_OUTER:	/* FULL OUTER JOIN is not supported. */
-	      /* fall through */
-	    default:
-	      assert (false);
-	      goto exit_on_error;
 	    }
-	}
-    }
+	  else
+	    {
+	      assert_release (false);
+	      error = er_errid ();
+	      break;		/* error_exit */
+	    }
 
-exit_on_end:
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      stats->probe.rows++;
+	    }
+	}			/* if (!any_record_added) */
+    }				/* while (qfile_scan_list_next (probe_scan_id)) */
+
   if (thread_is_on_trace (thread_p))
     {
       qexec_hash_join_trace_end (thread_p, &stats->probe, &start_stats);
     }
 
+  /* qfile_close_scan is called by the caller. */
+
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR ();
+
+cleanup:
   if (overflow_record.tpl != NULL)
     {
       db_private_free_and_init (thread_p, overflow_record.tpl);
@@ -3068,37 +2819,33 @@ exit_on_end:
 
   return error;
 
-exit_on_error:
-  if (error == NO_ERROR)
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
+      assert_release (false);
       error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
     }
 
-  goto exit_on_end;
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_probe_key() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   hash_scan(in): Hash scan structure containing the hash table and scan state.
- *   tuple_record(out): Tuple record to store the result.
- *   list_scan_id(in): List scan descriptor used to access stored tuples.
+ *   thread_p(in): Thread entry.
+ *   hash_scan(in): Hash scan structure used for hash table operations.
+ *   tuple_record(out): Tuple found in the hash table.
+ *   list_scan_id(in): Scan identifier for the probe input.
  */
 static int
 qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_TUPLE_RECORD * tuple_record,
 			   QFILE_LIST_SCAN_ID * list_scan_id)
 {
   HASH_SCAN_VALUE *hash_value = NULL;
-
-  SCAN_CODE qp_scan;
+  TFTID tftid;
+  EH_SEARCH eh_search;
   QFILE_TUPLE_POSITION tuple_position;
-
-  int error = NO_ERROR;
+  SCAN_CODE scan_code;
 
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
@@ -3123,18 +2870,18 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 						  (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
-      if (hash_value == NULL)
+      if (hash_value != NULL)
 	{
+	  tuple_record->tpl = ((HASH_SCAN_VALUE *) hash_scan->memory.curr_hash_entry->data)->tuple;
+	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
+	}
+      else
+	{
+	  /* not found */
 	  tuple_record->tpl = NULL;
 	  tuple_record->size = 0;
-
-	  /* Not found, probe next. */
-	  goto exit_on_end;
 	}
-
-      tuple_record->tpl = ((HASH_SCAN_VALUE *) hash_scan->memory.curr_hash_entry->data)->tuple;
-      tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
-      break;
+      break;			/* HASH_METH_IN_MEM */
 
     case HASH_METH_HYBRID:
       assert (hash_scan->memory.hash_table != NULL);
@@ -3153,28 +2900,28 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 						  (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
-      if (hash_value == NULL)
+      if (hash_value != NULL)
 	{
+	  MAKE_TUPLE_POSTION (tuple_position, hash_value->pos, list_scan_id);
+	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
+	  if (scan_code != S_SUCCESS)
+	    {
+	      if (er_errid () == NO_ERROR)
+		{
+		  assert_release (false);
+		}
+	      return er_errid ();
+	    }
+	}
+      else
+	{
+	  /* not found */
 	  tuple_record->tpl = NULL;
 	  tuple_record->size = 0;
-
-	  /* Not found, probe next. */
-	  goto exit_on_end;
 	}
-
-      MAKE_TUPLE_POSTION (tuple_position, hash_value->pos, list_scan_id);
-
-      qp_scan = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
-      if (qp_scan != S_SUCCESS)
-	{
-	  goto exit_on_error;
-	}
-      break;
+      break;			/* HASH_METH_HYBRID */
 
     case HASH_METH_HASH_FILE:
-      TFTID tftid;
-      EH_SEARCH eh_search;
-
       assert (hash_scan->file.hash_table != NULL);
 
       if (tuple_record->tpl == NULL)
@@ -3186,62 +2933,56 @@ qexec_hash_join_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, 
 	  eh_search = fhs_search_next (thread_p, hash_scan, &tftid);
 	}
 
-      switch (eh_search)
+      if (eh_search == EH_KEY_FOUND)
 	{
-	case EH_KEY_FOUND:
 	  MAKE_TFTID_TO_TUPLE_POSTION (tuple_position, tftid, list_scan_id);
-
-	  qp_scan = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
-	  if (qp_scan != S_SUCCESS)
+	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
+	  if (scan_code != S_SUCCESS)
 	    {
-	      goto exit_on_error;
+	      if (er_errid () == NO_ERROR)
+		{
+		  assert_release (false);
+		}
+	      return er_errid ();
 	    }
-	  break;
-
-	case EH_KEY_NOTFOUND:
+	}
+      else if (eh_search == EH_KEY_NOTFOUND)
+	{
+	  /* not found */
 	  tuple_record->tpl = NULL;
 	  tuple_record->size = 0;
-
-	  /* Not found, probe next. */
-	  goto exit_on_end;
-
-	case EH_ERROR_OCCURRED:
-	default:
-	  goto exit_on_error;
 	}
-      break;
+      else
+	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+	  return er_errid ();
+	}
+      break;			/* HASH_METH_HASH_FILE */
 
     case HASH_METH_NOT_USE:
+      /* fall through */
     default:
-      assert (false);
-      goto exit_on_error;
+      /* impossible case */
+      assert_release (false);
+      return er_errid ();
     }
 
-exit_on_end:
-  return error;
-
-exit_on_error:
-  if (error == NO_ERROR)
-    {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-    }
-
-  goto exit_on_end;
+  ASSERT_NO_ERROR ();
+  return NO_ERROR;
 }
 
 /*
  * qexec_hash_join_merge_tuple_to_list_id() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   list_id(in): List identifier to append the merged tuple.
- *   outer_record(in): Outer tuple record (can be NULL).
- *   inner_record(in): Inner tuple record (can be NULL).
- *   merge_info(in): Merge information describing column mappings.
- *   overflow_record(in/out): Buffer used if the merged tuple is too large for a single page.
+ *   thread_p(in): Thread entry.
+ *   list_id(in): List identifier to be merged.
+ *   outer_record(in): Outer tuple to be merged. (can be NULL).
+ *   inner_record(in): Inner tuple to be merged. (can be NULL).
+ *   merge_info(in): Information for merging.
+ *   overflow_record(in/out): Space used for merging tuples too large to fit on a single page.
  */
 static int
 qexec_hash_join_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
@@ -3281,23 +3022,40 @@ qexec_hash_join_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
       error = qexec_hash_join_merge_tuple (thread_p, outer_record, inner_record, merge_info, overflow_record);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto error_exit;
 	}
 
       error = qfile_add_tuple_to_list (thread_p, list_id, overflow_record->tpl);
     }
 
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR ();
+
+cleanup:
   return error;
+
+error_exit:
+  if (er_errid () == NO_ERROR)
+    {
+      assert_release (false);
+      error = er_errid ();
+    }
+
+  goto cleanup;
 }
 
 /*
  * qexec_hash_join_merge_tuple() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread context.
- *   outer_record(in): Outer tuple record (nullable).
- *   inner_record(in): Inner tuple record (nullable).
- *   merge_info(in): Merge information describing which values to copy.
- *   overflow_record(in/out): Buffer to store the resulting merged tuple.
+ *   thread_p(in): Thread entry.
+ *   outer_record(in): Outer tuple to be merged. (can be NULL).
+ *   inner_record(in): Inner tuple to be merged. (can be NULL).
+ *   merge_info(in): Information for merging.
+ *   overflow_record(in/out): Space used for merging tuples too large to fit on a single page.
  */
 static int
 qexec_hash_join_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
@@ -3333,13 +3091,19 @@ qexec_hash_join_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer
 	  tuple_record = outer_record;
 	  tuple_record_end = outer_record_end;
 	}
-      else
+      else if (merge_info->ls_outer_inner_list[pos_index] == QFILE_INNER_LIST)
 	{
 	  tuple_record = inner_record;
 	  tuple_record_end = inner_record_end;
 	}
+      else
+	{
+	  /* impossible case */
+	  assert_release (false);
+	  return er_errid ();
+	}
 
-      if (tuple_record)
+      if (tuple_record != NULL)
 	{
 	  value_index = merge_info->ls_outer_inner_list[pos_index];
 
@@ -3351,6 +3115,7 @@ qexec_hash_join_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer
 
 	  if (tuple_value >= tuple_record_end)
 	    {
+	      /* impossible case */
 	      assert (false);
 	      error = ER_TF_BUFFER_OVERFLOW;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -3380,17 +3145,19 @@ qexec_hash_join_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer
 
       memcpy (overflow_record->tpl + offset, tuple_value, value_size);
       offset += value_size;
-    }
+    }				/* for (pos_index < merge_info->ls_pos_cnt) */
 
   QFILE_PUT_TUPLE_LENGTH (overflow_record->tpl, offset);
 
+  ASSERT_NO_ERROR ();
   return NO_ERROR;
 }
 
 /*
  * qexec_hash_join_trace_start() -
- *   thread_p(in): Thread context.
- *   start_stats(out): Structure to store initial performance counters.
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   start_stats(out): Profiling data captured at the start of the step.
  */
 static void
 qexec_hash_join_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats)
@@ -3406,9 +3173,10 @@ qexec_hash_join_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * sta
 
 /*
  * qexec_hash_join_trace_end() -
- *   thread_p(in): Thread context.
- *   stats(in/out): Structure to accumulate elapsed time and I/O statistics.
- *   start_stats(in): Captured counters from the beginning of the operation.
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   stats(in/out): Profiling data to accumulate.
+ *   start_stats(in): Profiling data captured at the start of the step.
  */
 static void
 qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stats, HASHJOIN_START_STATS * start_stats)
@@ -3434,10 +3202,11 @@ qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stat
 
 /*
  * qexec_hash_join_trace_skew() -
- *   list_id(in): Original input list identifier.
- *   part_list_id(in): Array of partitioned list identifiers.
+ *   return: None.
+ *   list_id(in): List identifier before partitioning.
+ *   part_list_id(in): Array of List identifiers after partitioning.
  *   part_cnt(in): Number of partitions.
- *   skew(out): Resulting skew value.
+ *   skew(out):  Partition imbalance.
  */
 static void
 qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt, double *skew)
@@ -3465,9 +3234,10 @@ qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_
 #if HASH_JOIN_PROFILE_TIME
 /*
  * qexec_hash_join_profile_start() -
- *   thread_p(in): Thread context.
- *   start_stats(out): Profile timing data to initialize.
- *   step(in): Hash join profiling step being measured.
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   start_stats(out): Profiling data captured at the start of the step.
+ *   step(in): Hash join profiling step to measure.
  */
 static void
 qexec_hash_join_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step)
@@ -3478,12 +3248,15 @@ qexec_hash_join_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * s
   tsc_getticks (&start_stats->tick);
   start_stats->step = step;
 }
+#endif /* HASH_JOIN_PROFILE_TIME */
 
+#if HASH_JOIN_PROFILE_TIME
 /*
  * qexec_hash_join_profile_end() -
- *   thread_p(in): Thread context.
- *   stats(out): Target profile structure to update.
- *   start_stats(in): Timing data captured at the start of the step.
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   stats(out): Profiling data to accumulate.
+ *   start_stats(in): Profiling data captured at the start of the step.
  *   step(in): Hash join profiling step being measured.
  */
 static void
@@ -3536,17 +3309,18 @@ qexec_hash_join_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * s
       break;
 
     default:
-      assert (false);
-      /* Nothing to do. */
+      /* impossible case */
+      assert_release (false);
       break;
-    }
+    }				/* switch (step) */
 }
 #endif /* HASH_JOIN_PROFILE_TIME */
 
 /*
  * qexec_hash_join_trace_merge_stats() -
- *   stats(in/out): Destination structure to accumulate statistics.
- *   context_stats(in): Source structure containing per-context statistics.
+ *   return: None.
+ *   stats(in/out): Profiling data to be merged.
+ *   context_stats(in): Profiling data per-partition.
  */
 static void
 qexec_hash_join_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
@@ -3560,9 +3334,9 @@ qexec_hash_join_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * cont
   stats->build.fetch_time += context_stats->build.fetch_time;
   stats->build.ioreads += context_stats->build.ioreads;
   stats->build.part_rows += context_stats->build.part_rows;
-  /* stats->build.readkeys - Unused. */
+  /* stats->build.readkeys - Unused */
   stats->build.rows += context_stats->build.rows;
-  /* stats->build.max_collisions - Unused. */
+  /* stats->build.max_collisions - Unused */
 
 #if HASH_JOIN_PROFILE_TIME
   TSC_ADD_TIMEVAL (stats->profile.build.fetch, context_stats->profile.build.fetch);
@@ -3592,12 +3366,10 @@ qexec_hash_join_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * cont
 #if HASH_JOIN_DUMP_HASH_TABLE
 /*
  * qexec_hash_join_dump_hash_table() -
+ *   return: None.
  *   thread_p(in): Thread entry.
  *   hash_scan(in): Hash scan structure containing the hash table.
- *   list_id(in): List identifier associated with the hash table.
- *
- *   Dumps the contents of the hash table to stdout for debugging purposes,
- *   only if the number of tuples is 100 or fewer.
+ *   list_id(in): List identifier used as build input.
  */
 static void
 qexec_hash_join_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_ID * list_id)
@@ -3606,7 +3378,7 @@ qexec_hash_join_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_
   assert (hash_scan != NULL);
   assert (list_id != NULL);
 
-  if (list_id->tuple_cnt > 100)
+  if (list_id->tuple_cnt > DUMP_HASH_TABLE_LIMIT)
     {
       return;
     }
@@ -3627,25 +3399,36 @@ qexec_hash_join_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_
       break;
 
     case HASH_METH_NOT_USE:
+      /* Nothing to do */
+      break;
+
     default:
-      /* Nothing to do. */
+      /* impossible case */
+      assert_release (false);
       break;
     }
 }
-#endif
+#endif /* HASH_JOIN_DUMP_HASH_TABLE */
 
 #if !defined(NDEBUG) && HASH_JOIN_DUMP_PROBE
 /*
  * qexec_hash_join_print_tuple() -
- *   type_list_p(in): Tuple value type list.
+ *   return: None.
+ *   list_scan_id(in): Scan identifier for the given tuple.
  *   tuple(in): Tuple to be printed.
- *   step(in): Print step indicator for labeling the output.
+ *   step(in): Step at which the tuple is printed.
  */
 static void
-qexec_hash_join_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple, HASHJOIN_PRINT_STEP step)
+qexec_hash_join_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_STEP step)
 {
-  assert (type_list_p != NULL);
+  assert (list_scan_id != NULL);
+  assert (list_scan_id->list_id != NULL);
   assert (tuple != NULL);
+
+  if (list_scan_id->list_id.tuple_cnt > DUMP_PROBE_LIMIT)
+    {
+      return;
+    }
 
   switch (step)
     {
@@ -3670,11 +3453,12 @@ qexec_hash_join_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TU
       break;
 
     default:
+      /* impossible case */
       assert (false);
-      /* Nothing to do. */
+      /* Nothing to do */
       break;
     }
 
-  qfile_print_tuple (type_list_p, tuple);
+  qfile_print_tuple (list_scan_id->list_id.type_list, tuple);
 }
 #endif /* !NDEBUG && HASH_JOIN_DUMP_PROBE */

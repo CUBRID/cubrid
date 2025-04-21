@@ -61,6 +61,8 @@ typedef struct tp_domain TP_DOMAIN;
 typedef struct hashjoin_input
 {
   XASL_NODE *xasl;
+
+  /* For evaluating during-join predicates. */
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_INPUT;
 
@@ -75,10 +77,10 @@ typedef struct hashjoin_domain_info
   HASHJOIN_INPUT_DOMAIN_INFO outer;
   HASHJOIN_INPUT_DOMAIN_INFO inner;
 
-  /* The common domains between the domains of values used in the build and probe inputs. */
+  /* Common domains of build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether the coerce domain needs to be used. */
+  /* Whether to use the coerce domain. */
   bool need_coerce_domains;
 } HASHJOIN_DOMAIN_INFO;
 
