@@ -9152,7 +9152,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	      if (curr_spec->num_parallel_threads > 0)
 		{
-		  if (!curr_spec->parts && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0 && !XASL_IS_FLAGED (xasl, XASL_INCLUDES_TDE_CLASS))	/* Only for User table */
+		  if (!curr_spec->parts && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)	/* Only for User table */
 		    {
 		      /* Why thread_p->private_heap_id != 0? 
 		       * Because, if it is 0, it means that the scan is not executed in main thread.
@@ -9227,7 +9227,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
 	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;	/* should check LIST_MERGE in checker */
-	  if (xasl->topn_items)
+	  if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
 	    {
 	      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
 	    }

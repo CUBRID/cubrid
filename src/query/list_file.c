@@ -1222,8 +1222,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       list_id_p->tfile_vfid->membuf = NULL;
       list_id_p->tfile_vfid->membuf_npages = 0;
       list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
-      list_id_p->tfile_vfid->preserved = false;
-      list_id_p->tfile_vfid->tde_encrypted = false;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
