@@ -7525,7 +7525,9 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
   return error_code;
 }
 
+// *INDENT-OFF*
 cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+// *INDENT-ON*
 
 void
 logpb_create_backup_read_worker_pool (size_t thread_count)
@@ -7541,7 +7543,7 @@ logpb_push_backup_read_task (cubthread::entry_task * task)
   thread_get_manager ()->push_task (g_backup_read_worker_pool, task);
 }
 
-extern void
+void
 logpb_destroy_backup_read_worker_pool ()
 {
   thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
