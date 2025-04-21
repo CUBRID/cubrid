@@ -12071,6 +12071,11 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
+  if (stmt->flag.rewrite_for_dblink)
+    {
+      return;
+    }
+
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
 
   parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
@@ -12117,6 +12122,8 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     default:
       break;
     }
+
+  stmt->flag.rewrite_for_dblink = 1;
 
   return;
 }
