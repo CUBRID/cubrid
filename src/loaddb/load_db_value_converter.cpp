@@ -623,7 +623,7 @@ namespace cubload
     //      }
 
     // ASSERT_CUBVEC (false);
-    db_value_domain_init(val, DB_TYPE_VECTOR, 0, 0);
+    db_value_domain_init (val, DB_TYPE_VECTOR, 0, 0);
     DB_VECTOR_FLOAT vector_float;
     vector_float.dim = count;
     vector_float.float_array = float_array;

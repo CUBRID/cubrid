@@ -131,7 +131,7 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   // Check that vectors are non-empty and of equal size.
   // assert (!vec1.empty() && !vec2.empty());
   // assert (vec1.size() == vec2.size());
-  
+
   const DB_VECTOR_FLOAT vf1 = db_get_vector_float (args[0]);
   const auto dim1 = vf1.dim;
   const auto arr1 = vf1.float_array;

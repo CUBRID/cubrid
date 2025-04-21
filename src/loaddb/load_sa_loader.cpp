@@ -5407,7 +5407,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_STR] = &ldr_json_db_json;
       break;
     case DB_TYPE_VECTOR:
-      cubvec_log(">>> ldr_act_add_attr: DB_TYPE_VECTOR");
+      cubvec_log (">>> ldr_act_add_attr: DB_TYPE_VECTOR\n");
       attdesc->setter[LDR_STR] = &ldr_vector_db_vector;
     default:
       break;
@@ -6826,7 +6826,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
 {
   int count = 0;
   const int max_vector_size = 2000;
-  float *float_array = (float *) db_private_alloc(NULL, sizeof (float) * max_vector_size);
+  float *float_array = (float *) db_private_alloc (NULL, sizeof (float) * max_vector_size);
   // DB_SET *vec = NULL;
   DB_VALUE e_val;
 
@@ -6844,7 +6844,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   //     return er_errid ();
   //   }
 
-  db_value_domain_init(val, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_value_domain_init (val, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   DB_VECTOR_FLOAT vf;
   vf.dim = count;
   vf.float_array = float_array;
