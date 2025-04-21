@@ -11598,20 +11598,20 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
-	  char *a_name = NULL, *resolved, *original;
+	  char *a_name = NULL, *t_name, *r_name;
 
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
 	    }
 
-	  original = (char *) target->info.name.original;
-	  resolved = (char *) target->info.name.resolved;
+	  t_name = (char *) target->info.name.original;
+	  r_name = (char *) target->info.name.resolved;
 
 	  if (a_name)
 	    {
 	      /* checking alias for remote/local table */
-	      if (strcmp (a_name, original) == 0 || strcmp (a_name, resolved) == 0)
+	      if ((t_name && strcmp (a_name, t_name) == 0) || ((r_name && strcmp (a_name, r_name) == 0)))
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11626,8 +11626,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	    }
 	  else
 	    {
-	      if (spec->info.spec.entity_name
-		  && strcmp (spec->info.spec.entity_name->info.name.original, original) == 0)
+	      if (spec->info.spec.entity_name && t_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, t_name) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
