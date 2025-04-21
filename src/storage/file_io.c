@@ -118,7 +118,6 @@
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
-#include "backup_worker_manager.hpp"
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -8115,7 +8114,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
     {
       // *INDENT-OFF
       auto exec_f = std::bind (fileio_read_backup_volume_execute, std::placeholders::_1, session_p);
-      cubbackup::worker_backup_wp_push_task (new cubthread::entry_callable_task (exec_f));
+      logpb_push_backup_read_task (new cubthread::entry_callable_task (exec_f));
       // *INDENT-ON
     }
 

@@ -106,7 +106,6 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
-#include "backup_worker_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7526,6 +7525,28 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
   return error_code;
 }
 
+cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+
+void
+logpb_create_backup_read_worker_pool (size_t thread_count)
+{
+  g_backup_read_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
+						   thread_count / 3, false, true);
+}
+
+void
+logpb_push_backup_read_task (cubthread::entry_task * task)
+{
+  thread_get_manager ()->push_task (g_backup_read_worker_pool, task);
+}
+
+extern void
+logpb_destroy_backup_read_worker_pool ()
+{
+  delete g_backup_read_worker_pool;
+}
+
 /*
  * logpb_backup - Execute a level backup for the given database volume
  *
@@ -7651,17 +7672,13 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 #if defined (SERVER_MODE)
   read_thread_count = session.read_thread_info.num_threads - 1;
 
-  cubbackup::g_backup_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (read_thread_count, read_thread_count, "backup read workers", NULL,
-						   read_thread_count / 3, false, true);
-  if (cubbackup::g_backup_worker_pool == NULL)
+  logpb_create_backup_read_worker_pool (read_thread_count);
+  if (g_backup_read_worker_pool == NULL)
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
     }
-
-  cubbackup::worker_create_task_capper ();
 
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
@@ -8179,6 +8196,10 @@ loop:
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  logpb_destroy_backup_read_worker_pool ();
+#endif
+
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
@@ -8243,6 +8264,13 @@ error:
    * Destroy the backup that has been created.
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
+
+#if defined(SERVER_MODE)
+  if (g_backup_read_worker_pool != NULL)
+    {
+      logpb_destroy_backup_read_worker_pool ();
+    }
+#endif
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
