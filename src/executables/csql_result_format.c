@@ -1681,7 +1681,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
       // }
       //      break;
       {
-	std::string result_str = db_vector_float_to_string (db_get_vector_float (value)).c_str ();
+	std::string result_str = db_vector_float_to_string (db_get_vector_float (value));
 	result = strdup (result_str.c_str ());
 	len = strlen (result);
 	break;
