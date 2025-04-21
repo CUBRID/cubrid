@@ -8094,6 +8094,8 @@ qo_is_iscan (QO_PLAN * plan)
 static int
 qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp, int nsegs)
 {
+  fprintf (stderr, "qo_generate_index_scan\n");
+  fprintf (stderr, "index name: %s\n", ni_entryp->head->constraints->name);
   QO_INDEX_ENTRY *index_entryp;
   BITSET_ITERATOR iter;
   int i, t, n, normal_index_plan_n = 0;
@@ -8460,6 +8462,8 @@ qo_search_planner (QO_PLANNER * planner)
       node = &planner->node[i];
       info = planner->node_info[QO_NODE_IDX (node)];
 
+      fprintf (stderr, "query tree: %s\n", parser_print_tree (node->env->parser, node->env->pt_tree));
+
       node_index = QO_NODE_INDEXES (node);
 
       /* Set special_index_scan to true if spec if flagged as: 1. Scan for b-tree key info. 2. Scan for b-tree node
@@ -8493,8 +8497,10 @@ qo_search_planner (QO_PLANNER * planner)
 	    {
 	      ni_entry = QO_NI_ENTRY (node_index, j);
 	      index_entry = (ni_entry)->head;
+	      fprintf (stderr, "index name: %s\n", index_entry->constraints->name);
 	      if (index_entry->force < 0)
 		{
+		  fprintf (stderr, "Disabled index\n");
 		  continue;	/* is disabled index; skip and go ahead */
 		}
 
@@ -8509,11 +8515,13 @@ qo_search_planner (QO_PLANNER * planner)
 	      BITSET_CLEAR (seg_terms);
 	      for (nsegs = start_column; nsegs < index_entry->nsegs; nsegs++)
 		{
+		  fprintf (stderr, "nsegs: %d\n", nsegs);
 		  bitset_union (&seg_terms, &(index_entry->seg_equal_terms[nsegs]));
 		  bitset_union (&seg_terms, &(index_entry->seg_other_terms[nsegs]));
 
 		  if (bitset_is_empty (&(index_entry->seg_equal_terms[nsegs])))
 		    {
+		      fprintf (stderr, "seg_equal_terms is empty\n");
 		      if (!bitset_is_empty (&(index_entry->seg_other_terms[nsegs])))
 			{
 			  nsegs++;	/* include this term */
@@ -8526,14 +8534,25 @@ qo_search_planner (QO_PLANNER * planner)
 
 	      n = 0;		/* init */
 
+	      if (ni_entry->constraints->type == SM_CONSTRAINT_VECTOR_INDEX)
+		{
+		  fprintf (stderr, "Vector index\n");
+
+		  // Need to Implement vector index scan planner. (Make index scan of vector index should be always have priority than sequential scan.)
+		  n = qo_generate_vector_index_scan (info, node, ni_entry);
+		}
+
 	      if (!bitset_is_empty (&seg_terms))
 		{
+		  fprintf (stderr, "Bitset is not empty\n");
 		  assert (nsegs > 0);
 
 		  n = qo_generate_index_scan (info, node, ni_entry, nsegs);
 		}
+
 	      else if (index_entry->constraints->filter_predicate && index_entry->force > 0)
 		{
+		  fprintf (stderr, "Bitset is empty1\n");
 		  assert (bitset_is_empty (&seg_terms));
 
 		  /* Currently, CUBRID does not allow null values in index. The filter index expression must contain at
@@ -8549,12 +8568,14 @@ qo_search_planner (QO_PLANNER * planner)
 		}
 	      else if (index_entry->ils_prefix_len > 0)
 		{
+		  fprintf (stderr, "Bitset is empty2\n");
 		  assert (bitset_is_empty (&seg_terms));
 
 		  n = qo_generate_loose_index_scan (info, node, ni_entry);
 		}
 	      else
 		{
+		  fprintf (stderr, "Bitset is empty3\n");
 		  assert (bitset_is_empty (&seg_terms));
 
 		  /* if the index didn't normally skipped the order by, we try the new plan, maybe this will be better.

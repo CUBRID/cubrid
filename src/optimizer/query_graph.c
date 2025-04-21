@@ -6552,16 +6552,19 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
   int t;
   QO_TERM *qo_termp;
   BITSET_ITERATOR iter;
-
+  fprintf (stderr, "idx : %d\n", idx);
+  fprintf (stderr, "env->nterms : %d\n", env->nterms);
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
     {
+      fprintf (stderr, "t : %d\n", t);
       /* get the pointer to QO_TERM structure */
       qo_termp = QO_ENV_TERM (env, t);
 
       /* ignore this term if it is not marked as indexable by 'qo_analyze_term()' */
       if (!qo_termp->can_use_index)
 	{
+	  fprintf (stderr, "can use index is false\n");
 	  continue;
 	}
 
@@ -6570,6 +6573,7 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
        */
       if (!QO_TERM_PT_EXPR (qo_termp))
 	{
+	  fprintf (stderr, "pt_expr is false\n");
 	  continue;
 	}
       /* 'qo_analyze_term()' function verifies that all indexable terms are expression so that they have 'pt_expr'
@@ -6584,6 +6588,8 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
 	    {
 	      if (index_entry->rangelist_seg_idx != -1 && QO_TERM_IDX (qo_termp) != index_entry->rangelist_term_idx)
 		{
+		  fprintf (stderr,
+			   "index_entry->rangelist_seg_idx != -1 && QO_TERM_IDX (qo_termp) != index_entry->rangelist_term_idx\n");
 		  /* (a,b) range (={..},..) if a is rangelist_seg_idx then b can scan using index */
 		  continue;	/* already found. give up */
 		}
@@ -6596,10 +6602,12 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BI
 	  /* collect this term */
 	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
 	    {
+	      fprintf (stderr, "QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP)\n");
 	      bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 	    }
 	  else
 	    {
+	      fprintf (stderr, "QO_TERM_IS_FLAGED (qo_termp, QO_TERM_OTHER_OP)\n");
 	      bitset_add (&(index_entry->seg_other_terms[idx]), t);
 	    }
 	}
@@ -7459,6 +7467,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  /* If key information is required, no index segments will be found, but index scan has to be forced. */
 	  if (found == true || special_index_scan == true)
 	    {
+	      fprintf (stderr, "found == true || special_index_scan == true\n");
 	      /* if applicable index was found, add it to the node */
 
 	      /* fill in QO_INDEX_ENTRY structure */
@@ -7470,16 +7479,21 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      index_entryp->seg_other_terms = NULL;
 	      if (index_entryp->nsegs > 0)
 		{
+		  fprintf (stderr, "index_entryp->nsegs > 0\n");
 		  size_t size;
 
 		  size = sizeof (int) * index_entryp->nsegs;
 		  index_entryp->seg_idxs = (int *) malloc (size);
 		  if (index_entryp->seg_idxs == NULL)
 		    {
+		      fprintf (stderr, "index_entryp->seg_idxs == NULL\n");
 		      if (seg_idx != seg_idx_arr)
 			{
+			  fprintf (stderr, "seg_idx != seg_idx_arr\n");
 			  free_and_init (seg_idx);
 			}
+		      fprintf (stderr,
+			       "er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);\n");
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
@@ -7488,6 +7502,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  index_entryp->seg_equal_terms = (BITSET *) malloc (size);
 		  if (index_entryp->seg_equal_terms == NULL)
 		    {
+		      fprintf (stderr, "index_entryp->seg_equal_terms == NULL\n");
 		      free_and_init (index_entryp->seg_idxs);
 		      if (seg_idx != seg_idx_arr)
 			{
@@ -7499,12 +7514,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  index_entryp->seg_other_terms = (BITSET *) malloc (size);
 		  if (index_entryp->seg_other_terms == NULL)
 		    {
+		      fprintf (stderr, "index_entryp->seg_other_terms == NULL\n");
 		      free_and_init (index_entryp->seg_equal_terms);
 		      free_and_init (index_entryp->seg_idxs);
 		      if (seg_idx != seg_idx_arr)
 			{
+			  fprintf (stderr, "seg_idx != seg_idx_arr\n");
 			  free_and_init (seg_idx);
 			}
+		      fprintf (stderr,
+			       "er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);\n");
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
@@ -7522,11 +7541,13 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      /* assign seg_idx[] and seg_terms[] */
 	      for (j = 0; j < index_entryp->nsegs; j++)
 		{
+		  fprintf (stderr, "j : %d\n", j);
 		  bitset_init (&(index_entryp->seg_equal_terms[j]), env);
 		  bitset_init (&(index_entryp->seg_other_terms[j]), env);
 		  index_entryp->seg_idxs[j] = seg_idx[j];
 		  if (index_entryp->seg_idxs[j] != -1)
 		    {
+		      fprintf (stderr, "index_entryp->seg_idxs[j] != -1\n");
 		      qo_find_index_seg_terms (env, index_entryp, j, &index_segs);
 		    }
 		}
