@@ -11614,21 +11614,6 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 		  break;
 		}
 	    }
-#if 1
-	  if (target->info.name.resolved && spec->info.spec.range_var
-	      && strcmp (spec->info.spec.range_var->info.name.original, target->info.name.resolved) == 0)
-	    {
-	      if (spec->info.spec.remote_server_name)
-		{
-		  remote_del++;
-		}
-	      else
-		{
-		  local_del++;
-		}
-	      break;
-	    }
-#endif
 	  else
 	    {
 	      if (spec->info.spec.entity_name
