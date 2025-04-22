@@ -2067,10 +2067,6 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
 int
 db_make_vector (DB_VALUE * value, const DB_VECTOR_FLOAT vector_float)
 {
-
-  vimkim_log (">>> db_make_vector\n");
-  vimkim_log ("db value %p, float_array %p, dim %d\n", value, vector_float.float_array, vector_float.dim);
-
   int error = NO_ERROR;
   value->domain.general_info.type = DB_TYPE_VECTOR;
   value->domain.general_info.is_null = 0;

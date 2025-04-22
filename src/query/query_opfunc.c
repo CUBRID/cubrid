@@ -336,12 +336,6 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
       return false;
     }
 
-  if (src_type == DB_TYPE_VECTOR)
-    {
-      vimkim_log (">>> qdata_copy_db_value: %p %p\n", dest_p, src_p);
-      vimkim_log (">>> src_type is DB_TYPE_VECTOR\n");
-    }
-
   if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
     {
       return true;
@@ -6275,11 +6269,6 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	{
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
 #if !defined(NDEBUG)
-	  if (type_p == &tp_Vector)
-	    {
-	      vimkim_log (">>> qdata_get_tuple_value_size_from_dbval\n");
-	      vimkim_log ("vector val_size = %d\n", val_size);
-	    }
 	  if (type_p->is_size_computed ())
 	    {
 	      if (pr_is_string_type (dbval_type))

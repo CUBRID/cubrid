@@ -137,7 +137,7 @@
   do { \
       FILE *logfile = fopen("vimkim.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \

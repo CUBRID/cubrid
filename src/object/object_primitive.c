@@ -2077,13 +2077,13 @@ pr_clear_value (DB_VALUE * value)
       {
 	if (value->need_clear)
 	  {
-	    vimkim_log ("freeing addr: %p, vector: %s\n", value,
+	    vimkim_log ("freeing addr: %p, vf: %s\n", value,
 			db_vector_float_to_string (value->data.vector_float).c_str ());
 	    db_private_free (NULL, value->data.vector_float.float_array);
 	  }
 	else
 	  {
-	    vimkim_log ("not freeing addr: %p, vector: %s\n", value,
+	    vimkim_log ("skip freeing addr: %p, vf: %s\n", value,
 			db_vector_float_to_string (value->data.vector_float).c_str ());
 	  }
 	value->data.vector_float.dim = 0;
@@ -7641,11 +7641,10 @@ mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 static void
 mr_initval_vector (DB_VALUE * value, int precision, int scale)
 {
-  vimkim_log (">>> mr_initval_vector at value %p\n", value);
+  vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  db_make_vector (value,
-		  {
-		  0, nullptr});
+  DB_VECTOR_FLOAT vf = {0, nullptr};
+  db_make_vector (value, vf);
 }
 
 // static int
@@ -7695,7 +7694,7 @@ mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static void
 mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
 {
-  vimkim_log (">>> mr_initmem_vector_float\n");
+  vimkim_log ("args: mem = %p\n", mem);
   DB_VECTOR_FLOAT *pvf = (DB_VECTOR_FLOAT *) mem;
   pvf->dim = 0;
   pvf->float_array = NULL;
@@ -7704,7 +7703,7 @@ mr_initmem_vector_float (void *mem, TP_DOMAIN * domain)
 static int
 mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  vimkim_log ("memptr %p, domain %p, value %p\n", memptr, domain, value);
+  vimkim_log ("args: memptr %p, domain %p, value %p\n", memptr, domain, value);
 
   char **mem;
   char *new_;
@@ -7716,26 +7715,30 @@ mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (value == NULL)
     {
-      vimkim_log ("value is null\n");
       mr_initmem_vector_float (memptr, domain);
     }
   else
     {
       DB_VECTOR_FLOAT vf = db_get_vector_float (value);
-      vimkim_log ("inspecting vf: %s\n", db_vector_float_to_string (vf).c_str ());
+      vimkim_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
 
       auto[dim, arr] = vf;
 
-      char *new_ = (char *) db_private_alloc (NULL, sizeof (int) + dim * sizeof (float));
-      vimkim_log ("db_private_alloc new_: %p\n", new_);
+      std::size_t size = sizeof (int) + dim * sizeof (float);
+      char *new_ = (char *) db_private_alloc (NULL, size);
+      vimkim_log ("db_private_alloc new_: %p, size = %zu\n", new_, size);
       ASSERT_CUBVEC (new_ != nullptr);
+      if (new_ == nullptr) {
+	return ER_FAILED;
+      }
 
       cur = new_;
-      vimkim_log ("cur = %p, dim = %d\n", cur, dim);
 
+      // save vector dim
       *(int *) cur = dim;
-      cur += sizeof (int);
 
+      // save vector float array
+      cur += sizeof (int);
       memcpy (cur, arr, dim * sizeof (float));
 
       *mem = new_;
@@ -7747,26 +7750,23 @@ mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 static int
 mr_getmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  vimkim_log (">>> mr_getmem_vector_float\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  vimkim_log (">>> mr_data_lengthmem_vector_float\n");
+  vimkim_log ("args: memptr %p, domain %p, disk %d\n", memptr, domain, disk);
   int len;
 
   len = 0;
   if (!disk)
     {
       len = tp_Vector.size;
-      vimkim_log ("WARNING: returning the size of the DB_VECTOR_FLOAT = %d\n", len);
+      vimkim_log ("WARNING: not analyzed why len = %d is returned.\n", len);
     }
   else if (memptr != NULL)
     {
-      vimkim_log ("disk = 0 and memptr is not null\n");
-
       char *mem = *(char **) memptr;
       const int dim = *(int *) mem;
       vimkim_log ("mem = %p, dim = %d\n", mem, dim);
@@ -7780,14 +7780,12 @@ mr_data_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_vector_float (void *memptr, TP_DOMAIN * domain)
 {
-  vimkim_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static void
 mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  vimkim_log (">>> mr_data_writemem_vector_float\n");
   vimkim_log ("buf %p, memptr %p, domain %p\n", buf, memptr, domain);
 
   char *mem = *(char **) memptr;
@@ -7804,7 +7802,6 @@ mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  vimkim_log (">>> mr_data_readmem_vector_float\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7819,23 +7816,16 @@ mr_freemem_vector_float (void *memptr)
 static void
 mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
-  vimkim_log (">>> mr_initval_vector_float\n");
+  vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  db_make_vector (value,
-		  {
-		  0, NULL});
+  DB_VECTOR_FLOAT vf = { 0, nullptr };
+  db_make_vector (value, vf);
 }
 
 static int
 mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
-
-#ifdef SA_MODE
-  ASSERT_CUBVEC (copy == true);	// why?
-#endif
-
-  vimkim_log (">>> mr_setval_vector_float\n");
-  vimkim_log ("src %p, dest %p, copy %d\n", src, dest, copy);
+  vimkim_log ("args: dest %p, src %p, copy %d\n", dest, src, copy);
   int error = NO_ERROR;
   if (src && !DB_IS_NULL (src))
     {
@@ -7846,7 +7836,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  const auto[dim, arr] = src_vf;
 
 	  // print vector_float for debugging
-	  vimkim_log ("vector_float: %s\n", db_vector_float_to_string (src_vf).c_str ());
+	  vimkim_log ("vf: %s\n", db_vector_float_to_string (src_vf).c_str ());
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
@@ -7854,10 +7844,13 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  DB_VECTOR_FLOAT vf;
 	  vf.dim = dim;
 	  vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
-	  ASSERT_CUBVEC (vf.float_array != NULL);
+	  assert(vf.float_array != NULL);
+	  if (vf.float_array == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  vimkim_log ("db_private_alloc: %p, size = %lu\n", vf.float_array, dim * sizeof (float));
 
-	  vimkim_log ("db_private_alloc = %p, size = %lu\n", vf.float_array, dim * sizeof (float));
-	  vimkim_log ("on db value dest: %p\n", dest);
 	  memcpy (vf.float_array, arr, dim * sizeof (float));
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -7870,7 +7863,6 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  vimkim_log ("moving src to dest\n");
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
@@ -7882,15 +7874,11 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      vimkim_log ("src is null, what is this logic?: %p %d\n", src, DB_IS_NULL (src));
-
+      // Not analyzed.
+      // log vector_float for easier debugging
       DB_VECTOR_FLOAT vf = db_get_vector_float (dest);
-      vimkim_log ("on db value dest: %p\n", dest);
       vimkim_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
-
-      assert (false);
-
-      ASSERT_CUBVEC (error == NO_ERROR);
+      assert(false);
     }
 
   return error;
@@ -7900,25 +7888,24 @@ static int
 mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
 {
   ASSERT_CUBVEC (disk == 1);
-  vimkim_log (">>> mr data lengthval vector float with dim = %d\n", value->data.vector_float.dim);
-  vimkim_log ("value: %p\n", value);
+  vimkim_log ("args: value %p, disk %d\n", value, disk);
 
   int dim = value->data.vector_float.dim;
   int byte_length = sizeof dim + dim * sizeof (float);
-  vimkim_log ("return byte_length = %d\n", byte_length);
+  vimkim_log ("locals: dim = %d, byte_length = %d\n", dim, byte_length);
+
   return byte_length;
 }
 
 static int
 mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
-  vimkim_log (">>> mr data writeval vector float\n");
-  vimkim_log ("value: %p\n", value);
+  vimkim_log ("args: buf %p, value %p\n", buf, value);
 
   const DB_VECTOR_FLOAT vector_float = db_get_vector_float (value);
   const auto[dim, arr] = vector_float;
 
-  vimkim_log ("%s\n", db_vector_float_to_string (vector_float).c_str ());
+  vimkim_log ("vf: %s\n", db_vector_float_to_string (vector_float).c_str ());
 
   or_put_int (buf, dim);
   or_put_data (buf, (char *) arr, dim * sizeof (float));
@@ -7932,18 +7919,20 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 {
   int error = NO_ERROR;
 
-  vimkim_log (">>> mr_data_readval_vector_float\n");
-  vimkim_log ("%p\n", value);
-
-  vimkim_log ("value type: %d\n", DB_VALUE_TYPE (value));
+  vimkim_log("args: buf %p, value %p, domain %p, size %d, copy %d, copy_buf %p, copy_buf_len %d\n",
+	     buf, value, domain, size, copy, copy_buf, copy_buf_len);
 
   DB_VECTOR_FLOAT vector_float = { 0, nullptr };
   vector_float.dim = or_get_int (buf, &error);
   ASSERT_CUBVEC (error == NO_ERROR);
 
   vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
-  vimkim_log ("db_private_alloc = %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
+  vimkim_log ("db_private_alloc: %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
   ASSERT_CUBVEC (vector_float.float_array != NULL);
+  if (vector_float.float_array == NULL)
+    {
+      return ER_FAILED;
+    }
 
   or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
   ASSERT_CUBVEC (error == NO_ERROR);
@@ -7955,7 +7944,7 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   ASSERT_CUBVEC (error == NO_ERROR);
 
   // print vector_float for debugging
-  vimkim_log ("vector_float: %s\n", db_vector_float_to_string(vector_float).c_str ());
+  vimkim_log ("vf: %s\n", db_vector_float_to_string (vector_float).c_str ());
 
   ASSERT_CUBVEC (error == NO_ERROR);
 
@@ -7966,14 +7955,12 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 static int
 mr_index_lengthval_vector_float (DB_VALUE * value)
 {
-  vimkim_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
 static int
 mr_index_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
-  vimkim_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -7981,29 +7968,6 @@ static int
 mr_index_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 			       char *copy_buf, int copy_buf_len)
 {
-  vimkim_log ("hello\n");
-  ASSERT_CUBVEC (false);
-}
-
-static int
-mr_lengthval_vector_float_internal (DB_VALUE * value, int disk, int align)
-{
-  vimkim_log ("hello\n");
-  ASSERT_CUBVEC (false);
-}
-
-static int
-mr_writeval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, int align)
-{
-  vimkim_log ("hello\n");
-  ASSERT_CUBVEC (false);
-}
-
-static int
-mr_readval_vector_float_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				  char *copy_buf, int copy_buf_len, int align)
-{
-  vimkim_log ("hello\n");
   ASSERT_CUBVEC (false);
 }
 
@@ -8011,24 +7975,21 @@ static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 			       int total_order, int *start_colp)
 {
-  vimkim_log ("hello\n");
-  assert (false);
+  ASSERT_CUBVEC (false);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 			      int total_order, int *start_colp)
 {
-  vimkim_log ("hello\n");
-  assert (false);
+  ASSERT_CUBVEC (false);
 }
 
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 			int total_order, int *start_colp, int collation)
 {
-  vimkim_log ("hello\n");
-  assert (false);
+  ASSERT_CUBVEC (false);
 }
 
 /*

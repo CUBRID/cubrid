@@ -5012,6 +5012,8 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 static int
 tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 {
+  vimkim_log ("args: src = %p, result = %p\n", src, result);
+
   const char *p = db_get_string (src);
   const char *end = p + db_get_string_size (src);
   int count = 0;
@@ -5024,8 +5026,7 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 
   DB_VECTOR_FLOAT vector_float = { 0, NULL };
   vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
-  vimkim_log (">>> tp_atovector\n");
-  vimkim_log ("private allocated: vector_float.float_array = %p\n", vector_float.float_array);
+  vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
 
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
