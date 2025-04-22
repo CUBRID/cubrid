@@ -58,6 +58,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define NEED_COMMIT(txnid) do { \
+    transactions[txnid].need_commit = true; \
+} while (0);
+
 namespace cubrocks
 {
   context _ctx;
@@ -121,8 +125,7 @@ cubrocks::context::kv_config (void)
   opt.db.wal_bytes_per_sync = 4 * 1024 * 1024;
 
   /* Option 1 */
-  opt.db.use_direct_reads = false;
-
+  opt.db.use_direct_reads = true;
   opt.db.use_direct_io_for_flush_and_compaction = true;
 
   opt.db.max_subcompactions = 4;
@@ -154,7 +157,7 @@ cubrocks::context::kv_config (void)
   opt.table.block_size = 16 * 1024;
   opt.table.cache_index_and_filter_blocks = true;
   opt.table.cache_index_and_filter_blocks_with_high_priority = true;
-  opt.table.block_cache = rocksdb::NewLRUCache (5 * 1024 * 1024 * 1024LL, 6);
+  opt.table.block_cache = rocksdb::NewLRUCache (10 * 1024 * 1024 * 1024LL, 6);
   opt.table.use_delta_encoding = false;
 
   opt.table.metadata_cache_options.top_level_index_pinning = rocksdb::PinningTier::kFlushedAndSimilar;
@@ -242,6 +245,16 @@ cubrocks::context::kv_tran_commit (int tran_index)
   assert (alive);
   assert (tran_index < MAX_NTRANS);
 
+  if (!transactions[tran_index].need_commit)
+    {
+      status = transactions[tran_index].txn->Rollback ().ok ();
+      delete transactions[tran_index].txn;
+      transactions[tran_index].txn = nullptr;
+
+      assert (status);
+      return ;
+    }
+
   if (transactions[tran_index].txn == nullptr)
     {
       assert (tran_index == LOG_SYSTEM_TRAN_INDEX);
@@ -251,6 +264,7 @@ cubrocks::context::kv_tran_commit (int tran_index)
   status = transactions[tran_index].txn->Commit ().ok ();
   delete transactions[tran_index].txn;
   transactions[tran_index].txn = nullptr;
+  transactions[tran_index].need_commit = false;
 
   assert (status);
 }
@@ -272,6 +286,7 @@ cubrocks::context::kv_tran_abort (int tran_index)
   status = transactions[tran_index].txn->Rollback ().ok ();
   delete transactions[tran_index].txn;
   transactions[tran_index].txn = nullptr;
+  transactions[tran_index].need_commit = false;
 
   assert (status);
 }
@@ -279,6 +294,8 @@ cubrocks::context::kv_tran_abort (int tran_index)
 int
 cubrocks::context::kv_logical_write (int tran_index, HEAP_OPERATION_CONTEXT *context)
 {
+  NEED_COMMIT (tran_index);
+
   assert (alive);
   assert (tran_index < MAX_NTRANS);
   assert (transactions[tran_index].txn != nullptr);
@@ -682,6 +699,8 @@ cubrocks::context::kv_get (int tran_index, rocksdb::Slice &key, RECDES *recdes, 
 int
 cubrocks::context::kv_logical_write_with_PK (int tran_index, HEAP_OPERATION_CONTEXT *context)
 {
+  NEED_COMMIT (tran_index);
+
   /* NOTE: the key will be consisted with PK like below.        */
   /* there is no virtual oid, but this key guarantees uniqeness */
   /*							        */
@@ -1683,6 +1702,7 @@ cubrocks::context::transactions_initialize (void)
       transactions[i].reserved_count = 0;
 
       transactions[i].txn = nullptr;
+      transactions[i].need_commit = false;
     }
 
   return true;

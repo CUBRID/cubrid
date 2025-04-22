@@ -33,11 +33,6 @@
 #include "dbtype_def.h"
 #include "heap_file.h"
 
-#define is_user_class_oid(oid) \
-  ((oid)->volid == 0 && (((oid)->pageid == 210 && (oid)->slotid >= 2) || ((oid)->pageid > 210 && (oid)->pageid <= 255)))
-
-#define is_user_oid(oid) ((oid)->volid == 10)
-
 namespace cubrocks
 {
   struct kv_transaction
@@ -49,6 +44,7 @@ namespace cubrocks
     std::string pin;
 
     rocksdb::Transaction *txn;
+    bool need_commit;
   };
 
   void kv_version (void);
