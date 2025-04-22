@@ -1681,29 +1681,6 @@ PR_TYPE tp_Sequence = {
 
 PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
-// PR_TYPE tp_Vector = {
-//   "vector", DB_TYPE_VECTOR, 1, sizeof (SETOBJ *), 0, 4,
-//   mr_initmem_set,
-//   mr_initval_vector,
-//   mr_setmem_set,
-//   mr_getmem_vector,
-//   mr_setval_vector,
-//   mr_data_lengthmem_set,
-//   mr_data_lengthval_set,
-//   mr_data_writemem_set,
-//   mr_data_readmem_set,
-//   mr_data_writeval_set,
-//   mr_data_readval_set,
-//   NULL,
-//   NULL,
-//   NULL,
-//   NULL,
-//   NULL,
-//   mr_freemem_set,
-//   mr_data_cmpdisk_sequence,
-//   mr_cmpval_sequence
-// };
-
 PR_TYPE tp_Vector = {
   "vector", DB_TYPE_VECTOR, 1, sizeof (DB_VECTOR_FLOAT), 0, 1,
   mr_initmem_vector_float,
@@ -7069,9 +7046,6 @@ mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYP
 	case DB_TYPE_SEQUENCE:
 	  db_make_sequence (dest, ref);
 	  break;
-	  // case DB_TYPE_VECTOR: assert(false);
-	  //   db_make_vector (dest, ref);
-	  //   break;
 	default:
 	  break;
 	}
@@ -7375,9 +7349,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 		    case DB_TYPE_SEQUENCE:
 		      db_make_sequence (value, ref);
 		      break;
-		      // case DB_TYPE_VECTOR: assert(false);
-		      //   db_make_vector (value, ref);
-		      //   break;
 		    default:
 		      break;
 		    }
@@ -7439,9 +7410,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 		case DB_TYPE_SEQUENCE:
 		  db_make_sequence (value, ref);
 		  break;
-		  // case DB_TYPE_VECTOR: assert(false);
-		  //   db_make_vector (value, ref);
-		  //   break;
 		default:
 		  break;
 		}
@@ -7632,60 +7600,6 @@ mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 		    int collation)
 {
   return set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
-}
-
-/*
- * TYPE VECTOR
- */
-
-static void
-mr_initval_vector (DB_VALUE * value, int precision, int scale)
-{
-  vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
-  db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  DB_VECTOR_FLOAT vf = { 0, nullptr };
-  db_make_vector (value, vf);
-}
-
-// static int
-// mr_getmem_vector (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-// {
-//   SETOBJ **mem = (SETOBJ **) memptr;
-//   int error = NO_ERROR;
-//   SETOBJ *set;
-//   SETREF *ref;
-// 
-//   set = *mem;
-//   if (set == NULL)
-//     {
-//       error = db_make_vector (value, NULL);
-//     }
-//   else
-//     {
-//       ref = setobj_get_reference (set);
-//       if (ref)
-//      {
-//        error = db_make_vector (value, ref);
-//      }
-//       else
-//      {
-//        assert (er_errid () != NO_ERROR);
-//        error = er_errid ();
-//        (void) db_make_vector (value, NULL);
-//      }
-//     }
-//   /*
-//    * NOTE: assumes that ownership info will already have been set or will
-//    * be set by the caller
-//    */
-// 
-//   return error;
-// }
-
-static int
-mr_setval_vector (DB_VALUE * dest, const DB_VALUE * src, bool copy)
-{
-  return mr_setval_set_internal (dest, src, copy, DB_TYPE_VECTOR);
 }
 
 /******************************************************************************

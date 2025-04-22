@@ -2023,45 +2023,6 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
   return error;
 }
 
-/*
- * db_make_vector() -
- * return :
- * value(out) :
- * set(in):
- */
-// int
-// db_make_vector (DB_VALUE * value, DB_SET * set)
-// {
-//   int error = NO_ERROR;
-// 
-// #if defined (API_ACTIVE_CHECKS)
-//   CHECK_1ARG_ERROR (value);
-// #endif
-// 
-//   value->domain.general_info.type = DB_TYPE_VECTOR;
-//   value->data.set = set;
-//   if (set)
-//     {
-//       if ((set->set && setobj_type (set->set) == DB_TYPE_VECTOR) || set->disk_set)
-//      {
-//        value->domain.general_info.is_null = 0;
-//      }
-//       else
-//      {
-//        error = ER_QPROC_INVALID_DATATYPE;
-//        er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-//      }
-//     }
-//   else
-//     {
-//       value->domain.general_info.is_null = 1;
-//     }
-// 
-//   value->need_clear = false;
-// 
-//   return error;
-// }
-
 int
 db_make_vector (DB_VALUE * value, const DB_VECTOR_FLOAT vector_float)
 {
