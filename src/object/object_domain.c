@@ -5024,8 +5024,8 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 
   DB_VECTOR_FLOAT vector_float = { 0, NULL };
   vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
-  cubvec_log (">>> tp_atovector\n");
-  cubvec_log ("private allocated: vector_float.float_array = %p\n", vector_float.float_array);
+  vimkim_log (">>> tp_atovector\n");
+  vimkim_log ("private allocated: vector_float.float_array = %p\n", vector_float.float_array);
 
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)

@@ -3006,7 +3006,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  break;
 
 	case DB_TYPE_VECTOR:
-	  cubvec_log ("passing or_put_domain() with DB_TYPE_VECTOR\n");
+	  vimkim_log ("passing or_put_domain() with DB_TYPE_VECTOR\n");
 	  break;
 
 	case DB_TYPE_SET:
@@ -3801,8 +3801,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_VECTOR:
-	      cubvec_log (">>> unpack_domain: DB_TYPE_VECTOR\n");
-	      cubvec_log ("WARNING: no handling...\n");
+	      vimkim_log (">>> unpack_domain: DB_TYPE_VECTOR\n");
+	      vimkim_log ("WARNING: no handling...\n");
 	      break;
 
 	    default:

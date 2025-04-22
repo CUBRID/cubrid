@@ -5407,7 +5407,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_STR] = &ldr_json_db_json;
       break;
     case DB_TYPE_VECTOR:
-      cubvec_log (">>> ldr_act_add_attr: DB_TYPE_VECTOR\n");
+      vimkim_log (">>> ldr_act_add_attr: DB_TYPE_VECTOR\n");
       attdesc->setter[LDR_STR] = &ldr_vector_db_vector;
     default:
       break;

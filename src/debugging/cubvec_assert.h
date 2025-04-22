@@ -26,6 +26,10 @@
 #include <assert.h>
 #include <unistd.h>
 
+/******************************************************************************
+ * Assertions
+******************************************************************************/
+
 #ifdef CUBVEC_TEAM
 #ifdef NDEBUG
     // Custom assertion that works even in release mode
@@ -42,20 +46,6 @@
 #endif
 #else
 #define ASSERT_CUBVEC(expr) ((void)0)
-#endif
-
-#if defined(CUBVEC_TEAM) && !defined(NDEBUG)
-#define cubvec_log(...) \
-  do { \
-      FILE *logfile = fopen("cubvec.log", "a"); \
-      if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
-	  fprintf(logfile, __VA_ARGS__); \
-	  fclose(logfile); \
-      } \
-  } while (0)
-#else
-#define cubvec_log(...) do {} while (0)
 #endif
 
 #ifdef HORNETMJ
@@ -80,6 +70,80 @@
 #define ASSERT_VIMKIM(expr) assert(expr)
 #else
 #define ASSERT_VIMKIM(expr) ((void)0)
+#endif
+
+/******************************************************************************
+ * Logging
+******************************************************************************/
+
+#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG)
+#define cubvec_log(...) \
+  do { \
+      FILE *logfile = fopen("cubvec.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define vimkim_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(ENABLE_HORNETMJ_LOG)
+#define hornetmj_log(...) \
+  do { \
+      FILE *logfile = fopen("hornetmj.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define hornetmj_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(ENABLE_HGRYOO_LOG)
+#define hgryoo_log(...) \
+  do { \
+      FILE *logfile = fopen("hgryoo.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define hgryoo_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(ENABLE_YEUNJUNLEE_LOG)
+#define yeunjunlee_log(...) \
+  do { \
+      FILE *logfile = fopen("yeunjunlee.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define yeunjunlee_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(ENABLE_VIMKIM_LOG)
+#define vimkim_log(...) \
+  do { \
+      FILE *logfile = fopen("vimkim.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define vimkim_log(...) do {} while (0)
 #endif
 
 #endif // CUBVEC_ASSERT_H
