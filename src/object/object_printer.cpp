@@ -317,8 +317,8 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 		}
 	    }
 	  break;
+
 	case DB_TYPE_VECTOR:
-	  assert (false);
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  m_buf ("%s", ustr_upper (temp_buffer));
 	  break;

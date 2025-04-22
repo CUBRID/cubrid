@@ -22,6 +22,7 @@
 
 #include "db_value_printer.hpp"
 
+#include "cubvec_assert.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
@@ -540,9 +541,10 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_VECTOR:
-      assert (false);
-      m_buf ("hello world!");
+      ASSERT_CUBVEC (false);
+      m_buf ("Not implemented for VECTOR yet.");
       break;
+
     case DB_TYPE_JSON:
       json_body = db_get_json_raw_body (value);
       m_buf ("%s", json_body);
