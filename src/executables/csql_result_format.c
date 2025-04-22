@@ -20,11 +20,11 @@
  * csql_result_format.c : string formatting function
  */
 
-#include "vector_float.hpp"
 #ident "$Id$"
 
 #include "config.h"
 #include "cubvec_assert.h"
+#include "vector_float.hpp"
 
 #include <float.h>
 #include <time.h>
