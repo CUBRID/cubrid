@@ -426,7 +426,7 @@ namespace cubthread
     std::size_t max_backup_read_workers = 0; // one per each backup read task
 
 #if defined (SERVER_MODE)
-    max_backup_read_workers = cubthread::system_core_count (); // one per each backup read task
+    max_backup_read_workers = cubthread::system_core_count ();
 #endif // SERVER_MODE
 
     // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
