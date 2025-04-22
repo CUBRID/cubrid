@@ -1543,6 +1543,11 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
   switch (TP_DOMAIN_TYPE (dom1))
     {
 
+    case DB_TYPE_VECTOR:
+	{
+	  ASSERT_CUBVEC(false);
+	}
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -1958,6 +1963,11 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
   /* could use the new is_parameterized flag to avoid the switch ? */
   switch (TP_DOMAIN_TYPE (domain))
     {
+
+    case DB_TYPE_VECTOR:
+	{
+	  ASSERT_CUBVEC(false);
+	}
 
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
