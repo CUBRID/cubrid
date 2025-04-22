@@ -7643,7 +7643,7 @@ mr_initval_vector (DB_VALUE * value, int precision, int scale)
 {
   vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  DB_VECTOR_FLOAT vf = {0, nullptr};
+  DB_VECTOR_FLOAT vf = { 0, nullptr };
   db_make_vector (value, vf);
 }
 
@@ -7728,9 +7728,10 @@ mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       char *new_ = (char *) db_private_alloc (NULL, size);
       vimkim_log ("db_private_alloc new_: %p, size = %zu\n", new_, size);
       ASSERT_CUBVEC (new_ != nullptr);
-      if (new_ == nullptr) {
-	return ER_FAILED;
-      }
+      if (new_ == nullptr)
+	{
+	  return ER_FAILED;
+	}
 
       cur = new_;
 
@@ -7844,7 +7845,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  DB_VECTOR_FLOAT vf;
 	  vf.dim = dim;
 	  vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
-	  assert(vf.float_array != NULL);
+	  assert (vf.float_array != NULL);
 	  if (vf.float_array == NULL)
 	    {
 	      return ER_FAILED;
@@ -7878,7 +7879,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       // log vector_float for easier debugging
       DB_VECTOR_FLOAT vf = db_get_vector_float (dest);
       vimkim_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
-      assert(false);
+      assert (false);
     }
 
   return error;
@@ -7919,8 +7920,8 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 {
   int error = NO_ERROR;
 
-  vimkim_log("args: buf %p, value %p, domain %p, size %d, copy %d, copy_buf %p, copy_buf_len %d\n",
-	     buf, value, domain, size, copy, copy_buf, copy_buf_len);
+  vimkim_log ("args: buf %p, value %p, domain %p, size %d, copy %d, copy_buf %p, copy_buf_len %d\n",
+	      buf, value, domain, size, copy, copy_buf, copy_buf_len);
 
   DB_VECTOR_FLOAT vector_float = { 0, nullptr };
   vector_float.dim = or_get_int (buf, &error);
