@@ -20,7 +20,6 @@
  * query_opfunc.c - The manipulation of data stored in the XASL nodes
  */
 
-#include "cubvec_assert.h"
 #include "db_function.hpp"
 #ident "$Id$"
 

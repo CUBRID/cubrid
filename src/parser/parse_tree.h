@@ -23,7 +23,6 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
-#include "dbtype_def.h"
 #if defined (SERVER_MODE)
 #error Does not belong to server module
 #endif /* SERVER_MODE */

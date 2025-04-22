@@ -297,66 +297,6 @@ db_seq_create (MOP classop, const char *name, int size)
 }
 
 /*
- * db_vec_create() - This function creates an empty vector. The class and
- *    name arguments can be set to NULL. If values are supplied, a check will
- *    be made to make sure that the attribute was defined with the vector
- *    domain.
- * return : a set (vector) descriptor
- * classop(in): class or instance
- * name(in): attribute name
- * size(in): initial size
- *
- * note : The new set will not be attached to any object, so you must use the
- *    db_put( ) function to assign it as the value of an attribute. If the size
- *    is not known, it is permissible to pass zero.
- */
-// DB_SET *
-// db_vec_create (MOP classop, const char *name, int size)
-// {
-//   DB_SET *set;
-// #if !defined(SERVER_MODE)
-//   int error = NO_ERROR;
-// #endif
-//
-//   CHECK_CONNECT_NULL ();
-//
-//   set = NULL;
-//   if (classop == NULL || name == NULL)
-//     {
-//       set = set_create_vector (size);
-//     }
-//   else
-//     {
-// #if !defined(SERVER_MODE)
-//       SM_CLASS *class_;
-//       SM_ATTRIBUTE *att;
-//
-//       if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-//      {
-//        att = classobj_find_attribute (class_, name, 0);
-//        if (att == NULL)
-//          {
-//            ERROR_SET1 (error, ER_OBJ_INVALID_ATTRIBUTE, name);
-//          }
-//        else
-//          {
-//            if (att->type->id == DB_TYPE_VECTOR)
-//              {
-//                set = set_create_vector (size);
-//              }
-//            else
-//              {
-//                ERROR_SET1 (error, ER_OBJ_DOMAIN_CONFLICT, name);
-//              }
-//          }
-//      }
-// #endif
-//     }
-//
-//   return (set);
-// }
-
-/*
  * db_set_free() - This function frees a set handle. If the set is owned by an
  *    object, the contents of the set are not freed, only the set handle is
  *    freed. If the set is not owned by an object, the handle and all of the

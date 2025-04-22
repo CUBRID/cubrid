@@ -43,9 +43,6 @@ std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 {
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
-  // DB_SET *set_ref = db_get_set (value);
-  // int size = db_set_size (set_ref);
-
   const auto vf = db_get_vector_float (value);
   const auto dim = vf.dim;
   const auto arr = vf.float_array;
@@ -123,14 +120,6 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
 {
   // Ensure we have the correct number of arguments.
   assert (num_args == 2);
-
-  // Extract vectors from the arguments.
-  // const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
-  // const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
-
-  // Check that vectors are non-empty and of equal size.
-  // assert (!vec1.empty() && !vec2.empty());
-  // assert (vec1.size() == vec2.size());
 
   const DB_VECTOR_FLOAT vf1 = db_get_vector_float (args[0]);
   const auto dim1 = vf1.dim;

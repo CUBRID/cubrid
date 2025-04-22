@@ -6827,7 +6827,7 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   int count = 0;
   const int max_vector_size = 2000;
   float *float_array = (float *) db_private_alloc (NULL, sizeof (float) * max_vector_size);
-  // DB_SET *vec = NULL;
+
   DB_VALUE e_val;
 
   int error_code = db_string_to_vector (str, len, float_array, &count);
@@ -6835,14 +6835,6 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
     {
       return ER_FAILED;
     }
-
-  // Create vector and populate it
-  // vec = db_vec_create (NULL, NULL, 0);
-  // if (vec == NULL)
-  //   {
-  //     assert (er_errid () != NO_ERROR);
-  //     return er_errid ();
-  //   }
 
   db_value_domain_init (val, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   DB_VECTOR_FLOAT vf;

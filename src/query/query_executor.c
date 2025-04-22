@@ -25067,7 +25067,6 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
       return "SEQUENCE";
 
     case DB_TYPE_VECTOR:
-      assert (false);
       return "VECTOR";
 
     case DB_TYPE_NCHAR:

@@ -22,7 +22,6 @@
  *            functions
  */
 
-#include "dbtype_def.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -1936,6 +1935,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       precision = dt->info.data_type.precision;
       scale = dt->info.data_type.dec_precision;
       break;
+
     case DB_TYPE_VECTOR:
       break;
 
@@ -2280,7 +2280,6 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	  // case DB_TYPE_VECTOR:
 	case DB_TYPE_MIDXKEY:
 	  /* Recursively build the setdomain */
 	  dt = node->data_type;

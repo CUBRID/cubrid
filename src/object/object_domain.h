@@ -223,11 +223,6 @@ typedef enum tp_match
  * we change the semantics.  Will have to think carefully about this
  */
 
-// #define TP_IS_SET_TYPE(typenum) \
-//   ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
-//     ((typenum) == DB_TYPE_SEQUENCE) || \
-//     ((typenum) == DB_TYPE_VECTOR)) \
-//     ? true : false)
 #define TP_IS_SET_TYPE(typenum) \
   ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
     ((typenum) == DB_TYPE_SEQUENCE) \

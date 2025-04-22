@@ -21,9 +21,6 @@
  * This module primarily defines support for domain structures.
  */
 
-#include "cubvec_assert.h"
-#include "dbtype_def.h"
-#include "memory_alloc.h"
 #ident "$Id$"
 
 
@@ -38,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "cubvec_assert.h"
 #include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -259,6 +257,7 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
+// TODO: CUBVEC: DOMAIN or DOMAIN_INIT3? Not analyzed yet.
 TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
@@ -5021,7 +5020,6 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   char number_buffer[number_buffer_size];
   int buffer_idx;
   const int max_vector_size = 2000;
-  // DB_SET *vec = NULL;
   DB_VALUE e_val;
 
   DB_VECTOR_FLOAT vector_float = { 0, NULL };
