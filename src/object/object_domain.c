@@ -1544,9 +1544,9 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     {
 
     case DB_TYPE_VECTOR:
-	{
-	  ASSERT_CUBVEC(false);
-	}
+      {
+	ASSERT_CUBVEC (false);
+      }
 
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
@@ -1965,9 +1965,9 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     {
 
     case DB_TYPE_VECTOR:
-	{
-	  ASSERT_CUBVEC(false);
-	}
+      {
+	ASSERT_CUBVEC (false);
+      }
 
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
