@@ -1750,6 +1750,13 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VECTOR:
+	{
+	  if (type == DB_TYPE_VECTOR)
+	    {
+	    vimkim_log("WARNING: Not analyzed yet.\n");
+	    }
+	}
     case DB_TYPE_NULL:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
