@@ -1672,14 +1672,6 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	}
       break;
     case DB_TYPE_VECTOR:
-      //      result =
-      // set_to_string (value, default_vector_profile.begin_notation, default_vector_profile.end_notation,
-      //             default_vector_profile.max_entries, csql_arg);
-      //      if (result)
-      // {
-      //   len = strlen (result);
-      // }
-      //      break;
       {
 	std::string result_str = db_vector_float_to_string (db_get_vector_float (value));
 	result = strdup (result_str.c_str ());
