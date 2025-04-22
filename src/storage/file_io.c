@@ -6632,7 +6632,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
 
   /* get the number of CPUs */
-  num_cpus = fileio_os_sysconf ();
+  num_cpus = system_core_count ();
   /* check for the upper bound of threads */
   if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {
@@ -6640,7 +6640,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
   else
     {
-      thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
+      thread_info_p->num_threads = MIN (num_threads, num_cpus);
     }
   thread_info_p->num_threads = MIN (thread_info_p->num_threads, NUM_NORMAL_TRANS);
 #else /* SERVER_MODE */
