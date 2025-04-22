@@ -3173,9 +3173,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
-  /**
-   * outer
-   */
+  /* outer */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3206,9 +3204,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  /**
-   * inner
-   */
+  /* inner */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3239,9 +3235,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  /**
-   * merge_info
-   */
+  /* merge_info */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
   if (ptr == NULL)
     {
@@ -3249,9 +3243,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* currently, not used */
 
-  /**
-   * domain_info
-   */
+  /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
   if (domain_cnt == 0)
     {

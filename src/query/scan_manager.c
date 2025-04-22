@@ -3752,7 +3752,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 #if HASH_LIST_SCAN_DUMP_HASH_TABLE
       if (llsidp->hlsid.hash_list_scan_type != HASH_METH_HASH_FILE)
 	{
-	  if (llsidp->list_id->tuple_cnt <= 100)
+	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
 	    {
 	      mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
 			    (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
@@ -4922,7 +4922,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
 #if HASH_LIST_SCAN_DUMP_HASH_TABLE
-	  if (llsidp->list_id->tuple_cnt <= 100)
+	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
 	    {
 	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
 				   (void *) &(llsidp->list_id->type_list),
