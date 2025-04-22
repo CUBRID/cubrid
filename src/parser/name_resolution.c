@@ -4562,8 +4562,6 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       result = parser_new_node (parser, PT_DATA_TYPE);
       if (result == NULL)
 	{
@@ -5010,8 +5008,6 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_NUMERIC,
@@ -5088,8 +5084,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_NUMERIC:
@@ -5639,8 +5633,6 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
     case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
@@ -10245,8 +10237,6 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       node->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:

@@ -26,6 +26,10 @@
 #include "json_table_def.h"
 #include "parser.h"
 
+/* No longer supports pt_type_nchar; Keep grammar replaced with pt_type_char type.*/
+#define PT_TYPE_VARNCHAR   PT_TYPE_VARCHAR
+#define PT_TYPE_NCHAR      PT_TYPE_CHAR
+
 /*
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -21217,12 +21221,8 @@ of_cast_data_type
 
 			if (l != -1)
 			  {
-			    int maxlen = (typ == PT_TYPE_NCHAR)
-			      ? DB_MAX_NCHAR_PRECISION : DB_MAX_CHAR_PRECISION;
-			    PT_ERRORmf3 (this_parser, len,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INV_PREC,
-					 l, -1, maxlen);
+                            PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC,
+					 l, -1, DB_MAX_CHAR_PRECISION);
 			  }
 
 			dt = parser_new_node (this_parser, PT_DATA_TYPE);
@@ -21232,26 +21232,19 @@ of_cast_data_type
 
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-			      case PT_TYPE_NCHAR:
-				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
-				  {
-				    dt->info.data_type.units = charset;
-				    dt->info.data_type.collation_id = coll_id;
-				  }
-				 else
-				  {
-				    dt->info.data_type.units = -1;
-				    dt->info.data_type.collation_id = -1;
-				  }
-				break;
 
-			      default:
-				break;
-			      }
+                            assert (typ == PT_TYPE_CHAR);			    
+			    if (pt_check_grammar_charset_collation
+			        (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+			     {
+			        dt->info.data_type.units = charset;
+			        dt->info.data_type.collation_id = coll_id;
+			     }
+			    else
+			     {
+			        dt->info.data_type.units = -1;
+			        dt->info.data_type.collation_id = -1;
+			     }			
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -21840,14 +21833,6 @@ primitive_type
                                         maxlen = DB_MAX_VARCHAR_PRECISION;
                                         break;
 
-                                case PT_TYPE_NCHAR:
-                                        maxlen = DB_MAX_NCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        maxlen = DB_MAX_VARNCHAR_PRECISION;
-                                        break;
-
                                 case PT_TYPE_BIT:
                                         maxlen = DB_MAX_BIT_PRECISION;
                                         break;
@@ -21881,17 +21866,12 @@ primitive_type
                                 switch (typ)
                                 {
                                 case PT_TYPE_CHAR:
-                                case PT_TYPE_NCHAR:
                                 case PT_TYPE_BIT:
                                         l = 1;
                                         break;
 
                                 case PT_TYPE_VARCHAR:
                                         l = DB_MAX_VARCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        l = DB_MAX_VARNCHAR_PRECISION;
                                         break;
 
                                 case PT_TYPE_VARBIT:
@@ -21914,8 +21894,6 @@ primitive_type
                                 {
                                 case PT_TYPE_CHAR:
                                 case PT_TYPE_VARCHAR:
-                                case PT_TYPE_NCHAR:
-                                case PT_TYPE_VARNCHAR:
                                         if (pt_check_grammar_charset_collation
                                         (this_parser, charset_node,
                                         coll_node, &charset, &coll_id) == NO_ERROR)
@@ -28066,15 +28044,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-
-        if (char_type == PT_TYPE_NCHAR)
-          {
-            node->info.value.string_type = 'N';
-          }
-        else
-          {
-            node->info.value.string_type = ' ';
-          }
+        node->info.value.string_type = ' ';
 
         PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }

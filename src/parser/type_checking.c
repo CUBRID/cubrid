@@ -100,8 +100,7 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 #define PT_ARE_COMPARABLE_CHAR_TYPE(typ1, typ2)	\
-   ((PT_IS_SIMPLE_CHAR_STRING_TYPE (typ1) && PT_IS_SIMPLE_CHAR_STRING_TYPE (typ2)) \
-    || (PT_IS_NATIONAL_CHAR_STRING_TYPE (typ1) && PT_IS_NATIONAL_CHAR_STRING_TYPE (typ2)))
+   (PT_IS_SIMPLE_CHAR_STRING_TYPE (typ1) && PT_IS_SIMPLE_CHAR_STRING_TYPE (typ2))
 
 #define PT_ARE_COMPARABLE_NUMERIC_TYPE(typ1, typ2) \
    ((PT_IS_NUMERIC_TYPE (typ1) && PT_IS_NUMERIC_TYPE (typ2)) \
@@ -5398,7 +5397,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 				{
 				  elem = elem->next;
 				}
-			      if (elem && (elem->type_enum == PT_TYPE_CHAR || elem->type_enum == PT_TYPE_NCHAR))
+			      if (elem && (elem->type_enum == PT_TYPE_CHAR))
 				{
 				  (void) pt_coerce_value (parser, elem, elem, temp->type_enum, elem->data_type);
 				}
@@ -5491,7 +5490,6 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	      switch (common_type)
 		{
 		case PT_TYPE_CHAR:
-		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
 		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
 		  if (precision < temp->info.data_type.precision)
@@ -5500,7 +5498,6 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		    }
 		  break;
 		case PT_TYPE_VARCHAR:
-		case PT_TYPE_VARNCHAR:
 		  /* either all elements are already of string types or we set maximum precision */
 		  if (!PT_IS_CHAR_STRING_TYPE (temp->type_enum))
 		    {
@@ -6357,13 +6354,6 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
 	}
       return PT_TYPE_CHAR;
 
-    case PT_GENERIC_TYPE_NCHAR:
-      if (arg1_type == PT_TYPE_VARNCHAR || arg2_type == PT_TYPE_VARNCHAR || arg3_type == PT_TYPE_VARNCHAR)
-	{
-	  return PT_TYPE_VARNCHAR;
-	}
-      return PT_TYPE_NCHAR;
-
     case PT_GENERIC_TYPE_NUMBER:
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
     case PT_GENERIC_TYPE_ANY:
@@ -6429,8 +6419,6 @@ pt_is_symmetric_type (const PT_TYPE_ENUM type_enum)
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_VARBIT:
     case PT_TYPE_BIT:
       return true;
@@ -9945,19 +9933,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		   && (PT_IS_NUMERIC_TYPE (arg3_type) || arg3_type == PT_TYPE_ENUMERATION)))
 	    {
 	      /* cast to type of first parameter */
-
-	      if (arg3_type == PT_TYPE_CHAR)
-		{
-		  new_type = PT_TYPE_VARCHAR;
-		}
-	      else if (arg3_type == PT_TYPE_NCHAR)
-		{
-		  new_type = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  new_type = arg3_type;
-		}
+	      new_type = (arg3_type == PT_TYPE_CHAR) ? PT_TYPE_VARCHAR : arg3_type;
 
 	      if (first_node)
 		{
@@ -10805,8 +10781,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_ENUMERATION:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_DATETIME:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_DATE:
@@ -10835,8 +10809,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_ENUMERATION:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_DATETIME:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_DATE:
@@ -10863,8 +10835,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_ENUMERATION:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_DATETIME:
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_TIMESTAMP:
@@ -10898,8 +10868,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_DATE:
@@ -10936,8 +10904,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_DATE:
@@ -10976,8 +10942,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_TIMESTAMP:
 	    case PT_TYPE_TIMESTAMPLTZ:
@@ -11013,8 +10977,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      break;
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_TIME:
 	      common_type = PT_TYPE_TIME;
@@ -11043,8 +11005,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_VARCHAR:
 	    case PT_TYPE_CHAR:
-	    case PT_TYPE_VARNCHAR:
-	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_DATE:
 	      common_type = PT_TYPE_DATE;
@@ -11104,50 +11064,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_ENUMERATION:
 	      common_type = PT_TYPE_VARCHAR;
-	      break;
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
-	  break;
-
-	case PT_TYPE_NCHAR:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_DATE:
-	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMESTAMP:
-	    case PT_TYPE_TIMESTAMPLTZ:
-	    case PT_TYPE_TIMESTAMPTZ:
-	    case PT_TYPE_DATETIME:
-	    case PT_TYPE_DATETIMELTZ:
-	    case PT_TYPE_DATETIMETZ:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
-	      common_type = arg2_type;
-	      break;
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
-	  break;
-
-	case PT_TYPE_VARNCHAR:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_DATE:
-	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMESTAMP:
-	    case PT_TYPE_TIMESTAMPLTZ:
-	    case PT_TYPE_TIMESTAMPTZ:
-	    case PT_TYPE_DATETIME:
-	    case PT_TYPE_DATETIMELTZ:
-	    case PT_TYPE_DATETIMETZ:
-	    case PT_TYPE_VARNCHAR:
-	      common_type = arg2_type;
-	      break;
-	    case PT_TYPE_NCHAR:
-	      common_type = PT_TYPE_VARNCHAR;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -12145,16 +12061,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	case PT_TYPE_VARCHAR:
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_VARCHAR_PRECISION)
 					  ? DB_MAX_VARCHAR_PRECISION : dt->info.data_type.precision);
-	  break;
-
-	case PT_TYPE_NCHAR:
-	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NCHAR_PRECISION)
-					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
-	  break;
-
-	case PT_TYPE_VARNCHAR:
-	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_VARNCHAR_PRECISION)
-					  ? DB_MAX_VARNCHAR_PRECISION : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_BIT:
@@ -18002,8 +17908,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_BIT:
 	    case PT_TYPE_VARBIT:
 	    case PT_TYPE_NUMERIC:
@@ -19341,13 +19245,6 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
     {
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      dt->info.data_type.units = (int) LANG_SYS_CODESET;
-      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
-      break;
-
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       dt->info.data_type.units = (int) LANG_SYS_CODESET;
       dt->info.data_type.collation_id = LANG_SYS_COLLATION;
@@ -23528,12 +23425,7 @@ pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT
       *wrap_type_collection = PT_TYPE_NONE;
     }
 
-  if (PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1_type) || PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2_type)
-      || PT_IS_NATIONAL_CHAR_STRING_TYPE (arg3_type))
-    {
-      common_type = PT_TYPE_VARNCHAR;
-    }
-  else if (wrap_type_collection != NULL)
+  if (wrap_type_collection != NULL)
     {
       const PT_NODE *arg_collection = NULL;
       assert (!PT_IS_COLLECTION_TYPE (arg3_type));
@@ -23834,8 +23726,6 @@ pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
     {
     case PT_TYPE_CHAR:
       return PT_TYPE_VARCHAR;
-    case PT_TYPE_NCHAR:
-      return PT_TYPE_VARNCHAR;
     case PT_TYPE_BIT:
       return PT_TYPE_VARBIT;
     default:

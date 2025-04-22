@@ -679,10 +679,6 @@ namespace func_type
 	    return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
 		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
-	  case PT_TYPE_VARNCHAR:
-	    return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
-		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
-		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	  default:
 	    return type.val.type == type_enum;
 	  }
@@ -710,8 +706,7 @@ namespace func_type
 		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
       case PT_GENERIC_TYPE_NCHAR:
-	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum)
-		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
       case PT_GENERIC_TYPE_DATE:
       case PT_GENERIC_TYPE_DATETIME:
@@ -859,29 +854,6 @@ namespace func_type
       case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
 	m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 	return false; //no need to continue with generic code
-      case PT_GROUP_CONCAT: //ToDo: try without this!
-      {
-	auto arg1 = m_node->info.function.arg_list;
-	if (arg1 != NULL)
-	  {
-	    auto arg2 = arg1->next;
-	    if (arg2 != NULL)
-	      {
-		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-		    || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
-			&& PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
-		  {
-		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
-				  pt_show_type_enum (arg2->type_enum));
-		    m_node->type_enum = PT_TYPE_VARCHAR;
-		    return false;
-		  }
-	      }
-	  }
-	break;
-      }
-
       default:
 	;
       }
@@ -1453,11 +1425,6 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
       break;
 
     case PT_GENERIC_TYPE_NCHAR:
-      if (op_type == PT_TYPE_NCHAR || op_type == PT_TYPE_VARNCHAR)
-	{
-	  /* NCHAR and VARNCHAR are equivalent to PT_GENERIC_TYPE_NCHAR */
-	  return true;
-	}
       break;
 
     case PT_GENERIC_TYPE_BIT:
@@ -1652,22 +1619,6 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  break;
 	}
 
-      if ((sep_type == PT_TYPE_NCHAR || sep_type == PT_TYPE_VARNCHAR) && arg_type != PT_TYPE_NCHAR
-	  && arg_type != PT_TYPE_VARNCHAR)
-	{
-	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
-	  break;
-	}
-
-      if ((arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR) && sep_type != PT_TYPE_NCHAR
-	  && sep_type != PT_TYPE_VARNCHAR && sep_type != PT_TYPE_NONE)
-	{
-	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
-	  break;
-	}
-
       if ((arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT) && sep_type != PT_TYPE_BIT
 	  && sep_type != PT_TYPE_VARBIT && sep_type != PT_TYPE_NONE)
 	{
@@ -1710,7 +1661,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
     case F_ELT:
     {
       /* all types used in the arguments list */
-      bool has_arg_type[PT_TYPE_MAX - PT_TYPE_MIN] = { false };
+      bool has_arg_type[PT_TYPE_MAX - PT_TYPE_MIN];
 
       /* a subset of argument types given to ELT that can not be cast to [N]CHAR VARYING */
       PT_TYPE_ENUM bad_types[4] =
@@ -1720,7 +1671,6 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 
       PT_NODE *arg = arg_list;
 
-      size_t i = 0;		/* used to index has_arg_type */
       size_t num_bad = 0;	/* used to index bad_types */
 
       memset (has_arg_type, 0, sizeof (has_arg_type));
@@ -1759,61 +1709,67 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	}
 
       /* look for unsupported argument types in the list */
-      while (i < (sizeof (has_arg_type) / sizeof (has_arg_type[0])))
+      for (int i = 0; i < DIM (has_arg_type); i++)
 	{
-	  if (has_arg_type[i])
+	  if (has_arg_type[i] == false)
 	    {
-	      if (!PT_IS_NUMERIC_TYPE (PT_TYPE_MIN + i) && !PT_IS_CHAR_STRING_TYPE (PT_TYPE_MIN + i)
-		  && !PT_IS_DATE_TIME_TYPE (PT_TYPE_MIN + i) && (PT_TYPE_MIN + i != PT_TYPE_ENUMERATION)
-		  && (PT_TYPE_MIN + i != PT_TYPE_LOGICAL) && (PT_TYPE_MIN + i != PT_TYPE_NONE)
-		  && (PT_TYPE_MIN + i != PT_TYPE_NA) && (PT_TYPE_MIN + i != PT_TYPE_NULL)
-		  && (PT_TYPE_MIN + i != PT_TYPE_MAYBE))
+	      continue;
+	    }
+
+	  switch (PT_TYPE_MIN + i)
+	    {
+	    // PT_IS_NUMERIC_TYPE
+	    case PT_TYPE_INTEGER:
+	    case PT_TYPE_BIGINT:
+	    case PT_TYPE_FLOAT:
+	    case PT_TYPE_DOUBLE:
+	    case PT_TYPE_SMALLINT:
+	    case PT_TYPE_MONETARY:
+	    case PT_TYPE_LOGICAL:
+	    case PT_TYPE_NUMERIC:
+
+	    // PT_IS_CHAR_STRING_TYPE
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_VARCHAR:
+
+	    // PT_IS_DATE_TIME_TYPE
+	    case PT_TYPE_DATE:
+	    case PT_TYPE_TIME:
+	    case PT_TYPE_TIMESTAMP:
+	    case PT_TYPE_DATETIME:
+	    case PT_TYPE_DATETIMETZ:
+	    case PT_TYPE_DATETIMELTZ:
+	    case PT_TYPE_TIMESTAMPTZ:
+	    case PT_TYPE_TIMESTAMPLTZ:
+
+	    case PT_TYPE_ENUMERATION:
+	    case PT_TYPE_NONE:
+	    case PT_TYPE_NA:
+	    case PT_TYPE_NULL:
+	    case PT_TYPE_MAYBE:
+	      break;
+
+	    default:
+	    {
+	      /* type is not NULL, unknown and is not known coercible to [N]CHAR VARYING */
+	      size_t k = 0;
+
+	      while (k < num_bad && bad_types[k] != PT_TYPE_MIN + i)
 		{
-		  /* type is not NULL, unknown and is not known coercible to [N]CHAR VARYING */
-		  size_t k = 0;
+		  k++;
+		}
 
-		  while (k < num_bad && bad_types[k] != PT_TYPE_MIN + i)
+	      if (k == num_bad)
+		{
+		  bad_types[num_bad++] = (PT_TYPE_ENUM) (PT_TYPE_MIN + i);
+
+		  if (num_bad == sizeof (bad_types) / sizeof (bad_types[0]))
 		    {
-		      k++;
-		    }
-
-		  if (k == num_bad)
-		    {
-		      bad_types[num_bad++] = (PT_TYPE_ENUM) (PT_TYPE_MIN + i);
-
-		      if (num_bad == sizeof (bad_types) / sizeof (bad_types[0]))
-			{
-			  break;
-			}
+		      break;
 		    }
 		}
 	    }
-
-	  i++;
-	}
-
-      /* check string category (CHAR or NCHAR) for any string arguments */
-      if ((num_bad < sizeof (bad_types) / sizeof (bad_types[0]) - 1)
-	  && (has_arg_type[PT_TYPE_CHAR - PT_TYPE_MIN] || has_arg_type[PT_TYPE_VARCHAR - PT_TYPE_MIN])
-	  && (has_arg_type[PT_TYPE_NCHAR - PT_TYPE_MIN] || has_arg_type[PT_TYPE_VARNCHAR - PT_TYPE_MIN]))
-	{
-	  if (has_arg_type[PT_TYPE_CHAR - PT_TYPE_MIN])
-	    {
-	      bad_types[num_bad++] = PT_TYPE_CHAR;
-	    }
-	  else
-	    {
-	      bad_types[num_bad++] = PT_TYPE_VARCHAR;
-	    }
-
-	  if (has_arg_type[PT_TYPE_NCHAR - PT_TYPE_MIN])
-	    {
-	      bad_types[num_bad++] = PT_TYPE_NCHAR;
-	    }
-	  else
-	    {
-	      bad_types[num_bad++] = PT_TYPE_VARNCHAR;
-	    }
+	    } // switch()
 	}
 
       /* report any unsupported arguments */
@@ -2030,17 +1986,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 
 	case PT_GROUP_CONCAT:
 	{
-	  if (arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR)
-	    {
-	      node->type_enum = PT_TYPE_VARNCHAR;
-	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARNCHAR);
-	      if (node->data_type == NULL)
-		{
-		  assert (false);
-		}
-	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-	    }
-	  else if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
+	  if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
 	    {
 	      node->type_enum = PT_TYPE_VARBIT;
 	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
@@ -2095,24 +2041,14 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  /* arg1 should be VAR-str, but compatible with arg4 (except when arg4 is BIT - no casting to bit on arg1) */
 	  if (! (PT_IS_STRING_TYPE (arg1_type)))
 	    {
-	      PT_TYPE_ENUM upgraded_type = PT_TYPE_NONE;
-	      if (arg4_type == PT_TYPE_NCHAR)
-		{
-		  upgraded_type = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  upgraded_type = PT_TYPE_VARCHAR;
-		}
-
 	      new_att =
-		      pt_wrap_with_cast_op (parser, arg_array[0], upgraded_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+		      pt_wrap_with_cast_op (parser, arg_array[0], PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	      if (new_att == NULL)
 		{
 		  break;
 		}
 	      node->info.function.arg_list = arg_array[0] = new_att;
-	      arg_type = arg1_type = upgraded_type;
+	      arg_type = arg1_type = PT_TYPE_VARCHAR;
 	    }
 	  else
 	    {
@@ -2146,13 +2082,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    }
 
 	  /* set result type and precision */
-	  if (arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR)
-	    {
-	      node->type_enum = PT_TYPE_VARNCHAR;
-	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARNCHAR);
-	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-	    }
-	  else if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
+	  if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
 	    {
 	      node->type_enum = PT_TYPE_VARBIT;
 	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
@@ -2175,26 +2105,8 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	      arg_array[2]->next = arg_array[3] = new_att;
 	    }
 	  /* final check of arg and arg4 type matching */
-	  if ((arg4_type == PT_TYPE_VARNCHAR || arg4_type == PT_TYPE_NCHAR)
-	      && (arg_type == PT_TYPE_VARCHAR || arg_type == PT_TYPE_CHAR))
-	    {
-	      arg_type = PT_TYPE_NONE;
-	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
-			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
-			   pt_show_type_enum (arg4_orig_type));
-	    }
-	  else if ((arg_type == PT_TYPE_VARNCHAR || arg_type == PT_TYPE_NCHAR)
-		   && (arg4_type == PT_TYPE_VARCHAR || arg4_type == PT_TYPE_CHAR))
-	    {
-	      arg_type = PT_TYPE_NONE;
-	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
-			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
-			   pt_show_type_enum (arg4_orig_type));
-	    }
-	  else if ((arg_type == PT_TYPE_VARBIT || arg_type == PT_TYPE_BIT)
-		   && (arg4_type != PT_TYPE_VARBIT && arg4_type != PT_TYPE_BIT))
+	  if ((arg_type == PT_TYPE_VARBIT || arg_type == PT_TYPE_BIT)
+	      && (arg4_type != PT_TYPE_VARBIT && arg4_type != PT_TYPE_BIT))
 	    {
 	      arg_type = PT_TYPE_NONE;
 	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
@@ -2811,28 +2723,6 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  precision = DB_MAX_VARCHAR_PRECISION;
-	}
-      break;
-    case PT_TYPE_NCHAR:
-      if (node->data_type != NULL)
-	{
-	  precision = node->data_type->info.data_type.precision;
-	}
-
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  precision = DB_MAX_NCHAR_PRECISION;
-	}
-      break;
-    case PT_TYPE_VARNCHAR:
-      if (node->data_type != NULL)
-	{
-	  precision = node->data_type->info.data_type.precision;
-	}
-
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  precision = DB_MAX_VARNCHAR_PRECISION;
 	}
       break;
     case PT_TYPE_NULL:
