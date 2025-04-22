@@ -4929,8 +4929,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 static bool
 pt_is_ascii_string_value_node (const PT_NODE * const node)
 {
-  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum)
-	  && !PT_IS_NATIONAL_CHAR_STRING_TYPE (node->type_enum));
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum));
 }
 
 /*
@@ -5611,16 +5610,6 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 		{
 		  escape_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (escape->expected_domain));
 		}
-	    }
-
-	  if (PT_IS_NATIONAL_CHAR_STRING_TYPE (pattern_type)
-	      || (escape != NULL && PT_IS_NATIONAL_CHAR_STRING_TYPE (escape_type)))
-	    {
-	      /* We disable LIKE optimizations on national character strings until the internationalization support in
-	       * CUBRID is better. The optimization logic for national character strings should be the same as the
-	       * current logic, but the existing functions would need to be extended to support correctly iterating
-	       * through national character strings. */
-	      continue;
 	    }
 
 	  if (pt_is_ascii_string_value_node (pattern)
