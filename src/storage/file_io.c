@@ -109,6 +109,7 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
+#include "thread_worker_pool.hpp"	// for system_core_count
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -121,7 +122,6 @@
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "thread_worker_pool.hpp"	// for system_core_count
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
