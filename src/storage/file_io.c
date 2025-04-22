@@ -121,6 +121,9 @@
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp" // for system_core_count
+#endif // SERVER_MODE
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
@@ -6632,7 +6635,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
 
   /* get the number of CPUs */
-  num_cpus = system_core_count ();
+  num_cpus = cubthread::system_core_count ();
   /* check for the upper bound of threads */
   if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {

@@ -423,7 +423,11 @@ namespace cubthread
     std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
-    std::size_t max_backup_read_workers = system_core_count (); // one per each backup read task
+#if defined (SERVER_MODE)
+    std::size_t max_backup_read_workers = cubthread::system_core_count (); // one per each backup read task
+#else // not SERVER_MODE = SA_MODE
+    std::size_t max_backup_read_workers = 0; // one per each backup read task
+#endif // SERVER_MODE
 
     // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
     //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
