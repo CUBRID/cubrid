@@ -122,7 +122,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 #if defined (SERVER_MODE)
-#include "thread_worker_pool.hpp" // for system_core_count
+#include "thread_worker_pool.hpp"	// for system_core_count
 #endif // SERVER_MODE
 
 /************************************************************************/
