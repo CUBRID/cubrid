@@ -21,7 +21,6 @@
  *                          the disk representation of
  */
 
-#include "cubvec_assert.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -33,6 +32,7 @@
 #include <setjmp.h>
 #include <assert.h>
 
+#include "cubvec_assert.h"
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "error_manager.h"

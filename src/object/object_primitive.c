@@ -22,10 +22,6 @@
  *                      the disk representation.
  */
 
-#include "dbtype_def.h"
-#include "memory_alloc.h"
-#include "vector_float.hpp"
-#include <cstdio>
 #ident "$Id$"
 
 #include "config.h"
@@ -62,6 +58,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "vector_float.hpp"
 #include "memory_private_allocator.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
