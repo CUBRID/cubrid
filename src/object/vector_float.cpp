@@ -24,12 +24,8 @@
 #include "cubvec_assert.h"
 #include "object_representation.h"
 #include <sstream>
-
-int
-or_put_float_array_internal (OR_BUF *buf, const float *float_array, int array_length, int align)
-{
-  ASSERT_CUBVEC (false);
-}
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 std::string db_vector_float_to_string (const db_vector_float vf)
 {
