@@ -14681,7 +14681,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
     {
       if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
 	{
-	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  //assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;
 	}
     }
@@ -14689,7 +14689,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
     {
       if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
 	{
-	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  //assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;
 	}
     }

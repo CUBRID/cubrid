@@ -11704,12 +11704,15 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       attr = attr->next;
     }
 
-  error =
-    check_for_cons (parser, &statement->info.insert.has_uniques, &statement->info.insert.non_null_attrs, attrs,
-		    class_->info.name.db_object);
-  if (error != NO_ERROR)
+  if (class_)
     {
-      goto end;
+      error =
+	check_for_cons (parser, &statement->info.insert.has_uniques, &statement->info.insert.non_null_attrs, attrs,
+			class_->info.name.db_object);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   server_preference = prm_get_integer_value (PRM_ID_INSERT_MODE);
@@ -11767,38 +11770,41 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (statement->info.insert.do_replace && statement->info.insert.has_uniques)
+  if (class_)
     {
-      error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_DELETE);
+      if (statement->info.insert.do_replace && statement->info.insert.has_uniques)
+	{
+	  error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_DELETE);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (trigger_involved)
+	    {
+	      goto end;
+	    }
+	}
+
+      if (statement->info.insert.odku_assignments != NULL && statement->info.insert.has_uniques)
+	{
+	  error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_UPDATE);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (trigger_involved)
+	    {
+	      goto end;
+	    }
+	}
+
+      error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_INSERT);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-
-      if (trigger_involved)
-	{
-	  goto end;
-	}
-    }
-
-  if (statement->info.insert.odku_assignments != NULL && statement->info.insert.has_uniques)
-    {
-      error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_UPDATE);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      if (trigger_involved)
-	{
-	  goto end;
-	}
-    }
-
-  error = sm_class_has_triggers (class_->info.name.db_object, &trigger_involved, TR_EVENT_INSERT);
-  if (error != NO_ERROR)
-    {
-      goto end;
     }
 
   /* Even if unique indexes are defined on the class, the operation could be performed on server. */
@@ -13589,7 +13595,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OTMPL *otemplate = NULL;
 
   if (!statement || statement->node_type != PT_INSERT || !statement->info.insert.spec
-      || !statement->info.insert.spec->info.spec.flat_entity_list)
+      || (!statement->info.insert.spec->info.spec.flat_entity_list
+	  && !statement->info.insert.spec->info.spec.remote_server_name))
     {
       return ER_GENERIC_ERROR;
     }
@@ -13608,18 +13615,21 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = do_evaluate_default_expr (parser, class_);
-  if (error != NO_ERROR)
+  if (class_)
     {
-      return error;
-    }
+      error = do_evaluate_default_expr (parser, class_);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
-  error =
-    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				  has_default_values_list);
-  if (error != NO_ERROR)
-    {
-      return error;
+      error =
+	check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+				      has_default_values_list);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   crt_list = statement->info.insert.value_clauses;
@@ -13650,12 +13660,15 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       need_savepoint = true;
     }
 
-  if (need_savepoint == false)
+  if (class_)
     {
-      statement = parser_walk_tree (parser, statement, NULL, NULL, test_check_option, &has_check_option);
-      if (has_check_option)
+      if (need_savepoint == false)
 	{
-	  need_savepoint = true;
+	  statement = parser_walk_tree (parser, statement, NULL, NULL, test_check_option, &has_check_option);
+	  if (has_check_option)
+	    {
+	      need_savepoint = true;
+	    }
 	}
     }
 
@@ -13663,37 +13676,40 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   parser->au_save = save;
 
-  if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
+  if (class_)
     {
-      has_trigger = 0;
-      error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_UPDATE);
-      if (error != NO_ERROR)
+      if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
 	{
-	  AU_ENABLE (save);
-	  return error;
+	  has_trigger = 0;
+	  error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_UPDATE);
+	  if (error != NO_ERROR)
+	    {
+	      AU_ENABLE (save);
+	      return error;
+	    }
+	  if (has_trigger != 0)
+	    {
+	      need_savepoint = true;
+	    }
+	  else if (TM_TRAN_ISOLATION () >= TRAN_REP_READ && !statement->info.insert.server_allowed)
+	    {
+	      need_savepoint = true;
+	    }
 	}
-      if (has_trigger != 0)
-	{
-	  need_savepoint = true;
-	}
-      else if (TM_TRAN_ISOLATION () >= TRAN_REP_READ && !statement->info.insert.server_allowed)
-	{
-	  need_savepoint = true;
-	}
-    }
 
-  if (need_savepoint == false)
-    {
-      has_trigger = 0;
-      error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_INSERT);
-      if (error != NO_ERROR)
+      if (need_savepoint == false)
 	{
-	  AU_ENABLE (save);
-	  return error;
-	}
-      if (has_trigger != 0)
-	{
-	  need_savepoint = true;
+	  has_trigger = 0;
+	  error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_INSERT);
+	  if (error != NO_ERROR)
+	    {
+	      AU_ENABLE (save);
+	      return error;
+	    }
+	  if (has_trigger != 0)
+	    {
+	      need_savepoint = true;
+	    }
 	}
     }
 
@@ -20479,6 +20495,13 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int trigger_involved = 0;
   *update = NULL;
 
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      /* dblink query */
+      statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
+      return NO_ERROR;
+    }
+
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
   if (error != NO_ERROR)
@@ -20510,12 +20533,15 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       has_default_values_list = true;
     }
 
-  error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-					has_default_values_list);
-  if (error != NO_ERROR)
+  if (*class_)
     {
-      ASSERT_ERROR ();
-      goto exit;
+      error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+					    has_default_values_list);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
 
   /* Test if server UPDATE is allowed */
@@ -20572,11 +20598,14 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
 	}
     }
 
-  /* fetch the class for instance write purpose - IX_LOCK */
-  if (!locator_fetch_class ((*class_)->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+  if (*class_)
     {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
+      /* fetch the class for instance write purpose - IX_LOCK */
+      if (!locator_fetch_class ((*class_)->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
+	}
     }
 
 exit:

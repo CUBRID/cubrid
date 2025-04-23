@@ -7886,7 +7886,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   switch (node->node_type)
     {
     case PT_EXPR:
-      node = pt_eval_expr_type (parser, node);
+      if (sc_info->remote_server_name == NULL)
+	{
+	  node = pt_eval_expr_type (parser, node);
+	}
 #if 1				//original code but it doesn't check for errors
       if (node == NULL)
 	{
@@ -19265,7 +19268,7 @@ end:
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, NULL };
 
   if (pt_has_error (parser))
     {
@@ -19275,6 +19278,24 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       sc_info_ptr = &sc_info;
     }
+
+  if (tree)
+    {
+      sc_info_ptr->remote_server_name = NULL;
+
+      switch (tree->node_type)
+	{
+	case PT_DELETE:
+	  sc_info_ptr->remote_server_name = tree->info.delete_.spec->info.spec.remote_server_name;
+	  break;
+	case PT_INSERT:
+	  sc_info_ptr->remote_server_name = tree->info.insert.spec->info.spec.remote_server_name;
+	  break;
+	default:
+	  break;
+	}
+    }
+
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   if (pt_has_error (parser))

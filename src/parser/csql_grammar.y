@@ -5792,11 +5792,6 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-		if (is_in_create_trigger)
-		  {
-		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
-		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
-		  }
                 DBG_PRINT}}
         ;
 

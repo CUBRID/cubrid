@@ -1928,6 +1928,7 @@ struct semantic_chk_info
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
   bool donot_fold;		/* false - off, true - on */
   bool system_class;		/* system class(es) is(are) referenced */
+  PT_NODE *remote_server_name;
 };
 
 struct nested_view_version_info
@@ -3862,6 +3863,7 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned rewrite_for_dblink:1;	/* for DBLINK rewrite once */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };

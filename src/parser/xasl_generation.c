@@ -309,7 +309,9 @@ static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list,
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
+static PT_NODE *pt_check_dblink_trigger_pred (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
+static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -18568,6 +18570,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
 
@@ -20318,6 +20322,104 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   return statement;
 }
 
+static PT_NODE *
+pt_check_dblink_trigger_pred (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *prev = NULL, *values;
+  PT_NODE *list, *arg1, *arg2, *arg3;
+  DB_VALUE tmp;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NODE_LIST:
+      if (node->info.node_list.list_type == PT_IS_VALUE)
+	{
+	  for (list = node->info.node_list.list; list; list = list->next)
+	    {
+	      if (list->node_type == PT_NAME && list->info.name.meta_class == PT_TRIGGER_OID)
+		{
+		  db_value_clear (&tmp);
+		  pt_evaluate_tree (parser, list, &tmp, 1);
+		  values = pt_dbval_to_value (parser, &tmp);
+		  if (prev == NULL)
+		    {
+		      node->info.node_list.list = values;
+		    }
+		  else
+		    {
+		      prev->next = values;
+		    }
+		  values->next = list->next;
+		  prev = values;
+		}
+	      else
+		{
+		  prev = list;
+		}
+	    }
+	}
+      break;
+
+    case PT_EXPR:
+      arg1 = node->info.expr.arg1;
+      arg2 = node->info.expr.arg2;
+      arg3 = node->info.expr.arg3;
+      if (arg1 && arg1->node_type == PT_NAME && arg1->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg1, &tmp, 1);
+	  node->info.expr.arg1 = pt_dbval_to_value (parser, &tmp);
+	}
+      if (arg2 && arg2->node_type == PT_NAME && arg2->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg2, &tmp, 1);
+	  node->info.expr.arg2 = pt_dbval_to_value (parser, &tmp);
+	}
+      if (arg3 && arg3->node_type == PT_NAME && arg3->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg3, &tmp, 1);
+	  node->info.expr.arg3 = pt_dbval_to_value (parser, &tmp);
+	}
+      db_value_clear (&tmp);
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+static void
+pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      statement->info.insert.value_clauses =
+	parser_walk_tree (parser, statement->info.insert.value_clauses, pt_check_dblink_trigger_pred, NULL, NULL, NULL);
+      break;
+    case PT_UPDATE:
+      break;
+    case PT_DELETE:
+      statement =
+	parser_walk_tree (parser, statement->info.delete_.search_cond, pt_check_dblink_trigger_pred, NULL, NULL, NULL);
+      break;
+    default:
+      break;
+    }
+
+  return;
+}
+
 
 /*
  * pt_to_delete_xasl () - Converts an delete parse tree to
@@ -20981,6 +21083,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (from && from->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
       return pt_to_xasl_for_dblink (parser, from);
     }
 

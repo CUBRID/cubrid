@@ -3070,12 +3070,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       spec_frame.extra_specs = NULL;
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
-
+#if 0
       if (node->info.insert.spec->info.spec.remote_server_name)
 	{
 	  goto insert_end;
 	}
-
+#endif
       result = pt_resolve_vclass_args (parser, node);
       if (!result)
 	{
@@ -3095,10 +3095,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
 
-      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+      //if (node->info.insert.spec->info.spec.remote_server_name == NULL)
+      {
+	parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      }
 
       /* Check for double assignments */
       pt_no_double_insert_assignments (parser, node);
@@ -4146,6 +4146,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
       else
 	{
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      /* for dblink processing */
+	      return 1;
+	    }
 	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
 	}
     }
@@ -5945,6 +5950,11 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
+	      if (spec->info.spec.remote_server_name)
+		{
+		  return NULL;
+		}
+
 	      if (savespec)
 		{
 		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
