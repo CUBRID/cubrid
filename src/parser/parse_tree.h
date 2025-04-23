@@ -1105,8 +1105,6 @@ enum pt_type_enum
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,		//------------------------
-  PT_TYPE_VARNCHAR,		//--------------------------
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
