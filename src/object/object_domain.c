@@ -1966,7 +1966,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
     case DB_TYPE_VECTOR:
       {
-	ASSERT_CUBVEC (false);
+	vimkim_log("WARNING: not analyzed yet.\n");
       }
 
     case DB_TYPE_NULL:
