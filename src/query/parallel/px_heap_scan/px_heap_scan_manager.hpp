@@ -33,6 +33,8 @@
 #include "px_heap_scan_mergable_list.hpp"
 #include "xasl.h"
 
+#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
+
 namespace parallel_heap_scan
 {
   enum class RESULT_GET_METHOD
