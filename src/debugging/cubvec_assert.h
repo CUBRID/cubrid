@@ -90,7 +90,7 @@
 #define vimkim_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_HORNETMJ_LOG)
+#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(HORNETMJ)
 #define hornetmj_log(...) \
   do { \
       FILE *logfile = fopen("hornetmj.log", "a"); \
@@ -104,7 +104,7 @@
 #define hornetmj_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_HGRYOO_LOG)
+#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(HGRYOO)
 #define hgryoo_log(...) \
   do { \
       FILE *logfile = fopen("hgryoo.log", "a"); \
@@ -118,7 +118,7 @@
 #define hgryoo_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_YEUNJUNLEE_LOG)
+#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(YEUNJUNLEE)
 #define yeunjunlee_log(...) \
   do { \
       FILE *logfile = fopen("yeunjunlee.log", "a"); \
@@ -132,7 +132,7 @@
 #define yeunjunlee_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_VIMKIM_LOG)
+#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && (VIMKIM)
 #define vimkim_log(...) \
   do { \
       FILE *logfile = fopen("vimkim.log", "a"); \
