@@ -1965,10 +1965,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     {
 
     case DB_TYPE_VECTOR:
-      {
-	vimkim_log ("WARNING: not analyzed yet.\n");
-      }
-
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -2550,6 +2546,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       assert (false);
       break;
       /* don't have a default so we make sure to add clauses for all types */
+    }
+
+  if (TP_DOMAIN_TYPE (dlist) == DB_TYPE_VECTOR)
+    {
+      vimkim_log ("WARNING: not analyzed yet.\n");
+      vimkim_log ("args: dlist %p, transient %p, exact %d\n", dlist, transient, exact);
+      vimkim_log ("match %d, domain %p, return %p\n", match, domain, (match ? domain : NULL));
     }
 
   return (match ? domain : NULL);
