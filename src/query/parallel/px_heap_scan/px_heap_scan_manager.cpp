@@ -302,7 +302,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
 			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads)
 {
-  int ret, n_user_pages;
+  int ret, n_user_pages = 0;
   int parallelism = num_parallel_threads;
   HL_HEAPID orig_heap_id;
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
@@ -311,7 +311,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
 			     num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
-  if (file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages) != NO_ERROR)
+  if (!HFID_IS_NULL (hfid) && file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages) != NO_ERROR)
     {
       assert (false);
       return S_ERROR;
