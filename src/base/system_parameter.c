@@ -2503,9 +2503,9 @@ static bool prm_enable_jvm_heap_dump_default = true;
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
 int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
-static int prm_parallel_heap_scan_threads_default = 0;
+static int prm_parallel_heap_scan_threads_default = 2;
 static int prm_parallel_heap_scan_threads_lower = 0;
-static int prm_parallel_heap_scan_threads_upper = 64;
+static int prm_parallel_heap_scan_threads_upper = 32;
 static unsigned int prm_parallel_heap_scan_threads_flag = 0;
 
 
