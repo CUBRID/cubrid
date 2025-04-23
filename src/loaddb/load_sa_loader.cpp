@@ -6827,6 +6827,12 @@ ldr_vector_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   int count = 0;
   const int max_vector_size = 2000;
   float *float_array = (float *) db_private_alloc (NULL, sizeof (float) * max_vector_size);
+  vimkim_log("db_private_alloc: %p, size = %zu\n", float_array, sizeof (float) * max_vector_size);
+  ASSERT_CUBVEC(float_array != NULL);
+  if (float_array == NULL)
+    {
+      return ER_FAILED;
+    }
 
   DB_VALUE e_val;
 
