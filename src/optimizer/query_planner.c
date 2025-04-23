@@ -6159,11 +6159,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *inner_node;
+  QO_NODE *outer_node, *inner_node;
+  QO_NODE_INDEX *node_index;
   QO_TERM *term;
-  BITSET_ITERATOR term_iter;
-  int term_index;
-  int n = 0;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
+  int i, n = 0;
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
@@ -6197,10 +6198,10 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    * 
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
-  for (term_index = bitset_iterate (hash_join_terms, &term_iter); term_index != -1;
-       term_index = bitset_next_member (&term_iter))
+  for (bitset_index = bitset_iterate (hash_join_terms, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
     {
-      term = QO_ENV_TERM (info->env, term_index);
+      term = QO_ENV_TERM (info->env, bitset_index);
       if (QO_IS_PATH_TERM (term))
 	{
 	  goto exit;		/* give up */
@@ -6234,6 +6235,34 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 #endif /* TEST_HASH_JOIN_ENABLE */
     }
 
+  /* Check if a key limit is set. */
+  node_index = QO_NODE_INDEXES (inner_node);
+  if (node_index != NULL)
+    {
+      for (i = 0; i < QO_NI_N (node_index); i++)
+	{
+	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
+  for (bitset_index = bitset_iterate (&outer->nodes, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
+    {
+      outer_node = QO_ENV_NODE (outer->env, bitset_index);
+      node_index = QO_NODE_INDEXES (outer_node);
+
+      for (i = 0; i < QO_NI_N (node_index); i++)
+	{
+	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
   outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
   if (outer_plan == NULL)
     {
@@ -6244,22 +6273,6 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (inner_plan == NULL)
     {
       goto exit;
-    }
-
-  if (qo_is_iscan (outer_plan) || qo_is_iscan_from_orderby (outer_plan))
-    {
-      if (outer_plan->plan_un.scan.index->head->key_limit != NULL)
-	{
-	  goto exit;		/* give up */
-	}
-    }
-
-  if (qo_is_iscan (inner_plan) || qo_is_iscan_from_orderby (inner_plan))
-    {
-      if (inner_plan->plan_un.scan.index->head->key_limit != NULL)
-	{
-	  goto exit;		/* give up */
-	}
     }
 
   n =

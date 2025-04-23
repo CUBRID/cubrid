@@ -311,19 +311,17 @@ qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
 static bool
 qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
 {
-  /*
-   * outer
-   */
-  fprintf (foutput, "[outer xasl:%p]\n", node_p->outer.xasl);
-  fprintf (foutput, "\n\tregu_list_pred:");
+  /* outer */
+  fprintf (foutput, "[outer xasl:%p]", node_p->outer.xasl);
+  fprintf (foutput, "\n	regu_list_pred:");
   qdump_print_regu_variable_list (node_p->outer.regu_list_pred);
+  fprintf (foutput, "\n");
 
-  /*
-   * inner
-   */
-  fprintf (foutput, "[inner xasl:%p]\n", node_p->inner.xasl);
-  fprintf (foutput, "\n\tregu_list_pred:");
+  /* inner */
+  fprintf (foutput, "[inner xasl:%p]", node_p->inner.xasl);
+  fprintf (foutput, "\n	regu_list_pred:");
   qdump_print_regu_variable_list (node_p->inner.regu_list_pred);
+  fprintf (foutput, "\n");
 
   qdump_print_list_merge_info (&node_p->merge_info);
   fprintf (foutput, "\n");

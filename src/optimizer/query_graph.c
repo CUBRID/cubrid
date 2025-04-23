@@ -1545,35 +1545,41 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
   entity = QO_NODE_ENTITY_SPEC (head);
   if (pt_is_name_node (node) && PT_SPEC_IS_ENTITY (entity))
     {
+      const char *class_name = entity->info.spec.entity_name->info.name.original;
       int i;
       bool found = false;
-      cls = sm_find_class (entity->info.spec.entity_name->info.name.original);
-      constraints = sm_class_constraints (cls);
-
-      while (constraints != NULL)
+      if (class_name != NULL)
 	{
-	  if (!SM_IS_CONSTRAINT_NOT_NULL_FAMILY (constraints->type))
+	  cls = sm_find_class (class_name);
+	  if (cls != NULL)
 	    {
-	      constraints = constraints->next;
-	      continue;
-	    }
-
-	  /* check columns on this constraint */
-	  for (i = 0; constraints->attributes[i]; i++)
-	    {
-	      attrp = constraints->attributes[i];
-	      if (intl_identifier_casecmp (node->info.name.original, attrp->header.name) == 0)
+	      constraints = sm_class_constraints (cls);
+	      while (constraints != NULL)
 		{
-		  QO_SEG_IS_NOT_NULL (seg) = true;
-		  found = true;
-		  break;
+		  if (!SM_IS_CONSTRAINT_NOT_NULL_FAMILY (constraints->type))
+		    {
+		      constraints = constraints->next;
+		      continue;
+		    }
+
+		  /* check columns on this constraint */
+		  for (i = 0; constraints->attributes[i]; i++)
+		    {
+		      attrp = constraints->attributes[i];
+		      if (intl_identifier_casecmp (node->info.name.original, attrp->header.name) == 0)
+			{
+			  QO_SEG_IS_NOT_NULL (seg) = true;
+			  found = true;
+			  break;
+			}
+		    }
+		  if (found)
+		    {
+		      break;
+		    }
+		  constraints = constraints->next;
 		}
 	    }
-	  if (found)
-	    {
-	      break;
-	    }
-	  constraints = constraints->next;
 	}
     }
 
