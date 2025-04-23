@@ -31,6 +31,7 @@
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
 
+#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 namespace parallel_heap_scan
 {
   class manager
