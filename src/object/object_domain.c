@@ -5045,6 +5045,9 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
     {
+      db_private_free (nullptr, vector_float.float_array);
+      vimkim_log ("db_string_to_vector failed: %d\n", error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
 
