@@ -5006,11 +5006,6 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  /* Rewrite the CTEs in the WITH clause.
-   * When rewriting subqueries within WITH clause, subqueries with MATERIALIZE hint can reference other subqueries, 
-   * but subqueries without MATERIALIZE hint cannot reference subqueries that have MATERIALIZE hint. */
-  with_clause = parser_walk_tree (parser, with_clause, mq_rewrite_cte_pre, NULL, NULL, NULL);
-
   /* Count the number of CTE references, except for the with clause. */
   node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
 
@@ -5212,16 +5207,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 
-	  /* If the referenced count is -1, the current spec node is placed in the WITH clause.
-	   * In the WITH clause, always rewrite CTE as a derived table, except when the CTE has a MATERIALIZE hint. */
-	  if (cte->info.cte.referenced_count == -1)
-	    {
-	      if (hint & PT_HINT_MATERIALIZE_CTE)
-		{
-		  return node;
-		}
-	    }
-	  else if (cte->info.cte.referenced_count >= 2)
+	  if (cte->info.cte.referenced_count >= 2)
 	    {
 	      /* If the referenced count is 2 or more, it is treated as a materialized CTE. */
 	      return node;
