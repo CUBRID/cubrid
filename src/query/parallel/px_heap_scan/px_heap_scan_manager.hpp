@@ -31,6 +31,7 @@
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
 
+#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 namespace parallel_heap_scan
 {
   class manager
@@ -45,10 +46,9 @@ namespace parallel_heap_scan
       bool m_is_start_once;
       bool timeout_occurred;
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
-      std::size_t parallelism;
+      std::size_t m_parallelism;
 
-      manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-	       std::size_t core_count, QUERY_ID query_id);
+      manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t parallelism, QUERY_ID query_id);
       ~manager();
       SCAN_CODE get_result_from_list_stream ();
       void terminate_tasks();
@@ -65,7 +65,6 @@ namespace parallel_heap_scan
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
       std::shared_ptr<context> m_context;
-      cubthread::entry_workpool *m_workpool;
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_reader> m_list_reader;
   };

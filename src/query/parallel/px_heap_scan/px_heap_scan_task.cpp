@@ -43,13 +43,13 @@ namespace parallel_heap_scan
 {
   task::task (std::shared_ptr<context> context,
 	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
-	      std::shared_ptr<list_id_wrapper> list_id_wrapper)
+	      std::shared_ptr<list_id_wrapper> list_id_wrapper, parallel_query::worker_manager *worker_manager)
     : m_context (context)
     , m_memory_mapper (memory_mapper)
     , m_list_stream (list_stream)
     , m_list_id_wrapper (list_id_wrapper)
+    , m_worker_manager (worker_manager)
   {
-
   }
 
   task::~task()
@@ -242,6 +242,13 @@ namespace parallel_heap_scan
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif
     m_context->add_tasks_executed();
+  }
+
+  void
+  task::retire ()
+  {
+    m_worker_manager->pop_task();
+    cubthread::entry_task::retire();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */

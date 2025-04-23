@@ -391,6 +391,18 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
   )
 
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp
@@ -689,6 +701,8 @@ add_library(cubridsa SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

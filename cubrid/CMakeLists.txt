@@ -321,6 +321,18 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
   )
 
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_query_util.cpp
@@ -544,6 +556,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -560,6 +573,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_HEADERS}
   )
 
 add_library(cubrid SHARED

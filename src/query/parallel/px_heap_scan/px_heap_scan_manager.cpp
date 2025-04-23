@@ -23,8 +23,9 @@
 #if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_manager.hpp"
-#include "px_heap_scan_task.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_task.hpp"
+#include "px_worker_manager.hpp"
 #include "query_manager.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
@@ -38,35 +39,31 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define PAGE_QUEUE_SIZE_PER_CORE 128
+
 namespace parallel_heap_scan
 {
-  manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-		    std::size_t core_count, QUERY_ID query_id)
+  manager::manager (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t parallel, QUERY_ID query_id)
   {
     m_is_start_once = false;
     timeout_occurred = false;
     m_thread_p = thread_p;
     m_scan_id = scan_id;
-    parallelism = core_count;
+    m_parallelism = parallel;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
-    m_list_stream = std::make_shared<list_stream> (thread_p, core_count, 128, query_id, scan_id);
+    m_list_stream = std::make_shared<list_stream> (thread_p, m_parallelism, PAGE_QUEUE_SIZE_PER_CORE, query_id, scan_id);
     m_list_reader = std::make_shared<list_reader> ();
-    m_memory_mappers.reserve (parallelism);
-    for (size_t i = 0; i < parallelism; i++)
+    m_memory_mappers.reserve (m_parallelism);
+    for (size_t i = 0; i < m_parallelism; i++)
       {
 	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
       }
-    m_workpool = thread_get_manager()->create_worker_pool (core_count, core_count, "Parallel heap scan pool",
-		 m_context.get(), core_count, true);
   }
 
   manager::~manager()
   {
-    if (m_workpool != nullptr)
-      {
-	thread_get_manager()->destroy_worker_pool (m_workpool);
-      }
+    parallel_query::worker_manager::get_manager().release_workers ();
   }
 
   void manager::terminate_tasks()
@@ -173,17 +170,20 @@ namespace parallel_heap_scan
 	OID_SET_NULL (&scan_id->s.hsid.curr_oid);
       }
     m_list_stream.reset();
-    m_list_stream = std::make_shared<list_stream> (m_thread_p, parallelism, 128, m_query_id, m_scan_id);
+    m_list_stream = std::make_shared<list_stream> (m_thread_p, m_parallelism, PAGE_QUEUE_SIZE_PER_CORE, m_query_id,
+		    m_scan_id);
   }
 
   void manager::start_tasks ()
   {
     std::unique_ptr<task> taskp = NULL;
+    parallel_query::worker_manager *worker_manager = &parallel_query::worker_manager::get_manager();
 
-    for (size_t i = 0; i < parallelism; i++)
+    for (size_t i = 0; i < m_parallelism; i++)
       {
-	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i]));
-	thread_get_manager()->push_task (m_workpool, taskp.release());
+	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i],
+			       worker_manager));
+	worker_manager->push_task (taskp.release());
 	m_context->add_tasks_started();
       }
   }
@@ -279,7 +279,7 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   HL_HEAPID orig_heap_id;
   if (thread_is_on_trace (thread_p))
     {
-      std::size_t parallelism = scan_id->s.phsid.manager->parallelism;
+      std::size_t parallelism = scan_id->s.phsid.manager->m_parallelism;
       scan_id->s.phsid.perf_monitor = new parallel_heap_scan::perf_monitor (scan_id, parallelism);
       /* should be deleted in qdump_print_access_specs_text or json */
     }
@@ -302,7 +302,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
 			      bool is_partition_table, QUERY_ID query_id, int num_parallel_threads)
 {
-  int ret;
+  int ret, n_user_pages = 0;
   int parallelism = num_parallel_threads;
   HL_HEAPID orig_heap_id;
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
@@ -311,11 +311,22 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
 			     num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
-  scan_id->type = S_PARALLEL_HEAP_SCAN;
-  orig_heap_id = db_change_private_heap (thread_p, 0);
-  scan_id->s.phsid.manager = new parallel_heap_scan::manager (thread_p, scan_id, parallelism, parallelism,
-      parallelism, query_id);
-  db_change_private_heap (thread_p, orig_heap_id);
+  if (!HFID_IS_NULL (hfid) && file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages) != NO_ERROR)
+    {
+      assert (false);
+      return S_ERROR;
+    }
+  if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
+    {
+      if (!parallel_query::worker_manager::get_manager().try_reserve_workers (parallelism))
+	{
+	  return ret;
+	}
+      scan_id->type = S_PARALLEL_HEAP_SCAN;
+      orig_heap_id = db_change_private_heap (thread_p, 0);
+      scan_id->s.phsid.manager = new parallel_heap_scan::manager (thread_p, scan_id, parallelism, query_id);
+      db_change_private_heap (thread_p, orig_heap_id);
+    }
   return ret;
 }
 
