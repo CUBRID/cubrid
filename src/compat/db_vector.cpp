@@ -21,6 +21,7 @@
  * @brief Implements string to vector conversion functionality
  */
 
+#include "cubvec_assert.h"
 #include "error_code.h"
 #include <cmath>
 #include <limits>
@@ -60,6 +61,12 @@ int db_string_to_vector (
   size_t size = doc.Size();
   if (size > static_cast<size_t> (std::numeric_limits<int>::max()))
     {
+      return ER_FAILED;
+    }
+
+  if (size > 2000)
+    {
+      vimkim_log("Parsed vector dim %zu is larger than the limit 2000\n", size);
       return ER_FAILED;
     }
 

@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include <unistd.h>
+#include "error_manager.h"
 
 /******************************************************************************
  * Assertions
