@@ -39,8 +39,12 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
  * @param value A pointer to a DB_VALUE object that holds a vector.
  * @return std::vector<float> A vector containing the float elements extracted from the DB_VALUE.
  */
+/* deprecated */
 std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 {
+  /* The design of DB_TYPE_VECTOR has drastically changed. It is recommended that you use db_get_vector_float and access arr instead. */
+  cubvec_log ("WARNING: This function is deprecated.");
+
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
   const auto vf = db_get_vector_float (value);
