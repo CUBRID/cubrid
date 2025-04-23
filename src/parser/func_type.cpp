@@ -1049,8 +1049,7 @@ namespace func_type
 	    m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
 	    if (m_node->data_type)
 	      {
-		m_node->data_type->info.data_type.precision =
-			(m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+		m_node->data_type->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
 		m_node->data_type->info.data_type.dec_precision = 0;
 	      }
 	    break;
@@ -1718,7 +1717,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 
 	  switch (PT_TYPE_MIN + i)
 	    {
-	    // PT_IS_NUMERIC_TYPE
+	    /* NUMERIC TYPE */
 	    case PT_TYPE_INTEGER:
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_FLOAT:
@@ -1728,11 +1727,11 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    case PT_TYPE_LOGICAL:
 	    case PT_TYPE_NUMERIC:
 
-	    // PT_IS_CHAR_STRING_TYPE
+	    /* CHAR STRING TYPE */
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
 
-	    // PT_IS_DATE_TIME_TYPE
+	    /* DATE TIME TYPE */
 	    case PT_TYPE_DATE:
 	    case PT_TYPE_TIME:
 	    case PT_TYPE_TIMESTAMP:
@@ -1742,6 +1741,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    case PT_TYPE_TIMESTAMPTZ:
 	    case PT_TYPE_TIMESTAMPLTZ:
 
+	    /* Others */
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_NONE:
 	    case PT_TYPE_NA:
@@ -2159,14 +2159,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    {
 	      if (PT_IS_CHAR_STRING_TYPE (arg->type_enum))
 		{
-		  if (arg->type_enum == PT_TYPE_CHAR || arg->type_enum == PT_TYPE_VARCHAR)
-		    {
-		      arg_type = PT_TYPE_VARCHAR;
-		    }
-		  else
-		    {
-		      arg_type = PT_TYPE_VARNCHAR;
-		    }
+		  arg_type = PT_TYPE_VARCHAR;
 		}
 	      else
 		{

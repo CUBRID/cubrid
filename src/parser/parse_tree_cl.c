@@ -525,8 +525,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
       name = lambda_arg->name;
 
       /* check for variable string type */
-      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARNCHAR
-	  || tree->type_enum == PT_TYPE_VARBIT)
+      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARBIT)
 	{
 	  switch (tree_or_name->info.expr.op)
 	    {
@@ -8666,10 +8665,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	      {
 		show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
 	      }
-	    else if (p->type_enum == PT_TYPE_VARNCHAR)
-	      {
-		show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
-	      }
 	    else if (p->type_enum == PT_TYPE_VARBIT)
 	      {
 		show_precision = (precision != DB_MAX_VARBIT_PRECISION);
@@ -16586,7 +16581,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
       if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{

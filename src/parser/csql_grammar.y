@@ -26449,8 +26449,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       char *lang_str;
       if (arg3->node_type == PT_VALUE)
 	{
-	  if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR)
-	      && arg3->info.value.data_value.str != NULL)
+	  if (arg3->type_enum == PT_TYPE_CHAR && arg3->info.value.data_value.str != NULL)
 	    {
 	      date_lang = parser_new_node (this_parser, PT_VALUE);
 	      if (!date_lang)
