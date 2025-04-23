@@ -76,26 +76,26 @@
  * Logging
 ******************************************************************************/
 
-#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG)
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined (CUBVEC_TEAM)
 #define cubvec_log(...) \
   do { \
       FILE *logfile = fopen("cubvec.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
   } while (0)
 #else
-#define vimkim_log(...) do {} while (0)
+#define cubvec_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(HORNETMJ)
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(HORNETMJ)
 #define hornetmj_log(...) \
   do { \
       FILE *logfile = fopen("hornetmj.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -104,12 +104,12 @@
 #define hornetmj_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(HGRYOO)
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(HGRYOO)
 #define hgryoo_log(...) \
   do { \
       FILE *logfile = fopen("hgryoo.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -118,12 +118,12 @@
 #define hgryoo_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && defined(YEUNJUNLEE)
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(YEUNJUNLEE)
 #define yeunjunlee_log(...) \
   do { \
       FILE *logfile = fopen("yeunjunlee.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%s][%s]", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -132,7 +132,7 @@
 #define yeunjunlee_log(...) do {} while (0)
 #endif
 
-#if !defined(NDEBUG) && defined(ENABLE_CUBVEC_LOG) && (VIMKIM)
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && (VIMKIM)
 #define vimkim_log(...) \
   do { \
       FILE *logfile = fopen("vimkim.log", "a"); \
