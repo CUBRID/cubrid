@@ -5036,9 +5036,30 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
   vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
 
+  if (vector_float.float_array == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_vector_size * sizeof (float));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
     {
+      return ER_FAILED;
+    }
+
+  if (vector_float.dim == 0)
+    {
+      vimkim_log ("TODO: dim should not be zero yet.\n");
+      db_private_free (nullptr, vector_float.float_array);
+      return ER_FAILED;
+    }
+
+  if (vector_float.dim > max_vector_size)
+    {
+      vimkim_log ("dim cannot exceed %d\n", max_vector_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      db_private_free (nullptr, vector_float.float_array);
       return ER_FAILED;
     }
 

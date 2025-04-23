@@ -1525,6 +1525,10 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "sequence";
       break;
 
+    case PT_TYPE_VECTOR:
+      name = "vector";
+      break;
+
     case PT_TYPE_NCHAR:
       name = "nchar";
       break;
