@@ -239,18 +239,10 @@ typedef enum tp_match
  *    Tests to see if a type is any one of the character types.
  */
 
-#define TP_IS_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
-   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
-
-#define TP_IS_LOB_TYPE(typeid) \
-  (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
-
-#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
-
-#define TP_IS_VAR_LEN_CHAR_TYPE(typeid) \
-    (((typeid) == DB_TYPE_VARCHAR) || ((typeid) == DB_TYPE_VARNCHAR))
+#define TP_IS_CHAR_TYPE(typeid)           ((typeid) == DB_TYPE_VARCHAR || (typeid) == DB_TYPE_CHAR)
+#define TP_IS_LOB_TYPE(typeid)            ((typeid) == DB_TYPE_BLOB || (typeid) == DB_TYPE_CLOB)
+#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) ((typeid) == DB_TYPE_CHAR)
+#define TP_IS_VAR_LEN_CHAR_TYPE(typeid)   ((typeid) == DB_TYPE_VARCHAR)
 
 /*
  * TP_IS_CHAR_BIT_TYPE
@@ -365,8 +357,6 @@ typedef enum tp_match
       (((key1_type) == (key2_type)) || \
       (((key1_type) == DB_TYPE_CHAR || (key1_type) == DB_TYPE_VARCHAR) && \
        ((key2_type) == DB_TYPE_CHAR || (key2_type) == DB_TYPE_VARCHAR)) || \
-      (((key1_type) == DB_TYPE_NCHAR || (key1_type) == DB_TYPE_VARNCHAR) && \
-       ((key2_type) == DB_TYPE_NCHAR || (key2_type) == DB_TYPE_VARNCHAR)) || \
       (((key1_type) == DB_TYPE_BIT || (key1_type) == DB_TYPE_VARBIT) && \
        ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
       (((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT) && \

@@ -1950,13 +1950,6 @@ uci_get_value_indirect (int cs_no, DB_INDICATOR * ind, void **bufp, int *sizep)
 	*sizep = db_get_string_size (&val);
       }
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	*bufp = CONST_CAST (char *, db_get_string (&val));
-	*sizep = db_get_string_size (&val);
-      }
-      break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {

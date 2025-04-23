@@ -785,7 +785,6 @@ namespace cubload
       case LDR_DATETIMELTZ:
       case LDR_DATETIMETZ:
       case LDR_STR:
-      case LDR_NSTR:
       case LDR_BSTR:
       case LDR_XSTR:
       case LDR_ELO_INT:

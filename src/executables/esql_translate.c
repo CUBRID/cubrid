@@ -1210,29 +1210,6 @@ emit_put_db_value (HOST_REF * host)
       }
       break;
 
-    case C_TYPE_NCHAR:
-      {
-	type_str = (char *) "DB_TYPE_NCHAR";
-	ctype_str = "DB_TYPE_C_NCHAR";
-	prec_str = pp_get_precision (host);
-	buf_str = pp_get_addr_expr (host);
-	bufsize_str = pp_get_input_size (host);
-      }
-      break;
-
-    case C_TYPE_VARNCHAR:
-      {
-	type_str = (char *) "DB_TYPE_VARNCHAR";
-	ctype_str = "DB_TYPE_C_NCHAR";
-	prec_str = pp_get_precision (host);
-	buf_str = pp_get_addr_expr (host);
-	if (pp_disable_varchar_length)
-	  {
-	    bufsize_str = pp_get_input_size (host);
-	  }
-      }
-      break;
-
     case C_TYPE_BIT:
       {
 	type_str = (char *) "DB_TYPE_BIT";

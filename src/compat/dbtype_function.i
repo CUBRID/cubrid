@@ -917,8 +917,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       return value->domain.char_info.length;
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:

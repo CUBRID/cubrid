@@ -10083,7 +10083,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
 	{
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+	      ti = (domain->type->id == DB_TYPE_CHAR);
 	    }
 
 	  if (QSTR_COMPARE (domain->collation_id, node->info.value.data_value.str->bytes,

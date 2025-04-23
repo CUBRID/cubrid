@@ -2004,8 +2004,6 @@ pr_clear_value (DB_VALUE * value)
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       char_medium_buf = value->data.ch.medium.buf;
@@ -2038,7 +2036,7 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  db_set_compressed_string (value, NULL, 0, false);
 	}
-      else if (db_type == DB_TYPE_CHAR || db_type == DB_TYPE_NCHAR)
+      else if (db_type == DB_TYPE_CHAR)
 	{
 	  assert (value->data.ch.info.compressed_need_clear == 0);
 	  char *compressed_str = value->data.ch.medium.compressed_buf;
@@ -2049,7 +2047,6 @@ pr_clear_value (DB_VALUE * value)
 		  db_private_free_and_init (NULL, compressed_str);
 		}
 	    }
-
 	}
       break;
 
@@ -12186,7 +12183,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 
   if (!ignore_trailing_space)
     {
-      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+      ti = (domain->type->id == DB_TYPE_CHAR);
     }
 
   strc = QSTR_CHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,
@@ -13123,7 +13120,7 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 
   if (!ignore_trailing_space)
     {
-      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+      ti = (domain->type->id == DB_TYPE_CHAR);
     }
 
   strc = QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) mem1, mem_length1, (unsigned char *) mem2,

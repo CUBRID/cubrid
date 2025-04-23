@@ -15669,9 +15669,6 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	    /* CHAR type and VARCHAR type are compatible with each other */
 	    || ((stype == DB_TYPE_CHAR || stype == DB_TYPE_VARCHAR)
 		&& (dtype == DB_TYPE_CHAR || dtype == DB_TYPE_VARCHAR))
-	    /* NCHAR type and VARNCHAR type are compatible with each other */
-	    || ((stype == DB_TYPE_NCHAR || stype == DB_TYPE_VARNCHAR)
-		&& (dtype == DB_TYPE_NCHAR || dtype == DB_TYPE_VARNCHAR))
 	    /* BIT type and VARBIT type are compatible with each other */
 	    || ((stype == DB_TYPE_BIT || stype == DB_TYPE_VARBIT) && (dtype == DB_TYPE_BIT || dtype == DB_TYPE_VARBIT))
 	    /* OID type and OBJECT type are compatible with each other */
@@ -21005,9 +21002,7 @@ key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       snprintf (buf, buf_size, "%s(%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision);
       break;
 
@@ -25194,14 +25189,12 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
       {
 	int ret = btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
 	/* Even if PEEK_KEY_VALUE is specified, in the case of compressed data,
 	 * a new buffer is created separately and stored, so it is stable even after pgbuf_unfix(). 
 	 * If need_clear is true, it means that a separate buffer has been allocated.  
-	 * And compression is only used for char, varchar, nchar, and nvarchar. 
+	 * And compression is only used for char and varchar. 
 	 * Bit, varbit, and midxkey will return with need_clear set to false.
 	 */
 	bts->is_cur_key_copied = bts->cur_key.need_clear;

@@ -2765,8 +2765,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  break;
 
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
@@ -2956,8 +2954,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
@@ -3264,8 +3260,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
@@ -3621,8 +3615,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      dom = tp_domain_find_numeric (type, precision, scale, is_desc);
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      collation_storage = or_get_int (buf, &rc);
@@ -3827,8 +3819,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      dom->json_validator = NULL;
 		    }
 		  break;
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;

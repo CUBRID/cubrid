@@ -108,7 +108,6 @@ namespace cubload
       {
 	setters_[set_type][LDR_INT] = &to_db_int_set;
 	setters_[set_type][LDR_STR] = &to_db_string;
-	setters_[set_type][LDR_NSTR] = &to_db_make_varnchar;
 	setters_[set_type][LDR_NUMERIC] = &to_db_numeric;
 	setters_[set_type][LDR_DOUBLE] = &to_db_double;
 	setters_[set_type][LDR_FLOAT] = &to_db_float;
@@ -129,10 +128,8 @@ namespace cubload
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
-    setters_[DB_TYPE_NCHAR][LDR_NSTR] = &to_db_make_nchar;
 
     setters_[DB_TYPE_VARCHAR][LDR_STR] = &to_db_varchar;
-    setters_[DB_TYPE_VARNCHAR][LDR_NSTR] = &to_db_make_varnchar;
 
     setters_[DB_TYPE_BIGINT][LDR_INT] = &to_db_bigint;
     setters_[DB_TYPE_INTEGER][LDR_INT] = &to_db_int;

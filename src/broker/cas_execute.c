@@ -4287,9 +4287,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);
@@ -4392,10 +4390,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       if (desired_type == DB_TYPE_NUMERIC)
 	{
 	  type = CCI_U_TYPE_NUMERIC;
-	}
-      else if (desired_type == DB_TYPE_NCHAR || desired_type == DB_TYPE_VARNCHAR)
-	{
-	  type = CCI_U_TYPE_NCHAR;
 	}
       else if (desired_type == DB_TYPE_JSON)
 	{
@@ -5067,57 +5061,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 
 	add_res_data_string (net_buf, str, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
-
-	if (decomposed != NULL)
-	  {
-	    FREE (decomposed);
-	    decomposed = NULL;
-	  }
-      }
-      break;
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      {
-	DB_CONST_C_NCHAR nchar;
-	int dummy = 0;
-	int bytes_size = 0;
-	int decomp_size;
-	char *decomposed = NULL;
-	bool need_decomp = false;
-
-	nchar = db_get_nchar (val, &dummy);
-	bytes_size = db_get_string_size (val);
-	if (max_col_size > 0)
-	  {
-	    bytes_size = MIN (bytes_size, max_col_size);
-	  }
-
-	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
-	  {
-	    need_decomp =
-	      unicode_string_need_decompose (nchar, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
-	  }
-
-	if (need_decomp)
-	  {
-	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
-	    if (decomposed != NULL)
-	      {
-		unicode_decompose_string (nchar, bytes_size, decomposed, &decomp_size,
-					  lang_get_generic_unicode_norm ());
-
-		nchar = decomposed;
-		bytes_size = decomp_size;
-	      }
-	    else
-	      {
-		/* set error indicator and send empty string */
-		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-		bytes_size = 0;
-	      }
-	  }
-
-	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -11347,21 +11290,10 @@ convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 
   val_type = db_value_type (value);
 
-  if (val_type == DB_TYPE_NCHAR || val_type == DB_TYPE_VARNCHAR)
+  err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
+  if (err >= 0)
     {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARNCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_nchar (value_string, &len);
-	}
-    }
-  else
-    {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_char (value_string, &len);
-	}
+      val_str = db_get_char (value_string, &len);
     }
 
   return val_str;

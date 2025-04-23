@@ -2315,14 +2315,6 @@ _op_get_value_string (DB_VALUE * value)
 	  snprintf (result, result_size, "%s", db_string_p_tmp);
 	}
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      db_varnchar_p = db_get_nchar (value, &size);
-      if (db_varnchar_p != NULL)
-	{
-	  snprintf (result, result_size, "N'%s'", db_varnchar_p);
-	}
-      break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       size = ((db_get_string_length (value) + 3) / 4) + 4;
@@ -2508,11 +2500,6 @@ _op_get_set_value (DB_VALUE * val)
 
     case DB_TYPE_DATETIMELTZ:
       snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result, "'");
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      snprintf (result, result_size, "%s%s%s", "N'", return_result, "'");
       break;
 
     case DB_TYPE_BIT:

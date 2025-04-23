@@ -854,7 +854,6 @@ error_exit:
 	  case LDR_DATETIMELTZ:
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
-	  case LDR_NSTR:
 	  {
 	    string_type *str = (string_type *) c->val;
 
@@ -5383,11 +5382,6 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_XSTR] = &ldr_xstr_db_varbit;
       break;
 
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      attdesc->setter[LDR_NSTR] = &ldr_nstr_db_varnchar;
-      break;
-
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       attdesc->setter[LDR_ELO_EXT] = &ldr_elo_ext_db_elo;
@@ -6172,7 +6166,6 @@ ldr_init_loader (LDR_CONTEXT *context)
   elem_converter[LDR_COLLECTION] = &ldr_collection_elem;
   elem_converter[LDR_BSTR] = &ldr_bstr_elem;
   elem_converter[LDR_XSTR] = &ldr_xstr_elem;
-  elem_converter[LDR_NSTR] = &ldr_nstr_elem;
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;

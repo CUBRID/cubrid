@@ -455,9 +455,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  u_type = CCI_U_TYPE_DOUBLE;
 	  break;
 	case DB_TYPE_STRING:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	  a_type = CCI_A_TYPE_STR;
 	  u_type = CCI_U_TYPE_STRING;
 	  value = (void *) db_get_string (&vd->dbval_ptr[i]);

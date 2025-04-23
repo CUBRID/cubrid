@@ -1912,8 +1912,6 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    case DB_TYPE_VARBIT:
 		    case DB_TYPE_CHAR:
 		    case DB_TYPE_VARCHAR:
-		    case DB_TYPE_NCHAR:
-		    case DB_TYPE_VARNCHAR:
 		      /* Do not override any information in Avg_key_size with precision information. Just make sure the
 		       * input makes sense for these cases.  */
 		      if (avg_key_size > domain->precision)

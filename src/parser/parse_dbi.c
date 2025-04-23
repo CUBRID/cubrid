@@ -676,22 +676,14 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
 
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       bytes = db_get_string (val);
       size = db_get_string_size (val);
       result->info.value.data_value.str = pt_append_bytes (parser, NULL, bytes, size);
       result->info.value.data_value.str->length = size;
-      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_NCHAR)
-	{
-	  result->info.value.string_type = 'N';
-	}
-      else
-	{
-	  result->info.value.string_type = ' ';
-	}
+      result->info.value.string_type = ' ';
+
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
@@ -1152,7 +1144,6 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		    {
 
 		      if ((expected_db_type == DB_TYPE_CHAR && val_type == DB_TYPE_VARCHAR)
-			  || (expected_db_type == DB_TYPE_NCHAR && val_type == DB_TYPE_VARNCHAR)
 			  || (expected_db_type == DB_TYPE_BIT && val_type == DB_TYPE_VARBIT))
 			{
 			  /* to prevent padding, skip these cases */
@@ -1292,8 +1283,6 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
     {
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value_out->domain.char_info.length = node_data_type->info.data_type.precision;
@@ -1606,10 +1595,8 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_VARBIT:
       /* Note that we assume that some other force is going to come in and repair the precision of the destination of
        * this domain is for the schema manager.  Might be a problem . . . */
@@ -1891,8 +1878,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       precision = dt->info.data_type.precision;
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
@@ -2117,8 +2102,6 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       precision = dt->info.data_type.precision;
@@ -2891,8 +2874,6 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	}
       break;
 
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:

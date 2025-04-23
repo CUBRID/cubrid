@@ -43,23 +43,14 @@
 typedef struct cub_compiled_regex cub_compiled_regex;
 #endif
 
-#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
-                                 ((s)==DB_TYPE_VARCHAR))
-#define QSTR_IS_NATIONAL_CHAR(s) (((s)==DB_TYPE_NCHAR) || \
-                                 ((s)==DB_TYPE_VARNCHAR))
-#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || \
-                                 ((s)==DB_TYPE_VARBIT))
-#define QSTR_IS_ANY_CHAR(s)	(QSTR_IS_CHAR(s) || QSTR_IS_NATIONAL_CHAR(s))
-#define QSTR_IS_ANY_CHAR_OR_BIT(s)		(QSTR_IS_ANY_CHAR(s) \
-                                                 || QSTR_IS_BIT(s))
+#define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || ((s)==DB_TYPE_VARCHAR))
+#define QSTR_IS_BIT(s)           (((s)==DB_TYPE_BIT) || ((s)==DB_TYPE_VARBIT))
+#define QSTR_IS_ANY_CHAR(s)	 (QSTR_IS_CHAR(s))
+#define QSTR_IS_ANY_CHAR_OR_BIT(s)   (QSTR_IS_ANY_CHAR(s) || QSTR_IS_BIT(s))
 
-#define QSTR_IS_FIXED_LENGTH(s)         (((s)==DB_TYPE_CHAR)  || \
-                                     ((s)==DB_TYPE_NCHAR) || \
-                                     ((s)==DB_TYPE_BIT))
+#define QSTR_IS_FIXED_LENGTH(s)      (((s)==DB_TYPE_CHAR)  || ((s)==DB_TYPE_BIT))
 
-#define QSTR_IS_VARIABLE_LENGTH(s)      (((s)==DB_TYPE_VARCHAR)  || \
-                                     ((s)==DB_TYPE_VARNCHAR) || \
-                                     ((s)==DB_TYPE_VARBIT))
+#define QSTR_IS_VARIABLE_LENGTH(s)   (((s)==DB_TYPE_VARCHAR)  || ((s)==DB_TYPE_VARBIT))
 
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
@@ -263,9 +254,6 @@ extern int db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALU
 extern int db_string_convert_to (const DB_VALUE * src_string, DB_VALUE * dest_string, INTL_CODESET dest_codeset,
 				 int dest_col);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);
-#endif
 extern unsigned char *qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size);
 extern int qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size);

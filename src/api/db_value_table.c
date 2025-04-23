@@ -505,8 +505,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val, CI_TYPE type, void *a
 	  {
 	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen, &xflen, &outlen);
 	  }
-	else if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_VARCHAR || dbtype == DB_TYPE_NCHAR
-		 || dbtype == DB_TYPE_VARNCHAR)
+	else if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_VARCHAR)
 	  {
 	    DB_VALUE nval;
 	    const char *nstr;
@@ -1020,12 +1019,6 @@ db_type_to_type (DB_TYPE dt, CI_TYPE * xt)
     case DB_TYPE_CHAR:
       *xt = CI_TYPE_CHAR;
       break;
-    case DB_TYPE_NCHAR:
-      *xt = CI_TYPE_NCHAR;
-      break;
-    case DB_TYPE_VARNCHAR:
-      *xt = CI_TYPE_VARNCHAR;
-      break;
     case DB_TYPE_NULL:
       *xt = CI_TYPE_NULL;
       break;
@@ -1071,9 +1064,6 @@ type_to_db_type (CI_TYPE xt, DB_TYPE * dt)
       break;
     case CI_TYPE_VARCHAR:
       *dt = DB_TYPE_VARCHAR;
-      break;
-    case CI_TYPE_NCHAR:
-      *dt = DB_TYPE_NCHAR;
       break;
     case CI_TYPE_BIT:
       *dt = DB_TYPE_BIT;

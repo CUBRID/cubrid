@@ -11863,7 +11863,7 @@ pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
     }
 
   dbtype = DB_VALUE_TYPE (db_src);
-  if (dbtype != DB_TYPE_VARCHAR && dbtype != DB_TYPE_CHAR && dbtype != DB_TYPE_VARNCHAR && dbtype != DB_TYPE_NCHAR)
+  if (dbtype != DB_TYPE_VARCHAR && dbtype != DB_TYPE_CHAR)
     {
       return ER_TIME_CONVERSION;
     }
@@ -12836,8 +12836,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	  db_make_null (&tmp_val);
 	  /* force explicit cast ; scenario : INSERT INTO t VALUE(-?) , USING '10', column is INTEGER */
@@ -12973,9 +12971,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       switch (typ)
 	{
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  if (o2)
@@ -13577,9 +13573,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      break;
 
 	    case DB_TYPE_CHAR:
-	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_VARCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      if (db_string_concatenate (arg1, arg2, result, &truncation) < 0 || truncation != DATA_STATUS_OK)
@@ -14914,9 +14908,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       switch (typ)
 	{
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  if (db_string_concatenate (arg1, arg2, result, &truncation) < 0 || truncation != DATA_STATUS_OK)
@@ -16939,15 +16931,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		/* when compat_mode=mysql, the slash '\\' is an escape character for LIKE pattern, unless user
 		 * explicitly specifies otherwise. */
 		esc_char = &slash_char;
-		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
-		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
-		  {
-		    db_make_nchar (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
-		  }
-		else
-		  {
-		    db_make_char (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
-		  }
+		db_make_char (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
 
 		esc_char->need_clear = false;
 	      }
