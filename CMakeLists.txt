@@ -425,6 +425,7 @@ set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
+set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
 set(PARALLEL_QUERY_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel)
 

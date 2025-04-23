@@ -30,6 +30,7 @@
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
 #include "px_heap_scan_mergable_list.hpp"
+#include "px_worker_manager.hpp"
 
 namespace parallel_heap_scan
 {
@@ -45,10 +46,14 @@ namespace parallel_heap_scan
 
       task (std::shared_ptr<context> context,
 	    std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
-	    std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer);
+	    std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer,
+	    parallel_query::worker_manager *worker_manager);
+
+
       ~task();
 
       virtual void execute (cubthread::entry &thread_ref) override;
+      virtual void retire () override;
       SCAN_CODE page_next (THREAD_ENTRY *thread_p,SCAN_ID *scan_id, HFID *hfid, VPID *vpid);
 
     private:
@@ -57,6 +62,7 @@ namespace parallel_heap_scan
       std::shared_ptr<list_stream> m_list_stream;
       std::shared_ptr<list_id_wrapper> m_list_id_wrapper;
       mergable_list_writer *m_mergable_list_writer;
+      parallel_query::worker_manager *m_worker_manager;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

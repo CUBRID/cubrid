@@ -43,14 +43,15 @@ namespace parallel_heap_scan
 {
   task::task (std::shared_ptr<context> context,
 	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
-	      std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer)
+	      std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer,
+	      parallel_query::worker_manager *worker_manager)
     : m_context (context)
     , m_memory_mapper (memory_mapper)
     , m_list_stream (list_stream)
     , m_list_id_wrapper (list_id_wrapper)
     , m_mergable_list_writer (mergable_list_writer)
+    , m_worker_manager (worker_manager)
   {
-
   }
 
   task::~task()
@@ -287,6 +288,13 @@ namespace parallel_heap_scan
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif
     m_context->add_tasks_executed();
+  }
+
+  void
+  task::retire ()
+  {
+    m_worker_manager->pop_task();
+    cubthread::entry_task::retire();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */

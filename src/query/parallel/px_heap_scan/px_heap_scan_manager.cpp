@@ -23,8 +23,9 @@
 #if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_manager.hpp"
-#include "px_heap_scan_task.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_task.hpp"
+#include "px_worker_manager.hpp"
 #include "query_manager.h"
 #include "query_executor.h"
 
@@ -39,6 +40,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define PAGE_QUEUE_SIZE_PER_CORE 128
+
 namespace parallel_heap_scan
 {
 
@@ -50,18 +53,16 @@ namespace parallel_heap_scan
     timeout_occurred = false;
     m_thread_p = thread_p;
     m_scan_id = scan_id;
-    parallelism = core_count;
+    m_parallelism = core_count;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
-    m_list_stream = std::make_shared<list_stream> (thread_p, core_count, 128, query_id, scan_id);
+    m_list_stream = std::make_shared<list_stream> (thread_p, m_parallelism, PAGE_QUEUE_SIZE_PER_CORE, query_id, scan_id);
     m_list_reader = std::make_shared<list_reader> ();
-    m_memory_mappers.reserve (parallelism);
-    for (size_t i = 0; i < parallelism; i++)
+    m_memory_mappers.reserve (m_parallelism);
+    for (size_t i = 0; i < m_parallelism; i++)
       {
 	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
       }
-    m_workpool = thread_get_manager()->create_worker_pool (core_count, core_count, "Parallel heap scan pool",
-		 m_context.get(), core_count, true);
   }
 
   manager_merge::manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
@@ -71,7 +72,7 @@ namespace parallel_heap_scan
     timeout_occurred = false;
     m_thread_p = thread_p;
     m_scan_id = scan_id;
-    parallelism = core_count;
+    m_parallelism = core_count;
     m_query_id = query_id;
     m_context = std::make_shared<context> (thread_p, scan_id);
     if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
@@ -92,29 +93,21 @@ namespace parallel_heap_scan
     m_result_list = xasl->list_id;
     m_outptr_list = xasl->outptr_list;
     m_xasl = xasl;
-    m_memory_mappers.reserve (parallelism);
-    for (size_t i = 0; i < parallelism; i++)
+    m_memory_mappers.reserve (m_parallelism);
+    for (size_t i = 0; i < m_parallelism; i++)
       {
 	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
       }
-    m_workpool = thread_get_manager()->create_worker_pool (core_count, core_count, "Parallel heap scan pool",
-		 m_context.get(), core_count, true);
   }
 
   manager_page_by_page::~manager_page_by_page()
   {
-    if (m_workpool != nullptr)
-      {
-	thread_get_manager()->destroy_worker_pool (m_workpool);
-      }
+    parallel_query::worker_manager::get_manager().release_workers ();
   }
 
   manager_merge::~manager_merge()
   {
-    if (m_workpool != nullptr)
-      {
-	thread_get_manager()->destroy_worker_pool (m_workpool);
-      }
+    parallel_query::worker_manager::get_manager().release_workers ();
     if (m_mergable_list != nullptr)
       {
 	delete m_mergable_list;
@@ -359,7 +352,8 @@ namespace parallel_heap_scan
 	OID_SET_NULL (&scan_id->s.hsid.curr_oid);
       }
     m_list_stream.reset();
-    m_list_stream = std::make_shared<list_stream> (m_thread_p, parallelism, 128, m_query_id, m_scan_id);
+    m_list_stream = std::make_shared<list_stream> (m_thread_p, m_parallelism, PAGE_QUEUE_SIZE_PER_CORE, m_query_id,
+		    m_scan_id);
   }
 
   void manager_merge::reset()
@@ -387,10 +381,13 @@ namespace parallel_heap_scan
   void manager_page_by_page::start_tasks()
   {
     std::unique_ptr<task> taskp = NULL;
-    for (size_t i = 0; i < parallelism; i++)
+    parallel_query::worker_manager *worker_manager = &parallel_query::worker_manager::get_manager();
+
+    for (size_t i = 0; i < m_parallelism; i++)
       {
-	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i],nullptr));
-	thread_get_manager()->push_task (m_workpool, taskp.release());
+	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i],nullptr,
+			       worker_manager));
+	worker_manager->push_task (taskp.release());
 	m_context->add_tasks_started();
       }
   }
@@ -398,11 +395,12 @@ namespace parallel_heap_scan
   void manager_merge::start_tasks()
   {
     std::unique_ptr<task> taskp = NULL;
-    for (size_t i = 0; i < parallelism; i++)
+    parallel_query::worker_manager *worker_manager = &parallel_query::worker_manager::get_manager();
+    for (size_t i = 0; i < m_parallelism; i++)
       {
 	taskp.reset (new task (m_context, m_memory_mappers[i], std::shared_ptr<list_stream> (nullptr),
-			       std::shared_ptr<list_id_wrapper> (nullptr), m_mergable_list_writers[i]));
-	thread_get_manager()->push_task (m_workpool, taskp.release());
+			       std::shared_ptr<list_id_wrapper> (nullptr), m_mergable_list_writers[i],worker_manager));
+	worker_manager->push_task (taskp.release());
 	m_context->add_tasks_started();
       }
   }
@@ -512,7 +510,7 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   HL_HEAPID orig_heap_id;
   if (thread_is_on_trace (thread_p))
     {
-      std::size_t parallelism = scan_id->s.phsid.manager->parallelism;
+      std::size_t parallelism = scan_id->s.phsid.manager->m_parallelism;
       scan_id->s.phsid.perf_monitor = new parallel_heap_scan::perf_monitor (scan_id, parallelism);
       /* should be deleted in qdump_print_access_specs_text or json */
     }
@@ -552,6 +550,10 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
     }
   if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
     {
+      if (!parallel_query::worker_manager::get_manager().try_reserve_workers (parallelism))
+	{
+	  return ret;
+	}
       scan_id->type = S_PARALLEL_HEAP_SCAN;
       orig_heap_id = db_change_private_heap (thread_p, 0);
       if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE)

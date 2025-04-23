@@ -35,6 +35,7 @@
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 
+#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 namespace parallel_heap_scan
 {
   enum class RESULT_GET_METHOD
@@ -54,13 +55,12 @@ namespace parallel_heap_scan
       virtual void reset() = 0;
       virtual void end() = 0;
       virtual void terminate_tasks() = 0;
-
       inline context &get_context()
       {
 	return *m_context;
       }
       QUERY_ID m_query_id;
-      std::size_t parallelism;
+      std::size_t m_parallelism;
       bool m_is_start_once;
       bool timeout_occurred;
     protected:
@@ -68,7 +68,6 @@ namespace parallel_heap_scan
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
       THREAD_ENTRY *m_thread_p;
       SCAN_ID *m_scan_id;
-      cubthread::entry_workpool *m_workpool;
       std::shared_ptr<context> m_context;
       manager (const manager &) = delete;
       manager &operator= (const manager &) = delete;

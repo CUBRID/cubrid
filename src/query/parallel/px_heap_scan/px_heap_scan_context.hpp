@@ -27,14 +27,13 @@
 
 #include "scan_manager.h"
 #include "px_heap_scan_memory_mapper.hpp"
-#include "thread_entry_task.hpp"
 #include "dbtype_def.h"
 #include <vector>
 
 
 namespace parallel_heap_scan
 {
-  class context : public cubthread::entry_manager
+  class context
   {
     public:
       context() = delete;

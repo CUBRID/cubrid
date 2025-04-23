@@ -9150,7 +9150,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		  /* use the number of parallel heap scan threads set by hint */
 		}
 
-	      if (curr_spec->num_parallel_threads > 0)
+	      if (curr_spec->num_parallel_threads > 1)
 		{
 		  if (!curr_spec->parts && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)	/* Only for User table */
 		    {
