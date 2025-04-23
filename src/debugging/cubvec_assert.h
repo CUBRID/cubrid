@@ -81,7 +81,7 @@
   do { \
       FILE *logfile = fopen("cubvec.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -95,7 +95,7 @@
   do { \
       FILE *logfile = fopen("hornetmj.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -109,7 +109,7 @@
   do { \
       FILE *logfile = fopen("hgryoo.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -123,7 +123,7 @@
   do { \
       FILE *logfile = fopen("yeunjunlee.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
@@ -137,7 +137,7 @@
   do { \
       FILE *logfile = fopen("vimkim.log", "a"); \
       if (logfile) { \
-	  fprintf(logfile, "[%-15.15s] [%-15.15s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
 	  fprintf(logfile, __VA_ARGS__); \
 	  fclose(logfile); \
       } \
