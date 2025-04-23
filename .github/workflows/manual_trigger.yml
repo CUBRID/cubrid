@@ -5,56 +5,73 @@ on:
     types: [created, edited]
 
 jobs:
-  run_shell:
-    name: Run shell test on CircleCI
+  run_test:
+    name: Run test on CircleCI
     if: |
-      ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run shell ') }}
-    runs-on: ubuntu-latest
+      ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run ') }}
+    runs-on: ubuntu-24.04
     steps:
-      - name: Get Branch Name from GitHub API
+      - name: Get Branch Name and Test Type
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH_NAME=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "${{ github.event.issue.pull_request.url }}" | jq -r .head.ref)
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          echo "Branch Name: $BRANCH_NAME"  # 디버깅용 출력
+          
+          # Get comment
+          COMMENT="${{ github.event.comment.body }}"
+          echo "Comment: $COMMENT"
+          
+          # Define test types
+          TEST_TYPES="shell sql medium plcsql"
+          
+          # Create JSON array for test parameters
+          TEST_JSON="{"
+          
+          # Check for 'all' keyword or parse individual test types
+          if [[ "$COMMENT" == *"all"* ]]; then
+            # Enable all tests
+            echo "Running all tests"
+            for test in $TEST_TYPES; do
+              TEST_JSON+="\"run_${test}_test\":true,"
+            done
+          else
+            # Check each test type
+            for test in $TEST_TYPES; do
+              if [[ "$COMMENT" == *"$test"* ]]; then
+                echo "Will run $test test"
+                TEST_JSON+="\"run_${test}_test\":true,"
+              fi
+            done
+          fi
           
           # Extract baseline version from comment if it exists
-          BASELINE=$(echo "${{ github.event.comment.body }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
-          echo "BASELINE=$BASELINE" >> $GITHUB_ENV
+          BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
+          
+          # Add baseline to JSON and remove trailing comma if present
+          TEST_JSON+="\"baseline\":\"$BASELINE\"}"
+          TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
+          
+          # Save the JSON to environment
+          echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
+          
+          # For debugging
+          echo "Test Parameters: $TEST_JSON"
           if [ -n "$BASELINE" ]; then
-            echo "Baseline Version: $BASELINE"  # 디버깅용 출력
+            echo "Baseline Version: $BASELINE"
           else
-            echo "No Baseline Version provided. Will use latest from DB."  # 디버깅용 출력
+            echo "No Baseline Version provided. Will use latest from DB."
           fi
 
-      - name: Trigger CircleCI Shell Test
+      - name: Trigger CircleCI Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
           BRANCH_NAME: ${{ env.BRANCH_NAME }}
-          BASELINE: ${{ env.BASELINE }}
+          TEST_JSON: ${{ env.TEST_JSON }}
         run: |
-          # Prepare the data JSON
-          if [ -n "$BASELINE" ]; then
-            # If baseline is provided
-            DATA='{
-              "branch": "'"$BRANCH_NAME"'",
-              "parameters": {
-                "run_shell_test": true,
-                "baseline": "'"$BASELINE"'"
-              }
-            }'
-          else
-            # If baseline is not provided
-            DATA='{
-              "branch": "'"$BRANCH_NAME"'",
-              "parameters": {
-                "run_shell_test": true,
-                "baseline": ""
-              }
-            }'
-          fi
+          # Create final JSON data
+          DATA=$(echo '{"branch": "'"$BRANCH_NAME"'", "parameters": '"$TEST_JSON"'}')
           
           # Trigger CircleCI pipeline
           curl --request POST \
