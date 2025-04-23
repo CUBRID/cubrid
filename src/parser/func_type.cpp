@@ -163,7 +163,6 @@ func_all_signatures sig_ret_type0_arg_nr_or_str_discrete =
 func_all_signatures sig_of_group_concat =
 {
   {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_CHAR}, {}}, //needed because pt_are_equivalent_types(PT_GENERIC_TYPE_CHAR, PT_TYPE_ENUMERATION) and casting to VCHR will affect order
-  {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_NCHAR}, {}},
 
 //normal cases
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_GENERIC_TYPE_CHAR}, {}},
@@ -202,7 +201,6 @@ func_all_signatures sig_of_insert_substring =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
 
-  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
   //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
@@ -621,7 +619,6 @@ namespace func_type
 	return arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING_VARYING
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_CHAR
-	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_NCHAR
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_PRIMITIVE
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_ANY
 	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_SCALAR;
@@ -689,9 +686,6 @@ namespace func_type
       case PT_GENERIC_TYPE_CHAR:
 	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum)
 		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
-
-      case PT_GENERIC_TYPE_NCHAR:
-	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
       case PT_GENERIC_TYPE_DATE:
       case PT_GENERIC_TYPE_DATETIME:
@@ -1406,9 +1400,6 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 	  /* CHAR and VARCHAR are equivalent to PT_GENERIC_TYPE_CHAR */
 	  return true;
 	}
-      break;
-
-    case PT_GENERIC_TYPE_NCHAR:
       break;
 
     case PT_GENERIC_TYPE_BIT:
