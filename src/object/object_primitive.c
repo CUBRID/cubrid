@@ -7833,34 +7833,44 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
   vimkim_log ("args: buf %p, value %p, domain %p, size %d, copy %d, copy_buf %p, copy_buf_len %d\n",
 	      buf, value, domain, size, copy, copy_buf, copy_buf_len);
 
+  /* it is assumed that a vector has a variable length so that the size should be always -1. */
+  ASSERT_CUBVEC (size == -1);
+
   DB_VECTOR_FLOAT vector_float = { 0, nullptr };
   vector_float.dim = or_get_int (buf, &error);
-  ASSERT_CUBVEC (error == NO_ERROR);
 
-  vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
-  vimkim_log ("db_private_alloc: %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
-  ASSERT_CUBVEC (vector_float.float_array != NULL);
-  if (vector_float.float_array == NULL)
+  if (copy)
     {
-      return ER_FAILED;
+
+      vector_float.float_array = (float *) db_private_alloc (NULL, vector_float.dim * sizeof (float));
+      vimkim_log ("db_private_alloc: %p, size = %lu\n", vector_float.float_array, vector_float.dim * sizeof (float));
+      ASSERT_CUBVEC (vector_float.float_array != NULL);
+      if (vector_float.float_array == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
+      ASSERT_CUBVEC (error == NO_ERROR);
+
+      error = db_make_vector (value, vector_float);
+      ASSERT_CUBVEC (error == NO_ERROR);
     }
+  else
+    {
 
-  or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
-  ASSERT_CUBVEC (error == NO_ERROR);
+      vector_float.float_array = (float *) buf->ptr;
 
-  error = db_value_domain_init (value, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-  ASSERT_CUBVEC (error == NO_ERROR);
+      error = db_make_vector (value, vector_float);
+      ASSERT_CUBVEC (error == NO_ERROR);
 
-  error = db_make_vector (value, vector_float);
-  ASSERT_CUBVEC (error == NO_ERROR);
+      value->need_clear = false;
+    }
 
   // print vector_float for debugging
   vimkim_log ("vf: %s\n", db_vector_float_to_string (vector_float).c_str ());
 
-  ASSERT_CUBVEC (error == NO_ERROR);
-
   return error;
-
 }
 
 static int
