@@ -7734,7 +7734,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   vimkim_log ("args: dest %p, src %p, copy %d\n", dest, src, copy);
 
-  assert((src == nullptr) || (dest != src));
+  assert ((src == nullptr) || (dest != src));
   ASSERT_CUBVEC ((src == nullptr) || (dest != src));
 
   int error = NO_ERROR;
