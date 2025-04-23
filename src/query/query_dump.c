@@ -3367,9 +3367,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld)\n", qdump_xasl_type_string (xasl_p),
-	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), xasl_p->xasl_stats.fetches, xasl_p->xasl_stats.fetch_time,
-	       xasl_p->xasl_stats.ioreads);
       qdump_print_hashjoin_stats_text (fp, xasl_p, indent);
       break;
 
@@ -3551,11 +3548,13 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   assert (outer_xasl != NULL);
   assert (inner_xasl != NULL);
 
+  fprintf (fp, "%s (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld)\n", qdump_xasl_type_string (xasl_p),
+	   TO_MSEC (xasl_p->xasl_stats.elapsed_time), xasl_p->xasl_stats.fetches, xasl_p->xasl_stats.fetch_time,
+	   xasl_p->xasl_stats.ioreads);
+
   indent += 2;
 
-  /*
-   * partitioning
-   */
+  /* partitioning */
   if (part_cnt > 1)
     {
       TSC_ADD_TIMEVAL (stats->part.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
@@ -3579,9 +3578,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
     }
 
-  /*
-   * build
-   */
+  /* build */
   fprintf (fp, "%*cBUILD (time: %d, build_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld", indent,
 	   ' ', TO_MSEC (stats->build.elapsed_time), TO_MSEC (stats->build.time), stats->build.fetches,
 	   stats->build.fetch_time, stats->build.ioreads, stats->build.rows);
@@ -3726,9 +3723,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       qdump_print_stats_text (fp, build_xasl, indent);
     }
 
-  /*
-   * probe
-   */
+  /* probe */
   fprintf (fp,
 	   "%*cPROBE (time: %d, probe_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, readkeys: %ld, rows: %ld, max_collisions: %ld)",
 	   indent, ' ', TO_MSEC (stats->probe.elapsed_time), TO_MSEC (stats->probe.time), stats->probe.fetches,
@@ -3820,9 +3815,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   json_object_set_new (parent, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
   json_object_set_new (parent, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
 
-  /*
-   * partitioning 
-   */
+  /* partitioning */
   if (part_cnt > 1)
     {
       TSC_ADD_TIMEVAL (stats->part.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
@@ -3867,9 +3860,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
     }
 
-  /*
-   * build 
-   */
+  /* build */
   build = json_object ();
   json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
   json_object_set_new (build, "build_time", json_integer (TO_MSEC (stats->build.time)));
@@ -4026,9 +4017,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "input", input);
     }
 
-  /*
-   * probe 
-   */
+  /* probe */
   probe = json_object ();
   json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
   json_object_set_new (probe, "probe_time", json_integer (TO_MSEC (stats->probe.time)));

@@ -1188,7 +1188,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
   QFILE_LIST_ID **outer_part_list_id = NULL, **inner_part_list_id = NULL;
 
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  UINT64 mem_limit;
   INT64 max_tuple_cnt;
   int part_cnt, part_index;
 
@@ -1203,6 +1203,9 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+
+  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  assert (mem_limit > 0);
 
   HASHJOIN_STATS *stats = &manager->stats_group->stats;
   assert (stats != NULL || !thread_is_on_trace (thread_p));

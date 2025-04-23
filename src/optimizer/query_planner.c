@@ -77,7 +77,7 @@
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_FILE_IO_WEIGHT 0.5
+#define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 100
 
@@ -3188,9 +3188,6 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
 
-  /* TODO: Check the system parameters of the server on the client. */
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-
   inner_plan_p = plan_p->plan_un.join.inner;
 
   /* for worst cost */
@@ -3228,26 +3225,32 @@ qo_hjoin_cost (QO_PLAN * plan_p)
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-
   inner_build_io_cost = 0.0;
-  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-
   outer_build_io_cost = 0.0;
+
+#if 0
+  /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
+
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
+  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    {
+      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+    }
+
   if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
     {
-      outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      outer_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
       outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
+#endif
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -6166,6 +6169,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   int bitset_index;
   int i, n = 0;
 
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  if (mem_limit <= 0)
+    {
+      goto exit;		/* give up */
+    }
+
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
@@ -6183,10 +6192,10 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    *        insert into t values (1);
    *        select dual into :dummy_oid from dual limit 1;
    * 
-   *        select * from t1 where t1 = :dummy_oid;
+   *        select * from t where t = :dummy_oid;
    *
    *        -- rewritten query
-   *        select dt_1.da_2.t1.c1 from table({:dummy_oid}) dt_1 (da_2)
+   *        select dt_1.da_2.t.c from table({:dummy_oid}) dt_1 (da_2)
    * 
    *        -- Query plan: follow
    *        There are no results.
@@ -6202,7 +6211,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
        bitset_index = bitset_next_member (&bitset_iter))
     {
       term = QO_ENV_TERM (info->env, bitset_index);
-      if (QO_IS_PATH_TERM (term))
+      if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
 	{
 	  goto exit;		/* give up */
 	}
@@ -6252,13 +6261,16 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
        bitset_index = bitset_next_member (&bitset_iter))
     {
       outer_node = QO_ENV_NODE (outer->env, bitset_index);
-      node_index = QO_NODE_INDEXES (outer_node);
 
-      for (i = 0; i < QO_NI_N (node_index); i++)
+      node_index = QO_NODE_INDEXES (outer_node);
+      if (node_index != NULL)
 	{
-	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+	  for (i = 0; i < QO_NI_N (node_index); i++)
 	    {
-	      goto exit;	/* give up */
+	      if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+		{
+		  goto exit;	/* give up */
+		}
 	    }
 	}
     }

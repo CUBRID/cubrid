@@ -1654,30 +1654,7 @@ make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
 static PT_NODE *
 make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
 {
-  PARSER_CONTEXT *parser;
-  PT_NODE *namelist;
-  PT_NODE **namelistp;
-  BITSET_ITERATOR bi;
-  int i;
-
-  parser = QO_ENV_PARSER (env);
-  namelist = NULL;
-  namelistp = &namelist;
-
-  for (i = bitset_iterate (&((plan->info)->projected_segs), &bi); namelistp != NULL && i != -1;
-       i = bitset_next_member (&bi))
-    {
-      QO_SEGMENT *seg;
-      PT_NODE *name;
-
-      seg = QO_ENV_SEG (env, i);
-      name = pt_point (parser, QO_SEG_PT_NODE (seg));
-
-      *namelistp = name;
-      namelistp = &name->next;
-    }
-
-  return namelist;
+  return make_namelist_from_bitset (env, &plan->info->projected_segs);
 }
 
 /*
@@ -1732,7 +1709,7 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	    }
 	  else
 	    {
-	      assert (seg->is_function_index);
+	      assert_release (seg->is_function_index);
 	      /* Nothing to do */
 	    }
 	}
@@ -5430,7 +5407,7 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   env(in): Optimization environment.
  *   plan(in): Execution plan for hash join.
- *   pred_set(in): Bitset of predicates (SARGable, join, during-join, after-join).
+ *   pred_set(in): Bitset of predicates (join, during-join, after-join, sarg).
  *   info(in/out): Projection information used in the hash join execution plan.
  */
 static int
@@ -5490,25 +5467,19 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  BITSET_CLEAR (temp_segs_set);
 
 	  term_expr = QO_TERM_PT_EXPR (term);
+	  assert_release (term_expr->info.expr.op != PT_RANGE);
+
 	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
 
 	  if (bitset_intersects (&temp_segs_set, &outer_plan->info->projected_segs))
 	    {
 	      outer_part = pt_left_part (term_expr);
 	      inner_part = pt_right_part (term_expr);
-	      if (term_expr->info.expr.op == PT_RANGE && inner_part != NULL)
-		{
-		  inner_part = inner_part->info.expr.arg1;
-		}
 	    }
 	  else if (bitset_intersects (&temp_segs_set, &inner_plan->info->projected_segs))
 	    {
 	      inner_part = pt_left_part (term_expr);
 	      outer_part = pt_right_part (term_expr);
-	      if (term_expr->info.expr.op == PT_RANGE && outer_part != NULL)
-		{
-		  outer_part = outer_part->info.expr.arg1;
-		}
 	    }
 	  else
 	    {
@@ -5677,11 +5648,7 @@ cleanup:
 error_exit:
   qo_clear_projection_info (env, info);
 
-  if (error == NO_ERROR && pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      pt_reset_error (parser);
-    }
+  assert (!pt_has_error (parser));
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -5857,7 +5824,6 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
       assert (value_index < value_cnt);
 
       term = QO_ENV_TERM (env, term_index);
-      assert (!QO_IS_PATH_TERM (term));
 
       if (BITSET_MEMBER (outer_info->exprs_set, term_index) && outer_expr != NULL)
 	{

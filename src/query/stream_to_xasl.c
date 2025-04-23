@@ -3241,7 +3241,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     {
       goto exit_on_error;
     }
-  assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* currently, not used */
+  assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
 
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
