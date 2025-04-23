@@ -97,9 +97,9 @@ namespace parallel_heap_scan
   {
     public:
       general_checker (check_and_set_map *map) : map (map) {}
-      CHECK_RESULT check (REGU_VARIABLE *src);
+      CHECK_RESULT check (REGU_VARIABLE *src, bool is_outptr_list = false);
       CHECK_RESULT check (PRED_EXPR *src);
-      CHECK_RESULT check (REGU_VARIABLE_LIST src);
+      CHECK_RESULT check (REGU_VARIABLE_LIST src, bool is_outptr_list = false);
       CHECK_RESULT check (ARITH_TYPE *src);
       CHECK_RESULT check (PRED *src);
       CHECK_RESULT check (EVAL_TERM *src);
@@ -160,7 +160,7 @@ namespace parallel_heap_scan
       check_and_set_map check_map;
   };
 
-  CHECK_RESULT general_checker::check (REGU_VARIABLE *src)
+  CHECK_RESULT general_checker::check (REGU_VARIABLE *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::PARALLEL_LIST_MERGE, temp = CHECK_RESULT::NONE;
     DB_TYPE var_type;
@@ -170,10 +170,22 @@ namespace parallel_heap_scan
       }
     if (src->xasl)
       {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
-	xasl_setter setter (map);
-	setter.set (src->xasl, result);
-	return result;
+	if (is_outptr_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	    xasl_checker checker (map);
+	    temp = checker.check (src->xasl);
+	    xasl_setter setter (map);
+	    setter.set (src->xasl, temp);
+	  }
+	else
+	  {
+	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	    xasl_checker checker (map);
+	    temp = checker.check (src->xasl);
+	    xasl_setter setter (map);
+	    setter.set (src->xasl, temp);
+	  }
       }
 
     var_type = TP_DOMAIN_TYPE (src->domain);
@@ -183,10 +195,10 @@ namespace parallel_heap_scan
       case DB_TYPE_MULTISET:
       case DB_TYPE_SEQUENCE:
       case DB_TYPE_VOBJ:
-	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
 	break;
       default:
-	result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_LIST_MERGE);
 	break;
       }
 
@@ -219,7 +231,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
 	  }
 	break;
       case TYPE_SP:
@@ -235,7 +247,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
 	  }
 	break;
       case TYPE_REGU_VAR_LIST:
@@ -246,7 +258,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
 	  }
 	break;
       default:
@@ -279,7 +291,7 @@ namespace parallel_heap_scan
 	break;
       }
   }
-  CHECK_RESULT general_checker::check (REGU_VARIABLE_LIST src)
+  CHECK_RESULT general_checker::check (REGU_VARIABLE_LIST src, bool is_outptr_list)
   {
     if (!src)
       {
@@ -289,7 +301,7 @@ namespace parallel_heap_scan
     CHECK_RESULT result = CHECK_RESULT::NONE;
     while (curr)
       {
-	result = merge_check_result (result, check (&curr->value));
+	result = merge_check_result (result, check (&curr->value, is_outptr_list));
 	curr = curr->next;
       }
     return result;
@@ -604,7 +616,7 @@ namespace parallel_heap_scan
     CHECK_RESULT outptr_result = CHECK_RESULT::NONE;
     if (xasl->outptr_list)
       {
-	outptr_result = general_checker.check (xasl->outptr_list->valptrp);
+	outptr_result = general_checker.check (xasl->outptr_list->valptrp, true);
       }
     for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
       {
