@@ -34,8 +34,6 @@
 #include "xasl.h"
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
-
-#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 namespace parallel_heap_scan
 {
   enum class RESULT_GET_METHOD
@@ -79,8 +77,7 @@ namespace parallel_heap_scan
   {
     public:
       manager_page_by_page() = default;
-      manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-			    std::size_t core_count, QUERY_ID query_id);
+      manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id);
       ~manager_page_by_page();
 
       void start() override;
@@ -99,8 +96,7 @@ namespace parallel_heap_scan
   {
     public:
       manager_merge() = default;
-      manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, size_t pool_size, size_t task_max_count,
-		     std::size_t core_count, QUERY_ID query_id, XASL_NODE *xasl);
+      manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id, XASL_NODE *xasl);
       ~manager_merge();
 
       void start() override;
