@@ -9640,6 +9640,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 
 	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (src);
+	    if (vf == nullptr)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
 	    auto[dim, arr] = *vf;
 	    if (!arr)
 	      {
