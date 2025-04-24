@@ -1461,8 +1461,10 @@ free_var_table (OR_VARINFO * vars)
     }
 }
 
-#define  tp_VarNCharXX  tp_String
-//#define  tp_VarNCharXX  tp_VarNChar
+
+#define tp_VarStrType tp_String	// ctshim
+//#define tp_VarStrType tp_VarNChar
+
 /*
  * string_disk_size - calculate the disk size of a NULL terminated ASCII
  * string that is supposed to be stored as a VARNCHAR attribute in one of
@@ -1483,7 +1485,7 @@ string_disk_size (const char *string)
     }
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  length = tp_VarNCharXX.get_disk_size_of_value (&value);
+  length = tp_VarStrType.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
   pr_clear_compressed_string (&value);
@@ -1528,14 +1530,20 @@ get_string (OR_BUF * buf, int length)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  tp_VarNCharXX.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
+  tp_VarStrType.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
 
-  //if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)  // ctshim
-  //if (DB_VALUE_TYPE (&value) == DB_TYPE_VARCHAR)
-  if (DB_VALUE_TYPE (&value) != DB_TYPE_NULL)
+#if 0				// ctshim
+  if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
       string = ws_copy_string (db_get_string (&value));
     }
+#else
+  if (DB_VALUE_TYPE (&value) != DB_TYPE_NULL)
+    {
+      assert (DB_VALUE_TYPE (&value) == DB_TYPE_VARCHAR);
+      string = ws_copy_string (db_get_string (&value));
+    }
+#endif
 
   db_value_clear (&value);
 
@@ -1568,7 +1576,7 @@ put_string (OR_BUF * buf, const char *string)
     }
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  tp_VarNCharXX.data_writeval (buf, &value);
+  tp_VarStrType.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
 
@@ -3272,8 +3280,8 @@ disk_to_resolution (OR_BUF * buf)
       if (class_ == NULL)
 	{
 	  (void) or_get_int (buf, &rc);
-	  tp_VarNCharXX.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
-	  tp_VarNCharXX.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
+	  tp_VarStrType.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
+	  tp_VarStrType.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
 	}
       else
 	{

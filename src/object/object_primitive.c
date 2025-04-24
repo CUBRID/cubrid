@@ -10665,7 +10665,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
       else
 	{
 	  /* String has been prompted to compression before. */
-
+	  assert (compressed_size != DB_NOT_YET_COMPRESSED);
 	  if (compressed_string == NULL)
 	    {
 	      /* The value passed through a compression process but it failed due to its size. */
