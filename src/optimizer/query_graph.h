@@ -913,6 +913,7 @@ struct qo_env
 
   /* true if we should consider generating SORT-LIMIT plans */
   QO_SORT_LIMIT_USE use_sort_limit;
+
   /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query

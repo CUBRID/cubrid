@@ -16728,6 +16728,9 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
       q = pt_append_nulstring (parser, q, "\'");
       break;
+    case PT_TYPE_VECTOR:
+      q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
+      break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
       parser->flag.print_type_ambiguity = 1;

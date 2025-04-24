@@ -527,6 +527,8 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
+    case ACCESS_METHOD_VECTOR_INDEX_SCAN:
+      return "vindex";
     default:
       return "undefined";
     }
