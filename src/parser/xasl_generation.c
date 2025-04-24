@@ -12781,7 +12781,8 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   XASL_NODE *subquery_proc;
   REGU_VARIABLE_LIST regu_attributes;
   ACCESS_SPEC_TYPE *access;
-  PL_SIGNATURE_ARRAY_TYPE *sig_array;
+  PL_SIGNATURE_ARRAY_TYPE *sig_array = NULL;
+  PL_SIGNATURE_TYPE *sig_list = NULL;
   int idx = 0;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
@@ -12792,10 +12793,21 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
-  regu_new (sig_array, pt_length_of_list (cselect));
+  regu_alloc (sig_array);
   if (sig_array == NULL)
     {
       return NULL;
+    }
+  new (sig_array) cubpl::pl_signature_array ();
+
+  sig_array->num_sigs = pt_length_of_list (cselect);
+
+  regu_array_alloc (&sig_list, sig_array->num_sigs);
+  sig_array->sigs = sig_list;
+
+  for (int i = 0; i < sig_array->num_sigs; i++)
+    {
+      new (&sig_array->sigs[i]) cubpl::pl_signature ();
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
@@ -12803,7 +12815,6 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
       int error = jsp_make_pl_signature (parser, node, src_derived_tbl->info.spec.as_attr_list, sig_array->sigs[idx]);
       if (error != NO_ERROR)
 	{
-	  regu_delete (sig_array);
 	  return NULL;
 	}
       idx++;
@@ -12816,11 +12827,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   access =
     pt_make_cselect_access_spec (subquery_proc, sig_array, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
-  if (!access)
-    {
-      regu_delete (sig_array);
-    }
-  else if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
+  if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
     {
       return access;
     }

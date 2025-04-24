@@ -117,7 +117,7 @@ class server_monitor
       public:
 	server_entry (int pid, const std::string &exec_path, const std::string &args,
 		      std::chrono::steady_clock::time_point revive_time);
-	~server_entry () {};
+	~server_entry ();
 
 	server_entry (const server_entry &) = delete;
 	server_entry (server_entry &&) = default;
