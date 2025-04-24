@@ -66,7 +66,7 @@ int db_string_to_vector (
 
   if (size > 2000)
     {
-      vimkim_log("Parsed vector dim %zu is larger than the limit 2000\n", size);
+      vimkim_log ("Parsed vector dim %zu is larger than the limit 2000\n", size);
       return ER_FAILED;
     }
 
