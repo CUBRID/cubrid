@@ -133,8 +133,6 @@ while (0)
 /* to check if the given C type is a string type */
 #define STRING_C_TYPE(s)	(((s)==DB_TYPE_C_CHAR) || \
 				 ((s)==DB_TYPE_C_VARCHAR) || \
-				 ((s)==DB_TYPE_C_NCHAR) || \
-				 ((s)==DB_TYPE_C_VARNCHAR) || \
 				 ((s)==DB_TYPE_C_BIT) || \
 				 ((s)==DB_TYPE_C_VARBIT))
 
@@ -1715,7 +1713,7 @@ uci_put_value (DB_INDICATOR * indicator, DB_TYPE type, int precision, int scale,
    * we've got. That means that users can't transfer strings with
    * embedded nulls using (char *) host vars.
    */
-  if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_NCHAR || ctype == DB_TYPE_C_VARCHAR || ctype == DB_TYPE_C_VARNCHAR)
+  if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_VARCHAR)
     {
       int tmp_len = (int) strlen ((char *) buf);
       if (precision == 0)
