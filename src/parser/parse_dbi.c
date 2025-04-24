@@ -617,9 +617,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_VECTOR:
       {
-	DB_VECTOR_FLOAT src_vector_float = db_get_vector_float (val);
-	int dim = src_vector_float.dim;
-	float *arr = src_vector_float.float_array;
+	const DB_VECTOR_FLOAT *src_vector_float = db_get_vector_float (val);
+	int dim = src_vector_float->dim;
+	float *arr = src_vector_float->float_array;
 
 	// WARNING: not analyzed. db_private_alloc results in core dump.
 	vimkim_log ("TRACE: pt_dbval_to_value not analyzed.\n");

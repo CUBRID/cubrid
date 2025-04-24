@@ -47,9 +47,9 @@ std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
-  const auto vf = db_get_vector_float (value);
-  const auto dim = vf.dim;
-  const auto arr = vf.float_array;
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+  const auto dim = vf->dim;
+  const auto arr = vf->float_array;
 
   std::vector<float> result;
   result.resize (static_cast<size_t> (dim));
@@ -125,13 +125,13 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   // Ensure we have the correct number of arguments.
   assert (num_args == 2);
 
-  const DB_VECTOR_FLOAT vf1 = db_get_vector_float (args[0]);
-  const auto dim1 = vf1.dim;
-  const auto arr1 = vf1.float_array;
+  const DB_VECTOR_FLOAT *vf1 = db_get_vector_float (args[0]);
+  const auto dim1 = vf1->dim;
+  const auto arr1 = vf1->float_array;
 
-  const DB_VECTOR_FLOAT vf2 = db_get_vector_float (args[1]);
-  const auto dim2 = vf2.dim;
-  const auto arr2 = vf2.float_array;
+  const DB_VECTOR_FLOAT *vf2 = db_get_vector_float (args[1]);
+  const auto dim2 = vf2->dim;
+  const auto arr2 = vf2->float_array;
 
   if (dim1 != dim2)
     {

@@ -7625,10 +7625,10 @@ mr_setmem_vector_float (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      DB_VECTOR_FLOAT vf = db_get_vector_float (value);
-      vimkim_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
+      const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+      vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
 
-      auto[dim, arr] = vf;
+      auto[dim, arr] = *vf;
 
       std::size_t size = sizeof (int) + dim * sizeof (float);
       char *new_ = (char *) db_private_alloc (NULL, size);
@@ -7743,11 +7743,11 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (copy)
 	{
 
-	  const auto src_vf = db_get_vector_float (src);
-	  const auto[dim, arr] = src_vf;
+	  const auto *src_vf = db_get_vector_float (src);
+	  const auto[dim, arr] = *src_vf;
 
 	  // print vector_float for debugging
-	  vimkim_log ("vf: %s\n", db_vector_float_to_string (src_vf).c_str ());
+	  vimkim_log ("vf: %s\n", db_vector_float_to_string (*src_vf).c_str ());
 
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
@@ -7777,7 +7777,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
-	  db_make_vector (dest, db_get_vector_float (src));
+	  db_make_vector (dest, *db_get_vector_float (src));
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
 	  dest->need_clear = false;
@@ -7787,8 +7787,8 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       // Not analyzed.
       // log vector_float for easier debugging
-      DB_VECTOR_FLOAT vf = db_get_vector_float (dest);
-      vimkim_log ("vf: %s\n", db_vector_float_to_string (vf).c_str ());
+      const DB_VECTOR_FLOAT *vf = db_get_vector_float (dest);
+      vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
       assert (false);
     }
 
@@ -7813,10 +7813,10 @@ mr_data_writeval_vector_float (OR_BUF * buf, DB_VALUE * value)
 {
   vimkim_log ("args: buf %p, value %p\n", buf, value);
 
-  const DB_VECTOR_FLOAT vector_float = db_get_vector_float (value);
-  const auto[dim, arr] = vector_float;
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+  const auto[dim, arr] = *vf;
 
-  vimkim_log ("vf: %s\n", db_vector_float_to_string (vector_float).c_str ());
+  vimkim_log ("vf: %s\n", db_vector_float_to_string (*vf).c_str ());
 
   or_put_int (buf, dim);
   or_put_data (buf, (char *) arr, dim * sizeof (float));

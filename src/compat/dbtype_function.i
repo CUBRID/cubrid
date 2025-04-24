@@ -35,7 +35,7 @@ STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((A
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_VECTOR_FLOAT db_get_vector_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const DB_VECTOR_FLOAT *db_get_vector_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -318,7 +318,7 @@ db_get_set (const DB_VALUE * value)
  * return :
  * value(in):
  */
-DB_VECTOR_FLOAT
+const DB_VECTOR_FLOAT *
 db_get_vector_float (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
@@ -327,12 +327,11 @@ db_get_vector_float (const DB_VALUE * value)
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
-      DB_VECTOR_FLOAT empty_vector_float = { 0, NULL };
-      return empty_vector_float;
+      return NULL;
     }
   else
     {
-      return value->data.vector_float;
+      return &(value->data.vector_float);
     }
 }
 

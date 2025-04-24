@@ -338,7 +338,7 @@ extern "C"
   extern DB_TYPE db_value_type (const DB_VALUE * value);
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
-  extern DB_VECTOR_FLOAT db_get_vector_float (const DB_VALUE * value);
+  extern const DB_VECTOR_FLOAT * db_get_vector_float (const DB_VALUE * value);
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
 
   extern int db_make_null (DB_VALUE * value);
