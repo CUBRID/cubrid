@@ -301,8 +301,8 @@ static QO_PLAN_VTBL qo_vector_index_scan_plan_vtbl = {
   qo_scan_fprint,
   qo_scan_walk,
   qo_scan_free,
-  qo_zero_cost, // TODO (CUBVEC): always use vector index scan instead of sequential scan
-  qo_zero_cost, // TODO (CUBVEC): always use vector index scan instead of sequential scan
+  qo_zero_cost,			// TODO (CUBVEC): always use vector index scan instead of sequential scan
+  qo_zero_cost,			// TODO (CUBVEC): always use vector index scan instead of sequential scan
   qo_scan_info,
   "Vector index scan"
 };
@@ -2122,10 +2122,10 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "%s ", plan->plan_un.scan.index->head->constraints->name);
 
       if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
-      {
-        // TODO (CUBVEC)
-        // print attributes of vector index scan
-      }
+	{
+	  // TODO (CUBVEC)
+	  // print attributes of vector index scan
+	}
 
       /* print key limit */
       if (plan->plan_un.scan.index->head->key_limit)
