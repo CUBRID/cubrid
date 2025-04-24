@@ -124,8 +124,6 @@ static const char *type_str_tbl[] = {
   "NULL",			/* CCI_U_TYPE_NULL */
   "CHAR",			/* CCI_U_TYPE_CHAR */
   "VARCHAR",			/* CCI_U_TYPE_STRING */
-  "NCHAR",			/* CCI_U_TYPE_NCHAR */
-  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR */
   "BIT",			/* CCI_U_TYPE_BIT */
   "VARBIT",			/* CCI_U_TYPE_VARBIT */
   "NUMERIC",			/* CCI_U_TYPE_NUMERIC */
@@ -2339,8 +2337,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
       {
 #if defined(CAS_FOR_CGW)
 	INTL_CODESET charset = INTL_CODESET_UTF8;

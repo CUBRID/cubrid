@@ -90,8 +90,6 @@ static int type_map[] = {
   0,
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
@@ -217,15 +215,8 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
       error =
 	db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
-    case CCI_U_TYPE_VARNCHAR:
-      error =
-	db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
     case CCI_U_TYPE_CHAR:
       error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
-    case CCI_U_TYPE_NCHAR:
-      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     default:
       assert (false);
@@ -925,9 +916,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 
 	case CCI_U_TYPE_STRING:
-	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_CHAR:
-	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_JSON:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {

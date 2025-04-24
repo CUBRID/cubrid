@@ -76,8 +76,8 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
 
   type = atoi (buf + 2);
-  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING) && (type != CCI_U_TYPE_NCHAR)
-      && (type != CCI_U_TYPE_VARNCHAR) && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
+  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING)
+      && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
       && (type != CCI_U_TYPE_ENUM) && (type != CCI_U_TYPE_JSON))
     {
       return false;
@@ -105,8 +105,6 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
       {
 	int len = strlen (p + 1);
 

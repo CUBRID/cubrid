@@ -1251,29 +1251,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
       }
       break;
-      /* Not Support Type */
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-      {
-	char *value;
-	int val_size;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_CHAR;
-
-	value_list->string_val = value;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
-      }
-      break;
     case CCI_U_TYPE_NULL:
       {
 	char *value;
@@ -2569,11 +2546,7 @@ cgw_utype_to_string (int type)
     case CCI_U_TYPE_CHAR:
       return (char *) "char";
     case CCI_U_TYPE_STRING:
-      return (char *) "char";
-    case CCI_U_TYPE_NCHAR:
-      return (char *) "nchar";
-    case CCI_U_TYPE_VARNCHAR:
-      return (char *) "nchar varying";
+      return (char *) "char varying";
     case CCI_U_TYPE_NUMERIC:
       return (char *) "numeric";
     case CCI_U_TYPE_BIGINT:

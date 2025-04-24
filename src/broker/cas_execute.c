@@ -370,8 +370,10 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_BIT,		/* 23 */
   CCI_U_TYPE_VARBIT,		/* 24 */
   CCI_U_TYPE_CHAR,		/* 25 */
-  CCI_U_TYPE_NCHAR,		/* 26 */
-  CCI_U_TYPE_VARNCHAR,		/* 27 */
+  /* CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR was deprecated, 
+   * but, it is retained to preserve the order of DB_TYPE_NCHAR and DB_TYPE_VARNCHAR
+   */
+  0, 0,				/* 26 - 27 */
   CCI_U_TYPE_RESULTSET,		/* 28 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
@@ -4501,61 +4503,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
-      }
-      break;
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-      {
-	char *value, *invalid_pos = NULL;
-	int val_size;
-	int val_length;
-	bool is_composed = false;
-	int composed_size;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	val_size--;
-
-	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
-	  {
-	    char msg[12];
-	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
-	    snprintf (msg, sizeof (msg), "%llu", (long long unsigned int) p);
-	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR, DBMS_ERROR_INDICATOR, msg);
-	  }
-
-	if (lang_get_client_charset () == INTL_CODESET_UTF8
-	    && unicode_string_need_compose (value, val_size, &composed_size, lang_get_generic_unicode_norm ()))
-	  {
-	    char *composed = NULL;
-
-	    composed = (char *) malloc (composed_size + 1);
-	    if (composed == NULL)
-	      {
-		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	      }
-
-	    unicode_compose_string (value, val_size, composed, &composed_size, &is_composed,
-				    lang_get_generic_unicode_norm ());
-	    assert (composed_size <= val_size);
-	    composed[composed_size] = '\0';
-
-	    if (is_composed)
-	      {
-		value = composed;
-		val_size = composed_size;
-	      }
-	    else
-	      {
-		free (composed);
-	      }
-	  }
-
-	intl_char_count ((unsigned char *) value, val_size, LANG_COERCIBLE_CODESET, &val_length);
-	err_code =
-	  db_make_nchar (&db_val, val_length, value, val_size, lang_get_client_charset (),
-			 lang_get_client_collation ());
-	db_val.need_clear = is_composed;
       }
       break;
     case CCI_U_TYPE_BIT:

@@ -290,14 +290,6 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     {
       type = CCI_U_TYPE_STRING;
     }
-  else if (strcmp (p, "NCHAR") == 0)
-    {
-      type = CCI_U_TYPE_NCHAR;
-    }
-  else if (strcmp (p, "VARNCHAR") == 0)
-    {
-      type = CCI_U_TYPE_VARNCHAR;
-    }
   else if (strcmp (p, "BIT") == 0)
     {
       type = CCI_U_TYPE_BIT;
