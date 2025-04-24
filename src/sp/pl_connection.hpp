@@ -130,6 +130,8 @@ namespace cubpl
       bool is_connected () const;
       bool is_valid () const;
       int get_index () const;
+      int get_epoch () const;
+      int get_last_error () const;
 
       int send_buffer (const cubmem::block &mem);
 
@@ -160,6 +162,7 @@ namespace cubpl
       int m_index;
       SOCKET m_socket;
       int m_epoch; // see connection_pool::m_epoch
+      int m_error;
   };
 }; // namespace cubpl
 

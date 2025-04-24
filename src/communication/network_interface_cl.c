@@ -7278,28 +7278,31 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	    }
 
 	  tran_set_latest_query_status (end_query_result, tran_state, should_conn_reset);
+
+	  /* check if dblink transaction is aborted */
+	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+	    {
+	      if (replydata_listid)
+		{
+		  free_and_init (replydata_listid);
+		}
+
+	      return NULL;
+	    }
 	}
 
       if (replydata_listid && replydata_size_listid)
 	{
-	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+	  /* unpack list file id of query result from the reply data */
+	  ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
+	  /* QFILE_LIST_ID shipped with last page */
+	  if (replydata_size_page)
 	    {
-	      /* dblink transaction is aborted */
-	      ;
+	      list_id->last_pgptr = replydata_page;
 	    }
 	  else
 	    {
-	      /* unpack list file id of query result from the reply data */
-	      ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
-	      /* QFILE_LIST_ID shipped with last page */
-	      if (replydata_size_page)
-		{
-		  list_id->last_pgptr = replydata_page;
-		}
-	      else
-		{
-		  list_id->last_pgptr = NULL;
-		}
+	      list_id->last_pgptr = NULL;
 	    }
 	  free_and_init (replydata_listid);
 	}

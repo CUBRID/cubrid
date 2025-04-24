@@ -63,6 +63,7 @@ access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p,
 			char *admin_err_msg)
 {
   shm_as_p->access_control = shm_br->access_control;
+  shm_as_p->acl_default_policy = shm_br->acl_default_policy;
   shm_as_p->acl_chn = 0;
 
   if (shm_br->access_control && shm_br->access_control_file[0] != '\0')
@@ -498,8 +499,8 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname,
   int ret_val = -1;
   bool local_ip_flag = false;
 
-  // If there is no broker section in the ACL file and acl_broker_allow is ALLOW, access is allowed for all IPs.
-  if (num_access_info == 0 && shm_as_p->acl_broker_allow == ALLOW)
+  // If there is no broker section in the ACL file and acl_default_policy is ALLOW, access is allowed for all IPs.
+  if (num_access_info == 0 && shm_as_p->acl_default_policy == ALLOW)
     {
       return 0;
     }

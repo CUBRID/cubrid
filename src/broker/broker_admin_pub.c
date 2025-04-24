@@ -248,7 +248,7 @@ admin_isstarted_cmd (int master_shm_id)
 
 int
 admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file,
-		 char *admin_log_file)
+		 bool acl_default_policy, char *admin_log_file)
 {
   int i;
   int res = 0;
@@ -350,7 +350,9 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
 
   /* create master shared memory */
-  shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file, admin_log_file);
+  shm_br =
+    broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file, acl_default_policy,
+				      admin_log_file);
 
   if (shm_br == NULL)
     {
@@ -2721,7 +2723,8 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
     }
 
   fprintf (stdout, "ACCESS_CONTROL=%s\n", (shm_br->access_control) ? "ON" : "OFF");
-  fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n\n", shm_br->access_control_file);
+  fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n", shm_br->access_control_file);
+  fprintf (stdout, "ACCESS_CONTROL_DEFAULT_POLICY=%s\n\n", (shm_br->acl_default_policy) ? "ALLOW" : "DENY");
 
   if (shm_br->access_control == false || shm_br->access_control_file[0] == '\0')
     {
@@ -2747,10 +2750,6 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-
-	  fprintf (stdout, "[%%%s]\n", shm_appl->broker_name);
-	  fprintf (stdout, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER=%s\n",
-		   (shm_appl->acl_broker_allow) ? "ALLOW" : "DENY");
 
 	  for (j = 0; j < shm_appl->num_access_info; j++)
 	    {

@@ -2419,6 +2419,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
       memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
       memset (&xasl->xasl_stats, 0, sizeof (XASL_STATS));
+      memset (&xasl->func_stats, 0, sizeof (FUNC_STATS));
     }
 
   switch (xasl->type)
@@ -16244,6 +16245,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
+  UINT64 old_calls = 0, old_regu_time = 0, old_regu_fetches = 0, old_regu_ioreads = 0;
   static int max_recursion_sql_depth = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
   if (thread_get_recursion_depth (thread_p) > max_recursion_sql_depth)
@@ -16262,6 +16264,11 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
       old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
+
+      old_regu_time = perfmon_get_from_statistic (thread_p, PSTAT_REGU_EVAL_TIME_10USEC);
+      old_calls = perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
+      old_regu_fetches = perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_FETCHES);
+      old_regu_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_IOREADS);
     }
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xstate, p_class_instance_lock_info);
@@ -16277,6 +16284,12 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
       xasl->xasl_stats.fetch_time +=
 	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
 		   old_fetch_time) / 1000);
+
+      xasl->func_stats.time +=
+	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_REGU_EVAL_TIME_10USEC) - old_regu_time) / 1000);
+      xasl->func_stats.calls += perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_CALL_EVALS) - old_calls;
+      xasl->func_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_FETCHES) - old_regu_fetches;
+      xasl->func_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_REGU_NUM_IOREADS) - old_regu_ioreads;
     }
 
   thread_dec_recursion_depth (thread_p);
@@ -16355,7 +16368,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 }
 
 static int
-qexec_execute_dblink_query (XASL_NODE * xasl, XASL_STATE * xasl_state)
+qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   int res;
   DBLINK_HOST_VARS host_vars;
@@ -16363,7 +16376,7 @@ qexec_execute_dblink_query (XASL_NODE * xasl, XASL_STATE * xasl_state)
   host_vars.count = xasl->spec_list->s.dblink_node.host_var_count;
   host_vars.index = xasl->spec_list->s.dblink_node.host_var_index;
 
-  res = dblink_execute_query (xasl->spec_list, &xasl_state->vd, &host_vars);
+  res = dblink_execute_query (thread_p, xasl->spec_list, &xasl_state->vd, &host_vars);
   if (res < 0)
     {
       return res;
@@ -16453,7 +16466,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -16487,7 +16500,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -16523,7 +16536,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
@@ -16578,7 +16591,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* execute merge */
       if (xasl->spec_list && xasl->spec_list->type == TARGET_DBLINK)
 	{
-	  error = qexec_execute_dblink_query (xasl, xasl_state);
+	  error = qexec_execute_dblink_query (thread_p, xasl, xasl_state);
 	}
       else
 	{
