@@ -47,6 +47,7 @@ namespace parallel_heap_scan
 	HEAP_CACHE_ATTRINFO,
 	FUNCTION_NODE,
 	SP_TYPE,
+	OUTPTR_LIST,
       };
 
       struct typed_memory
@@ -71,10 +72,14 @@ namespace parallel_heap_scan
       memory_mapper (memory_mapper &&) = delete;
       memory_mapper &operator= (memory_mapper &&) = delete;
 
-      memory_mapper (SCAN_ID *scan_id);
+      memory_mapper (SCAN_ID *scan_id, OUTPTR_LIST *outptr_list);
       SCAN_ID *get_scan_id() const
       {
 	return scan_id;
+      }
+      OUTPTR_LIST *get_outptr_list() const
+      {
+	return m_outptr_list;
       }
       template<typename T>
       T *copy_and_map (T *src)
@@ -106,6 +111,7 @@ namespace parallel_heap_scan
       SP_TYPE *copy_and_map (SP_TYPE *src);
       heap_cache_attrinfo *copy_and_map (heap_cache_attrinfo *src);
       REGU_VARIABLE *copy_and_map (REGU_VARIABLE *regu_var);
+      OUTPTR_LIST *copy_and_map (OUTPTR_LIST *src);
 
     private:
       void *val_descr_ptr;
@@ -113,6 +119,7 @@ namespace parallel_heap_scan
       SCAN_ID *scan_id;
       std::unordered_map<void *, typed_memory> m_map;
       std::atomic<int> m_obj_cnt;
+      OUTPTR_LIST *m_outptr_list;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

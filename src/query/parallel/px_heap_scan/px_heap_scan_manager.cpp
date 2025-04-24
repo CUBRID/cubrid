@@ -60,7 +60,7 @@ namespace parallel_heap_scan
     m_memory_mappers.reserve (m_parallelism);
     for (size_t i = 0; i < m_parallelism; i++)
       {
-	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
+	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id, nullptr));
       }
   }
 
@@ -83,19 +83,19 @@ namespace parallel_heap_scan
       {
 	m_context->m_outptr_dbvals_p = nullptr;
       }
-    m_mergable_list = new mergable_list_array (thread_p, parallelism);
-    for (size_t i = 0; i < parallelism; i++)
-      {
-	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
-					   xasl->outptr_list));
-      }
     m_result_list = xasl->list_id;
     m_outptr_list = xasl->outptr_list;
     m_xasl = xasl;
     m_memory_mappers.reserve (m_parallelism);
     for (size_t i = 0; i < m_parallelism; i++)
       {
-	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id));
+	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id, m_outptr_list));
+      }
+    m_mergable_list = new mergable_list_array (thread_p, parallelism);
+    for (size_t i = 0; i < parallelism; i++)
+      {
+	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
+					   m_memory_mappers[i]->get_outptr_list()));
       }
   }
 

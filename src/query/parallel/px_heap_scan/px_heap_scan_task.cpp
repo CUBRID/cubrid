@@ -104,6 +104,7 @@ namespace parallel_heap_scan
     UINT64 old_fetches = 0, old_ioreads = 0;
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     list_id_data data;
+    OUTPTR_LIST *outptr_list;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool is_outptr_domain_resolved;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -130,6 +131,8 @@ namespace parallel_heap_scan
       {
 	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
 	is_outptr_domain_resolved = m_context->m_is_outptr_domain_resolved.load();
+	outptr_list = m_memory_mapper->get_outptr_list();
+	assert (outptr_list);
       }
     else
       {

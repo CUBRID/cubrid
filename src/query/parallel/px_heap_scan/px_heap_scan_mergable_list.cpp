@@ -28,6 +28,7 @@
 #include "query_manager.h"
 #include "thread_manager.hpp"
 #include "dbtype.h"
+#include "fetch.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -92,76 +93,8 @@ namespace parallel_heap_scan
     int valptr_idx;
     m_vd = vd;
     qdata_get_valptr_type_list (thread_p, m_outptr_list, &type_list);
-    m_dbv_arr.resize (type_list.type_cnt);
 
     (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL);
-
-    for (valptr_idx = 0, valptr = m_outptr_list->valptrp; valptr != NULL;
-	 valptr_idx++, valptr = valptr->next)
-      {
-	bool found = false;
-	REGU_VARIABLE *valptr_var = &valptr->value;
-	if (REGU_VARIABLE_IS_FLAGED (valptr_var, REGU_VARIABLE_HIDDEN_COLUMN))
-	  {
-	    continue;
-	  }
-	assert (valptr_var->type == TYPE_CONSTANT || valptr_var->type == TYPE_DBVAL || valptr_var->type == TYPE_POS_VALUE);
-
-	if (valptr_var->type == TYPE_DBVAL)
-	  {
-	    m_dbv_arr[valptr_idx] = &valptr_var->value.dbval;
-	    continue;
-	  }
-
-	if (valptr_var->type == TYPE_POS_VALUE)
-	  {
-	    m_dbv_arr[valptr_idx] = (DB_VALUE *) (vd->dbval_ptr + valptr_var->value.val_pos);
-	    continue;
-	  }
-
-
-	for (orig_pred_regu = phsid->scan_pred.regu_list, new_pred_regu = regu_list_pred;
-	     orig_pred_regu != NULL
-	     && new_pred_regu != NULL; orig_pred_regu = orig_pred_regu->next, new_pred_regu = new_pred_regu->next)
-	  {
-	    REGU_VARIABLE *orig_pred_regu_var = &orig_pred_regu->value;
-	    if (orig_pred_regu_var->vfetch_to == valptr_var->value.dbvalptr)
-	      {
-		REGU_VARIABLE *new_pred_regu_var = &new_pred_regu->value;
-		m_dbv_arr[valptr_idx] = new_pred_regu_var->vfetch_to;
-		found = true;
-		break;
-	      }
-	  }
-
-	if (!found)
-	  {
-	    for (orig_rest_regu = phsid->rest_regu_list, new_rest_regu = regu_list_rest;
-		 orig_rest_regu != NULL
-		 && new_rest_regu != NULL; orig_rest_regu = orig_rest_regu->next, new_rest_regu = new_rest_regu->next)
-	      {
-		REGU_VARIABLE *orig_rest_regu_var = &orig_rest_regu->value;
-		if (orig_rest_regu_var->vfetch_to == valptr_var->value.dbvalptr)
-		  {
-		    REGU_VARIABLE *new_rest_regu_var = &new_rest_regu->value;
-		    m_dbv_arr[valptr_idx] = new_rest_regu_var->vfetch_to;
-		    found = true;
-		    break;
-		  }
-	      }
-
-
-	  }
-
-	if (!found)
-	  {
-	    m_dbv_arr[valptr_idx] = valptr_var->value.dbvalptr;
-	    found = true;
-	  }
-
-	assert (found); /* NOT FOUND : assert() */
-      }
-
 
     return true;
   }
@@ -190,7 +123,9 @@ namespace parallel_heap_scan
     DB_TYPE dom_type;
     int n_size, toffset;
     bool clear_compressed_string = true;
+    int ret;
     REGU_VARIABLE_LIST outptr_list_p = NULL;
+    DB_VALUE *peek_value_p = NULL;
     if (outptr_dbvals_p != nullptr)
       {
 	if (outptr_dbvals_p->size() != 0)
@@ -200,86 +135,31 @@ namespace parallel_heap_scan
 		db_value_clear (&dbval);
 	      }
 	  }
-	outptr_dbvals_p->resize (m_dbv_arr.size());
+	outptr_dbvals_p->resize (m_outptr_list->valptr_cnt);
       }
-    if (is_outptr_domain_resolved != nullptr)
+
+    qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
+
+    if (outptr_dbvals_p != nullptr)
       {
 	*is_outptr_domain_resolved = true;
 	outptr_list_p = m_outptr_list->valptrp;
+	for (int i = 0; i < m_outptr_list->valptr_cnt; i++)
+	  {
+	    REGU_VARIABLE *regu_var_p = &outptr_list_p->value;
+	    ret = fetch_peek_dbval (thread_p, regu_var_p, m_vd, NULL, NULL, NULL, &peek_value_p);
+	    assert (ret == NO_ERROR);
+	    if (!DB_IS_NULL (peek_value_p))
+	      {
+		DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
+		db_value_clone (peek_value_p, vecp);
+	      }
+	    else
+	      {
+		*is_outptr_domain_resolved = false;
+	      }
+	  }
       }
-
-    tpl_size = 0;
-    tlen = QFILE_TUPLE_LENGTH_SIZE;
-    toffset = 0;
-
-    tuple_p = (char *) (m_tpl_buf.tpl) + tlen;
-    toffset += tlen;
-
-    for (DB_VALUE *dbval_p : m_dbv_arr)
-      {
-	n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
-	assert (n_size != ER_FAILED);
-	if (tlen + n_size > m_tpl_buf.size)
-	  {
-	    tpl_size = MAX (tlen, QFILE_TUPLE_LENGTH_SIZE);
-	    tpl_size += MAX (n_size, DB_PAGESIZE);
-	    tpl_size = ((tpl_size + DB_PAGESIZE - 1) / DB_PAGESIZE) * DB_PAGESIZE;
-	    m_tpl_buf.size += tpl_size;
-	    m_tpl_buf.tpl = (char *) realloc ((void *) m_tpl_buf.tpl, m_tpl_buf.size);
-	    assert_release (m_tpl_buf.tpl != NULL);
-	    tuple_p = (char *) (m_tpl_buf.tpl) + toffset;
-	  }
-	if (is_outptr_domain_resolved != nullptr)
-	  {
-	    while (outptr_list_p->value.flags & REGU_VARIABLE_HIDDEN_COLUMN)
-	      {
-		outptr_list_p = outptr_list_p->next;
-	      }
-	    if (!DB_IS_NULL (dbval_p) && (*m_list_id_p)->is_domain_resolved == false)
-	      {
-		dom_type = TP_DOMAIN_TYPE ((*m_list_id_p)->type_list.domp[type_list_index]);
-		if (dom_type == DB_TYPE_VARIABLE
-		    || (*m_list_id_p)->type_list.domp[type_list_index]->collation_flag != TP_DOMAIN_COLL_NORMAL)
-		  {
-		    (*m_list_id_p)->type_list.domp[type_list_index] = tp_domain_resolve_value (dbval_p, NULL);
-		  }
-
-		assert (outptr_list_p != NULL);
-		outptr_list_p->value.domain = (*m_list_id_p)->type_list.domp[type_list_index];
-
-	      }
-	    if (outptr_dbvals_p != nullptr)
-	      {
-		if (outptr_list_p->value.type == TYPE_CONSTANT)
-		  {
-		    if (!DB_IS_NULL (dbval_p))
-		      {
-			DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
-			db_value_clone (dbval_p, vecp);
-		      }
-		    else
-		      {
-			*is_outptr_domain_resolved = false;
-		      }
-		    i++;
-		  }
-	      }
-	    outptr_list_p = outptr_list_p->next;
-	  }
-
-	if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
-	  {
-	    assert (false);
-	  }
-
-	tlen += tval_size;
-	tuple_p += tval_size;
-	toffset += tval_size;
-	type_list_index++;
-      }
-
-    QFILE_PUT_TUPLE_LENGTH (m_tpl_buf.tpl, tlen);
-
 
     return &m_tpl_buf;
   }

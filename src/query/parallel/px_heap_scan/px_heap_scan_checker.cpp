@@ -98,15 +98,15 @@ namespace parallel_heap_scan
     public:
       general_checker (check_and_set_map *map) : map (map) {}
       CHECK_RESULT check (REGU_VARIABLE *src, bool is_outptr_list = false);
-      CHECK_RESULT check (PRED_EXPR *src);
+      CHECK_RESULT check (PRED_EXPR *src, bool is_outptr_list = false);
       CHECK_RESULT check (REGU_VARIABLE_LIST src, bool is_outptr_list = false);
-      CHECK_RESULT check (ARITH_TYPE *src);
-      CHECK_RESULT check (PRED *src);
-      CHECK_RESULT check (EVAL_TERM *src);
-      CHECK_RESULT check (COMP_EVAL_TERM *src);
-      CHECK_RESULT check (ALSM_EVAL_TERM *src);
-      CHECK_RESULT check (LIKE_EVAL_TERM *src);
-      CHECK_RESULT check (RLIKE_EVAL_TERM *src);
+      CHECK_RESULT check (ARITH_TYPE *src, bool is_outptr_list = false);
+      CHECK_RESULT check (PRED *src, bool is_outptr_list = false);
+      CHECK_RESULT check (EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (COMP_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (ALSM_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (LIKE_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (RLIKE_EVAL_TERM *src, bool is_outptr_list = false);
     private:
       check_and_set_map *map;
   };
@@ -224,23 +224,37 @@ namespace parallel_heap_scan
 	break;
       case TYPE_INARITH:
       case TYPE_OUTARITH:
-	temp = check (src->value.arithptr);
-	if (temp == CHECK_RESULT::CANNOT_PARALLEL)
+	temp = check (src->value.arithptr, is_outptr_list);
+	if (is_outptr_list)
 	  {
-	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	    if (temp == CHECK_RESULT::CANNOT_PARALLEL)
+	      {
+		result = CHECK_RESULT::CANNOT_PARALLEL;
+	      }
+	    else
+	      {
+		result = merge_check_result (result, CHECK_RESULT::PARALLEL_LIST_MERGE);
+	      }
 	  }
 	else
 	  {
-	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	    if (temp == CHECK_RESULT::CANNOT_PARALLEL)
+	      {
+		result = CHECK_RESULT::CANNOT_PARALLEL;
+	      }
+	    else
+	      {
+		result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	      }
 	  }
 	break;
       case TYPE_SP:
-	result = check (src->value.sp_ptr->args);
+	result = check (src->value.sp_ptr->args, is_outptr_list);
 	/* cannot execute sp in child threads */
 	result = CHECK_RESULT::CANNOT_PARALLEL;
 	break;
       case TYPE_FUNC:
-	temp = check (src->value.funcp->operand);
+	temp = check (src->value.funcp->operand, is_outptr_list);
 	if (temp == CHECK_RESULT::CANNOT_PARALLEL)
 	  {
 	    result = CHECK_RESULT::CANNOT_PARALLEL;
@@ -251,7 +265,7 @@ namespace parallel_heap_scan
 	  }
 	break;
       case TYPE_REGU_VAR_LIST:
-	temp = check (src->value.regu_var_list);
+	temp = check (src->value.regu_var_list, is_outptr_list);
 	if (temp == CHECK_RESULT::CANNOT_PARALLEL)
 	  {
 	    result = CHECK_RESULT::CANNOT_PARALLEL;
@@ -268,7 +282,7 @@ namespace parallel_heap_scan
     return result;
   }
 
-  CHECK_RESULT general_checker::check (PRED_EXPR *src)
+  CHECK_RESULT general_checker::check (PRED_EXPR *src, bool is_outptr_list)
   {
     if (!src)
       {
@@ -278,13 +292,13 @@ namespace parallel_heap_scan
     switch (src->type)
       {
       case T_PRED:
-	return check (&src->pe.m_pred);
+	return check (&src->pe.m_pred, is_outptr_list);
 	break;
       case T_EVAL_TERM:
-	return check (&src->pe.m_eval_term);
+	return check (&src->pe.m_eval_term, is_outptr_list);
 	break;
       case T_NOT_TERM:
-	return check (src->pe.m_not_term);
+	return check (src->pe.m_not_term, is_outptr_list);
 	break;
       default:
 	return CHECK_RESULT::CANNOT_PARALLEL;
@@ -307,7 +321,7 @@ namespace parallel_heap_scan
     return result;
   }
 
-  CHECK_RESULT general_checker::check (ARITH_TYPE *src)
+  CHECK_RESULT general_checker::check (ARITH_TYPE *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::NONE, temp = CHECK_RESULT::NONE;
     if (!src)
@@ -327,20 +341,20 @@ namespace parallel_heap_scan
     return result;
   }
 
-  CHECK_RESULT general_checker::check (PRED *src)
+  CHECK_RESULT general_checker::check (PRED *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::NONE, temp = CHECK_RESULT::NONE;
     if (!src)
       {
 	return result;
       }
-    temp = check (src->lhs);
-    result = check (src->rhs);
+    temp = check (src->lhs, is_outptr_list);
+    result = check (src->rhs, is_outptr_list);
     result = merge_check_result (result, temp);
     return result;
   }
 
-  CHECK_RESULT general_checker::check (EVAL_TERM *src)
+  CHECK_RESULT general_checker::check (EVAL_TERM *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::NONE;
     if (!src)
@@ -350,57 +364,57 @@ namespace parallel_heap_scan
     switch (src->et_type)
       {
       case T_COMP_EVAL_TERM:
-	return check (&src->et.et_comp);
+	return check (&src->et.et_comp, is_outptr_list);
 	break;
       case T_ALSM_EVAL_TERM:
-	return check (&src->et.et_alsm);
+	return check (&src->et.et_alsm, is_outptr_list);
 	break;
       case T_LIKE_EVAL_TERM:
-	return check (&src->et.et_like);
+	return check (&src->et.et_like, is_outptr_list);
 	break;
       case T_RLIKE_EVAL_TERM:
-	return check (&src->et.et_rlike);
+	return check (&src->et.et_rlike, is_outptr_list);
 	break;
       default:
 	return result;
 	break;
       }
   }
-  CHECK_RESULT general_checker::check (COMP_EVAL_TERM *src)
+  CHECK_RESULT general_checker::check (COMP_EVAL_TERM *src, bool is_outptr_list)
   {
     if (!src)
       {
 	return CHECK_RESULT::NONE;
       }
-    return merge_check_result (check (src->lhs), check (src->rhs));
+    return merge_check_result (check (src->lhs, is_outptr_list), check (src->rhs, is_outptr_list));
   }
-  CHECK_RESULT general_checker::check (ALSM_EVAL_TERM *src)
+  CHECK_RESULT general_checker::check (ALSM_EVAL_TERM *src, bool is_outptr_list)
   {
     if (!src)
       {
 	return CHECK_RESULT::NONE;
       }
-    return merge_check_result (check (src->elem), check (src->elemset));
+    return merge_check_result (check (src->elem, is_outptr_list), check (src->elemset, is_outptr_list));
   }
-  CHECK_RESULT general_checker::check (LIKE_EVAL_TERM *src)
+  CHECK_RESULT general_checker::check (LIKE_EVAL_TERM *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::NONE;
     if (!src)
       {
 	return result;
       }
-    result = merge_check_result (check (src->src), check (src->pattern));
-    return merge_check_result (result, check (src->esc_char));
+    result = merge_check_result (check (src->src, is_outptr_list), check (src->pattern, is_outptr_list));
+    return merge_check_result (result, check (src->esc_char, is_outptr_list));
   }
-  CHECK_RESULT general_checker::check (RLIKE_EVAL_TERM *src)
+  CHECK_RESULT general_checker::check (RLIKE_EVAL_TERM *src, bool is_outptr_list)
   {
     CHECK_RESULT result = CHECK_RESULT::NONE;
     if (!src)
       {
 	return result;
       }
-    result = merge_check_result (check (src->src), check (src->pattern));
-    return merge_check_result (result, check (src->case_sensitive));
+    result = merge_check_result (check (src->src, is_outptr_list), check (src->pattern, is_outptr_list));
+    return merge_check_result (result, check (src->case_sensitive, is_outptr_list));
   }
 
   CHECK_RESULT spec_checker::check (ACCESS_SPEC_TYPE *spec)

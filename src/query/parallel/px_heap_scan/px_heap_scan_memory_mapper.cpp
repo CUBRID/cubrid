@@ -513,7 +513,35 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  memory_mapper::memory_mapper (SCAN_ID *scan_idp)
+  OUTPTR_LIST *memory_mapper::copy_and_map (OUTPTR_LIST *src)
+  {
+    OUTPTR_LIST *dest = nullptr;
+    if (!src)
+      {
+	return dest;
+      }
+    auto it = m_map.find ((void *)src);
+    if (it != m_map.end())
+      {
+	assert (it->second.type == Type::OUTPTR_LIST);
+	dest = (OUTPTR_LIST *) it->second.ptr;
+      }
+    else
+      {
+	typed_memory tm;
+	tm.type = Type::OUTPTR_LIST;
+	dest = (OUTPTR_LIST *) malloc (sizeof (OUTPTR_LIST));
+	dest->valptr_cnt = src->valptr_cnt;
+	dest->valptrp = copy_and_map (src->valptrp);
+	tm.ptr = dest;
+	m_map[ (void *)src] = tm;
+	m_obj_cnt++;
+      }
+    return dest;
+  }
+
+
+  memory_mapper::memory_mapper (SCAN_ID *scan_idp, OUTPTR_LIST *outptr_list)
   {
     /* Structure sizes
      * SCAN_ID : 2176
@@ -547,6 +575,7 @@ namespace parallel_heap_scan
     hsid->scan_pred.regu_list = copy_and_map (phsid->scan_pred.regu_list);
     hsid->rest_regu_list = copy_and_map (phsid->rest_regu_list);
     hsid->scan_pred.pred_expr = copy_and_map (phsid->scan_pred.pred_expr);
+    m_outptr_list = copy_and_map (outptr_list);
     hsid->caches_inited = false;
     stats.elapsed_scan = {0, 0};
     stats.elapsed_page_lock = {0, 0};
@@ -590,6 +619,9 @@ namespace parallel_heap_scan
 	    break;
 	  case Type::VAL_DESCR:
 	    assert (false);
+	    break;
+	  case Type::OUTPTR_LIST:
+	    clear_and_free ((OUTPTR_LIST *)pair.second.ptr);
 	    break;
 	  default:
 	    assert (false);

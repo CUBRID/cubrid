@@ -61,7 +61,6 @@ namespace parallel_heap_scan
       QFILE_LIST_ID **m_list_id_p;
       VALPTR_LIST *m_outptr_list;
       QFILE_TUPLE_RECORD m_tpl_buf;
-      std::vector<DB_VALUE *> m_dbv_arr;
       QUERY_ID m_query_id;
       VAL_DESCR *m_vd;
 
