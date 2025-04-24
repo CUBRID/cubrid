@@ -832,63 +832,6 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	      ;			/* do nothing */
 	    }
 	}
-      else if (result_type == DB_TYPE_VARNCHAR)
-	{
-	  /* This is going to look a lot like qstr_trim_trailing.  We don't call qstr_trim_trailing because he works on
-	   * length of characters and we need to work on length of bytes.  We could calculate the length in characters,
-	   * but that requires a full scan of the strings which is not necessary. */
-	  int i, pad_size, trim_length, cmp_flag, prev_size;
-	  unsigned char *prev_ptr, *current_ptr, pad[2];
-
-	  intl_pad_char (codeset, pad, &pad_size);
-
-	  trim_length = string1_size;
-	  current_ptr = (unsigned char *) (string1 + string1_size);
-	  for (i = 0, cmp_flag = 0; (i < string1_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string1_size = trim_length;
-
-	  trim_length = string2_size;
-	  current_ptr = (unsigned char *) (string2 + string2_size);
-	  for (i = 0, cmp_flag = 0; (i < string2_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string2_size = trim_length;
-
-	}
 
       /* now find the first byte where the strings differ */
       for (result_size = 0;
@@ -3576,14 +3519,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 
@@ -3598,14 +3534,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
       if (DB_IS_NULL (trim_charset))
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  return error_status;
 	}
     }
@@ -4032,14 +3961,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   assert (src_string != (DB_VALUE *) NULL);
   assert (padded_string != (DB_VALUE *) NULL);
 
-  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
+  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
@@ -6150,16 +6072,9 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
 	}
       else
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  error_status =
+	    db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
 	  goto exit;
 	}
     }
@@ -6403,15 +6318,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 
   if (DB_IS_NULL (src_string) || DB_IS_NULL (from_string) || DB_IS_NULL (to_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  error_status =
-	    db_value_domain_init (transed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 

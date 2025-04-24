@@ -8888,25 +8888,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto error_exit;
 	    }
 
-	  switch (column->domain->type->id)
+	  if (column->domain->type->id == DB_TYPE_VARCHAR)
 	    {
-	    case DB_TYPE_VARCHAR:
 	      if (column->domain->precision == DB_DEFAULT_PRECISION)
 		{
 		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
 		}
-	      break;
-	    case DB_TYPE_VARNCHAR:
-	      if (column->domain->precision == DB_DEFAULT_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	    default:
-	      break;
 	    }
 	}
     }
@@ -11658,22 +11645,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       else if (req_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  req_prec = DB_MAX_VARCHAR_PRECISION;
-	  is_req_max_prec = true;
-	}
-      else
-	{
-	  assert (req_prec >= 0);
-	}
-    }
-  else if (new_type == DB_TYPE_VARNCHAR)
-    {
-      if (req_prec == DB_MAX_VARNCHAR_PRECISION)
-	{
-	  is_req_max_prec = true;
-	}
-      else if (req_prec == TP_FLOATING_PRECISION_VALUE)
-	{
-	  req_prec = DB_MAX_VARNCHAR_PRECISION;
 	  is_req_max_prec = true;
 	}
       else

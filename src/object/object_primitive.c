@@ -14372,8 +14372,6 @@ PR_TYPE tp_VarNChar = {
   mr_cmpval_varnchar
 };
 
-PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
-
 /*
  * TYPE BIT
  */

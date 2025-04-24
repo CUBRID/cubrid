@@ -1647,7 +1647,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
       else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT)
 	{
-	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARNCHAR, DB_TYPE_VARBIT */
+	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARBIT */
 
 	  val_dom = tp_domain_resolve_value (val, &dom_buf);
 	  if (val_dom == NULL)

@@ -3105,7 +3105,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	    }
 	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
 	    {
-	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR || val_type == DB_TYPE_VARNCHAR))
+	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR))
 		{
 		  pr_clone_value (val, hv);
 		}

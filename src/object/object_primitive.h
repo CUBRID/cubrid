@@ -254,7 +254,6 @@ extern PR_TYPE *tp_Type_bit;
 extern PR_TYPE *tp_Type_varbit;
 extern PR_TYPE *tp_Type_char;
 extern PR_TYPE *tp_Type_nchar;
-extern PR_TYPE *tp_Type_varnchar;
 extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
 extern PR_TYPE *tp_Type_bigint;
