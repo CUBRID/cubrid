@@ -9638,7 +9638,49 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	case DB_TYPE_VECTOR:
 	  {
-	    ASSERT_CUBVEC (false);
+
+	    DB_VECTOR_FLOAT vf = db_get_vector_float (src);
+	    auto[dim, arr] = vf;
+	    if (!arr)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    std::ostringstream oss;
+
+	    oss << "[";
+	    int vector_dim = dim;
+	    for (int i = 0; i < vector_dim; i++)
+	      {
+		oss << arr[i];
+		if (i < vector_dim - 1)
+		  {
+		    oss << ", ";
+		  }
+	      }
+	    oss << "]";
+
+	    char *new_string = db_private_strdup (NULL, oss.str ().c_str ());
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    // check varchar's precision e.g.) 'select cast (vec as varchar (1)) from tbl;'
+	    int new_string_len = oss.str ().size ();
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < new_string_len)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
+	      }
 	    break;
 	  }
 
