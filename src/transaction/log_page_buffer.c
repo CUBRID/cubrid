@@ -7532,6 +7532,10 @@ cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
 void
 logpb_create_backup_read_worker_pool (size_t thread_count)
 {
+  if (thread_count < 3)
+    {
+      thread_count = 3;
+    }
   g_backup_read_worker_pool =
     cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
 						   thread_count / 3, false, true);
