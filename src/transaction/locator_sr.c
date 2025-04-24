@@ -6075,7 +6075,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			    "locator_update_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
 	    }
-	  if (!OID_EQ (&superclass_oid, class_oid))
+	  if (!OID_ISNULL (&superclass_oid) && !OID_EQ (&superclass_oid, class_oid))
 	    {
 	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }
@@ -6398,7 +6398,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      goto error;
 	    }
 
-	  if (!OID_EQ (&superclass_oid, &class_oid))
+	  if (!OID_ISNULL (&superclass_oid) && !OID_EQ (&superclass_oid, &class_oid))
 	    {
 	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }

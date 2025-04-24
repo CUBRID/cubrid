@@ -109,6 +109,7 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
+#include "thread_worker_pool.hpp"	// for system_core_count
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -6632,7 +6633,9 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
 
   /* get the number of CPUs */
-  num_cpus = fileio_os_sysconf ();
+  // *INDENT-OFF*
+  num_cpus = cubthread::system_core_count ();
+  // *INDENT-ON*
   /* check for the upper bound of threads */
   if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {
@@ -6640,7 +6643,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
   else
     {
-      thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
+      thread_info_p->num_threads = MIN (num_threads, num_cpus);
     }
   thread_info_p->num_threads = MIN (thread_info_p->num_threads, NUM_NORMAL_TRANS);
 #else /* SERVER_MODE */
@@ -8114,7 +8117,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
     {
       // *INDENT-OFF
       auto exec_f = std::bind (fileio_read_backup_volume_execute, std::placeholders::_1, session_p);
-      css_push_external_task (conn_p, new cubthread::entry_callable_task (exec_f));
+      logpb_push_backup_read_task (new cubthread::entry_callable_task (exec_f));
       // *INDENT-ON
     }
 

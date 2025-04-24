@@ -4035,6 +4035,11 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (error == NO_ERROR)
     {
       error = scan_id->s.msid.open ();
+      if (error != NO_ERROR)
+	{
+	  /* it needs to clear the related resources */
+	  scan_id->s.msid.clear (false);
+	}
     }
   return error;
 }
@@ -4066,7 +4071,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (&scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
 }
 
 /*

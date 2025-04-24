@@ -117,11 +117,14 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
+  XASL_BUILD,
+  XASL_INITIALIZED,
   XASL_CLEARED,
   XASL_SUCCESS,
-  XASL_FAILURE,
-  XASL_INITIALIZED
+  XASL_FAILURE
 } XASL_STATUS;
+//#define IS_XASL_INITIAL_STATUS(s) ((s) == XASL_CLEARED || (s) == XASL_INITIALIZED || (s) == XASL_BUILD)
+#define IS_XASL_INITIAL_STATUS(s) ((s) <= XASL_CLEARED)
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -155,6 +158,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
+typedef struct func_stat FUNC_STATS;
 
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
@@ -603,7 +607,7 @@ struct cte_proc_node
 	  if (XASL_IS_FLAGED (_x, XASL_LINK_TO_REGU_VARIABLE)) \
 	    { \
 	      /* clear correlated subquery list files */ \
-	      if ((_x)->status == XASL_CLEARED || (_x)->status == XASL_INITIALIZED) \
+	      if (IS_XASL_INITIAL_STATUS((_x)->status)) \
 		{ \
 		  /* execute xasl query */ \
 		  if (_x->sub_xasl_id) \
@@ -1038,6 +1042,14 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
+struct func_stat
+{
+  UINT64 time;
+  UINT64 fetches;
+  UINT64 ioreads;
+  UINT64 calls;
+};
+
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -1193,6 +1205,7 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
+  FUNC_STATS func_stats;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 

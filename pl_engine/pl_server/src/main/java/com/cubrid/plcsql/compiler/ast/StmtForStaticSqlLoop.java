@@ -31,11 +31,46 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.StaticSql;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtForStaticSqlLoop extends StmtForSqlLoop {
+public class StmtForStaticSqlLoop extends StmtForSqlLoop implements SqlUse {
+
+    public boolean reachableFromLoop;
+
+    @Override
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
+    }
+
+    @Override
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return false;
+    }
+
+    private boolean usingRef = false;
+
+    @Override
+    public boolean usingRef() {
+        return usingRef;
+    }
+
+    @Override
+    public void setToUseRef() {
+        usingRef = true;
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -46,18 +81,22 @@ public class StmtForStaticSqlLoop extends StmtForSqlLoop {
 
     public StmtForStaticSqlLoop(
             ParserRuleContext ctx,
+            StmtLoop.LoopOptimizables loopOptimizables,
             String label,
             DeclVar record,
             StaticSql staticSql,
-            NodeList<Stmt> stmts) {
+            NodeList<Stmt> stmts,
+            int sqlSerialNo) {
         super(
                 ctx,
+                loopOptimizables,
                 false,
                 label,
                 record,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
                 new ArrayList(staticSql.hostExprs.keySet()),
-                stmts);
+                stmts,
+                sqlSerialNo);
 
         this.staticSql = staticSql;
     }

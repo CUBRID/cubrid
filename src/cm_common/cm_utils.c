@@ -728,7 +728,7 @@ cm_util_log_write_errstr (const char *format, ...)
 int
 cm_util_log_write_command (int argc, char *argv[])
 {
-  return util_log_write_command (argc, argv);
+  return util_log_write_command (argc, argv, 0);
 }
 
 /*

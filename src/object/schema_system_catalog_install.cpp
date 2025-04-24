@@ -752,6 +752,7 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false}
     },
 // authorization
     {
@@ -872,7 +873,6 @@ namespace cubschema
 		   // columns
     {
       {"sp_of", CT_STORED_PROC_NAME},
-      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
       {"is_system_generated", "integer"},
       {"arg_name", format_varchar (255)},
@@ -1856,6 +1856,8 @@ namespace cubschema
       {"arg_name", "varchar(255)"},
       {"data_type", "varchar(16)"},
       {"mode", "varchar(6)"},
+      {"is_optional", "varchar(3)"},
+      {"default_value", "varchar(255)"},
       {"comment", "varchar(1024)"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}

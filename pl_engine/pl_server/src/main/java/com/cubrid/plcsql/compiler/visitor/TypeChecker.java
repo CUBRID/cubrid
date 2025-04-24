@@ -41,6 +41,7 @@ import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
@@ -53,13 +54,19 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.Stack;
 
 public class TypeChecker extends AstVisitor<Type> {
 
-    public TypeChecker(InstanceStore iStore, SymbolStack symbolStack, ParseTreeConverter ptConv) {
+    public TypeChecker(
+            InstanceStore iStore,
+            SymbolStack symbolStack,
+            ParseTreeConverter ptConv,
+            Set<SqlUse> sqlUsesInRecursiveCalls) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;
         this.ptConv = ptConv;
+        this.sqlUsesInRecursiveCalls = sqlUsesInRecursiveCalls;
     }
 
     @Override
@@ -617,11 +624,7 @@ public class TypeChecker extends AstVisitor<Type> {
         return Type.BOOLEAN;
     }
 
-    @Override
-    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
-
-        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
-        String sql = String.format("select %s%s from dual", node.name, tvStr);
+    private Type typeBuiltinFuncCall(BuiltinFuncCall node, String name, String sql) {
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;
@@ -640,18 +643,10 @@ public class TypeChecker extends AstVisitor<Type> {
                         Misc.getLineColumnOf(node.ctx), // s233
                         String.format(
                                 "unsupported return type (code %d) of the built-in function %s",
-                                ci.type, node.name));
+                                ci.type, name));
             }
 
             node.setResultType(ret);
-
-            Expr arg0;
-            if (node.args.nodes.size() == 1
-                    && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
-                // cast to Object, a hint for Javac compiler. see CBRD-25168
-                arg0.setCoercion(Coercion.Cast.getStaticInstance(Type.NULL, Type.OBJECT));
-            }
-
             return ret;
         } else {
             Server.log(
@@ -661,14 +656,129 @@ public class TypeChecker extends AstVisitor<Type> {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s235
                     "function "
-                            + node.name
+                            + name
                             + " is undefined or given wrong number or types of arguments");
         }
     }
 
     @Override
+    public Type visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
+
+        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
+        String sql = String.format("select %s%s from dual", node.name, tvStr);
+        return typeBuiltinFuncCall(node, node.name, sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallAdddate(ExprSyntaxedCallAdddate node) {
+        String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
+        String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
+        String sql =
+                String.format(
+                        "select ADDDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        return typeBuiltinFuncCall(node, "ADDDATE", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallCast(ExprSyntaxedCallCast node) {
+        if (node.arg instanceof ExprNull) {
+            // Special case: the argument is NULL
+            //  . in this case, we do not need ask the server of the type
+            //  . moreover, the server returns an unsupported type code 5 (DB_OBJECT) in this case.
+            node.setResultType(node.tySpec.type);
+            return node.resultType;
+        } else {
+            String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+            String sql =
+                    String.format(
+                            "select CAST(%s AS %s) from dual",
+                            tvStrOfArg, node.tySpec.type.plcName);
+            return typeBuiltinFuncCall(node, "CAST", sql);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallChr(ExprSyntaxedCallChr node) {
+        String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+        String sql =
+                String.format(
+                        "select CHR(%s USING %s) from dual",
+                        tvStrOfArg, node.isUtf8 ? "utf8" : "iso88591");
+        return typeBuiltinFuncCall(node, "CHR", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallExtract(ExprSyntaxedCallExtract node) {
+        String tvStrOfArg = checkArgAndGetTypicalValueStr(node.arg);
+        String sql =
+                String.format("select EXTRACT(%s FROM %s) from dual", node.timeField, tvStrOfArg);
+        return typeBuiltinFuncCall(node, "EXTRACT", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallPosition(ExprSyntaxedCallPosition node) {
+        String tvStrOfSub = checkArgAndGetTypicalValueStr(node.sub);
+        String tvStrOfWhole = checkArgAndGetTypicalValueStr(node.whole);
+        String sql = String.format("select POSITION(%s IN %s) from dual", tvStrOfSub, tvStrOfWhole);
+        return typeBuiltinFuncCall(node, "POSITION", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallSubdate(ExprSyntaxedCallSubdate node) {
+        String tvStrOfDate = checkArgAndGetTypicalValueStr(node.date);
+        String tvStrOfDelta = checkArgAndGetTypicalValueStr(node.delta);
+        String sql =
+                String.format(
+                        "select SUBDATE(%s, INTERVAL %s %s) from dual",
+                        tvStrOfDate, tvStrOfDelta, node.timeUnit);
+        return typeBuiltinFuncCall(node, "SUBDATE", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
+    public Type visitExprSyntaxedCallTrim(ExprSyntaxedCallTrim node) {
+        String tvStrOfTrimStr =
+                node.trimStr == null ? "" : checkArgAndGetTypicalValueStr(node.trimStr);
+        String tvStrOfStr = checkArgAndGetTypicalValueStr(node.str);
+        String sql =
+                String.format(
+                        "select TRIM(%s %s FROM %s) from dual",
+                        node.trimDir, tvStrOfTrimStr, tvStrOfStr);
+        return typeBuiltinFuncCall(node, "TRIM", sql);
+    }
+
+    // -------------------------------------------------------------------------
+    //
+
+    @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
+        if (routineDefNestLevel == 1) {
+            Stack<DeclRoutine> calls = new Stack<>();
+            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
+            assert calls.size() == 0;
+        }
         return node.decl.retTypeSpec.type;
     }
 
@@ -1092,40 +1202,6 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     @Override
-    public Type visitStmtForDynamicSqlLoop(StmtForDynamicSqlLoop node) {
-
-        Type sqlType = visit(node.sql);
-        if (sqlType.idx != Type.IDX_STRING) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(node.sql.ctx), // s225
-                    "SQL in EXECUTE IMMEDIATE statements must be of a string type");
-        }
-
-        // check types of expressions in the USING clause
-        if (node.usedExprList != null) {
-            for (Expr e : node.usedExprList) {
-                Type tyUsedExpr = visit(e); // s429
-                switch (tyUsedExpr.idx) {
-                    case Type.IDX_CURSOR:
-                    case Type.IDX_RECORD:
-                    case Type.IDX_BOOLEAN:
-                    case Type.IDX_SYS_REFCURSOR:
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(e.ctx), // s428
-                                "expressions in a USING clause cannot be of "
-                                        + tyUsedExpr.plcName
-                                        + " type");
-                    default:; // OK
-                }
-            }
-        }
-
-        visitNodeList(node.stmts);
-
-        return null;
-    }
-
-    @Override
     public Type visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
         typeCheckHostExprs(node.staticSql); // s406
@@ -1152,6 +1228,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtLocalProcCall(StmtLocalProcCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
+        if (routineDefNestLevel == 1) {
+            Stack<DeclRoutine> calls = new Stack<>();
+            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
+            assert calls.size() == 0;
+        }
         return null;
     }
 
@@ -1243,9 +1324,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     private static final Type[] TYPE_ARRAY_DUMMY = new Type[0];
 
+    private int routineDefNestLevel;
+
     private InstanceStore iStore;
     private SymbolStack symbolStack;
     private ParseTreeConverter ptConv;
+    private Set<SqlUse> sqlUsesInRecursiveCalls;
 
     private List<Type> caseComparedTypes;
 
@@ -1262,6 +1346,9 @@ public class TypeChecker extends AstVisitor<Type> {
     }
 
     private Type visitDeclRoutine(DeclRoutine node) {
+
+        routineDefNestLevel++;
+
         visitNodeList(node.paramList);
         if (node.retTypeSpec != null) {
             visit(node.retTypeSpec);
@@ -1271,10 +1358,33 @@ public class TypeChecker extends AstVisitor<Type> {
         }
         assert node.body != null; // syntactically guaranteed
         visitBody(node.body);
+
+        routineDefNestLevel--;
+
         return null;
     }
 
+    private String checkArgAndGetTypicalValueStr(Expr arg) {
+
+        String ret;
+        if (arg instanceof SqlLiteral) {
+            if (arg.ctx == null) {
+                // unreachable
+                throw new RuntimeException(
+                        "unreachable: a built-in function argument without a context");
+            } else {
+                ret = arg.ctx.getText();
+            }
+        } else {
+            Type argType = visit(arg);
+            ret = argType.typicalValueStr;
+        }
+
+        return ret;
+    }
+
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
+
         if (args.size() == 0) {
             if (SymbolStack.noParenBuiltInFunc.indexOf(funcName) >= 0) {
                 return "";
@@ -1288,10 +1398,10 @@ public class TypeChecker extends AstVisitor<Type> {
 
         int len = args.size();
         for (int i = 0; i < len; i++) {
-            Expr arg = args.get(i);
-            Type argType = visit(arg);
 
-            String typicalValueStr = argType.typicalValueStr;
+            Expr arg = args.get(i);
+            String typicalValueStr = checkArgAndGetTypicalValueStr(arg);
+
             if (typicalValueStr == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s234

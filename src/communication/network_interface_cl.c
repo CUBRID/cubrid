@@ -7278,6 +7278,17 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	    }
 
 	  tran_set_latest_query_status (end_query_result, tran_state, should_conn_reset);
+
+	  /* check if dblink transaction is aborted */
+	  if (tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+	    {
+	      if (replydata_listid)
+		{
+		  free_and_init (replydata_listid);
+		}
+
+	      return NULL;
+	    }
 	}
 
       if (replydata_listid && replydata_size_listid)
@@ -11057,7 +11068,12 @@ error:
       }
     else
       {
-	std::string err_msg = executor.get_stack ()->get_error_message ();
+	std::string err_msg;
+	if (executor.get_stack ())
+	  {
+	    err_msg = executor.get_stack ()->get_error_message ();
+	  }
+
 	if (err_msg.empty () && req_error != ER_SP_EXECUTE_ERROR)
 	  {
 	    err_msg.assign (er_msg ());
@@ -11065,7 +11081,7 @@ error:
 
 	if (req_error != ER_SM_INVALID_METHOD_ENV)	/* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	    req_error = ER_SP_EXECUTE_ERROR;
 	  }
 
@@ -11376,7 +11392,7 @@ error:
       if (compile_response.err_code == NO_ERROR)
 	{
 	  compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : req_error;
-	  compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+	  compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
 	}
     }
 
@@ -11411,7 +11427,7 @@ error:
   else
     {
       compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : success;
-      compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
+      compile_response.err_msg = er_msg ()? er_msg () : "unknown compile error";
     }
 
   return success;

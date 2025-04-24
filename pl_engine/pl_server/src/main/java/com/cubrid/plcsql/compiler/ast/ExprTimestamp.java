@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprTimestamp extends Expr {
+public class ExprTimestamp extends Expr implements SqlLiteral {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {

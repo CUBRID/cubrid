@@ -12993,28 +12993,28 @@ plcsql_text_part
 		DBG_PRINT}}
         | CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "'");
+                    char* val = pt_append_string(this_parser, NULL, "'");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "'");
                     $$ = val;
 		DBG_PRINT}}
         | DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "\"");
+                    char* val = pt_append_string(this_parser, NULL, "\"");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "\"");
                     $$ = val;
 		DBG_PRINT}}
         | BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "[");
+                    char* val = pt_append_string(this_parser, NULL, "[");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "]");
                     $$ = val;
 		DBG_PRINT}}
         | BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "`");
+                    char* val = pt_append_string(this_parser, NULL, "`");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "`");
                     $$ = val;
@@ -18084,6 +18084,7 @@ reserved_func
 			  {
 			    pt_set_fill_default_in_path_expression (path);
 			    node = parser_make_expression (this_parser, PT_DEFAULTF, path, NULL, NULL);
+                            node->flag.for_default_func = 1;
 			    PICE (node);
 			  }
 			$$ = node;

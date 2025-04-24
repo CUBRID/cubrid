@@ -10313,6 +10313,16 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
   switch (str[0])
     {
     case 'S':
+      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
+	{
+	  *next_len = 13;
+	  return DB_DEFAULT_SYSTIMESTAMP;
+	}
+      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
+	{
+	  *next_len = 12;
+	  return DB_DEFAULT_SYSDATETIME;
+	}
       if (str_size >= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
@@ -10326,19 +10336,19 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	      return DB_DEFAULT_SYSTIME;
 	    }
 	}
-      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
-	{
-	  *next_len = 12;
-	  return DB_DEFAULT_SYSDATETIME;
-	}
-      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
-	{
-	  *next_len = 13;
-	  return DB_DEFAULT_SYSTIMESTAMP;
-	}
       break;
 
     case 'C':
+      if (str_size >= 17 && strncmp (str, "CURRENT_TIMESTAMP", 17) == 0)
+	{
+	  *next_len = 17;
+	  return DB_DEFAULT_CURRENTTIMESTAMP;
+	}
+      if (str_size >= 16 && strncmp (str, "CURRENT_DATETIME", 16) == 0)
+	{
+	  *next_len = 16;
+	  return DB_DEFAULT_CURRENTDATETIME;
+	}
       if (str_size >= 12)
 	{
 	  if (strncmp (str, "CURRENT_DATE", 12) == 0)
@@ -10356,16 +10366,6 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	      *next_len = 12;
 	      return DB_DEFAULT_CURR_USER;
 	    }
-	}
-      if (str_size >= 16 && strncmp (str, "CURRENT_DATETIME", 16) == 0)
-	{
-	  *next_len = 16;
-	  return DB_DEFAULT_CURRENTDATETIME;
-	}
-      if (str_size >= 17 && strncmp (str, "CURRENT_TIMESTAMP", 17) == 0)
-	{
-	  *next_len = 17;
-	  return DB_DEFAULT_CURRENTTIMESTAMP;
 	}
       break;
 

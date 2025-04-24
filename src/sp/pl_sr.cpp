@@ -73,7 +73,7 @@ namespace cubpl
   class server_manager final
   {
     public:
-      static constexpr std::size_t CONNECTION_POOL_SIZE = 100;
+      static constexpr std::size_t CONNECTION_POOL_SIZE = 10;
 
       explicit server_manager (const char *db_name);
 
@@ -174,7 +174,9 @@ namespace cubpl
 
       // check functions for PL server state
       void do_check_state (bool hang_check);
-      int do_check_connection ();
+
+      int do_check_connection (int fail_cnt);
+      int do_ping_connection ();
 
       /*
       * do_bootstrap_request() - send a bootstrap request to PL server
@@ -194,12 +196,15 @@ namespace cubpl
       connection_pool *m_sys_conn_pool;
       bootstrap_request *m_bootstrap_request;
 
+#if defined (SERVER_MODE)
       std::mutex m_monitor_mutex;
       std::condition_variable m_monitor_cv;
+#endif
   };
 
   struct bootstrap_request : public cubpacking::packable_object
   {
+    cubmethod::header req_header;
     std::vector <sys_param> server_params;
 
     bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
@@ -266,7 +271,16 @@ namespace cubpl
   server_manager::wait_for_server_ready ()
   {
     m_server_monitor_task->wait_for_ready ();
-    return m_server_monitor_task->is_running () ? NO_ERROR : ER_FAILED;
+    if (m_server_monitor_task->is_running ())
+      {
+	return NO_ERROR;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
+		m_db_name.c_str ());
+	return er_errid ();
+      }
   }
 
   connection_pool *
@@ -303,8 +317,10 @@ namespace cubpl
     , m_failure_count (0)
     , m_sys_conn_pool {nullptr}
     , m_bootstrap_request {nullptr}
+#if defined (SERVER_MODE)
     , m_monitor_mutex {}
     , m_monitor_cv {}
+#endif
   {
     char executable_path[PATH_MAX];
     (void) envvar_bindir_file (executable_path, PATH_MAX, m_binary_name.c_str ());
@@ -342,6 +358,8 @@ namespace cubpl
     if (m_state == SERVER_MONITOR_STATE_STOPPED || m_state == SERVER_MONITOR_STATE_FAILED_TO_FORK)
       {
 	int status;
+
+	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
 	if (pid > 1) // parent
@@ -363,7 +381,7 @@ namespace cubpl
 	  }
       }
 
-    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE && lang_is_all_initialized ())
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
       {
 	do_initialize ();
       }
@@ -372,16 +390,34 @@ namespace cubpl
   void
   server_monitor_task::wait_for_ready ()
   {
+    if (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE)
+      {
+#if defined (SA_MODE)
+	assert (lang_is_all_initialized ());
+#endif
+	do_initialize ();
+      }
+
 #if defined (SERVER_MODE)
     auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING ||
 					   (!BO_IS_SERVER_RESTARTED () && m_state == SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE);
 				  };
-#else
-    auto pred = [this] () -> bool { return m_state == SERVER_MONITOR_STATE_RUNNING; };
-#endif
 
     std::unique_lock<std::mutex> ulock (m_monitor_mutex);
     m_monitor_cv.wait (ulock, pred);
+#else
+    if (m_state != SERVER_MONITOR_STATE_RUNNING)
+      {
+	// retry starting pl server
+	int try_count = 0;
+	do
+	  {
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
+	    do_monitor ();
+	  }
+	while (try_count++ < 10 && m_state != SERVER_MONITOR_STATE_RUNNING);
+      }
+#endif
   }
 
   bool
@@ -394,33 +430,29 @@ namespace cubpl
   server_monitor_task::do_initialize ()
   {
     int error = ER_FAILED;
+
+    assert (m_state == SERVER_MONITOR_STATE_READY_TO_INITIALIZE);
+    if (!lang_is_all_initialized ())
+      {
+	return error;
+      }
+
+#if defined (SERVER_MODE)
     std::lock_guard<std::mutex> lock (m_monitor_mutex);
+#endif
+
     // wait PL server is ready to accept connection (polling)
 
     // TODO: parameterize this
     constexpr int MAX_FAIL_COUNT = 10;
-    int fail_count = 0;
-    while (fail_count < MAX_FAIL_COUNT)
-      {
-	error = do_check_connection ();
-	if (error != NO_ERROR)
-	  {
-	    fail_count++;
-
-	    /* The contents of the pl file may have changed, so set it to read again. */
-	    assert (m_sys_conn_pool);
-	    m_sys_conn_pool->set_port_disabled();
-
-	    thread_sleep (1000);	/* 1000 msec */
-	  }
-	else
-	  {
-	    break;
-	  }
-      }
+    error = do_check_connection (MAX_FAIL_COUNT);
 
     // set unknown state here
+#if defined (SERVER_MODE)
     m_state = SERVER_MONITOR_STATE_UNKNOWN;
+#else
+    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
+#endif
 
     if (error == NO_ERROR)
       {
@@ -441,7 +473,9 @@ namespace cubpl
       }
     m_manager->get_connection_pool ()->increment_epoch ();
 
+#if defined (SERVER_MODE)
     m_monitor_cv.notify_all();
+#endif
 
     return error;
   }
@@ -453,7 +487,15 @@ namespace cubpl
     switch (m_state)
       {
       case SERVER_MONITOR_STATE_STOPPED:
+#if defined(SA_MODE)
+	if (do_check_connection (1) == NO_ERROR)
+	  {
+	    // Waiting for PL server in shutdown state
+	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
+	  }
+#else
 	/* do nothing */
+#endif
 	break;
       case SERVER_MONITOR_STATE_RUNNING:
       case SERVER_MONITOR_STATE_READY_TO_INITIALIZE:
@@ -463,6 +505,7 @@ namespace cubpl
 	  }
 	else
 	  {
+	    er_log_debug (ARG_FILE_LINE, "PL server is terminated. pid=%d\n", m_pid);
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
 	  }
 	break;
@@ -473,9 +516,11 @@ namespace cubpl
 	  {
 	    // After several failed attempts, we should consider the PL server is not able to start
 	    m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 		    "Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
 	    m_monitor_cv.notify_all ();
+#endif
 	  }
       }
       break;
@@ -486,6 +531,7 @@ namespace cubpl
 	  {
 	    // PL server is terminated by user (cubrid pl restart)
 	    m_state = SERVER_MONITOR_STATE_STOPPED;
+	    m_failure_count = 0;
 	  }
 
 	if (m_state == SERVER_MONITOR_STATE_UNKNOWN)
@@ -495,9 +541,15 @@ namespace cubpl
 	      {
 		// After several failed attempts, we should consider the PL server is not able to start
 		m_state = SERVER_MONITOR_STATE_FAILED_TO_INITIALIZE;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1,
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_PL_SERVER, 1,
 			"Failed to initialize the PL server. Verify that the server environment and configurations are properly set up");
+#if defined (SERVER_MODE)
 		m_monitor_cv.notify_all ();
+#endif
+	      }
+	    else
+	      {
+		m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE; // retry initialization
 	      }
 	  }
 	break;
@@ -505,7 +557,31 @@ namespace cubpl
   }
 
   int
-  server_monitor_task::do_check_connection ()
+  server_monitor_task::do_check_connection (int fail_cnt)
+  {
+    int error = NO_ERROR;
+    int c = 0;
+    do
+      {
+	error = do_ping_connection ();
+	if (error == NO_ERROR || ++c > fail_cnt)
+	  {
+	    break;
+	  }
+
+	/* The contents of the pl file may have changed, so set it to read again. */
+	assert (m_sys_conn_pool);
+	m_sys_conn_pool->set_db_port (pl_server_port_from_info ());
+
+	thread_sleep (1000);	/* 1000 msec */
+      }
+    while (c < fail_cnt);
+
+    return error;
+  }
+
+  int
+  server_monitor_task::do_ping_connection ()
   {
     int error = NO_ERROR;
 
@@ -536,12 +612,7 @@ namespace cubpl
       }
 
 exit:
-    if (ping_response.is_valid ())
-      {
-	delete [] ping_response.ptr;
-	ping_response.ptr = NULL;
-	ping_response.dim = 0;
-      }
+    ping_response.freemem ();
 
     cv.reset ();
 
@@ -558,10 +629,9 @@ exit:
       }
 
     cubmem::block bootstrap_response;
-    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0);
     connection_view cv = m_sys_conn_pool->claim ();
 
-    error = cv->send_buffer_args (header, *m_bootstrap_request);
+    error = cv->send_buffer_args (*m_bootstrap_request);
     if (error == NO_ERROR)
       {
 	error = cv->receive_buffer (bootstrap_response);
@@ -571,6 +641,8 @@ exit:
       {
 	packing_unpacker deserializator (bootstrap_response);
 	deserializator.unpack_int (error);
+
+	bootstrap_response.freemem ();
       }
 
     return error;
@@ -579,8 +651,12 @@ exit:
   /*********************************************************************
    * bootstrap_request - definition
    *********************************************************************/
+#define BOOTSTRAP_REQ_ARGS() \
+  req_header, server_params
+
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : server_params ()
+    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0)
+    , server_params ()
   {
     while (pl_ctx_values != nullptr)
       {
@@ -592,7 +668,7 @@ exit:
   void
   bootstrap_request::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_all (server_params);
+    serializator.pack_all (BOOTSTRAP_REQ_ARGS ());
   }
 
   void
@@ -604,7 +680,7 @@ exit:
   size_t
   bootstrap_request::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    return serializator.get_all_packed_size_starting_offset (start_offset, server_params);
+    return serializator.get_all_packed_size_starting_offset (start_offset, BOOTSTRAP_REQ_ARGS ());
   }
 } // namespace cubpl
 
@@ -664,7 +740,31 @@ PL_CONNECTION_POOL *get_connection_pool ()
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_JVM, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_RUNNING_PL_SERVER, 0);
       return nullptr;
     }
+}
+
+
+/*
+ * pl_server_port_from_info
+ *   return: if jsp is disabled return -2 (PL_PORT_DISABLED)
+ *           else if jsp is UDS mode return -1
+ *           else return a port (TCP mode)
+ *
+ *
+ * Note:
+ */
+
+static int sp_port = PL_PORT_DISABLED;
+
+int
+pl_server_port_from_info (void)
+{
+  // check $CUBRID/var/pl_<db_name>.info
+  PL_SERVER_INFO pl_info {-1, -1};
+  pl_read_info (boot_db_name (), pl_info);
+  sp_port = pl_info.port;
+
+  return sp_port;
 }

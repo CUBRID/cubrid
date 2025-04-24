@@ -34,6 +34,7 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -41,6 +42,8 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashSet;
+import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
@@ -84,6 +87,29 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
+    private static final String STR_EXPECTING = " expecting ";
+    private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
+
+    private static String cutExpectingClause(String errMsg) {
+
+        int idx;
+        if (errMsg != null && (idx = errMsg.lastIndexOf(STR_EXPECTING)) > 0) {
+
+            String tail = errMsg.substring(idx + STR_EXPECTING_LEN);
+
+            if (tail.matches("[A-Z0-9_]+") /* single token name */
+                    || (tail.startsWith("'")
+                            && tail.endsWith("'")) /* single token of the form '...' */
+                    || (tail.startsWith("{")
+                            && tail.endsWith("}") /* multiple tokens of the form {...} */)) {
+
+                errMsg = errMsg.substring(0, idx);
+            }
+        }
+
+        return errMsg;
+    }
+
     private static ParseTree parse(
             CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
 
@@ -94,19 +120,15 @@ public class PlcsqlCompilerMain {
 
         PlcLexerEx lexer = new PlcLexerEx(input);
 
-        LexerErrorIndicator lei = new LexerErrorIndicator();
-        lexer.removeErrorListeners();
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
+        lexer.removeErrorListeners(); // This removes unwanted console output
         lexer.addErrorListener(lei);
-
-        if (lei.hasError) {
-            throw new SyntaxError(lei.line, lei.column, lei.msg);
-        }
 
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         PlcParser parser = new PlcParser(tokens);
 
-        SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
-        parser.removeErrorListeners();
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator(true);
+        parser.removeErrorListeners(); // This removes unwanted console output
         parser.addErrorListener(sei);
 
         if (verbose) {
@@ -117,10 +139,6 @@ public class PlcsqlCompilerMain {
 
         if (verbose) {
             logElapsedTime(logStore, "  calling parser", t0);
-        }
-
-        if (sei.hasError) {
-            throw new SyntaxError(sei.line, sei.column, sei.msg);
         }
 
         sqlTemplate[0] = lexer.getCreateSqlTemplate();
@@ -218,7 +236,9 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        TypeChecker typeChecker = new TypeChecker(iStore, converter.symbolStack, converter);
+        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
+        TypeChecker typeChecker =
+                new TypeChecker(iStore, converter.symbolStack, converter, sqlUsesInRecursiveCalls);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -228,7 +248,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter(iStore).buildCodeLines(unit);
+        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);
@@ -250,37 +270,14 @@ public class PlcsqlCompilerMain {
         return info;
     }
 
-    private static class LexerErrorIndicator extends BaseErrorListener {
-
-        boolean hasError;
-        int line;
-        int column;
-        String msg;
-
-        @Override
-        public void syntaxError(
-                Recognizer<?, ?> recognizer,
-                Object offendingSymbol,
-                int line,
-                int charPositionInLine,
-                String msg,
-                RecognitionException e) {
-
-            if (msg.startsWith("token recognition error")) {
-                this.hasError = true;
-                this.line = line;
-                this.column = charPositionInLine + 1; // charPositionInLine starts from 0
-                this.msg = msg;
-            }
-        }
-    }
-
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        boolean hasError;
-        int line;
-        int column;
-        String msg;
+        final boolean forParser;
+
+        public SyntaxErrorIndicator(boolean forParser) {
+            super();
+            this.forParser = forParser;
+        }
 
         @Override
         public void syntaxError(
@@ -291,10 +288,9 @@ public class PlcsqlCompilerMain {
                 String msg,
                 RecognitionException e) {
 
-            this.hasError = true;
-            this.line = line;
-            this.column = charPositionInLine + 1; // charPositionInLine starts from 0
-            this.msg = msg;
+            // throw SyntaxError at the first syntax error
+            String errMsg = forParser ? cutExpectingClause(msg) : msg;
+            throw new SyntaxError(line, charPositionInLine + 1, errMsg);
         }
     }
 }

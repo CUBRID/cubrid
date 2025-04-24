@@ -43,6 +43,8 @@
 
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int alter_stored_procedure_code (PARSER_CONTEXT * parser, MOP sp_mop, const char *name, const char *owner_str,
+					int sp_recompile);
 extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 

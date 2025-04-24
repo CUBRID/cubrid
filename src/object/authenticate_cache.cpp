@@ -91,6 +91,15 @@ authenticate_cache::flush (void)
     }
   user_name_cache.clear ();
 
+  for (auto &it : procedure_cache)
+    {
+      if (it.second)
+	{
+	  delete it.second;
+	}
+    }
+  procedure_cache.clear ();
+
   /* clear the associated globals */
   init ();
 }
@@ -107,7 +116,7 @@ authenticate_cache::flush (void)
  *   cache(in):
  */
 int
-authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
+authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
 {
   int error = NO_ERROR;
   DB_SET *groups = NULL;
@@ -117,6 +126,9 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
   bool is_member = false;
   unsigned int *bits = NULL;
   bool need_pop_er_stack = false;
+  MOP owner;
+
+  const unsigned int FULL_AUTH = (obj_type == DB_OBJECT_CLASS) ? AU_FULL_AUTHORIZATION : AU_EXECUTE;
 
   /*
    * must disable here because we may be updating the cache of the system
@@ -128,7 +140,18 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
 
   need_pop_er_stack = true;
 
-  bits = get_cache_bits (sm_class);
+  if (obj_type == DB_OBJECT_CLASS)
+    {
+      SM_CLASS *sm_class = (SM_CLASS *) ptr;
+      bits = get_cache_bits ((SM_CLASS *) ptr);
+      owner = sm_class->owner;
+    }
+  else if (obj_type == DB_OBJECT_PROCEDURE)
+    {
+      bits = get_procedure_cache_bits (mop);
+      owner = (MOP) ptr;
+    }
+
   if (bits == NULL)
     {
       assert (false);
@@ -138,7 +161,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
 
-  if (sm_class->owner == NULL)
+  if (owner == NULL)
     {
       /* This shouldn't happen - assign it to the DBA */
       error = ER_AU_CLASS_WITH_NO_OWNER;
@@ -150,7 +173,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
   is_member = au_is_dba_group_member (Au_user);
   if (is_member)
     {
-      *bits = AU_FULL_AUTHORIZATION;
+      *bits = FULL_AUTH;
       goto end;
     }
 
@@ -161,10 +184,10 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
       goto end;
     }
 
-  if (ws_is_same_object (Au_user, sm_class->owner))
+  if (ws_is_same_object (Au_user, owner) || ws_is_same_object (Au_public_user, owner))
     {
       /* might want to allow grant/revoke on self */
-      *bits = AU_FULL_AUTHORIZATION;
+      *bits = FULL_AUTH;
       goto end;
     }
 
@@ -176,7 +199,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
       goto end;
     }
 
-  db_make_object (&value, sm_class->owner);
+  db_make_object (&value, owner);
 
   is_member = set_ismember (groups, &value);
 
@@ -190,7 +213,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
   if (is_member)
     {
       /* we're a member of the owning group */
-      *bits = AU_FULL_AUTHORIZATION;
+      *bits = FULL_AUTH;
     }
   else if (au_get_object (Au_user, "authorization", &auth) != NO_ERROR)
     {
@@ -200,7 +223,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
   else
     {
       /* apply local grants */
-      error = apply_grants (auth, classop, bits);
+      error = apply_grants (auth, mop, bits);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -228,7 +251,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
 	  if (ws_is_same_object (group, Au_dba_user))
 	    {
 	      /* someones on the DBA member list, give them power */
-	      *bits = AU_FULL_AUTHORIZATION;
+	      *bits = FULL_AUTH;
 	    }
 	  else
 	    {
@@ -238,7 +261,7 @@ authenticate_cache::update (MOP classop, SM_CLASS *sm_class)
 		  goto end;
 		}
 
-	      error = apply_grants (auth, classop, bits);
+	      error = apply_grants (auth, mop, bits);
 	      if (error != NO_ERROR)
 		{
 		  goto end;
@@ -406,6 +429,26 @@ authenticate_cache::get_cache_bits (SM_CLASS *sm_class)
     }
 
   return &cache->data[cache_index];
+}
+
+unsigned int *
+authenticate_cache::get_procedure_cache_bits (MOP proc_mop)
+{
+  std::vector<unsigned int> *bits = nullptr;
+
+  auto it = procedure_cache.find (proc_mop);
+  if (it == procedure_cache.end ())
+    {
+      bits = new std::vector<unsigned int> (cache_max, AU_CACHE_INVALID);
+      procedure_cache[proc_mop] = bits;
+    }
+  else
+    {
+      bits = it->second;
+    }
+
+  bits->resize (cache_max, AU_CACHE_INVALID);
+  return & (*bits)[cache_index];
 }
 
 /*
@@ -665,6 +708,36 @@ authenticate_cache::reset_cache_for_user_and_class (SM_CLASS *sm_class)
     }
 }
 
+void
+authenticate_cache::reset_cache_for_user_and_procedure (MOP obj)
+{
+  AU_USER_CACHE *u;
+  AU_CLASS_CACHE *c;
+
+  for (auto &it : procedure_cache)
+    {
+      if (it.first == obj)
+	{
+	  /*
+	   * invalide every user's cache for this procedure mop, could be more
+	   * selective and do only the given user and its members
+	   */
+	  for (u = user_cache; u != NULL; u = u->next)
+	    {
+	      // NOTE: u->index is initalized as -1
+	      // This means that the user is cached in a context that is independent of the class,
+	      // for example, obtaining the user object in the execution context of another database object,
+	      // such as the owner's right of procedure or a user management method.
+	      if (u->index >= 0)
+		{
+		  it.second->resize (u->index + 1, AU_CACHE_INVALID); // safe guard
+		  it.second->at (u->index) = AU_CACHE_INVALID;
+		}
+	    }
+	}
+    }
+}
+
 /*
  * au_reset_authorization_caches - This is called by ws_clear_all_hints()
  *                                 and ws_abort_mops() on transaction
@@ -686,12 +759,20 @@ authenticate_cache::reset_authorization_caches (void)
   AU_CLASS_CACHE *c;
   int i;
 
+  // reset class cache
   for (c = class_caches; c != NULL; c = c->next)
     {
       for (i = 0; i < cache_depth; i++)
 	{
 	  c->data[i] = AU_CACHE_INVALID;
 	}
+    }
+
+  // reset procedure cache
+  for (auto &it : procedure_cache)
+    {
+      std::vector <unsigned int> *data = it.second;
+      std::fill (data->begin (), data->end(), AU_CACHE_INVALID);
     }
 }
 

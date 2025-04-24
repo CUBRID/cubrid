@@ -358,7 +358,6 @@ set(SP_SOURCES
   ${SP_DIR}/pl_comm.c
   ${SP_DIR}/pl_file.c
   ${SP_DIR}/pl_sr.cpp
-  ${SP_DIR}/pl_sr_jvm.cpp
   ${SP_DIR}/sp_catalog.cpp
   ${SP_DIR}/sp_code.cpp
   )
@@ -686,7 +685,7 @@ if(WIN32)
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
   target_compile_definitions(cubridsa PRIVATE YY_NO_UNISTD_H)
-  target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
+  target_link_libraries(cubridsa LINK_PRIVATE ws2_32)
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 
@@ -710,7 +709,6 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
-  ${JAVA_INC}
   )
 if(UNIX)
   # find out what this means:

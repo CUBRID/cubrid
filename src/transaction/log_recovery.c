@@ -5722,8 +5722,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
-    case LOG_END_OF_LOG:
     case LOG_SYSOP_ATOMIC_START:
+      break;
+
+    case LOG_END_OF_LOG:
+      assert (false);
       break;
 
     case LOG_REPLICATION_DATA:

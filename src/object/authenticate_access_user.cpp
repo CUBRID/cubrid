@@ -113,7 +113,9 @@ au_find_user (const char *user_name)
     {
       user = user_cache->user;
       assert (user != NULL);
-      return user;
+
+      AU_SAVE_AND_ENABLE (save);
+      goto exit;
     }
 
   /* disable checking of internal authorization object access */

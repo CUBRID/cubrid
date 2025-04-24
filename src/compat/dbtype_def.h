@@ -548,10 +548,7 @@ extern "C"
 /* The lower limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
-/* The maximum precision of CHAR(n) domain that can be specified for an INTL_UTF8_MAX_CHAR_SIZE.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
+#define DB_MAX_CHAR_PRECISION 2048
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
@@ -581,9 +578,9 @@ extern "C"
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -1
 
-/* This constant indecates that NUMERIC(*,*) means NUMERIC(any,any) */
-#define DB_NUMERIC_PRECISION_ANY 0
-#define DB_NUMERIC_SCALE_ANY 0
+/* This constant indecates that SP function's default NUMERIC domain */
+#define DB_NUMERIC_PRECISION_SP 38
+#define DB_NUMERIC_SCALE_SP 15
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION 15
