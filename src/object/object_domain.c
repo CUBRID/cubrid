@@ -5070,7 +5070,7 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
     }
 
   db_value_domain_init (result, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-  db_make_vector (result, vector_float);
+  db_make_vector_float (result, vector_float);
 
   return NO_ERROR;
 }

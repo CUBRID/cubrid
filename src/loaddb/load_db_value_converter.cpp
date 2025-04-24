@@ -625,7 +625,7 @@ namespace cubload
     DB_VECTOR_FLOAT vector_float;
     vector_float.dim = count;
     vector_float.float_array = float_array;
-    db_make_vector (val, vector_float);
+    db_make_vector_float (val, vector_float);
     val->need_clear = true;
 
     return NO_ERROR;

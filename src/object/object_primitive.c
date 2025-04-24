@@ -7726,7 +7726,7 @@ mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
   vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
   DB_VECTOR_FLOAT vf = { 0, nullptr };
-  db_make_vector (value, vf);
+  db_make_vector_float (value, vf);
 }
 
 static int
@@ -7767,7 +7767,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
-	  error = db_make_vector (dest, vf);
+	  error = db_make_vector_float (dest, vf);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
 	  return error;
@@ -7777,7 +7777,7 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
-	  db_make_vector (dest, *db_get_vector_float (src));
+	  db_make_vector_float (dest, *db_get_vector_float (src));
 	  ASSERT_CUBVEC (error == NO_ERROR);
 
 	  dest->need_clear = false;
@@ -7853,7 +7853,7 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
       or_get_data (buf, (char *) vector_float.float_array, vector_float.dim * sizeof (float));
       ASSERT_CUBVEC (error == NO_ERROR);
 
-      error = db_make_vector (value, vector_float);
+      error = db_make_vector_float (value, vector_float);
       ASSERT_CUBVEC (error == NO_ERROR);
     }
   else
@@ -7861,7 +7861,7 @@ mr_data_readval_vector_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
       vector_float.float_array = (float *) buf->ptr;
 
-      error = db_make_vector (value, vector_float);
+      error = db_make_vector_float (value, vector_float);
       ASSERT_CUBVEC (error == NO_ERROR);
 
       value->need_clear = false;
