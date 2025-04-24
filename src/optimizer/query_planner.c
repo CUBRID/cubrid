@@ -10382,6 +10382,8 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
   int pos;
   PT_NODE *node = NULL;
   PT_NODE *arg_list = NULL;
+  PT_NODE *order_by = NULL;
+  PT_NODE *order_by_for = NULL;
 
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
@@ -10390,7 +10392,21 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
   index_entryp = ni_entryp->head;
   index_class = index_entryp->class_;
 
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+  if (!QO_ENV_PT_TREE (env))
+    {
+      goto end;
+    }
+
+  order_by = QO_ENV_PT_TREE (env)->info.query.order_by;
+  order_by_for = QO_ENV_PT_TREE (env)->info.query.orderby_for;
+
+  if (!order_by || !order_by_for)
+    {
+      goto end;
+    }
+
+  /* limit a, b */
+  if (order_by_for->next != NULL)
     {
       goto end;
     }
