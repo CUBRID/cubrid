@@ -1404,7 +1404,6 @@ conv_double_to_string (char *double_str, int *length)
 char *
 csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg)
 {
-
   char *result = NULL;
   char *json_body = NULL;
   int len = 0;
