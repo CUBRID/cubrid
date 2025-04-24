@@ -5637,7 +5637,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	    {
 	      if (from_spec->remote_server_name)
 		{
-		  //assert (from_spec->remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 		  last = &temp->next;
 		  continue;
 		}

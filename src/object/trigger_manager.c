@@ -210,7 +210,7 @@ static DB_OBJECT *trigger_to_object (TR_TRIGGER * trigger);
 static int object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger);
 static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname,
 				 const char **tempname);
-static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
+static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate, bool is_creating);
 static int validate_trigger (TR_TRIGGER * trigger);
 
 static int register_user_trigger (DB_OBJECT * object);
@@ -1599,7 +1599,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
  *    Parse trees must also be generated after a trigger has been loaded from disk for the first time.
  */
 static int
-compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate)
+compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate, bool is_creating)
 {
   int error = NO_ERROR;
   const char *curname, *tempname;
@@ -1669,7 +1669,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 
       activity->statement =
 	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname,
-				 &activity->source, with_evaluate);
+				 &activity->source, with_evaluate, is_creating);
       if (activity->statement == NULL || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
 	  error = er_errid ();
@@ -1792,7 +1792,7 @@ validate_trigger (TR_TRIGGER * trigger)
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
 
-      if (compile_trigger_activity (trigger, trigger->condition, 1))
+      if (compile_trigger_activity (trigger, trigger->condition, 1, false))
 	{
 	  trigger->status = TR_STATUS_INVALID;
 	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
@@ -1802,7 +1802,7 @@ validate_trigger (TR_TRIGGER * trigger)
 	    }
 	}
 
-      if (compile_trigger_activity (trigger, trigger->action, 0))
+      if (compile_trigger_activity (trigger, trigger->action, 0, false))
 	{
 	  trigger->status = TR_STATUS_INVALID;
 	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
@@ -4077,12 +4077,12 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     }
 
   /* be sure that the condition and action expressions can be compiled */
-  if (trigger->condition != NULL && compile_trigger_activity (trigger, trigger->condition, 1))
+  if (trigger->condition != NULL && compile_trigger_activity (trigger, trigger->condition, 1, true))
     {
       goto error;
     }
 
-  if (trigger->action != NULL && compile_trigger_activity (trigger, trigger->action, 0))
+  if (trigger->action != NULL && compile_trigger_activity (trigger, trigger->action, 0, true))
     {
       goto error;
     }
@@ -4717,7 +4717,7 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 
       if (act->parser == NULL)
 	{
-	  error = compile_trigger_activity (trigger, act, 1);
+	  error = compile_trigger_activity (trigger, act, 1, false);
 	}
 
       if (error == NO_ERROR)
@@ -4919,7 +4919,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	    }
 	  if (act->parser == NULL)
 	    {
-	      error = compile_trigger_activity (trigger, act, 0);
+	      error = compile_trigger_activity (trigger, act, 0, false);
 	      used_cached_statement = false;
 	    }
 

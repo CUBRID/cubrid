@@ -10978,10 +10978,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
+
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11584,7 +11585,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       node = pt_semantic_type (parser, node, info);
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node->info.merge.into->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -14675,23 +14676,6 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
   if (stmt->node_type != PT_INSERT && stmt->node_type != PT_MERGE)
     {
       return NULL;
-    }
-
-  if (stmt->node_type == PT_INSERT)
-    {
-      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
-	{
-	  //assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
-	  return stmt;
-	}
-    }
-  else if (stmt->node_type == PT_MERGE)
-    {
-      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
-	{
-	  //assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
-	  return stmt;
-	}
     }
 
   if (stmt->node_type == PT_INSERT)

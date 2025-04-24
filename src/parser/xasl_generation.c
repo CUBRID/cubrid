@@ -18536,6 +18536,22 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_to_insert_xasl_for_dblink_trigger () - Converts an triggering insert to an XASL
+ *
+ * return	  : Xasl node.
+ * parser (in)	  : Parser context.
+ * statement (in) : Parse tree node for triggering insert statement.
+ */
+XASL_NODE *
+pt_to_insert_xasl_for_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  pt_check_dblink_trigger (parser, statement);
+  pt_rewrite_for_dblink (parser, statement);
+
+  return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -18570,8 +18586,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
-      pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
 
@@ -21080,13 +21094,6 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
   with = statement->info.update.with;
-
-  if (from && from->info.spec.remote_server_name)
-    {
-      pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
-      return pt_to_xasl_for_dblink (parser, from);
-    }
 
   /* flush all classes */
   p = from;
