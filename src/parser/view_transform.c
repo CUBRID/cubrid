@@ -412,10 +412,9 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_find_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -4984,16 +4983,44 @@ exit_on_error:
  *   return:
  *   parser(in):
  *   node(in):
- * 
+ *   arg(in):
+ *   continue_walk(in):
+ *
  * Note: This function is used to rewrite CTE as a derived table.
  */
 static PT_NODE *
-mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
+mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *with_clause = NULL;
   PT_NODE *cte_definition_list, *curr, *next;
 
-  (void) parser_walk_tree (parser, node, mq_find_with_clause, &with_clause, NULL, NULL);
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.with != NULL)
+	{
+	  with_clause = node->info.query.with;
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.with != NULL)
+	{
+	  with_clause = node->info.delete_.with;
+	}
+      break;
+    case PT_UPDATE:
+      if (node->info.update.with != NULL)
+	{
+	  with_clause = node->info.update.with;
+	}
+      break;
+    default:
+      break;
+    }
 
   if (with_clause == NULL)
     {
@@ -5033,47 +5060,6 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       parser_free_tree (parser, with_clause);
-    }
-
-  return node;
-}
-
-static PT_NODE *
-mq_find_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE **with_clause = (PT_NODE **) arg;
-  *continue_walk = PT_CONTINUE_WALK;
-
-  switch (node->node_type)
-    {
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      if (node->info.query.with != NULL)
-	{
-	  *with_clause = node->info.query.with;
-	  *continue_walk = PT_STOP_WALK;
-	}
-      break;
-
-    case PT_DELETE:
-      if (node->info.delete_.with != NULL)
-	{
-	  *with_clause = node->info.delete_.with;
-	  *continue_walk = PT_STOP_WALK;
-	}
-      break;
-    case PT_UPDATE:
-      if (node->info.update.with != NULL)
-	{
-	  *with_clause = node->info.update.with;
-	  *continue_walk = PT_STOP_WALK;
-	}
-      break;
-
-    default:
-      break;
     }
 
   return node;
@@ -7963,7 +7949,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      node = mq_rewrite_cte_as_derived (parser, node);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
@@ -8016,7 +8002,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
-      node = mq_rewrite_cte_as_derived (parser, node);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
 
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
