@@ -13606,8 +13606,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OTMPL *otemplate = NULL;
 
   if (!statement || statement->node_type != PT_INSERT || !statement->info.insert.spec
-      || (!statement->info.insert.spec->info.spec.flat_entity_list
-	  && !statement->info.insert.spec->info.spec.remote_server_name))
+      || !statement->info.insert.spec->info.spec.flat_entity_list)
     {
       return ER_GENERIC_ERROR;
     }
@@ -13626,21 +13625,18 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (class_)
+  error = do_evaluate_default_expr (parser, class_);
+  if (error != NO_ERROR)
     {
-      error = do_evaluate_default_expr (parser, class_);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      return error;
+    }
 
-      error =
-	check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				      has_default_values_list);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+  error =
+    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+				  has_default_values_list);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   crt_list = statement->info.insert.value_clauses;
@@ -13671,15 +13667,12 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       need_savepoint = true;
     }
 
-  if (class_)
+  if (need_savepoint == false)
     {
-      if (need_savepoint == false)
+      statement = parser_walk_tree (parser, statement, NULL, NULL, test_check_option, &has_check_option);
+      if (has_check_option)
 	{
-	  statement = parser_walk_tree (parser, statement, NULL, NULL, test_check_option, &has_check_option);
-	  if (has_check_option)
-	    {
-	      need_savepoint = true;
-	    }
+	  need_savepoint = true;
 	}
     }
 
@@ -13687,40 +13680,37 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   parser->au_save = save;
 
-  if (class_)
+  if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
     {
-      if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
+      has_trigger = 0;
+      error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_UPDATE);
+      if (error != NO_ERROR)
 	{
-	  has_trigger = 0;
-	  error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_UPDATE);
-	  if (error != NO_ERROR)
-	    {
-	      AU_ENABLE (save);
-	      return error;
-	    }
-	  if (has_trigger != 0)
-	    {
-	      need_savepoint = true;
-	    }
-	  else if (TM_TRAN_ISOLATION () >= TRAN_REP_READ && !statement->info.insert.server_allowed)
-	    {
-	      need_savepoint = true;
-	    }
+	  AU_ENABLE (save);
+	  return error;
 	}
-
-      if (need_savepoint == false)
+      if (has_trigger != 0)
 	{
-	  has_trigger = 0;
-	  error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_INSERT);
-	  if (error != NO_ERROR)
-	    {
-	      AU_ENABLE (save);
-	      return error;
-	    }
-	  if (has_trigger != 0)
-	    {
-	      need_savepoint = true;
-	    }
+	  need_savepoint = true;
+	}
+      else if (TM_TRAN_ISOLATION () >= TRAN_REP_READ && !statement->info.insert.server_allowed)
+	{
+	  need_savepoint = true;
+	}
+    }
+
+  if (need_savepoint == false)
+    {
+      has_trigger = 0;
+      error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_INSERT);
+      if (error != NO_ERROR)
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+      if (has_trigger != 0)
+	{
+	  need_savepoint = true;
 	}
     }
 
