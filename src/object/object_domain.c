@@ -5054,17 +5054,12 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
       return ER_FAILED;
     }
 
+  // db_string_to_vector() should return Error if vector_float.dim > max_vector_size
+  ASSERT_CUBVEC (vector_float.dim <= max_vector_size);
+
   if (vector_float.dim == 0)
     {
       vimkim_log ("TODO: dim should not be zero yet.\n");
-      db_private_free (nullptr, vector_float.float_array);
-      return ER_FAILED;
-    }
-
-  if (vector_float.dim > max_vector_size)
-    {
-      vimkim_log ("dim cannot exceed %d\n", max_vector_size);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       db_private_free (nullptr, vector_float.float_array);
       return ER_FAILED;
     }
