@@ -3528,6 +3528,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
+  HASHJOIN_COMMON_STATS partitioning_stats = HASHJOIN_COMMON_STATS_INITIALIZER;
   int part_cnt, part_index;
 
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -3557,15 +3558,41 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   /* partitioning */
   if (part_cnt > 1)
     {
-      TSC_ADD_TIMEVAL (stats->part.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
-      TSC_ADD_TIMEVAL (stats->part.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->outer.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->inner.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+
+      TSC_ADD_TIMEVAL (partitioning_stats.elapsed_time, stats->outer.elapsed_time);
+      TSC_ADD_TIMEVAL (partitioning_stats.time, stats->outer.time);
+      partitioning_stats.fetches += stats->outer.fetches;
+      partitioning_stats.fetch_time += stats->outer.fetch_time;
+      partitioning_stats.ioreads += stats->outer.ioreads;
+
+      TSC_ADD_TIMEVAL (partitioning_stats.elapsed_time, stats->inner.elapsed_time);
+      TSC_ADD_TIMEVAL (partitioning_stats.time, stats->inner.time);
+      partitioning_stats.fetches += stats->inner.fetches;
+      partitioning_stats.fetch_time += stats->inner.fetch_time;
+      partitioning_stats.ioreads += stats->inner.ioreads;
 
       fprintf (fp,
-	       "%*cPARTITIONING (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, partitions: %d, outer_skew: %.2f, inner_skew: %.2f)\n",
-	       indent, ' ', TO_MSEC (stats->part.elapsed_time), stats->part.fetches, stats->part.fetch_time,
-	       stats->part.ioreads, part_cnt, stats->outer_skew, stats->inner_skew);
+	       "%*cPARTITIONING (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, partitions: %d)\n",
+	       indent, ' ', TO_MSEC (partitioning_stats.elapsed_time), TO_MSEC (partitioning_stats.time),
+	       partitioning_stats.fetches, partitioning_stats.fetch_time, partitioning_stats.ioreads, part_cnt);
+
+      indent += 2;
+
+      fprintf (fp,
+	       "%*cOUTER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld, skew: %.2f)\n",
+	       indent, ' ', TO_MSEC (stats->outer.elapsed_time), TO_MSEC (stats->outer.time), stats->outer.fetches,
+	       stats->outer.fetch_time, stats->outer.ioreads, stats->outer.rows, stats->outer.skew);
       qdump_print_stats_text (fp, outer_xasl, indent);
+
+      fprintf (fp,
+	       "%*cINNER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld, skew: %.2f)\n",
+	       indent, ' ', TO_MSEC (stats->inner.elapsed_time), TO_MSEC (stats->inner.time), stats->inner.fetches,
+	       stats->inner.fetch_time, stats->inner.ioreads, stats->inner.rows, stats->inner.skew);
       qdump_print_stats_text (fp, inner_xasl, indent);
+
+      indent -= 2;
     }
   else
     {
@@ -3777,7 +3804,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 static void
 qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 {
-  json_t *partition, *part_array, *build, *probe;
+  json_t *partition, *part_array, *outer, *inner, *build, *probe;
   json_t *input, *profile;
 
   XASL_NODE *outer_xasl, *inner_xasl;
@@ -3786,10 +3813,11 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
+  HASHJOIN_COMMON_STATS partitioning_stats = HASHJOIN_COMMON_STATS_INITIALIZER;
   int part_cnt, part_index;
 
   char hash_method_str[32];
-  char max_avg_str[32];
+  char skew_str[32];
   int len;
 
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -3818,35 +3846,66 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   /* partitioning */
   if (part_cnt > 1)
     {
-      TSC_ADD_TIMEVAL (stats->part.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
-      TSC_ADD_TIMEVAL (stats->part.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->outer.elapsed_time, outer_xasl->xasl_stats.elapsed_time);
+      TSC_ADD_TIMEVAL (stats->inner.elapsed_time, inner_xasl->xasl_stats.elapsed_time);
 
+      TSC_ADD_TIMEVAL (partitioning_stats.elapsed_time, stats->outer.elapsed_time);
+      TSC_ADD_TIMEVAL (partitioning_stats.time, stats->outer.time);
+      partitioning_stats.fetches += stats->outer.fetches;
+      partitioning_stats.fetch_time += stats->outer.fetch_time;
+      partitioning_stats.ioreads += stats->outer.ioreads;
+
+      TSC_ADD_TIMEVAL (partitioning_stats.elapsed_time, stats->inner.elapsed_time);
+      TSC_ADD_TIMEVAL (partitioning_stats.time, stats->inner.time);
+      partitioning_stats.fetches += stats->inner.fetches;
+      partitioning_stats.fetch_time += stats->inner.fetch_time;
+      partitioning_stats.ioreads += stats->inner.ioreads;
+
+      /* partitioning */
       partition = json_object ();
-      json_object_set_new (partition, "time", json_integer (TO_MSEC (stats->part.elapsed_time)));
-      json_object_set_new (partition, "fetch", json_integer (stats->part.fetches));
-      json_object_set_new (partition, "fetch_time", json_integer (stats->part.fetch_time));
-      json_object_set_new (partition, "ioread", json_integer (stats->part.ioreads));
+      json_object_set_new (partition, "time", json_integer (TO_MSEC (partitioning_stats.elapsed_time)));
+      json_object_set_new (partition, "part_time", json_integer (TO_MSEC (partitioning_stats.time)));
+      json_object_set_new (partition, "fetch", json_integer (partitioning_stats.fetches));
+      json_object_set_new (partition, "fetch_time", json_integer (partitioning_stats.fetch_time));
+      json_object_set_new (partition, "ioread", json_integer (partitioning_stats.ioreads));
       json_object_set_new (partition, "partitions", json_integer (part_cnt));
 
-      len = sprintf (max_avg_str, "%.2f", stats->outer_skew);
-      max_avg_str[len] = '\0';
-      json_object_set_new (partition, "outer_skew", json_string (max_avg_str));
+      /* partitioning - outer */
+      outer = json_object ();
+      json_object_set_new (outer, "time", json_integer (TO_MSEC (stats->outer.elapsed_time)));
+      json_object_set_new (outer, "part_time", json_integer (TO_MSEC (stats->outer.time)));
+      json_object_set_new (outer, "fetch", json_integer (stats->outer.fetches));
+      json_object_set_new (outer, "fetch_time", json_integer (stats->outer.fetch_time));
+      json_object_set_new (outer, "ioread", json_integer (stats->outer.ioreads));
+      json_object_set_new (outer, "rows", json_integer (stats->outer.rows));
 
-      len = sprintf (max_avg_str, "%.2f", stats->inner_skew);
-      max_avg_str[len] = '\0';
-      json_object_set_new (partition, "inner_skew", json_string (max_avg_str));
-
-      part_array = json_array ();
+      len = sprintf (skew_str, "%.2f", stats->outer.skew);
+      skew_str[len] = '\0';
+      json_object_set_new (outer, "skew", json_string (skew_str));
 
       input = json_object ();
       qdump_print_stats_json (outer_xasl, input);
-      json_array_append_new (part_array, input);
+      json_object_set_new (outer, "input", input);
+      json_object_set_new (partition, "outer", outer);
+
+      /* partitioning - inner */
+      inner = json_object ();
+      json_object_set_new (inner, "time", json_integer (TO_MSEC (stats->inner.elapsed_time)));
+      json_object_set_new (inner, "part_time", json_integer (TO_MSEC (stats->inner.time)));
+      json_object_set_new (inner, "fetch", json_integer (stats->inner.fetches));
+      json_object_set_new (inner, "fetch_time", json_integer (stats->inner.fetch_time));
+      json_object_set_new (inner, "ioread", json_integer (stats->inner.ioreads));
+      json_object_set_new (inner, "rows", json_integer (stats->inner.rows));
+
+      len = sprintf (skew_str, "%.2f", stats->inner.skew);
+      skew_str[len] = '\0';
+      json_object_set_new (inner, "skew", json_string (skew_str));
 
       input = json_object ();
       qdump_print_stats_json (inner_xasl, input);
-      json_array_append_new (part_array, input);
+      json_object_set_new (inner, "input", input);
+      json_object_set_new (partition, "inner", inner);
 
-      json_object_set_new (partition, "input", part_array);
       json_object_set_new (parent, "partitioning", partition);
     }
   else

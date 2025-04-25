@@ -116,6 +116,7 @@ typedef struct hashjoin_partition_info
   QFILE_LIST_ID *list_id;
   QFILE_LIST_ID **part_list_id;
   int part_cnt;
+  HASHJOIN_COMMON_STATS *stats;
 } HASHJOIN_PARTITION_INFO;
 #define HASHJOIN_PARTITION_INFO_INITIALIZER { NULL, NULL, 0 }
 
@@ -265,7 +266,7 @@ static void qexec_hash_join_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START
 static void qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stats,
 				       HASHJOIN_START_STATS * start_stats);
 static void qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt,
-					double *skew);
+					HASHJOIN_COMMON_STATS * stats);
 
 #if HASH_JOIN_PROFILE_TIME
 static void qexec_hash_join_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats,
@@ -1327,6 +1328,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   /* outer */
   part_info.list_id = outer_list_id;
   part_info.part_list_id = outer_part_list_id;
+  part_info.stats = &stats->outer;
 
   error = qexec_hash_join_partition_input (thread_p, manager, &part_info, &single_context->outer_fetch_info,
 					   is_outer_join, part_key);
@@ -1335,9 +1337,15 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
       goto error_exit;
     }
 
+  if (thread_is_on_trace (thread_p))
+    {
+      qexec_hash_join_trace_skew (outer_list_id, outer_part_list_id, part_cnt, &stats->outer);
+    }
+
   /* inner */
   part_info.list_id = inner_list_id;
   part_info.part_list_id = inner_part_list_id;
+  part_info.stats = &stats->inner;
 
   error = qexec_hash_join_partition_input (thread_p, manager, &part_info, &single_context->inner_fetch_info,
 					   is_outer_join, part_key);
@@ -1348,8 +1356,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 
   if (thread_is_on_trace (thread_p))
     {
-      qexec_hash_join_trace_skew (outer_list_id, outer_part_list_id, part_cnt, &stats->outer_skew);
-      qexec_hash_join_trace_skew (inner_list_id, inner_part_list_id, part_cnt, &stats->inner_skew);
+      qexec_hash_join_trace_skew (inner_list_id, inner_part_list_id, part_cnt, &stats->inner);
     }
 
   qfile_close_list (thread_p, outer_list_id);
@@ -1441,7 +1448,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 
   qexec_hash_join_check_valid_part_info (part_info);
 
-  HASHJOIN_STATS *stats = &manager->stats_group->stats;
+  HASHJOIN_COMMON_STATS *stats = part_info->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
@@ -1502,7 +1509,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 
   if (thread_is_on_trace (thread_p))
     {
-      qexec_hash_join_trace_end (thread_p, &stats->part, &start_stats);
+      qexec_hash_join_trace_end (thread_p, stats, &start_stats);
     }
 
   qfile_close_scan (thread_p, &list_scan_id);
@@ -3201,26 +3208,29 @@ qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stat
  *   skew(out):  Partition imbalance.
  */
 static void
-qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt, double *skew)
+qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt,
+			    HASHJOIN_COMMON_STATS * stats)
 {
-  UINT64 max = 0;
+  UINT64 sum = 0, max = 0;
   double avg, max_avg;
   unsigned int part_index;
 
   assert (list_id != NULL);
   assert (part_list_id != NULL);
   assert (part_cnt > 0);
-  assert (skew != NULL);
+  assert (stats != NULL);
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
       max = MAX (max, part_list_id[part_index]->tuple_cnt);
+      sum += part_list_id[part_index]->tuple_cnt;
     }
 
   avg = (double) list_id->tuple_cnt / part_cnt;
   max_avg = (avg != 0.0) ? (float) max / avg : 0.0;
 
-  *skew = max_avg;
+  stats->rows = sum;
+  stats->skew = max_avg;
 }
 
 #if HASH_JOIN_PROFILE_TIME
