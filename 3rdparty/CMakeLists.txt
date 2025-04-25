@@ -643,23 +643,26 @@ set(LIBFAISS_TARGET libfaiss)
 set(LIBFAISS_INCLUDES ${3RDPARTY_LIBS_DIR}/faiss/include)
 
 # check option and architecture
-if(USE_FAISS_SIMD_MODE STREQUAL "AVX512" AND !CXX_AVX512_FOUND)
+if(FAISS_SIMD_MODE STREQUAL "AVX512" AND !CXX_AVX512_FOUND)
   message(FATAL_ERROR "avx512 is not supported on this architecture")
 endif()
-if(USE_FAISS_SIMD_MODE STREQUAL "AVX2" AND !CXX_AVX2_FOUND)
+if(FAISS_SIMD_MODE STREQUAL "AVX2" AND !CXX_AVX2_FOUND)
   message(FATAL_ERROR "avx2 is not supported on this architecture")
 endif()
 
 # set libfaiss library path
-if(USE_FAISS_SIMD_MODE STREQUAL "AVX512")
+if(FAISS_SIMD_MODE STREQUAL "AVX512")
   set(LIBFAISS_LIBS_NAME "faiss_avx512")
   set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss_avx512.a)
-elseif(USE_FAISS_SIMD_MODE STREQUAL "AVX2")
+  set(FAISS_OPT_LEVEL "avx512")
+elseif(FAISS_SIMD_MODE STREQUAL "AVX2")
   set(LIBFAISS_LIBS_NAME "faiss_avx2")
   set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss_avx2.a)
+  set(FAISS_OPT_LEVEL "avx2")
 else()
   set(LIBFAISS_LIBS_NAME "faiss")
   set(LIBFAISS_LIBS ${3RDPARTY_LIBS_DIR}/Build/libfaiss/faiss/libfaiss.a)
+  set(FAISS_OPT_LEVEL "")
 endif()
 
 ADD_BY_PRODUCTS_VARIABLE ("LIBFAISS" ${LIBFAISS_LIBS})
@@ -676,6 +679,7 @@ if(WITH_FAISS STREQUAL "EXTERNAL")
         "-DCMAKE_CXX_FLAGS=-llapack -lopenblas"
         -DCMAKE_BUILD_TYPE=Release
         -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/faiss
+        -DFAISS_OPT_LEVEL=${FAISS_OPT_LEVEL}
         -DBUILD_SHARED_LIBS=OFF
         -DFAISS_ENABLE_GPU=OFF
         -DFAISS_ENABLE_PYTHON=OFF

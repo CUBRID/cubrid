@@ -29,14 +29,14 @@
       "name": "release_avx2",
       "inherits": "release",
       "cacheVariables": {
-        "USE_FAISS_SIMD_MODE": "AVX2"
+        "FAISS_SIMD_MODE": "AVX2"
       }
     },
     {
       "name": "release_avx512",
       "inherits": "release",
       "cacheVariables": {
-        "USE_FAISS_SIMD_MODE": "AVX512"
+        "FAISS_SIMD_MODE": "AVX512"
       }
     },
     {
@@ -51,14 +51,14 @@
       "name": "debug_avx2",
       "inherits": "debug",
       "cacheVariables": {
-        "USE_FAISS_SIMD_MODE": "AVX2"
+        "FAISS_SIMD_MODE": "AVX2"
       }
     },
     {
       "name": "debug_avx512",
       "inherits": "debug",
       "cacheVariables": {
-        "USE_FAISS_SIMD_MODE": "AVX512"
+        "FAISS_SIMD_MODE": "AVX512"
       }
     },
     {
