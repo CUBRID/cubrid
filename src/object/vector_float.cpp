@@ -22,56 +22,80 @@
 
 #include "vector_float.hpp"
 #include "cubvec_assert.h"
-#include "object_representation.h"
 #include <sstream>
+#include <iomanip>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-std::string db_vector_float_to_string (const db_vector_float vf)
+/**
+ * Converts a floating point vector to a string representation.
+ * For vectors with more than 2*kElementsToShow elements, only the first and last kElementsToShow
+ * elements are shown with an ellipsis in between.
+ *
+ * @param vf The vector to convert to string
+ * @return String representation of the vector
+ */
+std::string db_vector_float_to_string (const db_vector_float &vf)
 {
-  const int kElementsToShow = 5;
-  const int dim = vf.dim;
-  const float *float_array = vf.float_array;
-  std::ostringstream result;
 
-  // Add dimension information
-  result << "dim:" << dim << " [";
+  ASSERT_CUBVEC (vf.float_array != nullptr);
+  ASSERT_CUBVEC (vf.dim > 0);
 
-  // If vector is small enough, show all elements
-  if (dim <= kElementsToShow * 2)
+  const auto dim = vf.dim;
+  const auto arr = vf.float_array;
+
+  std::ostringstream oss;
+
+  // Set floating point precision
+  oss << std::fixed
+      << std::setprecision (6);
+
+  oss << '[';
+
+#if defined(CUBVEC_TEAM) && !defined(NDEBUG)
+
+  oss << "dim: " << dim << "] [";
+
+  constexpr int num_show = 5;
+  // Helper to append elements [start, end)
+  auto append_range = [&] (int start, int end)
+  {
+    for (int i = start; i < end; ++i)
+      {
+	if (i > start)
+	  {
+	    oss << ", ";
+	  }
+	oss << arr[i];
+      }
+  };
+
+  if (dim <= 2 * num_show)
     {
-      for (int i = 0; i < dim; ++i)
-	{
-	  result << float_array[i];
-	  if (i < dim - 1)
-	    {
-	      result << ", ";
-	    }
-	}
+      // show all elements
+      append_range (0, dim);
     }
-  // Otherwise show first and last kElementsToShow elements
   else
     {
-      // First kElementsToShow elements
-      for (int i = 0; i < kElementsToShow; ++i)
-	{
-	  result << float_array[i] << ", ";
-	}
-
-      // Add ellipsis for skipped elements
-      result << "... ";
-
-      // Last kElementsToShow elements
-      for (int i = dim - kElementsToShow; i < dim; ++i)
-	{
-	  result << float_array[i];
-	  if (i < dim - 1)
-	    {
-	      result << ", ";
-	    }
-	}
+      // first kShow
+      append_range (0, num_show);
+      oss << ", ... ";
+      // last kShow
+      append_range (dim - num_show, dim);
     }
 
-  result << "]";
-  return result.str();
+#else
+  for (int i = 0; i < dim; ++i)
+    {
+      if (i > 0)
+	{
+	  oss << ", ";
+	}
+      oss << arr[i];
+    }
+#endif
+
+  oss << "]";
+  return oss.str();
 }
+
