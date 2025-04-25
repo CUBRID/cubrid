@@ -9646,7 +9646,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		break;
 	      }
 
-	    auto[dim, arr] = *vf;
+	    const auto dim = vf->dim;
+	    const auto arr = vf->float_array;
+
 	    if (!arr)
 	      {
 		status = DOMAIN_ERROR;
