@@ -2414,6 +2414,7 @@ qexec_hash_join_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 	  else if (need_skip_next)
 	    {
 	      QEXEC_HASH_JOIN_PRINT_TUPLE (build_scan_id, found_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
+
 	      need_skip_next = false;	/* init */
 	      continue;
 	    }
