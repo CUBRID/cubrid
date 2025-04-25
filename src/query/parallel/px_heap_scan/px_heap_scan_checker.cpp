@@ -213,10 +213,10 @@ namespace parallel_heap_scan
       case TYPE_DBVAL:
       case TYPE_POSITION:
       case TYPE_POS_VALUE:
+      case TYPE_LIST_ID:
 	/* can execute with constants */
 	break;
       case TYPE_ORDERBY_NUM:
-      case TYPE_LIST_ID:
       case TYPE_CLASSOID:
       case TYPE_REGUVAL_LIST:
 	/* cannot execute with this regu-variable */
@@ -225,28 +225,7 @@ namespace parallel_heap_scan
       case TYPE_INARITH:
       case TYPE_OUTARITH:
 	temp = check (src->value.arithptr, is_outptr_list);
-	if (is_outptr_list)
-	  {
-	    if (temp == CHECK_RESULT::CANNOT_PARALLEL)
-	      {
-		result = CHECK_RESULT::CANNOT_PARALLEL;
-	      }
-	    else
-	      {
-		result = merge_check_result (result, CHECK_RESULT::PARALLEL_LIST_MERGE);
-	      }
-	  }
-	else
-	  {
-	    if (temp == CHECK_RESULT::CANNOT_PARALLEL)
-	      {
-		result = CHECK_RESULT::CANNOT_PARALLEL;
-	      }
-	    else
-	      {
-		result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
-	      }
-	  }
+	result = merge_check_result (result, temp);
 	break;
       case TYPE_SP:
 	result = check (src->value.sp_ptr->args, is_outptr_list);
@@ -328,11 +307,13 @@ namespace parallel_heap_scan
       {
 	return result;
       }
-    temp = check (src->leftptr);
+    temp = check (src->leftptr, is_outptr_list);
     result = merge_check_result (result, temp);
-    temp = check (src->rightptr);
+    temp = check (src->rightptr, is_outptr_list);
     result = merge_check_result (result, temp);
-    temp = check (src->thirdptr);
+    temp = check (src->thirdptr, is_outptr_list);
+    result = merge_check_result (result, temp);
+    temp = check (src->pred, is_outptr_list);
     result = merge_check_result (result, temp);
     if (src->opcode == T_TRACE_STATS)
       {

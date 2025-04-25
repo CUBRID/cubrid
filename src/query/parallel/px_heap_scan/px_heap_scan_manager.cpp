@@ -78,10 +78,12 @@ namespace parallel_heap_scan
 	&& !xasl->proc.buildlist.g_agg_domains_resolved)
       {
 	m_context->m_outptr_dbvals_p = &m_outptr_dbvals;
+	m_context->m_is_outptr_domain_resolved = false;
       }
     else
       {
 	m_context->m_outptr_dbvals_p = nullptr;
+	m_context->m_is_outptr_domain_resolved = true;
       }
     m_result_list = xasl->list_id;
     m_outptr_list = xasl->outptr_list;
@@ -312,6 +314,17 @@ namespace parallel_heap_scan
       }
     else
       {
+	REGU_VARIABLE_LIST orig_outptr_list_p = m_outptr_list->valptrp;
+	int merged_list_id_type_list_i = 0;
+	while (orig_outptr_list_p != nullptr)
+	  {
+	    if (!REGU_VARIABLE_IS_FLAGED (&orig_outptr_list_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	      {
+		orig_outptr_list_p->value.domain = merged_list_id->type_list.domp[merged_list_id_type_list_i];
+		merged_list_id_type_list_i++;
+	      }
+	    orig_outptr_list_p = orig_outptr_list_p->next;
+	  }
 	/* swap list_id */
 	parallel_query::list_merger::swap_and_destroy_list_id (m_thread_p, &m_result_list, &merged_list_id);
 	return S_END;

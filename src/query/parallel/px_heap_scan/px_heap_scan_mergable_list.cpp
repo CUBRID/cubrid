@@ -129,9 +129,13 @@ namespace parallel_heap_scan
     int n_size, toffset;
     bool clear_compressed_string = true;
     int ret;
-    REGU_VARIABLE_LIST outptr_list_p = NULL;
+    REGU_VARIABLE_LIST outptr_list_p = NULL, m_outptr_list_p = NULL;
     DB_VALUE *peek_value_p = NULL;
     m_error_code = NO_ERROR;
+    if (is_outptr_domain_resolved != nullptr)
+      {
+	*is_outptr_domain_resolved = true;
+      }
     if (outptr_dbvals_p != nullptr)
       {
 	if (outptr_dbvals_p->size() != 0)
@@ -149,10 +153,13 @@ namespace parallel_heap_scan
       {
 	return nullptr;
       }
+    if (! (*m_list_id_p)->is_domain_resolved)
+      {
+	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
+      }
 
     if (outptr_dbvals_p != nullptr)
       {
-	*is_outptr_domain_resolved = true;
 	outptr_list_p = m_outptr_list->valptrp;
 	for (int i = 0; i < m_outptr_list->valptr_cnt; i++)
 	  {

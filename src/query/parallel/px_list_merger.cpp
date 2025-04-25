@@ -59,6 +59,15 @@ namespace parallel_query
 	return;
       }
     assert (m_head_list_id->type_list.type_cnt == list_id->type_list.type_cnt);
+    if (!m_head_list_id->is_domain_resolved)
+      {
+	if (list_id->is_domain_resolved)
+	  {
+	    QFILE_TUPLE_VALUE_TYPE_LIST tmp_type_list = m_head_list_id->type_list;
+	    m_head_list_id->type_list = list_id->type_list;
+	    list_id->type_list = tmp_type_list;
+	  }
+      }
     /* head last page -> list_id first page (next) */
     PAGE_PTR head_last_pgptr = pgbuf_fix (m_thread_p, &m_head_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 					  PGBUF_UNCONDITIONAL_LATCH);
