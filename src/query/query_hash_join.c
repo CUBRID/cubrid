@@ -116,7 +116,7 @@ typedef struct hashjoin_partition_info
   QFILE_LIST_ID *list_id;
   QFILE_LIST_ID **part_list_id;
   int part_cnt;
-  HASHJOIN_COMMON_STATS *stats;
+  HASHJOIN_INPUT_STATS *stats;
 } HASHJOIN_PARTITION_INFO;
 #define HASHJOIN_PARTITION_INFO_INITIALIZER { NULL, NULL, 0 }
 
@@ -263,10 +263,10 @@ static int qexec_hash_join_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_REC
 
 /* Trace */
 static void qexec_hash_join_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
-static void qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stats,
+static void qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats,
 				       HASHJOIN_START_STATS * start_stats);
 static void qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt,
-					HASHJOIN_COMMON_STATS * stats);
+					HASHJOIN_INPUT_STATS * stats);
 
 #if HASH_JOIN_PROFILE_TIME
 static void qexec_hash_join_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats,
@@ -1448,7 +1448,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 
   qexec_hash_join_check_valid_part_info (part_info);
 
-  HASHJOIN_COMMON_STATS *stats = part_info->stats;
+  HASHJOIN_INPUT_STATS *stats = part_info->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
@@ -3178,7 +3178,7 @@ qexec_hash_join_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * sta
  *   start_stats(in): Profiling data captured at the start of the step.
  */
 static void
-qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stats, HASHJOIN_START_STATS * start_stats)
+qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats)
 {
   TSC_TICKS end_tick;
   TSCTIMEVAL tv_diff;
@@ -3209,7 +3209,7 @@ qexec_hash_join_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_COMMON_STATS * stat
  */
 static void
 qexec_hash_join_trace_skew (QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, unsigned int part_cnt,
-			    HASHJOIN_COMMON_STATS * stats)
+			    HASHJOIN_INPUT_STATS * stats)
 {
   UINT64 sum = 0, max = 0;
   double avg, max_avg;

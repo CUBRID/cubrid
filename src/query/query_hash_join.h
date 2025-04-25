@@ -98,8 +98,8 @@ typedef struct hashjoin_common_stats
   UINT64 rows;
   UINT64 max_collisions;
   double skew;
-} HASHJOIN_COMMON_STATS;
-#define HASHJOIN_COMMON_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0 }
+} HASHJOIN_INPUT_STATS;
+#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0 }
 
 #if HASH_JOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
@@ -127,10 +127,10 @@ typedef struct hashjoin_stats
   HASH_METHOD hash_method;
   bool is_build_outer;
 
-  HASHJOIN_COMMON_STATS outer;
-  HASHJOIN_COMMON_STATS inner;
-  HASHJOIN_COMMON_STATS build;
-  HASHJOIN_COMMON_STATS probe;
+  HASHJOIN_INPUT_STATS outer;
+  HASHJOIN_INPUT_STATS inner;
+  HASHJOIN_INPUT_STATS build;
+  HASHJOIN_INPUT_STATS probe;
 
 #if HASH_JOIN_PROFILE_TIME
   HASHJOIN_PROFILE_STATS profile;

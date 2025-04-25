@@ -3528,7 +3528,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
-  HASHJOIN_COMMON_STATS partitioning_stats = HASHJOIN_COMMON_STATS_INITIALIZER;
+  HASHJOIN_INPUT_STATS partitioning_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
   int part_cnt, part_index;
 
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -3813,7 +3813,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
-  HASHJOIN_COMMON_STATS partitioning_stats = HASHJOIN_COMMON_STATS_INITIALIZER;
+  HASHJOIN_INPUT_STATS partitioning_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
   int part_cnt, part_index;
 
   char hash_method_str[32];
