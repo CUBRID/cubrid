@@ -70,7 +70,7 @@ static bool qdump_print_db_value_array (DB_VALUE ** array, int cnt);
 static bool qdump_print_column (const char *title_p, int col_count, int *column_p);
 static bool qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * ptr);
 static bool qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * ptr);
-static bool qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * ptr);
+static bool qdump_print_hashjoin_proc_node (HASHJOIN_PROC_NODE * ptr);
 static bool qdump_print_update_proc_node (UPDATE_PROC_NODE * ptr);
 static bool qdump_print_delete_proc_node (DELETE_PROC_NODE * ptr);
 static bool qdump_print_insert_proc_node (INSERT_PROC_NODE * ptr);
@@ -309,7 +309,7 @@ qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * node_p)
 }
 
 static bool
-qdump_print_hash_join_proc_node (HASHJOIN_PROC_NODE * node_p)
+qdump_print_hashjoin_proc_node (HASHJOIN_PROC_NODE * node_p)
 {
   /* outer */
   fprintf (foutput, "[outer xasl:%p]", node_p->outer.xasl);
@@ -2693,7 +2693,7 @@ qdump_print_xasl (xasl_node * xasl_p)
     case HASHJOIN_PROC:
       fprintf (foutput, "outer xasl:%p\n", xasl_p->proc.hashjoin.outer.xasl);
       fprintf (foutput, "inner xasl:%p\n", xasl_p->proc.hashjoin.inner.xasl);
-      qdump_print_hash_join_proc_node (&xasl_p->proc.hashjoin);
+      qdump_print_hashjoin_proc_node (&xasl_p->proc.hashjoin);
       break;
 
     case CONNECTBY_PROC:

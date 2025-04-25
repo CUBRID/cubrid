@@ -14485,14 +14485,14 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 
 
 /*
- * ptqo_to_hash_join_proc() -
+ * pt_to_hashjoin_proc() -
  *   return: XASL node for hash join execution; NULL on error.
  *   parser(in): Parser context.
  *   outer_xasl(in): XASL node for outer input of the hash join.
  *   inner_xasl(in): XASL node for inner input of the hash join.
  */
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
+pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
 {
   XASL_NODE *xasl;
   HASHJOIN_PROC_NODE *proc;

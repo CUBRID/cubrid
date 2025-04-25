@@ -50,7 +50,7 @@ static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
 static XASL_NODE *check_merge_xasl (QO_ENV * env, XASL_NODE * xasl);
-static XASL_NODE *check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl);
+static XASL_NODE *check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl);
 
 static XASL_NODE *init_class_scan_proc (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan);
 static XASL_NODE *init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * list, PT_NODE * namelist,
@@ -584,7 +584,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto error_exit;
     }
 
-  xasl = ptqo_to_hash_join_proc (parser, outer_xasl, inner_xasl);
+  xasl = pt_to_hashjoin_proc (parser, outer_xasl, inner_xasl);
   if (xasl == NULL)
     {
       goto error_exit;
@@ -1789,13 +1789,13 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
 }
 
 /*
- * check_hash_join_xasl() -
+ * check_hashjoin_xasl() -
  *   return: Validated XASL node for hash join; NULL on error.
  *   env(in): Optimization environment.
  *   xasl(in): XASL node for hash join execution.
  */
 static XASL_NODE *
-check_hash_join_xasl (QO_ENV * env, XASL_NODE * xasl)
+check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
 {
   XASL_NODE *hashjoin_xasl;
   HASHJOIN_PROC_NODE *proc;
@@ -2644,7 +2644,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   xasl = add_fetch_proc (env, xasl, fetches);
   xasl = add_subqueries (env, xasl, subqueries);
 
-  xasl = check_hash_join_xasl (env, xasl);
+  xasl = check_hashjoin_xasl (env, xasl);
   if (xasl == NULL)
     {
       goto error_exit;
