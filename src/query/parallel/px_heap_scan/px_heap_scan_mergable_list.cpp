@@ -104,12 +104,17 @@ namespace parallel_heap_scan
     qfile_close_list (thread_p, *m_list_id_p);
   }
 
-  void mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p,
-				    bool *is_outptr_domain_resolved)
+  int mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p,
+				   bool *is_outptr_domain_resolved)
   {
+    int err_code = NO_ERROR;
     QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, outptr_dbvals_p, is_outptr_domain_resolved);
-    int err = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
-    assert (err == NO_ERROR);
+    if (m_error_code != NO_ERROR)
+      {
+	return m_error_code;
+      }
+    err_code = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
+    return err_code;
   }
 
   QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p,
@@ -126,6 +131,7 @@ namespace parallel_heap_scan
     int ret;
     REGU_VARIABLE_LIST outptr_list_p = NULL;
     DB_VALUE *peek_value_p = NULL;
+    m_error_code = NO_ERROR;
     if (outptr_dbvals_p != nullptr)
       {
 	if (outptr_dbvals_p->size() != 0)
@@ -138,7 +144,11 @@ namespace parallel_heap_scan
 	outptr_dbvals_p->resize (m_outptr_list->valptr_cnt);
       }
 
-    qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
+    m_error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
+    if (m_error_code != NO_ERROR)
+      {
+	return nullptr;
+      }
 
     if (outptr_dbvals_p != nullptr)
       {

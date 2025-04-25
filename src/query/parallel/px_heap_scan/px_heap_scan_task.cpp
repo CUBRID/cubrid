@@ -105,6 +105,7 @@ namespace parallel_heap_scan
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     list_id_data data;
     OUTPTR_LIST *outptr_list;
+    int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool is_outptr_domain_resolved;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -232,11 +233,11 @@ namespace parallel_heap_scan
 			std::lock_guard<std::mutex> lock (m_context->m_outptr_domain_resolve_mutex);
 			if (!m_context->m_is_outptr_domain_resolved.load())
 			  {
-			    m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p, &is_outptr_domain_resolved);
+			    writer_error_code = m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p, &is_outptr_domain_resolved);
 			  }
 			else
 			  {
-			    m_mergable_list_writer->write (thread_p);
+			    writer_error_code = m_mergable_list_writer->write (thread_p);
 			    is_outptr_domain_resolved = true;
 			  }
 			if (is_outptr_domain_resolved)
@@ -246,7 +247,13 @@ namespace parallel_heap_scan
 		      }
 		    else
 		      {
-			m_mergable_list_writer->write (thread_p);
+			writer_error_code = m_mergable_list_writer->write (thread_p);
+		      }
+		    if (writer_error_code != NO_ERROR)
+		      {
+			m_context->set_has_error();
+			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
+			break;
 		      }
 		  }
 		else
