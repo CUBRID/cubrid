@@ -29,13 +29,10 @@
 
 /**
  * Converts a floating point vector to a string representation.
- * For vectors with more than 2*kElementsToShow elements, only the first and last kElementsToShow
- * elements are shown with an ellipsis in between.
- *
  * @param vf The vector to convert to string
  * @return String representation of the vector
  */
-std::string db_vector_float_to_string (const db_vector_float &vf)
+std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf)
 {
 
   ASSERT_CUBVEC (vf.float_array != nullptr);
