@@ -1873,6 +1873,11 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	  node = QO_SEG_PT_NODE (seg);
 	  if (node->node_type != PT_NAME)
 	    {
+	      /*
+	       * Only table column names or constants are allowed as function arguments in a function-based index.
+	       * Complex or nested expressions are not allowed.
+	       * This is checked by calling pt_is_nested_expr in pt_is_function_index_expr.
+	       */
 	      qo_expr_segs (env, node, &name_segs_set);
 	    }
 	}
@@ -1891,7 +1896,20 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	    }
 	  else
 	    {
-	      assert_release (seg->is_function_index);
+	      /*
+	       * Each segment must be of type PT_NAME,
+	       * unless it is a function expression for a function-based index that has already been created.
+	       * This is because segments are added using as_attr_list or referenced_attrs,
+	       * which are both lists of type PT_NAME in the build_graph_for_entity function.
+	       *
+	       * Function expressions are added as segments in the build_query_graph_function_index function.
+	       * A function expression is only added if a function-based index with the same expression already exists.
+	       * QO_SEG_FUNC_INDEX(seg) is set to true when a function expression is added to a segment.
+	       *
+	       * Only PT_NAME segments are allowed,
+	       * except for function expressions that match an existing function-based index.
+	       */
+	      assert_release (QO_SEG_FUNC_INDEX (seg));
 	      /* Nothing to do */
 	    }
 	}
