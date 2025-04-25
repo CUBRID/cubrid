@@ -7532,18 +7532,13 @@ cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
 void
 logpb_create_backup_read_worker_pool (size_t thread_count)
 {
-  size_t core_count = thread_count / 3;
   if (thread_count == 0)
     {
-      core_count = thread_count = 1;
-    }
-  if (core_count == 0)
-    {
-      core_count = 1;
+      thread_count = 1;
     }
   g_backup_read_worker_pool =
     cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
-						   core_count, false, true);
+						   1, false, true);
 }
 
 void
