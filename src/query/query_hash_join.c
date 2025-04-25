@@ -933,10 +933,18 @@ qexec_hash_join_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
     }
 
   /* stats_group */
-  manager->stats_group = &proc->stats_group;
-  memset (manager->stats_group, 0, sizeof (HASHJOIN_STATS_GROUP));
+  if (thread_is_on_trace (thread_p))
+    {
+      manager->stats_group = &proc->stats_group;
+      memset (manager->stats_group, 0, sizeof (HASHJOIN_STATS_GROUP));
 
-  context->stats = &manager->stats_group->stats;
+      context->stats = &manager->stats_group->stats;
+    }
+  else
+    {
+      assert (manager->stats_group == NULL);
+      assert (context->stats == NULL);
+    }
 
   ASSERT_NO_ERROR ();
   return NO_ERROR;
