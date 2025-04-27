@@ -1318,18 +1318,33 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_VARCHAR;
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
 
 	value_list->string_val = value;
 
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, &cbValue));
+	if (curr_dbms_type == CAS_CGW_DBMS_ORACLE)
+	  {
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type, val_size + 1, 0, (SQLWCHAR *) "", 1, &cbValue));
+	  }
+	else
+	  {
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type, val_size + 1, 0,
+						      (SQLWCHAR *) value_list->string_val, 0, &cbValue));
+
+	  }
       }
       break;
 
