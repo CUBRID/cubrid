@@ -204,7 +204,7 @@ extern "C"
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op,
 					   const char *name1, const char *name2, char **new_trigger_stmt,
-					   int with_evaluate, bool is_creating);
+					   int with_evaluate);
   extern int pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1,
 				   DB_OBJECT * object2, DB_VALUE * result);
 

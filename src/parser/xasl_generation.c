@@ -309,7 +309,7 @@ static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list,
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
-static PT_NODE *pt_check_dblink_trigger_pred (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_check_dblink_trigger_pr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -20337,7 +20337,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 }
 
 static PT_NODE *
-pt_check_dblink_trigger_pred (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *prev = NULL, *values;
   PT_NODE *list, *arg1, *arg2, *arg3;
@@ -20419,13 +20419,10 @@ pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
     case PT_INSERT:
       statement->info.insert.value_clauses =
-	parser_walk_tree (parser, statement->info.insert.value_clauses, pt_check_dblink_trigger_pred, NULL, NULL, NULL);
+	parser_walk_tree (parser, statement->info.insert.value_clauses, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
       break;
     case PT_UPDATE:
-      break;
     case PT_DELETE:
-      statement =
-	parser_walk_tree (parser, statement->info.delete_.search_cond, pt_check_dblink_trigger_pred, NULL, NULL, NULL);
       break;
     default:
       break;
@@ -21094,6 +21091,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
   with = statement->info.update.with;
+
+  if (from && from->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, from);
+    }
 
   /* flush all classes */
   p = from;

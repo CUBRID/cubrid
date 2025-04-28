@@ -11687,14 +11687,6 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  /* insert at server for dblink */
-  if (statement->info.insert.spec->info.spec.remote_server_name)
-    {
-      statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
-
-      return NO_ERROR;
-    }
-
   statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
 
   AU_DISABLE (save_au);
