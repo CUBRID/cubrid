@@ -327,6 +327,8 @@ db_get_vector_float (const DB_VALUE * value)
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
     {
+      // TODO: CUBVEC - handle when vector is NULL
+      ASSERT_CUBVEC (false);
       return NULL;
     }
   else
