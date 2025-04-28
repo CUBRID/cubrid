@@ -628,9 +628,94 @@ namespace parallel_heap_scan
 	    break;
 	  }
       }
+    for (auto &pair : m_resolved_dbval_map)
+      {
+	DB_VALUE *dbval = pair.second;
+	pr_clear_value (dbval);
+	free (dbval);
+      }
     assert (m_obj_cnt == 0);
     free (scan_id);
     m_map.clear();
+    m_resolved_dbval_map.clear();
+  }
+
+  void memory_mapper::add_resolved_dbval_all()
+  {
+    for (auto &pair : m_map)
+      {
+	if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
+	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	      {
+		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+		pr_clone_value (clone->vfetch_to, dbval);
+		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+	      }
+	  }
+	if (pair.second.type == Type::REGU_VARIABLE_LIST)
+	  {
+	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	      {
+		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+		pr_clone_value (clone->vfetch_to, dbval);
+		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+	      }
+	  }
+      }
+  }
+
+  void memory_mapper::set_all_regu_var_domain_refer_to_clone()
+  {
+    for (auto &pair : m_map)
+      {
+	if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    REGU_VARIABLE *orig = (REGU_VARIABLE *)pair.first;
+	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
+	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
+		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	      {
+		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
+		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
+		  {
+		    orig->domain = clone->domain;
+		  }
+	      }
+	    if (clone->vfetch_to)
+	      {
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    pr_clone_value (it->second, orig->vfetch_to);
+		  }
+	      }
+	  }
+	if (pair.second.type == Type::REGU_VARIABLE_LIST)
+	  {
+	    REGU_VARIABLE *orig = & ((REGU_VARIABLE_LIST)pair.first)->value;
+	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
+		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	      {
+		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
+		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
+		  {
+		    orig->domain = clone->domain;
+		  }
+	      }
+	    if (clone->vfetch_to)
+	      {
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    pr_clone_value (it->second, orig->vfetch_to);
+		  }
+	      }
+	  }
+      }
   }
 
 }

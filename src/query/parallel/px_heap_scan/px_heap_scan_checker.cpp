@@ -234,14 +234,7 @@ namespace parallel_heap_scan
 	break;
       case TYPE_FUNC:
 	temp = check (src->value.funcp->operand, is_outptr_list);
-	if (temp == CHECK_RESULT::CANNOT_PARALLEL)
-	  {
-	    result = CHECK_RESULT::CANNOT_PARALLEL;
-	  }
-	else
-	  {
-	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
-	  }
+	result = merge_check_result (result, temp);
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check (src->value.regu_var_list, is_outptr_list);
@@ -294,7 +287,21 @@ namespace parallel_heap_scan
     CHECK_RESULT result = CHECK_RESULT::NONE;
     while (curr)
       {
-	result = merge_check_result (result, check (&curr->value, is_outptr_list));
+	if (is_outptr_list)
+	  {
+	    if (REGU_VARIABLE_IS_FLAGED (&curr->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	      {
+		(void) check (&curr->value, is_outptr_list);
+	      }
+	    else
+	      {
+		result = merge_check_result (result, check (&curr->value, is_outptr_list));
+	      }
+	  }
+	else
+	  {
+	    result = merge_check_result (result, check (&curr->value, is_outptr_list));
+	  }
 	curr = curr->next;
       }
     return result;

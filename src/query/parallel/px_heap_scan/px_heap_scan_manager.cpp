@@ -77,13 +77,7 @@ namespace parallel_heap_scan
     if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
 	&& !xasl->proc.buildlist.g_agg_domains_resolved)
       {
-	m_context->m_outptr_dbvals_p = &m_outptr_dbvals;
-	m_context->m_is_outptr_domain_resolved = false;
-      }
-    else
-      {
-	m_context->m_outptr_dbvals_p = nullptr;
-	m_context->m_is_outptr_domain_resolved = true;
+	m_context->m_is_domain_resolve_needed = true;
       }
     m_result_list = xasl->list_id;
     m_outptr_list = xasl->outptr_list;
@@ -247,26 +241,9 @@ namespace parallel_heap_scan
     if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL
 	&& !m_xasl->proc.buildlist.g_agg_domains_resolved)
       {
-
-	if (m_context->m_outptr_dbvals_p->size() > 0)
+	for (auto &memory_mapper : m_memory_mappers)
 	  {
-	    outptr_orig_dbvals.resize (m_context->m_outptr_dbvals_p->size());
-	    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
-	      {
-		while (plist && (plist->value.flags & REGU_VARIABLE_HIDDEN_COLUMN || plist->value.type != TYPE_CONSTANT))
-		  {
-		    plist = plist->next;
-		  }
-		if (!plist)
-		  {
-		    break;
-		  }
-		DB_VALUE *vecp = &outptr_orig_dbvals[i];
-		DB_VALUE *fetched_dbval_p = & (m_context->m_outptr_dbvals_p->at (i));
-		db_value_clone (plist->value.value.dbvalptr, vecp);
-		db_value_clone (fetched_dbval_p, plist->value.value.dbvalptr);
-		i++;
-	      }
+	    memory_mapper->set_all_regu_var_domain_refer_to_clone();
 	  }
 
 	/* search in aggregate list by comparing DB_VALUE pointers */
@@ -274,37 +251,6 @@ namespace parallel_heap_scan
 	    &m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	  {
 	    return S_ERROR;
-	  }
-
-	if (m_context->m_outptr_dbvals_p->size() > 0)
-	  {
-	    i=0;
-	    for (REGU_VARIABLE_LIST plist = m_outptr_list->valptrp; plist != nullptr; plist = plist->next)
-	      {
-		while (plist && (plist->value.flags & REGU_VARIABLE_HIDDEN_COLUMN || plist->value.type != TYPE_CONSTANT))
-		  {
-		    plist = plist->next;
-		  }
-		if (!plist)
-		  {
-		    break;
-		  }
-		DB_VALUE *vecp = & (outptr_orig_dbvals[i]);
-		i++;
-		db_value_clear (plist->value.value.dbvalptr);
-		db_value_clone (vecp, plist->value.value.dbvalptr);
-		db_value_clear (vecp);
-	      }
-
-	    HL_HEAPID orig_heap_id;
-	    orig_heap_id = db_change_private_heap (m_thread_p, 0);
-
-	    for (auto &dbval : m_outptr_dbvals)
-	      {
-		db_value_clear (&dbval);
-	      }
-
-	    (void) db_change_private_heap (m_thread_p, orig_heap_id);
 	  }
       }
     if (merged_list_id == nullptr)

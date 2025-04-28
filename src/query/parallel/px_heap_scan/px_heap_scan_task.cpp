@@ -105,9 +105,9 @@ namespace parallel_heap_scan
     memory_mapper::px_stats *stats = &m_memory_mapper->stats;
     list_id_data data;
     OUTPTR_LIST *outptr_list;
+    bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
     int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
-    bool is_outptr_domain_resolved;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
     if (m_context->has_error())
       {
@@ -131,7 +131,6 @@ namespace parallel_heap_scan
     if (is_list_merge)
       {
 	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
-	is_outptr_domain_resolved = m_context->m_is_outptr_domain_resolved.load();
 	outptr_list = m_memory_mapper->get_outptr_list();
 	assert (outptr_list);
       }
@@ -228,27 +227,14 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
-		    if (!is_outptr_domain_resolved)
+		    writer_error_code = m_mergable_list_writer->write (thread_p);
+
+		    if (!resolved_dbval_stored && m_mergable_list_writer->is_outptr_domain_resolved())
 		      {
-			std::lock_guard<std::mutex> lock (m_context->m_outptr_domain_resolve_mutex);
-			if (!m_context->m_is_outptr_domain_resolved.load())
-			  {
-			    writer_error_code = m_mergable_list_writer->write (thread_p, m_context->m_outptr_dbvals_p, &is_outptr_domain_resolved);
-			  }
-			else
-			  {
-			    writer_error_code = m_mergable_list_writer->write (thread_p);
-			    is_outptr_domain_resolved = true;
-			  }
-			if (is_outptr_domain_resolved)
-			  {
-			    m_context->m_is_outptr_domain_resolved.store (true);
-			  }
+			m_memory_mapper->add_resolved_dbval_all();
+			resolved_dbval_stored = true;
 		      }
-		    else
-		      {
-			writer_error_code = m_mergable_list_writer->write (thread_p);
-		      }
+
 		    if (writer_error_code != NO_ERROR)
 		      {
 			m_context->set_has_error();

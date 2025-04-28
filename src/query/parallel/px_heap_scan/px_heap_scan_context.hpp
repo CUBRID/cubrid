@@ -110,9 +110,7 @@ namespace parallel_heap_scan
       std::atomic<std::uint64_t> m_tasks_list_opened;
       std::atomic<bool> m_has_error;
       cuberr::er_message m_error_msg;
-      std::atomic<bool> m_is_outptr_domain_resolved;
-      std::mutex m_outptr_domain_resolve_mutex;
-      std::vector<DB_VALUE> *m_outptr_dbvals_p;
+      bool m_is_domain_resolve_needed;
   };
 }
 

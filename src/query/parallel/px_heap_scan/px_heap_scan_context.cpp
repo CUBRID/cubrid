@@ -46,7 +46,7 @@ namespace parallel_heap_scan
   {
     VPID_SET_NULL (&m_locked_vpid.vpid);
     m_locked_vpid.is_ended = false;
-    m_is_outptr_domain_resolved = false;
+    m_is_domain_resolve_needed = false;
   }
   context::~context()
   {

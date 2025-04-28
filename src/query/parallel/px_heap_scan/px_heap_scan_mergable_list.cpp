@@ -104,11 +104,10 @@ namespace parallel_heap_scan
     qfile_close_list (thread_p, *m_list_id_p);
   }
 
-  int mergable_list_writer::write (THREAD_ENTRY *thread_p, std::vector<DB_VALUE> *outptr_dbvals_p,
-				   bool *is_outptr_domain_resolved)
+  int mergable_list_writer::write (THREAD_ENTRY *thread_p)
   {
     int err_code = NO_ERROR;
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, outptr_dbvals_p, is_outptr_domain_resolved);
+    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p);
     if (m_error_code != NO_ERROR)
       {
 	return m_error_code;
@@ -117,8 +116,7 @@ namespace parallel_heap_scan
     return err_code;
   }
 
-  QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p,
-      std::vector<DB_VALUE> *outptr_dbvals_p, bool *is_outptr_domain_resolved)
+  QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p)
   {
     REGU_VARIABLE_LIST p;
     int n_preds, n_rests, n_all;
@@ -132,21 +130,6 @@ namespace parallel_heap_scan
     REGU_VARIABLE_LIST outptr_list_p = NULL, m_outptr_list_p = NULL;
     DB_VALUE *peek_value_p = NULL;
     m_error_code = NO_ERROR;
-    if (is_outptr_domain_resolved != nullptr)
-      {
-	*is_outptr_domain_resolved = true;
-      }
-    if (outptr_dbvals_p != nullptr)
-      {
-	if (outptr_dbvals_p->size() != 0)
-	  {
-	    for (auto &dbval : *outptr_dbvals_p)
-	      {
-		db_value_clear (&dbval);
-	      }
-	  }
-	outptr_dbvals_p->resize (m_outptr_list->valptr_cnt);
-      }
 
     m_error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
     if (m_error_code != NO_ERROR)
@@ -156,26 +139,6 @@ namespace parallel_heap_scan
     if (! (*m_list_id_p)->is_domain_resolved)
       {
 	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
-      }
-
-    if (outptr_dbvals_p != nullptr)
-      {
-	outptr_list_p = m_outptr_list->valptrp;
-	for (int i = 0; i < m_outptr_list->valptr_cnt; i++)
-	  {
-	    REGU_VARIABLE *regu_var_p = &outptr_list_p->value;
-	    ret = fetch_peek_dbval (thread_p, regu_var_p, m_vd, NULL, NULL, NULL, &peek_value_p);
-	    assert (ret == NO_ERROR);
-	    if (!DB_IS_NULL (peek_value_p))
-	      {
-		DB_VALUE *vecp = & (outptr_dbvals_p->at (i));
-		db_value_clone (peek_value_p, vecp);
-	      }
-	    else
-	      {
-		*is_outptr_domain_resolved = false;
-	      }
-	  }
       }
 
     return &m_tpl_buf;
