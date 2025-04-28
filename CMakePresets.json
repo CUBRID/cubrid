@@ -26,11 +26,39 @@
       }
     },
     {
+      "name": "release_avx2",
+      "inherits": "release",
+      "cacheVariables": {
+        "FAISS_SIMD_MODE": "AVX2"
+      }
+    },
+    {
+      "name": "release_avx512",
+      "inherits": "release",
+      "cacheVariables": {
+        "FAISS_SIMD_MODE": "AVX512"
+      }
+    },
+    {
       "name": "debug",
       "inherits": "default",
       "description": "Debug build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "debug_avx2",
+      "inherits": "debug",
+      "cacheVariables": {
+        "FAISS_SIMD_MODE": "AVX2"
+      }
+    },
+    {
+      "name": "debug_avx512",
+      "inherits": "debug",
+      "cacheVariables": {
+        "FAISS_SIMD_MODE": "AVX512"
       }
     },
     {
@@ -61,8 +89,24 @@
       "configurePreset": "release"
     },
     {
+      "name": "release_avx2",
+      "configurePreset": "release_avx2"
+    },
+    {
+      "name": "release_avx512",
+      "configurePreset": "release_avx512"
+    },
+    {
       "name": "debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "debug_avx2",
+      "configurePreset": "debug_avx2"
+    },
+    {
+      "name": "debug_avx512",
+      "configurePreset": "debug_avx512"
     },
     {
       "name": "coverage",
