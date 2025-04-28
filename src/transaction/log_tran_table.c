@@ -1759,7 +1759,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   tdes->trid = trid;
 
-  cubrocks::ctx->kv_tran_start (tdes->tran_index);
+  cubrocks::ctx->kv_tran_start (tdes->tran_index, tdes->trid);
 
   return trid;
 #else
@@ -1778,7 +1778,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   TR_TABLE_CS_EXIT (thread_p);
 
-  cubrocks::ctx->kv_tran_start (tdes->tran_index);
+  cubrocks::ctx->kv_tran_start (tdes->tran_index, tdes->trid);
 
   return tdes->trid;
 #endif

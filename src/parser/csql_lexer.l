@@ -865,6 +865,7 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
 [rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
 [rR][lL][iI][kK][eE]							{ begin_token(yytext);   return RLIKE; }
+[rR][oO][cC][kK][sS][dD][bB]			{ begin_token(yytext);   return ROCKSDB; }
 [rR][oO][lL][eE]							{ begin_token(yytext);   return ROLE; }
 [rR][oO][lL][lL][bB][aA][cC][kK]					{ begin_token(yytext);   return ROLLBACK; }
 [rR][oO][lL][lL][uU][pP]						{ begin_token(yytext);	 return ROLLUP; }

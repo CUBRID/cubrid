@@ -259,7 +259,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				      UPDATE_INPLACE_NONE, &copy_recdes, false);
+				      UPDATE_INPLACE_NONE, &copy_recdes, false, false);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)

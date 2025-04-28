@@ -4132,7 +4132,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tpl);
+      error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tpl, class_oid);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;

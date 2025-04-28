@@ -6894,6 +6894,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
 
+  cubrocks::ctx->kv_scan_start (scan_cache);
+
   return ret;
 
 exit_on_error:
@@ -7193,6 +7195,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
 
+  cubrocks::ctx->kv_scan_start (scan_cache);
+
   return NO_ERROR;
 }
 
@@ -7256,6 +7260,8 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = 0;
+
+  cubrocks::ctx->kv_scan_end (scan_cache);
 
   return ret;
 }
@@ -17689,7 +17695,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -18998,12 +19004,19 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
  */
 SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-	   HEAP_SCANCACHE * scan_cache, int ispeeking)
+	   HEAP_SCANCACHE * scan_cache, int ispeeking, bool use_rocksdb)
 {
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
+  /* if class is user defined or oid is in the user defined class */
+  if (use_rocksdb)
+    {
+      /* in this scope, rocksdb must works. */
+      assert (cubrocks::ctx->is_alive ());
+      assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
+      return cubrocks::ctx->kv_logical_scan (thread_p->tran_index, class_oid, next_oid, recdes, scan_cache, ispeeking);
+    }
+
+  /* general */
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
 }
 
@@ -23043,10 +23056,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 
   LOG_TDES *tdes = NULL;
 
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
   /* check required input */
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
@@ -23260,10 +23269,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
 
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
-
   /*
    * Check input
    */
@@ -23448,17 +23453,13 @@ error:
  *   context(in): operation context
  *   return: error code or NO_ERROR
  */
-extern int
+int
 heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   bool is_mvcc_op;
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
-
-  /* in this scope, rocksdb must works. */
-  assert (cubrocks::ctx->is_alive ());
-  assert (cubrocks::ctx->is_tran_started (thread_p->tran_index));
 
   /*
    * Check input

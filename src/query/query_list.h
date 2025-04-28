@@ -370,6 +370,7 @@ struct qfile_tuple_descriptor
   int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array */
+  DB_VALUE f_pk;
   bool *clear_f_val_at_clone_decache;	/* true, if need to clear value at clone decache */
 
   /* T_SORTKEY */

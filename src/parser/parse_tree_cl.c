@@ -7816,6 +7816,9 @@ pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TABLE_OPTION_ENCRYPT:
       q = pt_append_nulstring (parser, q, "encrypt = ");
       break;
+    case PT_TABLE_OPTION_ROCKSDB:
+      q = pt_append_nulstring (parser, q, "rocksdb");
+      break;
     default:
       break;
     }

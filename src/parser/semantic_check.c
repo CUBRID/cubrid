@@ -8321,6 +8321,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool found_auto_increment = false;
   bool found_tbl_comment = false;
   bool found_tbl_encrypt = false;
+  bool found_tbl_rocksdb = false;
   int error = NO_ERROR;
 
   entity_type = node->info.create_entity.entity_type;
@@ -8448,6 +8449,20 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	  }
 	  break;
+	case PT_TABLE_OPTION_ROCKSDB:
+	  {
+	    if (found_tbl_rocksdb)
+	      {
+		PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			    parser_print_tree (parser, tbl_opt));
+		return;
+	      }
+	    else
+	      {
+		found_tbl_rocksdb = true;
+	      }
+	  }
+	  break;
 	default:
 	  /* should never arrive here */
 	  assert (false);
@@ -8462,6 +8477,19 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       reuse_oid = prm_get_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID);
       tmp = pt_table_option (parser, reuse_oid ? PT_TABLE_OPTION_REUSE_OID : PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
+
+      if (tmp)
+	{
+	  tmp->next = node->info.create_entity.table_option_list;
+	  node->info.create_entity.table_option_list = tmp;
+	}
+    }
+
+  if (found_tbl_rocksdb && entity_type == PT_CLASS)
+    {
+      PT_NODE *tmp;
+
+      tmp = pt_table_option (parser, PT_TABLE_OPTION_ROCKSDB, NULL);
 
       if (tmp)
 	{

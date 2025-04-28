@@ -30,6 +30,7 @@
 #include "jansson.h"
 
 #include "error_manager.h"
+#include "cubrocks.hpp"
 #include "heap_file.h"
 #include "fetch.h"
 #include "list_file.h"
@@ -93,7 +94,7 @@ struct iss_range_details
 };
 
 typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
-typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb);
 
 typedef enum
 {
@@ -156,15 +157,9 @@ static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term);
 static int key_val_compare (const void *p1, const void *p2);
-static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
-static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
 				   int key_minmax, bool is_iss);
-static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
-				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
@@ -172,8 +167,8 @@ static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_O
 			       val_list_node * val_list, VAL_DESCR * vd);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
-static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
+static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -181,15 +176,16 @@ static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID
 static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
-static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb = false);
 static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
-static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb,
+					  QP_SCAN_FUNC next_scan);
+static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb);
 static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
 static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
@@ -1305,7 +1301,7 @@ key_val_compare (const void *p1, const void *p2)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int n;
@@ -1340,7 +1336,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int cur_n, next_n;
@@ -1460,7 +1456,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   key_cnt (in): number of keys; size of key_vals
  *   chk_fn (in): check function for key_vals
  */
-static int
+int
 check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn)
 {
   if (key_cnt <= 1)
@@ -1906,7 +1902,7 @@ err_exit:
 /*
  * scan_regu_key_to_index_key:
  */
-static int
+int
 scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 			    INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd)
 {
@@ -5086,7 +5082,7 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   SCAN_CODE status;
   bool on_trace;
@@ -5108,7 +5104,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_SAMPLING_SCAN:
-      status = scan_next_heap_scan (thread_p, scan_id);
+      status = scan_next_heap_scan (thread_p, scan_id, use_rocksdb);
       break;
 
     case S_HEAP_PAGE_SCAN:
@@ -5120,6 +5116,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_INDX_SCAN:
+      if (use_rocksdb)
+	{
+	  status = cubrocks::ctx->kv_logical_scan_with_PK (thread_p->tran_index, scan_id);
+	  break;
+	}
       status = scan_next_index_scan (thread_p, scan_id);
       break;
 
@@ -5198,7 +5199,7 @@ typedef enum
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
@@ -5214,7 +5215,28 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   bool is_peeking;
   OBJECT_GET_STATUS object_get_status;
   regu_variable_list_node *p;
+  int tran_index;
+  MVCC_REC_HEADER dummy = {
+    .mvcc_ins_id = 0,
+  };
 
+  /* for PK based */
+  HEAP_CACHE_ATTRINFO index_attrinfo;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  DB_VALUE dbvalue;
+  int key_size;
+  char key_buf[DBVAL_BUFSIZE];
+  rocksdb::Slice key;
+  BTID btid;
+  char dbvalue_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
+  int num_found;
+  DB_VALUE *pk_value = NULL;
+  bool is_pk_based = false;
+
+  db_make_null (&dbvalue);
+  aligned_buf = PTR_ALIGN (dbvalue_buf, MAX_ALIGNMENT);
+
+  /* scan id */
   hsidp = &scan_id->s.hsid;
   p_current_oid = &hsidp->curr_oid;
 
@@ -5272,7 +5294,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  sp_scan =
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+			       is_peeking, use_rocksdb);
 		}
 	      else if (scan_id->type == S_HEAP_SAMPLING_SCAN)
 		{
@@ -5374,7 +5396,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* Data filter passed. If object should be locked and is not locked yet, lock it. */
-
       if (scan_id->mvcc_select_lock_needed)
 	{
 	  /* data filter already initialized, don't have key or range init scan reevaluation structure */
@@ -5389,29 +5410,110 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      recdes.data = NULL;
 	    }
 
-	  /* get with lock and reevaluate if the visible version wasn't the latest version */
-	  sp_scan =
-	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
-							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
-	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
+	  if (use_rocksdb)
 	    {
-	      continue;
+	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+	      num_found =
+		heap_attrinfo_start_with_index (thread_p, &hsidp->cls_oid, NULL, &index_attrinfo, &idx_info, false);
+
+	      if (num_found == 1 && idx_info.num_btids == 1 &&
+		  index_attrinfo.last_classrepr->indexes[0].type == BTREE_PRIMARY_KEY)
+		{
+		  /* PK based */
+		  if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, &index_attrinfo) != NO_ERROR)
+		    {
+		      assert_release (false);
+		    }
+
+		  pk_value =
+		    heap_attrvalue_get_key (thread_p, 0 /* PK index */ , &index_attrinfo, &recdes, &btid, &dbvalue,
+					    aligned_buf, NULL, NULL, p_current_oid, false);
+		  if (pk_value == NULL)
+		    {
+		      assert_release (false);
+		    }
+
+		  cubrocks::ctx->kv_make_key_with_PK (key_buf, DBVAL_BUFSIZE, &hsidp->cls_oid, pk_value, key_size);
+		  key = rocksdb::Slice (key_buf, key_size);
+
+		  pr_clone_value (pk_value, &hsidp->pk_val);
+
+		  is_pk_based = true;
+		}
+
+	      heap_attrinfo_end (thread_p, &index_attrinfo);
+
+	      if (is_pk_based)
+		{
+		  sp_scan = cubrocks::ctx->kv_lock_and_get (tran_index, key, &recdes, &hsidp->scan_cache, is_peeking);
+		}
+	      else
+		{
+		  sp_scan =
+		    cubrocks::ctx->kv_lock_and_get (tran_index, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+						    &hsidp->scan_cache, is_peeking);
+		}
+	      if (sp_scan == S_DOESNT_EXIST)
+		{
+		  continue;
+		}
+	      if (sp_scan != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
+	      ev_res =
+		locator_mvcc_reev_cond_and_assignment (thread_p, &hsidp->scan_cache, &mvcc_reev_data, &dummy,
+						       &hsidp->curr_oid, &recdes);
+	      if (ev_res != V_TRUE)
+		{
+		  if (is_pk_based)
+		    {
+		      cubrocks::ctx->kv_lock_release (tran_index, key);
+		    }
+		  else
+		    {
+		      cubrocks::ctx->kv_lock_release (tran_index, &hsidp->cls_oid, &hsidp->curr_oid);
+		    }
+		  if (ev_res == V_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  continue;
+		}
+
+	      if (mvcc_reev_data.filter_result == V_FALSE)
+		{
+		  continue;
+		}
 	    }
-	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
+	  else
 	    {
-	      er_clear ();
-	      continue;
-	    }
-	  else if (sp_scan != S_SUCCESS)
-	    {
-	      return S_ERROR;
+	      /* get with lock and reevaluate if the visible version wasn't the latest version */
+	      sp_scan =
+		locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
+							     is_peeking, NULL_CHN, &mvcc_reev_data,
+							     LOG_WARNING_IF_DELETED);
+	      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
+		{
+		  continue;
+		}
+	      else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
+		{
+		  er_clear ();
+		  continue;
+		}
+	      else if (sp_scan != S_SUCCESS)
+		{
+		  return S_ERROR;
+		}
 	    }
 	}
 
       if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))
 	{
 	  LOCK lock = NULL_LOCK;
-	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  TRAN_ISOLATION tran_isolation = logtb_find_isolation (tran_index);
 
 	  if (scan_id->scan_op_type == S_DELETE || scan_id->scan_op_type == S_UPDATE)
@@ -6458,7 +6560,7 @@ scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
@@ -6993,7 +7095,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * qualified scan item, the NULL row, is returned.
  */
 static SCAN_CODE
-scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan)
+scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb, QP_SCAN_FUNC next_scan)
 {
   SCAN_CODE result = S_ERROR;
 
@@ -7006,7 +7108,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
   switch (s_id->single_fetch)
     {
     case QPROC_NO_SINGLE_INNER:
-      result = (*next_scan) (thread_p, s_id);
+      result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
       if (result == S_ERROR)
 	{
@@ -7032,7 +7134,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7064,7 +7166,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7087,7 +7189,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       else
 	{
-	  result = (*next_scan) (thread_p, s_id);
+	  result = (*next_scan) (thread_p, s_id, use_rocksdb);
 
 	  if (result == S_ERROR)
 	    {
@@ -7140,9 +7242,9 @@ exit_on_error:
  *   scan_id(in/out): Scan identifier
  */
 SCAN_CODE
-scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
+scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb)
 {
-  return scan_handle_single_scan (thread_p, s_id, scan_next_scan_local);
+  return scan_handle_single_scan (thread_p, s_id, use_rocksdb, scan_next_scan_local);
 }
 
 /*
@@ -7154,7 +7256,7 @@ scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
  * If an error occurs, S_ERROR is returned. This routine currently supports only LIST FILE scans.
  */
 static SCAN_CODE
-scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool use_rocksdb)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
@@ -7273,7 +7375,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 SCAN_CODE
 scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 {
-  return scan_handle_single_scan (thread_p, s_id, scan_prev_scan_local);
+  return scan_handle_single_scan (thread_p, s_id, false, scan_prev_scan_local);
 }
 
 /*
@@ -7496,7 +7598,7 @@ scan_finalize (void)
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
  *   key_cnt (in): number of keys; size of key_vals
  */
-static int
+int
 reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int i, j;

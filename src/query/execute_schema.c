@@ -8859,6 +8859,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_QUERY_TYPE *query_columns = NULL;
   PT_NODE *tbl_opt = NULL;
   bool found_reuse_oid_option = false, reuse_oid = false;
+  bool use_rocksdb = false;
   bool do_rollback_on_error = false;
   bool do_abort_class_on_error = false;
   bool do_flush_class_mop = false;
@@ -9000,6 +9001,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    case PT_TABLE_OPTION_COMMENT:
 	      tbl_opt_comment = tbl_opt;
+	      break;
+	    case PT_TABLE_OPTION_ROCKSDB:
+	      use_rocksdb = true;
 	      break;
 	    default:
 	      break;
@@ -9213,6 +9217,16 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+
+      if (use_rocksdb)
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_ROCKSDB, 1);
+	  if (error == NO_ERROR)
+	    {
+	      do_flush_class_mop = true;
+	    }
+	}
+
       if (tbl_opt_encrypt)
 	{
 	  encrypt_node = tbl_opt_encrypt->info.table_option.val;

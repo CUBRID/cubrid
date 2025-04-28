@@ -1790,6 +1790,11 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 		  output_ctx (" ENCRYPT=%s", tde_algo_name);
 		}
 	    }
+
+	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_ROCKSDB) > 0)
+	    {
+	      output_ctx (" ROCKSDB");
+	    }
 	}
 
       if (class_ != NULL && class_->comment != NULL && class_->comment[0] != '\0')

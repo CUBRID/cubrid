@@ -3325,6 +3325,18 @@ sm_set_class_comment (MOP classop, const char *comment)
 }
 
 /*
+ * sm_is_rocksdb_class() - Tests the rocksdb class flag of a class object.
+ *   return: non-zero if class is a rocksdb defined class
+ *   op(in): class object
+ */
+
+int
+sm_is_rocksdb_class (MOP op)
+{
+  return sm_get_class_flag (op, SM_CLASSFLAG_ROCKSDB);
+}
+
+/*
  * sm_is_system_class() - Tests the system class flag of a class object.
  *   return: non-zero if class is a system defined class
  *   op(in): class object
@@ -10814,7 +10826,8 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     {
       error =
 	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index), sm_get_class_flag (classop,
+													     SM_CLASSFLAG_ROCKSDB));
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else

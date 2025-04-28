@@ -1148,7 +1148,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
-			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx) == NULL)
+			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx, 0) == NULL)
 	{
 	  goto error;
 	}

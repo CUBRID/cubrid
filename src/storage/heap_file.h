@@ -30,6 +30,10 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include "rocksdb/db.h"
+#include "rocksdb/options.h"
+#include "rocksdb/utilities/transaction.h"
+
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
@@ -158,6 +162,13 @@ struct heap_scancache
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
 
+    rocksdb::Iterator* kv_iter;
+    rocksdb::Slice *kv_lower;
+    rocksdb::Slice *kv_upper;
+
+    std::vector<rocksdb::Slice> kv_keys;
+    std::vector<std::string> kv_values;
+    std::vector<rocksdb::Status> kv_statuses;
 
     void start_area ();
     void end_area ();
@@ -274,6 +285,7 @@ struct heap_operation_context
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
+  DB_VALUE *pk;
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
 
@@ -417,7 +429,7 @@ extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HE
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
-			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, bool use_rocksdb = false);
 extern SCAN_CODE heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 				     sampling_info * sampling);

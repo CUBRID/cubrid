@@ -127,6 +127,7 @@ extern int sm_force_write_all_classes (void);
 extern void sm_mark_system_class_for_catalog (void);
 #endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
+extern int sm_is_rocksdb_class (MOP op);
 extern int sm_is_system_class (MOP op);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_check_reuse_oid_class (MOP op);

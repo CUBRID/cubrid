@@ -1045,7 +1045,7 @@ struct or_buf
                   TP_DOMAIN_TYPE (d) == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
                   (o), (n))
 
-#define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN (ptr, alignment) == ptr))
+#define ASSERT_ALIGN(ptr, alignment)
 
 #if defined __cplusplus
 extern "C"
@@ -2988,5 +2988,8 @@ or_multi_put_size_offset (char *nullmap_ptr, const int n_elements, const int off
       or_multi_put_element_offset_internal (nullmap_ptr, n_elements, OR_MULTI_MAX_OFFSET, n_elements);
     }
 }
+
+#undef ASSERT_ALIGN
+#define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN (ptr, alignment) == ptr))
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

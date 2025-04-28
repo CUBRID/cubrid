@@ -86,6 +86,11 @@ struct or_btree_property
     } \
   while (0)
 
+#if defined (ASSERT_ALIGN)
+#undef ASSERT_ALIGN
+#endif
+#define ASSERT_ALIGN(ptr, alignment)
+
 static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * class_, BTID * btid,
 				    OID ** class_oids, HFID ** hfids, int *num_classes, int *max_classes,
 				    int *partition_local_index);

@@ -52,6 +52,11 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+#if defined (ASSERT_ALIGN)
+#undef ASSERT_ALIGN
+#endif
+#define ASSERT_ALIGN(ptr, alignment)
+
 /*
  * Lookup to compute the MVCC header size faster:
  *    INDEX	    MVCC FLAGS					      SIZE

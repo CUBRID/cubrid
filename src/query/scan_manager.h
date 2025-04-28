@@ -102,6 +102,7 @@ struct dblink_scan_id
 typedef struct heap_scan_id HEAP_SCAN_ID;
 struct heap_scan_id
 {
+  DB_VALUE pk_val;
   OID curr_oid;			/* current object identifier */
   OID cls_oid;			/* class object identifier */
   HFID hfid;			/* heap file identifier */
@@ -195,6 +196,7 @@ struct index_skip_scan
 /* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
+  DB_VALUE pk_val;
   INDX_INFO *indx_info;		/* index information */
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
@@ -229,6 +231,7 @@ struct indx_scan_id
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   /* TODO: Can we use these instead of BTS pointers to limits? */
+  DB_BIGINT key_num;
   DB_BIGINT key_limit_lower;	/* lower key limit */
   DB_BIGINT key_limit_upper;	/* upper key limit */
   INDX_COV indx_cov;		/* index covering information */
@@ -387,6 +390,8 @@ struct scan_id_struct
   ((iscan_id_p)->indx_info != NULL \
    && (iscan_id_p)->indx_info->ils_prefix_len > 0)
 
+typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt);
+
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
@@ -485,13 +490,22 @@ extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
-extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, bool use_rocksdb = false);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern int scan_init_iss (INDX_SCAN_ID * isidp);
 extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_list,
 				  MVCC_SNAPSHOT * mvcc_snapshot);
+
+extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
+				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
+
+extern int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
+
 extern int scan_initialize (void);
 extern void scan_finalize (void);
 extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
