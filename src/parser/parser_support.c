@@ -12075,7 +12075,12 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     {
     case PT_SCOPE:
       stmt = stmt->info.scope.stmt->info.trigger_action.expression;
-    [[fallthrough]] case PT_INSERT:
+      if (stmt == NULL)
+	{
+	  return;
+	}
+      [[fallthrough]];
+    case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
