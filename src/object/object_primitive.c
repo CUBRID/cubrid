@@ -7745,9 +7745,6 @@ mr_setval_vector_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  // print vector_float for debugging
 	  vimkim_log ("vf: %s\n", db_vector_float_to_string (*src_vf).c_str ());
 
-	  error = db_value_domain_init (dest, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  ASSERT_CUBVEC (error == NO_ERROR);
-
 	  DB_VECTOR_FLOAT dest_vf;
 	  dest_vf.dim = src_vf->dim;
 	  dest_vf.float_array = (float *) db_private_alloc (NULL, dim * sizeof (float));
