@@ -7719,9 +7719,14 @@ mr_freemem_vector_float (void *memptr)
 static void
 mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
+
   vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
+
+  DB_VECTOR_FLOAT vf;
+  vf.dim = 0;
+  vf.float_array = nullptr;
+
   db_value_domain_init (value, DB_TYPE_VECTOR, precision, scale);
-  DB_VECTOR_FLOAT vf = { 0, nullptr };
   db_make_vector_float (value, vf);
 }
 
@@ -7797,7 +7802,7 @@ mr_data_lengthval_vector_float (DB_VALUE * value, int disk)
   vimkim_log ("args: value %p, disk %d\n", value, disk);
 
   int dim = value->data.vector_float.dim;
-  int byte_length = sizeof dim + dim * sizeof (float);
+  int byte_length = sizeof (dim) + dim * sizeof (float);
   vimkim_log ("locals: dim = %d, byte_length = %d\n", dim, byte_length);
 
   return byte_length;
