@@ -415,6 +415,7 @@ static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_clause);
 
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5027,16 +5028,19 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       return node;
     }
 
-  /* Recursive CTE */
+  /* recursive CTE */
   if (with_clause->info.with_clause.recursive != 0)
     {
       return node;
     }
 
-  /* Count the number of CTE references, except for the with clause. */
+  /* set the initial value for CTE reference count */
+  mq_initialize_cte_reference_count (parser, with_clause);
+
+  /* count the number of CTE references, except for the with clause. */
   node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
 
-  /* Rewrite the main query considering the reference count. */
+  /* rewrite the main query considering the reference count. */
   node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
 
   cte_definition_list = with_clause->info.with_clause.cte_definition_list;
@@ -5066,6 +5070,57 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 }
 
 /*
+ * mq_set_cte_reference_initial_value () -
+ *   return:
+ *   parser(in):
+ *   with_clause(in):
+ *
+ * Note: This function is used to set the initial value for CTE reference count.
+ *       The threshold value for CTE materialization is 2.
+ *
+ *       For CTE with materialize hint, referenced_count is initialized to 1 instead of 2(threshold).
+ *       to ensure only CTE referenced at least once in the main query remains. 
+ *       Any CTE that is not referenced should be removed regardless of its hints.
+ */
+static void
+mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_clause)
+{
+  PT_NODE *cte;
+  PT_HINT_ENUM hint;
+  bool can_inlining;
+
+  cte = with_clause->info.with_clause.cte_definition_list;
+  while (cte)
+    {
+      can_inlining = true;
+
+      /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
+       * since it may change the query results. Handle it same as CTE with materialize hint. */
+      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte,
+			       &can_inlining, NULL, NULL);
+
+      if (can_inlining)
+	{
+	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
+	  if (hint & PT_HINT_INLINE_CTE)
+	    {
+	      cte->info.cte.referenced_count = -1;
+	    }
+	  else if (hint & PT_HINT_MATERIALIZE_CTE)
+	    {
+	      cte->info.cte.referenced_count = 1;
+	    }
+	}
+      else
+	{
+	  cte->info.cte.referenced_count = 1;
+	}
+
+      cte = cte->next;
+    }
+}
+
+/*
  * mq_count_cte_references () - 
  *   return:
  *   parser(in):
@@ -5084,20 +5139,6 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   switch (node->node_type)
     {
     case PT_WITH_CLAUSE:
-      cte = node->info.with_clause.cte_definition_list;
-      while (cte)
-	{
-	  can_rewrite = true;
-	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
-
-	  parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte, &can_rewrite, NULL, NULL);
-
-	  /* the threshold value for CTE transformation is 2 references.
-	   * initialize referenced_count to 1 for CTE with materialize hint to enable removal 
-	   * when not referenced from main query. */
-	  cte->info.cte.referenced_count = can_rewrite ? (hint & PT_HINT_MATERIALIZE_CTE ? 1 : 0) : 1;
-	  cte = cte->next;
-	}
       *continue_walk = PT_LIST_WALK;
       break;
 
@@ -5106,8 +5147,6 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  node_pointer = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (node_pointer);
-
-	  hint = pt_find_cte_hint (parser, node_pointer->info.cte.non_recursive_part);
 
 	  /* count the references of indirectly referenced cte to prevent them from being removed or rewritten as inline views.
 	   * cte with reference count less than 2 are rewritten as inline views or removed, so we need to count indirect references.
@@ -5120,7 +5159,8 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
 				   pt_continue_walk, NULL);
 
-	  if (!(hint & PT_HINT_INLINE_CTE))
+	  /* if referenced_count is -1, it means this CTE has inline hint */
+	  if (node_pointer->info.cte.referenced_count != -1)
 	    {
 	      node_pointer->info.cte.referenced_count++;
 	    }
@@ -5136,7 +5176,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 static PT_NODE *
 mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *can_rewrite = (bool *) arg;
+  bool *can_inlining = (bool *) arg;
 
   switch (node->node_type)
     {
@@ -5144,7 +5184,7 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR || node->info.expr.op == PT_ROWNUM
 	  || node->info.expr.op == PT_INST_NUM || node->info.expr.op == PT_ORDERBY_NUM)
 	{
-	  *can_rewrite = false;
+	  *can_inlining = false;
 	  *continue_walk = PT_STOP_WALK;
 	}
       break;

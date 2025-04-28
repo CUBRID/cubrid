@@ -14591,7 +14591,7 @@ cte_definition
 			      }
 			    node->info.cte.non_recursive_part = $4;
 			    node->info.cte.recursive_part = NULL;
-			    node->info.cte.referenced_count = -1;
+			    node->info.cte.referenced_count = 0;
 			  }
 
 			$$ = node;
