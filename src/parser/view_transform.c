@@ -4992,7 +4992,7 @@ exit_on_error:
 static PT_NODE *
 mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *with_clause = NULL;
+  PT_NODE **with_clause = NULL;
   PT_NODE *cte_definition_list, *curr, *next;
 
   switch (node->node_type)
@@ -5003,39 +5003,39 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
     case PT_INTERSECTION:
       if (node->info.query.with != NULL)
 	{
-	  with_clause = node->info.query.with;
+	  with_clause = &node->info.query.with;
 	}
       break;
 
     case PT_DELETE:
       if (node->info.delete_.with != NULL)
 	{
-	  with_clause = node->info.delete_.with;
+	  with_clause = &node->info.delete_.with;
 	}
       break;
     case PT_UPDATE:
       if (node->info.update.with != NULL)
 	{
-	  with_clause = node->info.update.with;
+	  with_clause = &node->info.update.with;
 	}
       break;
     default:
       break;
     }
 
-  if (with_clause == NULL)
+  if (with_clause == NULL || *with_clause == NULL)
     {
       return node;
     }
 
   /* recursive CTE */
-  if (with_clause->info.with_clause.recursive != 0)
+  if ((*with_clause)->info.with_clause.recursive != 0)
     {
       return node;
     }
 
   /* set the initial value for CTE reference count */
-  mq_initialize_cte_reference_count (parser, with_clause);
+  mq_initialize_cte_reference_count (parser, *with_clause);
 
   /* count the number of CTE references, except for the with clause. */
   node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
@@ -5043,7 +5043,7 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   /* rewrite the main query considering the reference count. */
   node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
 
-  cte_definition_list = with_clause->info.with_clause.cte_definition_list;
+  cte_definition_list = (*with_clause)->info.with_clause.cte_definition_list;
   curr = cte_definition_list;
   while (curr)
     {
@@ -5059,11 +5059,12 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   if (cte_definition_list != NULL)
     {
-      with_clause->info.with_clause.cte_definition_list = cte_definition_list;
+      (*with_clause)->info.with_clause.cte_definition_list = cte_definition_list;
     }
   else
     {
-      parser_free_tree (parser, with_clause);
+      parser_free_tree (parser, *with_clause);
+      *with_clause = NULL;
     }
 
   return node;
