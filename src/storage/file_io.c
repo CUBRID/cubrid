@@ -7773,8 +7773,6 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
 
   thread_info_p = &session_p->read_thread_info;
   queue_p = &thread_info_p->io_queue;
-  /* thread service routine has tran_index_lock, and should release before it is working */
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
   thread_p->tran_index = thread_info_p->tran_index;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_read, session = %p\n", session_p);
