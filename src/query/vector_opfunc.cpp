@@ -51,15 +51,7 @@ std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
   const auto dim = vf->dim;
   const auto arr = vf->float_array;
 
-  std::vector<float> result;
-  result.resize (static_cast<size_t> (dim));
-
-  for (int i = 0; i < dim; ++i)
-    {
-      result[i] = arr[i];
-    }
-
-  return result;
+  return std::vector<float>(arr, arr + static_cast<size_t> (dim));
 }
 
 
