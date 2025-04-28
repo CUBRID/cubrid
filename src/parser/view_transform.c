@@ -5087,19 +5087,27 @@ mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_claus
 {
   PT_NODE *cte;
   PT_HINT_ENUM hint;
-  bool can_inlining;
+  bool is_inlinable;
+
+  if (with_clause == NULL)
+    {
+      return;
+    }
+
+  assert (with_clause->node_type == PT_WITH_CLAUSE);
 
   cte = with_clause->info.with_clause.cte_definition_list;
   while (cte)
     {
-      can_inlining = true;
+      assert (cte->info.cte.referenced_count == 0);
+      is_inlinable = true;
 
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte,
-			       &can_inlining, NULL, NULL);
+			       &is_inlinable, NULL, NULL);
 
-      if (can_inlining)
+      if (is_inlinable)
 	{
 	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
 	  if (hint & PT_HINT_INLINE_CTE)
@@ -5126,8 +5134,8 @@ mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_claus
  *   parser(in):
  *   node(in):
  *   arg(in):
- * Note: If the reference count is 2 or more, it is treated as a materialized CTE.
- *       If the reference count is less than 2, it is treated as a inline CTE.
+ * Note: If the reference count is 2 or more, it will be treated as a materialized CTE.
+ *       If the reference count is less than 2, it will be treated as a inline CTE.
  */
 static PT_NODE *
 mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -5135,6 +5143,11 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   PT_NODE *node_pointer, *cte;
   PT_HINT_ENUM hint;
   bool can_rewrite = true;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
 
   switch (node->node_type)
     {
@@ -5147,6 +5160,8 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  node_pointer = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (node_pointer);
+
+	  assert (node_pointer->node_type == PT_CTE);
 
 	  /* count the references of indirectly referenced cte to prevent them from being removed or rewritten as inline views.
 	   * cte with reference count less than 2 are rewritten as inline views or removed, so we need to count indirect references.
@@ -5177,6 +5192,11 @@ static PT_NODE *
 mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *can_inlining = (bool *) arg;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
 
   switch (node->node_type)
     {
