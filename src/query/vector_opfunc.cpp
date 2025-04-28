@@ -125,10 +125,7 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   const auto dim2 = vf2->dim;
   const auto arr2 = vf2->float_array;
 
-  if (dim1 != dim2)
-    {
-      assert (false);
-    }
+  assert (dim1 == dim2);
 
   float distance = 0.0f;
   try
