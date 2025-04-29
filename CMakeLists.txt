@@ -246,6 +246,11 @@ if(VIMKIM_BUILD)
     add_compile_definitions(VIMKIM)
 endif()
 
+option(ENABLE_CUBVEC_LOG "Enable CUBVEC team logging" ON)
+if(ENABLE_CUBVEC_LOG)
+    add_compile_definitions(CUBVEC_LOG)
+endif()
+
 # System check
 if(UNIX)
   if(CMAKE_COMPILER_IS_GNUCC)

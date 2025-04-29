@@ -225,9 +225,8 @@ typedef enum tp_match
 
 #define TP_IS_SET_TYPE(typenum) \
   ((((typenum) == DB_TYPE_SET) || ((typenum) == DB_TYPE_MULTISET) || \
-    ((typenum) == DB_TYPE_SEQUENCE) || \
-    ((typenum) == DB_TYPE_VECTOR)) \
-    ? true : false)
+    ((typenum) == DB_TYPE_SEQUENCE) \
+    ? true : false))
 
 /*
  * TP_IS_BIT_TYPE

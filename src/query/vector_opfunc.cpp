@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
+#include "dbtype_def.h"
 #include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -38,28 +39,19 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
  * @param value A pointer to a DB_VALUE object that holds a vector.
  * @return std::vector<float> A vector containing the float elements extracted from the DB_VALUE.
  */
+/* deprecated */
 std::vector<float> db_value_get_stdvector_float (const DB_VALUE *value)
 {
+  /* The design of DB_TYPE_VECTOR has drastically changed. It is recommended that you use db_get_vector_float and access arr instead. */
+  cubvec_log ("WARNING: This function is deprecated.");
+
   assert (value != nullptr && DB_VALUE_TYPE (value) == DB_TYPE_VECTOR);
 
-  DB_SET *set_ref = db_get_set (value);
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (value);
+  const auto dim = vf->dim;
+  const auto arr = vf->float_array;
 
-  int size = db_set_size (set_ref);
-
-  std::vector<float> result;
-  result.reserve (static_cast<size_t> (size));
-
-  DB_VALUE element;
-  for (int i = 0; i < size; ++i)
-    {
-      if (db_set_get (set_ref, i, &element) != NO_ERROR)
-	{
-	  assert (false);
-	}
-      result.push_back (db_get_float (&element));
-    }
-
-  return result;
+  return std::vector<float> (arr, arr + static_cast<size_t> (dim));
 }
 
 
@@ -125,18 +117,19 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   // Ensure we have the correct number of arguments.
   assert (num_args == 2);
 
-  // Extract vectors from the arguments.
-  const std::vector<float> vec1 = db_value_get_stdvector_float (args[0]);
-  const std::vector<float> vec2 = db_value_get_stdvector_float (args[1]);
+  const DB_VECTOR_FLOAT *vf1 = db_get_vector_float (args[0]);
+  const auto dim1 = vf1->dim;
+  const auto arr1 = vf1->float_array;
 
-  // Check that vectors are non-empty and of equal size.
-  assert (!vec1.empty() && !vec2.empty());
-  assert (vec1.size() == vec2.size());
+  const DB_VECTOR_FLOAT *vf2 = db_get_vector_float (args[1]);
+  const auto arr2 = vf2->float_array;
+
+  assert (vf2->dim1 == vf2->dim2);
 
   float distance = 0.0f;
   try
     {
-      distance = distance_calculation (vec1.data(), vec2.data(), vec1.size());
+      distance = distance_calculation (arr1, arr2, dim1);
     }
   catch (const std::exception &e)
     {
