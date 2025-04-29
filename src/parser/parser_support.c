@@ -12079,7 +12079,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
 	    {
-	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL");
+	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
 	      return;
 	    }
 	}
