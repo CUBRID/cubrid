@@ -5027,16 +5027,12 @@ tp_atovector (const DB_VALUE * src, DB_VALUE * result)
   vimkim_log ("args: src = %p, result = %p\n", src, result);
 
   const char *p = db_get_string (src);
-  const char *end = p + db_get_string_size (src);
-  int count = 0;
-  const int number_buffer_size = 64;
-  char number_buffer[number_buffer_size];
-  int buffer_idx;
   const int max_vector_size = 2000;
-  DB_VALUE e_val;
 
-  DB_VECTOR_FLOAT vector_float = { 0, NULL };
+  DB_VECTOR_FLOAT vector_float;
+  vector_float.dim = 0;
   vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
+
   vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
 
   if (vector_float.float_array == NULL)
