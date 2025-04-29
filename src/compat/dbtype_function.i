@@ -122,7 +122,8 @@ STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ 
 STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_vector_float (DB_VALUE * value, DB_VECTOR_FLOAT vector_float) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT * vector_float)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
@@ -2025,13 +2026,14 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
 }
 
 int
-db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT vector_float)
+db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT * vector_float)
 {
   int error = NO_ERROR;
   value->domain.general_info.type = DB_TYPE_VECTOR;
   value->domain.general_info.is_null = 0;
   value->need_clear = true;
-  value->data.vector_float = vector_float;
+  value->data.vector_float.dim = vector_float->dim;
+  value->data.vector_float.float_array = vector_float->float_array;
   return error;
 }
 

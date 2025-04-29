@@ -384,7 +384,7 @@ extern "C"
   extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
   extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
   extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
-  extern int db_make_vector_float (DB_VALUE * value, DB_VECTOR_FLOAT vector_float);
+  extern int db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT * vector_float);
 
   extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 
