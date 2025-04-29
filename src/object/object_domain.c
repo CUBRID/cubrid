@@ -9201,9 +9201,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	  {
 
 	    err = tp_atovector (src, target);
