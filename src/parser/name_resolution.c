@@ -12072,7 +12072,7 @@ pt_free_dblink_remote_cols (PARSER_CONTEXT * parser)
 }
 
 PT_HINT_ENUM
-pt_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_get_query_hint (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   switch (node->node_type)
     {
@@ -12082,11 +12082,32 @@ pt_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
     case PT_UNION:
-      return pt_find_cte_hint (parser, node->info.query.q.union_.arg1);
+      return pt_get_query_hint (parser, node->info.query.q.union_.arg1);
 
     default:
       break;
     }
 
   return PT_HINT_NONE;
+}
+
+bool
+pt_put_query_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_HINT_ENUM hint)
+{
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      node->info.query.q.select.hint |= hint;
+      return true;
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      return pt_put_query_hint (parser, node->info.query.q.union_.arg1, hint);
+
+    default:
+      break;
+    }
+
+  return false;
 }

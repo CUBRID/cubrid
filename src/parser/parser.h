@@ -699,7 +699,8 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
-  extern PT_HINT_ENUM pt_find_cte_hint (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_put_query_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_HINT_ENUM hint);
+  extern PT_HINT_ENUM pt_get_query_hint (PARSER_CONTEXT * parser, PT_NODE * node);
 #ifdef __cplusplus
 }
 #endif

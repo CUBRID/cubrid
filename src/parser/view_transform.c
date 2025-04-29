@@ -186,6 +186,13 @@ enum pushable_type
 };
 typedef enum pushable_type PUSHABLE_TYPE;
 
+enum cte_type
+{
+  CTE_MATERIALIZE = 0,
+  CTE_INLINE = 1
+};
+typedef enum cte_type CTE_TYPE;
+
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_union_bump_correlation (PARSER_CONTEXT * parser, PT_NODE * left, PT_NODE * right);
@@ -415,8 +422,7 @@ static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_clause);
-
+static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -5034,11 +5040,10 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       return node;
     }
 
-  /* set the initial value for CTE reference count */
-  mq_initialize_cte_reference_count (parser, *with_clause);
-
   /* count the number of CTE references, except for the with clause. */
   node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+
+  mq_check_cte_inline_or_materialize (parser, *with_clause);
 
   /* rewrite the main query considering the reference count. */
   node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
@@ -5047,7 +5052,7 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   curr = cte_definition_list;
   while (curr)
     {
-      if (curr->info.cte.recursive_part == NULL && curr->info.cte.referenced_count < 2)
+      if (curr->info.cte.recursive_part == NULL && curr->info.cte.referenced_count < 1)
 	{
 	  next = curr->next;
 	  cte_definition_list = pt_remove_from_list (parser, curr, cte_definition_list);
@@ -5070,61 +5075,50 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   return node;
 }
 
-/*
- * mq_set_cte_reference_initial_value () -
- *   return:
- *   parser(in):
- *   with_clause(in):
- *
- * Note: This function is used to set the initial value for CTE reference count.
- *       The threshold value for CTE materialization is 2.
- *
- *       For CTE with materialize hint, referenced_count is initialized to 1 instead of 2(threshold).
- *       to ensure only CTE referenced at least once in the main query remains. 
- *       Any CTE that is not referenced should be removed regardless of its hints.
- */
 static void
-mq_initialize_cte_reference_count (PARSER_CONTEXT * parser, PT_NODE * with_clause)
+mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
-  PT_HINT_ENUM hint;
-  bool is_inlinable;
+  PT_HINT_ENUM hint = PT_HINT_NONE;
+  bool is_inlinable = true;
+  assert (node->node_type == PT_WITH_CLAUSE);
 
-  if (with_clause == NULL)
-    {
-      return;
-    }
-
-  assert (with_clause->node_type == PT_WITH_CLAUSE);
-
-  cte = with_clause->info.with_clause.cte_definition_list;
+  cte = node->info.with_clause.cte_definition_list;
   while (cte)
     {
-      assert (cte->info.cte.referenced_count == 0);
-      is_inlinable = true;
-
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
-      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part, mq_check_rewrite_cte,
-			       &is_inlinable, NULL, NULL);
+      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
+			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
 
-      if (is_inlinable)
+      if (!is_inlinable)
 	{
-	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
-	  if (hint & PT_HINT_INLINE_CTE)
-	    {
-	      cte->info.cte.referenced_count = -1;
-	    }
-	  else if (hint & PT_HINT_MATERIALIZE_CTE)
-	    {
-	      cte->info.cte.referenced_count = 1;
-	    }
+	  hint = PT_HINT_MATERIALIZE_CTE;
 	}
       else
 	{
-	  cte->info.cte.referenced_count = 1;
+	  hint = pt_get_query_hint (parser, cte->info.cte.non_recursive_part);
+
+	  if (hint & PT_HINT_INLINE_CTE)
+	    {
+	      /* keep inline hint */
+	    }
+	  else if (hint & PT_HINT_MATERIALIZE_CTE)
+	    {
+	      /* override materialize hint if not referenced */
+	      if (cte->info.cte.referenced_count < 1)
+		{
+		  hint = PT_HINT_INLINE_CTE;
+		}
+	    }
+	  else
+	    {
+	      /* default behavior based on reference count */
+	      hint = (cte->info.cte.referenced_count < 2) ? PT_HINT_INLINE_CTE : PT_HINT_MATERIALIZE_CTE;
+	    }
 	}
 
+      pt_put_query_hint (parser, cte->info.cte.non_recursive_part, hint);
       cte = cte->next;
     }
 }
@@ -5175,11 +5169,7 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
 				   pt_continue_walk, NULL);
 
-	  /* if referenced_count is -1, it means this CTE has inline hint */
-	  if (node_pointer->info.cte.referenced_count != -1)
-	    {
-	      node_pointer->info.cte.referenced_count++;
-	    }
+	  node_pointer->info.cte.referenced_count++;
 	}
       break;
     default:
@@ -5253,14 +5243,11 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      return node;
 	    }
 
-	  hint = pt_find_cte_hint (parser, cte->info.cte.non_recursive_part);
-
-	  if (cte->info.cte.referenced_count >= 2)
+	  hint = pt_get_query_hint (parser, cte->info.cte.non_recursive_part);
+	  if (hint == PT_HINT_MATERIALIZE_CTE)
 	    {
-	      /* If the referenced count is 2 or more, it is treated as a materialized CTE. */
 	      return node;
 	    }
-	  /* If the referenced count is less than 2, it is treated as a inline CTE. */
 
 	  attributes = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
 	  derived = parser_copy_tree (parser, cte->info.cte.non_recursive_part);
@@ -5289,6 +5276,11 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  if (node->info.spec.cte_name)
 	    {
 	      parser_free_node (parser, node->info.spec.cte_name);
+	    }
+
+	  if (cte->info.cte.referenced_count > 0)
+	    {
+	      cte->info.cte.referenced_count--;
 	    }
 	}
       break;

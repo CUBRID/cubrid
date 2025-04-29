@@ -14756,7 +14756,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (p->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
 	    {
-	      q = pt_append_nulstring (parser, q, "MATERIALIZED ");
+	      q = pt_append_nulstring (parser, q, "MATERIALIZE ");
 	    }
 
 	  q = pt_append_nulstring (parser, q, "*/ ");
