@@ -278,7 +278,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
   ${OBJECT_DIR}/transform.c
-  ${OBJECT_DIR}/vector_float.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp

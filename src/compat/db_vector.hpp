@@ -23,8 +23,13 @@
 #ifndef _DB_VECTOR_HPP_
 #define _DB_VECTOR_HPP_
 
+#include <string>
+#include "dbtype_def.h"
+
 #ident "$Id$"
 
-extern int db_string_to_vector (const char *p, int str_len, float * vector, int * count);
+extern int db_string_to_vector (const char *p, int str_len, float *vector, int *count);
+
+std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf);
 
 #endif /* _DB_VECTOR_HPP_ */

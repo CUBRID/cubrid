@@ -45,7 +45,7 @@
 #include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
-#include "vector_float.hpp"
+#include "db_vector.hpp"
 #include "access_spec.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

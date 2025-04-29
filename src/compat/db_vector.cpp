@@ -25,10 +25,17 @@
 #include "error_code.h"
 #include <cmath>
 #include <limits>
+#include <sstream>
+#include <iomanip>
+#include <string>
 #include "rapidjson/document.h"
+
+#include "dbtype_def.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define VECTOR_DIM_MAX 2000
 
 int db_string_to_vector (
 	const char *p,
@@ -64,9 +71,9 @@ int db_string_to_vector (
       return ER_FAILED;
     }
 
-  if (size > 2000)
+  if (size > VECTOR_DIM_MAX)
     {
-      vimkim_log ("Parsed vector dim %zu is larger than the limit 2000\n", size);
+      vimkim_log ("Parsed vector dim %zu is larger than the limit %d\n", size, VECTOR_DIM_MAX);
       return ER_FAILED;
     }
 
@@ -92,3 +99,73 @@ int db_string_to_vector (
   *p_count = static_cast<int> (size);
   return NO_ERROR;
 }
+
+/**
+ * Converts a floating point vector to a string representation.
+ * @param vf The vector to convert to string
+ * @return String representation of the vector
+ */
+std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf)
+{
+
+  ASSERT_CUBVEC (vf.float_array != nullptr);
+  ASSERT_CUBVEC (vf.dim > 0);
+
+  const auto dim = vf.dim;
+  const auto arr = vf.float_array;
+
+  std::ostringstream oss;
+
+  // Set floating point precision
+  oss << std::fixed
+      << std::setprecision (6);
+
+  oss << '[';
+
+#if defined(CUBVEC_TEAM) && !defined(NDEBUG)
+
+  oss << "dim: " << dim << "] [";
+
+  constexpr int num_show = 5;
+  // Helper to append elements [start, end)
+  auto append_range = [&] (int start, int end)
+  {
+    for (int i = start; i < end; ++i)
+      {
+	if (i > start)
+	  {
+	    oss << ", ";
+	  }
+	oss << arr[i];
+      }
+  };
+
+  if (dim <= 2 * num_show)
+    {
+      // show all elements
+      append_range (0, dim);
+    }
+  else
+    {
+      // first kShow
+      append_range (0, num_show);
+      oss << ", ... ";
+      // last kShow
+      append_range (dim - num_show, dim);
+    }
+
+#else
+  for (int i = 0; i < dim; ++i)
+    {
+      if (i > 0)
+	{
+	  oss << ", ";
+	}
+      oss << arr[i];
+    }
+#endif
+
+  oss << "]";
+  return oss.str();
+}
+

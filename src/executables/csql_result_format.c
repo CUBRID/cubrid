@@ -24,7 +24,7 @@
 
 #include "config.h"
 #include "cubvec_assert.h"
-#include "vector_float.hpp"
+#include "db_vector.hpp"
 
 #include <float.h>
 #include <time.h>
