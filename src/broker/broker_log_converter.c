@@ -406,7 +406,9 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 
   if (bind_len > 0)
     {
-      fprintf (outfp, "B %d %d %s\n", type, bind_len, value_p);
+      fprintf (outfp, "B %d %d ", type, bind_len);
+      fwrite (value_p, 1, bind_len, outfp);
+      fwrite ("\n", 1, 1, outfp);
     }
   else
     {
