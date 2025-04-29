@@ -615,6 +615,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
+
     case DB_TYPE_VECTOR:
       {
 	const DB_VECTOR_FLOAT *src_vector_float = db_get_vector_float (val);
@@ -626,6 +627,12 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	DB_VECTOR_FLOAT dest_vector_float;
 	dest_vector_float.dim = dim;
 	dest_vector_float.float_array = (float *) malloc (dim * sizeof (float));
+	if (dest_vector_float.float_array == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "Cannot allocate float_array for vector");
+	    return NULL;
+	  }
+
 	memcpy (dest_vector_float.float_array, arr, dim * sizeof (float));
 
 	result->info.value.data_value.vector_float = dest_vector_float;
