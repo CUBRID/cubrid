@@ -567,10 +567,7 @@ static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-#if !defined(REMOVE_NCHAR)  && defined(MY_STEP4)// ctshim
-static int ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-#endif
+
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -3010,45 +3007,6 @@ error_exit:
   return err;
 }
 
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP4) // ctshim
-/*
- * ldr_nstr_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
-{
-
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, (int) len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
-  return NO_ERROR;
-}
-
-/*
- * ldr_nstr_db_varnchar -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
-{
-  int err = NO_ERROR;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_nstr_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
-  return err;
-}
-#endif
 /*
  *  NUMERIC SETTERS
  *

@@ -19737,22 +19737,11 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 	  intl_reverse_string (DB_GET_UCHAR (src_str),
 			       REINTERPRET_CAST (unsigned char *, res), db_get_string_length (src_str),
 			       db_get_string_size (src_str), db_get_string_codeset (src_str));
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP7)	// ctshim
-	  if (QSTR_IS_CHAR (str_type))
-	    {
-	      db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-			       db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
-	  else
-	    {
-	      db_make_varnchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-				db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
-#else
+
 	  assert (QSTR_IS_CHAR (str_type));
 	  db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
 			   db_get_string_codeset (src_str), db_get_string_collation (src_str));
-#endif
+
 	  result_str->need_clear = true;
 	}
     }

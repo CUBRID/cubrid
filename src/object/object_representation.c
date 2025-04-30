@@ -2789,9 +2789,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   * chunk of code can be removed.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP2)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
-#endif
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
@@ -2979,9 +2976,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   * in or_packed_domain_size above.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP2)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
-#endif
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
@@ -3282,12 +3276,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
 		    }
-#if !defined(REMOVE_NCHAR)  && defined(MY_STEP2)
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
-		    }
-#endif
 		  else if (type == DB_TYPE_VARBIT)
 		    {
 		      precision = DB_MAX_VARBIT_PRECISION;
@@ -3668,12 +3656,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
 		    }
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP2)
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
-		    }
-#endif
 		  else if (type == DB_TYPE_VARBIT)
 		    {
 		      precision = DB_MAX_VARBIT_PRECISION;

@@ -409,12 +409,7 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
    * cannot be a member of midxkey
    */
   assert (!(domain->type->variable_p
-#if !defined(REMOVE_NCHAR) && defined(MY_STEP3)
-	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARNCHAR
-		 || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
-#else
 	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
-#endif
 
   return domain->type->get_index_size_of_mem (mem, domain);
 }
