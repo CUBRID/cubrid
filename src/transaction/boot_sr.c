@@ -6120,6 +6120,18 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
+
+      /* todo: is flush needed? */
+      VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
+			     &vpid_boot_bp_parm);
+
+      error_code = boot_db_parm_update_heap (thread_p);
+
+      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
+       * during restart. that may not be possible during media crash though. */
+      heap_flush (thread_p, boot_Db_parm_oid);
+      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
     }
   else
     {
@@ -6135,22 +6147,12 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       boot_Db_parm->temp_last_volid = volid;
     }
 
-  /* todo: is flush needed? */
-  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
-  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
-
-  error_code = boot_db_parm_update_heap (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       *boot_Db_parm = save_boot_db_parm;
       goto exit;
     }
-
-  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
-   * during restart. that may not be possible during media crash though. */
-  heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
 
 exit:
   return error_code;
