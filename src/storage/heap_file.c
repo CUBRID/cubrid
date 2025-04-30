@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
@@ -26275,6 +26274,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   OR_PUT_OID (ptr, class_oid);
   ptr += OR_OID_SIZE;
   ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
+
 
   // array_size
   OR_PUT_INT (ptr, (int) array_size);
