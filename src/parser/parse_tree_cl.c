@@ -16732,8 +16732,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "\'");
       break;
     case PT_TYPE_VECTOR:
-      std::string str = db_vector_float_to_string (p->info.value.data_value.vector_float);
-      q = pt_append_nulstring (parser, q, str.c_str ());
+      q = pt_append_nulstring (parser, q, db_vector_float_to_string (p->info.value.data_value.vector_float).c_str ());
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
