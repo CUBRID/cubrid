@@ -4172,6 +4172,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "multiset";
     case PT_TYPE_SEQUENCE:
       return "sequence";
+    case PT_TYPE_VECTOR:
+      return "vector";
     case PT_TYPE_RESULTSET:
       return "cursor";
     case PT_TYPE_COMPOUND:

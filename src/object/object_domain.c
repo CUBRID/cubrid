@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "cubvec_assert.h"
 #include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -256,7 +257,8 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT3 };
+// TODO: CUBVEC: DOMAIN or DOMAIN_INIT3? Not analyzed yet.
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -379,7 +381,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Null_domain,
+  &tp_Vector_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -1541,6 +1543,11 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
   switch (TP_DOMAIN_TYPE (dom1))
     {
 
+    case DB_TYPE_VECTOR:
+      {
+	ASSERT_CUBVEC (false);
+      }
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -1957,6 +1964,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
   switch (TP_DOMAIN_TYPE (domain))
     {
 
+    case DB_TYPE_VECTOR:
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -2538,6 +2546,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       assert (false);
       break;
       /* don't have a default so we make sure to add clauses for all types */
+    }
+
+  if (TP_DOMAIN_TYPE (dlist) == DB_TYPE_VECTOR)
+    {
+      vimkim_log ("WARNING: not analyzed yet.\n");
+      vimkim_log ("args: dlist %p, transient %p, exact %d\n", dlist, transient, exact);
+      vimkim_log ("match %d, domain %p, return %p\n", match, domain, (match ? domain : NULL));
     }
 
   return (match ? domain : NULL);
@@ -3248,6 +3263,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
     {
       switch (value_type)
 	{
+	case DB_TYPE_VECTOR:
 	case DB_TYPE_NULL:
 	case DB_TYPE_INTEGER:
 	case DB_TYPE_BIGINT:
@@ -5008,40 +5024,44 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 static int
 tp_atovector (const DB_VALUE * src, DB_VALUE * result)
 {
-  const char *p = db_get_string (src);
-  const char *end = p + db_get_string_size (src);
-  int count = 0;
-  const int number_buffer_size = 64;
-  char number_buffer[number_buffer_size];
-  int buffer_idx;
-  const int max_vector_size = 2000;
-  float float_array[max_vector_size];
-  DB_SET *vec = NULL;
-  DB_VALUE e_val;
+  vimkim_log ("args: src = %p, result = %p\n", src, result);
 
-  int error = db_string_to_vector (p, db_get_string_size (src), float_array, &count);
+  const char *p = db_get_string (src);
+  const int max_vector_size = 2000;
+
+  DB_VECTOR_FLOAT vector_float;
+  vector_float.dim = 0;
+  vector_float.float_array = (float *) db_private_alloc (nullptr, max_vector_size * sizeof (float));
+
+  vimkim_log ("db_private_alloc: %p of size %zu\n", vector_float.float_array, max_vector_size * sizeof (float));
+
+  if (vector_float.float_array == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_vector_size * sizeof (float));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  int error = db_string_to_vector (p, db_get_string_size (src), vector_float.float_array, &vector_float.dim);
   if (error != NO_ERROR)
     {
+      db_private_free (nullptr, vector_float.float_array);
+      vimkim_log ("db_string_to_vector failed: %d\n", error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
 
-  // Create vector and populate it
-  vec = db_vec_create (NULL, NULL, 0);
-  if (vec == NULL)
+  // db_string_to_vector() should return Error if vector_float.dim > max_vector_size
+  ASSERT_CUBVEC (vector_float.dim <= max_vector_size);
+
+  if (vector_float.dim == 0)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      vimkim_log ("TODO: dim should not be zero yet.\n");
+      db_private_free (nullptr, vector_float.float_array);
+      return ER_FAILED;
     }
 
-  db_make_vector (result, vec);
-  for (int i = 0; i < count; ++i)
-    {
-      db_make_float (&e_val, float_array[i]);
-      if (db_seq_put (db_get_set (result), i, &e_val) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
+  db_value_domain_init (result, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_make_vector_float (result, &vector_float);
 
   return NO_ERROR;
 }
@@ -9607,76 +9627,61 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
-
 	case DB_TYPE_VECTOR:
 	  {
-	    DB_VALUE element;
-	    SETREF *setref = db_get_set (src);
-	    if (setref)
-	      {
-		DB_VALUE str;
-		db_value_domain_init (&str, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
 
-		std::ostringstream oss;
-
-		oss << "[";
-
-		int vector_dim = db_set_size (setref);
-		for (int i = 0; i < vector_dim; i++)
-		  {
-		    if (db_set_get (setref, i, &element) != NO_ERROR)
-		      {
-			status = DOMAIN_ERROR;
-			break;
-		      }
-
-		    tp_ftoa (&element, &str);
-
-		    if (DB_IS_NULL (&str))
-		      {
-			status = DOMAIN_ERROR;
-			break;
-		      }
-
-		    oss << db_get_string (&str);
-		    if (i < vector_dim - 1)
-		      {
-			oss << ", ";
-		      }
-		    db_value_clear (&str);
-		  }
-		oss << "]";
-
-		char *new_string = db_private_strdup (NULL, oss.str ().c_str ());
-		if (!new_string)
-		  {
-		    status = DOMAIN_ERROR;
-		    break;
-		  }
-
-		// check varchar's precision e.g.) 'select cast (vec as varchar (1)) from tbl;'
-		int new_string_len = oss.str ().size ();
-
-		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		    && db_value_precision (target) < new_string_len)
-		  {
-		    status = DOMAIN_OVERFLOW;
-		    db_private_free_and_init (NULL, new_string);
-		  }
-		else
-		  {
-		    make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status,
-						  &data_stat);
-		  }
-	      }
-	    else
+	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (src);
+	    if (vf == nullptr)
 	      {
 		status = DOMAIN_ERROR;
 		break;
 	      }
-	  }
-	  break;
 
+	    const auto dim = vf->dim;
+	    const auto arr = vf->float_array;
+
+	    if (!arr)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    std::ostringstream oss;
+
+	    oss << "[";
+	    int vector_dim = dim;
+	    for (int i = 0; i < vector_dim; i++)
+	      {
+		oss << arr[i];
+		if (i < vector_dim - 1)
+		  {
+		    oss << ", ";
+		  }
+	      }
+	    oss << "]";
+
+	    char *new_string = db_private_strdup (NULL, oss.str ().c_str ());
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    // check varchar's precision e.g.) 'select cast (vec as varchar (1)) from tbl;'
+	    int new_string_len = oss.str ().size ();
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < new_string_len)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
+	      }
+	    break;
+	  }
 
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
@@ -11279,6 +11284,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (domain == NULL)
     {
+      ASSERT_CUBVEC (false);
       /* shouldn't happen ? */
       db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }

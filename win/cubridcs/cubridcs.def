@@ -237,7 +237,7 @@ EXPORTS
     db_make_null
     db_make_object
     db_make_sequence
-    db_make_vector
+    db_make_vector_float
     db_make_set
     db_make_short
     db_make_string

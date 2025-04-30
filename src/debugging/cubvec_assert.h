@@ -24,6 +24,12 @@
 #define CUBVEC_ASSERT_H
 
 #include <assert.h>
+#include <unistd.h>
+#include "error_manager.h"
+
+/******************************************************************************
+ * Assertions
+******************************************************************************/
 
 #ifdef CUBVEC_TEAM
 #ifdef NDEBUG
@@ -65,6 +71,80 @@
 #define ASSERT_VIMKIM(expr) assert(expr)
 #else
 #define ASSERT_VIMKIM(expr) ((void)0)
+#endif
+
+/******************************************************************************
+ * Logging
+******************************************************************************/
+
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined (CUBVEC_TEAM)
+#define cubvec_log(...) \
+  do { \
+      FILE *logfile = fopen("cubvec.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define cubvec_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(HORNETMJ)
+#define hornetmj_log(...) \
+  do { \
+      FILE *logfile = fopen("hornetmj.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define hornetmj_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(HGRYOO)
+#define hgryoo_log(...) \
+  do { \
+      FILE *logfile = fopen("hgryoo.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define hgryoo_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && defined(YEUNJUNLEE)
+#define yeunjunlee_log(...) \
+  do { \
+      FILE *logfile = fopen("yeunjunlee.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define yeunjunlee_log(...) do {} while (0)
+#endif
+
+#if !defined(NDEBUG) && defined(CUBVEC_LOG) && (VIMKIM)
+#define vimkim_log(...) \
+  do { \
+      FILE *logfile = fopen("vimkim.log", "a"); \
+      if (logfile) { \
+	  fprintf(logfile, "[%-10.10s] [%-25.25s] ", (char*)basename((char *)er_get_msglog_filename()), __func__); \
+	  fprintf(logfile, __VA_ARGS__); \
+	  fclose(logfile); \
+      } \
+  } while (0)
+#else
+#define vimkim_log(...) do {} while (0)
 #endif
 
 #endif // CUBVEC_ASSERT_H

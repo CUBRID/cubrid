@@ -22,6 +22,7 @@
 
 #include "db_value_printer.hpp"
 
+#include "cubvec_assert.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
@@ -527,7 +528,6 @@ void db_value_printer::describe_data (const db_value *value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VECTOR:
       set = db_get_set (value);
       if (set != NULL)
 	{
@@ -537,6 +537,11 @@ void db_value_printer::describe_data (const db_value *value)
 	{
 	  m_buf ("NULL");
 	}
+      break;
+
+    case DB_TYPE_VECTOR:
+      ASSERT_CUBVEC (false);
+      m_buf ("Not implemented for VECTOR yet.");
       break;
 
     case DB_TYPE_JSON:

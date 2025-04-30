@@ -22,6 +22,7 @@
  */
 
 #include "dbtype_def.h"
+#include "cubvec_assert.h"
 
 #if !defined (_NO_INLINE_DBTYPE_FUNCTION_)
 #include "porting_inline.hpp"
@@ -34,6 +35,7 @@ STATIC_INLINE DB_C_FLOAT db_get_float (const DB_VALUE * value) __attribute__ ((A
 STATIC_INLINE DB_C_DOUBLE db_get_double (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_OBJECT *db_get_object (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const DB_VECTOR_FLOAT *db_get_vector_float (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -120,7 +122,8 @@ STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ 
 STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_multiset (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_sequence (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_vector (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT * vector_float)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_collection (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo) __attribute__ ((ALWAYS_INLINE));
@@ -308,6 +311,30 @@ db_get_set (const DB_VALUE * value)
   else
     {
       return value->data.set;
+    }
+}
+
+/*
+ * db_get_vector_float() -
+ * return :
+ * value(in):
+ */
+const DB_VECTOR_FLOAT *
+db_get_vector_float (const DB_VALUE * value)
+{
+#if defined (API_ACTIVE_CHECKS)
+  ASSERT_CUBVEC (false);
+#endif
+
+  if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
+    {
+      // TODO: CUBVEC - handle when vector is NULL
+      ASSERT_CUBVEC (false);
+      return NULL;
+    }
+  else
+    {
+      return &(value->data.vector_float);
     }
 }
 
@@ -1998,42 +2025,15 @@ db_make_sequence (DB_VALUE * value, DB_SET * set)
   return error;
 }
 
-/*
- * db_make_vector() -
- * return :
- * value(out) :
- * set(in):
- */
 int
-db_make_vector (DB_VALUE * value, DB_SET * set)
+db_make_vector_float (DB_VALUE * value, const DB_VECTOR_FLOAT * vector_float)
 {
   int error = NO_ERROR;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
   value->domain.general_info.type = DB_TYPE_VECTOR;
-  value->data.set = set;
-  if (set)
-    {
-      if ((set->set && setobj_type (set->set) == DB_TYPE_VECTOR) || set->disk_set)
-	{
-	  value->domain.general_info.is_null = 0;
-	}
-      else
-	{
-	  error = ER_QPROC_INVALID_DATATYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	}
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  value->need_clear = false;
-
+  value->domain.general_info.is_null = 0;
+  value->need_clear = true;
+  value->data.vector_float.dim = vector_float->dim;
+  value->data.vector_float.float_array = vector_float->float_array;
   return error;
 }
 

@@ -3309,6 +3309,7 @@ union pt_data_value
   DB_ELO elo;			/* ??? */
   int b;
   PT_ENUM_ELEMENT enumeration;
+  DB_VECTOR_FLOAT vector_float;
 };
 
 /* Info for the VALUE node */

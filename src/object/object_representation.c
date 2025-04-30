@@ -32,6 +32,7 @@
 #include <setjmp.h>
 #include <assert.h>
 
+#include "cubvec_assert.h"
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -44,6 +45,7 @@
 #include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
+#include "db_vector.hpp"
 #include "access_spec.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -3003,6 +3005,10 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  vimkim_log ("WARNING: not analyzed.\n");
+	  break;
+
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
@@ -3794,6 +3800,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      break;
 
+	    case DB_TYPE_VECTOR:
+	      vimkim_log ("WARNING: not implemented yet...\n");
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -3962,6 +3972,7 @@ or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids, int is_nul
     }
   else
     {
+      ASSERT_CUBVEC (false);
       return NULL;
     }
 }

@@ -22,10 +22,12 @@
 
 #include "load_db_value_converter.hpp"
 
+#include "cubvec_assert.h"
 #include "db_date.h"
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "db_vector.hpp"
+#include "dbtype_def.h"
 #include "language_support.h"
 #include "load_class_registry.hpp"
 #include "numeric_opfunc.h"
@@ -602,8 +604,15 @@ namespace cubload
   {
     int count = 0;
     const int max_vector_size = 2000;
-    float float_array[max_vector_size];
-    DB_SET *vec = NULL;
+    float *float_array = (float *) db_private_alloc (NULL, max_vector_size * sizeof (float));
+    vimkim_log ("db_private_alloc: %p, size = %zu\n", float_array, max_vector_size * sizeof (float));
+    if (float_array == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		max_vector_size * sizeof (float));
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+
     DB_VALUE e_val;
 
     int error_code = db_string_to_vector (str, str_size, float_array, &count);
@@ -612,23 +621,12 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    // Create vector and populate it
-    vec = db_vec_create (NULL, NULL, 0);
-    if (vec == NULL)
-      {
-	assert (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
-    db_make_vector (val, vec);
-    for (int i = 0; i < count; ++i)
-      {
-	db_make_float (&e_val, float_array[i]);
-	if (db_seq_put (db_get_set (val), i, &e_val) != NO_ERROR)
-	  {
-	    return ER_FAILED;
-	  }
-      }
+    db_value_domain_init (val, DB_TYPE_VECTOR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    DB_VECTOR_FLOAT vector_float;
+    vector_float.dim = count;
+    vector_float.float_array = float_array;
+    db_make_vector_float (val, &vector_float);
+    val->need_clear = true;
 
     return NO_ERROR;
   }
