@@ -21991,13 +21991,12 @@ primitive_type
 			if (dt)
 			  {
 			    dt->type_enum = typ;
+			    dt->info.data_type.is_floating_point_numeric = (!prec && !scale) ? true : false;
 			    //dt->info.data_type.precision = prec ? prec->info.value.data_value.i : 15;
 			    dt->info.data_type.precision = 
 			      (!prec && scale) ? 38 : prec ? prec->info.value.data_value.i : 0;
 			    dt->info.data_type.dec_precision =
 			      scale ? scale->info.value.data_value.i : 0;
-			    
-			    dt->info.data_type.is_floating_point_numeric = (!dt->info.data_type.precision && !dt->info.data_type.dec_precision) ? true : false;
 
                             if(is_in_sp_func_type && prec)
                             {                                
@@ -22027,6 +22026,11 @@ primitive_type
                                                 DB_MAX_NUMERIC_PRECISION);
                                       }
                                 }
+				if (!dt->info.data_type.is_floating_point_numeric && (prec->info.value.data_value.i == 0 && scale->info.value.data_value.i == 0))
+				{
+				    PT_ERRORmf3 (this_parser, dt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, 0, 0,
+				   DB_MAX_NUMERIC_PRECISION);
+				}
                             }
 			  }
 
