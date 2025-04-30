@@ -545,6 +545,7 @@ namespace parallel_heap_scan
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
+	break;
       case OBJFETCH_PROC:
       case MERGELIST_PROC:
       case UPDATE_PROC:
