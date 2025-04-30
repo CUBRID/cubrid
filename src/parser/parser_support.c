@@ -710,13 +710,25 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
 	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR
+	  || function_type == F_VECTOR_DISTANCE || function_type == F_L1_DISTANCE || function_type == F_L2_DISTANCE
+	  || function_type == F_INNER_PRODUCT || function_type == F_COSINE_DISTANCE)
 	{
 	  return true;
 	}
     }
 
   return false;
+}
+
+bool
+pt_is_vector_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  return node->node_type == PT_FUNCTION && (node->info.function.function_type == F_VECTOR_DISTANCE
+					    || node->info.function.function_type == F_L1_DISTANCE
+					    || node->info.function.function_type == F_L2_DISTANCE
+					    || node->info.function.function_type == F_INNER_PRODUCT
+					    || node->info.function.function_type == F_COSINE_DISTANCE);
 }
 
 /*

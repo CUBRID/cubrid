@@ -12427,9 +12427,20 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      index_info = pt_to_index_info (parser, class_->info.name.db_object, where, plan, index_pred);
 	      access =
 		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, access_method,
-					   index_info, NULL, where, NULL, NULL, NULL, NULL, NULL, output_val_list, NULL,
-					   NULL, NULL, NULL, NULL, NO_SCHEMA, db_values_array_p,
+					   index_info, NULL, where, NULL, NULL, NULL, NULL, NULL, output_val_list,
+					   NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, db_values_array_p,
 					   regu_attributes_reserved);
+	    }
+	  else if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
+	    {
+	      /* TODO (CUBVEC) */
+	      // very happy!
+	      // assert (false);
+	      access =
+		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
+					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL, NULL,
+					   NULL, NULL, output_val_list, NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, NULL,
+					   NULL);
 	    }
 	  else
 	    {
@@ -12563,11 +12574,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      assert (index_info != NULL);
 	      access =
-		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS, ACCESS_METHOD_INDEX,
-					   index_info, where_key, where, where_range, regu_attributes_key,
-					   regu_attributes_pred, regu_attributes_rest, regu_attributes_range,
-					   output_val_list, regu_var_list, cache_key, cache_pred, cache_rest,
-					   cache_range, NO_SCHEMA, NULL, NULL);
+		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
+					   ACCESS_METHOD_INDEX, index_info, where_key, where, where_range,
+					   regu_attributes_key, regu_attributes_pred, regu_attributes_rest,
+					   regu_attributes_range, output_val_list, regu_var_list, cache_key,
+					   cache_pred, cache_rest, cache_range, NO_SCHEMA, NULL, NULL);
 
 	      if (ipl_where_part)
 		{

@@ -818,12 +818,16 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
   ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
-  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN	/* sequential sampling scan */
+  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN,	/* sequential sampling scan */
+  ACCESS_METHOD_VECTOR_INDEX_SCAN,	/* vector index scan */
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \
   ((access_) == ACCESS_METHOD_INDEX || (access_) == ACCESS_METHOD_INDEX_KEY_INFO \
    || (access_) == ACCESS_METHOD_INDEX_NODE_INFO)
+
+#define IS_VECTOR_INDEX_ACCESS(access_) \
+  ((access_) == ACCESS_METHOD_VECTOR_INDEX_SCAN)
 
 typedef enum
 {
