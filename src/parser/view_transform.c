@@ -421,7 +421,6 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5052,7 +5051,7 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   curr = cte_definition_list;
   while (curr)
     {
-      if (curr->info.cte.recursive_part == NULL && curr->info.cte.referenced_count < 1)
+      if (curr->info.cte.recursive_part == NULL && !(curr->info.cte.is_materialized))
 	{
 	  next = curr->next;
 	  cte_definition_list = pt_remove_from_list (parser, curr, cte_definition_list);
@@ -5075,50 +5074,47 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   return node;
 }
 
+/*
+ * mq_check_cte_inline_or_materialize () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *
+ */
 static void
 mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *cte;
-  PT_HINT_ENUM hint = PT_HINT_NONE;
-  bool is_inlinable = true;
+  PT_NODE *cte, *query;
+
   assert (node->node_type == PT_WITH_CLAUSE);
 
   cte = node->info.with_clause.cte_definition_list;
   while (cte)
     {
-      /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
-       * since it may change the query results. Handle it same as CTE with materialize hint. */
-      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
+      query = pt_find_select (parser, cte->info.cte.non_recursive_part);
 
-      if (!is_inlinable)
+      assert (PT_IS_SELECT (query));
+
+      if (query->info.query.q.select.hint & PT_HINT_INLINE_CTE)
 	{
-	  hint = PT_HINT_MATERIALIZE_CTE;
+	  /* keep inline hint */
+	}
+      else if (query->info.query.q.select.
+	       hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
+	{
+	  if (cte->info.cte.referenced_count >= 1)
+	    {
+	      cte->info.cte.is_materialized = true;
+	    }
 	}
       else
 	{
-	  hint = pt_get_query_hint (parser, cte->info.cte.non_recursive_part);
-
-	  if (hint & PT_HINT_INLINE_CTE)
+	  /* default behavior based on reference count */
+	  if (cte->info.cte.referenced_count >= 2)
 	    {
-	      /* keep inline hint */
-	    }
-	  else if (hint & PT_HINT_MATERIALIZE_CTE)
-	    {
-	      /* override materialize hint if not referenced */
-	      if (cte->info.cte.referenced_count < 1)
-		{
-		  hint = PT_HINT_INLINE_CTE;
-		}
-	    }
-	  else
-	    {
-	      /* default behavior based on reference count */
-	      hint = (cte->info.cte.referenced_count < 2) ? PT_HINT_INLINE_CTE : PT_HINT_MATERIALIZE_CTE;
+	      cte->info.cte.is_materialized = true;
 	    }
 	}
-
-      pt_put_query_hint (parser, cte->info.cte.non_recursive_part, hint);
       cte = cte->next;
     }
 }
@@ -5177,40 +5173,6 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
-static PT_NODE *
-mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  bool *can_inlining = (bool *) arg;
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
-
-  switch (node->node_type)
-    {
-    case PT_NAME:
-      if (node->info.name.meta_class == PT_PARAMETER)
-	{
-	  *can_inlining = false;
-	  *continue_walk = PT_STOP_WALK;
-	}
-      break;
-    case PT_EXPR:
-      if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR || node->info.expr.op == PT_ROWNUM
-	  || node->info.expr.op == PT_INST_NUM || node->info.expr.op == PT_ORDERBY_NUM)
-	{
-	  *can_inlining = false;
-	  *continue_walk = PT_STOP_WALK;
-	}
-      break;
-    default:
-      break;
-    }
-
-  return node;
-}
-
 /*
  * mq_rewrite_cte_pre () - This function is used to rewrite the CTE.
  *   return:
@@ -5222,7 +5184,6 @@ static PT_NODE *
 mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte, *cte_pointer;
-  PT_HINT_ENUM hint;
 
   if (node == NULL)
     {
@@ -5248,8 +5209,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      return node;
 	    }
 
-	  hint = pt_get_query_hint (parser, cte->info.cte.non_recursive_part);
-	  if (hint == PT_HINT_MATERIALIZE_CTE)
+	  if (cte->info.cte.is_materialized)
 	    {
 	      return node;
 	    }

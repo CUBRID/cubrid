@@ -12189,3 +12189,28 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 
   return node;
 }
+
+PT_NODE *
+pt_find_select (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (node == NULL || !pt_is_query (node))
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      return node;
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      return pt_find_select (parser, node->info.query.q.union_.arg1);
+
+    default:
+      break;
+    }
+
+  return NULL;
+}
