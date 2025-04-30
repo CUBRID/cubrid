@@ -21991,9 +21991,13 @@ primitive_type
 			if (dt)
 			  {
 			    dt->type_enum = typ;
-			    dt->info.data_type.precision = prec ? prec->info.value.data_value.i : 15;
+			    //dt->info.data_type.precision = prec ? prec->info.value.data_value.i : 15;
+			    dt->info.data_type.precision = 
+			      (!prec && scale) ? 38 : prec ? prec->info.value.data_value.i : 0;
 			    dt->info.data_type.dec_precision =
 			      scale ? scale->info.value.data_value.i : 0;
+			    
+			    dt->info.data_type.is_floating_point_numeric = (!dt->info.data_type.precision && !dt->info.data_type.dec_precision) ? true : false;
 
                             if(is_in_sp_func_type && prec)
                             {                                
@@ -22284,6 +22288,22 @@ opt_prec_2
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, $4);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' '*' ')'
+		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' '*' ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| '(' '*' ',' unsigned_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' '*' ',' unsigned_integer ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, $4);
 			$$ = ctn;
 
 		DBG_PRINT}}

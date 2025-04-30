@@ -109,6 +109,8 @@ typedef struct tp_domain
   unsigned is_visited:1;
 
   JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
+
+  unsigned is_floating_point_numeric:1;	/* for DEFAULT is_floating_point_numeric */
 } TP_DOMAIN;
 
   /*

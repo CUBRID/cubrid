@@ -2278,6 +2278,7 @@ struct pt_data_type_info
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
   PARSER_VARCHAR *json_schema;
+  bool is_floating_point_numeric;	/* for DEFAULT is_floating_point_numeric */
 };
 
 /* DELETE */

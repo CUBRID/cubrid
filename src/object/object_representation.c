@@ -3844,6 +3844,13 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->class_mop = class_mop;
 #endif /* !SERVER_MODE */
 		  break;
+		case DB_TYPE_NUMERIC:
+		  // 여기에 추가하는게 맞을지 추가 확인 필요!
+		  if (precision == 0 && scale == 0)
+		    {
+		      dom->is_floating_point_numeric = 1;
+		    }
+		  break;
 		case DB_TYPE_ENUMERATION:
 		  dom->collation_id = collation_id;
 		  dom->enumeration.collation_id = collation_id;

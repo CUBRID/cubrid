@@ -294,7 +294,21 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
-	  m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+
+	  /* 나중에 db_object 저장할 때, is_floating_point_numeric 플래그도 같이 저장할 수 있게 해야함. */
+	  if (temp_domain->precision == 0 && temp_domain->scale == 0)
+	    {
+	      temp_domain->is_floating_point_numeric = 1;
+	    }
+
+	  if (temp_domain->is_floating_point_numeric)
+	    {
+	      m_buf ("%s", ustr_upper (temp_buffer));
+	    }
+	  else
+	    {
+	      m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+	    }
 	  break;
 
 	case DB_TYPE_SET:

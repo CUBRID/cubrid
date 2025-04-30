@@ -175,7 +175,8 @@ extern unsigned int db_on_server;
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL		/* json_validator */			       \
+  NULL,		/* json_validator */			       \
+  0		/* is_floating_point_numeric */        \
 
 /* Same as above, but leaves off the prec and scale, and sets the codeset */
 #define DOMAIN_INIT2(codeset, coll)                    \
@@ -192,7 +193,8 @@ extern unsigned int db_on_server;
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL		/* json_validator */		       \
+  NULL,		/* json_validator */		       \
+  0		/* is_floating_point_numeric */        \
 				/*
 				 * Same as DOMAIN_INIT but it sets the is_parameterized flag.
 				 * Used for things that don't have a precision but which are parameterized in
@@ -214,7 +216,8 @@ extern unsigned int db_on_server;
   1,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL		/* json_validator */                   \
+  NULL,		/* json_validator */                   \
+  0		/* is_floating_point_numeric */        \
 
 /* Same as DOMAIN_INIT but set the prec and scale. */
 #define DOMAIN_INIT4(prec, scale)                      \
@@ -233,7 +236,8 @@ extern unsigned int db_on_server;
   0,            /* is_parameterized */                 \
   false,        /* is_desc */                          \
   0,		/* is_visited */		       \
-  NULL		/* json_validator */		       \
+  NULL,		/* json_validator */		       \
+  0		/* is_floating_point_numeric */        \
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
 TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
@@ -3394,6 +3398,11 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  if (domain->scale == -1)
 	    {
 	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
+	    }
+
+	  if (domain->precision == 0 && domain->scale == 0)
+	    {
+	      domain->is_floating_point_numeric = true;
 	    }
 
 	  if (dbuf == NULL)

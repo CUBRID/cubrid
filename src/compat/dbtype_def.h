@@ -592,7 +592,7 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
+#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double) + 4)
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */
