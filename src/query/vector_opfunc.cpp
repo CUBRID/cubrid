@@ -124,7 +124,7 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   const DB_VECTOR_FLOAT *vf2 = db_get_vector_float (args[1]);
   const auto arr2 = vf2->float_array;
 
-  assert (vf2->dim1 == vf2->dim2);
+  ASSERT_CUBVEC (vf1->dim == vf2->dim);
 
   float distance = 0.0f;
   try
