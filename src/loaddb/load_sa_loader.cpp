@@ -567,8 +567,10 @@ static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP4)// ctshim
 static int ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+#endif
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -3008,6 +3010,7 @@ error_exit:
   return err;
 }
 
+#if !defined(REMOVE_NCHAR) && defined(MY_STEP4) // ctshim
 /*
  * ldr_nstr_elem -
  *    return:
@@ -3045,7 +3048,7 @@ ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTR
 error_exit:
   return err;
 }
-
+#endif
 /*
  *  NUMERIC SETTERS
  *

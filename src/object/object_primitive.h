@@ -213,8 +213,10 @@ extern PR_TYPE tp_Numeric;
 extern PR_TYPE tp_Bit;
 extern PR_TYPE tp_VarBit;
 extern PR_TYPE tp_Char;
+#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 extern PR_TYPE tp_NChar;
 extern PR_TYPE tp_VarNChar;
+#endif
 extern PR_TYPE tp_ResultSet;
 extern PR_TYPE tp_Bigint;
 extern PR_TYPE tp_Enumeration;
@@ -407,8 +409,12 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
    * cannot be a member of midxkey
    */
   assert (!(domain->type->variable_p
+#if !defined(REMOVE_NCHAR) && defined(MY_STEP3)
 	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARNCHAR
 		 || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
+#else
+	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
+#endif
 
   return domain->type->get_index_size_of_mem (mem, domain);
 }

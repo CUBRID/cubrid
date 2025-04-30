@@ -139,8 +139,10 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_OBJECT,
   DB_TYPE_CHAR,
   DB_TYPE_VARCHAR,
+#if !defined(REMOVE_NCHAR)
   DB_TYPE_NCHAR,
   DB_TYPE_VARNCHAR,
+#endif
   DB_TYPE_BIT,
   DB_TYPE_VARBIT,
   DB_TYPE_ELO,
@@ -321,6 +323,7 @@ TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
+#if !defined(REMOVE_NCHAR) &&  defined(MY_STEP_XX_1)	// ctshim
 TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
@@ -328,6 +331,15 @@ TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE
 TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
+#else
+TP_DOMAIN tp_NChar_domain = { NULL, NULL, /* &tp_NChar */ NULL, TP_FLOATING_PRECISION_VALUE, 0,
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+};
+
+TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, /* &tp_VarNChar */ NULL, DB_MAX_VARNCHAR_PRECISION, 0,
+  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
+};
+#endif
 
 TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
@@ -363,8 +375,13 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Bit_domain,
   &tp_VarBit_domain,
   &tp_Char_domain,
+#if !defined(REMOVE_NCHAR)	// ctshim
   &tp_NChar_domain,
   &tp_VarNChar_domain,
+#else
+  NULL,				//&tp_NChar_domain,
+  NULL,				//&tp_VarNChar_domain,
+#endif
   &tp_Resultset_domain,		/* result set */
   &tp_Midxkey_domain_list_heads[0],
   &tp_Null_domain,
@@ -462,19 +479,28 @@ static TP_DOMAIN *tp_Monetary_conv[] = {
 };
 
 static TP_DOMAIN *tp_String_conv[] = {
+#if !defined(REMOVE_NCHAR)  &&  defined(MY_STEP_XX_3)
   &tp_String_domain, &tp_Char_domain, &tp_VarNChar_domain, &tp_NChar_domain,
+#else
+  &tp_String_domain, &tp_Char_domain,
+#endif
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
   NULL
 };
 
 static TP_DOMAIN *tp_Char_conv[] = {
+#if !defined(REMOVE_NCHAR)   &&  defined(MY_STEP_XX_3)
   &tp_Char_domain, &tp_String_domain, &tp_NChar_domain, &tp_VarNChar_domain,
+#else
+  &tp_Char_domain, &tp_String_domain,
+#endif
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
   NULL
 };
 
+#if !defined(REMOVE_NCHAR)  &&  defined(MY_STEP_XX_2)	// ctshim
 static TP_DOMAIN *tp_NChar_conv[] = {
   &tp_NChar_domain, &tp_VarNChar_domain, &tp_Char_domain, &tp_String_domain,
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
@@ -488,6 +514,7 @@ static TP_DOMAIN *tp_VarNChar_conv[] = {
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
   NULL
 };
+#endif
 
 static TP_DOMAIN *tp_Bit_conv[] = {
   &tp_Bit_domain, &tp_VarBit_domain, NULL
@@ -542,8 +569,13 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   tp_Bit_conv,			/* DB_TYPE_BIT */
   tp_VarBit_conv,		/* DB_TYPE_VARBIT */
   tp_Char_conv,			/* DB_TYPE_CHAR */
+#if !defined(REMOVE_NCHAR) &&  defined(MY_STEP_XX_2)
   tp_NChar_conv,		/* DB_TYPE_NCHAR */
   tp_VarNChar_conv,		/* DB_TYPE_VARNCHAR */
+#else
+  NULL,				//tp_NChar_conv,               /* DB_TYPE_NCHAR */
+  NULL,				// tp_VarNChar_conv,            /* DB_TYPE_VARNCHAR */
+#endif
   NULL,				/* DB_TYPE_RESULTSET */
   NULL,				/* DB_TYPE_MIDXKEY */
   NULL,				/* DB_TYPE_TABLE */
@@ -698,14 +730,18 @@ tp_apply_sys_charset (void)
   /* update string domains with current codeset */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
+#if !defined(REMOVE_NCHAR)	// ctshim
   tp_NChar_domain.codeset = LANG_SYS_CODESET;
   tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
+#endif
   tp_Enumeration_domain.codeset = LANG_SYS_CODESET;
 
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.collation_id = LANG_SYS_COLLATION;
+#if !defined(REMOVE_NCHAR)	// ctshim
   tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
   tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
+#endif
   tp_Enumeration_domain.collation_id = LANG_SYS_COLLATION;
 }
 
@@ -3275,6 +3311,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 		  domain->precision = DB_MAX_VARBIT_PRECISION;
 		}
 	    }
+#if !defined(REMOVE_NCHAR)   && defined(MY_STEP_32)
 	  else if (value_type == DB_TYPE_VARNCHAR)
 	    {
 	      if (domain->precision == 0 || domain->precision == TP_FLOATING_PRECISION_VALUE
@@ -3283,6 +3320,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 		  domain->precision = DB_MAX_VARNCHAR_PRECISION;
 		}
 	    }
+#endif
 
 	  if (dbuf == NULL)
 	    {

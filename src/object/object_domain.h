@@ -168,8 +168,10 @@ extern TP_DOMAIN tp_Vobj_domain;
 extern TP_DOMAIN tp_Oid_domain;
 extern TP_DOMAIN tp_Numeric_domain;
 extern TP_DOMAIN tp_Char_domain;
+#if !defined(REMOVE_NCHAR)	// ctshim
 extern TP_DOMAIN tp_NChar_domain;
 extern TP_DOMAIN tp_VarNChar_domain;
+#endif
 extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;

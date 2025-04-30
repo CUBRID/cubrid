@@ -277,6 +277,8 @@ static DB_VALUE_COMPARE_RESULT mr_cmpdisk_char_internal (void *mem1, void *mem2,
 static int mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
 			    int *start_colp);
 #endif
+
+#if !defined(REMOVE_NCHAR) && defined(MY_STEP_2ND_1)	// ctshim
 static void mr_initmem_nchar (void *memptr, TP_DOMAIN * domain);
 static int mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -342,6 +344,7 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE *
 static int mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
 				int *start_colp);
 #endif
+#endif // ctshim
 static void mr_initmem_bit (void *memptr, TP_DOMAIN * domain);
 static int mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -1775,8 +1778,13 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Bit,
   &tp_VarBit,
   &tp_Char,
+#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)    // ctshim
   &tp_NChar,
   &tp_VarNChar,
+#else
+  NULL,				// &tp_NChar,
+  NULL,				// &tp_VarNChar,
+#endif
   &tp_ResultSet,
   &tp_Midxkey,
   &tp_Null,
@@ -2023,7 +2031,11 @@ pr_clear_value (DB_VALUE * value)
 	}
 
       /* Clear the compressed string since we are here for DB_TYPE_VARCHAR and DB_TYPE_VARNCHAR. */
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
       if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_VARCHAR)
+#else
+      if (db_type == DB_TYPE_VARCHAR)
+#endif
 	{
 	  char *compressed_str = DB_GET_COMPRESSED_STRING (value);
 	  if (compressed_str != NULL)
@@ -12312,6 +12324,7 @@ PR_TYPE tp_Char = {
 
 PR_TYPE *tp_Type_char = &tp_Char;
 
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_2ND_1)	// ctshim
 /*
  * TYPE NCHAR
  */
@@ -13200,9 +13213,12 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
 }
 #endif
 
+#endif // #if !defined(REMOVE_NCHAR) && defined(MY_STEP_2ND_1)
 
+#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
+#if defined(MY_STEP_2ND_1)
   mr_initmem_nchar,
   mr_initval_nchar,
   mr_setmem_nchar,
@@ -13222,10 +13238,33 @@ PR_TYPE tp_NChar = {
   mr_freemem_nchar,
   mr_data_cmpdisk_nchar,
   mr_cmpval_nchar
+#else
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL
+#endif
 };
 
 PR_TYPE *tp_Type_nchar = &tp_NChar;
+#endif
 
+#if !defined(REMOVE_NCHAR) && defined(MY_STEP_2ND_1)
 /*
  * TYPE VARNCHAR
  */
@@ -14349,8 +14388,12 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
 }
 #endif
 
+#endif // #if !defined(REMOVE_NCHAR) && defined(MY_STEP_2ND_1)
+
+#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 PR_TYPE tp_VarNChar = {
   "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0, 1,
+#if defined(MY_STEP_2ND_1)
   mr_initmem_varnchar,
   mr_initval_varnchar,
   mr_setmem_varnchar,
@@ -14370,7 +14413,29 @@ PR_TYPE tp_VarNChar = {
   mr_freemem_varnchar,
   mr_data_cmpdisk_varnchar,
   mr_cmpval_varnchar
+#else
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL
+#endif
 };
+#endif
 
 /*
  * TYPE BIT
@@ -16195,7 +16260,11 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
   int save_error_abort = 0;
 
   /* Checks to be sure that we have the correct input */
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
+#else
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
+#endif
   assert (db_get_string_size (value) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   save_error_abort = buf->error_abort;
@@ -16262,7 +16331,9 @@ after_compression:
   switch (DB_VALUE_DOMAIN_TYPE (value))
     {
     case DB_TYPE_VARCHAR:
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
     case DB_TYPE_VARNCHAR:
+#endif
       *val_size = or_packed_varchar_length (length + PRIM_TEMPORARY_DISK_SIZE) - PRIM_TEMPORARY_DISK_SIZE;
       break;
 
@@ -16277,7 +16348,9 @@ after_compression:
 
   switch (DB_VALUE_DOMAIN_TYPE (value))
     {
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
     case DB_TYPE_VARNCHAR:
+#endif
     case DB_TYPE_STRING:
       rc = pr_write_compressed_string_to_buffer (buf, str, (int) compression_length, str_length, align);
       break;
@@ -16511,7 +16584,11 @@ pr_clear_compressed_string (DB_VALUE * value)
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Make sure we clear only for VARCHAR and VARNCHAR types. */
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
   if (db_type != DB_TYPE_VARCHAR && db_type != DB_TYPE_VARNCHAR)
+#else
+  if (db_type != DB_TYPE_VARCHAR)
+#endif
     {
       return NO_ERROR;		/* do nothing */
     }
@@ -16562,7 +16639,11 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Make sure we clear only for VARCHAR and VARNCHAR types. */
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP_31)
   if (db_type != DB_TYPE_VARCHAR && db_type != DB_TYPE_VARNCHAR)
+#else
+  if (db_type != DB_TYPE_VARCHAR)
+#endif
     {
       return rc;		/* do nothing */
     }

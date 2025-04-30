@@ -1461,9 +1461,12 @@ free_var_table (OR_VARINFO * vars)
     }
 }
 
-
+#if !defined(REMOVE_NCHAR) && defined(MY_STEP1)
+#define tp_VarStrType tp_VarNChar
+#else
 #define tp_VarStrType tp_String	// ctshim
-//#define tp_VarStrType tp_VarNChar
+#endif
+
 
 /*
  * string_disk_size - calculate the disk size of a NULL terminated ASCII
@@ -1483,8 +1486,12 @@ string_disk_size (const char *string)
     {
       str_length = strlen (string);
     }
-
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP1)
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+#else
+  db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+#endif
+
   length = tp_VarStrType.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
@@ -1524,7 +1531,11 @@ get_string (OR_BUF * buf, int length)
    * The domain here is always a server side VARNCHAR.  Set a temporary
    * domain to reflect this.
    */
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP1)
   my_domain.precision = DB_MAX_VARNCHAR_PRECISION;
+#else
+  my_domain.precision = DB_MAX_VARCHAR_PRECISION;
+#endif
 
   my_domain.codeset = lang_charset ();
   my_domain.collation_id = LANG_SYS_COLLATION;
@@ -1532,7 +1543,7 @@ get_string (OR_BUF * buf, int length)
 
   tp_VarStrType.data_readval (buf, &value, &my_domain, length, false, NULL, 0);
 
-#if 0				// ctshim
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP1)	// ctshim
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
       string = ws_copy_string (db_get_string (&value));
@@ -1575,7 +1586,11 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP1)
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+#else
+  db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+#endif
   tp_VarStrType.data_writeval (buf, &value);
   pr_clear_value (&value);
 }

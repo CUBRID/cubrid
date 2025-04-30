@@ -57,8 +57,10 @@ namespace cubload
   int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP4)// ctshim
   int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+#endif
   int to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_double (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -412,6 +414,7 @@ namespace cubload
     return to_db_generic_char (DB_TYPE_VARCHAR, str, str_size, attr, val);
   }
 
+#if !defined(REMOVE_NCHAR)  && defined(MY_STEP4)// ctshim  
   int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return to_db_generic_char (DB_TYPE_NCHAR, str, str_size, attr, val);
@@ -421,6 +424,7 @@ namespace cubload
   {
     return to_db_generic_char (DB_TYPE_VARNCHAR, str, str_size, attr, val);
   }
+#endif
 
   int
   to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val)

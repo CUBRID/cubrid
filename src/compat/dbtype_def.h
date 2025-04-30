@@ -553,6 +553,7 @@ extern "C"
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
+#if !defined(REMOVE_NCHAR)
 /* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
@@ -562,6 +563,7 @@ extern "C"
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
 #define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
+#endif
 
 /* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
@@ -719,8 +721,14 @@ extern "C"
     DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
     DB_TYPE_VARBIT = 24,	/* SQL BIT(n) VARYING values */
     DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
+#if !defined(REMOVE_NCHAR)
     DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
     DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+#else
+    /* DB_TYPE_NCHAR and DB_TYPE_VARNCHAR was deprecated. But, it is preserved for backward compatibility.  */
+    DB_TYPE_NCHAR_BK = 26,	/* SQL NATIONAL CHAR(n) values */
+    DB_TYPE_VARNCHAR_BK = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+#endif
     DB_TYPE_RESULTSET = 28,	/* internal use only */
     DB_TYPE_MIDXKEY = 29,	/* internal use only */
     DB_TYPE_TABLE = 30,		/* internal use only */
