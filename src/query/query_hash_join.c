@@ -198,8 +198,8 @@ typedef struct hashjoin_manager
 
 /* Hash Join Execution */
 static QFILE_LIST_ID *qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-static QFILE_LIST_ID *qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-					       HASHJOIN_CONTEXT * context);
+static QFILE_LIST_ID *qexec_hash_join_with_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+						    HASHJOIN_CONTEXT * context);
 static QFILE_LIST_ID *qexec_hash_outer_join_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 							      HASHJOIN_CONTEXT * context);
 static QFILE_LIST_ID *qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
@@ -338,7 +338,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       switch (part_status)
 	{
 	case HASHJOIN_STATUS_SINGLE:
-	  list_id = qexec_hash_join_context (thread_p, &manager, single_context);
+	  list_id = qexec_hash_join_with_context (thread_p, &manager, single_context);
 	  break;
 
 	case HASHJOIN_STATUS_PARTITION:
@@ -431,7 +431,7 @@ qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       current_context = &manager->contexts[context_index];
 
-      context_list_id = qexec_hash_join_context (thread_p, manager, current_context);
+      context_list_id = qexec_hash_join_with_context (thread_p, manager, current_context);
 
       if (thread_is_on_trace (thread_p))
 	{
@@ -505,14 +505,14 @@ error_exit:
 }
 
 /*
- * qexec_hash_join_context() -
+ * qexec_hash_join_with_context() -
  *   return: List identifier containing the join result; NULL if no result or on error.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
  */
 static QFILE_LIST_ID *
-qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
+qexec_hash_join_with_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   QFILE_LIST_ID *list_id = NULL;
   HASHJOIN_STATUS status;
