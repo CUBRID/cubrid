@@ -1800,7 +1800,7 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
   XASL_NODE *hashjoin_xasl;
   HASHJOIN_PROC_NODE *proc;
   QFILE_LIST_MERGE_INFO *merge_info = NULL;
-  int value_index;
+  int value_cnt, value_index;
 
   if (xasl == NULL)
     {
@@ -1842,12 +1842,13 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
 
   merge_info = &proc->merge_info;
 
-  if (merge_info->ls_column_cnt <= 0)
+  value_cnt = merge_info->ls_column_cnt;
+  if (value_cnt <= 0)
     {
       goto error_exit;
     }
 
-  for (value_index = 0; value_index < merge_info->ls_column_cnt; value_index++)
+  for (value_index = 0; value_index < value_cnt; value_index++)
     {
       if (merge_info->ls_outer_column[value_index] < 0 || merge_info->ls_inner_column[value_index] < 0)
 	{
