@@ -12438,8 +12438,9 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      // assert (false);
 	      access =
 		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
-					   ACCESS_METHOD_VECTOR_INDEX_SCAN, NULL, NULL, where, NULL, NULL, NULL, NULL,
-					   NULL, output_val_list, NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, NULL, NULL);
+					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL, NULL,
+					   NULL, NULL, output_val_list, NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, NULL,
+					   NULL);
 	    }
 	  else
 	    {
