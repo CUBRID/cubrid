@@ -4458,6 +4458,11 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       /* check for dblink's function term */
       if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
+	  if (parser->flag.is_parsing_static_sql)
+	    {
+	      continue;
+	    }
+
 	  if (!mq_is_dblink_pushable_term (parser, term))
 	    {
 	      continue;
