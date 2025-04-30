@@ -1198,62 +1198,59 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  if (boot_Db_parm->temp_nvols > 0)
+  /* Cycle over all temporarily volumes, skip the given one */
+  if (forward_dir)
     {
-      /* Cycle over all temporarily volumes, skip the given one */
-      if (forward_dir)
+      for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
 	{
-	  for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
+	  temp_volid = (VOLID) num_vols;
+	  if (temp_volid != volid)
 	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
+	      /* Find the name of the volume */
+	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+	      go_to_access = false;
+	      if (check_before_access)
 		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
+		  if (fileio_is_volume_exist (temp_vol_fullname) == true)
 		    {
 		      go_to_access = true;
 		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
+		}
+	      else
+		{
+		  go_to_access = true;
+		}
+	      if (go_to_access)
+		{		/* Call the function */
+		  (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
 		}
 	    }
 	}
-      else
+    }
+  else
+    {
+      for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
 	{
-	  for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
+	  temp_volid = (VOLID) num_vols;
+	  if (temp_volid != volid)
 	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
+	      /* Find the name of the volume */
+	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+	      go_to_access = false;
+	      if (check_before_access)
 		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
+		  if (fileio_is_volume_exist (temp_vol_fullname) == true)
 		    {
 		      go_to_access = true;
 		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
+		}
+	      else
+		{
+		  go_to_access = true;
+		}
+	      if (go_to_access)
+		{		/* Call the function */
+		  (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
 		}
 	    }
 	}
