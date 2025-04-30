@@ -5136,8 +5136,6 @@ static PT_NODE *
 mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *node_pointer, *cte;
-  PT_HINT_ENUM hint;
-  bool can_rewrite = true;
 
   if (node == NULL)
     {
@@ -5191,6 +5189,13 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
   switch (node->node_type)
     {
+    case PT_NAME:
+      if (node->info.name.meta_class == PT_PARAMETER)
+	{
+	  *can_inlining = false;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
     case PT_EXPR:
       if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR || node->info.expr.op == PT_ROWNUM
 	  || node->info.expr.op == PT_INST_NUM || node->info.expr.op == PT_ORDERBY_NUM)
