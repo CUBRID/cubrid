@@ -53,7 +53,7 @@
 typedef enum hashjoin_status
 {
   HASHJOIN_STATUS_NONE = 0,
-  HASHJOIN_STATUS_FILL_EMPTY,
+  HASHJOIN_STATUS_FILL_NULL_VALUES,
   HASHJOIN_STATUS_TRY,
   HASHJOIN_STATUS_SINGLE,
   HASHJOIN_STATUS_PARTITION,
@@ -109,7 +109,7 @@ typedef struct hashjoin_fetch_info
   /* Pointer to a member of HASHJOIN_INPUT. */
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
-#define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, false }
+#define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, NULL }
 
 typedef struct hashjoin_partition_info
 {
@@ -118,7 +118,7 @@ typedef struct hashjoin_partition_info
   int part_cnt;
   HASHJOIN_INPUT_STATS *stats;
 } HASHJOIN_PARTITION_INFO;
-#define HASHJOIN_PARTITION_INFO_INITIALIZER { NULL, NULL, 0 }
+#define HASHJOIN_PARTITION_INFO_INITIALIZER { NULL, NULL, 0 , NULL}
 
 typedef struct hashjoin_context
 {
@@ -200,8 +200,8 @@ typedef struct hashjoin_manager
 static QFILE_LIST_ID *qexec_hash_join_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 static QFILE_LIST_ID *qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 					       HASHJOIN_CONTEXT * context);
-static QFILE_LIST_ID *qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-							HASHJOIN_CONTEXT * context);
+static QFILE_LIST_ID *qexec_hash_outer_join_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+							      HASHJOIN_CONTEXT * context);
 static QFILE_LIST_ID *qexec_hash_join_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 						HASHJOIN_CONTEXT * context);
 
@@ -329,8 +329,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
   status = qexec_hash_join_check_empty_inputs (single_context);
   switch (status)
     {
-    case HASHJOIN_STATUS_FILL_EMPTY:
-      list_id = qexec_hash_outer_join_fill_empty (thread_p, &manager, single_context);
+    case HASHJOIN_STATUS_FILL_NULL_VALUES:
+      list_id = qexec_hash_outer_join_fill_null_values (thread_p, &manager, single_context);
       break;
 
     case HASHJOIN_STATUS_TRY:
@@ -524,17 +524,17 @@ qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   status = qexec_hash_join_check_empty_inputs (context);
 
   /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-   * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition. */
+   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
   if (context->is_last_context && IS_OUTER_JOIN_TYPE (context->join_type))
     {
-      status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_EMPTY : status;
+      status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
     }
 
   switch (status)
     {
-    case HASHJOIN_STATUS_FILL_EMPTY:
+    case HASHJOIN_STATUS_FILL_NULL_VALUES:
       assert (context != &manager->single_context);
-      list_id = qexec_hash_outer_join_fill_empty (thread_p, manager, context);
+      list_id = qexec_hash_outer_join_fill_null_values (thread_p, manager, context);
       break;
 
     case HASHJOIN_STATUS_TRY:
@@ -559,14 +559,14 @@ qexec_hash_join_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 }
 
 /*
- * qexec_hash_outer_join_fill_empty() -
+ * qexec_hash_outer_join_fill_null_values() -
  *   return: List identifier containing the join result; NULL if no result or on error.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
  */
 static QFILE_LIST_ID *
-qexec_hash_outer_join_fill_empty (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
+qexec_hash_outer_join_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   QFILE_LIST_ID *list_id = NULL;
   QFILE_LIST_ID *outer_list_id = NULL, *inner_list_id = NULL;
@@ -1186,7 +1186,7 @@ qexec_hash_join_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
  * qexec_hash_join_partition_inputs() -
  *   return: One of the following HASHJOIN_STATUS values:
  *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
- *           - HASHJOIN_STATUS_SINGLE:    Partitioning is not needed or falls back on error.
+ *           - HASHJOIN_STATUS_SINGLE: Partitioning is not needed or falls back on error.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  */
@@ -1243,7 +1243,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   if (is_outer_join)
     {
       /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-       * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in this partition. */
+       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in this partition. */
       part_cnt += 1;
     }
 
@@ -1487,7 +1487,7 @@ qexec_hash_join_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * man
 	  if (is_null_allowed)
 	    {
 	      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-	       * HASHJOIN_STATUS_FILL_EMPTY is triggered for all tuples in that partition. */
+	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
 	      error =
 		qfile_add_tuple_to_list (thread_p, part_info->part_list_id[part_info->part_cnt - 1], tuple_record.tpl);
 	      if (error != NO_ERROR)
@@ -1841,9 +1841,9 @@ qexec_hash_join_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 /*
  * qexec_hash_join_check_empty_inputs() -
  *   return: One of the following HASHJOIN_STATUS values:
- *           - HASHJOIN_STATUS_END:        Inner join with one empty input, or outer join with empty preserved side.
- *           - HASHJOIN_STATUS_FILL_EMPTY: Outer join with empty null-supplying side.
- *           - HASHJOIN_STATUS_TRY:        Both inputs are non-empty; proceed with the join.
+ *           - HASHJOIN_STATUS_END: Inner join with one empty input, or outer join with empty preserved side.
+ *           - HASHJOIN_STATUS_FILL_NULL_VALUES: Outer join with empty null-supplying side.
+ *           - HASHJOIN_STATUS_TRY: Both inputs are non-empty; proceed with the join.
  *   context(in): Hash join context containing per-partition state.
  */
 static HASHJOIN_STATUS
@@ -1875,13 +1875,13 @@ qexec_hash_join_check_empty_inputs (HASHJOIN_CONTEXT * context)
     {
       status =
 	(outer_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (inner_tuple_cnt ==
-							0) ? HASHJOIN_STATUS_FILL_EMPTY : HASHJOIN_STATUS_TRY;
+							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
     }
   else if (context->join_type == JOIN_RIGHT)
     {
       status =
 	(inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (outer_tuple_cnt ==
-							0) ? HASHJOIN_STATUS_FILL_EMPTY : HASHJOIN_STATUS_TRY;
+							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
     }
   else
     {
