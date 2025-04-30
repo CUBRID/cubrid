@@ -9173,6 +9173,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_INDX_NODE_INFO_SCAN;
 	  indx_info = curr_spec->indexptr;
 	}
+      else if (curr_spec->access == ACCESS_METHOD_VECTOR_INDEX_SCAN)
+	{
+	  scan_type = S_VECTOR_INDEX_SCAN;
+	  indx_info = curr_spec->indexptr;
+	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -9218,6 +9223,21 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					   curr_spec->s.cls_node.cls_output_val_list, iscan_oid_order, query_id,
 					   curr_spec->s.cls_node.cache_reserved,
 					   curr_spec->s.cls_node.cls_regu_list_reserved);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	}
+      else if (scan_type == S_VECTOR_INDEX_SCAN)
+	{
+	  error_code =
+	    scan_open_vector_index_scan (thread_p, s_id, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec),
+					 &ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred,
+					 curr_spec->s.cls_node.cache_reserved,
+					 curr_spec->s.cls_node.cls_regu_list_reserved);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

@@ -3649,6 +3649,63 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_vector_index_scan () -
+ *   return: NO_ERROR
+ *   scan_id(out): Scan identifier
+ *   val_list(in):
+ *   vd(in):
+ *   indx_info(in):
+ *   cls_oid(in):
+ *   hfid(in):
+ *   pr(in):
+ *   cache_reserved(in):
+ *   cls_regu_list_reserved(in):
+ */
+int
+scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			     /* fields of SCAN_ID */
+			     val_list_node * val_list, VAL_DESCR * vd,
+			     /* fields of INDX_SCAN_ID */
+			     indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
+			     DB_VALUE ** cache_reserved, regu_variable_list_node * cls_regu_list_reserved)
+{
+  INDX_SCAN_ID *isidp;
+  BTREE_SCAN *BTS;
+
+  scan_id->type = S_VECTOR_INDEX_SCAN;
+  /* initialize SCAN_ID structure */
+  scan_init_scan_id (scan_id, false, S_SELECT, true, false, QPROC_NO_SINGLE_INNER, NULL, val_list, vd);
+
+  /* initialize INDEX_SCAN_ID structure */
+  isidp = &scan_id->s.isid;
+
+  /* index information */
+  isidp->indx_info = indx_info;
+
+  /* init allocated fields */
+  isidp->bt_num_attrs = 0;
+  isidp->bt_attr_ids = NULL;
+  isidp->vstr_ids = NULL;
+  isidp->oid_list = NULL;
+  isidp->curr_oidp = NULL;
+  isidp->copy_buf = NULL;
+  isidp->copy_buf_len = 0;
+  isidp->key_vals = NULL;
+
+  isidp->indx_cov.type_list = NULL;
+  isidp->indx_cov.list_id = indx_info->cov_list_id;
+  isidp->indx_cov.tplrec = NULL;
+  isidp->indx_cov.lsid = NULL;
+
+  /* index scan info */
+  BTS = &isidp->bt_scan;
+  BTREE_INIT_SCAN (BTS);
+
+  return NO_ERROR;
+}
+
+
+/*
  * scan_open_list_scan () -
  *   return: NO_ERROR
  *   scan_id(out): Scan identifier
@@ -4192,6 +4249,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->caches_inited = true;
 	}
       break;
+    case S_VECTOR_INDEX_SCAN:
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))

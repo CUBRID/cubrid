@@ -143,4 +143,27 @@ int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue)
   return NO_ERROR;
 }
 
+int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, faiss::idx_t *rec_ids, float *distances)
+{
+  std::vector<float> fvec;
+  int hnsw_id;
+
+  assert (hnsw_id > 0);
+
+  auto it = hnsw_index_map.find (hnsw_id);
+
+  if (it == hnsw_index_map.end())
+    {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
+
+  index->search (fvec.size(), fvec.data(), k, distances, rec_ids);
+
+  return NO_ERROR;
+}
+
 #include "strict_warnings_off.hpp"

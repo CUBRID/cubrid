@@ -88,6 +88,7 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
+  S_VECTOR_INDEX_SCAN,		/* scans vector index */
   S_DBLINK_SCAN,		/* scans dblink */
   S_HEAP_SAMPLING_SCAN		/* scans sampling data */
 } SCAN_TYPE;
@@ -440,6 +441,12 @@ extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sc
 					   /* fields of INDX_SCAN_ID */
 					   indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
 					   regu_variable_list_node * node_info_regu_list);
+extern int scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+					/* fields of SCAN_ID */
+					val_list_node * val_list, VAL_DESCR * vd,
+					/* fields of INDX_SCAN_ID */
+					indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
+					DB_VALUE ** cache_reserved, regu_variable_list_node * cls_regu_list_reserved);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
