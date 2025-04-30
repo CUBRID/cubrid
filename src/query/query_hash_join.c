@@ -1198,7 +1198,7 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   QFILE_LIST_ID **outer_part_list_id = NULL, **inner_part_list_id = NULL;
 
   UINT64 mem_limit;
-  INT64 max_tuple_cnt;
+  INT64 min_tuple_cnt;
   int part_cnt, part_index;
 
   HASHJOIN_CONTEXT *single_context, *contexts = NULL;
@@ -1227,10 +1227,10 @@ qexec_hash_join_partition_inputs (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
   inner_list_id = single_context->inner_list_id;
   is_outer_join = IS_OUTER_JOIN_TYPE (single_context->join_type);
 
-  max_tuple_cnt = (outer_list_id->tuple_cnt > inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt :
+  min_tuple_cnt = (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt :
     inner_list_id->tuple_cnt;
 
-  part_cnt = CEIL_PTVDIV (max_tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)),
+  part_cnt = CEIL_PTVDIV (min_tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)),
 			  mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt <= 1)
     {
