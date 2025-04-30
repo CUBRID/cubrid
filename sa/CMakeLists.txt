@@ -378,6 +378,7 @@ set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
@@ -389,15 +390,18 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
   )
 
 set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
@@ -640,6 +644,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -680,6 +685,8 @@ add_library(cubridsa SHARED
   ${SP_HEADERS}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_HEADERS}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
@@ -701,8 +708,6 @@ add_library(cubridsa SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
-  ${PARALLEL_QUERY_SOURCES}
-  ${PARALLEL_QUERY_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

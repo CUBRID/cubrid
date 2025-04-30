@@ -513,7 +513,35 @@ namespace parallel_heap_scan
     return dest;
   }
 
-  memory_mapper::memory_mapper (SCAN_ID *scan_idp)
+  OUTPTR_LIST *memory_mapper::copy_and_map (OUTPTR_LIST *src)
+  {
+    OUTPTR_LIST *dest = nullptr;
+    if (!src)
+      {
+	return dest;
+      }
+    auto it = m_map.find ((void *)src);
+    if (it != m_map.end())
+      {
+	assert (it->second.type == Type::OUTPTR_LIST);
+	dest = (OUTPTR_LIST *) it->second.ptr;
+      }
+    else
+      {
+	typed_memory tm;
+	tm.type = Type::OUTPTR_LIST;
+	dest = (OUTPTR_LIST *) malloc (sizeof (OUTPTR_LIST));
+	dest->valptr_cnt = src->valptr_cnt;
+	dest->valptrp = copy_and_map (src->valptrp);
+	tm.ptr = dest;
+	m_map[ (void *)src] = tm;
+	m_obj_cnt++;
+      }
+    return dest;
+  }
+
+
+  memory_mapper::memory_mapper (SCAN_ID *scan_idp, OUTPTR_LIST *outptr_list)
   {
     /* Structure sizes
      * SCAN_ID : 2176
@@ -547,6 +575,7 @@ namespace parallel_heap_scan
     hsid->scan_pred.regu_list = copy_and_map (phsid->scan_pred.regu_list);
     hsid->rest_regu_list = copy_and_map (phsid->rest_regu_list);
     hsid->scan_pred.pred_expr = copy_and_map (phsid->scan_pred.pred_expr);
+    m_outptr_list = copy_and_map (outptr_list);
     hsid->caches_inited = false;
     stats.elapsed_scan = {0, 0};
     stats.elapsed_page_lock = {0, 0};
@@ -591,14 +620,102 @@ namespace parallel_heap_scan
 	  case Type::VAL_DESCR:
 	    assert (false);
 	    break;
+	  case Type::OUTPTR_LIST:
+	    clear_and_free ((OUTPTR_LIST *)pair.second.ptr);
+	    break;
 	  default:
 	    assert (false);
 	    break;
 	  }
       }
+    for (auto &pair : m_resolved_dbval_map)
+      {
+	DB_VALUE *dbval = pair.second;
+	pr_clear_value (dbval);
+	free (dbval);
+      }
     assert (m_obj_cnt == 0);
     free (scan_id);
     m_map.clear();
+    m_resolved_dbval_map.clear();
+  }
+
+  void memory_mapper::add_resolved_dbval_all()
+  {
+    for (auto &pair : m_map)
+      {
+	if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
+	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	      {
+		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+		pr_clone_value (clone->vfetch_to, dbval);
+		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+	      }
+	  }
+	if (pair.second.type == Type::REGU_VARIABLE_LIST)
+	  {
+	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	      {
+		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+		pr_clone_value (clone->vfetch_to, dbval);
+		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+	      }
+	  }
+      }
+  }
+
+  void memory_mapper::set_all_regu_var_domain_refer_to_clone()
+  {
+    for (auto &pair : m_map)
+      {
+	if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    REGU_VARIABLE *orig = (REGU_VARIABLE *)pair.first;
+	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
+	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
+		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	      {
+		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
+		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
+		  {
+		    orig->domain = clone->domain;
+		  }
+	      }
+	    if (clone->vfetch_to)
+	      {
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    pr_clone_value (it->second, orig->vfetch_to);
+		  }
+	      }
+	  }
+	if (pair.second.type == Type::REGU_VARIABLE_LIST)
+	  {
+	    REGU_VARIABLE *orig = & ((REGU_VARIABLE_LIST)pair.first)->value;
+	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
+		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	      {
+		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
+		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
+		  {
+		    orig->domain = clone->domain;
+		  }
+	      }
+	    if (clone->vfetch_to)
+	      {
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    pr_clone_value (it->second, orig->vfetch_to);
+		  }
+	      }
+	  }
+      }
   }
 
 }

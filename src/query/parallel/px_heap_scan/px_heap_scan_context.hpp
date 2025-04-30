@@ -102,12 +102,15 @@ namespace parallel_heap_scan
       }
 
     private:
+      friend class task;
+      friend class manager_merge;
       std::atomic<std::uint64_t> m_tasks_executed;
       std::atomic<std::uint64_t> m_tasks_started;
       std::atomic<std::uint64_t> m_tasks_scan_ended;
       std::atomic<std::uint64_t> m_tasks_list_opened;
       std::atomic<bool> m_has_error;
       cuberr::er_message m_error_msg;
+      bool m_is_domain_resolve_needed;
   };
 }
 

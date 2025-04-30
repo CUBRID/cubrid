@@ -26,8 +26,6 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#define PARALLEL_HEAP_SCAN_TRACE_DETAIL 0
 namespace parallel_heap_scan
 {
   perf_monitor::perf_monitor (SCAN_ID *scan_id, std::size_t parallelism)
@@ -46,42 +44,66 @@ namespace parallel_heap_scan
   {
   }
 
-  void perf_monitor::print_text (FILE *fp, int indent, char *class_name)
+  void perf_monitor::print_text (FILE *fp, int indent, char *class_name, bool is_list_merge)
   {
+    UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
+    UINT64 max_elapsed_scan = 0;
+    UINT64 min_read_rows = std::numeric_limits<UINT64>::max();
+    UINT64 max_read_rows = 0;
+    UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
+    UINT64 max_qualified_rows = 0;
+
     for (std::size_t i = 0; i < m_parallelism; i++)
       {
-	fprintf (fp, "\n");
-	fprintf (fp, "%*c", indent, ' ');
-	fprintf (fp, "(table: %s), ", class_name);
-	fprintf (fp, "(parallel heap");
-	fprintf (fp, " time: %d", TO_MSEC (m_scan_stats[i].elapsed_scan));
-	fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) m_scan_stats[i].read_rows,
-		 (unsigned long long int) m_scan_stats[i].qualified_rows);
-#if PARALLEL_HEAP_SCAN_TRACE_DETAIL
-	fprintf (fp, ", row scan time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_scan));
-	fprintf (fp, ", page lock time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock));
-	fprintf (fp, ", enqueue time: %d", TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue));
-#endif
-	fprintf (fp, ")");
+	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_scan_stats[i].elapsed_scan)));
+	max_elapsed_scan = std::max (max_elapsed_scan, (UINT64) (TO_MSEC (m_scan_stats[i].elapsed_scan)));
+	min_read_rows = std::min (min_read_rows, (UINT64) m_scan_stats[i].read_rows);
+	max_read_rows = std::max (max_read_rows, (UINT64) m_scan_stats[i].read_rows);
+	min_qualified_rows = std::min (min_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
+	max_qualified_rows = std::max (max_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
       }
+
+    fprintf (fp, "\n%*c(parallel workers: %zu", indent, ' ', m_parallelism);
+    fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
+    fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
+    fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
+    fprintf (fp, ", gather: %s)", is_list_merge ? "mergable list" : "row by row");
   }
 
-  void perf_monitor::print_json (json_t *scan, char *class_name)
+  void perf_monitor::print_json (json_t *scan, char *class_name, bool is_list_merge)
   {
-    json_t *parallel_array = json_array();
+    UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
+    UINT64 max_elapsed_scan = 0;
+    UINT64 min_read_rows = std::numeric_limits<UINT64>::max();
+    UINT64 max_read_rows = 0;
+    UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
+    UINT64 max_qualified_rows = 0;
+
     for (std::size_t i = 0; i < m_parallelism; i++)
       {
-	json_t *parallel_obj  = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (m_scan_stats[i].elapsed_scan), "readrows",
-					   m_scan_stats[i].read_rows, "rows", m_scan_stats[i].qualified_rows);
-#if PARALLEL_HEAP_SCAN_TRACE_DETAIL
-	json_object_set_new (parallel_obj, "row scan time", json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_scan)));
-	json_object_set_new (parallel_obj, "page lock time",
-			     json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock)));
-	json_object_set_new (parallel_obj, "enqueue time", json_integer (TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue)));
-#endif
-	json_array_append_new (parallel_array, parallel_obj);
+	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_scan_stats[i].elapsed_scan)));
+	max_elapsed_scan = std::max (max_elapsed_scan, (UINT64) (TO_MSEC (m_scan_stats[i].elapsed_scan)));
+	min_read_rows = std::min (min_read_rows, (UINT64) m_scan_stats[i].read_rows);
+	max_read_rows = std::max (max_read_rows, (UINT64) m_scan_stats[i].read_rows);
+	min_qualified_rows = std::min (min_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
+	max_qualified_rows = std::max (max_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
       }
-    json_object_set_new (scan, "parallel heap", parallel_array);
+
+    char time_buf[64];
+    char readrows_buf[64];
+    char rows_buf[64];
+
+    snprintf (time_buf, sizeof (time_buf), "%lu..%lu", min_elapsed_scan, max_elapsed_scan);
+    snprintf (readrows_buf, sizeof (readrows_buf), "%lu..%lu", min_read_rows, max_read_rows);
+    snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_qualified_rows, max_qualified_rows);
+
+    json_t *parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+				      "parallel_workers", m_parallelism,
+				      "time", time_buf,
+				      "readrows", readrows_buf,
+				      "rows", rows_buf,
+				      "gather", is_list_merge ? "mergable list" : "row by row");
+    json_object_set_new (scan, "parallel heap", parallel_obj);
   }
 
 

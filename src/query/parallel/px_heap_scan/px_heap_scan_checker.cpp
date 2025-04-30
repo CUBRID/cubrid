@@ -24,6 +24,8 @@
 
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include <set>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -31,161 +33,513 @@
 
 namespace parallel_heap_scan
 {
+  enum class CHECK_RESULT
+  {
+    NONE,
+    PARALLEL_LIST_MERGE,
+    PARALLEL_PAGE_BY_PAGE,
+    CANNOT_PARALLEL
+  };
+
+  CHECK_RESULT merge_check_result (CHECK_RESULT a, CHECK_RESULT b)
+  {
+    return (a == CHECK_RESULT::CANNOT_PARALLEL || b == CHECK_RESULT::CANNOT_PARALLEL) ? CHECK_RESULT::CANNOT_PARALLEL :
+	   (a == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE
+	    || b == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE) ? CHECK_RESULT::PARALLEL_PAGE_BY_PAGE :
+	   (a == CHECK_RESULT::NONE) ? b :
+	   (b == CHECK_RESULT::NONE) ? a :
+	   CHECK_RESULT::PARALLEL_LIST_MERGE;
+  }
+  class check_and_set_map
+  {
+    public:
+      check_and_set_map() = default;
+      ~check_and_set_map() = default;
+      inline bool is_checked (void *ptr)
+      {
+	return check_map.find (ptr) != check_map.end();
+      }
+      inline void set_checked (void *ptr)
+      {
+	check_map.insert (ptr);
+      }
+      inline bool is_setted_pbp (void *ptr)
+      {
+	return set_map_pbp.find (ptr) != set_map_pbp.end();
+      }
+      inline void set_pbp (void *ptr)
+      {
+	set_map_pbp.insert (ptr);
+      }
+      inline bool is_setted_lm (void *ptr)
+      {
+	return set_map_lm.find (ptr) != set_map_lm.end();
+      }
+      inline void set_lm (void *ptr)
+      {
+	set_map_lm.insert (ptr);
+      }
+      inline bool is_setted_cannot_parallel (void *ptr)
+      {
+	return set_map_cannot_parallel.find (ptr) != set_map_cannot_parallel.end();
+      }
+      inline void set_cannot_parallel (void *ptr)
+      {
+	set_map_cannot_parallel.insert (ptr);
+      }
+    private:
+      std::set<void *> check_map;
+      std::set<void *> set_map_pbp;
+      std::set<void *> set_map_lm;
+      std::set<void *> set_map_cannot_parallel;
+  };
+  class general_checker
+  {
+    public:
+      general_checker (check_and_set_map *map) : map (map) {}
+      CHECK_RESULT check (REGU_VARIABLE *src, bool is_outptr_list = false);
+      CHECK_RESULT check (PRED_EXPR *src, bool is_outptr_list = false);
+      CHECK_RESULT check (REGU_VARIABLE_LIST src, bool is_outptr_list = false);
+      CHECK_RESULT check (ARITH_TYPE *src, bool is_outptr_list = false);
+      CHECK_RESULT check (PRED *src, bool is_outptr_list = false);
+      CHECK_RESULT check (EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (COMP_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (ALSM_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (LIKE_EVAL_TERM *src, bool is_outptr_list = false);
+      CHECK_RESULT check (RLIKE_EVAL_TERM *src, bool is_outptr_list = false);
+    private:
+      check_and_set_map *map;
+  };
+
+  class spec_checker
+  {
+    public:
+      spec_checker (check_and_set_map *map) : map (map) {}
+      CHECK_RESULT check (ACCESS_SPEC_TYPE *spec);
+    private:
+      check_and_set_map *map;
+  };
+
+  class spec_setter
+  {
+    public:
+      spec_setter (check_and_set_map *map) : map (map) {}
+      void set (ACCESS_SPEC_TYPE *spec, CHECK_RESULT result);
+    private:
+      check_and_set_map *map;
+  };
+  class xasl_checker
+  {
+    public:
+      xasl_checker (check_and_set_map *map) : map (map) {}
+      CHECK_RESULT check (XASL_NODE *xasl);
+    private:
+      check_and_set_map *map;
+  };
+
+  class xasl_setter
+  {
+    public:
+      xasl_setter (check_and_set_map *map) : map (map) {}
+      void set (XASL_NODE *xasl, CHECK_RESULT result);
+      void set_cannot_parallel_recursive (XASL_NODE *xasl);
+    private:
+      void set_pbp (XASL_NODE *xasl);
+      void set_lm (XASL_NODE *xasl);
+      void set_cannot_parallel (XASL_NODE *xasl);
+      check_and_set_map *map;
+  };
+
   class checker
   {
     public:
-
-      int set_impossible (XASL_NODE *xasl);
-      int set_impossible_recursively (XASL_NODE *xasl);
-      int check (REGU_VARIABLE *src);
-      int check (PRED_EXPR *src);
-      int check (struct regu_variable_list_node   *src);
-      int check (ARITH_TYPE *src);
-      int check (PRED *src);
-      int check (EVAL_TERM *src);
-      int check (COMP_EVAL_TERM *src);
-      int check (ALSM_EVAL_TERM *src);
-      int check (LIKE_EVAL_TERM *src);
-      int check (RLIKE_EVAL_TERM *src);
-      int check (ACCESS_SPEC_TYPE *src);
+      checker() = default;
+      ~checker() = default;
       int check (XASL_NODE *xasl);
-
     private:
-      std::set<void *> visited_ptr;
-      std::set<void *> impossible_ptr;
+      check_and_set_map check_map;
   };
 
-  int checker::set_impossible (XASL_NODE *xasl)
+  CHECK_RESULT general_checker::check (REGU_VARIABLE *src, bool is_outptr_list)
   {
-    ACCESS_SPEC_TYPE *specp;
-    if (!xasl)
+    CHECK_RESULT result = CHECK_RESULT::PARALLEL_LIST_MERGE, temp = CHECK_RESULT::NONE;
+    DB_TYPE var_type;
+    if (!src)
       {
-	return 0;
+	return result;
+      }
+    if (src->xasl)
+      {
+	if (is_outptr_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	    xasl_checker checker (map);
+	    temp = checker.check (src->xasl);
+	    xasl_setter setter (map);
+	    setter.set (src->xasl, temp);
+	  }
+	else
+	  {
+	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	    xasl_checker checker (map);
+	    temp = checker.check (src->xasl);
+	    xasl_setter setter (map);
+	    setter.set (src->xasl, temp);
+	  }
       }
 
-    if (impossible_ptr.find ((void *)xasl) != impossible_ptr.end())
+    var_type = TP_DOMAIN_TYPE (src->domain);
+    switch (var_type)
       {
-	return 0;
+      case DB_TYPE_SET:
+      case DB_TYPE_MULTISET:
+      case DB_TYPE_SEQUENCE:
+      case DB_TYPE_VOBJ:
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	break;
+      default:
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_LIST_MERGE);
+	break;
       }
-    impossible_ptr.insert ((void *)xasl);
 
-    for (specp = xasl->spec_list; specp; specp = specp->next)
+    switch (src->type)
       {
-	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+      case TYPE_ATTR_ID:		/* fetch object attribute value */
+      case TYPE_SHARED_ATTR_ID:
+      case TYPE_CLASS_ATTR_ID:
+	break;
+      case TYPE_CONSTANT:
+      case TYPE_OID:
+      case TYPE_DBVAL:
+      case TYPE_POSITION:
+      case TYPE_POS_VALUE:
+      case TYPE_LIST_ID:
+	/* can execute with constants */
+	break;
+      case TYPE_ORDERBY_NUM:
+      case TYPE_CLASSOID:
+      case TYPE_REGUVAL_LIST:
+	/* cannot execute with this regu-variable */
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	break;
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+	temp = check (src->value.arithptr, is_outptr_list);
+	result = merge_check_result (result, temp);
+	break;
+      case TYPE_SP:
+	result = check (src->value.sp_ptr->args, is_outptr_list);
+	/* cannot execute sp in child threads */
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	break;
+      case TYPE_FUNC:
+	temp = check (src->value.funcp->operand, is_outptr_list);
+	result = merge_check_result (result, temp);
+	break;
+      case TYPE_REGU_VAR_LIST:
+	temp = check (src->value.regu_var_list, is_outptr_list);
+	if (temp == CHECK_RESULT::CANNOT_PARALLEL)
+	  {
+	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	  }
+	else
+	  {
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	  }
+	break;
+      default:
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	break;
       }
-    for (specp = xasl->merge_spec; specp; specp = specp->next)
-      {
-	specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-      }
-    for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
-      {
-	set_impossible_recursively (xaslp);
-      }
-    if (xasl->type == CTE_PROC)
-      {
-	set_impossible (xasl->proc.cte.non_recursive_part);
-	set_impossible (xasl->proc.cte.recursive_part);
-      }
-    return 0;
+    return result;
   }
 
-  int checker::set_impossible_recursively (XASL_NODE *xasl)
+  CHECK_RESULT general_checker::check (PRED_EXPR *src, bool is_outptr_list)
   {
-    int cnt = 0;
-    XASL_NODE *xaslp;
-    if (!xasl)
+    if (!src)
       {
-	return 0;
+	return CHECK_RESULT::NONE;
       }
 
-    if (impossible_ptr.find ((void *)xasl) != impossible_ptr.end())
+    switch (src->type)
       {
-	return 0;
+      case T_PRED:
+	return check (&src->pe.m_pred, is_outptr_list);
+	break;
+      case T_EVAL_TERM:
+	return check (&src->pe.m_eval_term, is_outptr_list);
+	break;
+      case T_NOT_TERM:
+	return check (src->pe.m_not_term, is_outptr_list);
+	break;
+      default:
+	return CHECK_RESULT::CANNOT_PARALLEL;
+	break;
       }
-
-    set_impossible (xasl);
-    for (xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+  }
+  CHECK_RESULT general_checker::check (REGU_VARIABLE_LIST src, bool is_outptr_list)
+  {
+    if (!src)
       {
-	cnt += set_impossible_recursively (xaslp);
+	return CHECK_RESULT::NONE;
       }
-
-    for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
+    REGU_VARIABLE_LIST curr = src;
+    CHECK_RESULT result = CHECK_RESULT::NONE;
+    while (curr)
       {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
+	if (is_outptr_list)
+	  {
+	    if (REGU_VARIABLE_IS_FLAGED (&curr->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	      {
+		(void) check (&curr->value, is_outptr_list);
+	      }
+	    else
+	      {
+		result = merge_check_result (result, check (&curr->value, is_outptr_list));
+	      }
+	  }
+	else
+	  {
+	    result = merge_check_result (result, check (&curr->value, is_outptr_list));
+	  }
+	curr = curr->next;
       }
-
-    for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-      }
-
-    for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
-      }
-
-    for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-      }
-
-    for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
-      }
-
-    if (xasl->type == CTE_PROC)
-      {
-	cnt += set_impossible_recursively (xasl->proc.cte.non_recursive_part);
-	cnt += set_impossible_recursively (xasl->proc.cte.recursive_part);
-      }
-
-    return cnt;
+    return result;
   }
 
-
-  int checker::check (XASL_NODE *xasl)
+  CHECK_RESULT general_checker::check (ARITH_TYPE *src, bool is_outptr_list)
   {
-    int cnt = 0;
-    XASL_NODE *xaslp;
-    ACCESS_SPEC_TYPE *specp;
+    CHECK_RESULT result = CHECK_RESULT::NONE, temp = CHECK_RESULT::NONE;
+    if (!src)
+      {
+	return result;
+      }
+    temp = check (src->leftptr, is_outptr_list);
+    result = merge_check_result (result, temp);
+    temp = check (src->rightptr, is_outptr_list);
+    result = merge_check_result (result, temp);
+    temp = check (src->thirdptr, is_outptr_list);
+    result = merge_check_result (result, temp);
+    temp = check (src->pred, is_outptr_list);
+    result = merge_check_result (result, temp);
+    if (src->opcode == T_TRACE_STATS)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+      }
+    return result;
+  }
+
+  CHECK_RESULT general_checker::check (PRED *src, bool is_outptr_list)
+  {
+    CHECK_RESULT result = CHECK_RESULT::NONE, temp = CHECK_RESULT::NONE;
+    if (!src)
+      {
+	return result;
+      }
+    temp = check (src->lhs, is_outptr_list);
+    result = check (src->rhs, is_outptr_list);
+    result = merge_check_result (result, temp);
+    return result;
+  }
+
+  CHECK_RESULT general_checker::check (EVAL_TERM *src, bool is_outptr_list)
+  {
+    CHECK_RESULT result = CHECK_RESULT::NONE;
+    if (!src)
+      {
+	return result;
+      }
+    switch (src->et_type)
+      {
+      case T_COMP_EVAL_TERM:
+	return check (&src->et.et_comp, is_outptr_list);
+	break;
+      case T_ALSM_EVAL_TERM:
+	return check (&src->et.et_alsm, is_outptr_list);
+	break;
+      case T_LIKE_EVAL_TERM:
+	return check (&src->et.et_like, is_outptr_list);
+	break;
+      case T_RLIKE_EVAL_TERM:
+	return check (&src->et.et_rlike, is_outptr_list);
+	break;
+      default:
+	return result;
+	break;
+      }
+  }
+  CHECK_RESULT general_checker::check (COMP_EVAL_TERM *src, bool is_outptr_list)
+  {
+    if (!src)
+      {
+	return CHECK_RESULT::NONE;
+      }
+    return merge_check_result (check (src->lhs, is_outptr_list), check (src->rhs, is_outptr_list));
+  }
+  CHECK_RESULT general_checker::check (ALSM_EVAL_TERM *src, bool is_outptr_list)
+  {
+    if (!src)
+      {
+	return CHECK_RESULT::NONE;
+      }
+    return merge_check_result (check (src->elem, is_outptr_list), check (src->elemset, is_outptr_list));
+  }
+  CHECK_RESULT general_checker::check (LIKE_EVAL_TERM *src, bool is_outptr_list)
+  {
+    CHECK_RESULT result = CHECK_RESULT::NONE;
+    if (!src)
+      {
+	return result;
+      }
+    result = merge_check_result (check (src->src, is_outptr_list), check (src->pattern, is_outptr_list));
+    return merge_check_result (result, check (src->esc_char, is_outptr_list));
+  }
+  CHECK_RESULT general_checker::check (RLIKE_EVAL_TERM *src, bool is_outptr_list)
+  {
+    CHECK_RESULT result = CHECK_RESULT::NONE;
+    if (!src)
+      {
+	return result;
+      }
+    result = merge_check_result (check (src->src, is_outptr_list), check (src->pattern, is_outptr_list));
+    return merge_check_result (result, check (src->case_sensitive, is_outptr_list));
+  }
+
+  CHECK_RESULT spec_checker::check (ACCESS_SPEC_TYPE *spec)
+  {
+    CHECK_RESULT result = CHECK_RESULT::NONE, temp = CHECK_RESULT::NONE;
+    if (!spec)
+      {
+	return CHECK_RESULT::NONE;
+      }
+    if (spec->access != ACCESS_METHOD_SEQUENTIAL || spec->type != TARGET_CLASS)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	return result;
+      }
+    if (spec->next)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	return result;
+      }
+    general_checker general_checker (map);
+    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	return result;
+      }
+    result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
+    result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
+    result = merge_check_result (result, general_checker.check (spec->where_pred));
+    return result;
+  }
+
+  void spec_setter::set (ACCESS_SPEC_TYPE *spec, CHECK_RESULT result)
+  {
+    if (result == CHECK_RESULT::NONE)
+      {
+	return;
+      }
+    else if (result == CHECK_RESULT::PARALLEL_LIST_MERGE)
+      {
+	if (map->is_setted_lm ((void *)spec) || map->is_setted_pbp ((void *)spec)
+	    || map->is_setted_cannot_parallel ((void *)spec))
+	  {
+	    return;
+	  }
+	map->set_lm ((void *)spec);
+	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGED_LIST );
+      }
+    else if (result == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
+      {
+	if (map->is_setted_pbp ((void *)spec) || map->is_setted_cannot_parallel ((void *)spec))
+	  {
+	    return;
+	  }
+	map->set_pbp ((void *)spec);
+	map->set_lm ((void *)spec);
+	if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	  {
+	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
+	  }
+      }
+    else if (result == CHECK_RESULT::CANNOT_PARALLEL)
+      {
+	if (map->is_setted_cannot_parallel ((void *)spec))
+	  {
+	    return;
+	  }
+	map->set_cannot_parallel ((void *)spec);
+	map->set_pbp ((void *)spec);
+	map->set_lm ((void *)spec);
+	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+      }
+  }
+
+  CHECK_RESULT xasl_checker::check (XASL_NODE *xasl)
+  {
     if (!xasl)
       {
-	return 0;
+	return CHECK_RESULT::NONE;
       }
-    auto it = visited_ptr.find ((void *)xasl);
-    if (it != visited_ptr.end())
+    if (map->is_checked ((void *)xasl))
       {
-	return 0;
+	return CHECK_RESULT::NONE;
       }
-    visited_ptr.insert ((void *)xasl);
-
+    map->set_checked ((void *)xasl);
+    CHECK_RESULT result = CHECK_RESULT::NONE;
+    CHECK_RESULT subquery_result = CHECK_RESULT::NONE;
+    xasl_setter setter (map);
     switch (xasl->type)
       {
       case BUILDLIST_PROC:
+	if (xasl->proc.buildlist.g_hash_eligible)
+	  {
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	  }
+	if (xasl->proc.buildlist.a_eval_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	  }
+	if (xasl->proc.buildlist.g_agg_list)
+	  {
+	    for (AGGREGATE_TYPE *aggp = xasl->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
+	      {
+		if (QPROC_IS_INTERPOLATION_FUNC (aggp) || aggp->function == PT_CUME_DIST || aggp->function == PT_PERCENT_RANK)
+		  {
+		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+		  }
+	      }
+	  }
+	break;
       case BUILDVALUE_PROC:
+	if (xasl->proc.buildvalue.agg_list)
+	  {
+	    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	  }
 	break;
       case CTE_PROC:
 	if (xasl->proc.cte.non_recursive_part)
 	  {
-	    cnt += check (xasl->proc.cte.non_recursive_part);
+	    subquery_result = check (xasl->proc.cte.non_recursive_part);
+	    setter.set (xasl->proc.cte.non_recursive_part, subquery_result);
 	  }
 	if (xasl->proc.cte.recursive_part)
 	  {
-	    cnt += set_impossible_recursively (xasl->proc.cte.recursive_part);
+	    setter.set (xasl->proc.cte.recursive_part, CHECK_RESULT::CANNOT_PARALLEL);
+	    (void) check (xasl->proc.cte.recursive_part);
 	  }
 	break;
       case HASHJOIN_PROC:
 	if (xasl->proc.hashjoin.outer.xasl)
 	  {
-	    cnt += check (xasl->proc.hashjoin.outer.xasl);
+	    subquery_result = check (xasl->proc.hashjoin.outer.xasl);
+	    setter.set (xasl->proc.hashjoin.outer.xasl, subquery_result);
 	  }
 	if (xasl->proc.hashjoin.inner.xasl)
 	  {
-	    cnt += check (xasl->proc.hashjoin.inner.xasl);
+	    subquery_result = check (xasl->proc.hashjoin.inner.xasl);
+	    setter.set (xasl->proc.hashjoin.inner.xasl, subquery_result);
 	  }
 	break;
       case UNION_PROC:
@@ -202,275 +556,284 @@ namespace parallel_heap_scan
       case BUILD_SCHEMA_PROC:
       case SCAN_PROC:
       default:
-	set_impossible_recursively (xasl);
-	return 0;
+	for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+	  {
+	    setter.set_cannot_parallel_recursive (xaslp);
+	  }
+	result = CHECK_RESULT::CANNOT_PARALLEL;
 	break;
       }
-    if (xasl->selected_upd_list)
+    if (xasl->selected_upd_list || xasl->scan_op_type != S_SELECT || xasl->upd_del_class_cnt > 0
+	|| XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
       {
-	set_impossible_recursively (xasl);
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	setter.set (xasl, CHECK_RESULT::CANNOT_PARALLEL);
       }
-    /* lower xasl search */
-    /* aptr : can parallel heap scan */
-    for (xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+    CHECK_RESULT aptr_result = CHECK_RESULT::NONE;
+    for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	check (xaslp);
-      }
-    /* bptr : cannot parallel heap scan */
-    for (xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
-      }
-    /* dptr : cannot parallel heap scan */
-    for (xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-      }
-    /* fptr : cannot parallel heap scan */
-    for (xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
-      }
-    /* scan_ptr : cannot parallel heap scan */
-    for (xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-      }
-    /* connect_by_ptr : cannot parallel heap scan */
-    for (xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
-      {
-	cnt += set_impossible_recursively (xaslp);
-	cnt++;
+	aptr_result = check (xaslp);
+	setter.set (xaslp, aptr_result);
       }
 
-    /* this xasl's spec list search */
-    for (specp = xasl->spec_list; specp; specp = specp->next)
+    for (XASL_NODE *xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
       {
-	cnt += check (specp);
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	setter.set_cannot_parallel_recursive (xaslp);
       }
-    for (specp = xasl->merge_spec; specp; specp = specp->next)
+    for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	cnt += check (specp);
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	setter.set_cannot_parallel_recursive (xaslp);
       }
-    if (cnt > 0)
+    for (XASL_NODE *xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
       {
-	set_impossible (xasl);
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	setter.set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	setter.set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	setter.set_cannot_parallel_recursive (xaslp);
+      }
+    if (xasl->if_pred)
+      {
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+      }
+    if (xasl->instnum_pred || xasl->instnum_val)
+      {
+	result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
       }
 
-    return cnt;
+    spec_checker spec_checker (map);
+    spec_setter spec_setter (map);
+    CHECK_RESULT spec_result = CHECK_RESULT::NONE;
+
+    general_checker general_checker (map);
+    CHECK_RESULT outptr_result = CHECK_RESULT::NONE;
+    if (xasl->outptr_list)
+      {
+	outptr_result = general_checker.check (xasl->outptr_list->valptrp, true);
+      }
+    for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	spec_result = spec_checker.check (specp);
+	spec_result = merge_check_result (spec_result, outptr_result);
+	spec_setter.set (specp, spec_result);
+	result = merge_check_result (result, spec_result);
+      }
+    for (ACCESS_SPEC_TYPE *specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	spec_result = spec_checker.check (specp);
+	spec_result = merge_check_result (spec_result, outptr_result);
+	spec_setter.set (specp, spec_result);
+	result = merge_check_result (result, spec_result);
+      }
+
+    return result;
   }
 
-  int checker::check (ACCESS_SPEC_TYPE *src)
+  void xasl_setter::set (XASL_NODE *xasl, CHECK_RESULT result)
   {
-    int cnt = 0;
-
-    if (!src)
+    if (result == CHECK_RESULT::NONE)
       {
-	return 0;
+	return;
       }
-    if (src->access != ACCESS_METHOD_SEQUENTIAL)
+    else if (result == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
       {
-	cnt++;
-	return cnt;
+	set_pbp (xasl);
       }
-    if (src->type != TARGET_CLASS)
+    else if (result == CHECK_RESULT::PARALLEL_LIST_MERGE)
       {
-	cnt++;
-	return cnt;
+	set_lm (xasl);
       }
-    cnt += check (src->s.cls_node.cls_regu_list_pred);
-    cnt += check (src->s.cls_node.cls_regu_list_rest);
-    cnt += check (src->where_pred);
-    if (src->next) /* not for 'select c1 from (t1 t2)' */
+    else if (result == CHECK_RESULT::CANNOT_PARALLEL)
       {
-	cnt++;
+	set_cannot_parallel (xasl);
       }
 
-
-    return cnt;
-  }
-
-  int checker::check (REGU_VARIABLE *src)
-  {
-    int cnt = 0;
-    if (!src)
+    switch (xasl->type)
       {
-	return 0;
-      }
-    /* cannot execute regu-linked xasl */
-    if (src->xasl)
-      {
-	cnt++;
-	set_impossible_recursively (src->xasl);
-      }
-
-    switch (src->type)
-      {
-      case TYPE_ATTR_ID:		/* fetch object attribute value */
-      case TYPE_SHARED_ATTR_ID:
-      case TYPE_CLASS_ATTR_ID:
+      case BUILDLIST_PROC:
+      case BUILDVALUE_PROC:
 	break;
-      case TYPE_CONSTANT:
-      case TYPE_OID:
-      case TYPE_DBVAL:
-      case TYPE_POSITION:
-      case TYPE_POS_VALUE:
-	/* can execute with constants */
+      case CTE_PROC:
+	if (xasl->proc.cte.non_recursive_part)
+	  {
+	    set (xasl->proc.cte.non_recursive_part, result);
+	  }
 	break;
-      case TYPE_ORDERBY_NUM:
-      case TYPE_LIST_ID:
-      case TYPE_CLASSOID:
-      case TYPE_REGUVAL_LIST:
-	/* cannot execute with this regu-variable */
-	cnt++;
+      case HASHJOIN_PROC:
+	if (xasl->proc.hashjoin.outer.xasl)
+	  {
+	    set (xasl->proc.hashjoin.outer.xasl, result);
+	  }
+	if (xasl->proc.hashjoin.inner.xasl)
+	  {
+	    set (xasl->proc.hashjoin.inner.xasl, result);
+	  }
 	break;
-      case TYPE_INARITH:
-      case TYPE_OUTARITH:
-	cnt += check (src->value.arithptr);
-	break;
-      case TYPE_SP:
-	cnt += check (src->value.sp_ptr->args);
-	/* cannot execute sp in child threads */
-	cnt++;
-	break;
-      case TYPE_FUNC:
-	cnt += check (src->value.funcp->operand);
-	break;
-      case TYPE_REGU_VAR_LIST:
-	cnt += check (src->value.regu_var_list);
-	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+      case OBJFETCH_PROC:
+      case MERGELIST_PROC:
+      case UPDATE_PROC:
+      case DELETE_PROC:
+      case INSERT_PROC:
+      case CONNECTBY_PROC:
+      case DO_PROC:
+      case MERGE_PROC:
+      case BUILD_SCHEMA_PROC:
+      case SCAN_PROC:
       default:
-	cnt++;
 	break;
       }
-    return cnt;
+    spec_setter spec_setter (map);
+    for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, result);
+      }
+    for (ACCESS_SPEC_TYPE *specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, result);
+      }
   }
 
-  int checker::check (ARITH_TYPE *src)
+  void xasl_setter::set_cannot_parallel_recursive (XASL_NODE *xasl)
   {
-    if (!src)
+    set_cannot_parallel (xasl);
+    switch (xasl->type)
       {
-	return 0;
-      }
-    int cnt = 0;
-    cnt += check (src->leftptr);
-    cnt += check (src->rightptr);
-    cnt += check (src->thirdptr);
-    return cnt;
-  }
-
-  int checker::check (PRED_EXPR *src)
-  {
-    if (!src)
-      {
-	return 0;
-      }
-
-    switch (src->type)
-      {
-      case T_PRED:
-	return check (&src->pe.m_pred);
+      case BUILDLIST_PROC:
+      case BUILDVALUE_PROC:
 	break;
-      case T_EVAL_TERM:
-	return check (&src->pe.m_eval_term);
+      case CTE_PROC:
+	if (xasl->proc.cte.non_recursive_part)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.cte.non_recursive_part);
+	  }
 	break;
-      case T_NOT_TERM:
-	return check (src->pe.m_not_term);
+      case HASHJOIN_PROC:
+	if (xasl->proc.hashjoin.outer.xasl)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.hashjoin.outer.xasl);
+	  }
+	if (xasl->proc.hashjoin.inner.xasl)
+	  {
+	    set_cannot_parallel_recursive (xasl->proc.hashjoin.inner.xasl);
+	  }
 	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+      case OBJFETCH_PROC:
+      case MERGELIST_PROC:
+      case UPDATE_PROC:
+      case DELETE_PROC:
+      case INSERT_PROC:
+      case CONNECTBY_PROC:
+      case DO_PROC:
+      case MERGE_PROC:
+      case BUILD_SCHEMA_PROC:
+      case SCAN_PROC:
       default:
-	return 0;
 	break;
       }
+    for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+
+    for (XASL_NODE *xaslp = xasl->bptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->fptr_list; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->scan_ptr; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+    for (XASL_NODE *xaslp = xasl->connect_by_ptr; xaslp; xaslp = xaslp->next)
+      {
+	set_cannot_parallel_recursive (xaslp);
+      }
+
+    spec_setter spec_setter (map);
+    for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, CHECK_RESULT::CANNOT_PARALLEL);
+      }
+    for (ACCESS_SPEC_TYPE *specp = xasl->merge_spec; specp; specp = specp->next)
+      {
+	spec_setter.set (specp, CHECK_RESULT::CANNOT_PARALLEL);
+      }
   }
-  int checker::check (PRED *src)
+
+  void xasl_setter::set_cannot_parallel (XASL_NODE *xasl)
   {
-    if (!src)
+    if (map->is_setted_cannot_parallel ((void *)xasl))
       {
-	return 0;
+	return;
       }
-    return check (src->lhs) + check (src->rhs);
+    /* pbp, lm -> cannot parallel */
+    map->set_cannot_parallel ((void *)xasl);
+    map->set_pbp ((void *)xasl);
+    map->set_lm ((void *)xasl);
   }
 
-  int checker::check (EVAL_TERM *src)
+  void xasl_setter::set_pbp (XASL_NODE *xasl)
   {
-    if (!src)
+    if (map->is_setted_pbp ((void *)xasl))
       {
-	return 0;
+	return;
       }
-
-    switch (src->et_type)
+    if (map->is_setted_cannot_parallel ((void *)xasl))
       {
-      case T_COMP_EVAL_TERM:
-	return check (&src->et.et_comp);
-	break;
-      case T_ALSM_EVAL_TERM:
-	return check (&src->et.et_alsm);
-	break;
-      case T_LIKE_EVAL_TERM:
-	return check (&src->et.et_like);
-	break;
-      case T_RLIKE_EVAL_TERM:
-	return check (&src->et.et_rlike);
-	break;
-      default:
-	return 0;
+	return;
       }
+    /* list merge -> page by page */
+    map->set_pbp ((void *)xasl);
+    map->set_lm ((void *)xasl);
   }
 
-  int checker::check (COMP_EVAL_TERM *src)
+  void xasl_setter::set_lm (XASL_NODE *xasl)
   {
-    if (!src)
+    if (map->is_setted_lm ((void *)xasl))
       {
-	return 0;
+	return;
       }
-    return check (src->lhs) + check (src->rhs);
+    if (map->is_setted_cannot_parallel ((void *)xasl) || map->is_setted_pbp ((void *)xasl))
+      {
+	return;
+      }
+    map->set_lm ((void *)xasl);
   }
 
-  int checker::check (ALSM_EVAL_TERM *src)
+  int checker::check (XASL_NODE *xasl)
   {
-    if (!src)
+    if (!xasl)
       {
 	return 0;
       }
-    return check (src->elem) + check (src->elemset);
+    xasl_checker checker (&check_map);
+    CHECK_RESULT result = checker.check (xasl);
+    xasl_setter setter (&check_map);
+    setter.set (xasl, result);
+    return 0;
   }
-
-  int checker::check (LIKE_EVAL_TERM *src)
-  {
-    if (!src)
-      {
-	return 0;
-      }
-    return check (src->src) + check (src->pattern) + check (src->esc_char);
-  }
-
-  int checker::check (RLIKE_EVAL_TERM *src)
-  {
-    if (!src)
-      {
-	return 0;
-      }
-    return check (src->src) + check (src->pattern) + check (src->case_sensitive);
-  }
-
-  int checker::check (struct regu_variable_list_node   *src)
-  {
-    if (!src)
-      {
-	return 0;
-      }
-    int cnt = 0;
-    struct regu_variable_list_node   *curr = src;
-    while (curr)
-      {
-	cnt += check (&curr->value);
-	curr = curr->next;
-      }
-    return cnt;
-  }
-
 }
 
 extern int
