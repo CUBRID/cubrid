@@ -146,7 +146,6 @@ int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue)
 int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, faiss::idx_t *rec_ids, float *distances)
 {
   std::vector<float> fvec;
-  int hnsw_id;
 
   assert (hnsw_id > 0);
 

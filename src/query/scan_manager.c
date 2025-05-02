@@ -177,6 +177,7 @@ static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
@@ -4250,6 +4251,9 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       break;
     case S_VECTOR_INDEX_SCAN:
+      isidp = &scan_id->s.isid;
+
+      break;
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
       if (!OID_IS_ROOTOID (&isidp->cls_oid))
@@ -4693,7 +4697,8 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  return ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END);
 	}
-
+    case S_VECTOR_INDEX_SCAN:
+      return ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END);
     case S_INDX_KEY_INFO_SCAN:
     case S_INDX_NODE_INFO_SCAN:
       if (s_id->grouped)
@@ -5184,6 +5189,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       status = scan_next_index_scan (thread_p, scan_id);
+      break;
+
+    case S_VECTOR_INDEX_SCAN:
+      status = scan_next_vector_index_scan (thread_p, scan_id);
       break;
 
     case S_INDX_KEY_INFO_SCAN:
@@ -6151,6 +6160,20 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       return S_SUCCESS;
     }
+}
+
+/*
+ * scan_next_vector_index_scan () - fetch vector index record and evaluate data filter
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR, S_DOESNT_EXIST)
+ *   scan_id(in/out): Scan identifier
+ *   isidp(in/out): Index scan identifier
+ *   data_filter(in): data filter information
+ *   isolation(in): transaction isolation level
+ */
+static SCAN_CODE
+scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  return S_SUCCESS;
 }
 
 /*
