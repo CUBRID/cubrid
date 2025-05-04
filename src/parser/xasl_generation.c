@@ -68,6 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
+#include "parser_expr_compiler.hpp"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -2186,6 +2187,102 @@ error:
   PT_INTERNAL_ERROR (parser, "predicate");
   return NULL;
 }
+
+
+/*
+ * pt_to_pred_expr_with_arg () - converts a list of expression tree to
+ * 	xasl 'pred' expressions, where each item of the list represents
+ * 	a conjunctive normal form term
+ *   return: A NULL return indicates an error occurred
+ *   parser(in):
+ *   node_list(in):
+ *   argp(out):
+ */
+PRED_EXPR *
+pt_to_pred_expr_with_arg_temp_print (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp)
+{
+  PRED_EXPR *cnf_pred, *dnf_pred, *temp;
+  PT_NODE *node, *cnf_node, *dnf_node;
+  int dummy;
+  int num_dnf, i;
+
+  if (!argp)
+    {
+      argp = &dummy;
+    }
+  *argp = 0;
+
+  /* convert CNF list into right-linear chains of AND terms */
+  cnf_pred = NULL;
+  for (node = node_list; node; node = node->next)
+    {
+      cnf_node = node;
+
+      CAST_POINTER_TO_NODE (cnf_node);
+
+	predication::PredExprCompiler pred_expr_compiler(parser, cnf_node);
+	std::string script = pred_expr_compiler.compile()->print_script();
+
+      if (cnf_node->or_next)
+	{
+	  /* if term has OR, set information for inst_num() scan type */
+	  *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	}
+
+
+      dnf_pred = NULL;
+
+      num_dnf = 0;
+      for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
+	{
+	  num_dnf++;
+	}
+
+      while (num_dnf)
+	{
+	  dnf_node = cnf_node;
+	  for (i = 1; i < num_dnf; i++)
+	    {
+	      dnf_node = dnf_node->or_next;
+	    }
+
+	  /* get the last dnf_node */
+	  
+	  if (temp == NULL)
+	    {
+	      goto error;
+	    }
+
+	  /* set PT_PRED_ARG_INSTNUM_CONTINUE flag for numbering in each node of the predicate */
+	  parser_walk_tree (parser, dnf_node, NULL, NULL, pt_numbering_set_continue_post, argp);
+
+	  dnf_pred = (dnf_pred) ? pt_make_pred_expr_pred (temp, dnf_pred, B_OR) : temp;
+
+	  if (dnf_pred == NULL)
+	    {
+	      goto error;
+	    }
+
+	  num_dnf--;		/* decrease to the previous dnf_node */
+	}			/* while (num_dnf) */
+
+      cnf_pred = (cnf_pred) ? pt_make_pred_expr_pred (dnf_pred, cnf_pred, B_AND) : dnf_pred;
+
+      if (cnf_pred == NULL)
+	{
+	  goto error;
+	}
+    }				/* for (node = node_list; ...) */
+
+  return cnf_pred;
+
+error:
+  PT_INTERNAL_ERROR (parser, "predicate");
+  return NULL;
+}
+
 
 /*
  * pt_to_pred_expr () -
@@ -12314,7 +12411,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->reserved_values = db_values_array_p;
 
 	      where = pt_to_pred_expr (parser, where_part);
-
 	      if (scan_type == TARGET_CLASS_ATTR)
 		{
 		  symbols->current_class = class_;

@@ -268,6 +268,10 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/expression/compare.cc
+  ${QUERY_DIR}/expression/cast.cc
+  ${QUERY_DIR}/expression/compiled_pred_expr_interpreter.cpp
+  ${QUERY_DIR}/expression/parser_expr_compiler.cpp
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
@@ -290,6 +294,10 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/expression/compare.hpp
+  ${QUERY_DIR}/expression/cast.hpp
+  ${QUERY_DIR}/expression/compiled_pred_expr_interpreter.hpp
+  ${QUERY_DIR}/expression/parser_expr_compiler.hpp
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_analytic.hpp

@@ -51,6 +51,7 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
+#include "parser_expr_compiler.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2851,6 +2852,12 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* scan predicates */
   scan_init_scan_pred (&hsidp->scan_pred, regu_list_pred, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+
+  /* compile predicate expression */
+  if (predication::pred_expr_to_compiled_pred_expr(pr, &hsidp->scan_pred.compiled_pred_expr)) {
+      hsidp->scan_pred.ctx = predication::create_context();
+  }
+
   /* attribute information from predicates */
   scan_init_scan_attrs (&hsidp->pred_attrs, num_attrs_pred, attrids_pred, cache_pred);
 
@@ -5327,7 +5334,9 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       scan_id->scan_stats.read_rows++;
 
       ev_res = eval_data_filter (thread_p, p_current_oid, &recdes, &hsidp->scan_cache, &data_filter);
-      if (ev_res == V_ERROR)
+      // ev_res = eval_data_filter (p_current_oid, &recdes, &hsidp->scan_cache, &compiled_pred_expr);
+      
+	if (ev_res == V_ERROR)
 	{
 	  return S_ERROR;
 	}

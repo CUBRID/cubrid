@@ -46,6 +46,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#include "expression/compare.h"
+
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
@@ -2703,7 +2705,7 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
  * Note: evaluate data filter(predicates) given as FILTER_INFO.
  */
 DB_LOGICAL
-eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCANCACHE * scan_cache,
+eval_data_filter_temp (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCANCACHE * scan_cache,
 		  FILTER_INFO * filterp)
 {
   SCAN_PRED *scan_predp;
@@ -2750,8 +2752,141 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   ev_res = V_TRUE;
   if (scan_predp->pr_eval_fnc && scan_predp->pred_expr)
     {
-      ev_res = (*scan_predp->pr_eval_fnc) (thread_p, scan_predp->pred_expr, filterp->val_descr, oid);
+      ev_res = eval_pred_comp0_temp (thread_p, scan_predp->pred_expr, filterp->val_descr, oid);
     }
+
+  if (oid == NULL && recdesp == NULL)
+    {
+      /* class attribute scan case; fetch was done before evaluation */
+      return ev_res;
+    }
+
+  if (ev_res == V_TRUE && scan_predp->regu_list && filterp->val_list)
+    {
+      /*
+       * fetch the values for the regu variable list of the data filter
+       * from the cached attribute information
+       */
+      if (fetch_val_list (thread_p, scan_predp->regu_list, filterp->val_descr, filterp->class_oid, oid, NULL, PEEK) !=
+	  NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+    }
+
+  return ev_res;
+}
+
+DB_LOGICAL
+eval_pred_comp0_temp (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
+{
+  const COMP_EVAL_TERM *et_comp;
+  DB_VALUE *peek_val1, *peek_val2;
+
+  peek_val1 = NULL;
+  peek_val2 = NULL;
+
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
+
+  /*
+   * fetch left hand size and right hand size values, if one of
+   * values are unbound, return V_UNKNOWN
+   */
+  if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  else if (db_value_is_null (peek_val1) && et_comp->rel_op != R_NULLSAFE_EQ)
+    {
+      return V_UNKNOWN;
+    }
+
+  if (fetch_peek_dbval (thread_p, et_comp->rhs, vd, NULL, obj_oid, NULL, &peek_val2) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  else if (db_value_is_null (peek_val2) && et_comp->rel_op != R_NULLSAFE_EQ)
+    {
+      return V_UNKNOWN;
+    }
+
+  /*
+   * general case: compare values, db_value_compare will
+   * take care of any coercion necessary.
+   */
+  if (Compare::compare_with_eqaul_type_error_temp (peek_val1, peek_val2, DB_TYPE::DB_TYPE_INTEGER) == DB_VALUE_COMPARE_RESULT::DB_EQ)
+  {
+    return V_TRUE;
+  }
+  else
+  {
+    return V_FALSE;
+  }
+}
+
+/*
+ * eval_data_filter () -
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ * 	 oid(in): pointer to OID
+ *   recdesp(in): pointer to RECDES (record descriptor)
+ *   filterp(in): pointer to FILTER_INFO (filter information)
+ *
+ * Note: evaluate data filter(predicates) given as FILTER_INFO.
+ */
+DB_LOGICAL
+eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCANCACHE * scan_cache,
+		  FILTER_INFO * filterp)
+{
+  SCAN_PRED *scan_predp;
+  SCAN_ATTRS *scan_attrsp;
+  DB_LOGICAL ev_res;
+
+  if (!filterp)
+    {
+      return V_TRUE;
+    }
+
+  scan_predp = filterp->scan_pred;
+  scan_attrsp = filterp->scan_attrs;
+  if (!scan_predp)
+    {
+      return V_ERROR;
+    }
+
+  if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
+    {
+      /* read the predicate values from the heap into the attribute cache */
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+
+      if (oid == NULL && recdesp == NULL && filterp->val_list)
+	{
+	  /*
+	   * In the case of class attribute scan, we should fetch regu_list
+	   * before pred evaluation because eval_pred*() functions do not
+	   * know class OID so that TYPE_CLASSOID regu cannot be handled
+	   * correctly.
+	   */
+	  if (fetch_val_list (thread_p, scan_predp->regu_list, filterp->val_descr, filterp->class_oid, oid, NULL, PEEK)
+	      != NO_ERROR)
+	    {
+	      return V_ERROR;
+	    }
+	}
+    }
+
+  /* evaluate the predicates of the data filter */
+  ev_res = V_TRUE;
+  if (scan_predp->compiled_pred_expr) 
+  {
+    ev_res = predication::evaluate_compiled_pred_expr(scan_predp->compiled_pred_expr, scan_predp->ctx);
+  } 
+  else if (scan_predp->pr_eval_fnc && scan_predp->pred_expr)
+  {
+    ev_res = (*scan_predp->pr_eval_fnc) (thread_p, scan_predp->pred_expr, filterp->val_descr, oid);
+  }
 
   if (oid == NULL && recdesp == NULL)
     {
