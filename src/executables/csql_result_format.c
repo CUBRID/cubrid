@@ -923,7 +923,8 @@ numeric_to_string (DB_VALUE * value, bool commas)
     }
 
   numeric_db_value_print (value, str_buf);
-  if (strlen (str_buf) > max_length - 1)
+  /* 여기는 나중에 스펙을 논의해야하는 부분으로 보임!!! */
+  if (strlen (str_buf) > max_length - (value->domain.numeric_info.is_floating_point_numeric ? 0 : 1))
     {
       free_and_init (return_string);
       return (duplicate_string ("NUM OVERFLOW"));

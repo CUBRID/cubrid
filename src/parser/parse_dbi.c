@@ -673,6 +673,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  result->data_type->type_enum = result->type_enum;
 	  result->data_type->info.data_type.precision = db_value_precision (val);
 	  result->data_type->info.data_type.dec_precision = db_value_scale (val);
+	  //flag 설정 확인 필요
+	  result->data_type->info.data_type.is_floating_point_numeric =
+	    val->domain.numeric_info.is_floating_point_numeric ? true : false;
 	}
       break;
 
@@ -1302,6 +1305,9 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
     case DB_TYPE_NUMERIC:
       value_out->domain.numeric_info.precision = node_data_type->info.data_type.precision;
       value_out->domain.numeric_info.scale = node_data_type->info.data_type.dec_precision;
+      //flag 설정 확인 필요
+      value_out->domain.numeric_info.is_floating_point_numeric =
+	node_data_type->info.data_type.is_floating_point_numeric;
       break;
     case DB_TYPE_JSON:
       // we should really move json_schema from value.data
@@ -1807,7 +1813,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_TYPE domain_type;
   DB_OBJECT *class_obj = (DB_OBJECT *) 0;
-  int precision = 0, scale = 0, codeset = 0;
+  int precision = 0, scale = 0, codeset = 0, is_floating_point_numeric = 0;
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
@@ -1917,6 +1923,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_NUMERIC:
       precision = dt->info.data_type.precision;
       scale = dt->info.data_type.dec_precision;
+      is_floating_point_numeric = dt->info.data_type.is_floating_point_numeric;
+      //flag 설정 확인 필요, 아까 core 때문에 막아둬서 여기 false임
       break;
 
     case DB_TYPE_SET:
@@ -1989,6 +1997,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
       retval->json_validator = validator;
+      retval->is_floating_point_numeric = is_floating_point_numeric;
     }
   else
     {
@@ -2138,6 +2147,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_NUMERIC:
       precision = dt->info.data_type.precision;
       scale = dt->info.data_type.dec_precision;
+      //flag 설정 확인 필요
       break;
 
     case DB_TYPE_SET:
@@ -2908,6 +2918,10 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->type_enum = node->type_enum;
 	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
 	  dt->info.data_type.dec_precision = DB_VALUE_SCALE (val);
+	  // 여기도 flag 설정 확인 필요
+	  dt->info.data_type.is_floating_point_numeric = (dt->info.data_type.precision == 0
+							  && dt->info.data_type.dec_precision == 0) ? true : false;
+	  val->domain.numeric_info.is_floating_point_numeric = dt->info.data_type.is_floating_point_numeric;
 	}
       break;
 

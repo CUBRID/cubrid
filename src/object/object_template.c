@@ -603,6 +603,7 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
       valid->last_type = type;
       valid->last_precision = db_value_precision (value);
       valid->last_scale = db_value_scale (value);
+      //flag 설정 확인 필요
       break;
 
     default:

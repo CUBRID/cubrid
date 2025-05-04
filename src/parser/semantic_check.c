@@ -2350,6 +2350,13 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
     }
   else if (dest_sci->type_enum == PT_TYPE_NUMERIC)
     {
+      // flag를 어떻게 넘겨줄지 확인 필요!, 여기에서는 임시로 !=0 을 != -1 로 변경해둠
+      if (src->data_type->info.data_type.is_floating_point_numeric && (dest_sci->prec == 0 && dest_sci->scale == 0))
+	{
+	  // 여기도 임시!!
+	  return true;
+	}
+
       assert_release (dest_sci->prec != 0);
       if (src->data_type && dest_sci->prec == src->data_type->info.data_type.precision
 	  && dest_sci->scale == src->data_type->info.data_type.dec_precision)
@@ -12789,6 +12796,15 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	  if (lhs->type_enum == PT_TYPE_JSON && lhs->data_type->info.data_type.json_schema != NULL)
 	    {
 	      sci.force_cast = true;
+	    }
+	  // 임시로 추가! 이게 맞는지는 모름!
+	  if (lhs->type_enum == PT_TYPE_NUMERIC && rhs->data_type)
+	    {
+	      /* 아래 주석은, 일반 case 일 떄 core 발생시킴 */
+	      rhs->data_type->info.data_type.is_floating_point_numeric =
+		lhs->data_type->info.data_type.is_floating_point_numeric;
+	      rhs->info.value.db_value.domain.numeric_info.is_floating_point_numeric =
+		lhs->data_type->info.data_type.is_floating_point_numeric;
 	    }
 	}
 

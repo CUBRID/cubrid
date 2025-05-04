@@ -759,6 +759,7 @@ extern "C"
       unsigned char type;
       unsigned char precision;
       unsigned char scale;
+      int is_floating_point_numeric;
     } numeric_info;
     struct char_info
     {

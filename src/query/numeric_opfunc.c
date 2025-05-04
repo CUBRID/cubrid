@@ -244,6 +244,7 @@ numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num)
   else
     {
       digit = DB_NUMERIC_BUF_SIZE - 1;
+      // 아니 여기는 뭐하는 곳이지... serial 처리하는 곳인가?
     }
   /* Loop through answer as long as there is a carry */
   for (; digit >= 0 && carry == 1; digit--)
@@ -2249,6 +2250,8 @@ numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer)
   unsigned char pad;
   int digit;
 
+  //여기 조금 마음에 안듬.. 32 bits 이제 사용 안하니, 제거하는게 좋지 않을까?, 그리고 여기가 base-256 처리하는 곳 같은데?
+
   /* Check for negative/positive and set pad accordingly */
   pad = (arg >= 0) ? 0 : 0xff;
 
@@ -2463,6 +2466,7 @@ numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result)
 	    {
 	      numeric_scale_dec (big_chunk, ntot_digits - dec_dig - 1, big_chunk);
 	    }
+	  // P,S 각각 1 byte 차지하니까 2 byte 빼줘야함
 	  numeric_add (big_chunk, result, result, DB_NUMERIC_BUF_SIZE);
 	}
     }
@@ -3085,6 +3089,33 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   /* Remove the decimal point, track the prec & scale */
   prec = 0;
   scale = 0;
+
+  // 소수점 0 제거
+  if (result->domain.numeric_info.is_floating_point_numeric
+      || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+    {
+      //if (astring_length == 0) return;
+
+      int astring_end = astring_length - 1;
+      while (astring_end >= 0)
+	{
+	  if (astring[astring_end] == '0')
+	    {
+	      astring_end--;
+	    }
+	  else if (astring[astring_end] == '.')
+	    {
+	      astring_end--;	// 소수점까지 잘라내기
+	      break;
+	    }
+	  else
+	    {
+	      break;
+	    }
+	}
+      astring_length = astring_end + 1;
+    }
+
   for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
     {
       skip_size = 1;
@@ -3391,7 +3422,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   int ret = NO_ERROR;
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int precision, scale;
-  int desired_precision, desired_scale;
+  int desired_precision, desired_scale, tmp_precision_sacle = 1;
 
   *data_status = DATA_STATUS_OK;
   desired_precision = DB_VALUE_PRECISION (dest);
@@ -3479,6 +3510,13 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     {
       /* Make the intermediate value */
       db_make_numeric (dest, num, precision, scale);
+      if (dest->domain.numeric_info.is_floating_point_numeric)
+	{
+	  desired_precision = DB_VALUE_PRECISION (dest);
+	  desired_scale = DB_VALUE_SCALE (dest);
+	  //tmp_precision_sacle = 0;
+	}
+
       ret =
 	numeric_coerce_num_to_num (db_locate_numeric (dest), DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
 				   desired_precision, desired_scale, num);
@@ -3486,8 +3524,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	{
 	  goto exit_on_error;
 	}
-
       db_make_numeric (dest, num, desired_precision, desired_scale);
+      //if (tmp_precision_sacle == 0)
+      //{
+      // 예상대로 flag 초기화됨...
+      //dest->domain.numeric_info.is_floating_point_numeric = 1;
+      //}
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)
