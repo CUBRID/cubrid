@@ -3076,6 +3076,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   int i;
   int prec = 0;
   int scale = 0;
+  int trailing_zero_count = 0;
   bool leading_zeroes = true;
   bool sign_found = false;
   bool negate_value = false;
@@ -3091,30 +3092,30 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   scale = 0;
 
   // 소수점 0 제거
-  if (result->domain.numeric_info.is_floating_point_numeric
-      || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
-    {
-      //if (astring_length == 0) return;
+//   if (result->domain.numeric_info.is_floating_point_numeric
+//       || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+//     {
+//       //if (astring_length == 0) return;
 
-      int astring_end = astring_length - 1;
-      while (astring_end >= 0)
-	{
-	  if (astring[astring_end] == '0')
-	    {
-	      astring_end--;
-	    }
-	  else if (astring[astring_end] == '.')
-	    {
-	      astring_end--;	// 소수점까지 잘라내기
-	      break;
-	    }
-	  else
-	    {
-	      break;
-	    }
-	}
-      astring_length = astring_end + 1;
-    }
+//       int astring_end = astring_length - 1;
+//       while (astring_end >= 0)
+//      {
+//        if (astring[astring_end] == '0')
+//          {
+//            astring_end--;
+//          }
+//        else if (astring[astring_end] == '.')
+//          {
+//            astring_end--;    // 소수점까지 잘라내기
+//            break;
+//          }
+//        else
+//          {
+//            break;
+//          }
+//      }
+//       astring_length = astring_end + 1;
+//     }
 
   for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
     {
@@ -3203,6 +3204,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 		{
 		  break;
 		}
+
+	      if (result->domain.numeric_info.is_floating_point_numeric
+		  || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+		{
+		  trailing_zero_count = (astring[i] == '0') ? trailing_zero_count + 1 : 0;
+		}
 	    }
 	  else
 	    {
@@ -3215,6 +3222,13 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (result->domain.numeric_info.is_floating_point_numeric
+      || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+    {
+      prec = prec - trailing_zero_count;
+      scale = scale - trailing_zero_count;
     }
 
   /* If there is no overflow, try to parse the decimal string */
