@@ -5033,9 +5033,6 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       return node;
     }
 
-  /* count the number of CTE references, except for the with clause. */
-  node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
-
   mq_check_cte_inline_or_materialize (parser, *with_clause);
 
   /* rewrite the main query considering the reference count. */
@@ -5133,8 +5130,6 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
  *   parser(in):
  *   node(in):
  *   arg(in):
- * Note: If the reference count is 2 or more, it will be treated as a materialized CTE.
- *       If the reference count is less than 2, it will be treated as a inline CTE.
  */
 static PT_NODE *
 mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -8009,6 +8004,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+      /* count the number of CTE references, except for the with clause. */
+      node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
       node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
@@ -8062,6 +8059,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
+      node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
       node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
 
       /*
