@@ -13037,7 +13037,13 @@ static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
-  PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+
+  /* do not check attribute list for dblink */
+  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+    }
+
   PT_APPLY_WALK (parser, p->info.insert.value_clauses, arg);
   PT_APPLY_WALK (parser, p->info.insert.into_var, arg);
   PT_APPLY_WALK (parser, p->info.insert.where, arg);
