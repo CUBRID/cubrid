@@ -1447,7 +1447,7 @@ $ LOADDB
 1358 영향을 받은 행 수를 알 수 없음.
 
 1359 PL 서버에 장애가 발생함. : %1$s
-1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1360 Stored procedure compile error: %1$s
 
 1361 부질의 캐시가 잘못되었습니다.
 1362 언어 '%1$s'에 대한 로캘은 사용 가능하지 않습니다.
@@ -1458,6 +1458,7 @@ $ LOADDB
 
 1366 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
 
+1367 DBLINK 트랜잭션 취소: %1$s
 1367 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
