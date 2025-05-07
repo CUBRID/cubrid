@@ -9,8 +9,8 @@ parameters:
     default: ""
   run_shell_test:
     type: boolean
-    # default: true
-    default: false
+    default: true
+    # default: false
   run_sql_test:
     type: boolean
     default: true
@@ -70,7 +70,7 @@ commands:
               glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
             fi
 
-            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=name --timings-type=name
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=timings --timings-type=name
             if [ -s tc.list ]; then
               sed -i "s|^|$base_dir/|" tc.list
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
