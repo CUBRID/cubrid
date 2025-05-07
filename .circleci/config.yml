@@ -101,7 +101,8 @@ commands:
               mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
-            find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+            mv -f CUBRID/log/coredump /tmp/logs/coredump
+            # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
       - store_test_results:
           path: /tmp/tests
