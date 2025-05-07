@@ -60,12 +60,21 @@ typedef enum c_pype
   C_TYPE_VARCHAR = 17,
   C_TYPE_BIT = 18,
   C_TYPE_VARBIT = 19,
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
   C_TYPE_NCHAR = 20,
   C_TYPE_VARNCHAR = 21,
   C_TYPE_STRING_CONST = 22,	/* for string constant, not variable */
   C_TYPE_SQLDA = 23,
   C_TYPE_BIGINT = 24,
   NUM_C_TYPES = 25		/* for # of elements in C_TYPE */
+#else
+  C_TYPE_NCHAR = 20,
+  C_TYPE_VARNCHAR = 21,
+  C_TYPE_STRING_CONST,		/* for string constant, not variable */
+  C_TYPE_SQLDA,
+  C_TYPE_BIGINT,
+  NUM_C_TYPES
+#endif
 } C_TYPE;
 
 typedef enum specifier_noun

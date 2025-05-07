@@ -1711,12 +1711,12 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Bit,
   &tp_VarBit,
   &tp_Char,
-#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)    // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	// ctshim
   &tp_NChar,
   &tp_VarNChar,
 #else
-  NULL,				// &tp_NChar,
-  NULL,				// &tp_VarNChar,
+  //NULL,                               // &tp_NChar,
+  //NULL,                               // &tp_VarNChar,
 #endif
   &tp_ResultSet,
   &tp_Midxkey,
@@ -1963,7 +1963,7 @@ pr_clear_value (DB_VALUE * value)
 	  value->data.ch.medium.buf = NULL;
 	}
 
-      /* Clear the compressed string since we are here for DB_TYPE_VARCHAR and DB_TYPE_VARNCHAR. */
+      /* Clear the compressed string since we are here for DB_TYPE_VARCHAR. */
       if (db_type == DB_TYPE_VARCHAR)
 	{
 	  char *compressed_str = DB_GET_COMPRESSED_STRING (value);
@@ -12253,7 +12253,7 @@ PR_TYPE tp_Char = {
 
 PR_TYPE *tp_Type_char = &tp_Char;
 
-#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
   NULL,
@@ -12277,10 +12277,6 @@ PR_TYPE tp_NChar = {
   NULL
 };
 
-PR_TYPE *tp_Type_nchar = &tp_NChar;
-#endif
-
-#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 PR_TYPE tp_VarNChar = {
   "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0, 1,
   NULL,

@@ -139,7 +139,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_OBJECT,
   DB_TYPE_CHAR,
   DB_TYPE_VARCHAR,
-#if !defined(REMOVE_NCHAR)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
   DB_TYPE_NCHAR,
   DB_TYPE_VARNCHAR,
 #endif
@@ -323,6 +323,7 @@ TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)    // ctshim
 TP_DOMAIN tp_NChar_domain = { NULL, NULL, /* &tp_NChar */ NULL, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
@@ -330,6 +331,7 @@ TP_DOMAIN tp_NChar_domain = { NULL, NULL, /* &tp_NChar */ NULL, TP_FLOATING_PREC
 TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, /* &tp_VarNChar */ NULL, DB_MAX_VARNCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
+#endif
 
 TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
@@ -365,12 +367,12 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Bit_domain,
   &tp_VarBit_domain,
   &tp_Char_domain,
-#if !defined(REMOVE_NCHAR)	// ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	// && defined(XXYYZ_1)    // ctshim
   &tp_NChar_domain,
   &tp_VarNChar_domain,
 #else
-  NULL,				//&tp_NChar_domain,
-  NULL,				//&tp_VarNChar_domain,
+  //NULL,                               //&tp_NChar_domain,
+  //NULL,                               //&tp_VarNChar_domain,
 #endif
   &tp_Resultset_domain,		/* result set */
   &tp_Midxkey_domain_list_heads[0],
@@ -691,7 +693,7 @@ tp_apply_sys_charset (void)
   /* update string domains with current codeset */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
-#if !defined(REMOVE_NCHAR)	// ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)     // ctshim
   tp_NChar_domain.codeset = LANG_SYS_CODESET;
   tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
 #endif
@@ -699,7 +701,7 @@ tp_apply_sys_charset (void)
 
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.collation_id = LANG_SYS_COLLATION;
-#if !defined(REMOVE_NCHAR)	// ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)     // ctshim
   tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
   tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 #endif

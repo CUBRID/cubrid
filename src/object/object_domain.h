@@ -168,7 +168,7 @@ extern TP_DOMAIN tp_Vobj_domain;
 extern TP_DOMAIN tp_Oid_domain;
 extern TP_DOMAIN tp_Numeric_domain;
 extern TP_DOMAIN tp_Char_domain;
-#if !defined(REMOVE_NCHAR)	// ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)    // ctshim       // ctshim
 extern TP_DOMAIN tp_NChar_domain;
 extern TP_DOMAIN tp_VarNChar_domain;
 #endif
@@ -349,7 +349,6 @@ typedef enum tp_match
 #define TP_DATETIMETZ_AS_CHAR_LENGTH    64
 
 /* CHAR type and VARCHAR type are compatible with each other */
-/* NCHAR type and VARNCHAR type are compatible with each other */
 /* BIT type and VARBIT type are compatible with each other */
 /* OID type and OBJECT type are compatible with each other */
 /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain

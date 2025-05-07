@@ -1392,7 +1392,7 @@ extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
 extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #endif
 
-/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
+/* Because of the STRING encoding, this one could not be changed for over 255, just lower. */
 #define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
 #define OR_IS_STRING_LENGTH_COMPRESSABLE(str_length) \
@@ -2520,7 +2520,7 @@ or_varchar_length_internal (int charlen, int align)
   else
     {
       /*
-       * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
+       * Regarding the new encoding for VARCHAR, the strings stored in buffers have this representation:
        * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
        *                 : Otherwise, the first byte states the length of the string.
        * 1st OR_INT_SIZE : string's compressed length

@@ -213,7 +213,7 @@ extern PR_TYPE tp_Numeric;
 extern PR_TYPE tp_Bit;
 extern PR_TYPE tp_VarBit;
 extern PR_TYPE tp_Char;
-#if !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
 extern PR_TYPE tp_NChar;
 extern PR_TYPE tp_VarNChar;
 #endif
@@ -255,7 +255,6 @@ extern PR_TYPE *tp_Type_numeric;
 extern PR_TYPE *tp_Type_bit;
 extern PR_TYPE *tp_Type_varbit;
 extern PR_TYPE *tp_Type_char;
-extern PR_TYPE *tp_Type_nchar;
 extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
 extern PR_TYPE *tp_Type_bigint;
