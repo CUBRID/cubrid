@@ -186,13 +186,6 @@ enum pushable_type
 };
 typedef enum pushable_type PUSHABLE_TYPE;
 
-enum cte_type
-{
-  CTE_MATERIALIZE = 0,
-  CTE_INLINE = 1
-};
-typedef enum cte_type CTE_TYPE;
-
 static PT_NODE *mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_bump_corr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *mq_union_bump_correlation (PARSER_CONTEXT * parser, PT_NODE * left, PT_NODE * right);
@@ -5104,25 +5097,27 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  assert (PT_IS_SELECT (query));
 
-	  if (query->info.query.q.select.hint & PT_HINT_INLINE_CTE)
+	  switch (query->info.query.q.select.hint)
 	    {
+	    case PT_HINT_INLINE_CTE:
 	      /* keep inline hint */
-	    }
-	  else if (query->info.query.q.
-		   select.hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
-	    {
+	      break;
+	    case PT_HINT_MATERIALIZE_CTE:
+	    case PT_HINT_SELECT_BTREE_NODE_INFO:
+	    case PT_HINT_SELECT_KEY_INFO:
+	      /* materialize CTE if it is referenced at least once. */
 	      if (cte->info.cte.referenced_count >= 1)
 		{
 		  cte->info.cte.is_materialized = true;
 		}
-	    }
-	  else
-	    {
+	      break;
+	    default:
 	      /* default behavior based on reference count */
 	      if (cte->info.cte.referenced_count >= 2)
 		{
 		  cte->info.cte.is_materialized = true;
 		}
+	      break;
 	    }
 	}
       else
