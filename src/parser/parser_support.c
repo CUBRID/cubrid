@@ -4840,7 +4840,6 @@ pt_fixup_column_type (PT_NODE * col)
     {
       switch (col->type_enum)
 	{
-	  /* for NCHAR(3) type column, we reserve only 3bytes. precision and length for NCHAR(n) type is n */
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	  if (col->info.value.data_value.str != NULL)
@@ -4889,7 +4888,7 @@ pt_fixup_column_type (PT_NODE * col)
 	}
     }
 
-  /* Convert char(max) to varchar(max), nchar(max) to varnchar(max), bit(max) to varbit(max) */
+  /* Convert char(max) to varchar(max), bit(max) to varbit(max) */
   if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_BIT)
       && col->data_type != NULL && (col->data_type->info.data_type.precision == TP_FLOATING_PRECISION_VALUE))
     {
@@ -5677,7 +5676,11 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *val1_node = NULL;
     PT_NODE *val2_node = NULL;
 
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
+#else
+    pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_NUMERIC);
+#endif
     assert (concat_node != NULL);
     val1_node = concat_node;
     val2_node = pt_make_string_value (parser, ")");
@@ -5723,10 +5726,12 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *val2_node = NULL;
     PT_NODE *pred_for_if = NULL;
 
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     /* VARNCHAR and CHAR */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+
     /* CHAR */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
@@ -5742,6 +5747,23 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* NUMERIC */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#else
+    /* CHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_CHAR);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* VARBIT */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_VARBIT);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* BIT */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_BIT);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* VARCHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_STRING);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* NUMERIC */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_NUMERIC);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#endif
     cond_item1->info.expr.paren_type = 1;
 
     /* prec */
@@ -5835,7 +5857,11 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     node2 = parser_keyword_func ("concat", node1);
 
     /* IF (type_id = 35, CONCAT('(', SELECT ..., ')'), '') */
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     node1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 35);
+#else
+    node1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_ENUMERATION /*35 */ );
+#endif
     node3 = pt_make_string_value (parser, "");
     if_node_enum = parser_make_expression (parser, PT_IF, node1, node2, node3);
     if (if_node_enum == NULL)
@@ -5852,6 +5878,7 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *val2_node = NULL;
     PT_NODE *pred_for_if = NULL;
 
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     /* SET and MULTISET */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 6);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 7);
@@ -5859,6 +5886,15 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     /* SEQUENCE */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 8);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#else
+    /* SET and MULTISET */
+    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_SET);
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_MULTISET);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* SEQUENCE */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_SEQUENCE);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#endif
 
     pred_for_if = cond_item1;
     assert (concat_node != NULL);
@@ -5934,16 +5970,26 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *cond_item2 = NULL;
     PT_NODE *pred_for_if = NULL;
 
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     /* VARNCHAR and CHAR */
     cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+
     /* CHAR */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
     /* STRING */
     cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
     cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#else
+    /* CHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_CHAR);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+    /* STRING */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_STRING);
+    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
+#endif
 
     pred_for_if = cond_item1;
 

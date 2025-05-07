@@ -245,8 +245,10 @@ int or_Type_sizes[] = {
   -1,				/* bit */
   -1,				/* varbit */
   -1,				/* char */
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   -1,				/* nchar */
   -1,				/* varnchar */
+#endif
 };
 
 /*

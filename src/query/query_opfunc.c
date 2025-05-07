@@ -8398,8 +8398,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
     }
 
   /*
-   * operand should already be cast to the right type (CHAR
-   * or NCHAR VARYING)
+   * operand should already be cast to the right type (CHAR)
    */
   error_status = pr_clone_value (operand_value, function_p->value);
 

@@ -373,7 +373,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   /* CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR was deprecated, 
    * but, it is retained to preserve the order of DB_TYPE_NCHAR and DB_TYPE_VARNCHAR
    */
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   0, 0,				/* 26 - 27 */
 #endif
   CCI_U_TYPE_RESULTSET,		/* 28 */

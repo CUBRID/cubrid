@@ -33,6 +33,7 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+
 #define START 		0
 #define ECHO_mode START
 #define CSQL_mode	1
@@ -1156,9 +1157,7 @@ quasi_string_const
 					    NEWSET (C_TYPE_CHAR_ARRAY) |
 					    NEWSET (C_TYPE_CHAR_POINTER) |
 					    NEWSET (C_TYPE_STRING_CONST) |
-					    NEWSET (C_TYPE_VARCHAR) |
-					    NEWSET (C_TYPE_NCHAR) |
-					    NEWSET (C_TYPE_VARNCHAR),
+					    NEWSET (C_TYPE_VARCHAR),
 					    pp_get_msg (EX_ESQLM_SET, MSG_CHAR_STRING));
 
 		DBG_PRINT}}

@@ -3265,7 +3265,7 @@ union pt_data_value
   DB_BIGINT bigint;
   float f;
   double d;
-  PARSER_VARCHAR *str;		/* keeps as string different data type: string data types (char, nchar, byte) date and
+  PARSER_VARCHAR *str;		/* keeps as string different data type: string data types (char, byte) date and
 				 * time data types numeric */
   void *p;			/* what is this */
   DB_OBJECT *op;

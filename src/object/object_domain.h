@@ -168,7 +168,7 @@ extern TP_DOMAIN tp_Vobj_domain;
 extern TP_DOMAIN tp_Oid_domain;
 extern TP_DOMAIN tp_Numeric_domain;
 extern TP_DOMAIN tp_Char_domain;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)    // ctshim       // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
 extern TP_DOMAIN tp_NChar_domain;
 extern TP_DOMAIN tp_VarNChar_domain;
 #endif

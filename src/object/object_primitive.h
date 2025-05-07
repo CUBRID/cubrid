@@ -213,7 +213,7 @@ extern PR_TYPE tp_Numeric;
 extern PR_TYPE tp_Bit;
 extern PR_TYPE tp_VarBit;
 extern PR_TYPE tp_Char;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
 extern PR_TYPE tp_NChar;
 extern PR_TYPE tp_VarNChar;
 #endif
@@ -404,7 +404,7 @@ STATIC_INLINE int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   /*
-   * variable types except VARCHAR, VARNCHAR, and VARBIT
+   * variable types except VARCHAR and VARBIT
    * cannot be a member of midxkey
    */
   assert (!(domain->type->variable_p

@@ -2648,7 +2648,7 @@ error_exit:
  *
  *  These functions (ldr_str_db_*) are called when quoted strings are
  *  processed by the lexer.  They probably only make sense for char, varchar,
- *  nchar, varnchar, bit, and varbit domains.
+ *  bit, and varbit domains.
  *
  *  WARNING:  these functions cheat and assume a char-is-a-byte model, which
  *  won't work when dealing with non-ASCII (or non-Latin, at least) charsets.

@@ -5204,7 +5204,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		{
 		case PT_TYPE_CHAR:
 		case PT_TYPE_BIT:
-		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
+		  /* CHAR type can be common type for one of all arguments is string type */
 		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
@@ -6002,7 +6002,7 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
     {
     case PT_GENERIC_TYPE_STRING:
       {
-	/* The return type might be CHAR, VARCHAR, NCHAR or VARNCHAR. Since not all arguments are required to be of
+	/* The return type might be CHAR, VARCHAR. Since not all arguments are required to be of
 	 * string type, we have to infer the return type based only on the string type arguments */
 	PT_TYPE_ENUM common_type = PT_TYPE_NONE;
 	if (PT_IS_STRING_TYPE (arg1_type))
@@ -23071,8 +23071,8 @@ pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser, PT_NODE * expr)
 }
 
 /*
- * pt_wrap_type_for_collation () - Determines the string type (VARCHAR or
- *	    VARNCHAR) to be used for wrap with cast or set as expected domain
+ * pt_wrap_type_for_collation () - Determines the string type (VARCHAR)
+ *	    to be used for wrap with cast or set as expected domain
  *	    onto a "TYPE_MAYBE" argument node. It also determines the
  *	    collection type to use if common argument type is collection.
  *
@@ -23085,8 +23085,7 @@ pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser, PT_NODE * expr)
  *  arg3(in):
  *  wrap_type_collection(out): collection type to use
  *
- *  Note: this function assumes that mixed VARCHAR-VARNCHAR arguments have
- *	  already been detected as errors by type inference.
+ *  Note: 
  */
 static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,

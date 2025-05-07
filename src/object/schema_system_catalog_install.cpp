@@ -55,8 +55,7 @@ catcls_add_data_type (struct db_object *class_mop)
     NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
     NULL /* OID */,
     NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
-    //"NCHAR", "VARNCHAR", // ctshim TODO
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     NULL /* NCHAR */, NULL /* VARNCHAR */,
 #endif
     NULL /* RESULTSET */, NULL /* MIDXKEY */,

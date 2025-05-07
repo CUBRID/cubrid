@@ -819,8 +819,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  We need to be careful how the trimming is
-       * done.  Char and varchar can do the normal trim, nchar and varnchar need to worry about codeset and pad chars,
-       * and bit and varbit don't want to trim at all. */
+       * done.  Char and varchar can do the normal trim and bit and varbit don't want to trim at all. */
       if (result_type == DB_TYPE_VARCHAR)
 	{
 	  for (; string1_size && string1[string1_size - 1] == ' '; string1_size--)
@@ -5541,8 +5540,7 @@ exit:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR, BIT or
- *		   VARBIT
+ *		  <src_string> is not CHAR, VARCHAR, BIT or VARBIT
  *
  * Note : result variable must already be created
  *	  operates directly on memory buffer
@@ -5654,7 +5652,7 @@ exit_copy:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : Used in context of GROUP_CONCAT. It is complementary to
  *	  'db_string_limit_size_string' function
@@ -6706,7 +6704,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Arguments:
  *       db_val	    : (In/Out) value to make
- *       db_type    : (In) Type of string (char,nchar,bit)
+ *       db_type    : (In) Type of string (char,bit)
  *       precision  : (In)
  *       codeset    : (In)
  *       collation_id  : (In)
@@ -6715,7 +6713,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Errors:
  *   ER_QSTR_INVALID_DATA_TYPE
- *      <type> is not one of (char,nchar,bit)
+ *      <type> is not one of (char,bit)
  *   ER_OUT_OF_VIRTUAL_MEMORY
  *      out of memory
  *
@@ -8518,7 +8516,7 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : src buffer is not freed, caller should be aware of this;
  *	  Result DB_VALUE must already be created.
@@ -8614,7 +8612,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
  *
  * Returns:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <s1> and <s2> are not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <s1> and <s2> are not CHAR, VARCHAR
  *
  * Errors:
  *

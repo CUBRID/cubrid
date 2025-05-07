@@ -553,22 +553,11 @@ extern "C"
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
-#define TEST_CASE  3
-#if (TEST_CASE == 0)		// OK, 호환 가능
-//#  define REMOVE_NCHAR  // ctshim
-//#  define BACKWARD_COMPATIBILITY_4_NCHAR
-#elif (TEST_CASE == 1)		// OK, 호환 가능
-//#  define REMOVE_NCHAR  // ctshim
-#define BACKWARD_COMPATIBILITY_4_NCHAR
-#elif (TEST_CASE == 2)		// OK, 호환은 않됨
-#define REMOVE_NCHAR		// ctshim
-//#  define BACKWARD_COMPATIBILITY_4_NCHAR
-#else				// NK, 호환 않됨
-#define REMOVE_NCHAR		// ctshim
-#define BACKWARD_COMPATIBILITY_4_NCHAR
-#endif
+/* ************************************************************************** */
+#define BACKWARD_COMPATIBILITY_4_NCHAR	// ctshim TODO:
+/* ************************************************************************** */
 
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
 /* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
  * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
  */
@@ -736,7 +725,7 @@ extern "C"
     DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
     DB_TYPE_VARBIT = 24,	/* SQL BIT(n) VARYING values */
     DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     /* DB_TYPE_NCHAR and DB_TYPE_VARNCHAR was deprecated. But, it is preserved for backward compatibility.  */
     DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
     DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
@@ -754,21 +743,20 @@ extern "C"
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
 #else
-    DB_TYPE_RESULTSET,		/* internal use only */
-    DB_TYPE_MIDXKEY,		/* internal use only */
-    DB_TYPE_TABLE,		/* internal use only */
-    DB_TYPE_BIGINT,
-    DB_TYPE_DATETIME,
-    DB_TYPE_BLOB,
-    DB_TYPE_CLOB,
-    DB_TYPE_ENUMERATION,
-    DB_TYPE_TIMESTAMPTZ,
-    DB_TYPE_TIMESTAMPLTZ,
-    DB_TYPE_DATETIMETZ,
-    DB_TYPE_DATETIMELTZ,
-    DB_TYPE_JSON,
+    DB_TYPE_RESULTSET = 26,	/* internal use only */
+    DB_TYPE_MIDXKEY = 27,	/* internal use only */
+    DB_TYPE_TABLE = 28,		/* internal use only */
+    DB_TYPE_BIGINT = 29,
+    DB_TYPE_DATETIME = 30,
+    DB_TYPE_BLOB = 31,
+    DB_TYPE_CLOB = 32,
+    DB_TYPE_ENUMERATION = 33,
+    DB_TYPE_TIMESTAMPTZ = 34,
+    DB_TYPE_TIMESTAMPLTZ = 35,
+    DB_TYPE_DATETIMETZ = 36,
+    DB_TYPE_DATETIMELTZ = 37,
+    DB_TYPE_JSON = 38,
 #endif
-
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
@@ -1022,7 +1010,7 @@ extern "C"
 
   typedef DB_IDENTIFIER OID;
 
-  /* Structure used for the representation of char, nchar and bit values. */
+  /* Structure used for the representation of char and bit values. */
   typedef struct db_large_string DB_LARGE_STRING;
 
   /* db_char.sm was formerly db_char.small.  small is an (undocumented) reserved word on NT. */
@@ -1181,7 +1169,7 @@ extern "C"
     DB_TYPE_C_DOUBLE,
     DB_TYPE_C_CHAR,
     DB_TYPE_C_VARCHAR,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
     DB_TYPE_C_NCHAR,
     DB_TYPE_C_VARNCHAR,
 #endif

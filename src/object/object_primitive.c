@@ -1711,12 +1711,9 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Bit,
   &tp_VarBit,
   &tp_Char,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	// ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   &tp_NChar,
   &tp_VarNChar,
-#else
-  //NULL,                               // &tp_NChar,
-  //NULL,                               // &tp_VarNChar,
 #endif
   &tp_ResultSet,
   &tp_Midxkey,
@@ -12253,7 +12250,7 @@ PR_TYPE tp_Char = {
 
 PR_TYPE *tp_Type_char = &tp_Char;
 
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(MY_STEP_3ND)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
   NULL,
@@ -14101,7 +14098,7 @@ cleanup:
 
 /*
  * pr_get_size_and_write_string_to_buffer ()
- *	  			  : Writes a VARCHAR or VARNCHAR to buffer and gets the correct size on the disk.
+ *	  			  : Writes a VARCHAR to buffer and gets the correct size on the disk.
  *
  * buf(out)			  : Buffer to be written to.
  * val_p(in)			  : Memory area to be written to.
@@ -14418,7 +14415,7 @@ pr_data_compress_string (const char *string, int str_length, char *compressed_st
 
 /*
  * pr_clear_compressed_string()	      :- Clears the compressed string that might have been stored in a DB_VALUE.
- *					 This needs to succeed only for VARCHAR and VARNCHAR types.
+ *					 This needs to succeed only for VARCHAR type.
  *
  * return ()			      :- NO_ERROR or error code.
  * value(in/out)		      :- The DB_VALUE that needs the clearing.
@@ -14437,7 +14434,7 @@ pr_clear_compressed_string (DB_VALUE * value)
 
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
-  /* Make sure we clear only for VARCHAR and VARNCHAR types. */
+  /* Make sure we clear only for VARCHAR type. */
   if (db_type != DB_TYPE_VARCHAR)
     {
       return NO_ERROR;		/* do nothing */
@@ -14465,7 +14462,7 @@ pr_clear_compressed_string (DB_VALUE * value)
 }
 
 /*
- * pr_do_db_value_string_compression()	  :- Test a DB_VALUE for VARCHAR and VARNCHAR types and do string compression
+ * pr_do_db_value_string_compression()	  :- Test a DB_VALUE for VARCHAR type and do string compression
  *					  :- for such types.
  *
  * return()				  :- NO_ERROR or error code.
@@ -14488,7 +14485,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
 
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
-  /* Make sure we clear only for VARCHAR and VARNCHAR types. */
+  /* Make sure we clear only for VARCHAR type. */
   if (db_type != DB_TYPE_VARCHAR)
     {
       return rc;		/* do nothing */

@@ -139,7 +139,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_OBJECT,
   DB_TYPE_CHAR,
   DB_TYPE_VARCHAR,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   DB_TYPE_NCHAR,
   DB_TYPE_VARNCHAR,
 #endif
@@ -323,7 +323,7 @@ TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)    // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
 TP_DOMAIN tp_NChar_domain = { NULL, NULL, /* &tp_NChar */ NULL, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
@@ -367,12 +367,9 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Bit_domain,
   &tp_VarBit_domain,
   &tp_Char_domain,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	// && defined(XXYYZ_1)    // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   &tp_NChar_domain,
   &tp_VarNChar_domain,
-#else
-  //NULL,                               //&tp_NChar_domain,
-  //NULL,                               //&tp_VarNChar_domain,
 #endif
   &tp_Resultset_domain,		/* result set */
   &tp_Midxkey_domain_list_heads[0],
@@ -693,7 +690,7 @@ tp_apply_sys_charset (void)
   /* update string domains with current codeset */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)     // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   tp_NChar_domain.codeset = LANG_SYS_CODESET;
   tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
 #endif
@@ -701,7 +698,7 @@ tp_apply_sys_charset (void)
 
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.collation_id = LANG_SYS_COLLATION;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR) || !defined(REMOVE_NCHAR)	//&& defined(XXYYZ_1)     // ctshim
+#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
   tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
   tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 #endif
@@ -1524,7 +1521,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
   /*
    * At this point, either dom1 and dom2 have exactly the same type, or
    * exact_match is TP_STR_MATCH and dom1 and dom2 are a char/varchar
-   * (nchar/varnchar, bit/varbit) pair.
+   * (bit/varbit) pair.
    */
 
   /* check for asc/desc */
@@ -1918,7 +1915,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
   /*
    * At this point, either domain and transient have exactly the same type, or
    * exact_match is TP_STR_MATCH and domain and transient are a char/varchar
-   * (nchar/varnchar, bit/varbit) pair.
+   * (bit/varbit) pair.
    */
 
   /* could use the new is_parameterized flag to avoid the switch ? */
@@ -3545,7 +3542,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	       * ==> distinguishing VARCHAR from CHAR.
 	       * 2. core dumped & deficient character related with
 	       * CONST CHAR & CHAR in set.
-	       * ==> In case of CHAR,NCHAR,BIT,  cosidering precision.
+	       * ==> In case of CHAR, BIT  cosidering precision.
 	       */
 	      if (d->precision == domain->precision)
 		{
@@ -3684,7 +3681,7 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BIT:
 	      /* 1.deficient character related with CHAR & VARCHAR in set. ==> distinguishing VARCHAR from CHAR. 2.
 	       * core dumped & deficient character related with CONST CHAR & CHAR in set. ==> In case of
-	       * CHAR,NCHAR,BIT, cosidering precision. */
+	       * CHAR, BIT cosidering precision. */
 	      if (d->precision == domain->precision)
 		{
 		  found = d;

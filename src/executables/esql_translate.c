@@ -213,8 +213,6 @@ get_quasi_string (HOST_REF * ref, const char **buf_str, const char **bufsize_str
   switch (pp_get_type (ref))
     {
     case C_TYPE_VARCHAR:
-    case C_TYPE_NCHAR:
-    case C_TYPE_VARNCHAR:
       {
 	*buf_str = pp_get_addr_expr (ref);
 	*bufsize_str = pp_get_input_size (ref);
@@ -1370,7 +1368,7 @@ emit_get_db_value (int cs_no, HOST_REF * host)
   fprintf (FP, "(void *)(%s), ", pp_get_addr_expr (host));
   fprintf (FP, "%s, ", c_type_to_db_type_c[ctype]);
   fprintf (FP, "(int)(%s), ", pp_get_output_size (host));
-  if (ctype == C_TYPE_VARCHAR || ctype == C_TYPE_VARNCHAR || ctype == C_TYPE_VARBIT)
+  if (ctype == C_TYPE_VARCHAR || ctype == C_TYPE_VARBIT)
     {
       fprintf (FP, "&%s", pp_get_input_size (host));
     }

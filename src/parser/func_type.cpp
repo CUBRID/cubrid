@@ -2125,7 +2125,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    }
 
 	  /*
-	   * Look for the first argument of character string type and obtain its category (CHAR/NCHAR). All other
+	   * Look for the first argument of character string type and obtain its category (CHAR). All other
 	   * arguments should be converted to this type, which is also the return type. */
 
 	  arg_type = PT_TYPE_NONE;
