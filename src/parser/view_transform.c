@@ -5090,45 +5090,45 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
-  cte = node->info.with_clause.cte_definition_list;
-  while (cte)
+  for (cte = node->info.with_clause.cte_definition_list; cte; cte = cte->next)
     {
+      is_inlinable = true;
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
 			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
 
-      if (!is_inlinable)
+      if (is_inlinable)
 	{
-	  cte->info.cte.is_materialized = true;
-	  continue;
-	}
+	  query = pt_find_select (parser, cte->info.cte.non_recursive_part);
 
-      query = pt_find_select (parser, cte->info.cte.non_recursive_part);
+	  assert (PT_IS_SELECT (query));
 
-      assert (PT_IS_SELECT (query));
-
-      if (query->info.query.q.select.hint & PT_HINT_INLINE_CTE)
-	{
-	  /* keep inline hint */
-	}
-      else if (query->info.query.q.select.
-	       hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
-	{
-	  if (cte->info.cte.referenced_count >= 1)
+	  if (query->info.query.q.select.hint & PT_HINT_INLINE_CTE)
 	    {
-	      cte->info.cte.is_materialized = true;
+	      /* keep inline hint */
+	    }
+	  else if (query->info.query.q.
+		   select.hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
+	    {
+	      if (cte->info.cte.referenced_count >= 1)
+		{
+		  cte->info.cte.is_materialized = true;
+		}
+	    }
+	  else
+	    {
+	      /* default behavior based on reference count */
+	      if (cte->info.cte.referenced_count >= 2)
+		{
+		  cte->info.cte.is_materialized = true;
+		}
 	    }
 	}
       else
 	{
-	  /* default behavior based on reference count */
-	  if (cte->info.cte.referenced_count >= 2)
-	    {
-	      cte->info.cte.is_materialized = true;
-	    }
+	  cte->info.cte.is_materialized = true;
 	}
-      cte = cte->next;
     }
 }
 
@@ -5202,8 +5202,6 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       return NULL;
     }
-
-  *can_inlining = true;
 
   switch (node->node_type)
     {
