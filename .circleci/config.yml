@@ -9,8 +9,8 @@ parameters:
     default: ""
   run_shell_test:
     type: boolean
-    # default: false
-    default: true
+    default: false
+    # default: true
   run_sql_test:
     type: boolean
     default: false
