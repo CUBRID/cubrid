@@ -10,19 +10,15 @@ parameters:
   run_shell_test:
     type: boolean
     default: false
-    # default: true
   run_sql_test:
     type: boolean
     default: false
-    # default: true
   run_medium_test:
     type: boolean
     default: false
-    # default: true
   run_plcsql_test:
     type: boolean
     default: false
-    # default: true
 # --------------------------------------------------
 # 1. Reusable commands
 # --------------------------------------------------
@@ -36,8 +32,6 @@ commands:
           name: Test
           shell: /bin/bash
           no_output_timeout: 20m
-          # environment:
-          #   _JAVA_OPTIONS: -Xmx1g
           command: |
             # Limit core files
             ulimit -c 1
@@ -66,7 +60,7 @@ commands:
               file_ext="sh"
               base_dir="cubrid-testcases-private-ex"
               rm -rf $base_dir/$TEST_SUITE/_25_unstable
-              glob_path="$base_dir/$TEST_SUITE/_01_utility/_03_start_server/**/*.sh"
+              glob_path="$base_dir/$TEST_SUITE/_01_utility/**/*.sh"
               # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
             else
               file_ext="sql"
@@ -85,8 +79,6 @@ commands:
               circleci-agent step halt
             fi
 
-            HOME=$WORKDIR /home/cubrid-testtools/CTP/common/script/run_cubrid_install https://ftp.cubrid.org/CUBRID_Engine/nightly/daily_build/11.4.0.1693-6d1e147/drop/CUBRID-11.4.0.1693-6d1e147-Linux.x86_64.sh
-            
             # Run the tests
             /entrypoint.sh test
       - run:
@@ -249,30 +241,30 @@ jobs:
 workflows:
   build_test:
     jobs:
-      # - build
-      # - test_job:
-      #     name: test_medium
-      #     requires: 
-      #       - build
-      #     test_suite: "medium"
-      # - test_job:
-      #     name: test_sql
-      #     requires:
-      #       - build
-      #     test_suite: "sql"
-      #     parallel_num: 8
+      - build
+      - test_job:
+          name: test_medium
+          requires: 
+            - build
+          test_suite: "medium"
+      - test_job:
+          name: test_sql
+          requires:
+            - build
+          test_suite: "sql"
+          parallel_num: 8
       - test_job:
           name: test_plcsql
-      #     requires: 
-      #       - build
+          requires: 
+            - build
           test_suite: "plcsql"
       - test_job:
           name: test_shell
-          # requires: 
-          #   - build
+          requires: 
+            - build
           test_suite: "shell"
           e: cubrid-test-shell
-          parallel_num: 1
+          parallel_num: 30
       # - build-windows:
       #     requires: 
       #       - build
