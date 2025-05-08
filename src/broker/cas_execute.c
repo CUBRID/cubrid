@@ -768,7 +768,7 @@ void
 ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
-  if (db_get_connect_status () == 1)	// only if connected to db
+  if (db_get_connect_status () != 0)	// only if connected to db
     {
       if (request_server)
 	{
@@ -1441,6 +1441,13 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (bind_data_list)
     {
+      for (int i = 0; i < num_bind; i++)
+	{
+	  if (bind_data_list[i].wchar_val)
+	    {
+	      FREE_MEM (bind_data_list[i].wchar_val);
+	    }
+	}
       FREE_MEM (bind_data_list);
     }
 
