@@ -278,7 +278,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	}
     }
 
-  type = -1;
+  type = CCI_U_TYPE_LAST + 1;
   switch (*p)
     {
     case 'B':
@@ -449,7 +449,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
       break;
     }
 
-  if (type == -1)
+  if (type == (CCI_U_TYPE_LAST + 1))
     {
       fprintf (stderr, "log error [line:%d]\n", lineno);
       return -1;
