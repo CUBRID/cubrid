@@ -10,19 +10,15 @@ parameters:
   run_shell_test:
     type: boolean
     default: true
-    # default: false
   run_sql_test:
     type: boolean
     default: true
-    # default: false
   run_medium_test:
     type: boolean
-    default: true
-    # default: false
+    default: false
   run_plcsql_test:
     type: boolean
-    default: true
-    # default: false
+    default: false
 # --------------------------------------------------
 # 1. Reusable commands
 # --------------------------------------------------
@@ -52,28 +48,31 @@ commands:
               TEST_SUITE="sql"
               file_ext="sql"
               base_dir="cubrid-testcases"
-              glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
+              glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/cases/*.sql"
             elif [ "$TEST_SUITE" = "sql" ]; then
               file_ext="sql"
               base_dir="cubrid-testcases"
               rm -rf $base_dir/sql/_05_plcsql
               rm -rf $base_dir/sql/_35_fig_cake/plcsql
-              glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
+              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             elif [ "$TEST_SUITE" = "shell" ]; then
               file_ext="sh"
               base_dir="cubrid-testcases-private-ex"
               rm -rf $base_dir/$TEST_SUITE/_25_unstable
-              glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+              glob_path="$base_dir/$TEST_SUITE/_01_utility/**/cases/*.sh"
+              # glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sh"
             else
               file_ext="sql"
               base_dir="cubrid-testcases"
-              glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
+              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             fi
 
-            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=timings --timings-type=name
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=name
+            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=timings --timings-type=name
             if [ -s tc.list ]; then
               sed -i "s|^|$base_dir/|" tc.list
-              find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
+              cat tc.list | xargs -n1 dirname > tc_dirs.list
+              find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
 
               # Run the tests
               /entrypoint.sh test
@@ -85,7 +84,7 @@ commands:
           name: Collect Logs
           command: |
             mkdir -p /tmp/logs
-            cp /tmp/tests/*.xml /tmp/logs
+            cp -f /tmp/tests/*.xml /tmp/logs
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
               mv -f /tmp/tests/*.csv /tmp/logs
