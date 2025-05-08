@@ -68,26 +68,16 @@ commands:
               glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             fi
 
-            echo "CIRCLE_NODE_INDEX: $CIRCLE_NODE_INDEX"
-            echo "CIRCLE_NODE_TOTAL: $CIRCLE_NODE_TOTAL"
-            
-            circleci tests glob $glob_path > all_tests.txt
-            cat all_tests.txt | sed 's#^[^/]*/##' > processed_tests.txt
-            cat processed_tests.txt | circleci tests split --split-by=name > tc.list
-
-            echo "Tests for this node:"
-            cat tc.list
-            echo "Total test count for this node: $(wc -l < tc.list)"
-            
-            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split | tee tc.list
-            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=timings --timings-type=name | tee tc.list
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=timings --timings-type=name | tee tc.list
             if [ -s tc.list ]; then
               sed -i "s|^|$base_dir/|" tc.list
-              cat tc.list | xargs -n1 dirname > tc_dirs.list
-              find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
-
-              find $base_dir -name "*.$file_ext" -type f 
-
+              if [ "$TEST_SUITE" = "shell" ]; then
+                cat tc.list | xargs -n1 dirname > tc_dirs.list
+                find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
+              else
+                find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
+              fi
+ 
               # Run the tests
               /entrypoint.sh test
             else
