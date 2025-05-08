@@ -67,8 +67,8 @@ commands:
               glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             fi
 
-            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=name
-            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests run --command=">tc.list xargs -n1 echo" --verbose --split-by=timings --timings-type=name
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=name | tee tc.list
+            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=timings --timings-type=name | tee tc.list
             if [ -s tc.list ]; then
               sed -i "s|^|$base_dir/|" tc.list
               cat tc.list | xargs -n1 dirname > tc_dirs.list
