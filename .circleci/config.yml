@@ -54,7 +54,8 @@ commands:
               base_dir="cubrid-testcases"
               rm -rf $base_dir/sql/_05_plcsql
               rm -rf $base_dir/sql/_35_fig_cake/plcsql
-              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+              glob_path="$base_dir/$TEST_SUITE/_01_object/**/cases/*.sql"
+              # glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             elif [ "$TEST_SUITE" = "shell" ]; then
               file_ext="sh"
               base_dir="cubrid-testcases-private-ex"
@@ -67,7 +68,7 @@ commands:
               glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
             fi
 
-            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=name | tee tc.list
+            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split | tee tc.list
             # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=timings --timings-type=name | tee tc.list
             if [ -s tc.list ]; then
               sed -i "s|^|$base_dir/|" tc.list
@@ -84,10 +85,9 @@ commands:
           name: Collect Logs
           command: |
             mkdir -p /tmp/logs
-            cp -f /tmp/tests/*.xml /tmp/logs
+            cp -f /tmp/tests/* /tmp/logs
             if [ "$TEST_SUITE" = "shell" ]; then
               mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
-              mv -f /tmp/tests/*.csv /tmp/logs
             else
               mv -f CUBRID/log /tmp/logs/cubrid_log
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
