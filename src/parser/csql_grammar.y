@@ -26,9 +26,16 @@
 #include "json_table_def.h"
 #include "parser.h"
 
-/* No longer supports pt_type_nchar; Keep grammar replaced with pt_type_char type.*/
+#if 1
+/* TODO: 
+ *  PT_TYPE_NCHAR and PT_TYPE_VARNCHAR are no longer supported.
+ *  However, the input syntax is maintained temporarily, 
+ * and for this purpose it is replaced by PT_TYPE_CHAR and PT_TYPE_VARCHAR respectively.
+ *  Even the Syntax needs to be cleaned up in the future.
+*/
 #define PT_TYPE_VARNCHAR   PT_TYPE_VARCHAR
 #define PT_TYPE_NCHAR      PT_TYPE_CHAR
+#endif
 
 /*
  * The default YYLTYPE structure is extended so that locations can hold
