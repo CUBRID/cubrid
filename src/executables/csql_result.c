@@ -62,7 +62,6 @@
 #define	MAX_MONETARY_DISPLAY_LENGTH	  20
 #define	MAX_DEFAULT_DISPLAY_LENGTH	  20
 #define STRING_TYPE_PREFIX_SUFFIX_LENGTH  2
-#define NSTRING_TYPE_PREFIX_SUFFIX_LENGTH 3
 #define BIT_TYPE_PREFIX_SUFFIX_LENGTH     3
 
 /* structure for current query result information */

@@ -129,8 +129,7 @@ static const char *c_type_to_db_type_c[] = {
   "DB_TYPE_C_VARCHAR",
   "DB_TYPE_C_BIT",
   "DB_TYPE_C_VARBIT",
-  "DB_TYPE_C_NCHAR",
-  "DB_TYPE_C_VARNCHAR",
+
   "DB_TYPE_C_STRING_CONST",
   "DB_TYPE_C_SQLDA",
   "DB_TYPE_C_BIGINT",

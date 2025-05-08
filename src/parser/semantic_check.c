@@ -345,9 +345,10 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
 	{
 	  cinfo->type_enum = PT_TYPE_VARCHAR;
 	}
-      {
-	cinfo->type_enum = PT_TYPE_VARBIT;
-      }
+      else
+	{
+	  cinfo->type_enum = PT_TYPE_VARBIT;
+	}
 
       if (att1_info->prec == DB_DEFAULT_PRECISION || att2_info->prec == DB_DEFAULT_PRECISION)
 	{

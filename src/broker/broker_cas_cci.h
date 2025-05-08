@@ -119,6 +119,13 @@ typedef enum
 
   CCI_U_TYPE_CHAR = 1,
   CCI_U_TYPE_STRING,
+#if 1
+  /* TODO:
+   * We need to keep it until we remove U_TYPE_VARNCHAR and U_TYPE_NCHAR from UUType.java.
+   */
+  CCI_U_TYPE_NCHAR,
+  CCI_U_TYPE_VARNCHAR,
+#endif
   CCI_U_TYPE_BIT,
   CCI_U_TYPE_VARBIT,
   CCI_U_TYPE_NUMERIC,

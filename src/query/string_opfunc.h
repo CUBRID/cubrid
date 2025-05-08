@@ -159,13 +159,10 @@ typedef enum
 
 #define QSTR_IS_LIKE_WILDCARD_CHAR(ch)	((ch) == LIKE_WILDCARD_MATCH_ONE || \
 					 (ch) == LIKE_WILDCARD_MATCH_MANY)
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int qstr_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int char_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
-extern int varnchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-			     INTL_CODESET codeset);
-extern int nchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-			  INTL_CODESET codeset);
+#endif
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int get_last_day (int month, int year);

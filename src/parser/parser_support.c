@@ -9301,7 +9301,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       /* IF (charset_id = 4, 'euckr', 'other') */
       PT_NODE *pred = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);	// INTL_CODESET_KSC5601_EUC
       if_node4 = pt_make_if_with_strings (parser, pred, "euckr", "other", NULL);
     }
 
@@ -9310,7 +9310,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 2);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 2);	// INTL_CODESET_RAW_BYTES
       string_node = pt_make_string_value (parser, "binary");
 
       if_node3 = pt_make_if_with_expressions (parser, pred, string_node, if_node4, NULL);
@@ -9321,7 +9321,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 5);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 5);	// INTL_CODESET_UTF8
       string_node = pt_make_string_value (parser, "utf8");
 
       if_node2 = pt_make_if_with_expressions (parser, pred, string_node, if_node3, NULL);
@@ -9332,7 +9332,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 3);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 3);	// INTL_CODESET_ISO88591
       string_node = pt_make_string_value (parser, "iso88591");
 
       if_node1 = pt_make_if_with_expressions (parser, pred, string_node, if_node2, "Charset");

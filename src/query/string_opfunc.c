@@ -101,7 +101,6 @@
  *  string types into function like groups.
  *
  *      DB_STRING and DB_CHAR    become QSTR_CHAR
- *      DB_NCHAR and DB_VARNCHAR become QSTR_NATIONAL_CHAR
  *      DB_BIT and DB_VARBIT     become QSTR_BIT
  *      All others               become QSTR_UNKNOWN, although this
  *                                      categorizations doesn't apply to
@@ -111,7 +110,6 @@ typedef enum
 {
   QSTR_UNKNOWN,
   QSTR_CHAR,
-  QSTR_NATIONAL_CHAR,
   QSTR_BIT
 } QSTR_CATEGORY;
 
@@ -416,7 +414,6 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -3668,7 +3665,6 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -7863,7 +7859,7 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
  *   Returns the character code set of the string "s."  The character code
  *   set of strings is:
  *
- *       QSTR_CHAR, QSTR_NATIONAL_CHAR, QSTR_BIT
+ *       QSTR_CHAR, QSTR_BIT
  *
  *   as defined in type QSTR_CATEGORY.  A value of QSTR_UNKNOWN is defined
  *   if the string does not fit into one of these categories.  This should
@@ -8230,191 +8226,6 @@ char_compare (const unsigned char *string1, int size1, const unsigned char *stri
 #undef SPACE
 #undef ZERO
 }				/* char_compare() */
-
-/*
- * varnchar_compare () - compare two national character strings of
- *                    DB_TYPE_VARNCHAR(tp_VarNChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-varnchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-		  INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* varnchar_compare() */
-
-/*
- * nchar_compare () - compare two national character strings of
- *                 DB_TYPE_NCHAR(tp_NChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-nchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2, INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  assert (size1 >= 0 && size2 >= 0);
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* nchar_compare() */
 #endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * bit_compare () - compare two bit strings of DB_TYPE_BIT(tp_Bit)

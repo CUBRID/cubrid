@@ -172,8 +172,8 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
   p += 2;
 
-  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) && (strncmp (p, "NCHAR", 5) != 0)
-      && (strncmp (p, "VARNCHAR", 8) != 0) && (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
+  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) &&
+      (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
     {
       return false;
     }
@@ -207,8 +207,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
       *info_size = (char *) info_end - (char *) buf;
     }
 
-  if ((strncmp (p, "CHAR", 4) != 0) || (strncmp (p, "VARCHAR", 7) != 0) || (strncmp (p, "NCHAR", 5) != 0)
-      || (strncmp (p, "VARNCHAR", 8) != 0))
+  if ((strncmp (p, "CHAR", 4) != 0) || (strncmp (p, "VARCHAR", 7) != 0))
     {
       *tot_val_size = strlen (info_end);
     }

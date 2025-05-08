@@ -294,6 +294,10 @@ endif()
 
 message(STATUS "Build ${PROJECT_NAME} ${CUBRID_VERSION} ${TARGET_PLATFORM_BITS}bit ${CMAKE_BUILD_TYPE} on ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 
+# TODO: If you are not going to be compatible with older versions of DB image, remove this addition.
+add_compile_definitions(BACKWARD_COMPATIBILITY_4_NCHAR)
+# 
+
 # generate parser and lexer
 set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
 set(CSQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/csql_grammar.c)

@@ -127,10 +127,6 @@ extern unsigned int db_on_server;
 #define BITS_IN_BYTE			8
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
 
-/* left for future extension */
-#define DO_CONVERSION_TO_SRVR_STR(codeset)  false
-#define DO_CONVERSION_TO_SQLTEXT(codeset)   false
-
 #define DB_DOMAIN_INIT_CHAR(value, precision)			 \
   do {								 \
     (value)->domain.general_info.type = DB_TYPE_CHAR;		 \

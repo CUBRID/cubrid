@@ -81,13 +81,6 @@
 
 #define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10((double) FLT_RADIX)))
 
-#define TP_NEAR_MATCHx(t1, t2)                                       \
-         (((t1) == (t2)) ||                                         \
-	  ((t1) == DB_TYPE_CHAR     && (t2) == DB_TYPE_VARCHAR) ||  \
-	  ((t1) == DB_TYPE_VARCHAR  && (t2) == DB_TYPE_CHAR) ||     \
-	  ((t1) == DB_TYPE_BIT      && (t2) == DB_TYPE_VARBIT) ||   \
-	  ((t1) == DB_TYPE_VARBIT   && (t2) == DB_TYPE_BIT))
-
 #define TP_NEAR_MATCH(t1, t2)                                           \
           (((t1) == (t2)) ||                                            \
            (((t1) == DB_TYPE_CHAR) ? ((t2) == DB_TYPE_VARCHAR) :        \

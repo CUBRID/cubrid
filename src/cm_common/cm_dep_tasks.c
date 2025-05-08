@@ -2274,7 +2274,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
-  const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
+  const char *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;

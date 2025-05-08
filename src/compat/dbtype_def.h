@@ -554,7 +554,7 @@ extern "C"
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
 /* ************************************************************************** */
-#define BACKWARD_COMPATIBILITY_4_NCHAR	// ctshim TODO:
+//#define BACKWARD_COMPATIBILITY_4_NCHAR        // ctshim TODO:
 /* ************************************************************************** */
 
 #if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
@@ -1056,7 +1056,6 @@ extern "C"
     } large;
   };
 
-  typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
   typedef uint64_t DB_RESULTSET;
@@ -1169,10 +1168,6 @@ extern "C"
     DB_TYPE_C_DOUBLE,
     DB_TYPE_C_CHAR,
     DB_TYPE_C_VARCHAR,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-    DB_TYPE_C_NCHAR,
-    DB_TYPE_C_VARNCHAR,
-#endif
     DB_TYPE_C_BIT,
     DB_TYPE_C_VARBIT,
     DB_TYPE_C_OBJECT,
@@ -1200,8 +1195,6 @@ extern "C"
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
   typedef const char *DB_CONST_C_CHAR;
-  typedef char *DB_C_NCHAR;
-  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
   typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;
