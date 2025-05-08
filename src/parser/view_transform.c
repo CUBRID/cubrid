@@ -5088,6 +5088,13 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
 			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
 
+      query = pt_find_select (parser, cte->info.cte.non_recursive_part);
+      if (query == NULL)
+	{
+	  /* if query is NULL, it means that the query is a false subquery. */
+	  is_inlinable = false;
+	}
+
       if (is_inlinable)
 	{
 	  query = pt_find_select (parser, cte->info.cte.non_recursive_part);
