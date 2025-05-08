@@ -94,7 +94,7 @@ commands:
             fi
             mv -f CUBRID/log/coredump /tmp/logs/coredump
             # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
-          when: on_fail
+          when: always
       - store_test_results:
           path: /tmp/tests
       - store_artifacts:
