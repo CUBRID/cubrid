@@ -188,7 +188,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 	  return false;
 	}
     }
-  else if (memcmp (p, "CHAR", 4) && memcmp (p, "BIT", 3) && memcmp (p, "NCHAR", 4))
+  else if (memcmp (p, "CHAR", 4) && memcmp (p, "BIT", 3) && memcmp (p, "NCHAR", 5))
     {
       return false;
     }
