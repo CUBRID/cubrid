@@ -615,9 +615,28 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
       pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
       break;
+
     case DB_TYPE_VECTOR:
-      result->info.value.data_value.set = pt_set_elements_to_value (parser, val);
-      pt_add_type_to_set (parser, result->info.value.data_value.set, &result->data_type);
+      {
+	const DB_VECTOR_FLOAT *src_vector_float = db_get_vector_float (val);
+	int dim = src_vector_float->dim;
+	float *arr = src_vector_float->float_array;
+
+	// WARNING: not analyzed. db_private_alloc results in core dump.
+	vimkim_log ("TRACE: pt_dbval_to_value not analyzed.\n");
+	DB_VECTOR_FLOAT dest_vector_float;
+	dest_vector_float.dim = dim;
+	dest_vector_float.float_array = (float *) malloc (dim * sizeof (float));
+	if (dest_vector_float.float_array == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "Cannot allocate float_array for vector");
+	    return NULL;
+	  }
+
+	memcpy (dest_vector_float.float_array, arr, dim * sizeof (float));
+
+	result->info.value.data_value.vector_float = dest_vector_float;
+      }
       break;
 
     case DB_TYPE_INTEGER:
@@ -1513,6 +1532,10 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "sequence";
       break;
 
+    case PT_TYPE_VECTOR:
+      name = "vector";
+      break;
+
     case PT_TYPE_NCHAR:
       name = "nchar";
       break;
@@ -1924,10 +1947,12 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       scale = dt->info.data_type.dec_precision;
       break;
 
+    case DB_TYPE_VECTOR:
+      break;
+
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VECTOR:
     case DB_TYPE_MIDXKEY:
       return pt_node_to_db_domain (parser, dt, class_name);
 
@@ -2266,7 +2291,6 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	case DB_TYPE_VECTOR:
 	case DB_TYPE_MIDXKEY:
 	  /* Recursively build the setdomain */
 	  dt = node->data_type;

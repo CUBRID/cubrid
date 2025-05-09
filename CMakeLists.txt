@@ -64,6 +64,9 @@ else(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
 
+# set AVX2 or AVX512
+set(FAISS_SIMD_MODE "${FAISS_SIMD_MODE}")
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
@@ -241,6 +244,11 @@ if(YEUNJUNLEE_BUILD)
 endif()
 if(VIMKIM_BUILD)
     add_compile_definitions(VIMKIM)
+endif()
+
+option(ENABLE_CUBVEC_LOG "Enable CUBVEC team logging" ON)
+if(ENABLE_CUBVEC_LOG)
+    add_compile_definitions(CUBVEC_LOG)
 endif()
 
 # System check

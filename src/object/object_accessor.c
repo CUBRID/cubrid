@@ -564,10 +564,6 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	    case DB_TYPE_SEQUENCE:
 	      db_make_sequence (&val, new_set);
 	      break;
-
-	    case DB_TYPE_VECTOR:
-	      db_make_vector (&val, new_set);
-	      break;
 	    }
 
 	  error = att->domain->type->setmem (mem, att->domain, &val);

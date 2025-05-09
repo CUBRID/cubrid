@@ -36,7 +36,6 @@ extern "C"
   extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
   extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
   extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
-  extern DB_COLLECTION *db_vec_create (DB_OBJECT * classobj, const char *name, int size);
   extern int db_set_free (DB_COLLECTION * set);
   extern int db_set_filter (DB_COLLECTION * set);
   extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);

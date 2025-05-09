@@ -55,6 +55,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "db_vector.hpp"
 
 #include <malloc.h>
 
@@ -4172,6 +4173,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "multiset";
     case PT_TYPE_SEQUENCE:
       return "sequence";
+    case PT_TYPE_VECTOR:
+      return "vector";
     case PT_TYPE_RESULTSET:
       return "cursor";
     case PT_TYPE_COMPOUND:
@@ -16729,7 +16732,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "\'");
       break;
     case PT_TYPE_VECTOR:
-      q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
+      q = pt_append_nulstring (parser, q, db_vector_float_to_string (p->info.value.data_value.vector_float).c_str ());
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
