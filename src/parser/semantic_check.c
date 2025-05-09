@@ -13006,16 +13006,19 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		      /* e.g., a = (select 1, 2 from ...) */
 		      PT_ERRORm (parser, lhs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ILLEGAL_RHS);
 		    }
-		  else
+		  else if (lhs->type_enum != PT_TYPE_NONE)
 		    {
-		      // (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
+		      (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
 		    }
 		}
 	      else
 		{
 		  /* Not a query, just check if assignment is possible. The call below will wrap the rhs node with a
 		   * cast to the type of the lhs_node */
-		  // (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		  if (lhs->type_enum != PT_TYPE_NONE)
+		    {
+		      (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		    }
 		}
 	    }
 	  else if (lhs->node_type == PT_EXPR && PT_IS_N_COLUMN_UPDATE_EXPR (lhs) && (list = lhs->info.expr.arg1))
