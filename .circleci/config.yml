@@ -19,6 +19,10 @@ parameters:
   run_plcsql_test:
     type: boolean
     default: true
+  run_all_test:
+    type: boolean
+    default: true
+  
 # --------------------------------------------------
 # 1. Reusable commands
 # --------------------------------------------------
@@ -37,37 +41,73 @@ commands:
 
             # Check out testcases and testtools (uses custom entrypoint script)
             /entrypoint.sh checkout
+            
+            case "$TEST_SUITE" in
+              none)
+                echo "TEST_SUITE is none"
+                exit 1
+                ;;
+              plcsql)
+                TEST_SUITE="sql"
+                file_ext="sql"
+                base_dir="cubrid-testcases"
+                glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/cases/*.sql"
+                ;;
+              sql)
+                file_ext="sql"
+                base_dir="cubrid-testcases"
+                rm -rf $base_dir/sql/_05_plcsql $base_dir/sql/_35_fig_cake/plcsql
+                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+                ;;
+              shell)
+                file_ext="sh"
+                base_dir="cubrid-testcases-private-ex"
+                rm -rf $base_dir/$TEST_SUITE/_25_unstable
+                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sh"
+                ;;
+              *)
+                file_ext="sql"
+                base_dir="cubrid-testcases"
+                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+                ;;
+            esac
+            
+            # Test selection logic
+            run_all=true
 
-            # Handle specific cases for TEST_SUITE
-            if [ "$TEST_SUITE" = "none" ]; then
-              echo "TEST_SUITE is none"
-              exit 1
-            elif [ "$TEST_SUITE" = "plcsql" ]; then
-              # Hack: run plcsql test via sql suite
-              TEST_SUITE="sql"
-              file_ext="sql"
-              base_dir="cubrid-testcases"
-              glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/cases/*.sql"
-            elif [ "$TEST_SUITE" = "sql" ]; then
-              file_ext="sql"
-              base_dir="cubrid-testcases"
-              rm -rf $base_dir/sql/_05_plcsql
-              rm -rf $base_dir/sql/_35_fig_cake/plcsql
-              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
-            elif [ "$TEST_SUITE" = "shell" ]; then
-              file_ext="sh"
-              base_dir="cubrid-testcases-private-ex"
-              rm -rf $base_dir/$TEST_SUITE/_25_unstable
-              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sh"
-            else
-              file_ext="sql"
-              base_dir="cubrid-testcases"
-              glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+            # Run only failed tests
+            if [ "${RUN_ALL_TEST}" = "false" ]; then
+              echo "Finding failed tests from previous build..."
+              build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
+                "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/tree/${CIRCLE_BRANCH}?limit=5")
+              PREV_BUILD_NUM=$(echo "$build_info" | jq -r ".[] | select(.workflows.job_name==\"$CIRCLE_JOB\") | .build_num" | sed -n '2p')
+              
+              if [ -n "$PREV_BUILD_NUM" ]; then
+                echo "Previous build number: $PREV_BUILD_NUM"
+                ART_URL=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
+                  "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${PREV_BUILD_NUM}/artifacts" \
+                  | jq -r '.[] | select(.path|endswith(".xml")) | .url')
+                
+                if [ -n "$ART_URL" ]; then
+                  curl -sSL "$ART_URL" | grep -o '<testcase [^>]*name="[^"]*"[^>]*><failure' | sed 's/.*name="\([^"]*\)".*/\1/' > prev_fail.list
+                  
+                  if [ -s prev_fail.list ]; then
+                    sed -i "s|^|$base_dir/|" prev_fail.list
+                    cp prev_fail.list tc.list
+                    echo "Running only failed tests: $(wc -l < tc.list) tests"
+                    run_all=false
+                  fi
+                fi
+              fi
             fi
-
-            circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split | tee tc.list
-            # circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=timings --timings-type=testname | tee tc.list
-            sed -i "s|^|$base_dir/|" tc.list
+            
+            # For all tests or when failed tests were not found
+            if [ "$run_all" = "true" ]; then
+              echo "Selecting from all tests..."
+              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split > tc.list
+              sed -i "s|^|$base_dir/|" tc.list
+            fi
+            
             if [ "$TEST_SUITE" = "shell" ]; then
               cat tc.list | xargs -n1 dirname > tc_dirs.list
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
@@ -182,6 +222,7 @@ jobs:
       RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
       RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
       RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
+      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
       TEST_SUITE: << parameters.test_suite >>
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
