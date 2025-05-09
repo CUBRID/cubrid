@@ -633,17 +633,14 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_index ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_INDEX_NAME,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -671,17 +668,14 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_index_key ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_INDEXKEY_NAME,
 		   // columns
     {
       {"index_of", CT_INDEX_NAME},
@@ -767,17 +761,14 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_data_type ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_PARTITION_NAME,
+		   CT_DATATYPE_NAME,
 		   // columns
     {
       {"type_id", "integer"},
