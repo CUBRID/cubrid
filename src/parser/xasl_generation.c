@@ -310,6 +310,9 @@ static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
+static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -20915,6 +20918,88 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return false;
+}
+
+static PT_NODE *
+pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *prev = NULL, *values;
+  PT_NODE *list, *arg1, *arg2, *arg3;
+  DB_VALUE tmp;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      arg1 = node->info.expr.arg1;
+      arg2 = node->info.expr.arg2;
+      arg3 = node->info.expr.arg3;
+      if (arg1 && arg1->node_type == PT_NAME && arg1->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg1, &tmp, 1);
+	  node->info.expr.arg1 = pt_dbval_to_value (parser, &tmp);
+	}
+      if (arg2 && arg2->node_type == PT_NAME && arg2->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg2, &tmp, 1);
+	  node->info.expr.arg2 = pt_dbval_to_value (parser, &tmp);
+	}
+      if (arg3 && arg3->node_type == PT_NAME && arg3->info.name.meta_class == PT_TRIGGER_OID)
+	{
+	  db_value_clear (&tmp);
+	  pt_evaluate_tree (parser, arg3, &tmp, 1);
+	  node->info.expr.arg3 = pt_dbval_to_value (parser, &tmp);
+	}
+      db_value_clear (&tmp);
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+static void
+pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      break;
+    case PT_UPDATE:
+      statement = parser_walk_tree (parser, statement, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
+      break;
+    case PT_DELETE:
+      break;
+    default:
+      break;
+    }
+
+  return;
+}
+
+/*
+ * pt_to_update_xasl_for_dblink_trigger () - Converts an triggering update to an XASL
+ * 
+ * return	  : Xasl node.
+ * parser (in)	  : Parser context.
+ * statement (in) : Parse tree node for triggering insert statement.
+ */
+XASL_NODE *
+pt_to_update_xasl_for_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs)
+{
+  pt_check_dblink_trigger (parser, statement);
+  pt_rewrite_for_dblink (parser, statement);
+
+  return pt_to_xasl_for_dblink (parser, statement->info.update.spec);
 }
 
 /*

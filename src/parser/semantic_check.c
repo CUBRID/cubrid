@@ -11374,7 +11374,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 
 	  /* Update of views hierarchies not allowed */
-	  if (db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
+	  if (entity->info.spec.flat_entity_list
+	      && db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
@@ -13007,14 +13008,14 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		    }
 		  else
 		    {
-		      (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
+		      // (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
 		    }
 		}
 	      else
 		{
 		  /* Not a query, just check if assignment is possible. The call below will wrap the rhs node with a
 		   * cast to the type of the lhs_node */
-		  (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		  // (void) pt_assignment_class_compatible (parser, lhs, rhs);
 		}
 	    }
 	  else if (lhs->node_type == PT_EXPR && PT_IS_N_COLUMN_UPDATE_EXPR (lhs) && (list = lhs->info.expr.arg1))

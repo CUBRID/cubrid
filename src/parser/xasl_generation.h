@@ -182,6 +182,8 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_n
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+extern XASL_NODE *pt_to_update_xasl_for_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node,
+							PT_NODE ** non_null_attrs);
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern XASL_NODE *pt_append_xasl (XASL_NODE * to, XASL_NODE * from_list);
 extern XASL_NODE *pt_remove_xasl (XASL_NODE * xasl_list, XASL_NODE * remove);

@@ -5984,59 +5984,66 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	PT_NODE *assign = NULL;
 	PT_SPEC_FLAG flag;
 
-	columns = (char **) (malloc (count * sizeof (char *)));
-	if (columns == NULL)
+	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (char *));
-	    result = ER_FAILED;
-	    goto exit;
+	    result = NO_ERROR;
 	  }
-
-	/* prepare trigger state structures */
-	node = statement->info.update.spec;
-	do
+	else
 	  {
-	    /* flag is set to UPDATE to make sure triggers are checked for statement->info.update.object_parameter too */
-	    flag = PT_SPEC_FLAG_UPDATE;
-
-	    if (node != NULL)
+	    columns = (char **) (malloc (count * sizeof (char *)));
+	    if (columns == NULL)
 	      {
-		flat = node->info.spec.flat_entity_list;
-		flag = node->info.spec.flag;
-		node = node->next;
-	      }
-	    else
-	      {
-		flat = statement->info.update.object_parameter;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (char *));
+		result = ER_FAILED;
+		goto exit;
 	      }
 
-	    if (flag & PT_SPEC_FLAG_UPDATE)
+	    /* prepare trigger state structures */
+	    node = statement->info.update.spec;
+	    do
 	      {
-		idx = 0;
-		pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
-		while ((assign = pt_get_next_assignment (&ea)) != NULL)
+		/* flag is set to UPDATE to make sure triggers are checked for statement->info.update.object_parameter too */
+		flag = PT_SPEC_FLAG_UPDATE;
+
+		if (node != NULL)
 		  {
-		    if (assign->info.name.spec_id == flat->info.name.spec_id)
+		    flat = node->info.spec.flat_entity_list;
+		    flag = node->info.spec.flag;
+		    node = node->next;
+		  }
+		else
+		  {
+		    flat = statement->info.update.object_parameter;
+		  }
+
+		if (flag & PT_SPEC_FLAG_UPDATE)
+		  {
+		    idx = 0;
+		    pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+		    while ((assign = pt_get_next_assignment (&ea)) != NULL)
 		      {
-			columns[idx++] = (char *) assign->info.name.original;
+			if (assign->info.name.spec_id == flat->info.name.spec_id)
+			  {
+			    columns[idx++] = (char *) assign->info.name.original;
+			  }
 		      }
-		  }
 
-		class_ = flat ? flat->info.name.db_object : NULL;
-		if (class_ == NULL)
-		  {
-		    PT_INTERNAL_ERROR (parser, "invalid spec id");
-		    result = ER_FAILED;
-		    goto exit;
-		  }
+		    class_ = flat ? flat->info.name.db_object : NULL;
+		    if (class_ == NULL)
+		      {
+			PT_INTERNAL_ERROR (parser, "invalid spec id");
+			result = ER_FAILED;
+			goto exit;
+		      }
 
-		result = tr_prepare_statement (&state, event, class_, idx, (const char **) columns);
+		    result = tr_prepare_statement (&state, event, class_, idx, (const char **) columns);
+		  }
 	      }
-	  }
-	while (node);
-	if (columns)
-	  {
-	    free_and_init (columns);
+	    while (node);
+	    if (columns)
+	      {
+		free_and_init (columns);
+	      }
 	  }
 	break;
       }
@@ -8541,7 +8548,15 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  xasl = statement_to_update_xasl (parser, statement, non_null_attrs);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      xasl = pt_to_update_xasl_for_dblink_trigger (parser, statement, non_null_attrs);
+    }
+  else
+    {
+      xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
+    }
+
   if (xasl)
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
@@ -8829,7 +8844,12 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       /* Safety check: make sure that we have access to the class. We're only setting a weak lock here which guarantees
        * that the schema for the classes which are updated in this query is not changed. The correct lock for this
        * operation will be set server side when the SELECT part of the operation is being performed. */
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (spec->info.spec.remote_server_name)
+	{
+	  server_allowed = 1;
+	}
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec->info.spec.flat_entity_list)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 	  if (!locator_fetch_class (class_obj, DB_FETCH_READ))
@@ -8840,7 +8860,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       spec = spec->next;
     }
 
-  if (is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
+  if (!server_allowed
+      && is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
     {
       goto exit_on_error;
     }
