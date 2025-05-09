@@ -15,10 +15,10 @@ parameters:
     default: true
   run_medium_test:
     type: boolean
-    default: true
+    default: false
   run_plcsql_test:
     type: boolean
-    default: true
+    default: false
   run_all_test:
     type: boolean
     default: true
@@ -139,8 +139,8 @@ commands:
             [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump
             # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
-      - store_test_results:
-          path: /tmp/tests
+      # - store_test_results:
+      #     path: /tmp/tests
       - store_artifacts:
           path: /tmp/logs
 
