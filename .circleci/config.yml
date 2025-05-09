@@ -35,6 +35,7 @@ commands:
       - run:
           name: Prepare Test
           shell: /bin/bash
+          # no_output_timeout: 20m
           command: |
             # Limit core files
             ulimit -c 1
@@ -104,16 +105,25 @@ commands:
             # For all tests or when failed tests were not found
             if [ "$run_all" = "true" ]; then
               echo "Selecting from all tests..."
-              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=name > tc.list
+              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --verbose --split-by=filesize | tee tc.list
               sed -i "s|^|$base_dir/|" tc.list
             fi
-            
+
+            # Remove tests that are not in the list
             if [ "$TEST_SUITE" = "shell" ]; then
               cat tc.list | xargs -n1 dirname > tc_dirs.list
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
             else
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
+
+            # # Run the tests
+            # if [ -s tc.list ]; then
+            #   /entrypoint.sh test
+            # else
+            #   echo "No tests to run"
+            #   circleci-agent step halt
+            # fi
       - run:
           name: Test
           no_output_timeout: 20m
@@ -139,8 +149,8 @@ commands:
             [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump
             # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
-      # - store_test_results:
-      #     path: /tmp/tests
+      - store_test_results:
+          path: /tmp/tests
       - store_artifacts:
           path: /tmp/logs
 
