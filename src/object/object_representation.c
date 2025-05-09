@@ -3846,7 +3846,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  break;
 		case DB_TYPE_NUMERIC:
 		  // 여기에 추가하는게 맞을지 추가 확인 필요!
-		  if (precision == 0 && scale == 0)
+		  // 굳이 필요 없을지도??
+		  if (precision == 0)
 		    {
 		      dom->is_floating_point_numeric = 1;
 		    }
@@ -5130,6 +5131,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  /* reduce the expected size by the amount consumed with the domain tag */
 	  expected -= CAST_BUFLEN (buf->ptr - start);
 	  start = buf->ptr;
+	}
+      // writeval 저장은 잘됐고 readval 하기 전, initvale 과정에서 unpack_db_value 에서 floating porint 정보를 잃어버림...
+      // 여기서 처리하는게 맞을지 아니면 error를 일단 출력하고, makeval 인가 그쪽에서 처리를할까?  
+      if (domain->type->id == DB_TYPE_NUMERIC && domain->is_floating_point_numeric)
+	{
+	  value->domain.numeric_info.is_floating_point_numeric = 1;
 	}
     }
 

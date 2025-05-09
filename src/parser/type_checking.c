@@ -17034,8 +17034,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      PT_ERRORc (parser, o1, er_msg ());
 	    }
-	  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		       pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+	  if (er_errid () != ER_INVALID_PRECISION)
+	    {
+	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
+	    }
 	  return 0;
 	}
       else

@@ -541,12 +541,13 @@ extern "C"
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
+#define DB_MAX_NUMERIC_PRECISION_FLOATING 41
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e41
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-41
 
 #define DB_MAX_CHAR_PRECISION 2048
 
@@ -579,11 +580,12 @@ extern "C"
 #define DB_DEFAULT_SCALE -1
 
 /* This constant indecates that SP function's default NUMERIC domain */
-#define DB_NUMERIC_PRECISION_SP 38
-#define DB_NUMERIC_SCALE_SP 15
+#define DB_NUMERIC_PRECISION_SP 0
+#define DB_NUMERIC_SCALE_SP 0
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION 15
+#define DB_DEFAULT_NUMERIC_PRECISION_FLOATING 0
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0

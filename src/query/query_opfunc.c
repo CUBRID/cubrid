@@ -2539,6 +2539,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
     case DB_TYPE_NUMERIC:
       error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      if (result_p->domain.numeric_info.is_floating_point_numeric)
+	{
+	  // 연산 수행할 때 cast가 일어나는데, 이때 domain 개수가 늘어나서 원하는 정보가 덮어씌어짐.
+	  // 그래서 아래와 같이 flag를 다시 추가함.
+	  domain_p->is_floating_point_numeric = true;
+	}
       break;
 
     case DB_TYPE_MONETARY:

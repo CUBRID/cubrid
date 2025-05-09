@@ -19177,14 +19177,14 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
   int error_status = NO_ERROR;
   int state = 1;
   int i, j, k;
-  char result_str[DB_MAX_NUMERIC_PRECISION + 2];
+  char result_str[DB_MAX_NUMERIC_PRECISION_FLOATING + 2];
   char *res_ptr;
   const char fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
 
   result_str[0] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION + 1] = '\0';
+  result_str[DB_MAX_NUMERIC_PRECISION_FLOATING] = '\0';
+  result_str[DB_MAX_NUMERIC_PRECISION_FLOATING + 1] = '\0';
   *token_length = 0;
 
   while (state != 7 && src < last_src)

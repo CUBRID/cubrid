@@ -1625,6 +1625,14 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
+  /* + 연산 중 하나라도 floating point 이면, 결과도 floating point 이어야함 */
+  if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
+    {
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = true;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = true;
+      answer->domain.numeric_info.is_floating_point_numeric = true;
+    }
+
   /* Coerce, if necessary, to make prec & scale match */
   ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
   if (ret == ER_IT_DATA_OVERFLOW)
@@ -1653,7 +1661,9 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec <
+	  (dbv1_common.domain.numeric_info.
+	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -3132,7 +3142,9 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    {
 	      leading_zeroes = false;
 	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      if (++prec >
+		  (result->domain.numeric_info.
+		   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 		{
 		  break;
 		}
@@ -3200,13 +3212,15 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	  else if (astring[i] >= '0' && astring[i] <= '9')
 	    {
 	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      if (++prec >
+		  (result->domain.numeric_info.
+		   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 		{
 		  break;
 		}
 
-	      if (result->domain.numeric_info.is_floating_point_numeric
-		  || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+	      // 이제 flag 처리했기 때문에, 0 확인은 제거할지 확인 필요
+	      if (result->domain.numeric_info.is_floating_point_numeric || result->domain.numeric_info.precision == 0)
 		{
 		  trailing_zero_count = (astring[i] == '0') ? trailing_zero_count + 1 : 0;
 		}
@@ -3224,15 +3238,16 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (result->domain.numeric_info.is_floating_point_numeric
-      || (result->domain.numeric_info.precision == 0 && result->domain.numeric_info.scale == 0))
+  if (result->domain.numeric_info.is_floating_point_numeric)
     {
       prec = prec - trailing_zero_count;
       scale = scale - trailing_zero_count;
     }
 
   /* If there is no overflow, try to parse the decimal string */
-  if (prec > DB_MAX_NUMERIC_PRECISION)
+  if (prec >
+      ((result->domain.numeric_info.
+	is_floating_point_numeric) ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -3436,7 +3451,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   int ret = NO_ERROR;
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int precision, scale;
-  int desired_precision, desired_scale, tmp_precision_sacle = 1;
+  int desired_precision, desired_scale;
 
   *data_status = DATA_STATUS_OK;
   desired_precision = DB_VALUE_PRECISION (dest);
@@ -3523,12 +3538,16 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   if (ret == NO_ERROR)
     {
       /* Make the intermediate value */
-      db_make_numeric (dest, num, precision, scale);
+      ret = db_make_numeric (dest, num, precision, scale);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
       if (dest->domain.numeric_info.is_floating_point_numeric)
 	{
 	  desired_precision = DB_VALUE_PRECISION (dest);
 	  desired_scale = DB_VALUE_SCALE (dest);
-	  //tmp_precision_sacle = 0;
 	}
 
       ret =
@@ -3538,12 +3557,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	{
 	  goto exit_on_error;
 	}
-      db_make_numeric (dest, num, desired_precision, desired_scale);
-      //if (tmp_precision_sacle == 0)
-      //{
-      // 예상대로 flag 초기화됨...
-      //dest->domain.numeric_info.is_floating_point_numeric = 1;
-      //}
+
+      ret = db_make_numeric (dest, num, desired_precision, desired_scale);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)

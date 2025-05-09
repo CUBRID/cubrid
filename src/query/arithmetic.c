@@ -4366,7 +4366,7 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
   float f;
   long double dtmp;
   DB_BIGINT bi;
-  char num_string[2 * DB_MAX_NUMERIC_PRECISION + 2];
+  char num_string[2 * DB_MAX_NUMERIC_PRECISION_FLOATING + 2];
   char *tail_ptr = NULL;
 
   switch (DB_VALUE_DOMAIN_TYPE (value))

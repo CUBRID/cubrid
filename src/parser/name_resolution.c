@@ -1563,6 +1563,12 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      }
 	  }
 
+	/* 1. insert 수행 시, 사용자가 입력한 숫자를 num으로 바꾸러 먼저 시도하는데,
+	   이 때, db_value의 flag는 기본 값인 0으로 설정되어 있음.
+	   domain 정보를 모르기 때문에 우선 flag를 1로 설정해줌.
+	   -- 일단, 여기는 폐쇄, 모든 경우의 수를 조건 처리가 불가능함.
+	 */
+
 	if (!is_function)
 	  {
 	    if (pt_value_to_db (parser, node) == NULL)
@@ -4579,8 +4585,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       if (t == PT_TYPE_NUMERIC)
 	{
 	  // 여기에 flag 설정하는게 맞는지 확인 필요
-	  result->info.data_type.is_floating_point_numeric = (result->info.data_type.precision == 0
-							      && result->info.data_type.dec_precision == 0) ? 1 : 0;
+	  result->info.data_type.is_floating_point_numeric = (result->info.data_type.precision == 0) ? 1 : 0;
 	}
       assert (!PT_IS_CHAR_STRING_TYPE (t) || result->info.data_type.collation_id >= 0);
       break;

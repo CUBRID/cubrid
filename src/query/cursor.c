@@ -398,6 +398,11 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFIL
       return cursor_copy_vobj_to_dbvalue (buffer_p, value_p);
     }
 
+  if (type == DB_TYPE_NUMERIC)
+    {
+      value_p->domain.numeric_info.is_floating_point_numeric = domain_p->is_floating_point_numeric;
+    }
+
   /* for all other types, we can use the prim routines */
   if (pr_type->data_readval (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
     {

@@ -296,7 +296,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	  strcpy (temp_buffer, temp_domain->type->name);
 
 	  /* 나중에 db_object 저장할 때, is_floating_point_numeric 플래그도 같이 저장할 수 있게 해야함. */
-	  if (temp_domain->precision == 0 && temp_domain->scale == 0)
+	  if (temp_domain->precision == 0)
 	    {
 	      temp_domain->is_floating_point_numeric = 1;
 	    }

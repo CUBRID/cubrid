@@ -8502,6 +8502,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       src_precision = db_value_precision (src);
       src_scale = db_value_scale (src);
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
+      dest->domain.numeric_info.is_floating_point_numeric = src->domain.numeric_info.is_floating_point_numeric;
 
       if (DB_IS_NULL (src) || src_numeric == NULL)
 	{
@@ -8576,8 +8577,8 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	    }
 	  else
 	    {
-	      value->data.num.d.buf[0] += value->domain.numeric_info.precision;
-	      value->data.num.d.buf[1] += value->domain.numeric_info.scale;
+	      value->data.num.d.buf[0] = value->domain.numeric_info.precision;
+	      value->data.num.d.buf[1] = value->domain.numeric_info.scale;
 	    }
 	}
 
@@ -8698,20 +8699,19 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 
       if (value->domain.numeric_info.is_floating_point_numeric || domain->is_floating_point_numeric)
 	{
-	  // 음수 처리는 아직 기달!
 	  // 그리고 느낌상 뭔가, value 가 아니라, domain의 flag를 체크해야하는데, 지금은 무조건 false라 true인 경우를 찾아야할듯?
 	  if (value->data.num.d.buf[0] & 0x80)
 	    {
-	      value->domain.numeric_info.precision += (~(value->data.num.d.buf[0]) & 0xFF);
-	      value->domain.numeric_info.scale += (~(value->data.num.d.buf[1]) & 0xFF);
+	      value->domain.numeric_info.precision = (~(value->data.num.d.buf[0]) & 0xFF);
+	      value->domain.numeric_info.scale = (~(value->data.num.d.buf[1]) & 0xFF);
 
 	      value->data.num.d.buf[0] = (value->data.num.d.buf[0] | value->domain.numeric_info.precision);
 	      value->data.num.d.buf[1] = (value->data.num.d.buf[1] | value->domain.numeric_info.scale);
 	    }
 	  else
 	    {
-	      value->domain.numeric_info.precision += value->data.num.d.buf[0];
-	      value->domain.numeric_info.scale += value->data.num.d.buf[1];
+	      value->domain.numeric_info.precision = value->data.num.d.buf[0];
+	      value->domain.numeric_info.scale = value->data.num.d.buf[1];
 
 	      value->data.num.d.buf[0] = 0;
 	      value->data.num.d.buf[1] = 0;

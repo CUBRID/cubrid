@@ -1305,7 +1305,7 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
     case DB_TYPE_NUMERIC:
       value_out->domain.numeric_info.precision = node_data_type->info.data_type.precision;
       value_out->domain.numeric_info.scale = node_data_type->info.data_type.dec_precision;
-      //flag 설정 확인 필요
+      // 중요!! db_value 처음 만들고, domain 정보를 여기에 넣어주네!!
       value_out->domain.numeric_info.is_floating_point_numeric =
 	node_data_type->info.data_type.is_floating_point_numeric;
       break;
@@ -2919,9 +2919,10 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
 	  dt->info.data_type.dec_precision = DB_VALUE_SCALE (val);
 	  // 여기도 flag 설정 확인 필요
-	  dt->info.data_type.is_floating_point_numeric = (dt->info.data_type.precision == 0
-							  && dt->info.data_type.dec_precision == 0) ? true : false;
-	  val->domain.numeric_info.is_floating_point_numeric = dt->info.data_type.is_floating_point_numeric;
+	  if (val->domain.numeric_info.is_floating_point_numeric || val->domain.numeric_info.precision == 0)
+	    {
+	      dt->info.data_type.is_floating_point_numeric = 1;
+	    }
 	}
       break;
 
@@ -3323,6 +3324,16 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_NUMERIC:
+      /* 1. insert 수행 시, 사용자가 입력한 숫자를 num으로 바꾸러 먼저 시도하는데,
+         이 때, db_value의 flag는 기본 값인 0으로 설정되어 있음.
+         domain 정보를 모르기 때문에 우선 flag를 1로 설정해줌.
+       */
+      if (value->info.value.db_value.domain.numeric_info.is_floating_point_numeric == 0
+	  && value->info.value.db_value.domain.numeric_info.precision == 0)
+	{
+	  db_value->domain.numeric_info.is_floating_point_numeric = 1;
+	}
+
       if (numeric_coerce_string_to_num ((const char *) value->info.value.data_value.str->bytes,
 					value->info.value.data_value.str->length, codeset, db_value) != NO_ERROR)
 	{

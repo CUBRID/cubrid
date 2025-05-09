@@ -3392,17 +3392,21 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	   */
 	  if (domain->precision == -1)
 	    {
-	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      domain->precision =
+		(domain->
+		 is_floating_point_numeric) ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
 	  if (domain->scale == -1)
 	    {
-	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
+	      domain->scale =
+		(domain->is_floating_point_numeric) ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_SCALE;
 	    }
 
-	  if (domain->precision == 0 && domain->scale == 0)
+	  // 은근히 여기도 포인트로 보임!
+	  if (val->domain.numeric_info.is_floating_point_numeric || domain->precision == 0)
 	    {
-	      domain->is_floating_point_numeric = true;
+	      domain->is_floating_point_numeric = 1;
 	    }
 
 	  if (dbuf == NULL)
@@ -7945,6 +7949,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
        * The desired precision & scale is communicated through the destination
        * value.
        */
+      // desired_domain 에서 온 값만 확인하는게 맞아보임, domain 값을 가지고 db_value에 flag를 처리해주는 곳 같음.
+      // 뭔가 이상함 next_list에 밀려서 flag가 0이됨..
+      if (desired_domain->is_floating_point_numeric || desired_domain->precision == 0)
+	{
+	  target->domain.numeric_info.is_floating_point_numeric = 1;
+	}
+
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:

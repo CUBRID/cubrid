@@ -9802,6 +9802,16 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		    {
 		      value->last_attrepr->type = DB_TYPE_OID;
 		    }
+		  else if (value->last_attrepr->type == DB_TYPE_NUMERIC && value->last_attrepr->domain->precision == 0)
+		    {
+		      if (value->last_attrepr->domain->next_list->is_floating_point_numeric)
+			{
+			  //임시 확인
+			  // **중요** value->last_attrepr->domain->next_list 을 만드는 곳을 찾아야함 !!
+			  //value->last_attrepr->domain->is_floating_point_numeric = 1;
+			}
+		      value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
+		    }
 
 		  if (value->state == HEAP_UNINIT_ATTRVALUE)
 		    {
@@ -9818,6 +9828,11 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		  if (value->read_attrepr->type == DB_TYPE_OBJECT)
 		    {
 		      value->read_attrepr->type = DB_TYPE_OID;
+		    }
+		  //else if (value->last_attrepr->type == DB_TYPE_NUMERIC && (value->last_attrepr->domain->is_floating_point_numeric && value->dbvalue.domain.numeric_info.precision == 0))
+		  else if (value->last_attrepr->type == DB_TYPE_NUMERIC && value->last_attrepr->domain->precision == 0)
+		    {
+		      value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
 		    }
 		}
 
