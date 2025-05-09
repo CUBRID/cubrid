@@ -2038,6 +2038,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		{
 		  /* get number of rows as result */
 		  err = db_query_tuple_count (qres);
+		  // 아니 여기서 왜 flag가 다시 초기화가 된거지????
 		  qres->query_type = db_cp_query_type (session->type_list[stmt_ndx], false);
 		  qres->res.s.stmt_id = stmt_ndx;
 		}

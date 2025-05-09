@@ -3393,8 +3393,8 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	  if (domain->precision == -1)
 	    {
 	      domain->precision =
-		(domain->
-		 is_floating_point_numeric) ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_PRECISION;
+		(domain->is_floating_point_numeric) ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING :
+		DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
 	  if (domain->scale == -1)

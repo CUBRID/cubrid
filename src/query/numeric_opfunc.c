@@ -1662,8 +1662,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   if (numeric_overflow (temp, prec))
     {
       if (prec <
-	  (dbv1_common.domain.numeric_info.
-	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	  (dbv1_common.domain.numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING
+	   : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -3143,8 +3143,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	      leading_zeroes = false;
 	      num_string[prec] = astring[i];
 	      if (++prec >
-		  (result->domain.numeric_info.
-		   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+		  (result->domain.numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+		   DB_MAX_NUMERIC_PRECISION))
 		{
 		  break;
 		}
@@ -3213,8 +3213,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    {
 	      num_string[prec] = astring[i];
 	      if (++prec >
-		  (result->domain.numeric_info.
-		   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+		  (result->domain.numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+		   DB_MAX_NUMERIC_PRECISION))
 		{
 		  break;
 		}
@@ -3246,8 +3246,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
   /* If there is no overflow, try to parse the decimal string */
   if (prec >
-      ((result->domain.numeric_info.
-	is_floating_point_numeric) ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+      ((result->domain.numeric_info.is_floating_point_numeric) ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+       DB_MAX_NUMERIC_PRECISION))
     {
       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));

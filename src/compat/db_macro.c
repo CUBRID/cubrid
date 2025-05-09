@@ -172,21 +172,23 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   switch (type)
     {
     case DB_TYPE_NUMERIC:
+      // 초기화를 위해 필요
       value->domain.numeric_info.is_floating_point_numeric =
 	(value->domain.numeric_info.is_floating_point_numeric >
 	 1) ? 0 : value->domain.numeric_info.is_floating_point_numeric;
-      // flag 설정 확인 필요
-      //if (!value->domain.numeric_info.is_floating_point_numeric
-      //&& ((value->domain.numeric_info.precision == 0 && value->domain.numeric_info.scale == 0)
-      //|| (precision == 0 && scale == 0)))
-      //{
-      //value->domain.numeric_info.is_floating_point_numeric = 1;
-      //}
+
+      // flag 임시 설정
+      if (!value->domain.numeric_info.is_floating_point_numeric
+	  && ((value->domain.numeric_info.precision == 0 && value->domain.numeric_info.scale == 0)
+	      || (precision == 0 && scale == 0)))
+	{
+	  value->domain.numeric_info.is_floating_point_numeric = 1;
+	}
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  value->domain.numeric_info.precision =
-	    value->domain.numeric_info.
-	    is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_PRECISION;
+	    value->domain.numeric_info.is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING :
+	    DB_DEFAULT_NUMERIC_PRECISION;
 	}
       else
 	{
@@ -195,8 +197,8 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       if (scale == DB_DEFAULT_SCALE)
 	{
 	  value->domain.numeric_info.scale =
-	    value->domain.numeric_info.
-	    is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_SCALE;
+	    value->domain.numeric_info.is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING :
+	    DB_DEFAULT_NUMERIC_SCALE;
 	}
       else
 	{
@@ -5139,9 +5141,8 @@ db_value_is_corrupted (const DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
-      if (value->domain.numeric_info.
-	  is_floating_point_numeric ? IS_INVALID_PRECISION (value->domain.numeric_info.precision,
-							    DB_MAX_NUMERIC_PRECISION_FLOATING) :
+      if (value->domain.numeric_info.is_floating_point_numeric
+	  ? IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION_FLOATING) :
 	  IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
 	{
 	  return true;

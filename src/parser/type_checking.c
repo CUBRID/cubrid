@@ -9259,6 +9259,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
+  //여기서 expr의 data_type이 생겼다!!
   if (pt_apply_expressions_definition (parser, &expr) != NO_ERROR)
     {
       expr = NULL;
@@ -11447,9 +11448,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
   int arg1_prec = 0;
   int arg1_dec_prec = 0;
   int arg1_units = 0;
+  int arg1_is_floating_point_numeric = 0;
   int arg2_prec = 0;
   int arg2_dec_prec = 0;
   int arg2_units = 0;
+  int arg2_is_floating_point_numeric = 0;
   PT_NODE *dt = NULL;
   bool do_detect_collation = true;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_LEAVE;
@@ -11468,6 +11471,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       if (PT_HAS_COLLATION (arg1->type_enum) && arg1->data_type->info.data_type.collation_flag != TP_DOMAIN_COLL_LEAVE)
 	{
 	  collation_flag = TP_DOMAIN_COLL_NORMAL;
+	}
+      if (arg1->type_enum == PT_TYPE_NUMERIC)
+	{
+	  arg1_is_floating_point_numeric = arg1->data_type->info.data_type.is_floating_point_numeric;
 	}
     }
   else if (arg1 && arg1->type_enum == PT_TYPE_INTEGER)
@@ -11493,6 +11500,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       arg1_prec = DB_DEFAULT_NUMERIC_PRECISION;
       arg1_dec_prec = DB_DEFAULT_NUMERIC_SCALE;
       arg1_units = 0;
+      //임시로 0 으로 셋팅
+      arg1_is_floating_point_numeric = 0;
     }
   else if (arg1 && arg1->type_enum == PT_TYPE_MAYBE)
     {
@@ -11515,6 +11524,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       if (PT_HAS_COLLATION (arg2->type_enum) && arg2->data_type->info.data_type.collation_flag != TP_DOMAIN_COLL_LEAVE)
 	{
 	  collation_flag = TP_DOMAIN_COLL_NORMAL;
+	}
+      if (arg2->type_enum == PT_TYPE_NUMERIC)
+	{
+	  arg2_is_floating_point_numeric = arg2->data_type->info.data_type.is_floating_point_numeric;
 	}
     }
   else if (arg2 && arg2->type_enum == PT_TYPE_INTEGER)
@@ -11540,6 +11553,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       arg2_prec = DB_DEFAULT_NUMERIC_PRECISION;
       arg2_dec_prec = DB_DEFAULT_NUMERIC_SCALE;
       arg2_units = 0;
+      //임시로 0 으로 셋팅
+      arg2_is_floating_point_numeric = 0;
     }
   else if (arg2 && arg2->type_enum == PT_TYPE_MAYBE)
     {
@@ -11599,6 +11614,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  dt->info.data_type.precision =
 	    (dt->info.data_type.dec_precision + MAX (integral_digits1, integral_digits2) + 1);
 	  dt->info.data_type.units = 0;
+	  dt->info.data_type.is_floating_point_numeric =
+	    MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	}
       else
 	{
@@ -11701,12 +11718,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	      dt->info.data_type.dec_precision = 0;
 	      dt->info.data_type.units = 0;
+	      dt->info.data_type.is_floating_point_numeric = 0;
 	    }
 	  else
 	    {
 	      dt->info.data_type.precision = arg1_prec + arg2_prec + 1;
 	      dt->info.data_type.dec_precision = (arg1_dec_prec + arg2_dec_prec);
 	      dt->info.data_type.units = 0;
+	      dt->info.data_type.is_floating_point_numeric =
+		MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	    }
 	}
       break;
@@ -11720,6 +11740,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	      dt->info.data_type.dec_precision = 0;
 	      dt->info.data_type.units = 0;
+	      dt->info.data_type.is_floating_point_numeric = 0;
 	    }
 	  else
 	    {
@@ -11732,6 +11753,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.precision = arg1_prec + scaleup;
 	      dt->info.data_type.dec_precision = ((arg1_dec_prec > arg2_dec_prec) ? arg1_dec_prec : arg2_dec_prec);
 	      dt->info.data_type.units = 0;
+	      dt->info.data_type.is_floating_point_numeric =
+		MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	      if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && op == PT_DIVIDE)
 		{
 		  if (dt->info.data_type.dec_precision < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
@@ -11784,6 +11807,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt->info.data_type.precision = arg1_prec;
       dt->info.data_type.dec_precision = arg1_dec_prec;
       dt->info.data_type.units = arg1_units;
+      dt->info.data_type.is_floating_point_numeric = arg1_is_floating_point_numeric;
       break;
 
     case PT_IF:
@@ -11811,6 +11835,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  dt->info.data_type.dec_precision = MAX (arg1_dec_prec, arg2_dec_prec);
 	  dt->info.data_type.precision = (MAX (integral_digits1, integral_digits2) + dt->info.data_type.dec_precision);
 	  dt->info.data_type.units = 0;
+	  dt->info.data_type.is_floating_point_numeric =
+	    MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	}
       else if ((arg1->type_enum != arg2->type_enum) && pt_is_op_with_forced_common_type (op))
 	{
@@ -12168,14 +12194,24 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_PRECISION)
+	  // 여기도 수정을 해야할까???? 모르겠네...
+	  if (dt->info.data_type.dec_precision >
+	      (dt->info.
+	       data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	    {
 	      dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
-						  - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION));
+						  - (dt->info.data_type.precision -
+						     (dt->info.data_type.is_floating_point_numeric ?
+						      DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION)));
 	    }
 
-	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-					  ? DB_MAX_NUMERIC_PRECISION : dt->info.data_type.precision);
+	  dt->info.data_type.precision =
+	    ((dt->info.data_type.precision >
+	      (dt->info.
+	       data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	     ? (dt->
+		info.data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION)
+	     : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_ENUMERATION:
@@ -13213,6 +13249,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      PT_ERRORc (parser, o1, er_msg ());
 	      return 0;
+	    }
+
+	  if (arg1->domain.numeric_info.is_floating_point_numeric || domain->is_floating_point_numeric)
+	    {
+	      result->domain.numeric_info.is_floating_point_numeric = 1;
 	    }
 
 	  db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1));
