@@ -1209,12 +1209,12 @@ namespace cubschema
     {
       {"class_name", format_varchar (255)},
       {"owner_name", format_varchar (255)},
-      {"class_type", "varchar(6)"},
-      {"is_system_class", "varchar(3)"},
-      {"tde_algorithm", "varchar(32)"},
-      {"partitioned", "varchar(3)"},
-      {"is_reuse_oid_class", "varchar(3)"},
-      {"collation", "varchar(32)"},
+      {"class_type", format_varchar (6)},
+      {"is_system_class", format_varchar (3)},
+      {"tde_algorithm", format_varchar (32)},
+      {"partitioned", format_varchar (3)},
+      {"is_reuse_oid_class", format_varchar (3)},
+      {"collation", format_varchar (32)},
       {"comment", format_varchar (2048)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
@@ -1243,10 +1243,10 @@ namespace cubschema
 		   CTV_SUPER_CLASS_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"super_class_name", "varchar(255)"},
-      {"super_owner_name", "varchar(255)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"super_class_name", format_varchar (255)},
+      {"super_owner_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_super_class_spec ()}
     },
@@ -1274,10 +1274,10 @@ namespace cubschema
 		   CTV_VCLASS_NAME,
 		   // columns
     {
-      {"vclass_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"vclass_def", "varchar(1073741823)"},
-      {"comment", "varchar(2048)"},
+      {"vclass_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"vclass_def", format_varchar (1073741823)},
+      {"comment", format_varchar (2048)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
@@ -1305,24 +1305,24 @@ namespace cubschema
 		   CTV_ATTRIBUTE_NAME,
 		   // columns
     {
-      {"attr_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"attr_type", "varchar(8)"},
+      {"attr_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"attr_type", format_varchar (8)},
       {"def_order", "integer"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
-      {"from_attr_name", "varchar(255)"},
-      {"data_type", "varchar(9)"},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (255)},
+      {"from_attr_name", format_varchar (255)},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
-      {"charset", "varchar(32)"},
-      {"collation", "varchar(32)"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
-      {"default_value", "varchar(255)"},
-      {"is_nullable", "varchar(3)"},
-      {"comment", "varchar(1024)"},
+      {"charset", format_varchar (32)},
+      {"collation", format_varchar (32)},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (255)},
+      {"default_value", format_varchar (255)},
+      {"is_nullable", format_varchar (3)},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec ()}
     },
@@ -1350,16 +1350,16 @@ namespace cubschema
 		   CTV_ATTR_SD_NAME,
 		   // columns
     {
-      {"attr_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"attr_type", "varchar(8)"},
-      {"data_type", "varchar(9)"},
+      {"attr_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"attr_type", format_varchar (8)},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_set_domain_spec ()}
     },
@@ -1387,14 +1387,14 @@ namespace cubschema
 		   CTV_METHOD_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
-      {"from_meth_name", "varchar(255)"},
-      {"func_name", "varchar(255)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"meth_type", format_varchar (8)},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (255)},
+      {"from_meth_name", format_varchar (255)},
+      {"func_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_spec ()}
     },
@@ -1422,17 +1422,17 @@ namespace cubschema
 		   CTV_METHARG_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
-      {"data_type", "varchar(9)"},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_spec ()}
     },
@@ -1460,17 +1460,17 @@ namespace cubschema
 		   CTV_METHARG_SD_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
-      {"data_type", "varchar(9)"},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_set_domain_spec ()}
     },
@@ -1498,11 +1498,11 @@ namespace cubschema
 		   CTV_METHFILE_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"path_name", "varchar(255)"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"path_name", format_varchar (255)},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_file_spec ()}
     },
@@ -1530,22 +1530,22 @@ namespace cubschema
 		   CTV_INDEX_NAME,
 		   // columns
     {
-      {"index_name", "varchar(255)"},
-      {"is_unique", "varchar(3)"},
-      {"is_reverse", "varchar(3)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
+      {"index_name", format_varchar (255)},
+      {"is_unique", format_varchar (3)},
+      {"is_reverse", format_varchar (3)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
       {"key_count", "integer"},
-      {"is_primary_key", "varchar(3)"},
-      {"is_foreign_key", "varchar(3)"},
+      {"is_primary_key", format_varchar (3)},
+      {"is_foreign_key", format_varchar (3)},
 #if 0				// Not yet, Disabled for QA verification convenience
-      {"is_deduplicate", "varchar(3)"},
+      {"is_deduplicate", format_varchar (3)},
       {"deduplicate_key_level", "smallint"},
 #endif
-      {"filter_expression", "varchar(1073741823)"},
-      {"have_function", "varchar(3)"},
-      {"comment", "varchar(1024)"},
-      {"status", "varchar(255)"},
+      {"filter_expression", format_varchar (1073741823)},
+      {"have_function", format_varchar (3)},
+      {"comment", format_varchar (1024)},
+      {"status", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_spec ()}
     },
@@ -1573,14 +1573,14 @@ namespace cubschema
 		   CTV_INDEXKEY_NAME,
 		   // columns
     {
-      {"index_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"key_attr_name", "varchar(255)"},
+      {"index_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"key_attr_name", format_varchar (255)},
       {"key_order", "integer"},
-      {"asc_desc", "varchar(4)"},
+      {"asc_desc", format_varchar (4)},
       {"key_prefix_length", "integer"},
-      {"func", "varchar(1023)"},
+      {"func", format_varchar (1023)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_key_spec ()}
     },
@@ -1612,13 +1612,13 @@ namespace cubschema
 		   CTV_AUTH_NAME,
 		   // columns
     {
-      {"grantor_name", "varchar(255)"},
-      {"grantee_name", "varchar(255)"},
-      {"object_type", "varchar(16)"},
-      {"object_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"auth_type", "varchar(7)"},
-      {"is_grantable", "varchar(3)"},
+      {"grantor_name", format_varchar (255)},
+      {"grantee_name", format_varchar (255)},
+      {"object_type", format_varchar (16)},
+      {"object_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"auth_type", format_varchar (7)},
+      {"is_grantable", format_varchar (3)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
     },
@@ -1646,15 +1646,15 @@ namespace cubschema
 		   CTV_TRIGGER_NAME,
 		   // columns
     {
-      {"trigger_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"target_class_name", "varchar(255)"},
-      {"target_owner_name", "varchar(255)"},
-      {"target_attr_name", "varchar(255)"},
-      {"target_attr_type", "varchar(8)"},
+      {"trigger_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"target_class_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (255)},
+      {"target_attr_name", format_varchar (255)},
+      {"target_attr_type", format_varchar (8)},
       {"action_type", "integer"},
       {"action_time", "integer"},
-      {"comment", "varchar(1024)"},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec ()}
     },
@@ -1682,14 +1682,14 @@ namespace cubschema
 		   CTV_PARTITION_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"partition_name", "varchar(255)"},
-      {"partition_class_name", "varchar(255)"},
-      {"partition_type", "varchar(32)"},
-      {"partition_expr", "varchar(2048)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"partition_name", format_varchar (255)},
+      {"partition_class_name", format_varchar (255)},
+      {"partition_type", format_varchar (32)},
+      {"partition_expr", format_varchar (2048)},
       {"partition_values", "sequence of"},
-      {"comment", "varchar(1024)"},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
@@ -1717,18 +1717,18 @@ namespace cubschema
 		   CTV_STORED_PROC_NAME,
 		   // columns
     {
-      {"sp_name", "varchar(255)"},
-      {"pkg_name", "varchar (255)"},
-      {"sp_type", "varchar(16)"},
-      {"return_type", "varchar(16)"},
+      {"sp_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
+      {"sp_type", format_varchar (16)},
+      {"return_type", format_varchar (16)},
       {"arg_count", "integer"},
-      {"lang", "varchar(16)"},
-      {"authid", "varchar(16)"},
-      {"is_deterministic", "varchar(3)"},
-      {"target", "varchar(4096)"},
-      {"owner", "varchar(256)"},
+      {"lang", format_varchar (16)},
+      {"authid", format_varchar (16)},
+      {"is_deterministic", format_varchar (3)},
+      {"target", format_varchar (4096)},
+      {"owner", format_varchar (256)},
       {"code", format_varchar (1073741823)},
-      {"comment", "varchar(1024)"},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
     },
@@ -1756,16 +1756,16 @@ namespace cubschema
 		   CTV_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"pkg_name", "varchar (255)"},
+      {"sp_name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
-      {"arg_name", "varchar(255)"},
-      {"data_type", "varchar(16)"},
-      {"mode", "varchar(6)"},
-      {"is_optional", "varchar(3)"},
-      {"default_value", "varchar(255)"},
-      {"comment", "varchar(1024)"},
+      {"arg_name", format_varchar (255)},
+      {"data_type", format_varchar (16)},
+      {"mode", format_varchar (6)},
+      {"is_optional", format_varchar (3)},
+      {"default_value", format_varchar (255)},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
     },
@@ -1794,12 +1794,12 @@ namespace cubschema
 		   // columns
     {
       {"coll_id", "integer"},
-      {"coll_name", "varchar(32)"},
-      {"charset_name", "varchar(32)"},
-      {"is_builtin", "varchar(3)"},
-      {"has_expansions", "varchar(3)"},
+      {"coll_name", format_varchar (32)},
+      {"charset_name", format_varchar (32)},
+      {"is_builtin", format_varchar (3)},
+      {"has_expansions", format_varchar (3)},
       {"contractions", "integer"},
-      {"uca_strength", "varchar(255)"},
+      {"uca_strength", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_collation_spec ()}
     },
@@ -1828,8 +1828,8 @@ namespace cubschema
 		   // columns
     {
       {CT_DBCHARSET_CHARSET_ID, "integer"},
-      {CT_DBCHARSET_CHARSET_NAME, "varchar(32)"},
-      {CT_DBCHARSET_DEFAULT_COLLATION, "varchar(32)"},
+      {CT_DBCHARSET_CHARSET_NAME, format_varchar (32)},
+      {CT_DBCHARSET_DEFAULT_COLLATION, format_varchar (32)},
       {CT_DBCHARSET_CHAR_SIZE, "int"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_charset_spec ()}
@@ -1858,12 +1858,12 @@ namespace cubschema
 		   CTV_SYNONYM_NAME,
 		   // columns
     {
-      {"synonym_name", "varchar(255)"},
-      {"synonym_owner_name", "varchar(255)"},
-      {"is_public_synonym", "varchar(3)"},	/* access_modifier */
-      {"target_name", "varchar(255)"},
-      {"target_owner_name", "varchar(255)"},
-      {"comment", "varchar(2048)"},
+      {"synonym_name", format_varchar (255)},
+      {"synonym_owner_name", format_varchar (255)},
+      {"is_public_synonym", format_varchar (3)},	/* access_modifier */
+      {"target_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (255)},
+      {"comment", format_varchar (2048)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec ()}
     },
@@ -1891,15 +1891,15 @@ namespace cubschema
 		   CTV_DB_SERVER_NAME,
 		   // columns
     {
-      {"link_name", "varchar(255)"},
-      {"host", "varchar(255)"},
+      {"link_name", format_varchar (255)},
+      {"host", format_varchar (255)},
       {"port", "integer"},
-      {"db_name", "varchar(255)"},
-      {"user_name", "varchar(255)"},
-      // {"password", "varchar(256)"}
-      {"properties", "varchar(2048)"},
-      {"owner", "varchar(255)"},
-      {"comment", "varchar(1024)"},
+      {"db_name", format_varchar (255)},
+      {"user_name", format_varchar (255)},
+      // {"password", format_varchar(256)}
+      {"properties", format_varchar (2048)},
+      {"owner", format_varchar (255)},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
     },
