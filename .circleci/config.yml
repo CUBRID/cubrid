@@ -104,7 +104,7 @@ commands:
             # For all tests or when failed tests were not found
             if [ "$run_all" = "true" ]; then
               echo "Selecting from all tests..."
-              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split > tc.list
+              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --split-by=name > tc.list
               sed -i "s|^|$base_dir/|" tc.list
             fi
             
