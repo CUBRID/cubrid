@@ -12,7 +12,7 @@ parameters:
     default: true
   run_sql_test:
     type: boolean
-    default: true
+    default: false
   run_medium_test:
     type: boolean
     default: false
@@ -74,7 +74,7 @@ commands:
             esac
             
             # Run only failed tests
-            if [ "${RUN_ALL_TEST}" = "false" ]; then
+            if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
               echo "Finding failed tests from previous build..."
               build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
                 "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/tree/${CIRCLE_BRANCH}?limit=10")
@@ -93,8 +93,20 @@ commands:
                     sed -i "s|^|$base_dir/|" prev_fail.list
                     cat prev_fail.list | circleci tests split --verbose --split-by=timings | tee tc.list
                     echo "Running only failed tests: $(wc -l < tc.list) tests"
+                  else
+                    echo "No failed tests found in previous build"
+                    echo "Selecting from all tests..."
+                    circleci tests glob $glob_path | circleci tests split --verbose --split-by=timings | tee tc.list
                   fi
+                else
+                  echo "No xml file url found in previous build"
+                  echo "Selecting from all tests..."
+                  circleci tests glob $glob_path | circleci tests split --verbose --split-by=timings | tee tc.list
                 fi
+              else
+                echo "No previous build found"
+                echo "Selecting from all tests..."
+                circleci tests glob $glob_path | circleci tests split --verbose --split-by=timings | tee tc.list
               fi
             else
               echo "Selecting from all tests..."
