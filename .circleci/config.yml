@@ -67,7 +67,12 @@ commands:
                 glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
                 ;;
             esac
-            
+
+            circleci tests glob $glob_path | sed "s|^$base_dir/||" >glob_debug.list
+            echo "glob_debug.list: $(cat glob_debug.list)"
+            circleci-agent step halt
+            exit 1
+
             # Run only failed tests
             if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
               echo "Finding failed tests from previous build..."
