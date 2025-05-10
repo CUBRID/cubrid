@@ -12,13 +12,13 @@ parameters:
     default: true
   run_sql_test:
     type: boolean
-    default: false
+    default: true
   run_medium_test:
     type: boolean
-    default: false
+    default: true
   run_plcsql_test:
     type: boolean
-    default: false
+    default: true
   run_all_test:
     type: boolean
     # default: true
@@ -64,7 +64,8 @@ commands:
                 file_ext="sh"
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+                # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+                glob_path="$base_dir/$TEST_SUITE/_06_issues/**/*.sql"
                 ;;
               *)
                 file_ext="sql"
@@ -268,27 +269,27 @@ jobs:
 workflows:
   build_test:
     jobs:
-      # - build
-      - test_job:
-          name: test_medium
+      - build
+      # - test_job:
+      #     name: test_medium
           # requires: 
           #   - build
-          test_suite: "medium"
-      - test_job:
-          name: test_sql
+          # test_suite: "medium"
+      # - test_job:
+      #     name: test_sql
           # requires:
           #   - build
-          test_suite: "sql"
+          # test_suite: "sql"
           # parallel_num: 8
-      - test_job:
-          name: test_plcsql
+      # - test_job:
+      #     name: test_plcsql
           # requires: 
           #   - build
-          test_suite: "plcsql"
+          # test_suite: "plcsql"
       - test_job:
           name: test_shell
-          # requires: 
-          #   - build
+          requires: 
+            - build
           test_suite: "shell"
           e: cubrid-test-shell
           parallel_num: 3
