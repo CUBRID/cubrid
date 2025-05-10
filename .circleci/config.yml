@@ -65,7 +65,7 @@ commands:
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf $base_dir/$TEST_SUITE/_25_unstable
                 # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
-                glob_path="$base_dir/$TEST_SUITE/_06_issues/**/*.sql"
+                glob_path="$base_dir/$TEST_SUITE/_06_issues/**/*.sh"
                 ;;
               *)
                 file_ext="sql"
@@ -90,7 +90,7 @@ commands:
                 if [ -s xml_url.list ]; then
                   echo "Previous build has xml files : $(cat xml_url.list)"
                   while read url; do
-                    curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' >> prev_fail.list
+                    curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' | xargs -n1 >> prev_fail.list
                   done < xml_url.list
                   
                   if [ -s prev_fail.list ]; then
