@@ -97,25 +97,21 @@ commands:
                     echo "Running only failed tests: $(wc -l < tc.list) tests"
                   else
                     echo "No failed tests found in previous build"
-                    exit 1
                     echo "Selecting from all tests..."
                     circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
                   fi
                 else
                   echo "No xml file url found in previous build"
-                  exit 1
                   echo "Selecting from all tests..."
                   circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
                 fi
               else
                 echo "No previous build found"
-                exit 1
                 echo "Selecting from all tests..."
                 circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
               fi
             else
               echo "Selecting from all tests..."
-              exit 1
               circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list              
             fi
             
@@ -126,7 +122,9 @@ commands:
             else
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
-            
+
+            circleci-agent step halt
+            exit 1
             # # Run the tests
             # if [ -s tc.list ]; then
             #   /entrypoint.sh test
@@ -270,27 +268,27 @@ jobs:
 workflows:
   build_test:
     jobs:
-      - build
+      # - build
       - test_job:
           name: test_medium
-          requires: 
-            - build
+          # requires: 
+          #   - build
           test_suite: "medium"
       - test_job:
           name: test_sql
-          requires:
-            - build
+          # requires:
+          #   - build
           test_suite: "sql"
-          parallel_num: 8
+          # parallel_num: 8
       - test_job:
           name: test_plcsql
-          requires: 
-            - build
+          # requires: 
+          #   - build
           test_suite: "plcsql"
       - test_job:
           name: test_shell
-          requires: 
-            - build
+          # requires: 
+          #   - build
           test_suite: "shell"
           e: cubrid-test-shell
           parallel_num: 3
