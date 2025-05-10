@@ -52,24 +52,24 @@ commands:
                 TEST_SUITE="sql"
                 file_ext="sql"
                 base_dir="cubrid-testcases"
-                glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/cases/*.sql"
+                glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
                 ;;
               sql)
                 file_ext="sql"
                 base_dir="cubrid-testcases"
                 rm -rf $base_dir/sql/_05_plcsql $base_dir/sql/_35_fig_cake/plcsql
-                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
                 ;;
               shell)
                 file_ext="sh"
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sh"
+                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
                 ;;
               *)
                 file_ext="sql"
                 base_dir="cubrid-testcases"
-                glob_path="$base_dir/$TEST_SUITE/_*/**/cases/*.sql"
+                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
                 ;;
             esac
             
