@@ -124,8 +124,6 @@ commands:
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
 
-            circleci-agent step halt
-            exit 1
             # # Run the tests
             # if [ -s tc.list ]; then
             #   /entrypoint.sh test
