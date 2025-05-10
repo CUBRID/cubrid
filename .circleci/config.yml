@@ -89,34 +89,34 @@ commands:
                   
                   if [ -s prev_fail.list ]; then
                     cat prev_fail.list \
-                      | circleci tests split --verbose --split-by=timings --timings-type=testname --total-slices "$CIRCLE_NODE_TOTAL" --index "$CIRCLE_NODE_INDEX" \
+                      | circleci tests split --verbose --split-by=timings --timings-type=testname \
                       | tee tc.list
                     echo "Running only failed tests: $(wc -l < tc.list) tests"
                   else
                     echo "No failed tests found in previous build"
                     echo "Selecting from all tests..."
                     circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                      | circleci tests split --verbose --split-by=timings --timings-type=testname --total-slices "$CIRCLE_NODE_TOTAL" --index "$CIRCLE_NODE_INDEX" \
+                      | circleci tests split --verbose --split-by=timings --timings-type=testname \
                       | tee tc.list
                   fi
                 else
                   echo "No xml file url found in previous build"
                   echo "Selecting from all tests..."
                   circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                    | circleci tests split --verbose --split-by=timings --timings-type=testname --total-slices "$CIRCLE_NODE_TOTAL" --index "$CIRCLE_NODE_INDEX" \
+                    | circleci tests split --verbose --split-by=timings --timings-type=testname \
                     | tee tc.list
                 fi
               else
                 echo "No previous build found"
                 echo "Selecting from all tests..."
                 circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                  | circleci tests split --verbose --split-by=timings --timings-type=testname --total-slices "$CIRCLE_NODE_TOTAL" --index "$CIRCLE_NODE_INDEX" \
+                  | circleci tests split --verbose --split-by=timings --timings-type=testname \
                   | tee tc.list
               fi
             else
               echo "Selecting from all tests..."
               circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                | circleci tests split --verbose --split-by=timings --timings-type=testname --total-slices "$CIRCLE_NODE_TOTAL" --index "$CIRCLE_NODE_INDEX" \
+                | circleci tests split --verbose --split-by=timings --timings-type=testname \
                 | tee tc.list              
             fi
             
@@ -127,10 +127,6 @@ commands:
             else
               find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
-
-            circleci-agent step halt
-            exit 1
-
 
             # # Run the tests
             # if [ -s tc.list ]; then
