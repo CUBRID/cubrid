@@ -64,8 +64,7 @@ commands:
                 file_ext="sh"
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                # glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
-                glob_path="$base_dir/$TEST_SUITE/_06_issues/**/*.sh"
+                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
                 ;;
               *)
                 file_ext="sql"
