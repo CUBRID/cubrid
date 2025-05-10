@@ -290,4 +290,4 @@ workflows:
             - build
           test_suite: "shell"
           e: cubrid-test-shell
-          parallel_num: 3
+          parallel_num: 30
