@@ -89,7 +89,7 @@ commands:
                 if [ -s xml_url.list ]; then
                   echo "Previous build has xml files : $(cat xml_url.list)"
                   while read url; do
-                    curl -sSL "$url" | grep -o '<testcase [^>]*name="[^"]*"[^>]*><failure' | sed 's/.*name="\([^"]*\)".*/\1/' >> prev_fail.list
+                    curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' >> prev_fail.list
                   done < xml_url.list
                   
                   if [ -s prev_fail.list ]; then
@@ -97,21 +97,25 @@ commands:
                     echo "Running only failed tests: $(wc -l < tc.list) tests"
                   else
                     echo "No failed tests found in previous build"
+                    exit 1
                     echo "Selecting from all tests..."
                     circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
                   fi
                 else
                   echo "No xml file url found in previous build"
+                  exit 1
                   echo "Selecting from all tests..."
                   circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
                 fi
               else
                 echo "No previous build found"
+                exit 1
                 echo "Selecting from all tests..."
                 circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list
               fi
             else
               echo "Selecting from all tests..."
+              exit 1
               circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split --verbose --split-by=timings | tee tc.list              
             fi
             
@@ -289,4 +293,4 @@ workflows:
             - build
           test_suite: "shell"
           e: cubrid-test-shell
-          parallel_num: 30
+          parallel_num: 3
