@@ -118,8 +118,8 @@ commands:
             
             # Remove tests that are not in the list
             if [ "$TEST_SUITE" = "shell" ]; then
-              cat tc.list | xargs -n1 dirname > tc_dirs.list
-              find $base_dir -name "*.$file_ext" -type f | grep -v -f tc_dirs.list | xargs -r rm -rf
+              cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
+              find $base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
             else
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
