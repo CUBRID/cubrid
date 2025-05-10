@@ -105,8 +105,7 @@ commands:
             # For all tests or when failed tests were not found
             if [ "$run_all" = "true" ]; then
               echo "Selecting from all tests..."
-              circleci tests glob $glob_path | sed 's#^[^/]*/##' | circleci tests split --verbose --split-by=filesize | tee tc.list
-              sed -i "s|^|$base_dir/|" tc.list
+              circleci tests glob $glob_path | circleci tests split --verbose --split-by=name | tee tc.list              
             fi
 
             # Remove tests that are not in the list
@@ -116,7 +115,7 @@ commands:
             else
               find $base_dir -name "*.$file_ext" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
-
+            
             # # Run the tests
             # if [ -s tc.list ]; then
             #   /entrypoint.sh test
