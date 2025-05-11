@@ -1876,6 +1876,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   HEAP_PAGE_SCAN_ID *hpsidp = NULL;
   INDX_SCAN_ID *isidp = NULL;
   INDEX_NODE_SCAN_ID *insidp = NULL;
+  VECTOR_INDEX_SCAN_ID *visidp = NULL;
   int pg_cnt;
 
   /* I'm not sure this access structure could be anymore complicated (surely some of these dbvalues are redundant) */
@@ -1967,6 +1968,16 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		{
 		  pr_clear_value (hpsidp->cache_page_info[i]);
 		}
+	    }
+	  break;
+
+	case S_VECTOR_INDEX_SCAN:
+	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.visid.rest_regu_list, is_final);
+	  visidp = &p->s_id.s.visid;
+	  if (visidp->scanattr_inited)
+	    {
+	      heap_attrinfo_end (thread_p, visidp->rest_attrs.attr_cache);
+	      visidp->scanattr_inited = false;
 	    }
 	  break;
 
@@ -9235,9 +9246,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	{
 	  error_code =
 	    scan_open_vector_index_scan (thread_p, s_id, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec),
-					 &ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred,
-					 curr_spec->s.cls_node.cache_reserved,
-					 curr_spec->s.cls_node.cls_regu_list_reserved);
+					 &ACCESS_SPEC_HFID (curr_spec),
+					 curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+					 curr_spec->s.cls_node.cls_regu_list_rest,
+					 curr_spec->s.cls_node.cls_output_val_list,
+					 curr_spec->s.cls_node.cls_regu_val_list,
+					 curr_spec->s.cls_node.num_attrs_pred,
+					 curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+					 curr_spec->s.cls_node.cache_rest);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

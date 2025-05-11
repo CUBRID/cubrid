@@ -3667,44 +3667,89 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			     /* fields of SCAN_ID */
 			     val_list_node * val_list, VAL_DESCR * vd,
 			     /* fields of INDX_SCAN_ID */
-			     indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
-			     DB_VALUE ** cache_reserved, regu_variable_list_node * cls_regu_list_reserved)
+			     indx_info * indx_info, OID * cls_oid, HFID * hfid,
+			     regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+			     regu_variable_list_node * regu_list_rest,
+			     valptr_list_node * output_val_list,
+			     regu_variable_list_node * regu_val_list,
+			     int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
+			     int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest)
 {
-  INDX_SCAN_ID *isidp;
   BTREE_SCAN *BTS;
+  BTID *btid;
+  VECTOR_INDEX_SCAN_ID *visid;
+
+  const int dim = 3;
+  int k = 3, i;
+  DB_VALUE key_dbvalue;
+  DB_VECTOR_FLOAT vector_float;
 
   scan_id->type = S_VECTOR_INDEX_SCAN;
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, false, S_SELECT, true, false, QPROC_NO_SINGLE_INNER, NULL, val_list, vd);
 
   /* initialize INDEX_SCAN_ID structure */
-  isidp = &scan_id->s.isid;
+  visid = &scan_id->s.visid;
 
   /* index information */
-  isidp->indx_info = indx_info;
+  visid->indx_info = indx_info;
 
   /* init allocated fields */
-  isidp->bt_num_attrs = 0;
-  isidp->bt_attr_ids = NULL;
-  isidp->vstr_ids = NULL;
-  isidp->oid_list = NULL;
-  isidp->curr_oidp = NULL;
-  isidp->copy_buf = NULL;
-  isidp->copy_buf_len = 0;
-  isidp->key_vals = NULL;
+  visid->curr_oidno = -1;
+  visid->curr_oidp = NULL;
+  visid->hfid = *hfid;
+  // visid->scan_cache = NULL;
+  visid->cls_oid = *cls_oid;
 
-  isidp->indx_cov.type_list = NULL;
-  isidp->indx_cov.list_id = indx_info->cov_list_id;
-  isidp->indx_cov.tplrec = NULL;
-  isidp->indx_cov.lsid = NULL;
+  /* attribute information from other than predicates */
+  scan_init_scan_attrs (&visid->rest_attrs, num_attrs_rest, attrids_rest, cache_rest);
+  visid->scancache_inited = false;
 
+  visid->rest_regu_list = regu_list_rest;
   /* index scan info */
-  BTS = &isidp->bt_scan;
-  BTREE_INIT_SCAN (BTS);
+
+#if 0
+  /* attribute information of the index key */
+  if (heap_get_indexinfo_of_btid (thread_p, cls_oid, &indx_info->btid, NULL, &visid->num_attrs,
+				  &visid->attr_ids, &visid->attrs_prefix_length, NULL, NULL) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+#endif
+
+  vector_float.dim = dim;
+  vector_float.float_array = (float *) db_private_alloc (thread_p, dim * sizeof (float));
+  vector_float.float_array[0] = 0.0f;
+  vector_float.float_array[1] = 0.0f;
+  vector_float.float_array[2] = 0.0f;
+  db_make_vector_float (&key_dbvalue, &vector_float);
+
+  visid->oidp = new OID[k];
+  visid->distp = new float[k];
+  visid->oid_cnt = k;
+
+
+  if (hnsw_search_element (indx_info->btid.root_pageid, &key_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  printf ("rec_oids=\n");
+  for (int j = 0; j < k; j++)
+    printf ("[OID:%d,%d,%d]", visid->oidp[j].pageid, visid->oidp[j].slotid, visid->oidp[j].volid);
+  printf ("\n");
+
+  printf ("distances=\n");
+  for (int j = 0; j < k; j++)
+    printf ("%5f ", visid->distp[j]);
+  printf ("\n");
+
+  db_private_free_and_init (thread_p, vector_float.float_array);
+
+exit_on_error:
 
   return NO_ERROR;
 }
-
 
 /*
  * scan_open_list_scan () -
@@ -4154,7 +4199,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   regu_variable_list_node *list_node = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
-
+  VECTOR_INDEX_SCAN_ID *visidp = NULL;
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
@@ -4251,7 +4296,41 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       break;
     case S_VECTOR_INDEX_SCAN:
-      isidp = &scan_id->s.isid;
+      visidp = &scan_id->s.visid;
+
+      if (!OID_IS_ROOTOID (&visidp->cls_oid))
+	{
+	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  if (mvcc_snapshot == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+
+      /* A new argument(is_indexscan = true) is appended */
+      ret =
+	heap_scancache_start (thread_p, &visidp->scan_cache, &visidp->hfid, &visidp->cls_oid, scan_id->fixed,
+			      mvcc_snapshot);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      //visidp->scancache_inited = true;
+      visidp->curr_oidno = -1;
+      visidp->scancache_inited = true;
+
+      if (visidp->scanattr_inited != true)
+	{
+	  visidp->rest_attrs.attr_cache->num_values = -1;
+	  ret =
+	    heap_attrinfo_start (thread_p, &visidp->cls_oid, visidp->rest_attrs.num_attrs, visidp->rest_attrs.attr_ids,
+				 visidp->rest_attrs.attr_cache);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  visidp->scanattr_inited = true;
+	}
 
       break;
     case S_INDX_SCAN:
@@ -4740,6 +4819,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SET_SCAN_ID *ssidp;
   KEY_VAL_RANGE *key_vals;
   JSON_TABLE_SCAN_ID *jtidp;
+  VECTOR_INDEX_SCAN_ID *visidp;
   int i;
 
   if (scan_id == NULL)
@@ -4789,6 +4869,14 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_CLASS_ATTR_SCAN:
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
+      break;
+
+    case S_VECTOR_INDEX_SCAN:
+      visidp = &scan_id->s.visid;
+      if (visidp->scancache_inited)
+	{
+	  (void) heap_scancache_end (thread_p, &visidp->scan_cache);
+	}
       break;
 
     case S_INDX_SCAN:
@@ -6173,6 +6261,72 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE
 scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
+  VECTOR_INDEX_SCAN_ID *visid = &scan_id->s.visid;
+  RECDES recdes = RECDES_INITIALIZER;
+
+  visid->curr_oidno++;
+
+  if (visid->curr_oidno >= visid->oid_cnt)
+    {
+      scan_id->position = S_AFTER;
+      return S_END;
+    }
+
+  if (visid->curr_oidno < visid->oid_cnt)
+    {
+      scan_id->qualification = QPROC_QUALIFIED;
+
+      SCAN_CODE sp_scan =
+	heap_get_visible_version (thread_p, &visid->oidp[visid->curr_oidno], NULL, &recdes, &visid->scan_cache,
+				  scan_id->fixed,
+				  NULL_CHN);
+      if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
+	{
+	  return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	}
+      else if (sp_scan == S_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return sp_scan;
+	}
+      else
+	{
+	  assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+	}
+
+      LOCK lock = NULL_LOCK;
+
+      if (lock_object (thread_p, &visid->oidp[visid->curr_oidno], &visid->cls_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  return S_ERROR;
+	}
+
+      if (visid->rest_regu_list)
+	{
+	  /* read the rest of the values from the heap into the attribute cache */
+	  if (heap_attrinfo_read_dbvalues
+	      (thread_p, &visid->oidp[visid->curr_oidno], &recdes, visid->rest_attrs.attr_cache) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
+	  /* fetch the rest of the values from the object instance */
+	  if (scan_id->val_list)
+	    {
+	      if (fetch_val_list
+		  (thread_p, visid->rest_regu_list, scan_id->vd, &visid->cls_oid, &visid->oidp[visid->curr_oidno], NULL,
+		   PEEK) != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+	    }
+	}
+    }
+  else
+    {
+      scan_id->qualification = QPROC_NOT_QUALIFIED;
+    }
+
   return S_SUCCESS;
 }
 
