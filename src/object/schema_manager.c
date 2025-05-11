@@ -10815,7 +10815,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     {
       if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
-	  error = hnsw_add_index (index, 10, 32, 100, faiss::METRIC_L2);
+	  error = hnsw_add_index (index, 3, 32, 100, faiss::METRIC_L2);
 	}
       else
 	{
