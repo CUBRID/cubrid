@@ -7705,21 +7705,34 @@ mr_data_writemem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 static void
 mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  ASSERT_CUBVEC (false);
+  if (memptr == NULL)
+    {
+      or_advance (buf, size);
+    }
+  else
+    {
+      or_get_data (buf, (char *) memptr, size);
+    }
 }
 
 static void
 mr_freemem_vector_float (void *memptr)
 {
-  char *mem = *(char **) memptr;
   vimkim_log ("freeing %p\n", mem);
-  db_private_free_and_init (NULL, mem);
+
+  if (memptr != NULL)
+    {
+      char *mem = *(char **) memptr;
+      if (mem != NULL)
+	{
+	  db_private_free_and_init (NULL, mem);
+	}
+    }
 }
 
 static void
 mr_initval_vector_float (DB_VALUE * value, int precision, int scale)
 {
-
   vimkim_log ("args: value %p, precision %d, scale %d\n", value, precision, scale);
 
   DB_VECTOR_FLOAT vf;
