@@ -12436,12 +12436,46 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* TODO (CUBVEC) */
 	      // very happy!
 	      // assert (false);
+
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
+				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
+		{
+		  return NULL;
+		}
+
+	      symbols->current_class = class_;
+
+	      regu_alloc (cache_pred);
+	      regu_alloc (cache_rest);
+
+	      symbols->cache_attrinfo = cache_pred;
+	      where = pt_to_pred_expr (parser, where_part);
+	      regu_attributes_pred =
+		pt_to_regu_variable_list (parser, pred_attrs, UNBOX_AS_VALUE, table_info->value_list, pred_offsets);
+
+	      symbols->cache_attrinfo = cache_rest;
+	      regu_attributes_rest =
+		pt_to_regu_variable_list (parser, rest_attrs, UNBOX_AS_VALUE, table_info->value_list, rest_offsets);
+
+	      output_val_list = pt_make_outlist_from_vallist (parser, table_info->value_list);
+
+	      regu_var_list =
+		pt_to_position_regu_variable_list (parser, rest_attrs, table_info->value_list, rest_offsets);
+
+	      parser_free_tree (parser, pred_attrs);
+	      parser_free_tree (parser, rest_attrs);
+
 	      index_info = pt_to_index_info (parser, class_->info.name.db_object, where, plan, index_pred);
+	      if (pt_has_error (parser))
+		{
+		  return NULL;
+		}
+
 	      access =
 		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
-					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL, NULL,
-					   NULL, NULL, output_val_list, NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, NULL,
-					   NULL);
+					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL,
+					   regu_attributes_pred, regu_attributes_rest, NULL, output_val_list,
+					   regu_var_list, NULL, cache_pred, cache_rest, NULL, NO_SCHEMA, NULL, NULL);
 	    }
 	  else
 	    {
