@@ -1118,10 +1118,17 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
   db_make_null (&new_val);
   db_make_null (&started);
   db_make_int (&cmp_result, 0);
-
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  max_val.domain.numeric_info.is_floating_point_numeric = 0;
+  new_val.domain.numeric_info.is_floating_point_numeric = 0;
+  started.domain.numeric_info.is_floating_point_numeric = 0;
+  cmp_result.domain.numeric_info.is_floating_point_numeric = 0;
 
   /* create a NUMERIC value in new_val */
   db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+
+  // 0을 제외한 임의의 값으로 초기화
+  //node_new_val->info.value.db_value.domain.numeric_info.precision = 1;
   pval = pt_value_to_db (parser, node_new_val);
   if (pval == NULL)
     {
@@ -1414,6 +1421,10 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&min_val);
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  zero.domain.numeric_info.is_floating_point_numeric = 0;
+  e38.domain.numeric_info.is_floating_point_numeric = 0;
+  negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   /*
    * find db_serial_class
@@ -1455,6 +1466,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
   if (inc_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -1503,6 +1516,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
@@ -1537,6 +1552,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    */
   if (min_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
@@ -1585,6 +1602,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (max_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
@@ -1857,6 +1876,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&inc_val);
   db_make_null (&max_val);
   db_make_null (&min_val);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  zero.domain.numeric_info.is_floating_point_numeric = 0;
+  e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
   numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
@@ -1919,6 +1941,8 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   if (inc_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -1963,12 +1987,15 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
 	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
 	}
+
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -2109,6 +2136,10 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   db_make_null (&current_val);
   db_make_null (&max_val);
   OID_SET_NULL (&serial_obj_id);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  e38.domain.numeric_info.is_floating_point_numeric = 0;
+  current_val.domain.numeric_info.is_floating_point_numeric = 0;
+  max_val.domain.numeric_info.is_floating_point_numeric = 0;
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
 
@@ -2350,6 +2381,10 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  zero.domain.numeric_info.is_floating_point_numeric = 0;
+  e38.domain.numeric_info.is_floating_point_numeric = 0;
+  negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   /*
    * find db_serial_class
@@ -2458,6 +2493,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   inc_val_node = PT_NODE_SR_INCREMENT_VAL (statement);
   if (inc_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       inc_val_change = true;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
@@ -2507,6 +2544,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   start_val_node = PT_NODE_SR_START_VAL (statement);
   if (start_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       cur_val_change = true;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
@@ -2533,6 +2572,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
   if (max_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       max_val_change = true;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
@@ -2582,6 +2623,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   min_val_node = PT_NODE_SR_MIN_VAL (statement);
   if (min_val_node != NULL)
     {
+      // 0을 제외한 임의의 값으로 초기화
+      min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       min_val_change = true;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
@@ -20746,6 +20789,8 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   memset (attr_val, 0x00, sizeof (attr_val));
   db_make_null (&passwd);
   db_make_int (&port_no, 0);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  port_no.domain.numeric_info.is_floating_point_numeric = 0;
 
   if (create_server->owner_name)
     {
@@ -20799,6 +20844,9 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* PORT */
   db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+
+  // 0을 제외한 임의의 값으로 초기화
+  create_server->port->info.value.db_value.domain.numeric_info.precision = 1;
   pval = pt_value_to_db (parser, create_server->port);
   if (pval == NULL)
     {
@@ -21027,6 +21075,9 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   db_make_null (&value);
+  // numeric_coerce_string_to_num 함수 전에 초기화
+  value.domain.numeric_info.is_floating_point_numeric = 0;
+
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
 
@@ -21091,6 +21142,9 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       DB_DATA_STATUS data_stat;
 
       db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+
+      // 0을 제외한 임의의 값으로 초기화
+      alter->port->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, alter->port);
       if (pval == NULL)
 	{

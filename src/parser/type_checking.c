@@ -12196,8 +12196,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	case PT_TYPE_NUMERIC:
 	  // 여기도 수정을 해야할까???? 모르겠네...
 	  if (dt->info.data_type.dec_precision >
-	      (dt->info.
-	       data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	      (dt->info.data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+	       DB_MAX_NUMERIC_PRECISION))
 	    {
 	      dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
 						  - (dt->info.data_type.precision -
@@ -12207,11 +12207,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
 	  dt->info.data_type.precision =
 	    ((dt->info.data_type.precision >
-	      (dt->info.
-	       data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
-	     ? (dt->
-		info.data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION)
-	     : dt->info.data_type.precision);
+	      (dt->info.data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+	       DB_MAX_NUMERIC_PRECISION))
+	     ? (dt->info.data_type.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING :
+		DB_MAX_NUMERIC_PRECISION) : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_ENUMERATION:

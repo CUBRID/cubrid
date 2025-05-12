@@ -2918,7 +2918,8 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->type_enum = node->type_enum;
 	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
 	  dt->info.data_type.dec_precision = DB_VALUE_SCALE (val);
-	  // 여기도 flag 설정 확인 필요
+	  // 여기도 flag 설정 확인 필요?
+	  // 추가 문제, serial 및 auto_increment 컬럼에 대해서도 적용됨..
 	  if (val->domain.numeric_info.is_floating_point_numeric || val->domain.numeric_info.precision == 0)
 	    {
 	      dt->info.data_type.is_floating_point_numeric = 1;
@@ -3328,7 +3329,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
          이 때, db_value의 flag는 기본 값인 0으로 설정되어 있음.
          domain 정보를 모르기 때문에 우선 flag를 1로 설정해줌.
        */
-      if (value->info.value.db_value.domain.numeric_info.is_floating_point_numeric == 0
+      // 추가 문제, serial 및 auto_increment 컬럼에 대해서도 적용됨..
+      if (!value->info.value.db_value.domain.numeric_info.is_floating_point_numeric
 	  && value->info.value.db_value.domain.numeric_info.precision == 0)
 	{
 	  db_value->domain.numeric_info.is_floating_point_numeric = 1;
