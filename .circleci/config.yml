@@ -249,7 +249,7 @@ jobs:
         type: integer
         default: 1
     executor: << parameters.e >>
-    resource_class: large
+    resource_class: medium
     parallelism: << parameters.parallel_num >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
