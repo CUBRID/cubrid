@@ -1650,12 +1650,10 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 
   thread_p->push_resource_tracks ();
 
-#if !defined(NDEBUG)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   struct timeval orderby_time = {0,};
   tsc_getticks (&start_tick);
-#endif
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -1691,21 +1689,19 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
       goto cleanup;
     }
 
-#if !defined(NDEBUG)
   tsc_getticks (&end_tick);
   tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
   TSC_ADD_TIMEVAL (orderby_time, tv_diff);
   printf ("thread %d done, time: %d\n",thread_p->index, TO_MSEC (orderby_time));
-#endif
 
-  /* done */
+cleanup:
+  thread_p->pop_resource_tracks ();
+
+ /* done */
   pthread_mutex_lock(sort_param->px_mtx);
   sort_param->px_status = PX_DONE;
   pthread_cond_signal(sort_param->complete_cond);
   pthread_mutex_unlock(sort_param->px_mtx);
-
-cleanup:
-  thread_p->pop_resource_tracks ();
 }
 #endif
 
@@ -1728,7 +1724,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
    * space that is going to be needed.
    */
 
-#if !defined(NDEBUG)
+
   TSC_TICKS start_tick, end_tick;
   TSC_TICKS start_tick2, end_tick2;
   TSCTIMEVAL tv_diff, tv_diff2;
@@ -1736,7 +1732,6 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   {
   0,};
   tsc_getticks (&start_tick);
-#endif
 
   error = sort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
   if (error != NO_ERROR)
@@ -1744,7 +1739,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       return error;
     }
 
-#if !defined(NDEBUG)
+
   tsc_getticks (&end_tick);
   tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
   orderby_time.tv_usec = tv_diff.tv_usec;
@@ -1753,7 +1748,6 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   printf ("sort_inphase_sort time: %d\n", TO_MSEC (orderby_time));
 
   tsc_getticks (&start_tick2);
-#endif
 
   if (sort_param->tot_runs > 1 || SORT_IS_PARALLEL (sort_param))
     {
@@ -1784,13 +1778,12 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
     }				/* if (sort_param->tot_runs > 1) */
 
-#if !defined(NDEBUG)
+
   tsc_getticks (&end_tick2);
   tsc_elapsed_time_usec (&tv_diff2, end_tick2, start_tick2);
   orderby_time2.tv_usec = tv_diff2.tv_usec;
   orderby_time2.tv_sec = tv_diff2.tv_sec;
   printf ("sort_exphase_merge time: %d\n", TO_MSEC (orderby_time2));
-#endif
 
   return error;
 }
@@ -4821,12 +4814,11 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 	}
     }
 
-#if !defined(NDEBUG)
+
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   struct timeval orderby_time = { 0, };
   tsc_getticks (&start_tick);
-#endif
 
   /* Merge the parallel processed results. */
   sort_param->px_max_index = 2;
@@ -4840,12 +4832,11 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
       error = sort_exphase_merge (thread_p, sort_param);
     }
 
-#if !defined(NDEBUG)
+
   tsc_getticks (&end_tick);
   tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
   TSC_ADD_TIMEVAL (orderby_time, tv_diff);
   printf ("n-merge time: %d\n", TO_MSEC (orderby_time));
-#endif
 
   /* save result run */
   result_run[first_idx].temp_file = sort_param->temp[sort_param->px_result_file_idx];
@@ -4907,12 +4898,11 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 static void
 sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
-#if !defined(NDEBUG)
+
       TSC_TICKS start_tick, end_tick;
       TSCTIMEVAL tv_diff;
       struct timeval orderby_time = { 0, };
       tsc_getticks (&start_tick);
-#endif
 
   THREAD_ENTRY * thread_p = &thread_ref;
   SORT_INFO *sort_info_p;
@@ -4931,6 +4921,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   else
     {
+      pthread_mutex_lock(sort_param->px_mtx);
       sort_info_p = (SORT_INFO *) sort_param->put_arg;
       sort_info_p->output_file =
 	qfile_open_list (thread_p, &sort_info_p->input_file->type_list, sort_info_p->sort_list_p,
@@ -4941,6 +4932,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       sort_info_p->output_file->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
       sort_info_p->output_file->tfile_vfid->preserved = false;
       sort_info_p->output_file->tfile_vfid->tde_encrypted = false;
+      pthread_mutex_unlock(sort_param->px_mtx);
     }
 
   /* write last temp file */
@@ -4951,22 +4943,20 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       goto cleanup;
     }
 
+cleanup:
+  qfile_close_list (thread_p, sort_info_p->output_file);
+  thread_p->pop_resource_tracks ();
+
   /* done */
   pthread_mutex_lock(sort_param->px_mtx);
   sort_param->px_status = PX_DONE;
   pthread_cond_signal(sort_param->complete_cond);
   pthread_mutex_unlock(sort_param->px_mtx);
 
-cleanup:
-  qfile_close_list (thread_p, sort_info_p->output_file);
-  thread_p->pop_resource_tracks ();
-
-#if !defined(NDEBUG)
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (orderby_time, tv_diff);
       printf ("last parallel merge time: %d\n", TO_MSEC (orderby_time));
-#endif
 }
 
 /*
@@ -5045,12 +5035,11 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return ER_FAILED;
 	}
 
-#if !defined(NDEBUG)
+
       TSC_TICKS start_tick, end_tick;
       TSCTIMEVAL tv_diff;
       struct timeval orderby_time = { 0, };
       tsc_getticks (&start_tick);
-#endif
 
       /* merge parallel result into sort location temp file */
       error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
@@ -5061,16 +5050,14 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
       assert (sort_get_numpages_of_active_infiles (sort_param) == 1);
 
-#if !defined(NDEBUG)
+
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (orderby_time, tv_diff);
       printf ("merge time: %d\n", TO_MSEC (orderby_time));
-#endif
 
-#if !defined(NDEBUG)
+
       tsc_getticks (&start_tick);
-#endif
 
       /* split last run into px_sort_param */
       sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
@@ -5093,12 +5080,11 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
 	}
 
-#if !defined(NDEBUG)
+
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (orderby_time, tv_diff);
       printf ("last merge time: %d\n", TO_MSEC (orderby_time));
-#endif
 
     }
   else
