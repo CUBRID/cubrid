@@ -3693,16 +3693,16 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
     }
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
   fprintf (fp, ", (F: %d, H: %d, I: %d)", TO_MSEC (stats->profile.build.fetch), TO_MSEC (stats->profile.build.hash),
 	   TO_MSEC (stats->profile.build.insert));
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
   fprintf (fp, "\n");
 
   if (part_cnt > 1)
     {
-#if HASH_JOIN_DUMP_PARTITION
+#if HASHJOIN_DUMP_PARTITION
       indent += 2;
 
       for (part_index = 0; part_index < part_cnt; part_index++)
@@ -3734,16 +3734,16 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		}
 	    }
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
 	  fprintf (fp, ", (F: %d, H: %d, I: %d)", TO_MSEC (current_stats->profile.build.fetch),
 		   TO_MSEC (current_stats->profile.build.hash), TO_MSEC (current_stats->profile.build.insert));
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
 	  fprintf (fp, "\n");
 	}
 
       indent -= 2;
-#endif /* HASH_JOIN_DUMP_PARTITION */
+#endif /* HASHJOIN_DUMP_PARTITION */
     }
   else
     {
@@ -3757,17 +3757,17 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	   stats->probe.fetch_time, stats->probe.ioreads, stats->probe.readkeys, stats->probe.rows,
 	   stats->probe.max_collisions);
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
   fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
 	   TO_MSEC (stats->profile.probe.hash), TO_MSEC (stats->profile.probe.search),
 	   TO_MSEC (stats->profile.probe.match), TO_MSEC (stats->profile.probe.add));
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
   fprintf (fp, "\n");
 
   if (part_cnt > 1)
     {
-#if HASH_JOIN_DUMP_PARTITION
+#if HASHJOIN_DUMP_PARTITION
       indent += 2;
 
       for (part_index = 0; part_index < part_cnt; part_index++)
@@ -3783,17 +3783,17 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   current_stats->probe.part_rows, current_stats->probe.readkeys, current_stats->probe.rows,
 		   current_stats->probe.max_collisions);
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
 	  fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (current_stats->profile.probe.fetch),
 		   TO_MSEC (current_stats->profile.probe.hash), TO_MSEC (current_stats->profile.probe.search),
 		   TO_MSEC (current_stats->profile.probe.match), TO_MSEC (current_stats->profile.probe.add));
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
 	  fprintf (fp, "\n");
 	}
 
       indent -= 2;
-#endif /* HASH_JOIN_DUMP_PARTITION */
+#endif /* HASHJOIN_DUMP_PARTITION */
     }
   else
     {
@@ -4015,17 +4015,17 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
     }
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
   profile = json_object ();
   json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.build.fetch)));
   json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.build.hash)));
   json_object_set_new (profile, "I", json_integer (TO_MSEC (stats->profile.build.insert)));
   json_object_set_new (build, "profile", profile);
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
   if (part_cnt > 1)
     {
-#if HASH_JOIN_DUMP_PARTITION
+#if HASHJOIN_DUMP_PARTITION
       part_array = json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
@@ -4055,19 +4055,19 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 		}
 	    }
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
 	  profile = json_object ();
 	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.build.fetch)));
 	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.build.hash)));
 	  json_object_set_new (profile, "I", json_integer (TO_MSEC (current_stats->profile.build.insert)));
 	  json_object_set_new (input, "profile", profile);
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
 	  json_array_append_new (part_array, input);
 	}
 
       json_object_set_new (build, "partition_list", part_array);
-#endif /* HASH_JOIN_DUMP_PARTITION */
+#endif /* HASHJOIN_DUMP_PARTITION */
     }
   else
     {
@@ -4087,7 +4087,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   json_object_set_new (probe, "rows", json_integer (stats->probe.rows));
   json_object_set_new (probe, "max_collisions", json_integer (stats->probe.max_collisions));
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
   profile = json_object ();
   json_object_set_new (profile, "F", json_integer (TO_MSEC (stats->profile.probe.fetch)));
   json_object_set_new (profile, "H", json_integer (TO_MSEC (stats->profile.probe.hash)));
@@ -4095,11 +4095,11 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   json_object_set_new (profile, "M", json_integer (TO_MSEC (stats->profile.probe.match)));
   json_object_set_new (profile, "A", json_integer (TO_MSEC (stats->profile.probe.add)));
   json_object_set_new (probe, "profile", profile);
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
   if (part_cnt > 1)
     {
-#if HASH_JOIN_DUMP_PARTITION
+#if HASHJOIN_DUMP_PARTITION
       part_array = json_array ();
 
       for (part_index = 0; part_index < part_cnt; part_index++)
@@ -4119,7 +4119,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  json_object_set_new (input, "rows", json_integer (current_stats->probe.rows));
 	  json_object_set_new (input, "max_collisions", json_integer (current_stats->probe.max_collisions));
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
 	  profile = json_object ();
 	  json_object_set_new (profile, "F", json_integer (TO_MSEC (current_stats->profile.probe.fetch)));
 	  json_object_set_new (profile, "H", json_integer (TO_MSEC (current_stats->profile.probe.hash)));
@@ -4127,13 +4127,13 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  json_object_set_new (profile, "M", json_integer (TO_MSEC (current_stats->profile.probe.match)));
 	  json_object_set_new (profile, "A", json_integer (TO_MSEC (current_stats->profile.probe.add)));
 	  json_object_set_new (input, "profile", profile);
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
 	  json_array_append_new (part_array, input);
 	}
 
       json_object_set_new (probe, "partition_list", part_array);
-#endif /* HASH_JOIN_DUMP_PARTITION */
+#endif /* HASHJOIN_DUMP_PARTITION */
     }
   else
     {

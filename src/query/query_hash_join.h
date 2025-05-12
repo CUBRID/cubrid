@@ -38,11 +38,11 @@
  * Debug Macros
  */
 
-#define HASH_JOIN_PROFILE_TIME 0
-#define HASH_JOIN_DUMP_PARTITION 0
-#define HASH_JOIN_DUMP_HASH_TABLE 0
-#define HASH_JOIN_DUMP_BUILD 0
-#define HASH_JOIN_DUMP_PROBE 0
+#define HASHJOIN_PROFILE_TIME 0
+#define HASHJOIN_DUMP_PARTITION 0
+#define HASHJOIN_DUMP_HASH_TABLE 0
+#define HASHJOIN_DUMP_BUILD 0
+#define HASHJOIN_DUMP_PROBE 0
 
 /*
  * Forward Declarations
@@ -101,26 +101,26 @@ typedef struct hashjoin_common_stats
 } HASHJOIN_INPUT_STATS;
 #define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0 }
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
 {
   struct
   {
-    struct timeval fetch;	/* qexec_hash_join_fetch_key */
+    struct timeval fetch;	/* hjoin_fetch_key */
     struct timeval hash;	/* qdata_hash_scan_key */
-    struct timeval insert;	/* qexec_hash_join_build_key */
+    struct timeval insert;	/* hjoin_build_key */
   } build;
 
   struct
   {
-    struct timeval fetch;	/* qexec_hash_join_fetch_key */
+    struct timeval fetch;	/* hjoin_fetch_key */
     struct timeval hash;	/* qdata_hash_scan_key */
-    struct timeval search;	/* qexec_hash_join_probe_key */
-    struct timeval match;	/* qexec_hash_join_fetch_key */
-    struct timeval add;		/* qexec_hash_join_merge_tuple_to_list_id */
+    struct timeval search;	/* hjoin_probe_key */
+    struct timeval match;	/* hjoin_fetch_key */
+    struct timeval add;		/* hjoin_merge_tuple_to_list_id */
   } probe;
 } HASHJOIN_PROFILE_STATS;
-#endif /* HASH_JOIN_PROFILE_TIME */
+#endif /* HASHJOIN_PROFILE_TIME */
 
 typedef struct hashjoin_stats
 {
@@ -132,9 +132,9 @@ typedef struct hashjoin_stats
   HASHJOIN_INPUT_STATS build;
   HASHJOIN_INPUT_STATS probe;
 
-#if HASH_JOIN_PROFILE_TIME
+#if HASHJOIN_PROFILE_TIME
   HASHJOIN_PROFILE_STATS profile;
-#endif				/* HASH_JOIN_PROFILE_TIME */
+#endif				/* HASHJOIN_PROFILE_TIME */
 } HASHJOIN_STATS;
 
 typedef struct hashjoin_stats_group
