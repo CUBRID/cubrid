@@ -1408,6 +1408,8 @@ error_exit:
 	{
 	  db_private_free_and_init (thread_p, manager->stats_group->context_stats);
 	}
+
+      manager->stats_group->context_cnt = 0;
     }
 
   /* retry */
@@ -1514,6 +1516,7 @@ hjoin_make_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
+      error = (error == NO_ERROR) ? er_errid () : error;
       goto error_exit;
     }
 
@@ -2154,6 +2157,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
+      error = (error == NO_ERROR) ? er_errid () : error;
       goto error_exit;
     }
 
@@ -2460,6 +2464,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
+      error = (error == NO_ERROR) ? er_errid () : error;
       goto error_exit;
     }
 
@@ -2801,6 +2806,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
+      error = (error == NO_ERROR) ? er_errid () : error;
       goto error_exit;
     }
 
