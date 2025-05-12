@@ -10815,7 +10815,14 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     {
       if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
-	  error = hnsw_add_index (index, 10, 32, 100, faiss::METRIC_L2);
+	  if (domain->precision < 1)
+	    {
+              // TODO (CUBVEC): set proper error code
+	      error = ER_SM_INVALID_INDEX_TYPE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, domain->type->name);
+	      return error;
+	    }
+	  error = hnsw_add_index (index, domain->precision, 32, 100, faiss::METRIC_L2);
 	}
       else
 	{
