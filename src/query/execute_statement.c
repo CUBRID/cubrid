@@ -5987,63 +5987,62 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
 	  {
 	    result = NO_ERROR;
+	    break;
 	  }
-	else
+
+	columns = (char **) (malloc (count * sizeof (char *)));
+	if (columns == NULL)
 	  {
-	    columns = (char **) (malloc (count * sizeof (char *)));
-	    if (columns == NULL)
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (char *));
+	    result = ER_FAILED;
+	    goto exit;
+	  }
+
+	/* prepare trigger state structures */
+	node = statement->info.update.spec;
+	do
+	  {
+	    /* flag is set to UPDATE to make sure triggers are checked for statement->info.update.object_parameter too */
+	    flag = PT_SPEC_FLAG_UPDATE;
+
+	    if (node != NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (char *));
-		result = ER_FAILED;
-		goto exit;
+		flat = node->info.spec.flat_entity_list;
+		flag = node->info.spec.flag;
+		node = node->next;
+	      }
+	    else
+	      {
+		flat = statement->info.update.object_parameter;
 	      }
 
-	    /* prepare trigger state structures */
-	    node = statement->info.update.spec;
-	    do
+	    if (flag & PT_SPEC_FLAG_UPDATE)
 	      {
-		/* flag is set to UPDATE to make sure triggers are checked for statement->info.update.object_parameter too */
-		flag = PT_SPEC_FLAG_UPDATE;
-
-		if (node != NULL)
+		idx = 0;
+		pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+		while ((assign = pt_get_next_assignment (&ea)) != NULL)
 		  {
-		    flat = node->info.spec.flat_entity_list;
-		    flag = node->info.spec.flag;
-		    node = node->next;
-		  }
-		else
-		  {
-		    flat = statement->info.update.object_parameter;
-		  }
-
-		if (flag & PT_SPEC_FLAG_UPDATE)
-		  {
-		    idx = 0;
-		    pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
-		    while ((assign = pt_get_next_assignment (&ea)) != NULL)
+		    if (assign->info.name.spec_id == flat->info.name.spec_id)
 		      {
-			if (assign->info.name.spec_id == flat->info.name.spec_id)
-			  {
-			    columns[idx++] = (char *) assign->info.name.original;
-			  }
+			columns[idx++] = (char *) assign->info.name.original;
 		      }
-
-		    class_ = flat ? flat->info.name.db_object : NULL;
-		    if (class_ == NULL)
-		      {
-			PT_INTERNAL_ERROR (parser, "invalid spec id");
-			result = ER_FAILED;
-			goto exit;
-		      }
-
-		    result = tr_prepare_statement (&state, event, class_, idx, (const char **) columns);
 		  }
+
+		class_ = flat ? flat->info.name.db_object : NULL;
+		if (class_ == NULL)
+		  {
+		    PT_INTERNAL_ERROR (parser, "invalid spec id");
+		    result = ER_FAILED;
+		    goto exit;
+		  }
+
+		result = tr_prepare_statement (&state, event, class_, idx, (const char **) columns);
 	      }
-	    while (node);
-	    if (columns)
-	      {
-		free_and_init (columns);
-	      }
+	  }
+	while (node);
+	if (columns)
+	  {
+	    free_and_init (columns);
 	  }
 	break;
       }
