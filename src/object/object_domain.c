@@ -258,7 +258,7 @@ TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
 // TODO: CUBVEC: DOMAIN or DOMAIN_INIT3? Not analyzed yet.
-TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT };
+TP_DOMAIN tp_Vector_domain = { NULL, NULL, &tp_Vector, DOMAIN_INIT4 (DB_DEFAULT_PRECISION, 0) };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -1543,11 +1543,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
   switch (TP_DOMAIN_TYPE (dom1))
     {
 
-    case DB_TYPE_VECTOR:
-      {
-	ASSERT_CUBVEC (false);
-      }
-
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -1574,6 +1569,12 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 
     case DB_TYPE_JSON:
       match = (int) db_json_are_validators_equal (dom1->json_validator, dom2->json_validator);
+      break;
+
+
+    case DB_TYPE_VECTOR:
+      // TODO (CUBVEC): Only precision is considered for now.
+      match = ((dom1->precision == dom2->precision));
       break;
 
     case DB_TYPE_VOBJ:
@@ -1964,7 +1965,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
   switch (TP_DOMAIN_TYPE (domain))
     {
 
-    case DB_TYPE_VECTOR:
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -2236,6 +2236,21 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       while (domain)
 	{
 	  match = (int) db_json_are_validators_equal (transient->json_validator, domain->json_validator);
+
+	  if (match)
+	    {
+	      break;
+	    }
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
+    case DB_TYPE_VECTOR:
+      while (domain)
+	{
+	  // TODO (CUBVEC): Only precision is considered for now.
+	  match = ((domain->precision == transient->precision));
 
 	  if (match)
 	    {
@@ -11491,6 +11506,17 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 
 	case DB_TYPE_NUMERIC:
 	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	  break;
+
+	case DB_TYPE_VECTOR:
+	  if (d->precision == 0 || d->precision == DB_DEFAULT_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%s(%d)", d->type->name, d->precision);
+	    }
 	  break;
 
 	default:
