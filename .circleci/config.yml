@@ -10,18 +10,23 @@ parameters:
   run_shell_test:
     type: boolean
     default: true
+    # default: false
   run_sql_test:
     type: boolean
     default: true
+    # default: false
   run_medium_test:
     type: boolean
     default: true
+    # default: false
   run_plcsql_test:
     type: boolean
     default: true
+    # default: false
   run_all_test:
     type: boolean
     default: false
+    # default: false
 # --------------------------------------------------
 # 1. Reusable commands
 # --------------------------------------------------
@@ -68,7 +73,7 @@ commands:
                 ;;
             esac
 
-            # # Run only failed tests
+            # TODO:Run only failed tests
             # if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
             #   echo "Finding failed tests from previous build..."
             #   build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
@@ -122,6 +127,7 @@ commands:
 
             echo "Selecting from all tests..."
             circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
+            # TODO: split by timings
             # | circleci tests split --verbose --split-by=timings --timings-type=testname | tee tc.list
 
             # Remove tests that are not in the list
@@ -139,6 +145,7 @@ commands:
               echo "No tests to run"
               circleci-agent step halt
             fi
+      # TODO: after plcsql test is merged back to sql test, separate prepare test and run test.
       # - run:
       #     name: Test
       #     no_output_timeout: 20m
@@ -162,12 +169,15 @@ commands:
               mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
             fi
             [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump
+            find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list
             # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
       - store_test_results:
           path: /tmp/tests
+          when: always
       - store_artifacts:
           path: /tmp/logs
+          when: on_fail
 
   collect-build-logs:
     description: "Collect build logs and store them"

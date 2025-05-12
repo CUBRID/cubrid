@@ -36,6 +36,7 @@ jobs:
             for test in $TEST_TYPES; do
               TEST_JSON+="\"run_${test}_test\":true,"
             done
+            TEST_JSON+="\"run_all_test\":true,"
           else
             # Check each test type
             for test in $TEST_TYPES; do
@@ -44,6 +45,7 @@ jobs:
                 TEST_JSON+="\"run_${test}_test\":true,"
               fi
             done
+            TEST_JSON+="\"run_all_test\":false,"
           fi
           
           # Extract baseline version from comment if it exists
