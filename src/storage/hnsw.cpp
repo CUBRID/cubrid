@@ -33,14 +33,16 @@
 //        such as duplicate hnsw_index_id when cub_server restarts.
 //        We need to consider a better way to identify the hnsw index.
 int hnsw_index_id = 0;
-std::unordered_map<int, std::unique_ptr<faiss::IndexHNSWFlat>> hnsw_index_map;
+std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
-  std::unique_ptr<faiss::IndexHNSWFlat> index = std::make_unique<faiss::IndexHNSWFlat> (dimension, hnsw_M, metric_type);
-  index->hnsw.efConstruction = hnsw_efConstruction;
+  auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
+  hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
+
+  auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
@@ -100,23 +102,25 @@ int hnsw_print_index_info (BTID *btid)
 
   else
     {
-      std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
+      std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+      auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
 
       er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
       er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
       er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
       er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", index->hnsw.efConstruction);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", index->hnsw.efSearch);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
     }
 
   return NO_ERROR;
 }
 
-int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue)
+int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue, OID *oid)
 {
   std::vector<float> fvec;
   int hnsw_id;
+  faiss::idx_t encoded_oid = encode_oid (*oid);
 
   if (!btid)
     {
@@ -136,11 +140,29 @@ int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue)
       return ER_FAILED;
     }
 
-  std::unique_ptr<faiss::IndexHNSWFlat> &index = it->second;
+  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
 
-  index->add (fvec.size(), fvec.data());
+  index->add_with_ids (1, fvec.data(), &encoded_oid);
+  er_log_debug (ARG_FILE_LINE, "Added element with ID %lld to HNSW Index.", static_cast<long long> (encoded_oid));
 
   return NO_ERROR;
+}
+
+faiss::idx_t encode_oid (const OID &oid)
+{
+  return (static_cast<int64_t> (oid.pageid) << 32) |
+	 (static_cast<uint32_t> (oid.slotid) << 16) |
+	 (static_cast<uint16_t> (oid.volid));
+}
+
+OID *decode_oid (faiss::idx_t encoded_oid)
+{
+  OID *oid = new OID;
+  oid->pageid = static_cast<int32_t> (encoded_oid >> 32);
+  oid->slotid = static_cast<int16_t> ((encoded_oid >> 16) & 0xFFFF);
+  oid->volid = static_cast<int16_t> (encoded_oid & 0xFFFF);
+
+  return oid;
 }
 
 #include "strict_warnings_off.hpp"
