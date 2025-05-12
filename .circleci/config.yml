@@ -32,9 +32,9 @@ commands:
       - attach_workspace:
           at: .
       - run:
-          name: Prepare Test
+          name: Test
           shell: /bin/bash
-          # no_output_timeout: 20m
+          no_output_timeout: 20m
           command: |
             # Limit core files
             ulimit -c 1
@@ -60,7 +60,7 @@ commands:
               shell)
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+                glob_path="$(find $base_dir/$TEST_SUITE/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$')"
                 ;;
               *)
                 base_dir="cubrid-testcases"
@@ -68,58 +68,64 @@ commands:
                 ;;
             esac
 
-            # Run only failed tests
-            if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
-              echo "Finding failed tests from previous build..."
-              build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
-                "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/tree/${CIRCLE_BRANCH}?limit=10")
-              PREV_BUILD_NUM=$(echo "$build_info" | jq -r ".[] | select(.workflows.job_name==\"$CIRCLE_JOB\") | .build_num" | sed -n '2p')
+            # # Run only failed tests
+            # if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
+            #   echo "Finding failed tests from previous build..."
+            #   build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
+            #     "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/tree/${CIRCLE_BRANCH}?limit=10")
+            #   PREV_BUILD_NUM=$(echo "$build_info" | jq -r ".[] | select(.workflows.job_name==\"$CIRCLE_JOB\") | .build_num" | sed -n '2p')
               
-              if [ -n "$PREV_BUILD_NUM" ]; then
-                echo "Previous build number: $PREV_BUILD_NUM"
-                curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
-                "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${PREV_BUILD_NUM}/artifacts" \
-                | jq -r '.[] | select(.path|endswith(".xml")) | .url' > xml_url.list
+            #   if [ -n "$PREV_BUILD_NUM" ]; then
+            #     echo "Previous build number: $PREV_BUILD_NUM"
+            #     curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
+            #     "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${PREV_BUILD_NUM}/artifacts" \
+            #     | jq -r '.[] | select(.path|endswith(".xml")) | .url' > xml_url.list
                 
-                if [ -s xml_url.list ]; then
-                  echo "Previous build has xml files : $(cat xml_url.list)"
-                  while read url; do
-                    curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' | xargs -n1 >> prev_fail.list
-                  done < xml_url.list
+            #     if [ -s xml_url.list ]; then
+            #       echo "Previous build has xml files : $(cat xml_url.list)"
+            #       while read url; do
+            #         curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' | xargs -n1 >> prev_fail.list
+            #       done < xml_url.list
                   
-                  if [ -s prev_fail.list ]; then
-                    cat prev_fail.list \
-                      | circleci tests split --verbose --split-by=timings --timings-type=testname \
-                      | tee tc.list
-                    echo "Running only failed tests: $(wc -l < tc.list) tests"
-                  else
-                    echo "No failed tests found in previous build"
-                    echo "Selecting from all tests..."
-                    circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                      | circleci tests split --verbose --split-by=timings --timings-type=testname \
-                      | tee tc.list
-                  fi
-                else
-                  echo "No xml file url found in previous build"
-                  echo "Selecting from all tests..."
-                  circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                    | circleci tests split --verbose --split-by=timings --timings-type=testname \
-                    | tee tc.list
-                fi
-              else
-                echo "No previous build found"
-                echo "Selecting from all tests..."
-                circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                  | circleci tests split --verbose --split-by=timings --timings-type=testname \
-                  | tee tc.list
-              fi
-            else
-              echo "Selecting from all tests..."
-              circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-                | circleci tests split --verbose --split-by=timings --timings-type=testname \
-                | tee tc.list              
-            fi
-            
+            #       if [ -s prev_fail.list ]; then
+            #         cat prev_fail.list \
+            #           | circleci tests split --verbose --split-by=timings --timings-type=testname \
+            #           | tee tc.list
+            #         echo "Running only failed tests: $(wc -l < tc.list) tests"
+            #       else
+            #         echo "No failed tests found in previous build"
+            #         echo "Selecting from all tests..."
+            #         circleci tests glob $glob_path | sed "s|^$base_dir/||" \
+            #           | circleci tests split --verbose --split-by=timings --timings-type=testname \
+            #           | tee tc.list
+            #       fi
+            #     else
+            #       echo "No xml file url found in previous build"
+            #       echo "Selecting from all tests..."
+            #       circleci tests glob $glob_path | sed "s|^$base_dir/||" \
+            #         | circleci tests split --verbose --split-by=timings --timings-type=testname \
+            #         | tee tc.list
+            #     fi
+            #   else
+            #     echo "No previous build found"
+            #     echo "Selecting from all tests..."
+            #     circleci tests glob $glob_path | sed "s|^$base_dir/||" \
+            #       | circleci tests split --verbose --split-by=timings --timings-type=testname \
+            #       | tee tc.list
+            #   fi
+            # else
+            #   echo "Selecting from all tests..."
+            #   circleci tests glob $glob_path | sed "s|^$base_dir/||" \
+            #     | circleci tests split --verbose --split-by=timings --timings-type=testname \
+            #     | tee tc.list              
+            # fi
+
+            echo "Selecting from all tests..."
+            circleci tests glob $glob_path | sed "s|^$base_dir/||" \
+              # | circleci tests split --verbose --split-by=timings --timings-type=testname \
+              | circleci tests split \
+              | tee tc.list
+
             # Remove tests that are not in the list
             if [ "$TEST_SUITE" = "shell" ]; then
               cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
@@ -128,17 +134,6 @@ commands:
               find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
             fi
 
-            # # Run the tests
-            # if [ -s tc.list ]; then
-            #   /entrypoint.sh test
-            # else
-            #   echo "No tests to run"
-            #   circleci-agent step halt
-            # fi
-      - run:
-          name: Test
-          no_output_timeout: 20m
-          command: |
             # Run the tests
             if [ -s tc.list ]; then
               /entrypoint.sh test
@@ -146,6 +141,17 @@ commands:
               echo "No tests to run"
               circleci-agent step halt
             fi
+      # - run:
+      #     name: Test
+      #     no_output_timeout: 20m
+      #     command: |
+      #       # Run the tests
+      #       if [ -s tc.list ]; then
+      #         /entrypoint.sh test
+      #       else
+      #         echo "No tests to run"
+      #         circleci-agent step halt
+      #       fi
       - run:
           name: Collect Logs
           command: |
