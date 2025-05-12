@@ -689,6 +689,10 @@ namespace parallel_heap_scan
 		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
 		if (it != m_resolved_dbval_map.end())
 		  {
+		    if (orig->vfetch_to->need_clear)
+		      {
+			pr_clear_value (orig->vfetch_to);
+		      }
 		    pr_clone_value (it->second, orig->vfetch_to);
 		  }
 	      }
@@ -711,6 +715,10 @@ namespace parallel_heap_scan
 		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
 		if (it != m_resolved_dbval_map.end())
 		  {
+		    if (orig->vfetch_to->need_clear)
+		      {
+			pr_clear_value (orig->vfetch_to);
+		      }
 		    pr_clone_value (it->second, orig->vfetch_to);
 		  }
 	      }
