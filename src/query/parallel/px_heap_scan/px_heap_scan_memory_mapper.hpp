@@ -113,7 +113,7 @@ namespace parallel_heap_scan
       REGU_VARIABLE *copy_and_map (REGU_VARIABLE *regu_var);
       OUTPTR_LIST *copy_and_map (OUTPTR_LIST *src);
 
-      void add_resolved_dbval_all();
+      bool add_resolved_dbval_all();
 
       void set_all_regu_var_domain_refer_to_clone();
 

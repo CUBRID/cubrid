@@ -641,31 +641,63 @@ namespace parallel_heap_scan
     m_resolved_dbval_map.clear();
   }
 
-  void memory_mapper::add_resolved_dbval_all()
+  bool memory_mapper::add_resolved_dbval_all()
   {
+    bool all_vfetch_to_domain_resolved = true;
     for (auto &pair : m_map)
       {
 	if (pair.second.type == Type::REGU_VARIABLE)
 	  {
 	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
-	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	    if (clone->vfetch_to)
 	      {
-		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
-		pr_clone_value (clone->vfetch_to, dbval);
-		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    /* dbvalue already stored in m_resolved_dbval_map */
+		  }
+		else
+		  {
+		    if (clone->vfetch_to->domain.general_info.is_null)
+		      {
+			all_vfetch_to_domain_resolved = false;
+		      }
+		    else
+		      {
+			DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+			pr_clone_value (clone->vfetch_to, dbval);
+			m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+		      }
+		  }
 	      }
 	  }
 	if (pair.second.type == Type::REGU_VARIABLE_LIST)
 	  {
 	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
-	    if (clone->vfetch_to && !clone->vfetch_to->domain.general_info.is_null)
+	    if (clone->vfetch_to)
 	      {
-		DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
-		pr_clone_value (clone->vfetch_to, dbval);
-		m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+		if (it != m_resolved_dbval_map.end())
+		  {
+		    /* dbvalue already stored in m_resolved_dbval_map */
+		  }
+		else
+		  {
+		    if (clone->vfetch_to->domain.general_info.is_null)
+		      {
+			all_vfetch_to_domain_resolved = false;
+		      }
+		    else
+		      {
+			DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+			pr_clone_value (clone->vfetch_to, dbval);
+			m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
+		      }
+		  }
 	      }
 	  }
       }
+    return all_vfetch_to_domain_resolved;
   }
 
   void memory_mapper::set_all_regu_var_domain_refer_to_clone()
