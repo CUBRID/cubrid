@@ -4184,11 +4184,11 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
   LOG_DATA_ADDR addr;
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int vol_fd;
-#endif
 
   assert (start_offset >= 0 && (start_offset + length) <= DB_PAGESIZE);
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+  int vol_fd;
 
   /* Is this a resident page ? */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
@@ -4205,7 +4205,6 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	  return NULL;
 	}
 
-#if defined(ENABLE_UNUSED_FUNCTION)
       if (do_fetch == false)
 	{
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
@@ -4228,13 +4227,13 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 
 	  return area;
 	}
-#endif
     }
   else
     {
       /* the caller is holding only bufptr->mutex. */
       PGBUF_BCB_UNLOCK (bufptr);
     }
+#endif
 
   pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (pgptr != NULL)
