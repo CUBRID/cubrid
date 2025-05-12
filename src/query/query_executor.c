@@ -9156,28 +9156,24 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		    {
 		      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
 		    }
-		  if (curr_spec->pruning_type != DB_PARTITIONED_CLASS && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)	/* Only for User table */
+		  if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)	/* Only for User table */
 		    {
-		      /* Why thread_p->private_heap_id != 0? 
-		       * Because, if it is 0, it means that the scan is not executed in main thread.
-		       * So, we can't use parallel heap scan.
-		       */
-		      scan_type = S_PARALLEL_HEAP_SCAN;
-		    }
-		  else
-		    {
-		      if (curr_spec->pruning_type == DB_PARTITIONED_CLASS
-			  && !oid_is_system_class (&curr_spec->s.cls_node.cls_oid)
-			  && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed
-			  && thread_p->private_heap_id != 0)
+		      if (curr_spec->pruning_type == DB_PARTITIONED_CLASS)
 			{
-			  /* DB_PARTITION_CLASS will be parallel-heap-scanned */
+			  /* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
 			}
 		      else
 			{
-			  curr_spec->flags =
-			    (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+			  /* Why thread_p->private_heap_id != 0? 
+			   * Because, if it is 0, it means that the scan is not executed in main thread.
+			   * So, we can't use parallel heap scan.
+			   */
+			  scan_type = S_PARALLEL_HEAP_SCAN;
 			}
+		    }
+		  else
+		    {
+		      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
 		    }
 		}
 	    }
