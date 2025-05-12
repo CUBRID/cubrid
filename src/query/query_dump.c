@@ -2876,8 +2876,11 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
 	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
-	      /* ignore */
-	      er_clear ();
+	      if (er_errid () != ER_INTERRUPTED)
+		{
+		  /* ignore */
+		  er_clear ();
+		}
 	    }
 
 	  spec_name[0] = '\0';
@@ -3245,8 +3248,11 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
 	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
-	      /* ignore */
-	      er_clear ();
+	      if (er_errid () != ER_INTERRUPTED)
+		{
+		  /* ignore */
+		  er_clear ();
+		}
 	    }
 
 	  if (spec->access == ACCESS_METHOD_SEQUENTIAL)

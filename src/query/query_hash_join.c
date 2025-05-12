@@ -339,12 +339,18 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  break;
 
 	case HASHJOIN_STATUS_END:
-	  /* fall through */
+	  /* impossible case */
 	  /* hjoin_check_empty_inputs guarantees STATUS_END cannot occur here */
+	  assert_release (false);
+	  goto error_exit;
+
 	case HASHJOIN_STATUS_ERROR:
-	  /* fall through */
 	  /* hjoin_make_partition always retries as HASHJOIN_STATUS_SINGLE;
-	   * never returns HASHJOIN_STATUS_ERROR */
+	   * except for ER_INTERRUPTED, never returns HASHJOIN_STATUS_ERROR */
+	  error = er_errid ();
+	  assert_release (error == ER_INTERRUPTED);
+	  goto error_exit;
+
 	default:
 	  /* impossible case */
 	  assert_release (false);
@@ -1387,8 +1393,6 @@ cleanup:
   return status;
 
 error_exit:
-  er_clear ();			/* Reset error for retry */
-
   if (contexts != NULL)
     {
       for (part_index = 0; part_index < part_cnt; part_index++)
@@ -1412,8 +1416,16 @@ error_exit:
       manager->stats_group->context_cnt = 0;
     }
 
-  /* retry */
-  status = HASHJOIN_STATUS_SINGLE;
+  if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
+    {
+      status = HASHJOIN_STATUS_ERROR;
+    }
+  else
+    {
+      /* retry */
+      er_clear ();
+      status = HASHJOIN_STATUS_SINGLE;
+    }
 
   goto cleanup;
 }
