@@ -4046,7 +4046,6 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_INET_NTOA:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	default:
-	  ASSERT_CUBVEC (false);
 	  return false;
 	}
 
