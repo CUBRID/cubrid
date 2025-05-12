@@ -6757,6 +6757,20 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_TYPE_VECTOR:
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      if (p->data_type)
+	{
+	  int precision = p->data_type->info.data_type.precision;
+	  if (precision != 0 && precision != DB_DEFAULT_PRECISION)
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      sprintf (s, "%d", precision);
+	      q = pt_append_nulstring (parser, q, s);
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
+	}
+      break;
     default:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
