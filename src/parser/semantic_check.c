@@ -16727,7 +16727,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 	    {
 	      // CUBVEC todo: not yet analyzed.
-	      vimkim_log("check filter index expr pre\n");
+	      vimkim_log ("check filter index expr pre\n");
 	      ASSERT_CUBVEC (false);
 	    }
 	case PT_MODULUS:
