@@ -5556,8 +5556,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
       {
 	if (expr->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 	  {
-	    vimkim_log ("column count?\n");
-	    assert (false);
+	    vimkim_log ("find partition column count\n");
+	    ASSERT_CUBVEC (false);
 	  }
       }
     case PT_MODULUS:
@@ -16726,7 +16726,9 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_DISTANCE_OP_EUCLIDEAN:
 	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 	    {
-	      assert (false);
+	      // CUBVEC todo: not yet analyzed.
+	      vimkim_log("check filter index expr pre\n");
+	      ASSERT_CUBVEC (false);
 	    }
 	case PT_MODULUS:
 	case PT_POSITION:

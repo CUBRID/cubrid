@@ -6408,7 +6408,7 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, cons
 {
   if (op == T_DISTANCE_OP_EUCLIDEAN)
     {
-      vimkim_log ("inside make regu func\n");
+      vimkim_log ("inside make regu func.\n");
     }
 
   REGU_VARIABLE *regu = NULL;

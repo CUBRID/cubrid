@@ -10448,7 +10448,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_DISTANCE_OP_EUCLIDEAN:
       {
-	vimkim_log ("why null?");
 	node->info.expr.arg1 = arg1;
 	node->info.expr.arg2 = arg2;
 	node->type_enum = PT_TYPE_VECTOR;

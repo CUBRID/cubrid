@@ -187,7 +187,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       {
 	if (arithptr->opcode == T_DISTANCE_OP_EUCLIDEAN)
 	  {
-	    vimkim_log ("here\n");
+	    vimkim_log ("fetch peek arith.\n");
 	  }
       }
     case T_POSITION:
