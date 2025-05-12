@@ -644,55 +644,39 @@ namespace parallel_heap_scan
   bool memory_mapper::add_resolved_dbval_all()
   {
     bool all_vfetch_to_domain_resolved = true;
+    REGU_VARIABLE *clone = nullptr;
     for (auto &pair : m_map)
       {
-	if (pair.second.type == Type::REGU_VARIABLE)
-	  {
-	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
-	    if (clone->vfetch_to)
-	      {
-		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
-		if (it != m_resolved_dbval_map.end())
-		  {
-		    /* dbvalue already stored in m_resolved_dbval_map */
-		  }
-		else
-		  {
-		    if (clone->vfetch_to->domain.general_info.is_null)
-		      {
-			all_vfetch_to_domain_resolved = false;
-		      }
-		    else
-		      {
-			DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
-			pr_clone_value (clone->vfetch_to, dbval);
-			m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
-		      }
-		  }
-	      }
-	  }
 	if (pair.second.type == Type::REGU_VARIABLE_LIST)
 	  {
-	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
-	    if (clone->vfetch_to)
+	    clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	  }
+	else if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    clone = (REGU_VARIABLE *)pair.second.ptr;
+	  }
+	else
+	  {
+	    continue;
+	  }
+	if (clone->vfetch_to)
+	  {
+	    auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+	    if (it != m_resolved_dbval_map.end())
 	      {
-		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
-		if (it != m_resolved_dbval_map.end())
+		/* dbvalue already stored in m_resolved_dbval_map */
+	      }
+	    else
+	      {
+		if (clone->vfetch_to->domain.general_info.is_null)
 		  {
-		    /* dbvalue already stored in m_resolved_dbval_map */
+		    all_vfetch_to_domain_resolved = false;
 		  }
 		else
 		  {
-		    if (clone->vfetch_to->domain.general_info.is_null)
-		      {
-			all_vfetch_to_domain_resolved = false;
-		      }
-		    else
-		      {
-			DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
-			pr_clone_value (clone->vfetch_to, dbval);
-			m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
-		      }
+		    DB_VALUE *dbval = (DB_VALUE *)malloc (sizeof (DB_VALUE));
+		    pr_clone_value (clone->vfetch_to, dbval);
+		    m_resolved_dbval_map[ (void *)clone->vfetch_to] = dbval;
 		  }
 	      }
 	  }
@@ -702,61 +686,46 @@ namespace parallel_heap_scan
 
   void memory_mapper::set_all_regu_var_domain_refer_to_clone()
   {
+    REGU_VARIABLE *orig = nullptr;
+    REGU_VARIABLE *clone = nullptr;
     for (auto &pair : m_map)
       {
-	if (pair.second.type == Type::REGU_VARIABLE)
-	  {
-	    REGU_VARIABLE *orig = (REGU_VARIABLE *)pair.first;
-	    REGU_VARIABLE *clone = (REGU_VARIABLE *)pair.second.ptr;
-	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
-		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
-	      {
-		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
-		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
-		  {
-		    orig->domain = clone->domain;
-		  }
-	      }
-	    if (clone->vfetch_to)
-	      {
-		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
-		if (it != m_resolved_dbval_map.end())
-		  {
-		    if (DB_IS_NULL (orig->vfetch_to))
-		      {
-			pr_clone_value (it->second, orig->vfetch_to);
-		      }
-		  }
-	      }
-	  }
 	if (pair.second.type == Type::REGU_VARIABLE_LIST)
 	  {
-	    REGU_VARIABLE *orig = & ((REGU_VARIABLE_LIST)pair.first)->value;
-	    REGU_VARIABLE *clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
-	    if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
-		|| TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	    orig = & ((REGU_VARIABLE_LIST)pair.first)->value;
+	    clone = & ((REGU_VARIABLE_LIST)pair.second.ptr)->value;
+	  }
+	else if (pair.second.type == Type::REGU_VARIABLE)
+	  {
+	    orig = (REGU_VARIABLE *)pair.first;
+	    clone = (REGU_VARIABLE *)pair.second.ptr;
+	  }
+	else
+	  {
+	    continue;
+	  }
+	if (TP_DOMAIN_TYPE (orig->domain) == DB_TYPE_VARIABLE
+	    || TP_DOMAIN_COLLATION_FLAG (orig->domain) != TP_DOMAIN_COLL_NORMAL)
+	  {
+	    if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
+		&& TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
 	      {
-		if (TP_DOMAIN_TYPE (clone->domain) != DB_TYPE_VARIABLE
-		    && TP_DOMAIN_COLLATION_FLAG (clone->domain) == TP_DOMAIN_COLL_NORMAL)
-		  {
-		    orig->domain = clone->domain;
-		  }
+		orig->domain = clone->domain;
 	      }
-	    if (clone->vfetch_to)
+	  }
+	if (clone->vfetch_to)
+	  {
+	    auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
+	    if (it != m_resolved_dbval_map.end())
 	      {
-		auto it = m_resolved_dbval_map.find ((void *)clone->vfetch_to);
-		if (it != m_resolved_dbval_map.end())
+		if (DB_IS_NULL (orig->vfetch_to))
 		  {
-		    if (DB_IS_NULL (orig->vfetch_to))
-		      {
-			pr_clone_value (it->second, orig->vfetch_to);
-		      }
+		    pr_clone_value (it->second, orig->vfetch_to);
 		  }
 	      }
 	  }
       }
   }
-
 }
 
 #endif /* SERVER_MODE && !WINDOWS */
