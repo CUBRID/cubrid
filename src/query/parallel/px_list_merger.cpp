@@ -117,7 +117,7 @@ namespace parallel_query
 	list_merger merger (thread_p);
 	merger.add_list_id (*orig_list);
 	merger.add_list_id (*new_list);
-	(void) merger.get_merged_list_id ();
+	merger.clear();
       }
     else
       {
