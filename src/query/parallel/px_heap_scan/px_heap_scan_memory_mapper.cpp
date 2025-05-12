@@ -27,6 +27,7 @@
 #include "regu_var.hpp"
 #include "query_executor.h"
 #include "xasl_predicate.hpp"
+#include "dbtype.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
