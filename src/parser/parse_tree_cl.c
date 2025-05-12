@@ -4044,6 +4044,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      return " <-> ";
     default:
       assert (false);
       return "unknown opcode";
@@ -17750,6 +17752,13 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_GT:
 	case PT_LT:
 	case PT_LE:
+	case PT_DISTANCE_OP_EUCLIDEAN:
+	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	    {
+	      // CUBVEC todo: not yet analyzed
+	      ASSERT_CUBVEC (false);
+	    }
+
 	case PT_NULLSAFE_EQ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;

@@ -871,6 +871,7 @@ static int g_plcsql_text_pos;
 %type <node> sort_spec_list
 %type <node> expression_
 %type <node> normal_expression
+%type <node> expression_vector_distance
 %type <node> expression_strcat
 %type <node> expression_add_sub
 %type <node> expression_bitshift
@@ -1222,6 +1223,10 @@ static int g_plcsql_text_pos;
 %token DIAGNOSTICS
 %token DIFFERENCE_
 %token DISCONNECT
+%token DISTANCE_OP_COSINE
+%token DISTANCE_OP_EUCLIDEAN
+%token DISTANCE_OP_MANHATTAN
+%token DISTANCE_OP_NEG_INNER_PROD
 %token DISTINCT
 %token DIV
 %token DO
@@ -16947,13 +16952,33 @@ normal_expression
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_strcat
-		{{ DBG_TRACE_GRAMMAR(normal_expression, | expression_strcat);
+	| expression_vector_distance
+	        {{
 
-			$$ = $1;
+	                $$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
+	// | expression_strcat
+	// 	{{ DBG_TRACE_GRAMMAR(normal_expression, | expression_strcat);
+	//
+	// 		$$ = $1;
+	// 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	//
+	// 	DBG_PRINT}}
+	;
+
+expression_vector_distance
+	: expression_vector_distance DISTANCE_OP_EUCLIDEAN expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_EUCLIDEAN, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| expression_strcat
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 expression_strcat
@@ -20945,6 +20970,12 @@ comp_op
 			$$ = PT_NULLSAFE_EQ;
 
 		DBG_PRINT}}
+	// | DISTANCE_OP_EUCLIDEAN opt_of_all_some_any
+	// 	{{
+	//
+	// 		$$ = PT_DISTANCE_OP_EUCLIDEAN;
+	//
+	// 	}}
 	;
 
 opt_of_all_some_any
@@ -25900,6 +25931,7 @@ vector_distance_metric
 
 %%
 
+// int yydebug = 1;
 
 extern FILE *yyin;
 

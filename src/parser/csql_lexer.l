@@ -1147,6 +1147,9 @@ IDL       [a-zA-Z0-9_]
 ">>"									{ begin_token(yytext);	 return BITSHIFT_RIGHT; }
 "%"									{ begin_token(yytext);	 return MOD; }
 "<=>"									{ begin_token(yytext);	 return COMP_NULLSAFE_EQ; }
+"<#>"									{ begin_token(yytext);	 return DISTANCE_OP_NEG_INNER_PROD; }
+"<+>"									{ begin_token(yytext);	 return DISTANCE_OP_MANHATTAN; }
+"<->"									{ begin_token(yytext);	 return DISTANCE_OP_EUCLIDEAN; }
 "&&"									{ begin_token(yytext);	 return AND; }
 ":="									{ begin_token(yytext);	 return VAR_ASSIGN; }
 

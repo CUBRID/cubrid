@@ -57,6 +57,9 @@
 #include "subquery_cache.h"
 #include "pl_executor.hpp"
 
+#include "cubvec_assert.h"
+#include "vector_opfunc.hpp"
+
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -180,6 +183,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_MUL:
     case T_DIV:
     case T_MOD:
+    case T_DISTANCE_OP_EUCLIDEAN:
+      {
+	if (arithptr->opcode == T_DISTANCE_OP_EUCLIDEAN)
+	  {
+	    vimkim_log ("here\n");
+	  }
+      }
     case T_POSITION:
     case T_FINDINSET:
     case T_ADD_MONTHS:
@@ -812,6 +822,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      break;
+
+    case T_DISTANCE_OP_EUCLIDEAN:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_l2_distance (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
       break;
 
     case T_MOD:

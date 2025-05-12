@@ -60,6 +60,8 @@
 #include "dbtype.h"
 #include "xasl.h"
 
+#include "cubvec_assert.h"
+
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \
     (sizeof(QO_USING_INDEX) + (((n)-1) * sizeof(QO_USING_INDEX_ENTRY)))
@@ -2188,6 +2190,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    case PT_EQ:
 		    case PT_IS_IN:
 		    case PT_EQ_SOME:
+		    case PT_DISTANCE_OP_EUCLIDEAN:
+		      if (op_type == PT_DISTANCE_OP_EUCLIDEAN)
+			{
+			  // CUBVEC todo: not yet analyzed
+			  ASSERT_CUBVEC (false);
+			}
 		    case PT_NULLSAFE_EQ:
 		      break;
 		    case PT_RANGE:
@@ -3189,6 +3197,12 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ROWNUM:
     case PT_ORDERBY_NUM:
 
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      if (opcode == PT_DISTANCE_OP_EUCLIDEAN)
+	{
+	  // CUBVEC todo: not yet analyzed
+	  ASSERT_CUBVEC (false);
+	}
     case PT_MODULUS:
     case PT_RAND:
     case PT_DRAND:
@@ -3801,6 +3815,14 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_BETWEEN_GE_INF:
 	case PT_BETWEEN_GT_INF:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
+	case PT_DISTANCE_OP_EUCLIDEAN:
+	  {
+	    if (expr->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	      {
+		// CUBVEC todo: not yet analyzed
+		ASSERT_CUBVEC (false);
+	      }
+	  }
 	case PT_MODULUS:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
@@ -4024,6 +4046,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_INET_NTOA:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	default:
+	  ASSERT_CUBVEC (false);
 	  return false;
 	}
 
