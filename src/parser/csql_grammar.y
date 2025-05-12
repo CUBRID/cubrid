@@ -16953,20 +16953,13 @@ normal_expression
 
 		DBG_PRINT}}
 	| expression_vector_distance
-	        {{
+		{{
 
-	                $$ = $1;
+			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		}}
-	// | expression_strcat
-	// 	{{ DBG_TRACE_GRAMMAR(normal_expression, | expression_strcat);
-	//
-	// 		$$ = $1;
-	// 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-	//
-	// 	DBG_PRINT}}
-	;
+		 }}
+;
 
 expression_vector_distance
 	: expression_vector_distance DISTANCE_OP_EUCLIDEAN expression_strcat
@@ -20970,12 +20963,6 @@ comp_op
 			$$ = PT_NULLSAFE_EQ;
 
 		DBG_PRINT}}
-	// | DISTANCE_OP_EUCLIDEAN opt_of_all_some_any
-	// 	{{
-	//
-	// 		$$ = PT_DISTANCE_OP_EUCLIDEAN;
-	//
-	// 	}}
 	;
 
 opt_of_all_some_any
@@ -25931,7 +25918,6 @@ vector_distance_metric
 
 %%
 
-// int yydebug = 1;
 
 extern FILE *yyin;
 
