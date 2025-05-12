@@ -20187,8 +20187,11 @@ exit_on_error:
 static void
 qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N)
 {
-  int i;
+  int i, j;
   QPROC_DB_VALUE_LIST gby_vallist;
+  REGU_VARIABLE_LIST gby_outptrlist;
+  DB_VALUE *dbval_p;
+  int error = NO_ERROR;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -20220,8 +20223,42 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	{
 	  if (i >= N - 1)
 	    {
-	      (void) pr_clear_value (gby_vallist->val);
-	      db_make_null (gby_vallist->val);
+	      bool is_found = false;
+	      j = 0;
+	      gby_outptrlist = gbstate->g_outptr_list->valptrp;
+
+	      /* g_val_list follows the order of columns or expressions explicitly listed in the GROUP BY clause.
+	       * columns that appear in the select-list but not in GROUP BY, and arguments of aggregate functions
+	       * are appended afterward.
+	       *
+	       * therefore, the order may differ from the select-list order, so we need to check if the item
+	       * can be removed from g_outptr_list, which has the same order as the select-list. */
+	      while (gby_outptrlist)
+		{
+		  if (j < N - 1)
+		    {
+		      if (fetch_peek_dbval (thread_p, &gby_outptrlist->value, NULL, NULL, NULL, NULL, &dbval_p) !=
+			  NO_ERROR)
+			{
+			  assert (false);
+			  return;
+			}
+
+		      if (dbval_p == gby_vallist->val)
+			{
+			  is_found = true;
+			  break;
+			}
+		    }
+		  j++;
+		  gby_outptrlist = gby_outptrlist->next;
+		}
+
+	      if (!is_found)
+		{
+		  (void) pr_clear_value (gby_vallist->val);
+		  db_make_null (gby_vallist->val);
+		}
 	    }
 	  i++;
 	  gby_vallist = gby_vallist->next;
