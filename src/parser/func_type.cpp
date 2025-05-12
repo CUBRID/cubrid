@@ -617,6 +617,12 @@ namespace func_type
   }
 
   bool
+  is_invalid_precision (int p, int m)
+  {
+    return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
+  }
+
+  bool
   is_type_with_collation (PT_TYPE_ENUM type)
   {
     return PT_HAS_COLLATION (type) || type == PT_TYPE_MAYBE;

@@ -79,6 +79,8 @@ namespace func_type
   bool can_signature_have_collation (const pt_arg_type &arg_sig);
   bool sig_has_json_args (const func_signature &sig);
 
+  bool is_invalid_precision (int p, int m);
+
   class Node
   {
     private:

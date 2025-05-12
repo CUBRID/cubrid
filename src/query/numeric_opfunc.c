@@ -1735,6 +1735,14 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
+  // dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함
+  if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
+    {
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = true;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = true;
+      answer->domain.numeric_info.is_floating_point_numeric = true;
+    }
+
   /* Coerce, if necessary, to make prec & scale match */
   ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
   if (ret == ER_IT_DATA_OVERFLOW)
