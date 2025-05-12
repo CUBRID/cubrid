@@ -1,5 +1,7 @@
 version: 2.1
-
+setup: true
+orbs:
+  continuation: circleci/continuation@1.1.0
 # --------------------------------------------------
 # Pipeline-level parameters (values passed from GitHub Actions)
 # --------------------------------------------------
@@ -215,6 +217,83 @@ executors:
 # 3. Jobs
 # --------------------------------------------------
 jobs:
+  setup:
+    executor: continuation/default
+    steps:
+      - checkout
+      - run:
+          name: Generate continuation config
+          command: |
+            cat \<<'EOF' > .circleci/continue.yml
+            version: 2.1
+            parameters:
+              run_shell_test:
+                type: boolean
+                default: \<< pipeline.parameters.run_shell_test >>
+              run_sql_test:
+                type: boolean
+                default: \<< pipeline.parameters.run_sql_test >>
+              run_medium_test:
+                type: boolean
+                default: \<< pipeline.parameters.run_medium_test >>
+              run_plcsql_test:
+                type: boolean
+                default: \<< pipeline.parameters.run_plcsql_test >>
+              run_all_test:
+                type: boolean
+                default: \<< pipeline.parameters.run_all_test >>
+            workflows:
+              build_test:
+                jobs:
+                  - build
+                  - test_job:
+                      name: test_medium
+                      requires: [build]
+                      when:
+                        condition:
+                          or:
+                            - \<< pipeline.parameters.run_medium_test >>
+                            - \<< pipeline.parameters.run_all_test >>
+                      parameters:
+                        test_suite: "medium"
+                        parallel_num: 1
+                  - test_job:
+                      name: test_sql
+                      requires: [build]
+                      when:
+                        condition:
+                          or:
+                            - \<< pipeline.parameters.run_sql_test >>
+                            - \<< pipeline.parameters.run_all_test >>
+                      parameters:
+                        test_suite: "sql"
+                        parallel_num: 8
+                  - test_job:
+                      name: test_plcsql
+                      requires: [build]
+                      when:
+                        condition:
+                          or:
+                            - \<< pipeline.parameters.run_plcsql_test >>
+                            - \<< pipeline.parameters.run_all_test >>
+                      parameters:
+                        test_suite: "plcsql"
+                  - test_job:
+                      name: test_shell
+                      requires: [build]
+                      when:
+                        condition:
+                          or:
+                            - \<< pipeline.parameters.run_shell_test >>
+                            - \<< pipeline.parameters.run_all_test >>
+                      parameters:
+                        test_suite: "shell"
+                        parallel_num: 30
+                        e: cubrid-test-shell
+            EOF
+      - continuation/continue:
+          configuration_path: .circleci/continue.yml
+
   build:
     executor: cubrid-default
     resource_class: xlarge
@@ -283,29 +362,6 @@ jobs:
 # 4. Workflows
 # --------------------------------------------------
 workflows:
-  build_test:
+  setup:
     jobs:
-      - build
-      - test_job:
-          name: test_medium
-          requires: 
-            - build
-          test_suite: "medium"
-      - test_job:
-          name: test_sql
-          requires:
-            - build
-          test_suite: "sql"
-          parallel_num: 8
-      - test_job:
-          name: test_plcsql
-          requires: 
-            - build
-          test_suite: "plcsql"
-      - test_job:
-          name: test_shell
-          requires: 
-            - build
-          test_suite: "shell"
-          e: cubrid-test-shell
-          parallel_num: 30
+      - setup
