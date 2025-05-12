@@ -16696,7 +16696,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_GT:
 	case PT_LT:
 	case PT_LE:
-
 	case PT_NULLSAFE_EQ:
 	case PT_PLUS:
 	case PT_MINUS:
