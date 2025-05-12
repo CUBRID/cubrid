@@ -229,10 +229,9 @@ namespace parallel_heap_scan
 		  {
 		    writer_error_code = m_mergable_list_writer->write (thread_p);
 
-		    if (!resolved_dbval_stored && m_mergable_list_writer->is_outptr_domain_resolved())
+		    if (!resolved_dbval_stored)
 		      {
-			m_memory_mapper->add_resolved_dbval_all();
-			resolved_dbval_stored = true;
+			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
 		      }
 
 		    if (writer_error_code != NO_ERROR)
