@@ -3431,10 +3431,12 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif /* SERVER_MODE */
 
       /* If the transaction is active abort it */
+      /* FIXME:
+       * Don't abort transactions in LOG_ISTRAN_2PC_PREPARE arbitrarily.
+       * Currently follows a temporary recovery policy (no coordinator).
+       * Must follow proper 2PC rules once coordinator is implemented.
+       */
       if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
-	// FIXME: If the server shuts down while in the 2PC_PREPARE state, an assert will occur.
-	// Once the 2PC and server shutdown routine are fully implemented,
-	// the LOG_ISTRAN_2PC_PREPARE (tdes) condition should be removed.
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
