@@ -8716,7 +8716,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -8786,7 +8786,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -8943,7 +8943,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9008,7 +9008,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;

@@ -3404,6 +3404,8 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "isolation level";
     case PT_LOCK_TIMEOUT:
       return "lock timeout";
+    case PT_CHAR_STRING:
+      return "";
     case PT_BIT_STRING:
       return "";
     case PT_HEX_STRING:

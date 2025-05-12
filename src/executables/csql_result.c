@@ -1119,7 +1119,17 @@ is_bit_type (DB_TYPE type)
 static bool
 is_cuttable_type_by_string_width (DB_TYPE type)
 {
-  return (is_string_type (type) || is_bit_type (type));
+  switch (type)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      return true;
+    default:
+      break;
+    }
+  return false;
 }
 
 /*
@@ -1130,7 +1140,17 @@ is_cuttable_type_by_string_width (DB_TYPE type)
 static bool
 is_type_that_has_suffix (DB_TYPE type)
 {
-  return (is_string_type (type) || is_bit_type (type));
+  switch (type)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      return true;
+    default:
+      break;
+    }
+  return false;
 }
 
 /*

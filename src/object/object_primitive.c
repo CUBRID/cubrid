@@ -1707,10 +1707,14 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Bit,
   &tp_VarBit,
   &tp_Char,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
   &tp_NChar,
   &tp_VarNChar,
-#endif
+
   &tp_ResultSet,
   &tp_Midxkey,
   &tp_Null,
@@ -12246,7 +12250,10 @@ PR_TYPE tp_Char = {
 
 PR_TYPE *tp_Type_char = &tp_Char;
 
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
+/* TODO:
+ * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+ * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+ */
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
   NULL,
@@ -12292,7 +12299,6 @@ PR_TYPE tp_VarNChar = {
   NULL,
   NULL
 };
-#endif
 
 /*
  * TYPE BIT

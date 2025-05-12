@@ -1739,7 +1739,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 		{
 		  bad_types[num_bad++] = (PT_TYPE_ENUM) (PT_TYPE_MIN + i);
 
-		  if (num_bad == sizeof (bad_types) / sizeof (bad_types[0]))
+		  if (num_bad == DIM (bad_types))
 		    {
 		      break;
 		    }

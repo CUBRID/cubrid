@@ -370,12 +370,14 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_BIT,		/* 23 */
   CCI_U_TYPE_VARBIT,		/* 24 */
   CCI_U_TYPE_CHAR,		/* 25 */
-  /* CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR was deprecated, 
-   * but, it is retained to preserve the order of DB_TYPE_NCHAR and DB_TYPE_VARNCHAR
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
    */
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-  0, 0,				/* 26 - 27 */
-#endif
+  CCI_U_TYPE_NCHAR,             /* 26 */
+  CCI_U_TYPE_VARNCHAR,	        /* 27 */
+
   CCI_U_TYPE_RESULTSET,		/* 28 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */

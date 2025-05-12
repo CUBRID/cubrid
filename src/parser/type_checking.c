@@ -1344,7 +1344,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* arg2 */
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
-      /* arg2 */
+      /* arg3 */
       sig.arg3_type.type = pt_arg_type::GENERIC;
       sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
       /* return type */
@@ -23091,7 +23091,6 @@ static PT_TYPE_ENUM
 pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
 			    PT_TYPE_ENUM * wrap_type_collection)
 {
-  PT_TYPE_ENUM common_type = PT_TYPE_VARCHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
 
   if (arg1)
@@ -23140,8 +23139,7 @@ pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT
 	    {
 	      if (PT_IS_CHAR_STRING_TYPE (dt->type_enum))
 		{
-		  common_type = dt->type_enum;
-		  break;
+		  return dt->type_enum;
 		}
 	      dt = dt->next;
 	    }
@@ -23155,14 +23153,13 @@ pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT
 	    {
 	      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)))
 		{
-		  common_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
-		  break;
+		  return pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
 		}
 	    }
 	}
     }
 
-  return common_type;
+  return PT_TYPE_VARCHAR;
 }
 
 /*

@@ -553,22 +553,6 @@ extern "C"
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
-/* ************************************************************************** */
-//#define BACKWARD_COMPATIBILITY_4_NCHAR        // ctshim TODO:
-/* ************************************************************************** */
-
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-/* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_NCHAR_PRECISION (DB_MAX_STRING_LENGTH/2)
-
-/* The maximum precision that can be specified for a NATIONAL CHARACTER VARYING domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
-#endif
-
 /* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
 
@@ -725,10 +709,14 @@ extern "C"
     DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
     DB_TYPE_VARBIT = 24,	/* SQL BIT(n) VARYING values */
     DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-    /* DB_TYPE_NCHAR and DB_TYPE_VARNCHAR was deprecated. But, it is preserved for backward compatibility.  */
+
+    /* TODO:
+     * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+     * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+     */
     DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
     DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+
     DB_TYPE_RESULTSET = 28,	/* internal use only */
     DB_TYPE_MIDXKEY = 29,	/* internal use only */
     DB_TYPE_TABLE = 30,		/* internal use only */
@@ -742,21 +730,7 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
-#else
-    DB_TYPE_RESULTSET = 26,	/* internal use only */
-    DB_TYPE_MIDXKEY = 27,	/* internal use only */
-    DB_TYPE_TABLE = 28,		/* internal use only */
-    DB_TYPE_BIGINT = 29,
-    DB_TYPE_DATETIME = 30,
-    DB_TYPE_BLOB = 31,
-    DB_TYPE_CLOB = 32,
-    DB_TYPE_ENUMERATION = 33,
-    DB_TYPE_TIMESTAMPTZ = 34,
-    DB_TYPE_TIMESTAMPLTZ = 35,
-    DB_TYPE_DATETIMETZ = 36,
-    DB_TYPE_DATETIMELTZ = 37,
-    DB_TYPE_JSON = 38,
-#endif
+
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */

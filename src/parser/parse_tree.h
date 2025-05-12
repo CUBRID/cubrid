@@ -1105,6 +1105,14 @@ enum pt_type_enum
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  PT_TYPE_NCHAR,
+  PT_TYPE_VARNCHAR,
+
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
@@ -1244,6 +1252,7 @@ typedef enum
   PT_CASCADED,
   PT_CURRENT,
 
+  PT_CHAR_STRING,		/* denotes the flavor of a literal string */
   PT_BIT_STRING,
   PT_HEX_STRING,
 

@@ -492,6 +492,7 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
       break;
 
     case DB_TYPE_CHAR:
+
     case DB_TYPE_VARCHAR:
       if (type == valid->last_type && DB_GET_STRING_PRECISION (value) == valid->last_precision)
 	{

@@ -977,15 +977,6 @@ typedef struct db_set SETREF;
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
 #endif
-/*
- * OR_TYPE_SIZE
- *    Returns the byte size of the disk representation of a particular
- *    type.  Returns -1 if the type is variable and the size cannot
- *    be known from just the type id.
- */
-extern int or_Type_sizes[];	/* map of type id to fixed value size */
-
-#define OR_TYPE_SIZE(type) or_Type_sizes[(int)(type)]
 
 /*
  * OR_VARINFO

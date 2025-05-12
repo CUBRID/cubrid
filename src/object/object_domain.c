@@ -132,10 +132,14 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_OBJECT,
   DB_TYPE_CHAR,
   DB_TYPE_VARCHAR,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
   DB_TYPE_NCHAR,
   DB_TYPE_VARNCHAR,
-#endif
+
   DB_TYPE_BIT,
   DB_TYPE_VARBIT,
   DB_TYPE_ELO,
@@ -316,15 +320,18 @@ TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-TP_DOMAIN tp_NChar_domain = { NULL, NULL, /* &tp_NChar */ NULL, TP_FLOATING_PRECISION_VALUE, 0,
+/* TODO:
+* DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+* However, to maintain compatibility with previous versions, the enum list will be preserved.       
+*/
+TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, /* &tp_VarNChar */ NULL, DB_MAX_VARNCHAR_PRECISION, 0,
+TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
-#endif
+
 
 TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
@@ -360,10 +367,14 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Bit_domain,
   &tp_VarBit_domain,
   &tp_Char_domain,
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
   &tp_NChar_domain,
   &tp_VarNChar_domain,
-#endif
+
   &tp_Resultset_domain,		/* result set */
   &tp_Midxkey_domain_list_heads[0],
   &tp_Null_domain,
@@ -527,8 +538,14 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   tp_Bit_conv,			/* DB_TYPE_BIT */
   tp_VarBit_conv,		/* DB_TYPE_VARBIT */
   tp_Char_conv,			/* DB_TYPE_CHAR */
-  NULL,				//tp_NChar_conv,               /* DB_TYPE_NCHAR */
-  NULL,				// tp_VarNChar_conv,            /* DB_TYPE_VARNCHAR */
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  NULL,				/* DB_TYPE_NCHAR */
+  NULL,				/* DB_TYPE_VARNCHAR */
+
   NULL,				/* DB_TYPE_RESULTSET */
   NULL,				/* DB_TYPE_MIDXKEY */
   NULL,				/* DB_TYPE_TABLE */
@@ -682,20 +699,21 @@ tp_apply_sys_charset (void)
 
   /* update string domains with current codeset */
   tp_String_domain.codeset = LANG_SYS_CODESET;
-  tp_Char_domain.codeset = LANG_SYS_CODESET;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-  tp_NChar_domain.codeset = LANG_SYS_CODESET;
-  tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
-#endif
-  tp_Enumeration_domain.codeset = LANG_SYS_CODESET;
-
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
+  tp_Char_domain.codeset = LANG_SYS_CODESET;
   tp_Char_domain.collation_id = LANG_SYS_COLLATION;
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-  tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
-  tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
-#endif
+
+  tp_Enumeration_domain.codeset = LANG_SYS_CODESET;
   tp_Enumeration_domain.collation_id = LANG_SYS_COLLATION;
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  tp_NChar_domain.codeset = LANG_SYS_CODESET;
+  tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
+  tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
+  tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 }
 
 /*
@@ -10200,10 +10218,8 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
   if (!rank_init)
     {
       /* set up rank so we can do fast table lookup */
-      for (i = 0; i <= DB_TYPE_LAST; i++)
-	{
-	  rank[i] = 0;
-	}
+      memset (rank, 0x00, sizeof (rank));
+
       for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
 	{
 	  rank[db_type_rank[i]] = i;

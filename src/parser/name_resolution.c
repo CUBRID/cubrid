@@ -5008,6 +5008,14 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
+  /* TODO:
+   * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
+  PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
+
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_NUMERIC,

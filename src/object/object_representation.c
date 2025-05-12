@@ -206,52 +206,6 @@ classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, in
 }
 
 /*
- * or_Type_sizes
- *    This is used primarily on the server but can be used on the client
- *    as well.  Given a type identifier, return the disk size of values
- *    of this type, if they are fixed size.  A value of -1 indicates that
- *    the values are of variable size.
- *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the PR_TYPE structures
- *    for use on the client.  Should consider using this on the client
- *    side as well to avoid the duplication.
- *
- */
-int or_Type_sizes[] = {
-
-  0,				/* null */
-  OR_INT_SIZE,			/* integer */
-  OR_FLOAT_SIZE,		/* float */
-  OR_DOUBLE_SIZE,		/* double */
-  -1,				/* string */
-  OR_OID_SIZE,			/* object */
-  -1,				/* set */
-  -1,				/* multiset */
-  -1,				/* sequence */
-  -1,				/* elo */
-  OR_TIME_SIZE,			/* time */
-  OR_UTIME_SIZE,		/* utime */
-  OR_DATE_SIZE,			/* date */
-  OR_MONETARY_SIZE,		/* monetary */
-  -1,				/* variable */
-  -1,				/* substructure */
-  0,				/* pointer */
-  0,				/* error */
-  OR_INT_SIZE,			/* short */
-  -1,				/* virtual obj */
-  OR_OID_SIZE,			/* oid */
-  0,				/* last */
-  -1,				/* numeric */
-  -1,				/* bit */
-  -1,				/* varbit */
-  -1,				/* char */
-#if defined(BACKWARD_COMPATIBILITY_4_NCHAR)
-  -1,				/* nchar */
-  -1,				/* varnchar */
-#endif
-};
-
-/*
  * RECDES DECODING FUNCTIONS
  */
 

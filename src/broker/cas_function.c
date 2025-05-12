@@ -124,6 +124,14 @@ static const char *type_str_tbl[] = {
   "NULL",			/* CCI_U_TYPE_NULL */
   "CHAR",			/* CCI_U_TYPE_CHAR */
   "VARCHAR",			/* CCI_U_TYPE_STRING */
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  "NCHAR",			/* CCI_U_TYPE_NCHAR */
+  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR */
+
   "BIT",			/* CCI_U_TYPE_BIT */
   "VARBIT",			/* CCI_U_TYPE_VARBIT */
   "NUMERIC",			/* CCI_U_TYPE_NUMERIC */
@@ -2296,6 +2304,7 @@ bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int 
 
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
 	{
+          assert (type != CCI_U_TYPE_NCHAR && type != CCI_U_TYPE_VARNCHAR);
 	  write2_func ("%s ", type_str_tbl[(int) type]);
 	  bind_value_print (type, net_value, slow_log);
 	}

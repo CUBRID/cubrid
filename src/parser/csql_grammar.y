@@ -21240,18 +21240,20 @@ of_cast_data_type
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
 
-                            assert (typ == PT_TYPE_CHAR);			    
-			    if (pt_check_grammar_charset_collation
-			        (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
-			     {
-			        dt->info.data_type.units = charset;
-			        dt->info.data_type.collation_id = coll_id;
+                            if (typ == PT_TYPE_CHAR)
+                            {
+			      if (pt_check_grammar_charset_collation
+			          (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+			       {
+			          dt->info.data_type.units = charset;
+			          dt->info.data_type.collation_id = coll_id;
+			       }
+			      else
+			       {
+			          dt->info.data_type.units = -1;
+			          dt->info.data_type.collation_id = -1;
+			       }			
 			     }
-			    else
-			     {
-			        dt->info.data_type.units = -1;
-			        dt->info.data_type.collation_id = -1;
-			     }			
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);

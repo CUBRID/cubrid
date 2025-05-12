@@ -4135,12 +4135,6 @@ disk_is_sector_reserved (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
 {
   DISK_STAB_CURSOR cursor_sectid;
 
-  static int xxdbg = 0;
-  xxdbg++;
-
-  if (xxdbg == 48)
-    xxdbg = 48;
-
   disk_stab_cursor_set_at_sectid (volheader, sectid, &cursor_sectid);
   if (disk_stab_cursor_fix (thread_p, &cursor_sectid, PGBUF_LATCH_READ) != NO_ERROR)
     {

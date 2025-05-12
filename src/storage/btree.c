@@ -15667,10 +15667,10 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	    /* compatible if two types are same (except for sequence type) */
 	    (stype == dtype)
 	    /* CHAR type and VARCHAR type are compatible with each other */
-	    || ((stype == DB_TYPE_CHAR || stype == DB_TYPE_VARCHAR)
-		&& (dtype == DB_TYPE_CHAR || dtype == DB_TYPE_VARCHAR))
+	    || (stype == DB_TYPE_CHAR && dtype == DB_TYPE_VARCHAR)
+	    || (stype == DB_TYPE_VARCHAR && dtype == DB_TYPE_CHAR)
 	    /* BIT type and VARBIT type are compatible with each other */
-	    || ((stype == DB_TYPE_BIT || stype == DB_TYPE_VARBIT) && (dtype == DB_TYPE_BIT || dtype == DB_TYPE_VARBIT))
+	    || (stype == DB_TYPE_BIT && dtype == DB_TYPE_VARBIT) || (stype == DB_TYPE_VARBIT && dtype == DB_TYPE_BIT)
 	    /* OID type and OBJECT type are compatible with each other */
 	    /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain itself will always be a
 	     * DB_TYPE_OBJECT. The comparison routines can handle OID and OBJECT as compatible type with each other . */

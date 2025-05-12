@@ -619,6 +619,10 @@ cci_u_type_to_type (T_CCI_U_TYPE utype)
       return CI_TYPE_CHAR;
     case CCI_U_TYPE_STRING:
       return CI_TYPE_VARCHAR;
+    case CCI_U_TYPE_NCHAR:
+      return CI_TYPE_NCHAR;
+    case CCI_U_TYPE_VARNCHAR:
+      return CI_TYPE_VARNCHAR;
     case CCI_U_TYPE_BIT:
       return CI_TYPE_BIT;
     case CCI_U_TYPE_VARBIT:
@@ -688,6 +692,10 @@ type_to_cci_u_type (CI_TYPE type)
       return CCI_U_TYPE_CHAR;
     case CI_TYPE_VARCHAR:
       return CCI_U_TYPE_STRING;
+    case CI_TYPE_NCHAR:
+      return CCI_U_TYPE_NCHAR;
+    case CI_TYPE_VARNCHAR:
+      return CCI_U_TYPE_VARNCHAR;
     case CI_TYPE_BIT:
       return CCI_U_TYPE_BIT;
     case CI_TYPE_VARBIT:

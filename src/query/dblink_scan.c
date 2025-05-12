@@ -90,6 +90,14 @@ static int type_map[] = {
   0,
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
+
+  /* TODO:
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
+
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
