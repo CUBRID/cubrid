@@ -7460,6 +7460,8 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
+  sm_mark_system_class (class_mop, 1);
+
   if (locator_create_heap_if_needed (class_mop, false) == NULL)
     {
       goto tmp_error;

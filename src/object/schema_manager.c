@@ -3035,43 +3035,6 @@ end:
 }
 
 /*
- * sm_mark_system_classes() - Hack used to set the "system class" flag for
- *    all currently resident classes.
- *    This is only to make it more convenient to tell the
- *    difference between CUBRID and user defined classes.  This is intended
- *    to be called after the appropriate CUBRID class initialization function.
- *    Note that authorization is disabled here because these are normally
- *    called on the authorization classes.
- */
-
-void
-sm_mark_system_classes (void)
-{
-  LIST_MOPS *lmops;
-  SM_CLASS *class_;
-  int i;
-
-  if (au_check_user () == NO_ERROR)
-    {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
-      if (lmops != NULL)
-	{
-	  for (i = 0; i < lmops->num; i++)
-	    {
-	      if (!WS_IS_DELETED (lmops->mops[i]) && lmops->mops[i] != sm_Root_class_mop)
-		{
-		  if (au_fetch_class_force (lmops->mops[i], &class_, AU_FETCH_UPDATE) == NO_ERROR)
-		    {
-		      class_->flags |= SM_CLASSFLAG_SYSTEM;
-		    }
-		}
-	    }
-	  locator_free_list_mops (lmops);
-	}
-    }
-}
-
-/*
  * sm_mark_system_class() - This turns on or off the system class flag.
  *   This flag is tested by the sm_is_system_class function.
  *   return: NO_ERROR on success, non-zero for ERROR

@@ -42,10 +42,6 @@ namespace cubschema
     if (sm_is_system_class (name))
       {
 	class_mop = db_create_class (name.data ());
-	if (class_mop != nullptr)
-	  {
-	    sm_mark_system_class (class_mop, 1);
-	  }
       }
     else if (sm_is_system_vclass (name))
       {
@@ -54,6 +50,11 @@ namespace cubschema
     else
       {
 	assert (false);
+      }
+
+    if (class_mop != nullptr)
+      {
+	sm_mark_system_class (class_mop, 1);
       }
 
     return class_mop;

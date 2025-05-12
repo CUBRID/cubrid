@@ -560,11 +560,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	      error_code = catcls_install ();
 	      if (error_code == NO_ERROR)
 		{
-		  /*
-		   * mark all classes created during the initialization as "system"
-		   * classes,
-		   */
-		  sm_mark_system_classes ();
 		  error_code = tran_commit (false);
 		}
 
