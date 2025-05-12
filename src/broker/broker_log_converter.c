@@ -418,11 +418,11 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     case 'U':
       if (memcmp (p, "UINT", 5) == 0)
 	{
-	  type = CCI_U_TYPE_UBIGINT;
+	  type = CCI_U_TYPE_UINT;
 	}
       else if (memcmp (p, "UBIGINT", 8) == 0)
 	{
-	  type = CCI_U_TYPE_UINT;
+	  type = CCI_U_TYPE_UBIGINT;
 	}
       else if (memcmp (p, "USHORT", 7) == 0)
 	{
