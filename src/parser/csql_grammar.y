@@ -14591,7 +14591,6 @@ cte_definition
 			      }
 			    node->info.cte.non_recursive_part = $4;
 			    node->info.cte.recursive_part = NULL;
-			    node->info.cte.referenced_count = 0;
 			  }
 
 			$$ = node;
@@ -14765,6 +14764,12 @@ opt_from_clause
 			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
 
 			    node->info.query.q.select.with_increment = $10;
+			    if (node->info.query.q.select.with_increment != NULL && parser_select_level != 1)
+			    {
+                             PT_ERRORf (this_parser, node,
+                                        "%s can be used at top select statement only.",
+                                        pt_short_print (this_parser, node->info.query.q.select.with_increment));
+                            }
 			    node->info.query.id = (UINTPTR) node;
 
 			    if (node->info.query.all_distinct != PT_ALL)

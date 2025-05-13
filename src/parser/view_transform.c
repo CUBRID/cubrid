@@ -411,7 +411,7 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
-static PT_NODE *mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -5036,7 +5036,7 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   mq_check_cte_inline_or_materialize (parser, *with_clause);
 
   /* rewrite the main query considering the reference count. */
-  node = parser_walk_tree (parser, node, mq_rewrite_cte_pre, NULL, NULL, NULL);
+  node = parser_walk_tree (parser, node, mq_inline_cte_pre, NULL, NULL, NULL);
 
   cte_definition_list = (*with_clause)->info.with_clause.cte_definition_list;
   curr = cte_definition_list;
@@ -5076,22 +5076,20 @@ static void
 mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
-  bool is_inlinable = true;
   PT_HINT_ENUM hint;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
   for (cte = node->info.with_clause.cte_definition_list; cte; cte = cte->next)
     {
-      is_inlinable = true;
-      /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
-       * since it may change the query results. Handle it same as CTE with materialize hint. */
-      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
+      /* recursive CTE is always materialized when referenced at least once */
+      if (cte->info.cte.recursive_part != NULL)
+	{
+	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
+	  continue;
+	}
 
-      is_inlinable = PT_IS_SELECT (cte->info.cte.non_recursive_part);
-
-      if (is_inlinable)
+      if (PT_IS_SELECT (cte->info.cte.non_recursive_part))
 	{
 	  hint = cte->info.cte.non_recursive_part->info.query.q.select.hint;
 
@@ -5099,16 +5097,15 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      /* materialize CTE if it is referenced at least once. */
 	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
-
+	      continue;
 	    }
 	  else if (hint & PT_HINT_INLINE_CTE)
 	    {
 	      cte->info.cte.is_materialized = false;
+	      continue;
 	    }
-	  else
-	    {
-	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 2);
-	    }
+
+	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 2);
 	}
       else
 	{
@@ -5204,14 +5201,14 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 }
 
 /*
- * mq_rewrite_cte_pre () - This function is used to rewrite the CTE.
+ * mq_inline_cte_pre () - This function is used to rewrite the CTE.
  *   return:
  *   parser(in):
  *   node(in):
  *   arg(in):
  */
 static PT_NODE *
-mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte;
 
@@ -5227,11 +5224,6 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	{
 	  cte = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (cte);
-
-	  if (cte->info.cte.recursive_part != NULL)
-	    {
-	      return node;
-	    }
 
 	  if (cte->info.cte.is_materialized)
 	    {
@@ -5259,8 +5251,8 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	  if (node->info.spec.cte_pointer)
 	    {
-	    parser_free_tree (parser, node->info.spec.cte_pointer);
-      }
+	      parser_free_tree (parser, node->info.spec.cte_pointer);
+	    }
 
 	  if (node->info.spec.cte_name)
 	    {
