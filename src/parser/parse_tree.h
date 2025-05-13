@@ -1928,7 +1928,7 @@ struct semantic_chk_info
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
   bool donot_fold;		/* false - off, true - on */
   bool system_class;		/* system class(es) is(are) referenced */
-  PT_NODE *remote_server_name;
+  bool has_dblink;
 };
 
 struct nested_view_version_info
