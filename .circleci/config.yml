@@ -248,8 +248,11 @@ jobs:
       parallel_num:
         type: integer
         default: 1
+      resource_class_param:
+        type: string
+        default: "medium"
     executor: << parameters.e >>
-    resource_class: medium
+    resource_class: << parameters.resource_class_param >>
     parallelism: << parameters.parallel_num >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
@@ -309,3 +312,4 @@ workflows:
           test_suite: "shell"
           e: cubrid-test-shell
           parallel_num: 30
+          resource_class_param: "large"
