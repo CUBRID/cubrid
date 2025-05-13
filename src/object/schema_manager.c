@@ -10819,7 +10819,8 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	    {
 	      // TODO (CUBVEC): set proper error code
 	      error = ER_SM_INVALID_INDEX_TYPE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, domain->type->name);
+	      std::string error_msg = std::string (domain->type->name) + "(" + std::to_string (domain->precision) + ")";
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg.c_str ());
 	      return error;
 	    }
 	  error = hnsw_add_index (index, domain->precision, 32, 100, faiss::METRIC_L2);
