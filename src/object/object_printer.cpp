@@ -300,6 +300,10 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	    {
 	      temp_domain->is_floating_point_numeric = 1;
 	    }
+	  else
+	    {
+	      temp_domain->is_floating_point_numeric = 0;
+	    }
 
 	  if (temp_domain->is_floating_point_numeric)
 	    {

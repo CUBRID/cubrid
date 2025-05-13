@@ -4797,28 +4797,29 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       break;
 
     case PT_TYPE_NUMERIC:
-      switch (node->type_enum)
-	{
-	case PT_TYPE_SMALLINT:
-	  precision = DB_SMALLINT_PRECISION;
-	  scale = 0;
-	  break;
+      //switch (node->type_enum)
+      //{
+      // case PT_TYPE_SMALLINT:
+      //   precision = DB_SMALLINT_PRECISION;
+      //   scale = 0;
+      //   break;
 
-	case PT_TYPE_INTEGER:
-	  precision = DB_INTEGER_PRECISION;
-	  scale = 0;
-	  break;
+      // case PT_TYPE_INTEGER:
+      //   precision = DB_INTEGER_PRECISION;
+      //   scale = 0;
+      //   break;
 
-	case PT_TYPE_BIGINT:
-	  precision = DB_BIGINT_PRECISION;
-	  scale = 0;
-	  break;
+      // case PT_TYPE_BIGINT:
+      //   precision = DB_BIGINT_PRECISION;
+      //   scale = 0;
+      //   break;
 
-	default:
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
-	  break;
-	}
+      // default:
+      precision = 0;
+      scale = 0;
+      node->info.value.db_value.domain.numeric_info.is_floating_point_numeric = 1;
+      //break;
+      //}
       break;
 
     case PT_TYPE_VARCHAR:
@@ -4886,6 +4887,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	  || (node->node_type == PT_SELECT && node->info.query.is_subquery == PT_IS_SUBQUERY))
 	{
 	  /* wrap with cast, instead of setting expected domain */
+	  // 여기가 상수 값을 묵시적 형변환 하는 곳임!!
 	  new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
 
 	  if (new_node == NULL)
@@ -4944,6 +4946,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	}
       else
 	{
+	  // 여기가 상수 값을 묵시적 형변환 하는 곳임!!
 	  new_node = pt_wrap_with_cast_op (parser, node, def_type, precision, scale, new_dt);
 	}
       if (new_node == NULL)
@@ -8553,6 +8556,8 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
       new_dt->type_enum = new_type;
       new_dt->info.data_type.precision = p;
       new_dt->info.data_type.dec_precision = s;
+      new_dt->info.data_type.is_floating_point_numeric =
+	arg->info.value.db_value.domain.numeric_info.is_floating_point_numeric;
 
       if (desired_dt != NULL && !PT_IS_COLLECTION_TYPE (desired_dt->type_enum))
 	{
@@ -8574,6 +8579,8 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
       new_dt->type_enum = new_type;
       new_dt->info.data_type.precision = p;
       new_dt->info.data_type.dec_precision = s;
+      new_dt->info.data_type.is_floating_point_numeric =
+	arg->info.value.db_value.domain.numeric_info.is_floating_point_numeric;
       if (arg->data_type != NULL && PT_HAS_COLLATION (arg->data_type->type_enum))
 	{
 	  new_dt->info.data_type.units = arg->data_type->info.data_type.units;
@@ -10273,6 +10280,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (cast_type && pt_check_cast_op (parser, node))
 	{
+	  PT_DATA_TYPE_INFO *arg1_domain = arg1 ? (arg1->data_type ? &arg1->data_type->info.data_type : NULL) : NULL;
+	  PT_DATA_TYPE_INFO *arg2_domain = arg2 ? (arg2->data_type ? &arg2->data_type->info.data_type : NULL) : NULL;
+	  PT_DATA_TYPE_INFO *arg3_domain = arg3 ? (arg3->data_type ? &arg3->data_type->info.data_type : NULL) : NULL;
+
 	  node->type_enum = cast_type->type_enum;
 	  if (pt_is_set_type (cast_type))
 	    {
@@ -10287,15 +10298,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  // 처음 사용자가 입력한 숫자는 무조건 flag가 true이기 때문에, domain 정보를 확인해서 한번 바꿔줘야 할 것 같음.
 	  // 여기의 node->data_type이 cast ( ?? numeric(?,?)); 값을 의미하는 것 같음.
 	  // 향후, 여기가 필요한 부분일 경우 함수로 만들어서 최적화 하자!
-	  if (arg1_type != PT_TYPE_NONE && (arg1_type == PT_TYPE_NUMERIC || cast_type->type_enum == PT_TYPE_NUMERIC))
+	  if (arg1_type == PT_TYPE_NUMERIC && cast_type->type_enum == PT_TYPE_NUMERIC)
 	    {
 	      if (node->data_type->info.data_type.is_floating_point_numeric
 		  || node->data_type->info.data_type.precision == 0)
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg1->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION_FLOATING))
+		  if (func_type::is_invalid_precision (arg1->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION_FLOATING))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg1->info.value.db_value.domain.numeric_info.precision, 0,
@@ -10304,7 +10314,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 
-		  if (arg1->data_type)
+		  if (arg1_domain)
 		    {
 		      arg1->data_type->info.data_type.is_floating_point_numeric = 1;
 		    }
@@ -10314,10 +10324,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg1->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION)
-		      || arg1->info.value.db_value.domain.numeric_info.precision == 0)
+		  if (func_type::is_invalid_precision (arg1->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg1->info.value.db_value.domain.numeric_info.precision, 0, DB_MAX_NUMERIC_PRECISION);
@@ -10334,15 +10342,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 	    }
 
-	  if (arg2_type != PT_TYPE_NONE && (arg2_type == PT_TYPE_NUMERIC || cast_type->type_enum == PT_TYPE_NUMERIC))
+	  if (arg2_type == PT_TYPE_NUMERIC && cast_type->type_enum == PT_TYPE_NUMERIC)
 	    {
 	      if (node->data_type->info.data_type.is_floating_point_numeric
 		  || node->data_type->info.data_type.precision == 0)
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg2->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION_FLOATING))
+		  if (func_type::is_invalid_precision (arg2->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION_FLOATING))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg2->info.value.db_value.domain.numeric_info.precision, 0,
@@ -10351,7 +10358,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 
-		  if (arg2->data_type)
+		  if (arg2_domain)
 		    {
 		      arg2->data_type->info.data_type.is_floating_point_numeric = 1;
 		    }
@@ -10361,10 +10368,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg2->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION)
-		      || arg2->info.value.db_value.domain.numeric_info.precision == 0)
+		  if (func_type::is_invalid_precision (arg2->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg2->info.value.db_value.domain.numeric_info.precision, 0, DB_MAX_NUMERIC_PRECISION);
@@ -10372,7 +10377,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 
-		  if (arg2->data_type)
+		  if (arg2_domain)
 		    {
 		      arg2->data_type->info.data_type.is_floating_point_numeric = 0;
 		    }
@@ -10381,15 +10386,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		}
 	    }
 
-	  if (arg3_type != PT_TYPE_NONE && (arg3_type == PT_TYPE_NUMERIC || cast_type->type_enum == PT_TYPE_NUMERIC))
+	  if (arg3_type == PT_TYPE_NUMERIC && cast_type->type_enum == PT_TYPE_NUMERIC)
 	    {
 	      if (node->data_type->info.data_type.is_floating_point_numeric
 		  || node->data_type->info.data_type.precision == 0)
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg3->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION_FLOATING))
+		  if (func_type::is_invalid_precision (arg3->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION_FLOATING))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg3->info.value.db_value.domain.numeric_info.precision, 0,
@@ -10398,7 +10402,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 
-		  if (arg3->data_type)
+		  if (arg3_domain)
 		    {
 		      arg3->data_type->info.data_type.is_floating_point_numeric = 1;
 		    }
@@ -10408,10 +10412,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      else
 		{
 		  // 우선, numeric 타입의 cast가 실패하는 경우 여기서 에러 셋팅
-		  if (func_type::
-		      is_invalid_precision (arg3->info.value.db_value.domain.numeric_info.precision,
-					    DB_MAX_NUMERIC_PRECISION)
-		      || arg3->info.value.db_value.domain.numeric_info.precision == 0)
+		  if (func_type::is_invalid_precision (arg3->info.value.db_value.domain.numeric_info.precision,
+						       DB_MAX_NUMERIC_PRECISION))
 		    {
 		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3,
 			      arg3->info.value.db_value.domain.numeric_info.precision, 0, DB_MAX_NUMERIC_PRECISION);
@@ -10419,7 +10421,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 
-		  if (arg3->data_type)
+		  if (arg3_domain)
 		    {
 		      arg3->data_type->info.data_type.is_floating_point_numeric = 0;
 		    }
@@ -11969,6 +11971,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	  dt->info.data_type.dec_precision = 0;
 	  dt->info.data_type.units = 0;
+	  dt->info.data_type.is_floating_point_numeric = 0;
 	}
       else if (common_type == PT_TYPE_NUMERIC)
 	{
@@ -11987,6 +11990,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	  dt->info.data_type.dec_precision = 0;
 	  dt->info.data_type.units = 0;
+	  dt->info.data_type.is_floating_point_numeric = 0;
 	}
       else
 	{
@@ -12000,6 +12004,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    {
 	      dt->info.data_type.units = arg2_units;
 	    }
+	  dt->info.data_type.is_floating_point_numeric =
+	    MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	}
       break;
 
@@ -12251,6 +12257,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	   * precision here */
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
 	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	  dt->info.data_type.is_floating_point_numeric =
+	    MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
 	}
       else
 	{
@@ -12263,6 +12271,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	int prec = 0, scale = 0;
 	pt_to_regu_resolve_domain (&prec, &scale, arg2);
 	dt = pt_make_prim_data_type_fortonum (parser, prec, scale);
+	dt->info.data_type.is_floating_point_numeric =
+	  MAX (arg1_is_floating_point_numeric, arg2_is_floating_point_numeric);
+	dt->info.data_type.is_floating_point_numeric = 0;
 	break;
       }
 
@@ -14261,6 +14272,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  return 0;
 		}
 
+	      domain->is_floating_point_numeric = result->domain.numeric_info.is_floating_point_numeric ? 1 : 0;
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -14939,6 +14952,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+
+	      domain->is_floating_point_numeric = result->domain.numeric_info.is_floating_point_numeric ? 1 : 0;
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -15340,6 +15356,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+
+	      domain->is_floating_point_numeric = result->domain.numeric_info.is_floating_point_numeric ? 1 : 0;
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -15444,6 +15463,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		      PT_ERRORc (parser, o1, er_msg ());
 		      return 0;
 		    }
+
+		  domain->is_floating_point_numeric = result->domain.numeric_info.is_floating_point_numeric ? 1 : 0;
 
 		  dom_status = tp_value_coerce (result, result, domain);
 		  if (dom_status != DOMAIN_COMPATIBLE)

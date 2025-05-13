@@ -138,12 +138,12 @@ static int numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num);
 static int numeric_scale_dec (const DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer);
 static int numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num);
 static int numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common,
-				      DB_VALUE * dbv2_common);
+				      DB_VALUE * dbv2_common, int is_floating_point);
 static int numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common,
 					     DB_VALUE * dbv2_common);
 static void numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str);
 static int numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *dest_prec, int *dest_scale,
-				    DB_C_NUMERIC dest);
+				    DB_C_NUMERIC dest, int is_floating_point);
 static int numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
@@ -1351,13 +1351,15 @@ numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
  *   dbv2(in): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *   dbv1_common(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *   dbv2_common(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
+ *   is_floating_point(in): int is_floating_point of src
  *
  * Note: This routine returns two DB_VALUE's of type numeric with the same
  *       scale.  dbv1_common, dbv2_common are set to dbv1, dbv2 respectively
  *       when an error occurs.
  */
 static int
-numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common, DB_VALUE * dbv2_common)
+numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common, DB_VALUE * dbv2_common,
+			   int is_floating_point)
 {
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int scale1, scale2;
@@ -1383,7 +1385,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale2 - scale1;
       prec1 = scale_diff + prec1;
-      if (prec1 > DB_MAX_NUMERIC_PRECISION)
+      if (prec1 > (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1398,7 +1400,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale1 - scale2;
       prec2 = scale_diff + prec2;
-      if (prec2 > DB_MAX_NUMERIC_PRECISION)
+      if (prec2 > (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1517,6 +1519,7 @@ numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
  *   dest_prec(out)      : ptr to a int precision of dest
  *   dest_scale(out)     : ptr to a int scale of dest
  *   dest(out)   : DB_C_NUMERIC
+ *   is_floating_point(in) : int is_floating_point of src
  *
  * Note: This routine returns a DB_C_NUMERIC along with the precision and
  *       scale of the MSB of the source.  Round-off occurs as long as the scale
@@ -1525,13 +1528,13 @@ numeric_coerce_big_num_to_dec_str (unsigned char *num, char *dec_str)
  */
 static int
 numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *dest_prec, int *dest_scale,
-			 DB_C_NUMERIC dest)
+			 DB_C_NUMERIC dest, int is_floating_point)
 {
   int ret = NO_ERROR;
   char dec_digits[TWICE_NUM_MAX_PREC + 2];
 
   /* If src precision fits without truncation, merely set dest to the lower half of the source buffer and return */
-  if (src_prec <= DB_MAX_NUMERIC_PRECISION)
+  if (src_prec <= (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
       *dest_prec = src_prec;
@@ -1541,13 +1544,13 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   /* The remaining cases are for when the precision of the source overflows. */
 
   /* Case 1: The scale of the source does *not* overflow */
-  else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
+  else if (src_scale <= (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       /* If upper half of *src is zero, merely copy, reset precision, and return */
       if (numeric_is_zero (src) && src[DB_NUMERIC_BUF_SIZE] <= 0x7F)
 	{
 	  numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
-	  *dest_prec = DB_MAX_NUMERIC_PRECISION;
+	  *dest_prec = (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
 	  *dest_scale = src_scale;
 	}
       else
@@ -1561,10 +1564,11 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
    * Reduce the scale and precision by the same amount. */
   else
     {
-      int truncation_diff = src_prec - DB_MAX_NUMERIC_PRECISION;
+      int truncation_diff =
+	src_prec - (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
 
       *dest_scale = src_scale - truncation_diff;
-      *dest_prec = DB_MAX_NUMERIC_PRECISION;
+      *dest_prec = (is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
 
       /* Truncate the obsolete trailing digits. (Note: numeric_coerce_big_num_to_dec_str is guaranteed ro return a
        * NULL-terminated buffer that is TWICE_NUM_MAX_PREC characters long.) */
@@ -1625,16 +1629,24 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
-  /* + 연산 중 하나라도 floating point 이면, 결과도 floating point 이어야함 */
+  /* 덧셈 하는 곳으로, dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함  */
   if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
     {
-      dbv1_common.domain.numeric_info.is_floating_point_numeric = true;
-      dbv2_common.domain.numeric_info.is_floating_point_numeric = true;
-      answer->domain.numeric_info.is_floating_point_numeric = true;
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = 1;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = 1;
+      answer->domain.numeric_info.is_floating_point_numeric = 1;
+    }
+  else
+    {
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = 0;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = 0;
+      answer->domain.numeric_info.is_floating_point_numeric = 0;
     }
 
   /* Coerce, if necessary, to make prec & scale match */
-  ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
+  ret =
+    numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common,
+			       answer->domain.numeric_info.is_floating_point_numeric);
   if (ret == ER_IT_DATA_OVERFLOW)
     {
       ret = numeric_prec_scale_when_overflow (dbv1, dbv2, &dbv1_common, &dbv2_common);
@@ -1735,18 +1747,27 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
-  // dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함
+  /* 뺄셈 하는 곳으로, dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함  */
   if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
     {
-      dbv1_common.domain.numeric_info.is_floating_point_numeric = true;
-      dbv2_common.domain.numeric_info.is_floating_point_numeric = true;
-      answer->domain.numeric_info.is_floating_point_numeric = true;
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = 1;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = 1;
+      answer->domain.numeric_info.is_floating_point_numeric = 1;
+    }
+  else
+    {
+      dbv1_common.domain.numeric_info.is_floating_point_numeric = 0;
+      dbv2_common.domain.numeric_info.is_floating_point_numeric = 0;
+      answer->domain.numeric_info.is_floating_point_numeric = 0;
     }
 
   /* Coerce, if necessary, to make prec & scale match */
-  ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
+  ret =
+    numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common,
+			       answer->domain.numeric_info.is_floating_point_numeric);
   if (ret == ER_IT_DATA_OVERFLOW)
     {
+      // 여기 flag는 잠시 대기!
       ret = numeric_prec_scale_when_overflow (dbv1, dbv2, &dbv1_common, &dbv2_common);
       if (ret != NO_ERROR)
 	{
@@ -1845,12 +1866,24 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
+  /* 곱셈 하는 곳으로, dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함  */
+  if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 1;
+    }
+  else
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 0;
+    }
+
   /* Perform the multiplication */
   numeric_mul (db_locate_numeric (dbv1), db_locate_numeric (dbv2), &positive_ans, temp);
   /* Check for overflow.  Reset precision & scale if necessary */
   prec = DB_VALUE_PRECISION (dbv1) + DB_VALUE_PRECISION (dbv2) + 1;
   scale = DB_VALUE_SCALE (dbv1) + DB_VALUE_SCALE (dbv2);
-  ret = numeric_get_msb_for_dec (prec, scale, temp, &prec, &scale, result);
+  ret =
+    numeric_get_msb_for_dec (prec, scale, temp, &prec, &scale, result,
+			     answer->domain.numeric_info.is_floating_point_numeric);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1929,6 +1962,16 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       return NO_ERROR;
     }
 
+  /* 나눗셈 하는 곳으로, dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함  */
+  if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 1;
+    }
+  else
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 0;
+    }
+
   /* In order to maintain the proper number of scaling in the output, find the maximum scale of the two args and make
    * sure that the scale of dbv1 exceeds the scale of dbv2 by that amount. */
   numeric_shortnum_to_longnum (long_dbv1_copy, db_locate_numeric (dbv1));
@@ -1951,12 +1994,17 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
    */
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
-  if (prec > DB_MAX_NUMERIC_PRECISION)
+  if (prec >
+      (answer->domain.numeric_info.
+       is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
-      prec = DB_MAX_NUMERIC_PRECISION;
+      prec =
+	(answer->domain.numeric_info.
+	 is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
     }
 
-  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
+  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE)
+      && !answer->domain.numeric_info.is_floating_point_numeric && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
     {
       int new_scale, new_prec;
       int scale_delta;
@@ -2030,7 +2078,9 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   if (numeric_overflow (temp_quo, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec <
+	  (answer->domain.numeric_info.
+	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -2170,6 +2220,16 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       return NO_ERROR;
     }
 
+  /* 비교하는 곳 ???????????????, dbv1 또는 dbv2 중 하나라도 floating point 이면, 결과도 floating point 이어야함  */
+  if (dbv1->domain.numeric_info.is_floating_point_numeric || dbv2->domain.numeric_info.is_floating_point_numeric)
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 1;
+    }
+  else
+    {
+      answer->domain.numeric_info.is_floating_point_numeric = 0;
+    }
+
   scale1 = DB_VALUE_SCALE (dbv1);
   scale2 = DB_VALUE_SCALE (dbv2);
   prec1 = DB_VALUE_PRECISION (dbv1);
@@ -2187,7 +2247,9 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       DB_VALUE dbv1_common, dbv2_common;
 
       /* First try to coerce to common prec/scale numbers and compare. */
-      ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
+      ret =
+	numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common,
+				   answer->domain.numeric_info.is_floating_point_numeric);
       if (ret == NO_ERROR)
 	{
 	  cmp_rez = numeric_compare (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common));
@@ -3228,7 +3290,9 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 		}
 
 	      // 이제 flag 처리했기 때문에, 0 확인은 제거할지 확인 필요
-	      if (result->domain.numeric_info.is_floating_point_numeric || result->domain.numeric_info.precision == 0)
+	      if (decimal_part
+		  && (result->domain.numeric_info.is_floating_point_numeric
+		      || result->domain.numeric_info.precision == 0))
 		{
 		  trailing_zero_count = (astring[i] == '0') ? trailing_zero_count + 1 : 0;
 		}
