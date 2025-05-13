@@ -41,10 +41,10 @@ BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
-  auto base = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
-  base->hnsw.efConstruction = hnsw_efConstruction;
+  auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
+  hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
 
-  std::unique_ptr<faiss::IndexIDMap> index = std::make_unique<faiss::IndexIDMap> (base);
+  auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
@@ -106,43 +106,23 @@ int hnsw_print_index_info (BTID *btid)
   else
     {
       std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+      auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
 
       er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
       er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
       er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
       er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d",
-		    dynamic_cast<faiss::IndexHNSWFlat *> (index->index)->hnsw.efConstruction);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d",
-		    dynamic_cast<faiss::IndexHNSWFlat *> (index->index)->hnsw.efSearch);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
+      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
     }
 
   return NO_ERROR;
 }
 
-static inline int64_t
-oid_to_int64 (const OID *id)
-{
-  int64_t uid = 0;
-
-  uid |= ((int64_t) (uint16_t)id->volid) << 48;
-  uid |= ((int64_t) (uint16_t)id->slotid) << 32;
-  uid |= ((int64_t) (uint32_t)id->pageid);
-
-  return uid;
-}
-
-static inline void
-int64_to_oid (int64_t uid, OID *id)
-{
-  id->volid = (short) ((uid >> 48) & 0xFFFF);
-  id->slotid = (short) ((uid >> 32) & 0xFFFF);
-  id->pageid = (int) (uid & 0xFFFFFFFF);
-}
-
-int hnsw_add_element (BTID *btid, OID *inst_oid, DB_VALUE *key_dbvalue)
+int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue, OID *oid)
 {
   int hnsw_id;
+  faiss::idx_t encoded_oid = encode_oid (*oid);
 
   if (!btid)
     {
@@ -165,22 +145,8 @@ int hnsw_add_element (BTID *btid, OID *inst_oid, DB_VALUE *key_dbvalue)
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
 
-  int64_t uid = oid_to_int64 (inst_oid);
-  index->add_with_ids (1, vf->float_array, &uid);
-
-  printf ("Added vector: ");
-  for (int i = 0; i < vf->dim; i++)
-    {
-      printf ("%f ", vf->float_array[i]);
-    }
-  printf ("\n");
-
-  printf ("HNSW Index Information for ID %d:\n", hnsw_id);
-  printf ("  - Dimension: %d\n", index->d);
-  printf ("  - Metric Type: %d\n", index->metric_type);
-  printf ("  - Total Elements: %lld\n", (long long int) index->ntotal);
-  printf ("  - HNSW efConstruction: %d\n", dynamic_cast<faiss::IndexHNSWFlat *> (index->index)->hnsw.efConstruction);
-  printf ("  - HNSW efSearch: %d\n", dynamic_cast<faiss::IndexHNSWFlat *> (index->index)->hnsw.efConstruction);
+  index->add_with_ids (1, vf->float_array, &encoded_oid);
+  er_log_debug (ARG_FILE_LINE, "Added element with ID %lld to HNSW Index.", static_cast<long long> (encoded_oid));
 
   return NO_ERROR;
 }
@@ -209,12 +175,28 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     {
       for (int i = 0; i < k; i++)
 	{
-	  int64_to_oid (uids[i], rec_oids + i);
+	  rec_oids[i] = decode_oid (uids[i]);
 	}
       delete[] uids;
     }
-
   return NO_ERROR;
+}
+
+faiss::idx_t encode_oid (const OID &oid)
+{
+  return (static_cast<int64_t> (oid.pageid) << 32) |
+	 (static_cast<uint32_t> (oid.slotid) << 16) |
+	 (static_cast<uint16_t> (oid.volid));
+}
+
+OID decode_oid (faiss::idx_t encoded_oid)
+{
+  OID oid;
+  oid.pageid = static_cast<int32_t> (encoded_oid >> 32);
+  oid.slotid = static_cast<int16_t> ((encoded_oid >> 16) & 0xFFFF);
+  oid.volid = static_cast<int16_t> (encoded_oid & 0xFFFF);
+
+  return oid;
 }
 
 #include "strict_warnings_off.hpp"

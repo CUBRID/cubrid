@@ -7932,43 +7932,43 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-              // *INDENT-OFF*
 	      if (BTID_IS_VECTOR_INDEX (&index->btid))
 		{
-		  error_code = hnsw_add_element (&btid, inst_oid, key_dbvalue);
+                  // *INDENT-OFF*
+		  error_code = hnsw_add_element (&btid, key_dbvalue, inst_oid);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
+                  // *INDENT-ON*
 		}
-              // *INDENT-ON*
 	      else
-	      {
-		if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
-		  {
-		    if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-		      {
-			goto error;
-		      }
-		  }
+		{
+		  if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+		    {
+		      if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  goto error;
+			}
+		    }
 
-		if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-		  {
-		    /* Online index is currently loading. */
-		    error_code =
-		      btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
-						     BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
-		  }
-		else
-		  {
-		    error_code =
-		      btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-				    &unique_pk, p_mvcc_rec_header);
-		  }
+		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      /* Online index is currently loading. */
+		      error_code =
+			btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
+						       BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+		    }
+		  else
+		    {
+		      error_code =
+			btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+				      &unique_pk, p_mvcc_rec_header);
+		    }
 #if defined(ENABLE_SYSTEMTAP)
-		CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
+		  CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
-	      }
+		}
 	    }
 	  else
 	    {
