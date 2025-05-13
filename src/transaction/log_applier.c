@@ -8036,6 +8036,11 @@ static inline void la_extract_peer_host(char *dest, const char *log_path){
 		strncpy(la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
 }
 
+static inline void init_delay_hist(int *delay_hist){
+	for (int i = 0; i < LA_NUM_DELAY_HISTORY; i++)
+		delay_hist[i] = -1;
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -8071,7 +8076,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   LOG_LSA last_eof_lsa;
   int time_commit_interval;
   int delay_hist[LA_NUM_DELAY_HISTORY];
-  int i;
   int remove_arv_interval_in_secs;
   int max_arv_count_to_delete = 0;
 
@@ -8172,10 +8176,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       return error;
     }
 
-  for (i = 0; i < LA_NUM_DELAY_HISTORY; i++)
-    {
-      delay_hist[i] = -1;
-    }
+  init_delay_hist(delay_hist);
+  
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
   if (prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE) != REPL_FILTER_NONE)
