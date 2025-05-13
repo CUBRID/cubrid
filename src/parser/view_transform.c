@@ -5259,7 +5259,8 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
 	  if (node->info.spec.cte_pointer)
 	    {
-	    parser_free_tree (parser, node->info.spec.cte_pointer)}
+	    parser_free_tree (parser, node->info.spec.cte_pointer);
+      }
 
 	  if (node->info.spec.cte_name)
 	    {
