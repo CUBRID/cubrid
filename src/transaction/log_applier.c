@@ -8006,24 +8006,16 @@ la_destroy_repl_filter (void)
 static int
 check_reinit_copylog (void)
 {
-  int error = NO_ERROR;
+	if (la_fetch_log_hdr(&la_Info.act_log) != NO_ERROR)
+		return ER_FAILED;
 
-  /* fetch header */
-  error = la_fetch_log_hdr (&la_Info.act_log);
-  if (error != NO_ERROR)
-    {
-      error = ER_FAILED;
-      return error;
-    }
+	if (la_Info.act_log.log_hdr->mark_will_del)
+	{
+		la_Info.reinit_copylog = true;
+		return ER_FAILED;
+	}
 
-  if (la_Info.act_log.log_hdr->mark_will_del == true)
-    {
-      la_Info.reinit_copylog = true;
-      error = ER_FAILED;
-      return error;
-    }
-
-  return error;
+	return NO_ERROR;
 }
 
 static inline void la_extract_db_name(char *dest, const char *src){
