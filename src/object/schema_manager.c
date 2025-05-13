@@ -10817,7 +10817,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	{
 	  if (domain->precision < 1)
 	    {
-              // TODO (CUBVEC): set proper error code
+	      // TODO (CUBVEC): set proper error code
 	      error = ER_SM_INVALID_INDEX_TYPE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, domain->type->name);
 	      return error;
