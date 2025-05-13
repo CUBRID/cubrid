@@ -8026,6 +8026,24 @@ check_reinit_copylog (void)
   return error;
 }
 
+static inline void la_extract_db_name(char *dest, const char *src){
+	char *at;
+
+	strncpy(dest, src, DB_MAX_IDENTIFIER_LENGTH);
+	at = strchr(dest, '@');
+	if (at)
+		*at = '\0';
+}
+
+static inline void la_extract_peer_host(char *dest, const char *log_path){
+	const char *host = la_get_hostname_from_log_path ((char *) log_path);
+	
+	if (host)
+		strncpy (la_peer_host, host, CUB_MAXHOSTNAMELEN);
+	else
+		strncpy(la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -8055,7 +8073,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   };
   LOG_LSA prev_final;
   struct timeval time_commit;
-  char *s;
   int last_nxarv_num = 0;
   bool clear_owner;
   int now = 0, last_eof_time = 0;
@@ -8082,22 +8099,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
-  strncpy (la_slave_db_name, database_name, DB_MAX_IDENTIFIER_LENGTH);
-  s = strchr (la_slave_db_name, '@');
-  if (s)
-    {
-      *s = '\0';
-    }
-
-  s = la_get_hostname_from_log_path ((char *) log_path);
-  if (s)
-    {
-      strncpy (la_peer_host, s, CUB_MAXHOSTNAMELEN);
-    }
-  else
-    {
-      strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
-    }
+  la_extract_db_name(la_slave_db_name, database_name);
+  la_extract_peer_host(la_peer_host, log_path);
 
   /* init la_Info */
   la_init (log_path, max_mem_size);
