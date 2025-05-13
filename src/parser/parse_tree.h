@@ -1110,8 +1110,8 @@ enum pt_type_enum
    * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * However, to maintain compatibility with previous versions, the enum list will be preserved.       
    */
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
+  PT_TYPE_NCHAR_DEPRECATED,
+  PT_TYPE_VARNCHAR_DEPRECATED,
 
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,

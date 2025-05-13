@@ -55,8 +55,8 @@ extern "C"
      * SHARD_U_TYPE_NCHAR and SHARD_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
      * However, to maintain compatibility with previous versions, the enum list will be preserved.       
      */
-    SHARD_U_TYPE_NCHAR = 3,
-    SHARD_U_TYPE_VARNCHAR = 4,
+    SHARD_U_TYPE_NCHAR_DEPRECATED = 3,
+    SHARD_U_TYPE_VARNCHAR_DEPRECATED = 4,
 
     SHARD_U_TYPE_BIT = 5,
     SHARD_U_TYPE_VARBIT = 6,

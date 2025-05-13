@@ -137,8 +137,8 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
    * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * However, to maintain compatibility with previous versions, the enum list will be preserved.       
    */
-  DB_TYPE_NCHAR,
-  DB_TYPE_VARNCHAR,
+  DB_TYPE_NCHAR_DEPRECATED,
+  DB_TYPE_VARNCHAR_DEPRECATED,
 
   DB_TYPE_BIT,
   DB_TYPE_VARBIT,
@@ -320,19 +320,6 @@ TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-/* TODO:
-* DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-* However, to maintain compatibility with previous versions, the enum list will be preserved.       
-*/
-TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
-};
-
-TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARCHAR_PRECISION, 0,
-  DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
-};
-
-
 TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY)
 };
@@ -340,6 +327,8 @@ TP_DOMAIN tp_Json_domain = { NULL, NULL, &tp_Json, 0, 0,
 TP_DOMAIN tp_Resultset_domain = { NULL, NULL, &tp_ResultSet, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
 
 /* These must be in DB_TYPE order */
+#define tp_NChar_domain     tp_Char_domain
+#define tp_VarNChar_domain  tp_String_domain
 static TP_DOMAIN *tp_Domains[] = {
   &tp_Null_domain,
   &tp_Integer_domain,
@@ -510,7 +499,8 @@ static TP_DOMAIN *tp_Sequence_conv[] = {
  *    This is the matrix of conversion rules.  It is used primarily
  *    in the coercion of sets.
  */
-
+#define tp_NChar_conv      tp_Char_conv
+#define tp_VarNChar_conv   tp_String_conv
 TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_NULL */
   tp_Integer_conv,
@@ -543,8 +533,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
    * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * However, to maintain compatibility with previous versions, the enum list will be preserved.       
    */
-  NULL,				/* DB_TYPE_NCHAR */
-  NULL,				/* DB_TYPE_VARNCHAR */
+  tp_NChar_conv,		/* DB_TYPE_NCHAR */
+  tp_VarNChar_conv,		/* DB_TYPE_VARNCHAR */
 
   NULL,				/* DB_TYPE_RESULTSET */
   NULL,				/* DB_TYPE_MIDXKEY */
@@ -705,15 +695,6 @@ tp_apply_sys_charset (void)
 
   tp_Enumeration_domain.codeset = LANG_SYS_CODESET;
   tp_Enumeration_domain.collation_id = LANG_SYS_COLLATION;
-
-  /* TODO:
-   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
-   */
-  tp_NChar_domain.codeset = LANG_SYS_CODESET;
-  tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
-  tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
-  tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
 }
 
 /*

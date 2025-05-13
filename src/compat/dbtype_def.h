@@ -714,8 +714,8 @@ extern "C"
      * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
      * However, to maintain compatibility with previous versions, the enum list will be preserved.       
      */
-    DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
-    DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+    DB_TYPE_NCHAR_DEPRECATED = 26,	/* SQL NATIONAL CHAR(n) values */
+    DB_TYPE_VARNCHAR_DEPRECATED = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
 
     DB_TYPE_RESULTSET = 28,	/* internal use only */
     DB_TYPE_MIDXKEY = 29,	/* internal use only */

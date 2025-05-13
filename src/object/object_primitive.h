@@ -214,13 +214,6 @@ extern PR_TYPE tp_Bit;
 extern PR_TYPE tp_VarBit;
 extern PR_TYPE tp_Char;
 
-/* TODO:
- * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
- * However, to maintain compatibility with previous versions, the enum list will be preserved.       
- */
-extern PR_TYPE tp_NChar;
-extern PR_TYPE tp_VarNChar;
-
 extern PR_TYPE tp_ResultSet;
 extern PR_TYPE tp_Bigint;
 extern PR_TYPE tp_Enumeration;

@@ -1672,7 +1672,6 @@ PR_TYPE tp_Enumeration = {
 
 PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
 
-
 /*
  * tp_Type_id_map
  *    This quickly maps a type identifier to a type structure.
@@ -1680,6 +1679,8 @@ PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
  *    care when modifying either of these.  It would be safer to build
  *    this at run time.
  */
+#define tp_NChar    tp_Char
+#define tp_VarNChar tp_String
 PR_TYPE *tp_Type_id_map[] = {
   &tp_Null,
   &tp_Integer,
@@ -12249,56 +12250,6 @@ PR_TYPE tp_Char = {
 };
 
 PR_TYPE *tp_Type_char = &tp_Char;
-
-/* TODO:
- * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
- * However, to maintain compatibility with previous versions, the enum list will be preserved.       
- */
-PR_TYPE tp_NChar = {
-  "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL
-};
-
-PR_TYPE tp_VarNChar = {
-  "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0, 1,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL
-};
 
 /*
  * TYPE BIT
