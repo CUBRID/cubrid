@@ -22551,13 +22551,29 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(data_type, | vector_type);
 
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_VECTOR), NULL);
+			PT_TYPE_ENUM type;
+			PT_NODE *prec, *vec_type, *dt;
+
+			prec = CONTAINER_AT_0 ($2);
+			vec_type = CONTAINER_AT_1 ($2);
+
+			dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			type = PT_TYPE_VECTOR;
+
+			if (dt)
+			  {
+			    assert (prec);
+
+			    dt->type_enum = type;
+			    dt->info.data_type.precision = prec->info.value.data_value.i;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
 			$$ = ctn;
 
-            // TODO: The opt_vector_args are not covered in this milestone.
+			// TODO: The opt_vector_args are not covered in this milestone.
 			// Dimension and type validation for VECTOR arguments must be included
 			// in the milestone that checks user input for correctness.
-
 
 		DBG_PRINT}}
 	;
@@ -22567,7 +22583,13 @@ opt_vector_args
 		{{ DBG_TRACE_GRAMMAR(opt_vector_args, : );
 
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, NULL);
+			PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+			if (val)
+                          {
+			    val->info.value.data_value.i = DB_DEFAULT_PRECISION; /* -1 */
+                          }
+
+			SET_CONTAINER_2 (ctn, val, FROM_NUMBER(PT_TYPE_FLOAT));
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -22575,7 +22597,7 @@ opt_vector_args
 		{{ DBG_TRACE_GRAMMAR(opt_vector_args, | '(' unsigned_integer ')' );
 
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, $2, NULL);
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER(PT_TYPE_FLOAT));
 			$$ = ctn;
 
 		DBG_PRINT}}

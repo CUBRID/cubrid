@@ -1948,6 +1948,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       break;
 
     case DB_TYPE_VECTOR:
+      precision = dt->info.data_type.precision;
       break;
 
     case DB_TYPE_SET:
@@ -2134,6 +2135,11 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 	{
 	  return pt_type_enum_to_db_domain (dt->type_enum);
 	}
+
+    case DB_TYPE_VECTOR:
+      /* TODO (CUBVEC): Only precision is considered for now. */
+      precision = dt->info.data_type.precision;
+      break;
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
