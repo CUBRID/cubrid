@@ -5075,8 +5075,9 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 static void
 mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *cte, *query;
+  PT_NODE *cte;
   bool is_inlinable = true;
+  PT_HINT_ENUM hint;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
@@ -5088,40 +5089,25 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
 			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
 
-      query = pt_find_select (parser, cte->info.cte.non_recursive_part);
-      if (query == NULL)
-	{
-	  /* if query is NULL, it means that the query is a false subquery. */
-	  is_inlinable = false;
-	}
+      is_inlinable = PT_IS_SELECT (cte->info.cte.non_recursive_part);
 
       if (is_inlinable)
 	{
-	  query = pt_find_select (parser, cte->info.cte.non_recursive_part);
+	  hint = cte->info.cte.non_recursive_part->info.query.q.select.hint;
 
-	  assert (PT_IS_SELECT (query));
-
-	  switch (query->info.query.q.select.hint)
+	  if (hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
 	    {
-	    case PT_HINT_INLINE_CTE:
-	      /* keep inline hint */
-	      break;
-	    case PT_HINT_MATERIALIZE_CTE:
-	    case PT_HINT_SELECT_BTREE_NODE_INFO:
-	    case PT_HINT_SELECT_KEY_INFO:
 	      /* materialize CTE if it is referenced at least once. */
-	      if (cte->info.cte.referenced_count >= 1)
-		{
-		  cte->info.cte.is_materialized = true;
-		}
-	      break;
-	    default:
-	      /* default behavior based on reference count */
-	      if (cte->info.cte.referenced_count >= 2)
-		{
-		  cte->info.cte.is_materialized = true;
-		}
-	      break;
+	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
+
+	    }
+	  else if (hint & PT_HINT_INLINE_CTE)
+	    {
+	      cte->info.cte.is_materialized = false;
+	    }
+	  else
+	    {
+	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 2);
 	    }
 	}
       else
@@ -5227,7 +5213,7 @@ mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 static PT_NODE *
 mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte, *cte_pointer;
+  PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte;
 
   if (node == NULL)
     {
@@ -5239,13 +5225,7 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
     case PT_SPEC:
       if (PT_SPEC_IS_CTE (node))
 	{
-	  cte_pointer = PT_SPEC_CTE_POINTER (node);
-	  cte = parser_copy_tree (parser, cte_pointer);
-	  if (cte == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
-	      return NULL;
-	    }
+	  cte = PT_SPEC_CTE_POINTER (node);
 	  CAST_POINTER_TO_NODE (cte);
 
 	  if (cte->info.cte.recursive_part != NULL)
@@ -5277,10 +5257,9 @@ mq_rewrite_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  node->info.spec.as_attr_list = attributes;
 	  node->info.spec.range_var = tbl_name;
 
-	  if (node->info.spec.cte_pointer != NULL)
+	  if (node->info.spec.cte_pointer)
 	    {
-	      node->info.spec.cte_pointer = NULL;
-	    }
+	    parser_free_tree (parser, node->info.spec.cte_pointer)}
 
 	  if (node->info.spec.cte_name)
 	    {
