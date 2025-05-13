@@ -155,12 +155,12 @@ faiss::idx_t encode_oid (const OID &oid)
 	 (static_cast<uint16_t> (oid.volid));
 }
 
-OID *decode_oid (faiss::idx_t encoded_oid)
+OID decode_oid (faiss::idx_t encoded_oid)
 {
-  OID *oid = new OID;
-  oid->pageid = static_cast<int32_t> (encoded_oid >> 32);
-  oid->slotid = static_cast<int16_t> ((encoded_oid >> 16) & 0xFFFF);
-  oid->volid = static_cast<int16_t> (encoded_oid & 0xFFFF);
+  OID oid;
+  oid.pageid = static_cast<int32_t> (encoded_oid >> 32);
+  oid.slotid = static_cast<int16_t> ((encoded_oid >> 16) & 0xFFFF);
+  oid.volid = static_cast<int16_t> (encoded_oid & 0xFFFF);
 
   return oid;
 }

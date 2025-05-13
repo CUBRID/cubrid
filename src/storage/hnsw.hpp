@@ -42,7 +42,7 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue, OID *oid);
 faiss::idx_t encode_oid (const OID &oid);
-OID *decode_oid (faiss::idx_t encoded_oid);
+OID decode_oid (faiss::idx_t encoded_oid);
 
 
 #endif
