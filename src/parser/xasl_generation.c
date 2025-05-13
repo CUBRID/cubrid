@@ -312,8 +312,6 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
 
 static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
-static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
-
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
     { \
@@ -18493,7 +18491,7 @@ outofmem:
 
 }
 
-static XASL_NODE *
+XASL_NODE *
 pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   assert (parser != NULL && spec != NULL);
@@ -20940,7 +20938,7 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
-static void
+void
 pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   switch (statement->node_type)
@@ -20957,22 +20955,6 @@ pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return;
-}
-
-/*
- * pt_to_update_xasl_for_dblink_trigger () - Converts an triggering update to an XASL
- * 
- * return	  : Xasl node.
- * parser (in)	  : Parser context.
- * statement (in) : Parse tree node for triggering insert statement.
- */
-XASL_NODE *
-pt_to_update_xasl_for_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs)
-{
-  pt_check_dblink_trigger (parser, statement);
-  pt_rewrite_for_dblink (parser, statement);
-
-  return pt_to_xasl_for_dblink (parser, statement->info.update.spec);
 }
 
 /*

@@ -182,8 +182,6 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_n
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
-extern XASL_NODE *pt_to_update_xasl_for_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node,
-							PT_NODE ** non_null_attrs);
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern XASL_NODE *pt_append_xasl (XASL_NODE * to, XASL_NODE * from_list);
 extern XASL_NODE *pt_remove_xasl (XASL_NODE * xasl_list, XASL_NODE * remove);
@@ -235,4 +233,10 @@ extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * cl
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
+
+/* to generate xasl for dblink */
+extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
+
+/* to check dblink in trigger action */
+extern void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */

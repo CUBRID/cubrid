@@ -12063,6 +12063,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   switch (stmt->node_type)
     {
     case PT_SCOPE:
+      /* for trigger action */
       stmt = stmt->info.scope.stmt->info.trigger_action.expression;
       if (stmt == NULL)
 	{
@@ -12092,6 +12093,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       break;
     case PT_CREATE_TRIGGER:
+      /* for trigger create */
       if (stmt->info.create_trigger.trigger_action)
 	{
 	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;

@@ -4144,6 +4144,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
       else
 	{
+	  /* in case of remote server, it always returns true */
 	  if (spec->info.spec.remote_server_name)
 	    {
 	      return 1;
@@ -5949,6 +5950,8 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      if (spec->info.spec.remote_server_name)
 		{
+		  /* only column name with remote server name is resolved
+		   * PT_DOT node such as new.col obj.old does not resolve */
 		  if (col_name && spec->info.spec.range_var)
 		    {
 		      in_node->info.name.resolved = spec->info.spec.range_var->info.name.original;

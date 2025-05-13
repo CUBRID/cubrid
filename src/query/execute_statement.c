@@ -5984,6 +5984,7 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	PT_NODE *assign = NULL;
 	PT_SPEC_FLAG flag;
 
+	/* do not check it in case of dblink */
 	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
 	  {
 	    result = NO_ERROR;
@@ -8547,9 +8548,18 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  if (statement->info.insert.spec->info.spec.remote_server_name)
+  if (statement->info.update.spec->info.spec.remote_server_name)
     {
-      xasl = pt_to_update_xasl_for_dblink_trigger (parser, statement, non_null_attrs);
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return er_errid ();
+	}
+
+      xasl = pt_to_xasl_for_dblink (parser, statement->info.update.spec);
     }
   else
     {
@@ -8845,7 +8855,9 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
        * operation will be set server side when the SELECT part of the operation is being performed. */
       if (spec->info.spec.remote_server_name)
 	{
+	  /* always server update for dblink query */
 	  server_allowed = 1;
+	  break;
 	}
 
       if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec->info.spec.flat_entity_list)
