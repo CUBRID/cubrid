@@ -2639,7 +2639,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   int length;
   unsigned char *in_string = (unsigned char *) in_src;
 
-  if (in_string == NULL || out_length == NULL || out_length == NULL)
+  if (in_string == NULL || out_length == NULL)
     {
       return (-1);
     }
@@ -2677,7 +2677,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   size_t outlen_org = CONV_STRING_BUF_SIZE;
   size_t outlen = CONV_STRING_BUF_SIZE;
 
-  if (iconv_in == NULL || out_length == NULL || out_length == NULL)
+  if (iconv_in == NULL || out_length == NULL)
     {
       return (-1);
     }
