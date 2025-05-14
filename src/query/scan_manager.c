@@ -3675,14 +3675,8 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			     int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 			     int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest)
 {
-  BTREE_SCAN *BTS;
-  BTID *btid;
   VECTOR_INDEX_SCAN_ID *visid;
-
-  const int dim = 3;
-  int k = 3, i;
-  DB_VALUE key_dbvalue;
-  DB_VECTOR_FLOAT vector_float;
+  int k;
 
   scan_id->type = S_VECTOR_INDEX_SCAN;
   /* initialize SCAN_ID structure */
@@ -3708,43 +3702,33 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
-#if 0
-  /* attribute information of the index key */
-  if (heap_get_indexinfo_of_btid (thread_p, cls_oid, &indx_info->btid, NULL, &visid->num_attrs,
-				  &visid->attr_ids, &visid->attrs_prefix_length, NULL, NULL) != NO_ERROR)
+  KEY_INFO *key_infop = &indx_info->key_info;
+  KEY_RANGE *key_ranges = key_infop->key_ranges;
+
+  assert (key_ranges[0].range == K_NN);
+
+  fetch_peek_dbval (thread_p, key_ranges[0].key1, vd, NULL, NULL, NULL, &visid->query_dbvalue);
+  fetch_peek_dbval (thread_p, key_ranges[0].key2, vd, NULL, NULL, NULL, &visid->k_dbvalue);
+
+  k = db_get_int (visid->k_dbvalue);
+  if (k > 0)
     {
-      goto exit_on_error;
+      visid->oidp = (OID *) db_private_alloc (thread_p, k * sizeof (OID));
+      visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
+      visid->oid_cnt = k;
+
+      if (hnsw_search_element (indx_info->btid.root_pageid, visid->query_dbvalue, k, visid->oidp, visid->distp) !=
+	  NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
-#endif
-
-  vector_float.dim = dim;
-  vector_float.float_array = (float *) db_private_alloc (thread_p, dim * sizeof (float));
-  vector_float.float_array[0] = 0.0f;
-  vector_float.float_array[1] = 0.0f;
-  vector_float.float_array[2] = 0.0f;
-  db_make_vector_float (&key_dbvalue, &vector_float);
-
-  visid->oidp = new OID[k];
-  visid->distp = new float[k];
-  visid->oid_cnt = k;
-
-
-  if (hnsw_search_element (indx_info->btid.root_pageid, &key_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
+  else
     {
-      goto exit_on_error;
+      visid->oidp = NULL;
+      visid->distp = NULL;
+      visid->oid_cnt = 0;
     }
-
-  printf ("rec_oids=\n");
-  for (int j = 0; j < k; j++)
-    printf ("[OID:%d,%d,%d]", visid->oidp[j].pageid, visid->oidp[j].slotid, visid->oidp[j].volid);
-  printf ("\n");
-
-  printf ("distances=\n");
-  for (int j = 0; j < k; j++)
-    printf ("%5f ", visid->distp[j]);
-  printf ("\n");
-
-  db_private_free_and_init (thread_p, vector_float.float_array);
 
 exit_on_error:
 
@@ -4951,6 +4935,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   INDX_SCAN_ID *isidp;
   SHOWSTMT_SCAN_ID *stsidp;
   LLIST_SCAN_ID *llsidp;
+  VECTOR_INDEX_SCAN_ID *visidp;
 
   if (scan_id == NULL || scan_id->status == S_CLOSED)
     {
@@ -5064,6 +5049,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
       btree_range_scan_free_matched_idx (&isidp->bt_scan);
+      break;
+
+    case S_VECTOR_INDEX_SCAN:
+      visidp = &scan_id->s.visid;
+
+      if (visidp->oid_cnt > 0)
+	{
+	  db_private_free_and_init (thread_p, visidp->oidp);
+	  db_private_free_and_init (thread_p, visidp->distp);
+	  visidp->oid_cnt = 0;
+	}
       break;
 
     case S_LIST_SCAN:
@@ -6269,6 +6265,12 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   if (visid->curr_oidno >= visid->oid_cnt)
     {
       scan_id->position = S_AFTER;
+      return S_END;
+    }
+
+  // validate the oid
+  if (HEAP_ISVALID_OID (thread_p, &visid->oidp[visid->curr_oidno]) == DISK_INVALID)
+    {
       return S_END;
     }
 

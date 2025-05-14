@@ -7720,6 +7720,9 @@ mr_freemem_vector_float (void *memptr)
 {
   vimkim_log ("freeing %p\n", mem);
 
+  // TODO (CUBVEC): The following code causes segfault when shutting down the CAS.
+  // We need to figure out why.
+#if 0
   if (memptr != NULL)
     {
       char *mem = *(char **) memptr;
@@ -7728,6 +7731,7 @@ mr_freemem_vector_float (void *memptr)
 	  db_private_free_and_init (NULL, mem);
 	}
     }
+#endif
 }
 
 static void
@@ -7929,7 +7933,27 @@ static DB_VALUE_COMPARE_RESULT
 mr_cmpval_vector_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 			int total_order, int *start_colp, int collation)
 {
-  ASSERT_CUBVEC (false);
+  const DB_VECTOR_FLOAT *vf1 = db_get_vector_float (value1);
+  const DB_VECTOR_FLOAT *vf2 = db_get_vector_float (value2);
+
+  if (vf1->dim != vf2->dim)
+    {
+      return DB_UNK;
+    }
+
+  for (int i = 0; i < vf1->dim; i++)
+    {
+      if (vf1->float_array[i] < vf2->float_array[i])
+	{
+	  return DB_LT;
+	}
+      else if (vf1->float_array[i] > vf2->float_array[i])
+	{
+	  return DB_GT;
+	}
+    }
+
+  return DB_EQ;
 }
 
 /*

@@ -257,7 +257,6 @@ struct index_node_scan_id
 struct hnsw_indx_scan_id
 {
   INDX_INFO *indx_info;		/* index information */
-  int curr_oidno;		/* current oid number */
   OID cls_oid;			/* class object identifier */
   HFID hfid;			/* heap file identifier */
   HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
@@ -272,8 +271,12 @@ struct hnsw_indx_scan_id
   bool scancache_inited;
   bool scanattr_inited;
 
+  DB_VALUE *query_dbvalue;
+  DB_VALUE *k_dbvalue;
+
   // OID buffer
   OID *oidp;			/* OID buffer. */
+  int curr_oidno;		/* current oid number */
   int oid_cnt;			/* Current OID count. */
   float *distp;			/* distance buffer */
 };
