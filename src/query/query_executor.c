@@ -9091,6 +9091,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
   DBLINK_HOST_VARS host_vars;
+  SCAN_CODE s_parts;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -9393,6 +9394,16 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (p_mvcc_select_lock_needed)
     {
       *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
+    }
+
+  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
+    {
+      s_parts = qexec_init_next_partition (thread_p, curr_spec);
+      if (s_parts != S_SUCCESS)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
     }
 
   return NO_ERROR;
