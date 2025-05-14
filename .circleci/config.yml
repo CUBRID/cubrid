@@ -6,7 +6,7 @@ version: 2.1
 parameters:
   baseline:
     type: string
-    default: ""
+    default: "none"
   run_shell_test:
     type: boolean
     default: true
@@ -39,7 +39,7 @@ commands:
       - run:
           name: Test
           shell: /bin/bash
-          no_output_timeout: 20m
+          no_output_timeout: 30m
           command: |
             # Limit core files
             ulimit -c 1
@@ -141,8 +141,7 @@ executors:
 
   cubrid-test-shell:
     docker:
-      # - image: cubridci/cubridci:test_shell
-      - image: twkang3219/ctp_image_shell:latest
+      - image: cubridci/cubridci:test_shell
     working_directory: /home
 
 # --------------------------------------------------
