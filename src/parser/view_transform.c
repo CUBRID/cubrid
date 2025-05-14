@@ -414,7 +414,7 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5077,9 +5077,15 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 
   for (cte = node->info.with_clause.cte_definition_list; cte; cte = cte->next)
     {
-      /* recursive CTE is always materialized when referenced at least once */
-      if (node->info.with_clause.recursive != 0 || cte->info.cte.recursive_part != NULL)
+      if (node->info.with_clause.recursive != 0)
 	{
+	  /* if WITH RECURSIVE clause is used, CTE is always materialized */
+	  cte->info.cte.is_materialized = true;
+	  continue;
+	}
+      else if (cte->info.cte.recursive_part != NULL)
+	{
+	  /* recursive CTE is always materialized when referenced at least once */
 	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
 	  continue;
 	}
@@ -5088,7 +5094,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
+			       mq_check_inline_cte, &is_inlinable, NULL, NULL);
 
       if (is_inlinable)
 	{
@@ -5168,14 +5174,14 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
- * mq_check_rewrite_cte () -
+ * mq_check_inline_cte () -
  *   return:
  *   parser(in):
  *   node(in):
  *   arg(in):
  */
 static PT_NODE *
-mq_check_rewrite_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *can_inlining = (bool *) arg;
 
