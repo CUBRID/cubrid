@@ -373,6 +373,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
   if (list_id != NULL)
     {
+      assert (VPID_ISNULL (&list_id->last_vpid));
+      assert (list_id->last_pgptr == NULL);
+
       qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
       qfile_copy_list_id (xasl->list_id, list_id, false);
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
@@ -451,8 +454,6 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    }
 	}
 
-      qfile_close_list (thread_p, context_list_id);
-
       if (list_id != NULL)
 	{
 	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
@@ -477,6 +478,9 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
   ASSERT_NO_ERROR ();
+
+  assert (VPID_ISNULL (&list_id->last_vpid));
+  assert (list_id->last_pgptr == NULL);
 
   return list_id;
 
@@ -553,6 +557,9 @@ hjoin_with_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	}
       return NULL;
     }
+
+  assert (VPID_ISNULL (&list_id->last_vpid));
+  assert (list_id->last_pgptr == NULL);
 
   return list_id;
 }
@@ -651,12 +658,17 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       assert (stats->probe.readkeys == 0);
     }
 
+  /* After qfile_open_list_scan, if an error occurs,
+   * ensure qfile_close_scan runs here
+   * before jumping to error_exit. */
   qfile_close_scan (thread_p, &outer_scan_id);
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
       goto error_exit;
     }
+
+  qfile_close_list (thread_p, list_id);
 
   ASSERT_NO_ERROR ();
 
@@ -668,6 +680,9 @@ cleanup:
 
   qfile_close_list (thread_p, outer_list_id);
   qfile_destroy_list (thread_p, outer_list_id);
+
+  assert (VPID_ISNULL (&list_id->last_vpid));
+  assert (list_id->last_pgptr == NULL);
 
   return list_id;
 
@@ -765,6 +780,8 @@ hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CO
       goto error_exit;
     }
 
+  qfile_close_list (thread_p, list_id);
+
   ASSERT_NO_ERROR ();
 
 cleanup:
@@ -778,6 +795,9 @@ cleanup:
   qfile_destroy_list (thread_p, probe_list_id);
 
   hjoin_scan_clear (thread_p, &context->hash_scan);
+
+  assert (VPID_ISNULL (&list_id->last_vpid));
+  assert (list_id->last_pgptr == NULL);
 
   return list_id;
 
@@ -1451,6 +1471,7 @@ hjoin_make_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
   bool need_skip_next = false;
 
   unsigned int hash_key, part_id;
+  int part_index;
 
   int error = NO_ERROR;
 
@@ -1524,7 +1545,15 @@ hjoin_make_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
       hjoin_trace_end (thread_p, stats, &start_stats);
     }
 
+  /* After qfile_open_list_scan, if an error occurs,
+   * ensure qfile_close_scan runs here
+   * before jumping to error_exit. */
   qfile_close_scan (thread_p, &list_scan_id);
+
+  for (part_index = 0; part_index < part_info->part_cnt; part_index++)
+    {
+      qfile_close_list (thread_p, part_info->part_list_id[part_index]);
+    }
 
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
