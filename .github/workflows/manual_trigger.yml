@@ -52,7 +52,13 @@ jobs:
           BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
           
           # Add baseline to JSON and remove trailing comma if present
-          TEST_JSON+="\"baseline\":\"$BASELINE\"}"
+          if [ -n "$BASELINE" ]; then
+            echo "Baseline Version: $BASELINE"
+            TEST_JSON+="\"baseline\":\"$BASELINE\"}"
+          else
+            echo "No Baseline Version provided. Will use latest from DB."
+            TEST_JSON+="\"baseline\":\"none\"}"
+          fi
           TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
           
           # Save the JSON to environment
@@ -60,11 +66,6 @@ jobs:
           
           # For debugging
           echo "Test Parameters: $TEST_JSON"
-          if [ -n "$BASELINE" ]; then
-            echo "Baseline Version: $BASELINE"
-          else
-            echo "No Baseline Version provided. Will use latest from DB."
-          fi
 
       - name: Trigger CircleCI Test
         env:
