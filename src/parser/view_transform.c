@@ -5027,12 +5027,6 @@ mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       return node;
     }
 
-  /* recursive CTE */
-  if ((*with_clause)->info.with_clause.recursive != 0)
-    {
-      return node;
-    }
-
   mq_check_cte_inline_or_materialize (parser, *with_clause);
 
   /* rewrite the main query considering the reference count. */
@@ -5083,7 +5077,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
   for (cte = node->info.with_clause.cte_definition_list; cte; cte = cte->next)
     {
       /* recursive CTE is always materialized when referenced at least once */
-      if (cte->info.cte.recursive_part != NULL)
+      if (node->info.with_clause.recursive != 0 || cte->info.cte.recursive_part != NULL)
 	{
 	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
 	  continue;
