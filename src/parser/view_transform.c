@@ -5071,6 +5071,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
   PT_HINT_ENUM hint;
+  bool is_inlinable = true;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
@@ -5083,7 +5084,13 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      if (PT_IS_SELECT (cte->info.cte.non_recursive_part))
+      is_inlinable = true;
+      /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
+       * since it may change the query results. Handle it same as CTE with materialize hint. */
+      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
+			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
+
+      if (is_inlinable && PT_IS_SELECT (cte->info.cte.non_recursive_part))
 	{
 	  hint = cte->info.cte.non_recursive_part->info.query.q.select.hint;
 
