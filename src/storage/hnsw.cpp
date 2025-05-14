@@ -37,6 +37,9 @@
 int hnsw_index_id = 0;
 std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
+static faiss::idx_t encode_oid (const OID &oid);
+static OID decode_oid (faiss::idx_t encoded_oid);
+
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
@@ -182,14 +185,14 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
   return NO_ERROR;
 }
 
-faiss::idx_t encode_oid (const OID &oid)
+static faiss::idx_t encode_oid (const OID &oid)
 {
   return (static_cast<int64_t> (oid.pageid) << 32) |
 	 (static_cast<uint32_t> (oid.slotid) << 16) |
 	 (static_cast<uint16_t> (oid.volid));
 }
 
-OID decode_oid (faiss::idx_t encoded_oid)
+static OID decode_oid (faiss::idx_t encoded_oid)
 {
   OID oid;
   oid.pageid = static_cast<int32_t> (encoded_oid >> 32);
