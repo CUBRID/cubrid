@@ -257,7 +257,6 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
-static bool is_in_create_trigger = false;
 static bool is_in_sp_func_type = false;
 
 
@@ -12490,11 +12489,9 @@ trigger_action_in
 	;
 
 trigger_action
-	:
-	  { is_in_create_trigger = true; }
+	: { }
 	  trigger_action_in
 	    {{
-		is_in_create_trigger = false;
 		$$ = $2;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}

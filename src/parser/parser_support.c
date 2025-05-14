@@ -12098,9 +12098,9 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
 
-	  if (tr_action && tr_action->info.trigger_action.expression)
+	  if (tr_action->info.trigger_action.expression)
 	    {
-	      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+	      parser_walk_tree (parser, tr_action->info.trigger_action.expression, NULL, NULL, pt_convert_dml, &snl);
 	    }
 	  if (pt_has_error (parser))
 	    {
