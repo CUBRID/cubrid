@@ -5090,9 +5090,9 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
 			       mq_check_rewrite_cte, &is_inlinable, NULL, NULL);
 
-      if (is_inlinable && PT_IS_SELECT (cte->info.cte.non_recursive_part))
+      if (is_inlinable)
 	{
-	  hint = cte->info.cte.non_recursive_part->info.query.q.select.hint;
+	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
 	  if (hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
 	    {
