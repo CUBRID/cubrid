@@ -12489,10 +12489,9 @@ trigger_action_in
 	;
 
 trigger_action
-	: { }
-	  trigger_action_in
+	: trigger_action_in
 	    {{
-		$$ = $2;
+		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
 	;
