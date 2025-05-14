@@ -10438,41 +10438,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 #if SERVER_MODE && !WINDOWS
       if (scan_type == S_HEAP_SCAN)
 	{
-	  if (!(spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) && spec->curent != NULL)
+	  if (spec->curent != NULL)
 	    {
-	      scan_type = S_PARALLEL_HEAP_SCAN;
-	      parallel_heap_scan::RESULT_GET_METHOD result_get_method =
-		parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;
-	      query_id = spec->s_id.vd->xasl_state->query_id;
-	      if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	      if (!(spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
 		{
-		  result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
+		  scan_type = S_PARALLEL_HEAP_SCAN;
 		}
-	      error =
-		scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
-					      grouped, single_fetch, spec->s_dbval, val_list, vd, &class_oid,
-					      &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-					      spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-					      spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-					      spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-					      spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-					      spec->s.cls_node.cls_regu_list_reserved, true, query_id,
-					      spec->num_parallel_threads, result_get_method, xasl);
-	    }
-	  else if (spec->curent != NULL)
-	    {
-	      error =
-		scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-				     single_fetch, spec->s_dbval, val_list, vd, &class_oid, &class_hfid,
-				     spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-				     spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				     spec->s.cls_node.cls_regu_list_reserved, true);
 	    }
 	}
-      else
+#endif
+      if (scan_type == S_HEAP_SCAN || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	  || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
 	{
 	  error =
 	    scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
@@ -10484,16 +10460,27 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 				 spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
 				 spec->s.cls_node.cls_regu_list_reserved, true);
 	}
-#else
-      error =
-	scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-			     single_fetch, spec->s_dbval, val_list, vd, &class_oid, &class_hfid,
-			     spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-			     spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-			     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-			     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-			     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-			     spec->s.cls_node.cls_regu_list_reserved, true);
+#if SERVER_MODE && !WINDOWS
+      else
+	{
+	  assert (scan_type == S_PARALLEL_HEAP_SCAN);
+	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;
+	  query_id = spec->s_id.vd->xasl_state->query_id;
+	  if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
+	    }
+	  error =
+	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
+					  grouped, single_fetch, spec->s_dbval, val_list, vd, &class_oid,
+					  &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+					  spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
+					  spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
+					  spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
+					  spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
+					  spec->s.cls_node.cls_regu_list_reserved, true, query_id,
+					  spec->num_parallel_threads, result_get_method, xasl);
+	}
 #endif
     }
   else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
