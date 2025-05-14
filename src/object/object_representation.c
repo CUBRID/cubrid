@@ -2820,6 +2820,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
+	case DB_TYPE_VECTOR:
+	  precision = d->precision;
+	  break;
+
 	default:
 	  break;
 	}
@@ -3006,7 +3010,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  break;
 
 	case DB_TYPE_VECTOR:
-	  vimkim_log ("WARNING: not analyzed.\n");
+	  precision = d->precision;
 	  break;
 
 	case DB_TYPE_SET:
@@ -3324,6 +3328,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 
 	    case DB_TYPE_JSON:
 	      has_schema = (carrier & OR_DOMAIN_SCHEMA_FLAG) != 0;
+	      break;
+
+	    case DB_TYPE_VECTOR:
+	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      break;
 
 	    default:

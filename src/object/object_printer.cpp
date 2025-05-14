@@ -320,7 +320,14 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 
 	case DB_TYPE_VECTOR:
 	  strcpy (temp_buffer, temp_domain->type->name);
-	  m_buf ("%s", ustr_upper (temp_buffer));
+	  if (temp_domain->precision == 0 || temp_domain->precision == DB_DEFAULT_PRECISION)
+	    {
+	      m_buf ("%s", ustr_upper (temp_buffer));
+	    }
+	  else
+	    {
+	      m_buf ("%s(%d)", ustr_upper (temp_buffer), temp_domain->precision);
+	    }
 	  break;
 
 	case DB_TYPE_ENUMERATION:
