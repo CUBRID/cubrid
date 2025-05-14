@@ -36,7 +36,7 @@ int hnsw_index_id = 0;
 std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
 static faiss::idx_t encode_oid (const OID &oid);
-static OID decode_oid (faiss::idx_t encoded_oid);
+//static OID decode_oid (faiss::idx_t encoded_oid);
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
@@ -158,6 +158,7 @@ static faiss::idx_t encode_oid (const OID &oid)
 	 (static_cast<uint16_t> (oid.volid));
 }
 
+/*
 static OID decode_oid (faiss::idx_t encoded_oid)
 {
   OID oid;
@@ -167,5 +168,6 @@ static OID decode_oid (faiss::idx_t encoded_oid)
 
   return oid;
 }
+*/
 
 #include "strict_warnings_off.hpp"
