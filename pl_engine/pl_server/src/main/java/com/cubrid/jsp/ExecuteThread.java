@@ -231,6 +231,8 @@ public class ExecuteThread extends Thread {
                         Throwable throwable = e;
                         if (e instanceof InvocationTargetException) {
                             throwable = ((InvocationTargetException) e).getTargetException();
+                        } else if (e instanceof ExceptionInInitializerError) {
+                            throwable = ((ExceptionInInitializerError) e).getCause();
                         }
                         Server.log(throwable);
                         try {

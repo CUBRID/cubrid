@@ -346,7 +346,7 @@ session_state_uninit (void *st)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (thread_p, session);
+  session_stop_attached_threads (thread_p, session, true);
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -3109,7 +3109,19 @@ session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       return ER_FAILED;
     }
 
-  if (state_p->pl_session_p != NULL)
+// *INDENT-OFF*
+  cubpl::session *s = NULL;
+// *INDENT-ON*
+  if (state_p->pl_session_p == NULL)
+    {
+      session_get_pl_session (thread_p, s);
+    }
+  else
+    {
+      s = state_p->pl_session_p;
+    }
+
+  if (s != NULL)
     {
       state_p->pl_session_p->mark_session_param_changed (id);
     }
@@ -3317,7 +3329,7 @@ session_notify_pl_task_completion (const SESSION_STATE * session)
  *
  */
 void
-session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg, bool is_destory)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3334,13 +3346,20 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p = NULL;
     }
 
-  if (thread_p->type == TT_WORKER && session->pl_session_p != NULL)
+  if (session->pl_session_p != NULL)
     {
-      session->pl_session_p->set_interrupt (er_errid ());
-      session->pl_session_p->wait_for_interrupt ();
+      if (thread_p && thread_p->type == TT_WORKER)
+	{
+	  session->pl_session_p->set_interrupt (er_errid ());
+	  session->pl_session_p->wait_for_interrupt ();
+	}
 
-      delete session->pl_session_p;
-      session->pl_session_p = NULL;
+      if (is_destory)
+	{
+	  delete session->pl_session_p;
+	  session->pl_session_p = NULL;
+	}
     }
+
 #endif
 }

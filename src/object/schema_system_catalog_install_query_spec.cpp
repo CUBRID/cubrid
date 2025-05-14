@@ -1221,7 +1221,7 @@ sm_define_view_partition_spec (void)
 const char *
 sm_define_view_stored_procedure_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [2200];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1244,7 +1244,27 @@ sm_define_view_stored_procedure_spec (void)
 	    "ELSE CONCAT ([sp].[target_class], '.', [sp].[target_method]) "
 	    "END AS [target], "
 	  "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
-          "[sp_code].[scode] AS [code], "
+          "CASE "
+	    "WHEN {'DBA'} SUBSETEQ ("
+	      "SELECT "
+	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+	        /* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+	        "[u].[name] = CURRENT_USER"
+	    ") THEN [sp_code].[scode] "
+	    "WHEN {[sp].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+	        /* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+	        "[u].[name] = CURRENT_USER"
+	    ") THEN [sp_code].[scode] "
+	    "ELSE NULL "
+	    "END AS [code], "
 	  "[sp].[comment] AS [comment] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
@@ -1292,6 +1312,8 @@ sm_define_view_stored_procedure_spec (void)
 		")"
 	    ")",
 	CT_DATATYPE_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
         CT_STORED_PROC_CODE_NAME,
         AU_USER_CLASS_NAME,
