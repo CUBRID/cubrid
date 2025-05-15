@@ -42,6 +42,6 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 
 int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances);
-int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue, OID *oid);
+int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue);
 
 #endif

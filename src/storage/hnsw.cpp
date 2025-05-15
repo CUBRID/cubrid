@@ -122,7 +122,7 @@ int hnsw_print_index_info (BTID *btid)
   return NO_ERROR;
 }
 
-int hnsw_add_element (BTID *btid, DB_VALUE *key_dbvalue, OID *oid)
+int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 {
   int hnsw_id;
   faiss::idx_t encoded_oid = encode_oid (*oid);

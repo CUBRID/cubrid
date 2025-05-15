@@ -7935,7 +7935,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (BTID_IS_VECTOR_INDEX (&index->btid))
 		{
                   // *INDENT-OFF*
-		  error_code = hnsw_add_element (&btid, key_dbvalue, inst_oid);
+		  error_code = hnsw_add_element (&btid, inst_oid, key_dbvalue);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
