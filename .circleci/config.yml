@@ -374,8 +374,8 @@ jobs:
             
             # 워크플로우 정의
             workflows:
-              # 항상 실행되는 기본 빌드 워크플로우
-              build:
+              # 항상 실행되는 빌드 워크플로우 (모든 테스트 작업의 기반)
+              build_once:
                 jobs:
                   - build
               
@@ -384,7 +384,6 @@ jobs:
                 when:
                   equal: [true, << pipeline.parameters.run_medium_test >>]
                 jobs:
-                  - build
                   - test_medium:
                       requires:
                         - build
@@ -394,7 +393,6 @@ jobs:
                 when:
                   equal: [true, << pipeline.parameters.run_sql_test >>]
                 jobs:
-                  - build
                   - test_sql:
                       requires:
                         - build
@@ -404,7 +402,6 @@ jobs:
                 when:
                   equal: [true, << pipeline.parameters.run_plcsql_test >>]
                 jobs:
-                  - build
                   - test_plcsql:
                       requires:
                         - build
@@ -414,7 +411,6 @@ jobs:
                 when:
                   equal: [true, << pipeline.parameters.run_shell_test >>]
                 jobs:
-                  - build
                   - test_shell:
                       requires:
                         - build
