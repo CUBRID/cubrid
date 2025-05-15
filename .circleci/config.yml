@@ -56,16 +56,16 @@ jobs:
             # 테스트 실행 여부 결정
             # run_all_test=true이면 모든 테스트를 활성화
             if [ "$RUN_ALL_TEST" = "true" ]; then
-              RUN_MEDIUM="true"
-              RUN_SQL="true"
-              RUN_PLCSQL="true"
-              RUN_SHELL="true"
+              RUN_MEDIUM_TEST="true"
+              RUN_SQL_TEST="true"
+              RUN_PLCSQL_TEST="true"
+              RUN_SHELL_TEST="true"
             else
-              # 개별 테스트 파라미터에 따라 설정
-              RUN_MEDIUM="$RUN_MEDIUM_TEST"
-              RUN_SQL="$RUN_SQL_TEST"
-              RUN_PLCSQL="$RUN_PLCSQL_TEST"
-              RUN_SHELL="$RUN_SHELL_TEST"
+              # 파라미터 그대로 사용
+              RUN_MEDIUM_TEST="$RUN_MEDIUM_TEST"
+              RUN_SQL_TEST="$RUN_SQL_TEST"
+              RUN_PLCSQL_TEST="$RUN_PLCSQL_TEST"
+              RUN_SHELL_TEST="$RUN_SHELL_TEST"
             fi
             
             # 동적 구성 파일(continue.yml) 생성
@@ -73,40 +73,27 @@ jobs:
             # CircleCI 동적 구성 파일 (setup 작업에서 자동 생성됨)
             version: 2.1
             
-            # 워크플로우 정의
-            workflows:
-              build_test:
-                jobs:
-                  - build
-                  - test_medium:
-                      requires: [build]
-                      filters:
-                        branches:
-                          only: /.*/
-                      when:
-                        condition: $RUN_MEDIUM
-                  - test_sql:
-                      requires: [build]
-                      filters:
-                        branches:
-                          only: /.*/
-                      when:
-                        condition: $RUN_SQL
-                  - test_plcsql:
-                      requires: [build]
-                      filters:
-                        branches:
-                          only: /.*/
-                      when:
-                        condition: $RUN_PLCSQL
-                  - test_shell:
-                      requires: [build]
-                      filters:
-                        branches:
-                          only: /.*/
-                      when:
-                        condition: $RUN_SHELL
-            
+            # 파라미터 정의 (동적 구성에서 필요함)
+            parameters:
+              run_shell_test:
+                type: boolean
+                default: $RUN_SHELL_TEST
+              run_sql_test:
+                type: boolean
+                default: $RUN_SQL_TEST
+              run_medium_test:
+                type: boolean
+                default: $RUN_MEDIUM_TEST
+              run_plcsql_test:
+                type: boolean
+                default: $RUN_PLCSQL_TEST
+              run_all_test:
+                type: boolean
+                default: $RUN_ALL_TEST
+              baseline:
+                type: string
+                default: "$BASELINE"
+                
             # 작업 정의
             jobs:
               # 빌드 작업 - CUBRID 소스 코드 컴파일
@@ -154,7 +141,7 @@ jobs:
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: $BASELINE
+                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "medium"
                   GITHUB_TOKEN: $GHI_TOKEN
                 steps:
@@ -213,7 +200,7 @@ jobs:
                 resource_class: medium
                 parallelism: 8
                 environment:
-                  BASELINE: $BASELINE
+                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "sql"
                   GITHUB_TOKEN: $GHI_TOKEN
                 steps:
@@ -273,7 +260,7 @@ jobs:
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: $BASELINE
+                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "sql"
                   GITHUB_TOKEN: $GHI_TOKEN
                 steps:
@@ -332,7 +319,7 @@ jobs:
                 resource_class: medium
                 parallelism: 30
                 environment:
-                  BASELINE: $BASELINE
+                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
                   GITHUB_TOKEN: $GHI_TOKEN
                 steps:
@@ -385,26 +372,52 @@ jobs:
                       path: /tmp/logs
                       when: on_fail
             
-            # 파라미터 정의 (동적 구성에서 필요함)
-            parameters:
-              run_shell_test:
-                type: boolean
-                default: $RUN_SHELL
-              run_sql_test:
-                type: boolean
-                default: $RUN_SQL
-              run_medium_test:
-                type: boolean
-                default: $RUN_MEDIUM
-              run_plcsql_test:
-                type: boolean
-                default: $RUN_PLCSQL
-              run_all_test:
-                type: boolean
-                default: $RUN_ALL_TEST
-              baseline:
-                type: string
-                default: "$BASELINE"
+            # 워크플로우 정의
+            workflows:
+              # 항상 실행되는 기본 빌드 워크플로우
+              build:
+                jobs:
+                  - build
+              
+              # Medium 테스트 워크플로우 (조건부 실행)
+              medium_test:
+                when:
+                  equal: [true, << pipeline.parameters.run_medium_test >>]
+                jobs:
+                  - build
+                  - test_medium:
+                      requires:
+                        - build
+              
+              # SQL 테스트 워크플로우 (조건부 실행)
+              sql_test:
+                when:
+                  equal: [true, << pipeline.parameters.run_sql_test >>]
+                jobs:
+                  - build
+                  - test_sql:
+                      requires:
+                        - build
+              
+              # PLCSQL 테스트 워크플로우 (조건부 실행)
+              plcsql_test:
+                when:
+                  equal: [true, << pipeline.parameters.run_plcsql_test >>]
+                jobs:
+                  - build
+                  - test_plcsql:
+                      requires:
+                        - build
+              
+              # Shell 테스트 워크플로우 (조건부 실행)
+              shell_test:
+                when:
+                  equal: [true, << pipeline.parameters.run_shell_test >>]
+                jobs:
+                  - build
+                  - test_shell:
+                      requires:
+                        - build
             EOF
             
             # 디버깅을 위해 생성된 구성 파일 출력
