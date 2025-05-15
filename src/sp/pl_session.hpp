@@ -63,21 +63,47 @@ namespace cubpl
   using THREAD_ENTRY_IDX = int;
   using QUERY_ID = std::uint64_t;
 
+  enum class sys_param_id : int
+  {
+    PRM_ID_BEGIN = 100000,
+    PRM_ID_DBMS_OUTPUT = PRM_ID_BEGIN,
+    PRM_ID_END
+  };
+
   struct EXPORT_IMPORT sys_param : public cubpacking::packable_object
   {
-    int prm_id;
+    int prm_id; // if value >= PRM_ID_BEGIN: PL's parameter, otherwise: DBMS's parameter
     int prm_type;
     std::string prm_value;
 
-    sys_param (SYSPRM_ASSIGN_VALUE *db_param);
+    sys_param () = default;
+    explicit sys_param (const SYSPRM_ASSIGN_VALUE *db_param);
+    explicit sys_param (const SYSPRM_PARAM *db_param);
+    sys_param (int prm_id, int prm_type, std::string prm_value);
 
     void set_prm_value (const SYSPRM_PARAM *prm);
+
+    bool get_prm_value_bool ()
+    {
+      return (prm_value.size () == 1 && (prm_value[0] == '1' || prm_value[0] == 't'));
+    }
+    int get_prm_value_int ()
+    {
+      return std::stoi (prm_value);
+    }
+    float get_prm_value_float ()
+    {
+      return std::stof (prm_value);
+    }
+    std::string get_prm_value_string ()
+    {
+      return prm_value;
+    }
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
   };
-
   class session
   {
     public:
@@ -139,8 +165,12 @@ namespace cubpl
       cubmethod::db_parameter_info *get_db_parameter_info () const;
       void set_db_parameter_info (cubmethod::db_parameter_info *param_info);
 
-      const std::vector <sys_param> obtain_session_parameters (bool reset);
-      void mark_session_param_changed (PARAM_ID prm_id);
+      // handling DB and PL session parameters
+      bool check_reloading_pl_context_required (const connection_view &cv);
+      const std::vector <sys_param> obtain_session_parameters (const connection_view &conn);
+      void mark_session_param_changed (int prm_id);
+      void set_session_params_all_required (bool is_required);
+      void set_session_param (const sys_param &param);
 
     private:
       execution_stack *top_stack_internal ();
@@ -167,8 +197,13 @@ namespace cubpl
 
       cubmethod::db_parameter_info *m_param_info;
 
-      // session parameters
-      std::unordered_set<PARAM_ID> m_session_param_changed_ids;
+      /* session parameters */
+      std::unordered_map<int, sys_param> m_session_params;
+
+      // session parameters: The following variables are used to check if the session parameters have changed and updateing to the PL server is required
+      std::unordered_set<int> m_session_param_changed_ids;
+      bool m_all_session_params_required;
+      int m_last_conn_epoch;
 
       // interrupt
       bool m_is_interrupted;

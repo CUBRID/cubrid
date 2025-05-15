@@ -7525,6 +7525,37 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
   return error_code;
 }
 
+// *INDENT-OFF*
+cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+// *INDENT-ON*
+
+void
+logpb_create_backup_read_worker_pool (size_t thread_count)
+{
+  /* The task of pushing the backup read task is performed by a single thread,
+     so it is fine to have only one core. */
+  size_t core_count = 1;
+  if (thread_count == 0)
+    {
+      thread_count = 1;
+    }
+  g_backup_read_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
+						   core_count, false, true);
+}
+
+void
+logpb_push_backup_read_task (cubthread::entry_task * task)
+{
+  thread_get_manager ()->push_task (g_backup_read_worker_pool, task);
+}
+
+void
+logpb_destroy_backup_read_worker_pool ()
+{
+  thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
+}
+
 /*
  * logpb_backup - Execute a level backup for the given database volume
  *
@@ -7601,6 +7632,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char time_val[CTIME_MAX];
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  size_t read_thread_count = 0;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7647,6 +7679,16 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     }
 
 #if defined (SERVER_MODE)
+  read_thread_count = session.read_thread_info.num_threads - 1;
+
+  logpb_create_backup_read_worker_pool (read_thread_count);
+  if (g_backup_read_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
@@ -8163,6 +8205,10 @@ loop:
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  logpb_destroy_backup_read_worker_pool ();
+#endif
+
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
@@ -8227,6 +8273,13 @@ error:
    * Destroy the backup that has been created.
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
+
+#if defined(SERVER_MODE)
+  if (g_backup_read_worker_pool != NULL)
+    {
+      logpb_destroy_backup_read_worker_pool ();
+    }
+#endif
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);

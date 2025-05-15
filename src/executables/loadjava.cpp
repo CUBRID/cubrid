@@ -56,6 +56,7 @@ static const std::string SEPARATOR_STRING (SEPERATOR);
 static const std::string DYNAMIC_PATH = JAVA_DIR;
 static const std::string STATIC_PATH = JAVA_STATIC_DIR;
 
+static fs::path Root;
 static std::string Path;
 static char *Program_name = NULL;
 static char *Dbname = NULL;
@@ -106,6 +107,7 @@ parse_argument (int argc, char *argv[])
 	      goto exit;
 	    }
 
+	  // e.g. $CUBRID/demodb/java/org/cubrid/path/
 	  std::string package_name (optarg);
 	  if (!package_name.empty())
 	    {
@@ -143,10 +145,17 @@ parse_argument (int argc, char *argv[])
       goto exit;
     }
 
-  Program_name = argv[0];
-
 exit:
-  if (error != NO_ERROR)
+  if (error == NO_ERROR)
+    {
+      Program_name = argv[0];
+      // e.g. $CUBRID/demodb/java or e.g. $CUBRID/demodb/java_static
+      if (Path.empty())
+	{
+	  Path = DYNAMIC_PATH;
+	}
+    }
+  else
     {
       usage ();
     }
@@ -155,72 +164,153 @@ exit:
 }
 
 static int
-create_package_directories (const fs::path &java_dir_path)
+check_arguments ()
 {
-  try
+  DB_INFO *db = NULL;
+
+  // check whether database exists
+  if ((db = cfg_find_db (Dbname)) == NULL)
     {
-      if (fs::exists (java_dir_path) == false)
-	{
-	  fs::create_directories (java_dir_path);
-	  fs::permissions (java_dir_path,
-			   fs::perms::owner_all | fs::perms::group_read | fs::perms::others_read,
-			   fs::perm_options::add);	// mkdir (java_dir_path, 0744)
-	}
-    }
-  catch (fs::filesystem_error &e)
-    {
-      fprintf (stderr, "can't create directory: %s. %s\n", java_dir_path.generic_string ().c_str (), e.what ());
+      fprintf (stderr, "database '%s' does not exist.\n", Dbname);
       return ER_FAILED;
     }
-  return NO_ERROR;
-}
 
-static int
-copy_file (const fs::path &java_dir_path)
-{
+  // DB path e.g. $CUBRID/demodb
+  Root.assign (std::string (db->pathname));
+
+  // check the specified source path of the java class file (jar) exists
   try
     {
-      fs::path src_path = fs::path (Src_class);
-      if (fs::exists (src_path) == false)
+      fs::path src_path (Src_class);
+      if (!fs::exists (src_path))
 	{
 	  fprintf (stderr, "loadjava fail: '%s' does not exist.\n", src_path.generic_string().c_str ());
 	  return ER_FAILED;
 	}
 
       std::string ext_nm = src_path.extension().generic_string();
-      if ( ext_nm.empty() || ((ext_nm.compare (".class") != 0) && (ext_nm.compare (".jar") != 0)))
+      if (ext_nm.empty() || ((ext_nm.compare (".class") != 0) && (ext_nm.compare (".jar") != 0)))
 	{
 	  fprintf (stderr, "loadjava fail: The extension name of '%s' is invalid.\n", src_path.generic_string().c_str ());
 	  return ER_FAILED;
 	}
-
-      std::string class_file_name = src_path.filename().generic_string();
-      fs::path class_file_path = java_dir_path / class_file_name;
-
-      bool is_exists = fs::exists (class_file_path);
-      if (Force_overwrite == false && is_exists == true)
-	{
-	  fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", class_file_path.generic_string().c_str ());
-	  char c = getchar ();
-	  if (c != 'Y' && c != 'y')
-	    {
-	      fprintf (stdout, "loadjava is canceled\n");
-	      return NO_ERROR;
-	    }
-	}
-
-      // remove the previous file (to update modified time of the JAVA directory: CBRD-24695)
-      if (is_exists && fs::is_directory (class_file_path) == false)
-	{
-	  fs::remove (class_file_path);
-	}
-
-      const auto copyOptions = fs::copy_options::overwrite_existing;
-      fs::copy (src_path, class_file_path, copyOptions);
     }
   catch (fs::filesystem_error &e)
     {
       fprintf (stderr, "loadjava fail: file operation error: %s\n", e.what ());
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+create_package_directories (const fs::path &dir_path)
+{
+  try
+    {
+      if (fs::exists (dir_path) == false)
+	{
+	  fs::create_directories (dir_path);
+	  fs::permissions (dir_path,
+			   fs::perms::owner_all | fs::perms::group_read | fs::perms::others_read,
+			   fs::perm_options::add);	// mkdir (java_dir_path, 0744)
+	}
+    }
+  catch (fs::filesystem_error &e)
+    {
+      fprintf (stderr, "can't create directory: %s. %s\n", dir_path.generic_string ().c_str (), e.what ());
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+static int
+check_overwrite (const std::string &package_path, const std::string &class_file_name)
+{
+  try
+    {
+      fs::path static_path = Root / STATIC_PATH / package_path / class_file_name;
+      fs::path dynamic_path = Root / DYNAMIC_PATH / package_path / class_file_name;
+
+      bool exists_static = fs::exists (static_path);
+      bool exists_dynamic = fs::exists (dynamic_path);
+
+      // check whether class name exists for either static path and dynamic path
+      std::string full_class_name = package_path + class_file_name;
+      if (exists_static || exists_dynamic)
+	{
+	  if (Force_overwrite == false)
+	    {
+	      std::string full_class_name = package_path.empty () ? class_file_name : (package_path + SEPERATOR + class_file_name);
+	      fprintf (stdout, "'%s' is exist. overwrite? (y/n): ", full_class_name.c_str ());
+	      char c = getchar ();
+	      if (c != 'Y' && c != 'y')
+		{
+		  fprintf (stdout, "loadjava is canceled\n");
+		  return ER_FAILED;
+		}
+	    }
+
+	  // remove the previous file (to update modified time of the JAVA directory: CBRD-24695)
+	  if (exists_static && fs::is_directory (static_path) == false)
+	    {
+	      fs::remove (static_path);
+	    }
+
+	  // remove the previous file (to update modified time of the JAVA directory: CBRD-24695)
+	  if (exists_dynamic && fs::is_directory (dynamic_path) == false)
+	    {
+	      fs::remove (dynamic_path);
+	    }
+	}
+    }
+  catch (fs::filesystem_error &e)
+    {
+      fprintf (stderr, "loadjava fail: file operation error: %s\n", e.what ());
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+copy_class_file (const fs::path &src_path, const fs::path &dest_path)
+{
+  try
+    {
+      const auto copyOptions = fs::copy_options::overwrite_existing;
+      fs::copy (src_path, dest_path, copyOptions);
+    }
+  catch (fs::filesystem_error &e)
+    {
+      fprintf (stderr, "loadjava fail: file operation error: %s\n", e.what ());
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+do_load_java ()
+{
+  fs::path src_path (Src_class);
+  std::string class_file_name = src_path.filename().generic_string();
+
+  if (check_overwrite (package_path, class_file_name) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  fs::path package_dir = Root / Path / package_path;
+  if (create_package_directories (package_dir) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  fs::path dest_path = package_dir / class_file_name;
+  if (copy_class_file (src_path, dest_path) != NO_ERROR)
+    {
       return ER_FAILED;
     }
 
@@ -235,8 +325,6 @@ int
 main (int argc, char *argv[])
 {
   int status = EXIT_FAILURE;
-  DB_INFO *db = NULL;
-  fs::path java_dir_path;
 
   /* initialize message catalog for argument parsing and usage() */
   if (utility_initialize () != NO_ERROR)
@@ -249,31 +337,12 @@ main (int argc, char *argv[])
       goto error;
     }
 
-  if ((db = cfg_find_db (Dbname)) == NULL)
-    {
-      fprintf (stderr, "database '%s' does not exist.\n", Dbname);
-      goto error;
-    }
-
-  // DB path e.g. $CUBRID/demodb
-  java_dir_path.assign (std::string (db->pathname));
-
-  // e.g. $CUBRID/demodb/java or e.g. $CUBRID/demodb/java_static
-  if (Path.empty())
-    {
-      Path = DYNAMIC_PATH;
-    }
-  java_dir_path.append (Path);
-
-  // e.g. $CUBRID/demodb/java/org/cubrid/path/
-  java_dir_path.append (package_path);
-
-  if (create_package_directories (java_dir_path) != NO_ERROR)
+  if (check_arguments () != NO_ERROR)
     {
       goto error;
     }
 
-  if (copy_file (java_dir_path) != NO_ERROR)
+  if (do_load_java () != NO_ERROR)
     {
       goto error;
     }

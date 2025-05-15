@@ -291,8 +291,25 @@ regu_init (cubxasl::sp_node &sp)
   regu_alloc (sp.sig);
   if (sp.sig)
     {
-      new (sp.sig) PL_SIGNATURE_TYPE ();
+      new (sp.sig) cubpl::pl_signature();
+      regu_init (*sp.sig);
     }
+}
+
+void
+regu_init (cubpl::pl_signature &sig)
+{
+  sig.name = NULL;
+  sig.auth = NULL;
+  sig.type = PL_TYPE_NONE;
+  sig.result_type = 0;
+}
+
+void
+regu_init (cubpl::pl_signature_array &sig_array)
+{
+  sig_array.sigs = NULL;
+  sig_array.num_sigs = 0;
 }
 
 void

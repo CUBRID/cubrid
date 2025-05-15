@@ -419,21 +419,6 @@ struct css_queue_entry
 struct session_state;
 #endif
 
-#define MAX_LEN_CONNECTION_URL 512
-/*
- * This data structure is the connection interface for dblink
- */
-typedef struct dblink_conn_entry DBLINK_CONN_ENTRY;
-struct dblink_conn_entry
-{
-  int conn_handle;
-  char conn_url[MAX_LEN_CONNECTION_URL + 1];
-  char user_name[DB_MAX_USER_LENGTH + 1];
-  char password[DB_MAX_PASSWORD_LENGTH + 1];
-
-  DBLINK_CONN_ENTRY *next;
-};
-
 /*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.
