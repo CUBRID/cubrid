@@ -1,5 +1,7 @@
 version: 2.1
-
+setup: true
+orbs:
+  continuation: circleci/continuation@1.1.0
 # --------------------------------------------------
 # Pipeline-level parameters (values passed from GitHub Actions)
 # --------------------------------------------------
@@ -22,222 +24,244 @@ parameters:
   run_all_test:
     type: boolean
     default: false
-# --------------------------------------------------
-# 1. Reusable commands
-# --------------------------------------------------
-commands:
-  attach-and-run-tests:
-    description: "Attach workspace and run test scripts"
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: Test
-          shell: /bin/bash
-          no_output_timeout: 30m
-          command: |
-            # Limit core files
-            ulimit -c 1
-
-            # Check out testcases and testtools (uses custom entrypoint script)
-            /entrypoint.sh checkout
-            
-            case "$TEST_SUITE" in
-              none)
-                echo "TEST_SUITE is none"
-                exit 1
-                ;;
-              plcsql)
-                TEST_SUITE="sql"
-                base_dir="cubrid-testcases"
-                glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
-                ;;
-              sql)
-                base_dir="cubrid-testcases"
-                rm -rf $base_dir/sql/_05_plcsql $base_dir/sql/_35_fig_cake/plcsql
-                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
-                ;;
-              shell)
-                base_dir="cubrid-testcases-private-ex"
-                rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                glob_path="$(find $base_dir/$TEST_SUITE/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$')"
-                ;;
-              *)
-                base_dir="cubrid-testcases"
-                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
-                ;;
-            esac
-
-            echo "Selecting from all tests..."
-            circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
- 
-            # Remove tests that are not in the list
-            if [ "$TEST_SUITE" = "shell" ]; then
-              cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
-              find $base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
-            else
-              find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
-            fi
-
-            # Run the tests
-            if [ -s tc.list ]; then
-              /entrypoint.sh test
-            else
-              echo "No tests to run"
-              circleci-agent step halt
-            fi
-      - run:
-          name: Collect Logs
-          command: |
-            mkdir -p /tmp/logs
-            cp -f /tmp/tests/* /tmp/logs
-            if [ "$TEST_SUITE" = "shell" ]; then
-              mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log
-            else
-              mv -f CUBRID/log /tmp/logs/cubrid_log
-              mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
-            fi
-            [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump
-            find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list
-            # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
-          when: on_fail
-      - store_test_results:
-          path: /tmp/tests
-          when: always
-      - store_artifacts:
-          path: /tmp/logs
-          when: on_fail
-
-  collect-build-logs:
-    description: "Collect build logs and store them"
-    steps:
-      - run:
-          name: Store Build Logs
-          command: |
-            mkdir -p /tmp/build_logs
-            mv -f build.log /tmp/build_logs
-      - run:
-          name: Store Commits
-          command: |
-            mkdir -p /tmp/build_logs
-            git log | head -n 1000 > commits.log || true
-            mv -f commits.log /tmp/build_logs
-      - store_artifacts:
-          path: /tmp/build_logs
 
 # --------------------------------------------------
-# 2. Reusable executors
-# --------------------------------------------------
-executors:
-  cubrid-default:
-    docker:
-      - image: cubridci/cubridci:develop
-    working_directory: /home
-
-  cubrid-test-shell:
-    docker:
-      - image: cubridci/cubridci:test_shell
-    working_directory: /home
-
-# --------------------------------------------------
-# 3. Jobs
+# Jobs
 # --------------------------------------------------
 jobs:
-  build:
-    executor: cubrid-default
-    resource_class: xlarge
+  # Setup job that generates the dynamic configuration
+  setup:
+    executor: continuation/default
     environment:
-      MAKEFLAGS: -j 8
+      RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
+      RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
+      RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
+      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
+      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
+      BASELINE: << pipeline.parameters.baseline >>
     steps:
       - checkout
       - run:
-          name: Submodules
+          name: Generate continuation config
           command: |
-            git submodule sync
-            git submodule update --init
-      - run:
-          name: Build
-          command: |
-            scl enable devtoolset-8 -- /entrypoint.sh build
-      - collect-build-logs
-      - persist_to_workspace:
-          root: .
-          paths:
-            - CUBRID
+            # Output pipeline parameters for debugging
+            echo "Pipeline parameters:"
+            echo "RUN_MEDIUM_TEST: $RUN_MEDIUM_TEST"
+            echo "RUN_SQL_TEST: $RUN_SQL_TEST"
+            echo "RUN_PLCSQL_TEST: $RUN_PLCSQL_TEST"
+            echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
+            echo "RUN_ALL_TEST: $RUN_ALL_TEST"
+            echo "BASELINE: $BASELINE"
+                        
+            # Generate dynamic configuration file (continue.yml)
+            cat \<<EOF > .circleci/continue.yml
+            # CircleCI dynamic configuration generated by setup job
+            version: 2.1
+            
+            parameters:
+              baseline:
+                type: string
+                default: "$BASELINE"
+            
+            # --------------------------------------------------
+            # 1. Reusable commands
+            # --------------------------------------------------
+            commands:
+              attach-and-run-tests:
+                description: "Attach workspace and run test scripts"
+                steps:
+                  - attach_workspace:
+                      at: .
+                  - run:
+                      name: Test
+                      shell: /bin/bash
+                      no_output_timeout: 30m
+                      command: |
+                        # Limit core files
+                        ulimit -c 1
 
-  test_job:
-    parameters:
-      e:
-        type: executor
-        default: cubrid-default
-      test_suite:
-        type: string
-        default: "none"
-      parallel_num:
-        type: integer
-        default: 1
-      resource_class_param:
-        type: string
-        default: "medium"
-    executor: << parameters.e >>
-    resource_class: << parameters.resource_class_param >>
-    parallelism: << parameters.parallel_num >>
-    environment:
-      BASELINE: << pipeline.parameters.baseline >>
-      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
-      RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
-      RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
-      RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
-      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
-      TEST_SUITE: << parameters.test_suite >>
-      GITHUB_TOKEN: $GHI_TOKEN
-    steps:
-      - run:
-          name: Skip tests if not enabled
-          command: |
-            if [ "${TEST_SUITE}" = "shell" ] && [ "${RUN_SHELL_TEST}" != "true" ]; then
-              echo "Skipping shell tests because RUN_SHELL_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "sql" ] && [ "${RUN_SQL_TEST}" != "true" ]; then
-              echo "Skipping sql tests because RUN_SQL_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "medium" ] && [ "${RUN_MEDIUM_TEST}" != "true" ]; then
-              echo "Skipping medium tests because RUN_MEDIUM_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "plcsql" ] && [ "${RUN_PLCSQL_TEST}" != "true" ]; then
-              echo "Skipping plcsql tests because RUN_PLCSQL_TEST is false"
-              circleci-agent step halt
-            fi
-      - attach-and-run-tests
+                        echo "[debug] Check out testcases and testtools"
+                        /entrypoint.sh checkout
+                        
+                        case "\$TEST_SUITE" in
+                          none)
+                            echo "TEST_SUITE is none"
+                            exit 1
+                            ;;
+                          plcsql)
+                            TEST_SUITE="sql"
+                            base_dir="cubrid-testcases"
+                            glob_path="\$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
+                            ;;
+                          sql)
+                            base_dir="cubrid-testcases"
+                            rm -rf \$base_dir/sql/_05_plcsql \$base_dir/sql/_35_fig_cake/plcsql
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            ;;
+                          shell)
+                            base_dir="cubrid-testcases-private-ex"
+                            rm -rf \$base_dir/shell/_25_unstable
+                            glob_path="\$(find \$base_dir/shell/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh\$')"
+                            ;;
+                          *)
+                            base_dir="cubrid-testcases"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            ;;
+                        esac
+
+                        echo "[debug] Selecting from all tests..."
+                        circleci tests glob \$glob_path | sed "s|^\$base_dir/||" | circleci tests split | tee tc.list
+                 
+                        echo "[debug] Remove tests that are not in the list"
+                        if [ "\$TEST_SUITE" = "shell" ]; then
+                          cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
+                          find \$base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
+                        else
+                          find \$base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
+                        fi
+
+                        echo "[debug] Run the tests"
+                        [ -s tc.list ] && /entrypoint.sh test || circleci-agent step halt
+                  - run:
+                      name: Collect Logs
+                      when: on_fail
+                      command: |
+                        mkdir -p /tmp/logs
+                        cp -f /tmp/tests/* /tmp/logs || true
+                        if [ "\$TEST_SUITE" = "shell" ]; then
+                          mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
+                        else
+                          mv -f CUBRID/log /tmp/logs/cubrid_log || true
+                          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
+                        fi
+                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
+                        mv -f tc.list /tmp/logs/ || true
+                  - store_test_results:
+                      path: /tmp/tests
+                      when: always
+                  - store_artifacts:
+                      path: /tmp/logs
+                      when: on_fail
+
+              collect-build-logs:
+                description: "Collect build logs and store them"
+                steps:
+                  - run:
+                      name: Store Build Logs
+                      command: |
+                        mkdir -p /tmp/build_logs
+                        mv -f build.log /tmp/build_logs || true
+                  - run:
+                      name: Store Commits
+                      command: |
+                        mkdir -p /tmp/build_logs
+                        git log | head -n 1000 > commits.log || true
+                        mv -f commits.log /tmp/build_logs
+                  - store_artifacts:
+                      path: /tmp/build_logs
+                      
+            # --------------------------------------------------
+            # 2. Reusable executors
+            # --------------------------------------------------
+            executors:
+              cubrid-default:
+                docker:
+                  - image: cubridci/cubridci:develop
+                working_directory: /home
+
+              cubrid-test-shell:
+                docker:
+                  - image: cubridci/cubridci:test_shell
+                working_directory: /home
+                
+            # --------------------------------------------------
+            # 3. Jobs
+            # --------------------------------------------------
+            jobs:
+              build:
+                executor: cubrid-default
+                resource_class: xlarge
+                environment:
+                  MAKEFLAGS: -j 8
+                steps:
+                  - checkout
+                  - run:
+                      name: Submodules
+                      command: |
+                        git submodule sync
+                        git submodule update --init
+                  - run:
+                      name: Build
+                      command: |
+                        scl enable devtoolset-8 -- /entrypoint.sh build
+                  - collect-build-logs
+                  - persist_to_workspace:
+                      root: .
+                      paths: [ CUBRID ]
+              
+              test_medium:
+                executor: cubrid-default
+                resource_class: medium
+                parallelism: 1
+                environment:
+                  BASELINE: << pipeline.parameters.baseline >>
+                  TEST_SUITE: "medium"
+                  GITHUB_TOKEN: \$GHI_TOKEN
+                steps: [ attach-and-run-tests ]
+                      
+              test_sql:
+                executor: cubrid-default
+                resource_class: medium
+                parallelism: 8
+                environment:
+                  BASELINE: << pipeline.parameters.baseline >>
+                  TEST_SUITE: "sql"
+                  GITHUB_TOKEN: \$GHI_TOKEN
+                steps: [ attach-and-run-tests ]
+                      
+              test_plcsql:
+                executor: cubrid-default
+                resource_class: medium
+                parallelism: 1
+                environment:
+                  BASELINE: << pipeline.parameters.baseline >>
+                  TEST_SUITE: "plcsql"
+                  GITHUB_TOKEN: \$GHI_TOKEN
+                steps: [ attach-and-run-tests ]
+                      
+              test_shell:
+                executor: cubrid-test-shell
+                resource_class: large
+                parallelism: 30
+                environment:
+                  BASELINE: << pipeline.parameters.baseline >>
+                  TEST_SUITE: "shell"
+                  GITHUB_TOKEN: \$GHI_TOKEN
+                steps: [ attach-and-run-tests ]
+            
+            # Workflow definition
+            workflows:
+              build_test:
+                jobs:
+                  - build
+            EOF
+            
+            echo "[debug] Conditionally add test jobs based on parameters"
+            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium: {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:    {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_PLCSQL_TEST"  = "true" ] && echo "      - test_plcsql: {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_SHELL_TEST"   = "true" ] && echo "      - test_shell:  {requires: [build]}" >> .circleci/continue.yml
+            
+            echo "[debug] Output generated configuration for debugging"
+            cat .circleci/continue.yml
+      
+      - continuation/continue:
+          configuration_path: .circleci/continue.yml
 
 # --------------------------------------------------
-# 4. Workflows
+# Workflows
 # --------------------------------------------------
 workflows:
-  build_test:
-    jobs:
-      - build
-      - test_job:
-          name: test_medium
-          requires: 
-            - build
-          test_suite: "medium"
-      - test_job:
-          name: test_sql
-          requires:
-            - build
-          test_suite: "sql"
-          parallel_num: 8
-      - test_job:
-          name: test_plcsql
-          requires: 
-            - build
-          test_suite: "plcsql"
-      - test_job:
-          name: test_shell
-          requires: 
-            - build
-          test_suite: "shell"
-          e: cubrid-test-shell
-          parallel_num: 30
-          resource_class_param: "large"
+  # Initial setup workflow to generate dynamic configuration
+  setup:
+    jobs: [ setup ]
