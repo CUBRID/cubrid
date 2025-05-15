@@ -219,7 +219,7 @@ jobs:
       - run:
           name: Generate continuation config
           command: |
-            cat \<<'EOF' > .circleci/continue.yml
+            cat \<<EOF > .circleci/continue.yml
             version: 2.1
             parameters:
               run_shell_test:
