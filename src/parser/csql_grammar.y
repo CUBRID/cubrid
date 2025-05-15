@@ -2837,13 +2837,16 @@ create_stmt
 			if (kvp) 
 			  {
 			    PT_NODE *m_node = kv_pair_lookup(kvp, "m");
-
-			    int m = m_node ? m_node->info.value.data_value.i : 30;
-
-			    node->info.index.vector_index.hnsw_m = m;
 			    PT_NODE *ef_construction_node = kv_pair_lookup(kvp, "ef_construction");
 
-			    int ef_con = ef_construction_node ? ef_construction_node->info.value.data_value.i : 100;
+			    // TODO (CUBVEC): default m and ef_con?
+			    int default_m = 30;
+			    int default_ef_con = 100;
+
+			    int m = m_node ? m_node->info.value.data_value.i : default_m;
+			    int ef_con = ef_construction_node ? ef_construction_node->info.value.data_value.i : default_ef_con;
+
+			    node->info.index.vector_index.hnsw_m = m;
 			    node->info.index.vector_index.hnsw_ef_construction = ef_con;
 			  }
 
@@ -2974,10 +2977,6 @@ create_stmt
                             // original code: 
 			    // node->info.index.deduplicate_level = CONTAINER_AT_1($13);
                             node->info.index.deduplicate_level = CONTAINER_AT_1(rule_13);
-
-			    // TODO: CUBVEC - $13 contains parameter infos such as m and ef_construction
-			    // TODO: node->info.index.hnsw.m = 30;
-			    // TODO: node->info.index.hnsw.ef_con = 100;
 
                              if (opt_unique && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
@@ -22921,8 +22920,6 @@ opt_index_with_clause
 opt_vector_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
-            container_2 ctn;
-            // SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
 	    $$ = NULL;
 	  DBG_PRINT}
         | WITH '(' vector_index_with_item_list ')'
