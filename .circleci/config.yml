@@ -68,28 +68,13 @@ jobs:
               RUN_SHELL_TEST="$RUN_SHELL_TEST"
             fi
             
-            # 동적 구성 파일(continue.yml) 생성
+            # 동적 구성 파일(continue.yml) 생성 - 작업 정의
             cat \<<EOF > .circleci/continue.yml
             # CircleCI 동적 구성 파일 (setup 작업에서 자동 생성됨)
             version: 2.1
             
             # 파라미터 정의 (동적 구성에서 필요함)
             parameters:
-              run_shell_test:
-                type: boolean
-                default: $RUN_SHELL_TEST
-              run_sql_test:
-                type: boolean
-                default: $RUN_SQL_TEST
-              run_medium_test:
-                type: boolean
-                default: $RUN_MEDIUM_TEST
-              run_plcsql_test:
-                type: boolean
-                default: $RUN_PLCSQL_TEST
-              run_all_test:
-                type: boolean
-                default: $RUN_ALL_TEST
               baseline:
                 type: string
                 default: "$BASELINE"
@@ -372,49 +357,45 @@ jobs:
                       path: /tmp/logs
                       when: on_fail
             
-            # 워크플로우 정의
+            # 워크플로우 정의 - 시작 부분
             workflows:
-              # 항상 실행되는 빌드 워크플로우 (모든 테스트 작업의 기반)
-              build_once:
+              build_and_test:
                 jobs:
                   - build
-              
-              # Medium 테스트 워크플로우 (조건부 실행)
-              medium_test:
-                when:
-                  equal: [true, << pipeline.parameters.run_medium_test >>]
-                jobs:
+            EOF
+            
+            # 조건부로 테스트 작업 추가
+            if [ "$RUN_MEDIUM_TEST" = "true" ]; then
+              cat \<<EOF >> .circleci/continue.yml
                   - test_medium:
                       requires:
                         - build
-              
-              # SQL 테스트 워크플로우 (조건부 실행)
-              sql_test:
-                when:
-                  equal: [true, << pipeline.parameters.run_sql_test >>]
-                jobs:
+            EOF
+            fi
+            
+            if [ "$RUN_SQL_TEST" = "true" ]; then
+              cat \<<EOF >> .circleci/continue.yml
                   - test_sql:
                       requires:
                         - build
-              
-              # PLCSQL 테스트 워크플로우 (조건부 실행)
-              plcsql_test:
-                when:
-                  equal: [true, << pipeline.parameters.run_plcsql_test >>]
-                jobs:
+            EOF
+            fi
+            
+            if [ "$RUN_PLCSQL_TEST" = "true" ]; then
+              cat \<<EOF >> .circleci/continue.yml
                   - test_plcsql:
                       requires:
                         - build
-              
-              # Shell 테스트 워크플로우 (조건부 실행)
-              shell_test:
-                when:
-                  equal: [true, << pipeline.parameters.run_shell_test >>]
-                jobs:
+            EOF
+            fi
+            
+            if [ "$RUN_SHELL_TEST" = "true" ]; then
+              cat \<<EOF >> .circleci/continue.yml
                   - test_shell:
                       requires:
                         - build
             EOF
+            fi
             
             # 디버깅을 위해 생성된 구성 파일 출력
             echo "Generated continue.yml:"
