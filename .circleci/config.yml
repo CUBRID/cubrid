@@ -70,62 +70,8 @@ commands:
                 ;;
             esac
 
-            # TODO:Run only failed tests
-            # if [ "${RUN_ALL_TEST}" = "false" ] && [ "${TEST_SUITE}" = "shell" ]; then
-            #   echo "Finding failed tests from previous build..."
-            #   build_info=$(curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
-            #     "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/tree/${CIRCLE_BRANCH}?limit=10")
-            #   PREV_BUILD_NUM=$(echo "$build_info" | jq -r ".[] | select(.workflows.job_name==\"$CIRCLE_JOB\") | .build_num" | sed -n '2p')
-              
-            #   if [ -n "$PREV_BUILD_NUM" ]; then
-            #     echo "Previous build number: $PREV_BUILD_NUM"
-            #     curl -sSL -H "Circle-Token: $CIRCLE_TOKEN" \
-            #     "https://circleci.com/api/v1.1/project/github/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${PREV_BUILD_NUM}/artifacts" \
-            #     | jq -r '.[] | select(.path|endswith(".xml")) | .url' > xml_url.list
-                
-            #     if [ -s xml_url.list ]; then
-            #       echo "Previous build has xml files : $(cat xml_url.list)"
-            #       while read url; do
-            #         curl -sSL "$url" | xmllint --xpath "//testcase[failure]/@name" - 2>/dev/null | sed -E 's/name="([^"]*)"/\1/g' | xargs -n1 >> prev_fail.list
-            #       done < xml_url.list
-                  
-            #       if [ -s prev_fail.list ]; then
-            #         cat prev_fail.list \
-            #           | circleci tests split --verbose --split-by=timings --timings-type=testname \
-            #           | tee tc.list
-            #         echo "Running only failed tests: $(wc -l < tc.list) tests"
-            #       else
-            #         echo "No failed tests found in previous build"
-            #         echo "Selecting from all tests..."
-            #         circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-            #           | circleci tests split --verbose --split-by=timings --timings-type=testname \
-            #           | tee tc.list
-            #       fi
-            #     else
-            #       echo "No xml file url found in previous build"
-            #       echo "Selecting from all tests..."
-            #       circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-            #         | circleci tests split --verbose --split-by=timings --timings-type=testname \
-            #         | tee tc.list
-            #     fi
-            #   else
-            #     echo "No previous build found"
-            #     echo "Selecting from all tests..."
-            #     circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-            #       | circleci tests split --verbose --split-by=timings --timings-type=testname \
-            #       | tee tc.list
-            #   fi
-            # else
-            #   echo "Selecting from all tests..."
-            #   circleci tests glob $glob_path | sed "s|^$base_dir/||" \
-            #     | circleci tests split --verbose --split-by=timings --timings-type=testname \
-            #     | tee tc.list              
-            # fi
-
             echo "Selecting from all tests..."
             circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
-            # TODO: split by timings
-            # | circleci tests split --verbose --split-by=timings --timings-type=testname | tee tc.list
 
             # Remove tests that are not in the list
             if [ "$TEST_SUITE" = "shell" ]; then
@@ -142,18 +88,6 @@ commands:
               echo "No tests to run"
               circleci-agent step halt
             fi
-      # TODO: after plcsql test is merged back to sql test, separate prepare test and run test.
-      # - run:
-      #     name: Test
-      #     no_output_timeout: 20m
-      #     command: |
-      #       # Run the tests
-      #       if [ -s tc.list ]; then
-      #         /entrypoint.sh test
-      #       else
-      #         echo "No tests to run"
-      #         circleci-agent step halt
-      #       fi
       - run:
           name: Collect Logs
           command: |
@@ -167,7 +101,6 @@ commands:
             fi
             [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump
             find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list
-            # find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           when: on_fail
       - store_test_results:
           path: /tmp/tests
@@ -214,29 +147,59 @@ executors:
 jobs:
   setup:
     executor: continuation/default
+    environment:
+      RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
+      RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
+      RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
+      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
+      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
+      BASELINE: << pipeline.parameters.baseline >>
     steps:
       - checkout
       - run:
           name: Generate continuation config
           command: |
+            # 디버깅을 위한 환경 변수 출력
+            echo "Pipeline parameters:"
+            echo "RUN_MEDIUM_TEST: $RUN_MEDIUM_TEST"
+            echo "RUN_SQL_TEST: $RUN_SQL_TEST"
+            echo "RUN_PLCSQL_TEST: $RUN_PLCSQL_TEST"
+            echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
+            echo "RUN_ALL_TEST: $RUN_ALL_TEST"
+            echo "BASELINE: $BASELINE"
+            
+            # 파이프라인 파라미터로부터 Bash 변수 설정
+            RUN_MEDIUM="false"
+            RUN_SQL="false"
+            RUN_PLCSQL="false"
+            RUN_SHELL="false"
+            
+            # run_all_test가 true이면 모든 테스트를 활성화
+            if [ "$RUN_ALL_TEST" = "true" ]; then
+              RUN_MEDIUM="true"
+              RUN_SQL="true"
+              RUN_PLCSQL="true"
+              RUN_SHELL="true"
+            else
+              # 개별 테스트 확인
+              if [ "$RUN_MEDIUM_TEST" = "true" ]; then
+                RUN_MEDIUM="true"
+              fi
+              if [ "$RUN_SQL_TEST" = "true" ]; then
+                RUN_SQL="true"
+              fi
+              if [ "$RUN_PLCSQL_TEST" = "true" ]; then
+                RUN_PLCSQL="true"
+              fi
+              if [ "$RUN_SHELL_TEST" = "true" ]; then
+                RUN_SHELL="true"
+              fi
+            fi
+            
+            # 간단한 YAML 생성
             cat \<<EOF > .circleci/continue.yml
             version: 2.1
-            parameters:
-              run_shell_test:
-                type: boolean
-                default: \<< pipeline.parameters.run_shell_test >>
-              run_sql_test:
-                type: boolean
-                default: \<< pipeline.parameters.run_sql_test >>
-              run_medium_test:
-                type: boolean
-                default: \<< pipeline.parameters.run_medium_test >>
-              run_plcsql_test:
-                type: boolean
-                default: \<< pipeline.parameters.run_plcsql_test >>
-              run_all_test:
-                type: boolean
-                default: \<< pipeline.parameters.run_all_test >>
+            
             workflows:
               build_test:
                 jobs:
@@ -244,48 +207,57 @@ jobs:
                   - test_job:
                       name: test_medium
                       requires: [build]
-                      when:
-                        condition:
-                          or:
-                            - \<< pipeline.parameters.run_medium_test >>
-                            - \<< pipeline.parameters.run_all_test >>
+                      when: $RUN_MEDIUM
                       parameters:
                         test_suite: "medium"
                         parallel_num: 1
                   - test_job:
                       name: test_sql
                       requires: [build]
-                      when:
-                        condition:
-                          or:
-                            - \<< pipeline.parameters.run_sql_test >>
-                            - \<< pipeline.parameters.run_all_test >>
+                      when: $RUN_SQL
                       parameters:
                         test_suite: "sql"
                         parallel_num: 8
                   - test_job:
                       name: test_plcsql
                       requires: [build]
-                      when:
-                        condition:
-                          or:
-                            - \<< pipeline.parameters.run_plcsql_test >>
-                            - \<< pipeline.parameters.run_all_test >>
+                      when: $RUN_PLCSQL
                       parameters:
                         test_suite: "plcsql"
                   - test_job:
                       name: test_shell
                       requires: [build]
-                      when:
-                        condition:
-                          or:
-                            - \<< pipeline.parameters.run_shell_test >>
-                            - \<< pipeline.parameters.run_all_test >>
+                      when: $RUN_SHELL
                       parameters:
                         test_suite: "shell"
                         parallel_num: 30
                         e: cubrid-test-shell
+            
+            parameters:
+              run_shell_test:
+                type: boolean
+                default: $RUN_SHELL
+              run_sql_test:
+                type: boolean
+                default: $RUN_SQL
+              run_medium_test:
+                type: boolean
+                default: $RUN_MEDIUM
+              run_plcsql_test:
+                type: boolean
+                default: $RUN_PLCSQL
+              run_all_test:
+                type: boolean
+                default: $RUN_ALL_TEST
+              baseline:
+                type: string
+                default: "$BASELINE"
             EOF
+            
+            # 디버깅을 위해 생성된 구성 파일 출력
+            echo "Generated continue.yml:"
+            cat .circleci/continue.yml
+      
       - continuation/continue:
           configuration_path: .circleci/continue.yml
 
@@ -327,30 +299,9 @@ jobs:
     parallelism: << parameters.parallel_num >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
-      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
-      RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
-      RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
-      RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
-      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
       TEST_SUITE: << parameters.test_suite >>
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
-      - run:
-          name: Skip tests if not enabled
-          command: |
-            if [ "${TEST_SUITE}" = "shell" ] && [ "${RUN_SHELL_TEST}" != "true" ]; then
-              echo "Skipping shell tests because RUN_SHELL_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "sql" ] && [ "${RUN_SQL_TEST}" != "true" ]; then
-              echo "Skipping sql tests because RUN_SQL_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "medium" ] && [ "${RUN_MEDIUM_TEST}" != "true" ]; then
-              echo "Skipping medium tests because RUN_MEDIUM_TEST is false"
-              circleci-agent step halt
-            elif [ "${TEST_SUITE}" = "plcsql" ] && [ "${RUN_PLCSQL_TEST}" != "true" ]; then
-              echo "Skipping plcsql tests because RUN_PLCSQL_TEST is false"
-              circleci-agent step halt
-            fi
       - attach-and-run-tests
 
 # --------------------------------------------------
