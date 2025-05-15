@@ -40,8 +40,8 @@ kv_pair_make (PT_NODE * k, PT_NODE * v)
   kv_pair *p = (kv_pair *) malloc (sizeof (kv_pair));
   if (!p)
     {
-      perror ("malloc");
-      exit (EXIT_FAILURE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
+      return NULL;
     }
   p->key = k;
   p->value = v;
@@ -99,4 +99,3 @@ kv_pair_lookup (const kv_pair * list, const char *key_name)
 }
 
 #endif /* _PARSER_KV_PAIR_H_ */
-
