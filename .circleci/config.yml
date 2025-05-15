@@ -80,16 +80,32 @@ jobs:
                   - build
                   - test_medium:
                       requires: [build]
-                      when: $RUN_MEDIUM
+                      filters:
+                        branches:
+                          only: /.*/
+                      when:
+                        condition: $RUN_MEDIUM
                   - test_sql:
                       requires: [build]
-                      when: $RUN_SQL
+                      filters:
+                        branches:
+                          only: /.*/
+                      when:
+                        condition: $RUN_SQL
                   - test_plcsql:
                       requires: [build]
-                      when: $RUN_PLCSQL
+                      filters:
+                        branches:
+                          only: /.*/
+                      when:
+                        condition: $RUN_PLCSQL
                   - test_shell:
                       requires: [build]
-                      when: $RUN_SHELL
+                      filters:
+                        branches:
+                          only: /.*/
+                      when:
+                        condition: $RUN_SHELL
             
             # 작업 정의
             jobs:
