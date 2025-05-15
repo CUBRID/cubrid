@@ -25,6 +25,7 @@
 %{/*%CODE_REQUIRES_START%*/
 #include "json_table_def.h"
 #include "parser.h"
+#include "parse_vector.h"
 
 /*
  * The default YYLTYPE structure is extended so that locations can hold
@@ -573,6 +574,7 @@ static int g_plcsql_text_pos;
   container_10 c10;
   container_11 c11;
   struct json_table_column_behavior jtcb;
+  kv_pair *kvp;
 }
 
 
@@ -1107,10 +1109,10 @@ static int g_plcsql_text_pos;
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
-%type <c2> opt_vector_index_with_clause
+%type <kvp> opt_vector_index_with_clause
 %type <c2> index_with_item_list
-%type <c2> vector_index_with_item_list
-%type <c2> vector_index_with_item
+%type <kvp> vector_index_with_item_list
+%type <kvp> vector_index_with_item
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
 
@@ -2828,10 +2830,22 @@ create_stmt
 
 			assert(node != NULL);
 
-			/* Initialize vector_index_info (now an embedded structure) */
+
 			node->info.index.is_vector_index = true;
-			node->info.index.vector_index.hnsw_m = 16;                /* Example default value */
-			node->info.index.vector_index.hnsw_ef_construction = 200; /* Example default value */
+
+			kv_pair *kvp = $13; // opt_vector_index_with_clause
+			if (kvp) 
+			  {
+			    PT_NODE *m_node = kv_pair_lookup(kvp, "m");
+
+			    int m = m_node ? m_node->info.value.data_value.i : 30;
+
+			    node->info.index.vector_index.hnsw_m = m;
+			    PT_NODE *ef_construction_node = kv_pair_lookup(kvp, "ef_construction");
+
+			    int ef_con = ef_construction_node ? ef_construction_node->info.value.data_value.i : 100;
+			    node->info.index.vector_index.hnsw_ef_construction = ef_con;
+			  }
 
 			bool opt_unique = false; // original $5
 
@@ -22909,9 +22923,10 @@ opt_vector_index_with_clause
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
             // SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
-            $$ = ctn; }
+	    $$ = NULL;
+	  DBG_PRINT}
         | WITH '(' vector_index_with_item_list ')'
-          {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
+          {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH '(' vector_index_with_item_list ')' );
              $$ = $3;
           DBG_PRINT}
         ;
@@ -22919,31 +22934,20 @@ opt_vector_index_with_clause
 vector_index_with_item_list
 	: vector_index_with_item
 	  {
-	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item);
-	    container_2 ctn;
-	    // init_container_2(&ctn);
-	    // add_to_container_2(&ctn, $1);
-	    $$ = ctn;
+	    $$ = $1;
 	  }
 	| vector_index_with_item_list ',' vector_index_with_item
 	  {
 	    DBG_TRACE_GRAMMAR(vector_index_with_item_list, vector_index_with_item_list ',' vector_index_with_item);
-	    // add_to_container_2(&($1), $3);
-	    // $$ = $1;
-	    container_2 cnt2;
-	    $$ = (container_2)cnt2;
+	    $$ = kv_pair_push_back($1, $3);
 	  }
 	;
 
 vector_index_with_item
 	: identifier '=' unsigned_integer
 	  {
-	    DBG_TRACE_GRAMMAR(vector_index_with_item, IDENTIFIER '=' NUMBER);
-	    // Create a structure to hold the option and its value
-	    // option_item *opt = create_option_item($1, $3);
-	    //$$ = opt;
-	    container_2 cnt2;
-	    $$ = (container_2)cnt2;
+	    DBG_TRACE_GRAMMAR(vector_index_with_item, identifier '=' number);
+	    $$ = kv_pair_make($1, $3);
 	  }
 	;
 
