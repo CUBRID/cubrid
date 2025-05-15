@@ -25,7 +25,7 @@
 %{/*%CODE_REQUIRES_START%*/
 #include "json_table_def.h"
 #include "parser.h"
-#include "parse_vector.h"
+#include "parser_kv_pair.h"
 
 /*
  * The default YYLTYPE structure is extended so that locations can hold

@@ -18,13 +18,11 @@
 
 
 /*
- * parse_vector.h
+ * parser_kv_pair.h
  */
 
-#ifndef _PARSE_VECTOR_H_
-#define _PARSE_VECTOR_H_
-
-#ident "$Id$"
+#ifndef _PARSER_KV_PAIR_H_
+#define _PARSER_KV_PAIR_H_
 
 #include "parse_tree.h"
 
@@ -91,15 +89,14 @@ kv_pair_lookup (const kv_pair * list, const char *key_name)
     {
 
       PT_NODE *key = cur->key;
-      printf ("%s\n", cur->key->info.name.original);
 
       if (cur->key && cur->key->node_type == PT_NAME && strcasecmp (cur->key->info.name.original, key_name) == 0)
 	{
-	  printf ("found %s\n", cur->key->info.name.original);
 	  return cur->value;
 	}
     }
   return NULL;
 }
 
-#endif /* _PARSE_VECTOR_H_ */
+#endif /* _PARSER_KV_PAIR_H_ */
+
