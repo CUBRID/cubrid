@@ -8,7 +8,7 @@ orbs:
 parameters:
   baseline:
     type: string
-    default: ""
+    default: "none"
   run_shell_test:
     type: boolean
     default: false
@@ -17,13 +17,13 @@ parameters:
     default: false
   run_medium_test:
     type: boolean
-    default: true
+    default: false
   run_plcsql_test:
     type: boolean
     default: false
   run_all_test:
     type: boolean
-    default: false
+    default: true
 
 # --------------------------------------------------
 # Jobs
@@ -78,14 +78,129 @@ jobs:
               baseline:
                 type: string
                 default: "$BASELINE"
-                
-            # 작업 정의
-            jobs:
-              # 빌드 작업 - CUBRID 소스 코드 컴파일
-              build:
+            
+            # --------------------------------------------------
+            # 1. Reusable commands
+            # --------------------------------------------------
+            commands:
+              attach-and-run-tests:
+                description: "Attach workspace and run test scripts"
+                steps:
+                  - attach_workspace:
+                      at: .
+                  - run:
+                      name: Test
+                      shell: /bin/bash
+                      no_output_timeout: 30m
+                      command: |
+                        # Limit core files
+                        ulimit -c 1
+
+                        # Check out testcases and testtools (uses custom entrypoint script)
+                        /entrypoint.sh checkout
+                        
+                        case "\$TEST_SUITE" in
+                          none)
+                            echo "TEST_SUITE is none"
+                            exit 1
+                            ;;
+                          plcsql)
+                            TEST_SUITE="sql"
+                            base_dir="cubrid-testcases"
+                            glob_path="\$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
+                            ;;
+                          sql)
+                            base_dir="cubrid-testcases"
+                            rm -rf \$base_dir/sql/_05_plcsql \$base_dir/sql/_35_fig_cake/plcsql
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            ;;
+                          shell)
+                            base_dir="cubrid-testcases-private-ex"
+                            rm -rf \$base_dir/\$TEST_SUITE/_25_unstable
+                            glob_path="\$(find \$base_dir/\$TEST_SUITE/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh\$')"
+                            ;;
+                          *)
+                            base_dir="cubrid-testcases"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            ;;
+                        esac
+
+                        echo "Selecting from all tests..."
+                        circleci tests glob \$glob_path | sed "s|^\$base_dir/||" | circleci tests split | tee tc.list
+                 
+                        # Remove tests that are not in the list
+                        if [ "\$TEST_SUITE" = "shell" ]; then
+                          cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
+                          find \$base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
+                        else
+                          find \$base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
+                        fi
+
+                        # Run the tests
+                        if [ -s tc.list ]; then
+                          /entrypoint.sh test
+                        else
+                          echo "No tests to run"
+                          circleci-agent step halt
+                        fi
+                  - run:
+                      name: Collect Logs
+                      command: |
+                        mkdir -p /tmp/logs
+                        cp -f /tmp/tests/* /tmp/logs || true
+                        if [ "\$TEST_SUITE" = "shell" ]; then
+                          mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
+                        else
+                          mv -f CUBRID/log /tmp/logs/cubrid_log || true
+                          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
+                        fi
+                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
+                        find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list || true
+                      when: on_fail
+                  - store_test_results:
+                      path: /tmp/tests
+                      when: always
+                  - store_artifacts:
+                      path: /tmp/logs
+                      when: on_fail
+
+              collect-build-logs:
+                description: "Collect build logs and store them"
+                steps:
+                  - run:
+                      name: Store Build Logs
+                      command: |
+                        mkdir -p /tmp/build_logs
+                        mv -f build.log /tmp/build_logs || true
+                  - run:
+                      name: Store Commits
+                      command: |
+                        mkdir -p /tmp/build_logs
+                        git log | head -n 1000 > commits.log || true
+                        mv -f commits.log /tmp/build_logs
+                  - store_artifacts:
+                      path: /tmp/build_logs
+                      
+            # --------------------------------------------------
+            # 2. Reusable executors
+            # --------------------------------------------------
+            executors:
+              cubrid-default:
                 docker:
                   - image: cubridci/cubridci:develop
                 working_directory: /home
+
+              cubrid-test-shell:
+                docker:
+                  - image: cubridci/cubridci:test_shell
+                working_directory: /home
+                
+            # --------------------------------------------------
+            # 3. Jobs
+            # --------------------------------------------------
+            jobs:
+              build:
+                executor: cubrid-default
                 resource_class: xlarge
                 environment:
                   MAKEFLAGS: -j 8
@@ -100,266 +215,59 @@ jobs:
                       name: Build
                       command: |
                         scl enable devtoolset-8 -- /entrypoint.sh build
-                  - run:
-                      name: Store Build Logs
-                      command: |
-                        mkdir -p /tmp/build_logs
-                        mv -f build.log /tmp/build_logs || true
-                  - run:
-                      name: Store Commits
-                      command: |
-                        mkdir -p /tmp/build_logs
-                        git log | head -n 1000 > commits.log || true
-                        mv -f commits.log /tmp/build_logs
-                  - store_artifacts:
-                      path: /tmp/build_logs
+                  - collect-build-logs
                   - persist_to_workspace:
                       root: .
                       paths:
                         - CUBRID
               
-              # 테스트 작업들 - 각 테스트 유형별로 별도 작업 정의
               test_medium:
-                docker:
-                  - image: cubridci/cubridci:develop
-                working_directory: /home
+                executor: cubrid-default
                 resource_class: medium
                 parallelism: 1
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "medium"
-                  GITHUB_TOKEN: $GHI_TOKEN
+                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - attach_workspace:
-                      at: .
-                  - run:
-                      name: Test
-                      shell: /bin/bash
-                      no_output_timeout: 20m
-                      command: |
-                        # Limit core files
-                        ulimit -c 1
-
-                        # Check out testcases and testtools (uses custom entrypoint script)
-                        /entrypoint.sh checkout
-                        
-                        # 테스트 설정
-                        base_dir="cubrid-testcases"
-                        glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
-
-                        # 테스트 분할 (병렬 실행)
-                        echo "Selecting from all tests..."
-                        circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
-
-                        # 불필요한 테스트 제거
-                        find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
-
-                        # 테스트 실행
-                        if [ -s tc.list ]; then
-                          /entrypoint.sh test
-                        else
-                          echo "No tests to run"
-                          circleci-agent step halt
-                        fi
-                  - run:
-                      name: Collect Logs
-                      command: |
-                        mkdir -p /tmp/logs
-                        cp -f /tmp/tests/* /tmp/logs || true
-                        mv -f CUBRID/log /tmp/logs/cubrid_log || true
-                        mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
-                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
-                        find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list || true
-                      when: on_fail
-                  - store_test_results:
-                      path: /tmp/tests
-                      when: always
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
+                  - attach-and-run-tests
                       
               test_sql:
-                docker:
-                  - image: cubridci/cubridci:develop
-                working_directory: /home
+                executor: cubrid-default
                 resource_class: medium
                 parallelism: 8
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "sql"
-                  GITHUB_TOKEN: $GHI_TOKEN
+                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - attach_workspace:
-                      at: .
-                  - run:
-                      name: Test
-                      shell: /bin/bash
-                      no_output_timeout: 20m
-                      command: |
-                        # Limit core files
-                        ulimit -c 1
-
-                        # Check out testcases and testtools (uses custom entrypoint script)
-                        /entrypoint.sh checkout
-                        
-                        # 테스트 설정
-                        base_dir="cubrid-testcases"
-                        rm -rf $base_dir/sql/_05_plcsql $base_dir/sql/_35_fig_cake/plcsql
-                        glob_path="$base_dir/$TEST_SUITE/_*/**/*.sql"
-
-                        # 테스트 분할 (병렬 실행)
-                        echo "Selecting from all tests..."
-                        circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
-
-                        # 불필요한 테스트 제거
-                        find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
-
-                        # 테스트 실행
-                        if [ -s tc.list ]; then
-                          /entrypoint.sh test
-                        else
-                          echo "No tests to run"
-                          circleci-agent step halt
-                        fi
-                  - run:
-                      name: Collect Logs
-                      command: |
-                        mkdir -p /tmp/logs
-                        cp -f /tmp/tests/* /tmp/logs || true
-                        mv -f CUBRID/log /tmp/logs/cubrid_log || true
-                        mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
-                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
-                        find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list || true
-                      when: on_fail
-                  - store_test_results:
-                      path: /tmp/tests
-                      when: always
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
+                  - attach-and-run-tests
                       
               test_plcsql:
-                docker:
-                  - image: cubridci/cubridci:develop
-                working_directory: /home
+                executor: cubrid-default
                 resource_class: medium
                 parallelism: 1
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
-                  TEST_SUITE: "sql"
-                  GITHUB_TOKEN: $GHI_TOKEN
+                  TEST_SUITE: "plcsql"
+                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - attach_workspace:
-                      at: .
-                  - run:
-                      name: Test
-                      shell: /bin/bash
-                      no_output_timeout: 20m
-                      command: |
-                        # Limit core files
-                        ulimit -c 1
-
-                        # Check out testcases and testtools (uses custom entrypoint script)
-                        /entrypoint.sh checkout
-                        
-                        # 테스트 설정
-                        base_dir="cubrid-testcases"
-                        glob_path="$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
-
-                        # 테스트 분할 (병렬 실행)
-                        echo "Selecting from all tests..."
-                        circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
-
-                        # 불필요한 테스트 제거
-                        find $base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
-
-                        # 테스트 실행
-                        if [ -s tc.list ]; then
-                          /entrypoint.sh test
-                        else
-                          echo "No tests to run"
-                          circleci-agent step halt
-                        fi
-                  - run:
-                      name: Collect Logs
-                      command: |
-                        mkdir -p /tmp/logs
-                        cp -f /tmp/tests/* /tmp/logs || true
-                        mv -f CUBRID/log /tmp/logs/cubrid_log || true
-                        mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
-                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
-                        find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list || true
-                      when: on_fail
-                  - store_test_results:
-                      path: /tmp/tests
-                      when: always
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
+                  - attach-and-run-tests
                       
               test_shell:
-                docker:
-                  - image: cubridci/cubridci:test_shell
-                working_directory: /home
-                resource_class: medium
+                executor: cubrid-test-shell
+                resource_class: large
                 parallelism: 30
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
-                  GITHUB_TOKEN: $GHI_TOKEN
+                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - attach_workspace:
-                      at: .
-                  - run:
-                      name: Test
-                      shell: /bin/bash
-                      no_output_timeout: 20m
-                      command: |
-                        # Limit core files
-                        ulimit -c 1
-
-                        # Check out testcases and testtools (uses custom entrypoint script)
-                        /entrypoint.sh checkout
-                        
-                        # 테스트 설정
-                        base_dir="cubrid-testcases-private-ex"
-                        rm -rf $base_dir/$TEST_SUITE/_25_unstable
-                        glob_path="$(find $base_dir/$TEST_SUITE/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$')"
-
-                        # 테스트 분할 (병렬 실행)
-                        echo "Selecting from all tests..."
-                        circleci tests glob $glob_path | sed "s|^$base_dir/||" | circleci tests split | tee tc.list
-
-                        # 불필요한 테스트 제거
-                        cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
-                        find $base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
-
-                        # 테스트 실행
-                        if [ -s tc.list ]; then
-                          /entrypoint.sh test
-                        else
-                          echo "No tests to run"
-                          circleci-agent step halt
-                        fi
-                  - run:
-                      name: Collect Logs
-                      command: |
-                        mkdir -p /tmp/logs
-                        cp -f /tmp/tests/* /tmp/logs || true
-                        mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
-                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
-                        find /home -name "tc.list" | xargs -I{} mv -f {} /tmp/logs/tc.list || true
-                      when: on_fail
-                  - store_test_results:
-                      path: /tmp/tests
-                      when: always
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
+                  - attach-and-run-tests
             
             # 워크플로우 정의 - 시작 부분
             workflows:
-              build_and_test:
+              build_test:
                 jobs:
                   - build
             EOF
