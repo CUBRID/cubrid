@@ -100,6 +100,13 @@
          support CREATE SCHEMA, SET SCHEMA, and associated statements.
  */
 
+namespace hnsw
+{
+  extern int m;
+  extern int ef_construction;
+  extern enum DB_VECTOR_DISTANCE_METRIC metric;
+};
+
 typedef struct schema_def
 {
 
@@ -10823,6 +10830,17 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg.c_str ());
 	      return error;
 	    }
+
+#if !defined(NDEBUG)
+	  {
+	    auto m = hnsw::m;
+	    auto ef_construction = hnsw::ef_construction;
+	    auto metric = hnsw::metric;
+
+	    vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
+	  }
+#endif
+
 	  error = hnsw_add_index (index, domain->precision, 32, 100, faiss::METRIC_L2);
 	}
       else
@@ -14807,6 +14825,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
     case DB_CONSTRAINT_VECTOR_INDEX:
+
       DB_AUTH auth;
       bool is_secondary_index;
 
