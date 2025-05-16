@@ -3676,6 +3676,7 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			     int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest)
 {
   VECTOR_INDEX_SCAN_ID *visid;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
   int k;
 
   scan_id->type = S_VECTOR_INDEX_SCAN;
@@ -3694,6 +3695,13 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->hfid = *hfid;
   // visid->scan_cache = NULL;
   visid->cls_oid = *cls_oid;
+
+  /* scan predicates */
+  scan_init_scan_pred (&visid->scan_pred, regu_list_pred, pr,
+		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+
+  /* attribute information from predicates */
+  scan_init_scan_attrs (&visid->pred_attrs, num_attrs_pred, attrids_pred, cache_pred);
 
   /* attribute information from other than predicates */
   scan_init_scan_attrs (&visid->rest_attrs, num_attrs_rest, attrids_rest, cache_rest);
@@ -4305,12 +4313,21 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (visidp->scanattr_inited != true)
 	{
+	  visidp->pred_attrs.attr_cache->num_values = -1;
+	  ret =
+	    heap_attrinfo_start (thread_p, &visidp->cls_oid, visidp->pred_attrs.num_attrs, visidp->pred_attrs.attr_ids,
+				 visidp->pred_attrs.attr_cache);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	  visidp->rest_attrs.attr_cache->num_values = -1;
 	  ret =
 	    heap_attrinfo_start (thread_p, &visidp->cls_oid, visidp->rest_attrs.num_attrs, visidp->rest_attrs.attr_ids,
 				 visidp->rest_attrs.attr_cache);
 	  if (ret != NO_ERROR)
 	    {
+	      heap_attrinfo_end (thread_p, visidp->pred_attrs.attr_cache);
 	      goto exit_on_error;
 	    }
 	  visidp->scanattr_inited = true;
@@ -6259,74 +6276,114 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   VECTOR_INDEX_SCAN_ID *visid = &scan_id->s.visid;
   RECDES recdes = RECDES_INITIALIZER;
+  DB_LOGICAL ev_res;
 
-  visid->curr_oidno++;
-
-  if (visid->curr_oidno >= visid->oid_cnt)
+  while (true)
     {
-      scan_id->position = S_AFTER;
-      return S_END;
-    }
+      visid->curr_oidno++;
 
-  // validate the oid
-  if (HEAP_ISVALID_OID (thread_p, &visid->oidp[visid->curr_oidno]) == DISK_INVALID)
-    {
-      return S_END;
-    }
-
-  if (visid->curr_oidno < visid->oid_cnt)
-    {
-      scan_id->qualification = QPROC_QUALIFIED;
-
-      SCAN_CODE sp_scan =
-	heap_get_visible_version (thread_p, &visid->oidp[visid->curr_oidno], NULL, &recdes, &visid->scan_cache,
-				  scan_id->fixed,
-				  NULL_CHN);
-      if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
+      if (visid->curr_oidno >= visid->oid_cnt)
 	{
-	  return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
-	}
-      else if (sp_scan == S_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return sp_scan;
-	}
-      else
-	{
-	  assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+	  scan_id->position = S_AFTER;
+	  return S_END;
 	}
 
-      LOCK lock = NULL_LOCK;
-
-      if (lock_object (thread_p, &visid->oidp[visid->curr_oidno], &visid->cls_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
+      // validate the oid
+      if (HEAP_ISVALID_OID (thread_p, &visid->oidp[visid->curr_oidno]) == DISK_INVALID)
 	{
-	  return S_ERROR;
+	  return S_END;
 	}
 
-      if (visid->rest_regu_list)
+      if (visid->curr_oidno < visid->oid_cnt)
 	{
-	  /* read the rest of the values from the heap into the attribute cache */
+	  scan_id->qualification = QPROC_QUALIFIED;
+
+	  SCAN_CODE sp_scan =
+	    heap_get_visible_version (thread_p, &visid->oidp[visid->curr_oidno], NULL, &recdes, &visid->scan_cache,
+				      scan_id->fixed,
+				      NULL_CHN);
+	  if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
+	    {
+	      return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	    }
+	  else if (sp_scan == S_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return sp_scan;
+	    }
+	  else
+	    {
+	      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+	    }
+
+#if 0
+	  LOCK lock = NULL_LOCK;
+
+	  if (lock_object (thread_p, &visid->oidp[visid->curr_oidno], &visid->cls_oid, lock, LK_UNCOND_LOCK) !=
+	      LK_GRANTED)
+	    {
+	      return S_ERROR;
+	    }
+#endif
+
 	  if (heap_attrinfo_read_dbvalues
-	      (thread_p, &visid->oidp[visid->curr_oidno], &recdes, visid->rest_attrs.attr_cache) != NO_ERROR)
+	      (thread_p, &visid->oidp[visid->curr_oidno], &recdes, visid->pred_attrs.attr_cache) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
 
-	  /* fetch the rest of the values from the object instance */
+	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
 	      if (fetch_val_list
-		  (thread_p, visid->rest_regu_list, scan_id->vd, &visid->cls_oid, &visid->oidp[visid->curr_oidno], NULL,
-		   PEEK) != NO_ERROR)
+		  (thread_p, visid->scan_pred.regu_list, scan_id->vd, &visid->cls_oid, &visid->oidp[visid->curr_oidno],
+		   NULL, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
 	    }
+
+	  ev_res = V_TRUE;
+	  if (visid->scan_pred.pr_eval_fnc && visid->scan_pred.pred_expr)
+	    {
+	      ev_res = (*visid->scan_pred.pr_eval_fnc) (thread_p, visid->scan_pred.pred_expr, scan_id->vd, NULL);
+	      if (ev_res == V_ERROR)
+		{
+		  return S_ERROR;
+		}
+	    }
+	  if (ev_res != V_TRUE)
+	    {
+	      continue;
+	    }
+
+	  if (visid->rest_regu_list)
+	    {
+	      /* read the rest of the values from the heap into the attribute cache */
+	      if (heap_attrinfo_read_dbvalues
+		  (thread_p, &visid->oidp[visid->curr_oidno], &recdes, visid->rest_attrs.attr_cache) != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+
+	      /* fetch the rest of the values from the object instance */
+	      if (scan_id->val_list)
+		{
+		  if (fetch_val_list
+		      (thread_p, visid->rest_regu_list, scan_id->vd, &visid->cls_oid, &visid->oidp[visid->curr_oidno],
+		       NULL, PEEK) != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		}
+	    }
+
+	  break;
 	}
-    }
-  else
-    {
-      scan_id->qualification = QPROC_NOT_QUALIFIED;
+      else
+	{
+	  scan_id->qualification = QPROC_NOT_QUALIFIED;
+	}
     }
 
   return S_SUCCESS;

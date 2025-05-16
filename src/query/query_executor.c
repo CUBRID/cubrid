@@ -1976,6 +1976,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  visidp = &p->s_id.s.visid;
 	  if (visidp->scanattr_inited)
 	    {
+	      heap_attrinfo_end (thread_p, visidp->pred_attrs.attr_cache);
 	      heap_attrinfo_end (thread_p, visidp->rest_attrs.attr_cache);
 	      visidp->scanattr_inited = false;
 	    }
