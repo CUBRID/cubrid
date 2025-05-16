@@ -10,20 +10,20 @@ parameters:
     type: string
     default: "none"
   run_shell_test:
-    type: boolean
-    default: false
+    type: string
+    default: "false"
   run_sql_test:
-    type: boolean
-    default: false
+    type: string
+    default: "false"
   run_medium_test:
-    type: boolean
-    default: false
+    type: string
+    default: "false"
   run_plcsql_test:
-    type: boolean
-    default: false
+    type: string
+    default: "false"
   run_all_test:
-    type: boolean
-    default: false
+    type: string
+    default: "false"
 
 # --------------------------------------------------
 # Jobs
