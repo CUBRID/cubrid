@@ -21,18 +21,16 @@ jobs:
           
           # Get comment
           COMMENT="${{ github.event.comment.body }}"
-          echo "Comment: $COMMENT"
+          echo "[debug] Comment: $COMMENT"
           
           # Define test types
           TEST_TYPES="shell sql medium plcsql"
-          
-          # Create JSON array for test parameters
           TEST_JSON="{"
           
           # Check for 'all' keyword or parse individual test types
           if [[ "$COMMENT" == *"all"* ]]; then
             # Enable all tests
-            echo "Running all tests"
+            echo "[debug] Running all tests"
             for test in $TEST_TYPES; do
               TEST_JSON+="\"run_${test}_test\":true,"
             done
@@ -41,7 +39,7 @@ jobs:
             # Check each test type
             for test in $TEST_TYPES; do
               if [[ "$COMMENT" == *"$test"* ]]; then
-                echo "Will run $test test"
+                echo "[debug] Will run $test test"
                 TEST_JSON+="\"run_${test}_test\":true,"
               fi
             done
@@ -53,10 +51,10 @@ jobs:
           
           # Add baseline to JSON and remove trailing comma if present
           if [ -n "$BASELINE" ]; then
-            echo "Baseline Version: $BASELINE"
+            echo "[debug] Baseline Version: $BASELINE"
             TEST_JSON+="\"baseline\":\"$BASELINE\"}"
           else
-            echo "No Baseline Version provided. Will use latest from DB."
+            echo "[debug] No Baseline Version provided. Will use latest from DB."
             TEST_JSON+="\"baseline\":\"none\"}"
           fi
           TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
@@ -65,7 +63,7 @@ jobs:
           echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
           
           # For debugging
-          echo "Test Parameters: $TEST_JSON"
+          echo "[debug] Test Parameters: $TEST_JSON"
 
       - name: Trigger CircleCI Test
         env:
