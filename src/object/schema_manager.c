@@ -10831,17 +10831,35 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	      return error;
 	    }
 
-#if !defined(NDEBUG)
-	  {
-	    auto m = hnsw::m;
-	    auto ef_construction = hnsw::ef_construction;
-	    auto metric = hnsw::metric;
+	  auto m = hnsw::m;
+	  auto ef_construction = hnsw::ef_construction;
+	  auto metric = hnsw::metric;
 
-	    vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
-	  }
-#endif
+	  vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
 
-	  error = hnsw_add_index (index, domain->precision, 32, 100, faiss::METRIC_L2);
+	  faiss::MetricType faiss_metric;
+	  switch (metric)
+	    {
+	    case METRIC_UNKNOWN:
+	    case METRIC_COSINE:
+	    case METRIC_DOT:
+	      // TODO (CUBVEC): Faiss does not support cosine distance directly?
+	      faiss_metric = faiss::METRIC_INNER_PRODUCT;
+	      break;
+
+	    case METRIC_EUCLIDEAN:
+	      faiss_metric = faiss::METRIC_L2;
+	      break;
+
+	    case METRIC_MANHATTAN:
+	      faiss_metric = faiss::METRIC_L1;
+	      break;
+
+	    default:
+	      ASSERT_CUBVEC (false);
+	    }
+
+	  error = hnsw_add_index (index, domain->precision, m, ef_construction, faiss_metric);
 	}
       else
 	{
