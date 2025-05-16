@@ -12,13 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Get Branch Name and Test Type
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH_NAME=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "${{ github.event.issue.pull_request.url }}" | jq -r .head.ref)
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-          
+        run: |         
           # Get comment
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
@@ -68,7 +62,7 @@ jobs:
       - name: Trigger CircleCI Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
-          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+          BRANCH_NAME: pull/${{ github.event.issue.number }}/head
           TEST_JSON: ${{ env.TEST_JSON }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
