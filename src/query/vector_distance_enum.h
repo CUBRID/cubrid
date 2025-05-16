@@ -44,23 +44,23 @@ typedef struct
 } metric_entry;
 
 static const metric_entry metric_table[] = {
-  { "cosine", METRIC_COSINE },
-  { "dot", METRIC_DOT },
-  { "euclidean", METRIC_EUCLIDEAN },
-  { "manhattan", METRIC_MANHATTAN },
-  { NULL, METRIC_UNKNOWN } // sentinel
+  {"cosine", METRIC_COSINE},
+  {"dot", METRIC_DOT},
+  {"euclidean", METRIC_EUCLIDEAN},
+  {"manhattan", METRIC_MANHATTAN},
+  {NULL, METRIC_UNKNOWN}	// sentinel
 };
 
 static enum DB_VECTOR_DISTANCE_METRIC
-string_to_distance_metric (const char *name)
+string_to_vector_distance_metric (const char *name)
 {
   if (name == NULL)
     return METRIC_UNKNOWN;
 
   for (int i = 0; metric_table[i].name != NULL; ++i)
     {
-      if (strcasecmp(name, metric_table[i].name) == 0)
-        return metric_table[i].metric;
+      if (strcasecmp (name, metric_table[i].name) == 0)
+	return metric_table[i].metric;
     }
 
   return METRIC_UNKNOWN;
