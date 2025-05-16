@@ -77,6 +77,7 @@ jobs:
           
           echo "[debug] DATA: branch=$BRANCH_NAME, parameters=$TEST_JSON"
           echo "[debug] REPO_NAME: $REPO_NAME"
+          echo "[debug] CIRCLECI_TOKEN: ${{ github.repository_owner }}"
           # Trigger CircleCI pipeline
           curl --request POST \
             --url https://circleci.com/api/v2/project/gh/$REPO_NAME/pipeline \
