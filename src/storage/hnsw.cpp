@@ -24,6 +24,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
+#include <fstream>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -71,9 +72,18 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
-      assert (false);
-      return ER_FAILED;
+      std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
+      if (std::ifstream (filename))
+	{
+	  // Remove the file
+	  std::remove (filename.c_str());
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
   else
     {
@@ -95,26 +105,32 @@ int hnsw_print_index_info (BTID *btid)
     }
 
   int hnsw_id = btid->root_pageid;
-  auto it = hnsw_index_map.find (hnsw_id);
 
-  if (it == hnsw_index_map.end())
+  if (hnsw_index_map.find (hnsw_id) == hnsw_index_map.end())
     {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+      if (load_hnsw_index_from_file (hnsw_id) != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, "Failed to load HNSW Index with ID %d", hnsw_id);
+	  return ER_FAILED;
+	}
+    }
+
+  auto it = hnsw_index_map.find (hnsw_id);
+  if (it == hnsw_index_map.end() || it->second == nullptr)
+    {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index missing or null after load for ID %d", hnsw_id);
       return ER_FAILED;
     }
 
-  else
-    {
-      std::unique_ptr<faiss::IndexIDMap> &index = it->second;
-      auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
+  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
 
-      er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
-      er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
-      er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
-      er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
-      er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
-    }
+  er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
+  er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
+  er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
+  er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
+  er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
+  er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
 
   return NO_ERROR;
 }
@@ -134,19 +150,91 @@ int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
   fvec = db_value_get_stdvector_float (key_dbvalue);
   hnsw_id = btid->root_pageid;
 
-  auto it = hnsw_index_map.find (hnsw_id);
-
-  if (it == hnsw_index_map.end())
+  if (hnsw_index_map.find (hnsw_id) == hnsw_index_map.end())
     {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
-      assert (false);
+      if (load_hnsw_index_from_file (hnsw_id) != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, "Failed to load HNSW Index with ID %d", hnsw_id);
+	  return ER_FAILED;
+	}
+    }
+
+  auto it = hnsw_index_map.find (hnsw_id);
+  if (it == hnsw_index_map.end() || it->second == nullptr)
+    {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index missing or null after load for ID %d", hnsw_id);
       return ER_FAILED;
     }
 
-  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+  try
+    {
+      std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+      index->add_with_ids (1, fvec.data(), &encoded_oid);
 
-  index->add_with_ids (1, fvec.data(), &encoded_oid);
-  er_log_debug (ARG_FILE_LINE, "Added element with ID %lld to HNSW Index.", static_cast<long long> (encoded_oid));
+      er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
+		    static_cast<long long> (encoded_oid), hnsw_id);
+    }
+  catch (const faiss::FaissException &e)
+    {
+      er_log_debug (ARG_FILE_LINE, "FAISS exception during add_with_ids: %s", e.what());
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+void dump_all_hnsw_indices_to_files ()
+{
+  for (const auto &pair : hnsw_index_map)
+    {
+      int hnsw_id = pair.first;
+      auto &index = pair.second;
+      std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
+      faiss::write_index (index.get(), filename.c_str());
+      er_log_debug (ARG_FILE_LINE, "Dumped HNSW Index to file %s", filename.c_str());
+    }
+}
+
+int load_hnsw_index_from_file (int hnsw_id)
+{
+  std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
+
+  // Check if already loaded
+  if (hnsw_index_map.find (hnsw_id) != hnsw_index_map.end())
+    {
+      return NO_ERROR;
+    }
+
+  try
+    {
+      if (std::ifstream (filename)) // File exists
+	{
+	  faiss::Index *raw_index = faiss::read_index (filename.c_str());
+
+	  // Ensure it is IndexIDMap
+	  faiss::IndexIDMap *idmap = dynamic_cast<faiss::IndexIDMap *> (raw_index);
+	  if (idmap == nullptr)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "Invalid index format in file %s", filename.c_str());
+	      delete raw_index;
+	      return ER_FAILED;
+	    }
+
+	  hnsw_index_map[hnsw_id] = std::unique_ptr<faiss::IndexIDMap> (idmap);
+	  er_log_debug (ARG_FILE_LINE, "Loaded HNSW Index ID %d from file %s", hnsw_id, filename.c_str());
+	}
+      else
+	{
+	  assert (false);
+	  er_log_debug (ARG_FILE_LINE, "Dump file not found for HNSW Index ID %d", hnsw_id);
+	  return ER_FAILED;
+	}
+    }
+  catch (const faiss::FaissException &e)
+    {
+      er_log_debug (ARG_FILE_LINE, "Failed to load/create HNSW Index %d: %s", hnsw_id, e.what());
+      return ER_FAILED;
+    }
 
   return NO_ERROR;
 }
