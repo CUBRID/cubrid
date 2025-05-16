@@ -3236,6 +3236,12 @@ do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
 
+  // TODO (CUBVEC): pass these values to create_vector_index
+  // auto m = statement->info.index.vector_index.hnsw_m;
+  // auto efcon = statement->info.index.vector_index.hnsw_ef_construction;
+  // auto metric = statement->info.index.vector_index.metric;
+  // printf("m, efcon, metric: %d, %d, %d\n", m, efcon, metric);
+
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);
   return error;

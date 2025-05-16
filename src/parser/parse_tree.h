@@ -43,6 +43,8 @@
 #include "system_parameter.h"
 #include "hide_password.h"
 
+#include "vector_distance_enum.h"
+
 // forward definitions
 struct json_t;
 
@@ -2155,6 +2157,7 @@ typedef struct pt_vector_index_info
 {
   int hnsw_m;
   int hnsw_ef_construction;
+  enum DB_VECTOR_DISTANCE_METRIC metric;
 } PT_VECTOR_INDEX_INFO;
 
 /* CREATE/DROP INDEX INFO */

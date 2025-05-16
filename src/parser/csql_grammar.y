@@ -685,7 +685,7 @@ static int g_plcsql_text_pos;
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
-%type <node> vector_index_column_with_metric
+%type <c2> vector_index_column_with_metric
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -2885,7 +2885,13 @@ create_stmt
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
 
-			    col = $11;
+			    col = CONTAINER_AT_0 ($11);
+			    PT_NODE *metric_node = CONTAINER_AT_1 ($11);
+
+			    const char* metric_name = metric_node->info.name.original;
+			    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+			    node->info.index.vector_index.metric = metric;
+
 			    if (node->info.index.unique)
 			      {
 			        for (temp = col; temp != NULL; temp = temp->next)
@@ -5258,7 +5264,9 @@ index_column_name_list
 vector_index_column_with_metric
 	: '(' sort_spec identifier ')'
 	    {{
-	       $$ = $2;
+	       container_2 cnt2;
+	       SET_CONTAINER_2(cnt2, $2, $3);
+	       $$ = cnt2;
 	    }}
 	// TODO: : '(' sort_spec vector_distance_metric ')'
 
