@@ -568,7 +568,7 @@ namespace parallel_heap_scan
 	|| XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
       {
 	result = CHECK_RESULT::CANNOT_PARALLEL;
-	setter.set (xasl, CHECK_RESULT::CANNOT_PARALLEL);
+	setter.set_cannot_parallel_recursive (xasl);
       }
     CHECK_RESULT aptr_result = CHECK_RESULT::NONE;
     for (XASL_NODE *xaslp = xasl->aptr_list; xaslp; xaslp = xaslp->next)

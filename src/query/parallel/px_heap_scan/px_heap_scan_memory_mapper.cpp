@@ -563,6 +563,9 @@ namespace parallel_heap_scan
     scan_id = (SCAN_ID *) malloc (sizeof (SCAN_ID));
     memcpy (scan_id, scan_idp, sizeof (SCAN_ID));
     scan_id->type = S_HEAP_SCAN;
+    scan_id->scan_stats.elapsed_scan = {0, 0};
+    scan_id->scan_stats.read_rows = 0;
+    scan_id->scan_stats.qualified_rows = 0;
     HEAP_SCAN_ID *hsid = (HEAP_SCAN_ID *) &scan_id->s.hsid;
     orig_val_descr_ptr = scan_idp->vd;
     scan_id->vd = copy_and_map (scan_idp->vd);

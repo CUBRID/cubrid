@@ -44,6 +44,18 @@ namespace parallel_heap_scan
   {
   }
 
+  void perf_monitor::add_statistics (SCAN_ID *scan_id, std::size_t parallelism)
+  {
+    SCAN_STATS *new_scan_stats;
+    for (std::size_t i = 0; i < parallelism; i++)
+      {
+	new_scan_stats = &scan_id->s.phsid.manager->m_memory_mappers[i]->get_scan_id()->scan_stats;
+	TSC_ADD_TIMEVAL (m_scan_stats[i].elapsed_scan, new_scan_stats->elapsed_scan);
+	m_scan_stats[i].read_rows += new_scan_stats->read_rows;
+	m_scan_stats[i].qualified_rows += new_scan_stats->qualified_rows;
+      }
+  }
+
   void perf_monitor::print_text (FILE *fp, int indent, char *class_name, bool is_list_merge)
   {
     UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();

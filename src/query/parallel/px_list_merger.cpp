@@ -68,6 +68,14 @@ namespace parallel_query
 	    list_id->type_list = tmp_type_list;
 	  }
       }
+    if (m_head_list_id->last_pgptr != NULL)
+      {
+	qfile_close_list (m_thread_p, m_head_list_id);
+      }
+    if (list_id->last_pgptr != NULL)
+      {
+	qfile_close_list (m_thread_p, list_id);
+      }
     /* head last page -> list_id first page (next) */
     PAGE_PTR head_last_pgptr = pgbuf_fix (m_thread_p, &m_head_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 					  PGBUF_UNCONDITIONAL_LATCH);
@@ -85,7 +93,6 @@ namespace parallel_query
     m_head_list_id->tuple_cnt += list_id->tuple_cnt;
     m_head_list_id->page_cnt += list_id->page_cnt;
     m_head_list_id->last_vpid = list_id->last_vpid;
-    m_head_list_id->last_pgptr = list_id->last_pgptr;
     m_head_list_id->last_offset = list_id->last_offset;
     m_head_list_id->lasttpl_len = list_id->lasttpl_len;
     assert (m_head_list_id->query_id == list_id->query_id);
@@ -104,7 +111,18 @@ namespace parallel_query
 
   void list_merger::swap_and_destroy_list_id (THREAD_ENTRY *thread_p, QFILE_LIST_ID **orig_list, QFILE_LIST_ID **new_list)
   {
-    qfile_destroy_list (thread_p, *orig_list);
-    qfile_copy_list_id (*orig_list, *new_list, false);
+    QFILE_LIST_ID *ret;
+    if ((*orig_list) != NULL && (*orig_list)->tuple_cnt != 0)
+      {
+	list_merger merger (thread_p);
+	merger.add_list_id (*orig_list);
+	merger.add_list_id (*new_list);
+	merger.clear();
+      }
+    else
+      {
+	qfile_destroy_list (thread_p, *orig_list);
+	qfile_copy_list_id (*orig_list, *new_list, false);
+      }
   }
 }

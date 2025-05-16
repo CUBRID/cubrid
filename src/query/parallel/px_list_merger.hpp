@@ -39,6 +39,11 @@ namespace parallel_query
       void add_list_id (QFILE_LIST_ID *list_id);
       QFILE_LIST_ID *get_merged_list_id ();
       static void swap_and_destroy_list_id (THREAD_ENTRY *thread_p, QFILE_LIST_ID **orig_list, QFILE_LIST_ID **new_list);
+      inline void clear()
+      {
+	m_head_list_id = nullptr;
+	m_thread_p = nullptr;
+      }
 
     private:
       THREAD_ENTRY *m_thread_p;
