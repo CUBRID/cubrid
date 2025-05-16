@@ -262,10 +262,14 @@ struct hnsw_indx_scan_id
   HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
   OID *curr_oidp;		/* current oid pointer */
 
+#if 0
   int num_attrs;		/* num of attributes of the index key */
   ATTR_ID *attr_ids;		/* attr id array of the index key */
   int *attrs_prefix_length;	/* attr prefix length */
+#endif
 
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  SCAN_ATTRS pred_attrs;	/* attr info from predicates */
   regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
   bool scancache_inited;
