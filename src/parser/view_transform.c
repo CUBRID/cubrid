@@ -5096,7 +5096,8 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
 			       mq_check_inline_cte, &is_inlinable, NULL, NULL);
 
-      if (is_inlinable)
+      /* false subquery cannot be rewritten as inline view */
+      if (is_inlinable && pt_is_query (cte->info.cte.non_recursive_part))
 	{
 	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
@@ -5266,10 +5267,6 @@ mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	      parser_free_node (parser, node->info.spec.cte_name);
 	    }
 
-	  if (cte->info.cte.referenced_count > 0)
-	    {
-	      cte->info.cte.referenced_count--;
-	    }
 	}
       break;
 
