@@ -3718,25 +3718,7 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   fetch_peek_dbval (thread_p, key_ranges[0].key1, vd, NULL, NULL, NULL, &visid->query_dbvalue);
   fetch_peek_dbval (thread_p, key_ranges[0].key2, vd, NULL, NULL, NULL, &visid->k_dbvalue);
 
-  k = db_get_int (visid->k_dbvalue);
-  if (k > 0)
-    {
-      visid->oidp = (OID *) db_private_alloc (thread_p, k * sizeof (OID));
-      visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
-      visid->oid_cnt = k;
-
-      if (hnsw_search_element (indx_info->btid.root_pageid, visid->query_dbvalue, k, visid->oidp, visid->distp) !=
-	  NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-  else
-    {
-      visid->oidp = NULL;
-      visid->distp = NULL;
-      visid->oid_cnt = 0;
-    }
+  visid->hnsw_id = indx_info->btid.root_pageid;
 
 exit_on_error:
 
@@ -6277,6 +6259,28 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   VECTOR_INDEX_SCAN_ID *visid = &scan_id->s.visid;
   RECDES recdes = RECDES_INITIALIZER;
   DB_LOGICAL ev_res;
+
+  if (visid->oidp == NULL)
+    {
+      int k = db_get_int (visid->k_dbvalue);
+      if (k > 0)
+	{
+	  visid->oidp = (OID *) db_private_alloc (thread_p, k * sizeof (OID));
+	  visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
+	  visid->oid_cnt = k;
+
+	  if (hnsw_search_element (visid->hnsw_id, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+      else
+	{
+	  visid->oidp = NULL;
+	  visid->distp = NULL;
+	  visid->oid_cnt = 0;
+	}
+    }
 
   while (true)
     {
