@@ -133,7 +133,12 @@ jobs:
                         fi
 
                         echo "[debug] Run the tests"
-                        [ -s tc.list ] && /entrypoint.sh test || circleci-agent step halt
+                        if [ -s tc.list ]; then
+                          /entrypoint.sh test
+                        else
+                          echo "[debug]No tests to run"
+                          circleci-agent step halt
+                        fi
                   - run:
                       name: Collect Logs
                       when: on_fail
