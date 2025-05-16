@@ -395,7 +395,10 @@ namespace cubschema
       {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
       {"indexes", format_sequence (CT_INDEX_NAME)},
       {"comment", format_varchar (2048)},
-      {"partition", format_sequence (CT_PARTITION_NAME)}
+      {"partition", format_sequence (CT_PARTITION_NAME)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"checked_time", "datetime"}
     },
 // constraints
     {

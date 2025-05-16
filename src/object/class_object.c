@@ -6786,6 +6786,7 @@ SM_CLASS *
 classobj_make_class (const char *name)
 {
   SM_CLASS *class_;
+  DB_DATETIME initial_datetime = {0};
 
   class_ = (SM_CLASS *) db_ws_alloc (sizeof (SM_CLASS));
   if (class_ == NULL)
@@ -6858,6 +6859,10 @@ classobj_make_class (const char *name)
   class_->comment = NULL;
 
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
+
+  class_->created_time = initial_datetime;
+  class_->updated_time = initial_datetime;
+  class_->checked_time = initial_datetime;
 
   if (name != NULL)
     {

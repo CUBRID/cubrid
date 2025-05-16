@@ -3697,6 +3697,9 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   or_put_int (buf, class_->tde_algorithm);
 
+  or_put_datetime(buf, &class_->created_time);
+  or_put_datetime(buf, &class_->updated_time);
+  or_put_datetime(buf, &class_->checked_time);
 
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
@@ -4038,6 +4041,10 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->collation_id = or_get_int (buf, &rc);
 
   class_->tde_algorithm = or_get_int (buf, &rc);
+
+  or_get_datetime(buf, &class_->created_time);
+  or_get_datetime(buf, &class_->updated_time);
+  or_get_datetime(buf, &class_->checked_time);
 
   /* variable 0 */
   class_->header.ch_name = get_string (buf, vars[ORC_NAME_INDEX].length);
