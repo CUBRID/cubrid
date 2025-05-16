@@ -59,7 +59,22 @@ jobs:
             parameters:
               baseline:
                 type: string
-                default: "$BASELINE"
+                default: << pipeline.parameters.baseline >>
+              run_shell_test:
+                type: boolean
+                default: << pipeline.parameters.run_shell_test >>
+              run_sql_test:
+                type: boolean
+                default: << pipeline.parameters.run_sql_test >>
+              run_medium_test:
+                type: boolean
+                default: << pipeline.parameters.run_medium_test >>
+              run_plcsql_test:
+                type: boolean
+                default: << pipeline.parameters.run_plcsql_test >>
+              run_all_test:
+                type: boolean
+                default: << pipeline.parameters.run_all_test >>
             
             # --------------------------------------------------
             # 1. Reusable commands
