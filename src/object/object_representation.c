@@ -5132,10 +5132,18 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  expected -= CAST_BUFLEN (buf->ptr - start);
 	  start = buf->ptr;
 	}
-      // writeval 저장은 잘됐고 readval 하기 전, initvale 과정에서 unpack_db_value 에서 floating porint 정보를 잃어버림...
-      // 여기서 처리하는게 맞을지 아니면 error를 일단 출력하고, makeval 인가 그쪽에서 처리를할까?  
+      /* **중요** CS모드에서 flag 동작을 위해 조건이 꼭 필요함
+       * 해당 설정 후, tp_is_domain_cached 함수 에서도 처리 되야함.
+       * 캐시를 안하니, 컬럼의 P 값 까지 바뀌지 않고 잘 처리되네
+       */
       if (domain->type->id == DB_TYPE_NUMERIC && domain->is_floating_point_numeric)
 	{
+	  //   printf ("domain->is_floating_point_numeric: %d\n", domain->is_floating_point_numeric);
+	  //   printf ("domain->precision: %d\n", domain->precision);
+	  //   printf ("domain->scale: %d\n", domain->scale);
+	  //   printf ("value->scale: %d\n", value->domain.numeric_info.scale);
+	  //   printf ("value->precision: %d\n", value->domain.numeric_info.precision);
+	  //   printf ("value->is_floating_point_numeric: %d\n", value->domain.numeric_info.is_floating_point_numeric);
 	  value->domain.numeric_info.is_floating_point_numeric = 1;
 	}
     }

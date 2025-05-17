@@ -1689,6 +1689,31 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
 
+  /* 덧셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   * insert select 수행시 필요함
+   * ex) insert into t1 select 99999999999999999999.999999999999999999 + 0.000000000000000001;
+   * 이런 경우, 결과가 100000000000000000000.000000000000000000 임으로 P : 39, S : 18 로 num(answer) 이 저장됨 
+   * 사용자에게 보여주는 경우 . 과 소수부의 0 을 제거하여 100000000000000000000 이 보여지나, 값을 저장할 때 P : 21로 생성한 테이블에 저장이 불가능함.
+   * 따라서, 이를 해결하기 위해 덧셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   */
+  if (answer->domain.numeric_info.is_floating_point_numeric)
+    {
+      char str_buf[NUMERIC_MAX_STRING_SIZE];
+      DB_VALUE tmp_value;
+      tmp_value.domain.numeric_info.is_floating_point_numeric = 1;
+
+      numeric_db_value_print (answer, str_buf);
+
+      if (numeric_coerce_string_to_num (str_buf, strlen (str_buf), LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+      db_make_numeric (answer, db_locate_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		       DB_VALUE_SCALE (&tmp_value));
+    }
+
   return ret;
 
 exit_on_error:
@@ -1805,6 +1830,26 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
   db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
+
+  /* 뺼셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   */
+  if (answer->domain.numeric_info.is_floating_point_numeric)
+    {
+      char str_buf[NUMERIC_MAX_STRING_SIZE];
+      DB_VALUE tmp_value;
+      tmp_value.domain.numeric_info.is_floating_point_numeric = 1;
+
+      numeric_db_value_print (answer, str_buf);
+
+      if (numeric_coerce_string_to_num (str_buf, strlen (str_buf), LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+      db_make_numeric (answer, db_locate_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		       DB_VALUE_SCALE (&tmp_value));
+    }
 
   return ret;
 
@@ -1995,26 +2040,41 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
   if (prec >
-      (answer->domain.numeric_info.
-       is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+      (answer->domain.
+       numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       prec =
-	(answer->domain.numeric_info.
-	 is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
+	(answer->domain.
+	 numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
     }
 
-  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE)
-      && !answer->domain.numeric_info.is_floating_point_numeric && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
+  if ((!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
+      || answer->domain.numeric_info.is_floating_point_numeric)
     {
       int new_scale, new_prec;
-      int scale_delta;
-      scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
-      new_scale = scale + scale_delta;
-      new_prec = prec + scale_delta;
-      if (new_prec > DB_MAX_NUMERIC_PRECISION)
+      int scale_delta, int_digits;
+
+      /*
+       * F-P NUMERIC의 나눗셈 결과는 Oracle과 동일하게 소수부 40자리 보여주고, 소수부 40자리를 넘는 경우 반올림을 한다.
+       * Oracle의 일부 case는 40자리를 넘겨서 보여주나, CUBRID는 일단 40자리를 고정으로 계산할 예정.
+       * 일반 NUMERIC의 경우, 기존과 동일하게 Scale : 9 자리 기준을 따른다.
+       */
+      if (answer->domain.numeric_info.is_floating_point_numeric)
 	{
-	  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
-	  new_prec = DB_MAX_NUMERIC_PRECISION;
+	  int_digits = ((DB_VALUE_PRECISION (dbv1) - scale1) - (DB_VALUE_PRECISION (dbv2) - scale2));
+	  new_scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE_FLOATING - (int_digits < 0 ? 0 : int_digits);
+	  new_prec = new_scale + (int_digits < 0 ? 0 : int_digits);
+	}
+      else
+	{
+	  scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
+	  new_scale = scale + scale_delta;
+	  new_prec = prec + scale_delta;
+	  if (new_prec > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
+	      new_prec = DB_MAX_NUMERIC_PRECISION;
+	    }
 	}
 
       ret = numeric_scale_dec_long (long_dbv1_copy, new_scale - scale, true);
@@ -2079,8 +2139,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec <
-	  (answer->domain.numeric_info.
-	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	  (answer->domain.
+	   numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -2094,6 +2154,26 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
 
   db_make_numeric (answer, temp_quo, prec, scale);
+
+  /* 나눗셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   */
+  if (answer->domain.numeric_info.is_floating_point_numeric)
+    {
+      char str_buf[NUMERIC_MAX_STRING_SIZE];
+      DB_VALUE tmp_value;
+      tmp_value.domain.numeric_info.is_floating_point_numeric = 1;
+
+      numeric_db_value_print (answer, str_buf);
+
+      if (numeric_coerce_string_to_num (str_buf, strlen (str_buf), LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+      db_make_numeric (answer, db_locate_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		       DB_VALUE_SCALE (&tmp_value));
+    }
 
   return ret;
 
@@ -4005,6 +4085,12 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   assert (val != NULL && buf != NULL);
+
+  /* 향후 oracle_compat_number 파라미터를 제거하고, F-P NUMERIC일 경우만 소수부의 불피요한 0 제거를 하도록 기본 로직은 냅두는 것도 좋을 것 같음 */
+  if (val->domain.numeric_info.is_floating_point_numeric)
+    {
+      oracle_compat_number = true;
+    }
 
   if (DB_IS_NULL (val))
     {

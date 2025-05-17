@@ -8564,23 +8564,24 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 
   if (value != NULL)
     {
-      if (value->domain.numeric_info.is_floating_point_numeric)
+      //if (value->domain.numeric_info.is_floating_point_numeric)
+      //{
+      /* P,S 의 2byte 처리를 하는 방법이 2가지가 있음
+       * 1. numeric_coerce_dec_str_to_num 함수 이후 [0], [1] 에 넣어주는 방법 (선택)
+       * 2. num_string 에 넣어주는 방법
+       * 그런데, 굳이 일반 numeric도 이렇게 처리 해도 문제는 없을듯?
+       */
+      if (value->data.num.d.buf[0] & 0x80)
 	{
-	  // 여기서 P,S 의 2byte 처리를 하는 방법이 2가지가 있음
-	  // 1. numeric_coerce_dec_str_to_num 함수 이후 [0], [1] 에 넣어주는 방법 (선택)
-	  // 2. num_string 에 넣어주는 방법
-	  // 음수 처리는 아직 기달!
-	  if (value->data.num.d.buf[0] & 0x80)
-	    {
-	      value->data.num.d.buf[0] -= value->domain.numeric_info.precision;
-	      value->data.num.d.buf[1] -= value->domain.numeric_info.scale;
-	    }
-	  else
-	    {
-	      value->data.num.d.buf[0] = value->domain.numeric_info.precision;
-	      value->data.num.d.buf[1] = value->domain.numeric_info.scale;
-	    }
+	  value->data.num.d.buf[0] -= value->domain.numeric_info.precision;
+	  value->data.num.d.buf[1] -= value->domain.numeric_info.scale;
 	}
+      else
+	{
+	  value->data.num.d.buf[0] = value->domain.numeric_info.precision;
+	  value->data.num.d.buf[1] = value->domain.numeric_info.scale;
+	}
+      //}
 
       numeric = db_get_numeric (value);
       if (numeric != NULL)
@@ -8697,26 +8698,30 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
        */
       (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
 
-      if (value->domain.numeric_info.is_floating_point_numeric || domain->is_floating_point_numeric)
+      //if (value->domain.numeric_info.is_floating_point_numeric || domain->is_floating_point_numeric)
+      //{
+      /* P,S 의 2byte 처리를 하는 방법이 2가지가 있음
+       * 1. numeric_coerce_dec_str_to_num 함수 이후 [0], [1] 에 넣어주는 방법 (선택)
+       * 2. num_string 에 넣어주는 방법
+       * 그런데, 굳이 일반 numeric도 이렇게 처리 해도 문제는 없을듯?
+       */
+      if (value->data.num.d.buf[0] & 0x80)
 	{
-	  // 그리고 느낌상 뭔가, value 가 아니라, domain의 flag를 체크해야하는데, 지금은 무조건 false라 true인 경우를 찾아야할듯?
-	  if (value->data.num.d.buf[0] & 0x80)
-	    {
-	      value->domain.numeric_info.precision = (~(value->data.num.d.buf[0]) & 0xFF);
-	      value->domain.numeric_info.scale = (~(value->data.num.d.buf[1]) & 0xFF);
+	  value->domain.numeric_info.precision = (~(value->data.num.d.buf[0]) & 0xFF);
+	  value->domain.numeric_info.scale = (~(value->data.num.d.buf[1]) & 0xFF);
 
-	      value->data.num.d.buf[0] = (value->data.num.d.buf[0] | value->domain.numeric_info.precision);
-	      value->data.num.d.buf[1] = (value->data.num.d.buf[1] | value->domain.numeric_info.scale);
-	    }
-	  else
-	    {
-	      value->domain.numeric_info.precision = value->data.num.d.buf[0];
-	      value->domain.numeric_info.scale = value->data.num.d.buf[1];
-
-	      value->data.num.d.buf[0] = 0;
-	      value->data.num.d.buf[1] = 0;
-	    }
+	  value->data.num.d.buf[0] = (value->data.num.d.buf[0] | value->domain.numeric_info.precision);
+	  value->data.num.d.buf[1] = (value->data.num.d.buf[1] | value->domain.numeric_info.scale);
 	}
+      else
+	{
+	  value->domain.numeric_info.precision = value->data.num.d.buf[0];
+	  value->domain.numeric_info.scale = value->data.num.d.buf[1];
+
+	  value->data.num.d.buf[0] = 0;
+	  value->data.num.d.buf[1] = 0;
+	}
+      //}
 
       value->need_clear = false;
       rc = or_advance (buf, size);

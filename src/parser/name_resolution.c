@@ -4582,10 +4582,11 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
       result->info.data_type.units = db_domain_codeset (domain);
       result->info.data_type.collation_id = db_domain_collation_id (domain);
       result->info.data_type.collation_flag = domain->collation_flag;
-      if (t == PT_TYPE_NUMERIC)
+      /* 산술 연산 수행시 여기에 flag 처리가 필요함 */
+      if (domain->type->id == DB_TYPE_NUMERIC && (domain->is_floating_point_numeric || domain->precision == 0))
 	{
-	  // 여기에 flag 설정하는게 맞는지 확인 필요
-	  result->info.data_type.is_floating_point_numeric = (result->info.data_type.precision == 0) ? 1 : 0;
+	  domain->is_floating_point_numeric = 1;
+	  result->info.data_type.is_floating_point_numeric = 1;
 	}
       assert (!PT_IS_CHAR_STRING_TYPE (t) || result->info.data_type.collation_id >= 0);
       break;

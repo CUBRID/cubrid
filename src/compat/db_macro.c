@@ -179,8 +179,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 
       // flag 임시 설정
       if (!value->domain.numeric_info.is_floating_point_numeric
-	  && ((value->domain.numeric_info.precision == 0 && value->domain.numeric_info.scale == 0)
-	      || (precision == 0 && scale == 0)))
+	  && ((value->domain.numeric_info.precision == 0) || (precision == 0)))
 	{
 	  value->domain.numeric_info.is_floating_point_numeric = 1;
 	}

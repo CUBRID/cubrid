@@ -2351,7 +2351,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
   else if (dest_sci->type_enum == PT_TYPE_NUMERIC)
     {
       /* 중요! 여기에서 스키마의 컬럼 정보와 db_value 값을 비교하는 곳 같아 보임! */
-      if (src->info.value.db_value.domain.numeric_info.is_floating_point_numeric && dest_sci->prec == 0)
+      if (src->info.value.db_value.domain.numeric_info.is_floating_point_numeric || dest_sci->prec == 0)
 	{
 	  return true;
 	}

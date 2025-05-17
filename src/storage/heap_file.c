@@ -9802,16 +9802,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		    {
 		      value->last_attrepr->type = DB_TYPE_OID;
 		    }
-		  else if (value->last_attrepr->type == DB_TYPE_NUMERIC && value->last_attrepr->domain->precision == 0)
-		    {
-		      if (value->last_attrepr->domain->next_list->is_floating_point_numeric)
-			{
-			  //임시 확인
-			  // **중요** value->last_attrepr->domain->next_list 을 만드는 곳을 찾아야함 !!
-			  //value->last_attrepr->domain->is_floating_point_numeric = 1;
-			}
-		      value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
-		    }
+		  // 일단, 주석으로 제외해보고 테스트
+		  //   else if (value->last_attrepr->type == DB_TYPE_NUMERIC && (value->last_attrepr->domain->is_floating_point_numeric || value->last_attrepr->domain->precision == 0))
+		  //     {
+		  //       // CS모드에서 unpack 할 때, 테이블에 저장된 정보만 가져와 flag가 꺼져있음
+		  //       // 그래서 임시로 여기서 항상 켜주자!
+		  //       value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
+		  //     }
 
 		  if (value->state == HEAP_UNINIT_ATTRVALUE)
 		    {
@@ -9829,8 +9826,9 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		    {
 		      value->read_attrepr->type = DB_TYPE_OID;
 		    }
-		  //else if (value->last_attrepr->type == DB_TYPE_NUMERIC && (value->last_attrepr->domain->is_floating_point_numeric && value->dbvalue.domain.numeric_info.precision == 0))
-		  else if (value->last_attrepr->type == DB_TYPE_NUMERIC && value->last_attrepr->domain->precision == 0)
+		  else if (value->last_attrepr->type == DB_TYPE_NUMERIC
+			   && (value->last_attrepr->domain->is_floating_point_numeric
+			       || value->last_attrepr->domain->precision == 0))
 		    {
 		      value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
 		    }
