@@ -272,7 +272,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 
   if (!boot_Is_client_all_final)
     {
-      boot_client_all_finalize (true);
+      boot_client_all_finalize (ALL_FINALIZATION);
     }
 
 #if defined(WINDOWS)
@@ -715,7 +715,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   if (!boot_Is_client_all_final)
     {
-      boot_client_all_finalize (true);
+      boot_client_all_finalize (ALL_FINALIZATION);
     }
 
 #if defined(WINDOWS)
@@ -1387,7 +1387,7 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
-      boot_client_all_finalize (is_er_final);
+      boot_client_all_finalize (is_er_final ? ALL_FINALIZATION : EXCEPT_ER_FINALIZATION);
     }
 
   return NO_ERROR;
@@ -1475,14 +1475,16 @@ boot_server_die_or_changed (void)
  *
  * return : nothing
  *
- *   is_er_final(in): Terminate the error module..
- *
+ *   final_level(in): finalizing objects level
+ *                    ALL_FINALIZATION       : all finalization
+ *                    EXCEPT_ER_FINALIZATION : except er_final()
+ *                    OPTIONAL_FINALIZATION  : finalize only objects that are not cleared while running
  *
  * Note: Terminate every single module of the client. This function is called
  *       during the shutdown of the client.
  */
 void
-boot_client_all_finalize (bool is_er_final)
+boot_client_all_finalize (int final_level)
 {
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
@@ -1508,12 +1510,16 @@ boot_client_all_finalize (bool is_er_final)
       sm_flush_static_methods ();
       set_final ();
       parser_final ();
-      tr_final ();
-      au_final ();
-      sm_final ();
-      ws_final ();
-      es_final ();
-      tp_final ();
+
+      if (final_level != OPTIONAL_FINALIZATION)
+	{
+	  tr_final ();
+	  au_final ();
+	  sm_final ();
+	  ws_final ();
+	  es_final ();
+	  tp_final ();
+	}
 
 #if !defined(WINDOWS)
       (void) dl_destroy_module ();
@@ -1525,7 +1531,7 @@ boot_client_all_finalize (bool is_er_final)
       area_final ();
 
       msgcat_final ();
-      if (is_er_final)
+      if (final_level != EXCEPT_ER_FINALIZATION)
 	{
 	  er_final (ER_ALL_FINAL);
 	}
@@ -1549,7 +1555,6 @@ boot_client_all_finalize (bool is_er_final)
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
     }
-
 }
 
 #if defined(CS_MODE)
