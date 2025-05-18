@@ -1,0 +1,81 @@
+name: Comment trigger
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  run_test:
+    name: Run test on CircleCI
+    if: |
+      ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run ') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Get Branch Name and Test Type
+        run: |         
+          # Get comment
+          COMMENT="${{ github.event.comment.body }}"
+          echo "[debug] Comment: $COMMENT"
+          
+          # Define test types
+          TEST_TYPES="shell sql medium plcsql"
+          TEST_JSON="{"
+          
+          # Check for 'all' keyword or parse individual test types
+          if [[ "$COMMENT" == *"all"* ]]; then
+            # Enable all tests
+            echo "[debug] Running all tests"
+            for test in $TEST_TYPES; do
+              TEST_JSON+="\"run_${test}_test\":true,"
+            done
+            TEST_JSON+="\"run_all_test\":true,"
+          else
+            # Check each test type
+            for test in $TEST_TYPES; do
+              if [[ "$COMMENT" == *"$test"* ]]; then
+                echo "[debug] Will run $test test"
+                TEST_JSON+="\"run_${test}_test\":true,"
+              fi
+            done
+            TEST_JSON+="\"run_all_test\":false,"
+          fi
+          
+          # Extract baseline version from comment if it exists
+          BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
+          
+          # Add baseline to JSON and remove trailing comma if present
+          if [ -n "$BASELINE" ]; then
+            echo "[debug] Baseline Version: $BASELINE"
+            TEST_JSON+="\"baseline\":\"$BASELINE\"}"
+          else
+            echo "[debug] No Baseline Version provided. Will use latest from DB."
+            TEST_JSON+="\"baseline\":\"none\"}"
+          fi
+          TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
+          
+          # Save the JSON to environment
+          echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
+          
+          # For debugging
+          echo "[debug] Test Parameters: $TEST_JSON"
+
+      - name: Trigger CircleCI Test
+        env:
+          CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
+          BRANCH_NAME: pull/${{ github.event.issue.number }}/head
+          TEST_JSON: ${{ env.TEST_JSON }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          # Create final JSON data
+          DATA=$(echo '{"branch": "'"$BRANCH_NAME"'", "parameters": '"$TEST_JSON"'}')
+          
+          # Trigger CircleCI pipeline
+          echo "[debug] DATA: $DATA"
+          echo "[debug] REPO_OWNER: $REPO_OWNER"
+          echo "[debug] REPO_NAME: $REPO_NAME"
+          curl --request POST \
+            --url https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline \
+            --header "Circle-Token: $CIRCLECI_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$DATA"
