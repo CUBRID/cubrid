@@ -20,8 +20,8 @@
 # required default reviewer
 /src/base/ @beyondykk9
 /src/base/memory_monitor_* @hornetmj
-/src/broker/ @kisoo-han
-/src/cm_common/ @kisoo-han
+/src/broker/ @beyondykk9
+/src/cm_common/ @beyondykk9
 /src/compat/ @beyondykk9
 /src/sp/ @beyondykk9
 /src/method/ @beyondykk9
@@ -37,18 +37,18 @@
 /src/storage/ @hornetmj
 /src/storage/statistics* @shparkcubrid
 /src/transaction/ @hornetmj
-/src/win_tools/ @kisoo-han
+/src/win_tools/ @hwany7seo
 /src/xasl/ @beyondykk9
 
 # added directories
 /src/object @beyondykk9
 /src/connection @beyondykk9
 /src/communication @beyondykk9
-/src/executable @beyondykk9 @kisoo-han
+/src/executable @beyondykk9
 /src/heaplayers @beyondykk9
 /src/monitor @beyondykk9
 /src/session @beyondykk9
 /src/thread @beyondykk9
-/src/loaddb @kisoo-han
+/src/loaddb @beyondykk9
 
 /pl_engine @beyondykk9

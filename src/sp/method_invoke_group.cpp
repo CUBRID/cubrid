@@ -45,24 +45,24 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // Method Group to invoke together
 //////////////////////////////////////////////////////////////////////////
-  method_invoke_group::method_invoke_group (cubpl::pl_signature_array &sig_array)
+  method_invoke_group::method_invoke_group (cubpl::pl_signature_array *sig_array)
     : m_id ((std::uint64_t) this)
     , m_stack (nullptr)
     , m_sig_array (sig_array)
   {
-    assert (sig_array.num_sigs > 0);
+    assert (sig_array->num_sigs > 0);
 
     // assert
 #if !defined (NDEBUG)
-    for (int i = 0; i < sig_array.num_sigs; i++)
+    for (int i = 0; i < sig_array->num_sigs; i++)
       {
-	assert (PL_TYPE_IS_METHOD (sig_array.sigs[i].type));
+	assert (PL_TYPE_IS_METHOD (sig_array->sigs[i].type));
       }
 #endif
 
     DB_VALUE v;
     db_make_null (&v);
-    m_result_vector.resize (sig_array.num_sigs, v);
+    m_result_vector.resize (sig_array->num_sigs, v);
   }
 
   method_invoke_group::~method_invoke_group ()
@@ -73,7 +73,7 @@ namespace cubmethod
   DB_VALUE &
   method_invoke_group::get_return_value (int index)
   {
-    assert (index >= 0 && index < (int) m_sig_array.num_sigs);
+    assert (index >= 0 && index < (int) m_sig_array->num_sigs);
     return m_result_vector[index];
   }
 
@@ -122,12 +122,12 @@ namespace cubmethod
 	goto exit;
       }
 
-    for (int i = 0; i < m_sig_array.num_sigs; i++)
+    for (int i = 0; i < m_sig_array->num_sigs; i++)
       {
 	int req_id = m_stack->get_and_increment_request_id ();
 	// invoke
 	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */, 0);
-	error = xs_callback_send_args (m_stack->get_thread_entry (), header, m_id, m_sig_array.sigs[i]);
+	error = xs_callback_send_args (m_stack->get_thread_entry (), header, m_id, m_sig_array->sigs[i]);
 	if (error != NO_ERROR)
 	  {
 	    break;
@@ -229,7 +229,7 @@ exit:
   int
   method_invoke_group::get_num_methods ()
   {
-    return m_sig_array.num_sigs;
+    return m_sig_array->num_sigs;
   }
 
   std::string

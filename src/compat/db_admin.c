@@ -1009,7 +1009,7 @@ db_shutdown (void)
 void
 db_shutdown_without_request_to_server (void)
 {
-  boot_client_all_finalize (true);
+  boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
 int
