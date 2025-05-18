@@ -9597,12 +9597,13 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   const char *default_value_print = NULL;
+  DB_VALUE tmp;
 
   default_value_node = param->info.sp_param.default_value =
     pt_check_data_default (parser, param->info.sp_param.default_value);
   if (pt_has_error (parser))
     {
-      return error;
+      return ER_FAILED;
     }
 
   assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
@@ -9616,22 +9617,42 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 		  param,
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
-      return error;
+      return ER_FAILED;
     }
 
-  {
-    PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
-    error =
-      pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
-					 default_value_node->info.data_default.default_expr_type, false);
-    parser_free_node (parser, dummy);
-    if (error != NO_ERROR)
-      {
-	error = (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
-	PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
-		     default_value_print, pt_get_type_name (param->type_enum, param->data_type));
-      }
-  }
+  if (default_value->node_type == PT_EXPR && default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+    {
+      db_make_null (&tmp);
+      pt_evaluate_tree (parser, default_value, &tmp, 1);
+      if (pt_has_error (parser))
+	{
+	  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, default_value));
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  parser_free_node (parser, default_value_node->info.data_default.default_value);
+	  default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
+	}
+      db_value_clear (&tmp);
+    }
+
+  if (error == NO_ERROR)
+    {
+      PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
+      error =
+	pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
+					   default_value_node->info.data_default.default_expr_type, false);
+      parser_free_node (parser, dummy);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		       (error ==
+			ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
+	}
+    }
 
   return error;
 }

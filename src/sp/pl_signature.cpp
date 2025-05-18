@@ -388,32 +388,14 @@ namespace cubpl
   }
 
   pl_signature_array::pl_signature_array ()
-    :pl_signature_array (0)
-  {}
-
-  pl_signature_array::pl_signature_array (int num)
-    : num_sigs {num}
+    : num_sigs {0}
+    , sigs {nullptr}
   {
 #if defined (SERVER_MODE)
     is_disposable = (thread_get_thread_entry_info ()->private_heap_id != 0);
 #else
     is_disposable = true;
 #endif
-
-    if (num <= 0)
-      {
-	sigs = nullptr;
-      }
-    else
-      {
-#if defined(MMON_DEBUG_LEVEL)
-	sigs = new  pl_signature[num];
-#else
-	sigs = new (std::nothrow) pl_signature[num];
-#endif
-
-	assert_release (sigs != NULL);
-      }
   }
 
   pl_signature_array::~pl_signature_array ()

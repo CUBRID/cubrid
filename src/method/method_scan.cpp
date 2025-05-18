@@ -52,7 +52,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = new cubmethod::method_invoke_group (*sig_array);
+	  m_method_group = new cubmethod::method_invoke_group (sig_array);
 	  if (!m_method_group)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -64,12 +64,21 @@ namespace cubscan
       if (m_list_id == nullptr)
 	{
 	  m_list_id = list_id;
-	  int arg_count = m_list_id->type_list.type_cnt;
-	  m_arg_vector.resize (arg_count);
-	  m_arg_dom_vector.resize (arg_count);
+	  int arg_count = m_arg_count = m_list_id->type_list.type_cnt;
+
+	  if (!m_arg_vector)
+	    {
+	      m_arg_vector = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * arg_count);
+	    }
+
+	  if (!m_arg_dom_vector)
+	    {
+	      m_arg_dom_vector = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * arg_count);
+	    }
 
 	  for (int i = 0; i < arg_count; i++)
 	    {
+	      db_make_null (&m_arg_vector [i]);
 	      TP_DOMAIN *domain = list_id->type_list.domp[i];
 	      if (domain == NULL || domain->type == NULL)
 		{
@@ -78,18 +87,6 @@ namespace cubscan
 	      m_arg_dom_vector[i] = domain;
 	    }
 	}
-
-#if 0 // TODO
-      for (int i = 0; i < sig_array->num_sigs; i++)
-	{
-	  cubpl::pl_signature &sig = sig_array->sigs[i];
-	  for (int j = 0; j < sig.arg.arg_size; j++)
-	    {
-	      int idx = sig.ext.method.arg_pos[i];
-	      m_arg_use_vector [idx] = true;
-	    }
-	}
-#endif
 
       if (m_dbval_list == nullptr)
 	{
@@ -102,6 +99,7 @@ namespace cubscan
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
+
       return NO_ERROR;
     }
 
@@ -109,20 +107,36 @@ namespace cubscan
     scanner::clear (bool is_final)
     {
       close_value_array ();
-      pr_clear_value_vector (m_arg_vector);
 
-      if (is_final && m_method_group)
+      for (int i = 0; m_arg_vector && i < m_arg_count; i++)
 	{
-	  m_method_group->reset (true);
-	  m_method_group->end ();
+	  db_value_clear (&m_arg_vector[i]);
+	  db_make_null (&m_arg_vector[i]);
+	}
 
-// TODO
-#if 0
-	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
-	  rctx->pop_stack (m_thread_p, m_method_group);
-#endif
 
-	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
+      if (is_final)
+	{
+	  if (m_method_group)
+	    {
+	      m_method_group->reset (true);
+	      m_method_group->end ();
+
+	      delete m_method_group;
+	      m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
+	    }
+
+	  if (m_arg_vector)
+	    {
+	      db_private_free_and_init (m_thread_p, m_arg_vector);
+	    }
+
+	  if (m_arg_dom_vector)
+	    {
+	      // freeing elements is not required.
+	      // TP_DOMAIN is managed by another module.
+	      db_private_free_and_init (m_thread_p, m_arg_dom_vector);
+	    }
 	}
     }
 
@@ -159,7 +173,7 @@ namespace cubscan
 
       int error = NO_ERROR;
 
-      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector, m_arg_vector + m_arg_count);
 
       if (scan_code == S_SUCCESS && (error = m_method_group->execute (arg_wrapper)) != NO_ERROR)
 	{
@@ -206,7 +220,11 @@ namespace cubscan
 	}
 
       // clear
-      pr_clear_value_vector (m_arg_vector);
+      for (int i = 0; i < m_arg_count; i++)
+	{
+	  db_value_clear (&m_arg_vector[i]);
+	  db_make_null (&m_arg_vector[i]);
+	}
 
       return scan_code;
     }
