@@ -24,6 +24,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
+#include "boot_sr.h"
 #include <fstream>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -36,6 +37,8 @@
 int hnsw_index_id = 0;
 std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
+static int load_hnsw_index_from_file (int hnsw_id);
+static bool is_hnsw_index_file_exists (int hnsw_id);
 static faiss::idx_t encode_oid (const OID &oid);
 //static OID decode_oid (faiss::idx_t encoded_oid);
 
@@ -48,13 +51,36 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
 
   auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
 
+  while (true)
+    {
+      if (is_hnsw_index_file_exists (hnsw_index_id))
+	{
+	  hnsw_index_id++;
+	  continue;
+	}
+      else
+	{
+	  if (hnsw_index_map.find (hnsw_index_id) == hnsw_index_map.end())
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      hnsw_index_id++;
+	      continue;
+	    }
+	}
+    }
+
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
-  btid->root_pageid = ++hnsw_index_id;
+  btid->root_pageid = hnsw_index_id;
 
   hnsw_index_map[hnsw_index_id] = std::move (index);
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
+
+  hnsw_index_id++;
 
   return btid;
 }
@@ -72,10 +98,9 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
-      std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
-      if (std::ifstream (filename))
+      std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
+      if (is_hnsw_index_file_exists (hnsw_id))
 	{
-	  // Remove the file
 	  std::remove (filename.c_str());
 	}
       else
@@ -189,15 +214,15 @@ void dump_all_hnsw_indices_to_files ()
     {
       int hnsw_id = pair.first;
       auto &index = pair.second;
-      std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
+      std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
       faiss::write_index (index.get(), filename.c_str());
       er_log_debug (ARG_FILE_LINE, "Dumped HNSW Index to file %s", filename.c_str());
     }
 }
 
-int load_hnsw_index_from_file (int hnsw_id)
+static int load_hnsw_index_from_file (int hnsw_id)
 {
-  std::string filename = "hnsw_index_" + std::to_string (hnsw_id) + ".bin";
+  std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
 
   // Check if already loaded
   if (hnsw_index_map.find (hnsw_id) != hnsw_index_map.end())
@@ -207,7 +232,7 @@ int load_hnsw_index_from_file (int hnsw_id)
 
   try
     {
-      if (std::ifstream (filename)) // File exists
+      if (is_hnsw_index_file_exists (hnsw_id)) // File exists
 	{
 	  faiss::Index *raw_index = faiss::read_index (filename.c_str());
 
@@ -237,6 +262,12 @@ int load_hnsw_index_from_file (int hnsw_id)
     }
 
   return NO_ERROR;
+}
+
+static bool is_hnsw_index_file_exists (int hnsw_id)
+{
+  std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
+  return std::ifstream (filename).good();
 }
 
 static faiss::idx_t encode_oid (const OID &oid)

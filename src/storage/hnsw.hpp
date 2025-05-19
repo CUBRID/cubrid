@@ -43,6 +43,5 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue);
 void dump_all_hnsw_indices_to_files ();
-int load_hnsw_index_from_file (int hnsw_id);
 
 #endif
