@@ -6025,11 +6025,6 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_LT:
     case PT_LE:
     case PT_DISTANCE_OP_EUCLIDEAN:
-      if (op == PT_DISTANCE_OP_EUCLIDEAN)
-	{
-	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not a range nor comp.\n");
-	  return false;
-	}
     case PT_NULLSAFE_EQ:
     case PT_GT_INF:
     case PT_LT_INF:
@@ -6044,6 +6039,10 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_BETWEEN_GT_INF:
       return true;
     default:
+      if (op == PT_DISTANCE_OP_EUCLIDEAN)
+	{
+	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not a range nor comp.\n");
+	}
       return false;
     }
 }
