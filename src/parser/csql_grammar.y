@@ -12490,7 +12490,7 @@ trigger_action_in
 
 trigger_action
 	: trigger_action_in
-	    {{
+	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
 		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
