@@ -1845,7 +1845,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION )
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * estimatedb_data() - estimatedb_data main routine
  *   return: EXIT_SUCCES/EXIT_FAILURE
@@ -1854,6 +1854,7 @@ int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
   /* todo: remove me */
+  return -1;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
