@@ -965,7 +965,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
-  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28)
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
+  PT_PRINT_DBLINK_INFO = (0x1 << 29)	/* If you use DBLINK, specify it when generating the SHA hash value. */
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3998,6 +3999,7 @@ struct parser_context
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
+  PARSER_VARCHAR *dblink_server_text;	/* Contains access information to be used in generating SHA hash values ​​when using the Server name in DBLINK. */
 
   struct
   {
