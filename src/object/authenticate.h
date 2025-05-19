@@ -60,7 +60,7 @@ class print_output;
 #define Au_public_user                  au_ctx ()->public_user
 #define Au_disable                      au_ctx ()->disable_auth_check
 
-#define Au_authorizations_class         au_ctx ()->authorizations_class
+#define Au_root_class                   au_ctx ()->root_class
 #define Au_authorization_class          au_ctx ()->authorization_class
 #define Au_user_class                   au_ctx ()->user_class
 #define Au_password_class               au_ctx ()->password_class
@@ -249,7 +249,6 @@ extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 extern void au_dump_auth (FILE * fp);
 
-#if defined (SA_MODE)
 #ifdef __cplusplus
 extern "C"
 {
@@ -258,7 +257,6 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 
 #endif
 //

@@ -764,7 +764,7 @@ void
 ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
-  if (db_get_connect_status () == 1)	// only if connected to db
+  if (db_get_connect_status () != 0)	// only if connected to db
     {
       if (request_server)
 	{

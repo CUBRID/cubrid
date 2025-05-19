@@ -39,7 +39,6 @@ namespace cubschema
      * authorization classes
      *
      * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
-     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
      * AU_USER_CLASS_NAME     = CT_USER_NAME
      * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
      * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
@@ -49,7 +48,6 @@ namespace cubschema
     CT_USER_NAME,		// "db_user"
     CT_PASSWORD_NAME,	// "db_password"
     CT_AUTHORIZATION_NAME,		// "db_authorization"
-    CT_AUTHORIZATIONS_NAME,	// "db_authorizations"
 
     /* currently, not implemented */
     // AU_GRANT_CLASS_NAME,		// "db_grant"
