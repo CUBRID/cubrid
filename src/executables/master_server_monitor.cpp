@@ -131,13 +131,18 @@ void
 server_monitor::remove_server_entry (const std::string &server_name)
 {
   auto entry = m_server_entry_map.find (server_name);
-  assert (entry != m_server_entry_map.end ());
 
-  er_log_debug (ARG_FILE_LINE,
-		"[Server Monitor] [%s] Server entry has been unregistered. (pid : %d)",
-		server_name.c_str(), entry->second.get_pid());
+  // When the stop command for the same CUBRID server is invoked concurrently,
+  // the corresponding server entry may have already been removed.
+  // Therefore, the assertion should be skipped to avoid unnecessary failures.
+  if (entry != m_server_entry_map.end ())
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "[Server Monitor] [%s] Server entry has been unregistered. (pid : %d)",
+		    server_name.c_str(), entry->second.get_pid());
 
-  m_server_entry_map.erase (entry);
+      m_server_entry_map.erase (entry);
+    }
 }
 
 void
@@ -406,6 +411,18 @@ server_entry (int pid, const std::string &exec_path, const std::string &args,
     }
 }
 
+server_monitor::server_entry::~server_entry ()
+{
+  if (m_argv)
+    {
+      for (int i = 0; m_argv[i] != nullptr; i++)
+	{
+	  delete[] m_argv[i];
+	}
+      m_argv.reset();
+    }
+}
+
 int
 server_monitor::server_entry::get_pid () const
 {
@@ -472,7 +489,8 @@ server_monitor::server_entry::proc_make_arg (const std::string &args)
     {
       m_argv[i] = new char[arg.size () + 1];
       std::copy (arg.begin (), arg.end (), m_argv[i]);
+      m_argv[i][arg.size()] = '\0';
       i++;
     }
-  m_argv[args.size()] = nullptr;
+  m_argv[i] = NULL;
 }

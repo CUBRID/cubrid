@@ -320,7 +320,11 @@ public class SpLib {
     private static final Object[] SINGLE_NULL_ARG = new Object[] {null};
 
     public static Object invokeBuiltinFunc(
-            Connection conn, String callStr, int resultTypeCode, Object... args) {
+            Connection conn,
+            String callStr,
+            int resultTypeCode,
+            PreparedStatement[] pstmtRef,
+            Object... args) {
 
         if (args == null) {
             args = SINGLE_NULL_ARG;
@@ -329,11 +333,26 @@ public class SpLib {
         int argsLen = args.length;
         String query = String.format("select %s from dual", callStr);
 
+        PreparedStatement pstmt = null;
         try {
-            PreparedStatement pstmt = conn.prepareStatement(query);
+
+            if (pstmtRef == null) {
+                // not in a loop
+                pstmt = conn.prepareStatement(query);
+            } else {
+                // in a loop.
+                pstmt = pstmtRef[0];
+                // Check if it is null in order to call prepareStatement only once in the loop
+                if (pstmt == null) {
+                    pstmt = conn.prepareStatement(query);
+                    pstmtRef[0] = pstmt; // save it for the later iterations
+                }
+            }
+
             for (int i = 0; i < argsLen; i++) {
                 pstmt.setObject(i + 1, args[i]);
             }
+
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 Object ret;
@@ -381,11 +400,6 @@ public class SpLib {
                     ret = null;
                 }
 
-                Statement stmt = rs.getStatement();
-                if (stmt != null) {
-                    stmt.close();
-                }
-
                 return ret;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -393,6 +407,15 @@ public class SpLib {
         } catch (SQLException e) {
             Server.log(e);
             throw new SQL_ERROR(e.getMessage());
+        } finally {
+            if (pstmtRef == null && pstmt != null) {
+                try {
+                    pstmt.close();
+                } catch (SQLException e) {
+                    Server.log(e);
+                    throw new SQL_ERROR(e.getMessage());
+                }
+            }
         }
     }
 
@@ -552,11 +575,11 @@ public class SpLib {
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
 
-    public static void DBMS_OUTPUT$DISABLE() {
+    public static void DBMS_OUTPUT$DISABLE() throws Exception {
         DBMS_OUTPUT.disable();
     }
 
-    public static void DBMS_OUTPUT$ENABLE(Integer size) {
+    public static void DBMS_OUTPUT$ENABLE(Integer size) throws Exception {
         if (size == null) {
             throw new VALUE_ERROR("size must be non-null");
         }
@@ -586,13 +609,15 @@ public class SpLib {
     public static class Query {
         public final String query;
         public ResultSet rs;
-        public int rowCount;
+        public int rowCount = -1;
+
+        private PreparedStatement myStmt;
 
         public Query(String query) {
             this.query = query;
         }
 
-        public void open(Connection conn, Object... val) {
+        public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
 
             assert val != null;
 
@@ -600,7 +625,24 @@ public class SpLib {
                 if (isOpen()) {
                     throw new CURSOR_ALREADY_OPEN();
                 }
-                PreparedStatement pstmt = conn.prepareStatement(query);
+
+                PreparedStatement pstmt;
+
+                // using pstmtRef is for the loop optimization:
+                //  preparing the statement once and closing it once for the whole iterations
+                if (pstmtRef == null) {
+                    // case of not applying the loop optimization
+                    myStmt = conn.prepareStatement(query);
+                    pstmt = myStmt;
+                } else {
+                    // case of applying the loop optimization
+                    pstmt = pstmtRef[0];
+                    if (pstmt == null) {
+                        pstmt = conn.prepareStatement(query);
+                        pstmtRef[0] = pstmt; // store it for the later loop iterations
+                    }
+                }
+
                 for (int i = 0; i < val.length; i++) {
                     pstmt.setObject(i + 1, val[i]);
                 }
@@ -616,11 +658,16 @@ public class SpLib {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
-                if (rs != null) {
-                    Statement stmt = rs.getStatement();
-                    if (stmt != null) {
-                        stmt.close();
-                    }
+                if (myStmt == null) {
+                    // no need to close the statement because it was declared and is closed outside
+                    // of this Query
+                    // close only the result set.
+                    rs.close();
+                    rs = null;
+                } else {
+                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
+                    // on Statement.close()
+                    myStmt = null;
                     rs = null;
                 }
             } catch (SQLException e) {
@@ -638,26 +685,49 @@ public class SpLib {
             }
         }
 
-        public boolean found() {
+        public boolean fetch() {
+
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("tried to fetch values with an unopened cursor");
+            }
+
             try {
-                if (!isOpen()) {
-                    throw new INVALID_CURSOR(
-                            "attempted to read an attribute of an unopened cursor");
+                if (rs.next()) {
+                    rowCount = rs.getRow();
+                    return true;
+                } else {
+                    if (rowCount < 0) {
+                        // never fetched
+                        rowCount = 0;
+                    }
+                    return false;
                 }
-                return rs.getRow() > 0;
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
 
-        public boolean notFound() {
+        public Boolean found() {
             try {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR(
                             "attempted to read an attribute of an unopened cursor");
                 }
-                return rs.getRow() == 0;
+                return rowCount < 0 ? null : (rs.getRow() > 0);
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
+            }
+        }
+
+        public Boolean notFound() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
+                }
+                return rowCount < 0 ? null : (rs.getRow() == 0);
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
@@ -668,7 +738,7 @@ public class SpLib {
             if (!isOpen()) {
                 throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
             }
-            return (long) rowCount;
+            return (long) rowCount < 0 ? 0 : rowCount;
         }
 
         public void updateRowCount() {

@@ -165,12 +165,18 @@ main (int argc, char *argv[])
 #if defined(WINDOWS)
   FARPROC pl_old_hook = NULL;
 #else
-  if (os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
+  if (os_set_signal_handler (SIGTRAP, SIG_IGN) == SIG_ERR)
+    {
+      return ER_GENERIC_ERROR;
+    }
+
+  if (os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
       return ER_GENERIC_ERROR;
     }
 
   os_set_signal_handler (SIGABRT, pl_signal_handler);
+  os_set_signal_handler (SIGTERM, pl_signal_handler);
   os_set_signal_handler (SIGILL, pl_signal_handler);
   os_set_signal_handler (SIGFPE, pl_signal_handler);
   os_set_signal_handler (SIGBUS, pl_signal_handler);
@@ -397,37 +403,14 @@ static void pl_signal_handler (int sig)
 	  return;
 	}
 
-      // error handling in parent
-      std::string err_msg;
-
-      void *addresses[64];
-      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-      char **symbols = backtrace_symbols (addresses, nn_addresses);
-
-      err_msg += "pid (";
-      err_msg += std::to_string (getpid ());
-      err_msg += ")\n";
-
-      for (int i = 0; i < nn_addresses; i++)
-	{
-	  err_msg += symbols[i];
-	  if (i < nn_addresses - 1)
-	    {
-	      err_msg += "\n";
-	    }
-	}
-      free (symbols);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_PL_SERVER_CRASHED, 1, err_msg.c_str ());
+      er_print_crash_callstack (sig);
 
       exit (1);
     }
-  else
-    {
-      // resume signal hanlding
-      os_set_signal_handler (sig, pl_signal_handler);
-      is_signal_handling = false;
-    }
+
+  // resume signal hanlding
+  os_set_signal_handler (sig, pl_signal_handler);
+  is_signal_handling = false;
 }
 #endif
 
@@ -468,7 +451,6 @@ pl_start_server (const PL_SERVER_INFO pl_info, const std::string &db_name, const
 	  er_clear();
 	}
 
-      int port = (status == NO_ERROR) ? pl_server_port () : PL_PORT_DISABLED;
       PL_SERVER_INFO pl_new_info { getpid(), pl_server_port () };
 
       pl_unlink_info (db_name.c_str ());
@@ -576,7 +558,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
 exit:
   if (status != NO_ERROR)
     {
-      fprintf (stdout, "Procedure Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
+      fprintf (stdout, "Procedural Language Server (%s, pid %d) - Abnormal State \n", db_name.c_str (), pl_info.pid);
     }
 
   if (buffer.ptr)
@@ -627,11 +609,11 @@ pl_dump_status (FILE *fp, PL_STATUS_INFO status_info)
 {
   if (status_info.port == PL_PORT_UDS_MODE)
     {
-      fprintf (fp, "Procedure Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
+      fprintf (fp, "Procedural Language Server (%s, pid %d, UDS)\n", status_info.db_name.c_str (), status_info.pid);
     }
   else
     {
-      fprintf (fp, "Procedure Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
+      fprintf (fp, "Procedural Language Server (%s, pid %d, port %d)\n", status_info.db_name.c_str (), status_info.pid,
 	       status_info.port);
     }
   auto vm_args_len = status_info.vm_args.size();

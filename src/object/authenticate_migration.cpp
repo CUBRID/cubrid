@@ -963,7 +963,7 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   char *class_name = NULL;
-  char *username;
+  char *username = NULL;
   int typebit;
 
   typebit = authbits & AU_TYPE_MASK;

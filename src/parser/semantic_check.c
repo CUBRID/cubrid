@@ -4775,7 +4775,6 @@ static void
 pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
   DB_OBJECT *db, *super;
-  SM_CLASS *class_ = NULL;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
   PT_NODE *name, *sup, *att, *qry, *attr;
@@ -4809,13 +4808,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -4831,8 +4828,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   db = pt_find_class (parser, name, for_update);
   if (!db)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
 
@@ -5252,6 +5248,87 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 	}
+      break;
+    case PT_CHANGE_OWNER:
+      {
+	const char *new_owner;
+	MOP new_owner_mop = NULL;
+	SM_CLASS *class_ = NULL;
+	char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
+	new_cls_nam[0] = '\0';
+	int error = NO_ERROR;
+
+	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+
+	new_owner_mop = au_find_user (new_owner);
+	if (new_owner_mop == NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
+	    break;
+	  }
+
+	error = au_fetch_class_force (db, &class_, AU_FETCH_UPDATE);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	/* To change the owner of a system class is not allowed. */
+	if (sm_issystem (class_))
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
+	    return;
+	  }
+
+	/* When changing to the same owner, a No-Operation is performed. */
+	if (ws_is_same_object (class_->owner, new_owner_mop))
+	  {
+	    break;
+	  }
+
+	/* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+	snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+
+	if (db_find_synonym (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+
+	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+	if (db_find_class (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+      }
       break;
     default:
       break;
@@ -9520,12 +9597,13 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   const char *default_value_print = NULL;
+  DB_VALUE tmp;
 
   default_value_node = param->info.sp_param.default_value =
     pt_check_data_default (parser, param->info.sp_param.default_value);
   if (pt_has_error (parser))
     {
-      return error;
+      return ER_FAILED;
     }
 
   assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
@@ -9539,22 +9617,42 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 		  param,
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
-      return error;
+      return ER_FAILED;
     }
 
-  {
-    PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
-    error =
-      pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
-					 default_value_node->info.data_default.default_expr_type, false);
-    parser_free_node (parser, dummy);
-    if (error != NO_ERROR)
-      {
-	error = (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
-	PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
-		     default_value_print, pt_get_type_name (param->type_enum, param->data_type));
-      }
-  }
+  if (default_value->node_type == PT_EXPR && default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+    {
+      db_make_null (&tmp);
+      pt_evaluate_tree (parser, default_value, &tmp, 1);
+      if (pt_has_error (parser))
+	{
+	  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, default_value));
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  parser_free_node (parser, default_value_node->info.data_default.default_value);
+	  default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
+	}
+      db_value_clear (&tmp);
+    }
+
+  if (error == NO_ERROR)
+    {
+      PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
+      error =
+	pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
+					   default_value_node->info.data_default.default_expr_type, false);
+      parser_free_node (parser, dummy);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		       (error ==
+			ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
+	}
+    }
 
   return error;
 }
@@ -10272,7 +10370,6 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  assert (node->info.serial.code != NULL);
   switch (node->info.serial.code)
     {
     case PT_SERIAL_OPTION:

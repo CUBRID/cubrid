@@ -30,31 +30,43 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-import java.util.List;
+import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import java.util.HashSet;
 import java.util.LinkedList;
-import java.sql.PreparedStatement;
+import java.util.List;
+import java.util.Set;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtLoop extends Stmt {
 
-    public final LoopOptimizable loopOptimizable;
+    public Set<SqlUse>
+            reachableSqlUses; // sql uses that are rechable from this loop, but not contained in
+    // this loop
+    public final LoopOptimizables loopOptimizables;
 
-    public StmtLoop(ParserRuleContext ctx, LoopOptimizable loopOptimizable) {
+    public StmtLoop(ParserRuleContext ctx, LoopOptimizables loopOptimizables) {
         super(ctx);
-        this.loopOptimizable = loopOptimizable;
-        if (loopOptimizable != null) {
-            for (StmtSql s: loopOptimizable.sql) {
-                s.outermostLoop = this;
+
+        this.loopOptimizables = loopOptimizables;
+        if (loopOptimizables != null) {
+            for (SqlUse n : loopOptimizables.sqlUses) {
+                n.markAsReachableFromLoop();
+            }
+
+            reachableSqlUses = new HashSet<>();
+            for (LocalRoutineCall n : loopOptimizables.localRoutineCalls) {
+                n.markAsReachableFromLoop(reachableSqlUses);
             }
         }
     }
 
-    public static class LoopOptimizable {
-        public List<StmtSql> sql = new LinkedList<>();
+    public static class LoopOptimizables {
+        public List<SqlUse> sqlUses = new LinkedList<>();
+        public List<LocalRoutineCall> localRoutineCalls = new LinkedList<>();
 
         public boolean isEmpty() {
-            return sql.isEmpty();
+            return sqlUses.isEmpty() && localRoutineCalls.isEmpty();
         }
     }
-
 }

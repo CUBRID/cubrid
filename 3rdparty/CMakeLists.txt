@@ -17,15 +17,15 @@
 
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
-set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.2.5.tar.bz2")             # expat library sources URL
+set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
 set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1f.tar.gz")       # openssl library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1w.tar.gz")       # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
-set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.2.tar.gz")                          # LZ4
+set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.4.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -43,16 +43,15 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 #   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
 #
 # Below are the URL_HASH values for different libraries used in this project:
-set(WITH_LIBEXPAT_URL_HASH "SHA256=d9dc32efba7e74f788fcc4f212a43216fc37cf5f23f4c2339664d473353aedf6")
-set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")                          # jansson library sources URL
-set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")                          # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL_HASH "SHA256=186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35")                     # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")     # unixODBC library sources URL
-set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
-set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")               # intel oneTBB library sources URL
-set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")
-set(WITH_LZ4_URL_HASH "SHA256=658ba6191fa44c92280d4aa2c271b0f4fbc0e34d249578dd05e50e76d0e5efcc")
+set(WITH_LIBEXPAT_URL_HASH "SHA256=fd03b7172b3bd7427a3e7a812063f74754f24542429b634e0db6511b53fb2278")		# expat library 
+set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")         # jansson library 
+set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")            # editline library 
+set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")          # rapidjson library 
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8")         # openssl library 
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")        # unixODBC library 
+set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")             # intel oneTBB library 
+set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")		# RE2
+set(WITH_LZ4_URL_HASH "SHA256=0b0e3aa07c8c063ddf40b082bdf7e37a1562bda40a0ff5272957f3e987e0e54b")		# LZ4
 
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)

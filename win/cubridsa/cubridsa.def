@@ -54,6 +54,7 @@ EXPORTS
     db_set_size
     db_set_page_size
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_trigger_action
     db_trigger_action_time
@@ -831,4 +832,5 @@ EXPORTS
     getnameinfo_uhost
     pl_get_socket_file_path
     envvar_vmdir_file
+    envvar_logdir_file
 	
