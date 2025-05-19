@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "parse_tree.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -90,9 +91,7 @@
 
 namespace hnsw
 {
-  int m;
-  int ef_construction;
-  enum DB_VECTOR_DISTANCE_METRIC metric;
+  PT_VECTOR_INDEX_INFO vindex_info;
 };
 
 typedef enum
@@ -3245,10 +3244,9 @@ do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   // TODO (CUBVEC): pass these values to create_vector_index
   // TODO (CUBVEC): temporarily use global variables for quick prototype.
-  hnsw::m = statement->info.index.vector_index.hnsw_m;
-  hnsw::ef_construction = statement->info.index.vector_index.hnsw_ef_construction;
-  hnsw::metric = statement->info.index.vector_index.metric;
-  vimkim_log ("m, efcon, metric: %d, %d, %d\n", hnsw::m, hnsw::ef_construction, hnsw::metric);
+  hnsw::vindex_info.hnsw_m = statement->info.index.vector_index.hnsw_m;
+  hnsw::vindex_info.hnsw_ef_construction = statement->info.index.vector_index.hnsw_ef_construction;
+  hnsw::vindex_info.metric = statement->info.index.vector_index.metric;
 
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);

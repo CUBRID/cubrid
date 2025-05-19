@@ -77,6 +77,7 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
+#include "parse_tree.h"
 #include "faiss/IndexHNSW.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -102,9 +103,7 @@
 
 namespace hnsw
 {
-  extern int m;
-  extern int ef_construction;
-  extern enum DB_VECTOR_DISTANCE_METRIC metric;
+  extern PT_VECTOR_INDEX_INFO vindex_info;
 };
 
 typedef struct schema_def
@@ -10831,9 +10830,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	      return error;
 	    }
 
-	  auto m = hnsw::m;
-	  auto ef_construction = hnsw::ef_construction;
-	  auto metric = hnsw::metric;
+	  auto m = hnsw::vindex_info.hnsw_m;
+	  auto ef_construction = hnsw::vindex_info.hnsw_ef_construction;
+	  auto metric = hnsw::vindex_info.metric;
 
 	  vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
 
