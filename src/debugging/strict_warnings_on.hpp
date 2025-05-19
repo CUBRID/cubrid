@@ -29,6 +29,7 @@
 #pragma GCC diagnostic error "-Wall"
 #pragma GCC diagnostic error "-Wextra"
 #pragma GCC diagnostic error "-Wpedantic"
+#pragma clang diagnostic ignored "-Wunused-parameter" // parameter names in function signatures improve readability, even if unused.
 
 // GCC does not support turning -Wall and -Wextra into errors directly.
 // Instead, we list each warning that those groups enable individually.
