@@ -122,7 +122,7 @@ jobs:
                         esac
 
                         echo "[debug] split tests for parallel execution"
-                        circleci tests glob \$glob_path | sed "s|^\$base_dir/||" | circleci tests split | tee tc.list
+                        circleci tests glob \$glob_path | sed "s|^\$base_dir/||" | circleci tests split --split-by=name | tee tc.list
                  
                         echo "[debug] Remove tests that are not in the list"
                         if [ "\$TEST_SUITE" = "shell" ]; then
