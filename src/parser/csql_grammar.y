@@ -685,7 +685,6 @@ static int g_plcsql_text_pos;
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
-%type <c2> vector_index_column_with_metric
 %type <node> update_statistics_stmt
 %type <node> only_class_name_list
 %type <node> opt_level_spec
@@ -1109,12 +1108,13 @@ static int g_plcsql_text_pos;
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
-%type <kvp> opt_vector_index_with_clause
 %type <c2> index_with_item_list
-%type <kvp> vector_index_with_item_list
-%type <kvp> vector_index_with_item
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
+%type <c2> vector_index_column_with_metric
+%type <kvp> opt_vector_index_with_clause
+%type <kvp> vector_index_with_item_list
+%type <kvp> vector_index_with_item
 
 /*}}}*/
 
