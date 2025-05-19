@@ -5679,7 +5679,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
       break;
 
     default:
-      ASSERT_CUBVEC (false);
       return -1;		/* unsupported expression */
     }
 
