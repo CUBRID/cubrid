@@ -62,6 +62,8 @@
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
 
+#include "cubvec_assert.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -8433,6 +8435,11 @@ pt_is_operator_arith (PT_OP_TYPE op)
 {
   switch (op)
     {
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is arithmetic.");
+	return true;
+      }
     case PT_PLUS:
     case PT_MINUS:
     case PT_TIMES:
@@ -8490,6 +8497,12 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_LE:
     case PT_LE_ALL:
     case PT_LE_SOME:
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      if (op == PT_DISTANCE_OP_EUCLIDEAN)
+	{
+	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not logical.\n");
+	  return false;
+	}
     case PT_NULLSAFE_EQ:
     case PT_IS_NOT_NULL:
     case PT_IS_NULL:

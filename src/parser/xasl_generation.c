@@ -73,6 +73,8 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
+#include "cubvec_assert.h"
+
 #include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
@@ -1542,6 +1544,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  saved_etc = parser->etc;
 	  parser->etc = NULL;
 
+	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	    {
+	      // CUBVEC todo: not yet analyzed
+	      ASSERT_CUBVEC (false);
+	    }
+
 	  /* set regu variables */
 	  if (node->info.expr.op == PT_SETEQ || node->info.expr.op == PT_EQ || node->info.expr.op == PT_SETNEQ
 	      || node->info.expr.op == PT_NE || node->info.expr.op == PT_GE || node->info.expr.op == PT_GT
@@ -1599,6 +1607,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 					((node->info.expr.qualifier == PT_EQ_TORDER) ? R_EQ_TORDER : R_EQ), data_type);
 	      break;
 
+	    case PT_DISTANCE_OP_EUCLIDEAN:
+	      if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		{
+		  // CUBVEC todo: not yet analyzed
+		  ASSERT_CUBVEC (false);
+		}
 	    case PT_NULLSAFE_EQ:
 	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NULLSAFE_EQ, data_type);
 	      break;
@@ -6392,6 +6406,11 @@ REGU_VARIABLE *
 pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REGU_VARIABLE * arg3,
 		    const OPERATOR_TYPE op, const TP_DOMAIN * domain)
 {
+  if (op == T_DISTANCE_OP_EUCLIDEAN)
+    {
+      vimkim_log ("inside make regu func.\n");
+    }
+
   REGU_VARIABLE *regu = NULL;
   ARITH_TYPE *arith;
   DB_VALUE *dbval;
@@ -7616,6 +7635,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		{
+		  vimkim_log ("op is PT_DISTANCE_OP_EUCLIDEAN and the vector is operated against a column.\n");
+		}
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
 		  //TODO FIND WHY NEXT WASN'T RESTORED
@@ -7664,11 +7687,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      domain = NULL;
 	      if (node->info.expr.op == PT_PLUS || node->info.expr.op == PT_MINUS || node->info.expr.op == PT_TIMES
 		  || node->info.expr.op == PT_DIVIDE || node->info.expr.op == PT_MODULUS
-		  || node->info.expr.op == PT_POWER || node->info.expr.op == PT_AES_ENCRYPT
-		  || node->info.expr.op == PT_AES_DECRYPT || node->info.expr.op == PT_SHA_TWO
-		  || node->info.expr.op == PT_ROUND || node->info.expr.op == PT_LOG || node->info.expr.op == PT_TRUNC
-		  || node->info.expr.op == PT_POSITION || node->info.expr.op == PT_FINDINSET
-		  || node->info.expr.op == PT_LPAD || node->info.expr.op == PT_RPAD || node->info.expr.op == PT_REPLACE
+		  || node->info.expr.op == PT_POWER
+		  || node->info.expr.op == PT_AES_ENCRYPT || node->info.expr.op == PT_AES_DECRYPT
+		  || node->info.expr.op == PT_SHA_TWO || node->info.expr.op == PT_ROUND || node->info.expr.op == PT_LOG
+		  || node->info.expr.op == PT_TRUNC || node->info.expr.op == PT_POSITION
+		  || node->info.expr.op == PT_FINDINSET || node->info.expr.op == PT_LPAD
+		  || node->info.expr.op == PT_RPAD || node->info.expr.op == PT_REPLACE
 		  || node->info.expr.op == PT_TRANSLATE || node->info.expr.op == PT_ADD_MONTHS
 		  || node->info.expr.op == PT_MONTHS_BETWEEN || node->info.expr.op == PT_FORMAT
 		  || node->info.expr.op == PT_ATAN || node->info.expr.op == PT_ATAN2
@@ -7688,7 +7712,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
-		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
+		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
+		  || node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT) && node->info.expr.arg2 == NULL)
@@ -8092,6 +8117,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		case PT_PLUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
+		  break;
+
+		case PT_DISTANCE_OP_EUCLIDEAN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_EUCLIDEAN, domain);
 		  break;
 
 		case PT_MINUS:
