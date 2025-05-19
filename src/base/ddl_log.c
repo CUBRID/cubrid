@@ -1287,6 +1287,7 @@ logddl_create_dir (const char *new_dir)
 #if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
+  // cppcheck-suppress arrayIndexOutOfBounds
   else if (strlen (path) > 3 && path[2] == '/')
     p = path + 3;
 #else /* WINDOWS */
