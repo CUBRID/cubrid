@@ -1197,7 +1197,7 @@ static unsigned int prm_pb_num_LRU_chains_flag = 0;
 
 int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = 1000;
 static int prm_page_bg_flush_interval_msec_default = 1000;
-static int prm_page_bg_flush_interval_msec_lower = -1;
+static int prm_page_bg_flush_interval_msec_lower = 0;
 static unsigned int prm_page_bg_flush_interval_msec_flag = 0;
 
 bool PRM_ADAPTIVE_FLUSH_CONTROL = true;
