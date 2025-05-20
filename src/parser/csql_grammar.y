@@ -100,6 +100,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int yylex(void);
 
 #if defined(SA_MODE)
      /*

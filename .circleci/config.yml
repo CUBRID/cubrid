@@ -103,33 +103,35 @@ jobs:
                           plcsql)
                             TEST_SUITE="sql"
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}/**/*.sql"
+                            glob_path="\$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}"
                             ;;
                           sql)
                             base_dir="cubrid-testcases"
                             rm -rf \$base_dir/sql/_05_plcsql \$base_dir/sql/_35_fig_cake/plcsql
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*"
                             ;;
                           shell)
                             base_dir="cubrid-testcases-private-ex"
                             rm -rf \$base_dir/shell/_25_unstable
-                            glob_path="\$(find \$base_dir/shell/_* -type f -path "*/*/cases/*.sh" | grep -P '/([^/]+)/cases/\1\.sh\$')"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sh"
                             ;;
                           *)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*"
                             ;;
                         esac
 
-                        echo "[debug] split tests for parallel execution"
-                        circleci tests glob \$glob_path | sed "s|^\$base_dir/||" | circleci tests split | tee tc.list
-                 
-                        echo "[debug] Remove tests that are not in the list"
                         if [ "\$TEST_SUITE" = "shell" ]; then
-                          cat tc.list | xargs -n1 dirname | uniq> tc_dirs.list
-                          find \$base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rf
+                          echo "[debug] split tests for parallel execution"
+                          circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=name | tee tc.list
+                          cat tc.list | xargs -n1 dirname > tc_dirs.list
+                          echo "[debug] Remove tests that are not in the list"
+                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rvf
                         else
-                          find \$base_dir -name "*.sql" -type f | grep -v -f tc.list | xargs -r rm -rf
+                          echo "[debug] split tests for parallel execution"
+                          circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
+                          echo "[debug] Remove tests that are not in the list"
+                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rvf
                         fi
 
                         echo "[debug] Run the tests"
