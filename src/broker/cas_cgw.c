@@ -1314,13 +1314,13 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       {
 	char *value;
 	int val_size;
-	SQLLEN cbValue = SQL_NULL_DATA;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_VARCHAR;
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
 
+	value_list->cbValue = SQL_NULL_DATA;
 	value_list->string_val = value;
 
 	SQL_CHK_ERR (handle->hstmt,
@@ -1329,7 +1329,8 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  bind_num,
 						  SQL_PARAM_INPUT,
 						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, &cbValue));
+						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0,
+						  &value_list->cbValue));
       }
       break;
 
