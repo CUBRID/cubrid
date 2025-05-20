@@ -37,6 +37,7 @@ std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
 static faiss::idx_t encode_oid (const OID &oid);
 //static OID decode_oid (faiss::idx_t encoded_oid);
+static std::mutex hnsw_elem_mutex;
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
@@ -119,7 +120,8 @@ int hnsw_print_index_info (BTID *btid)
   return NO_ERROR;
 }
 
-int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
+int
+hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 {
   std::vector<float> fvec;
   int hnsw_id;
@@ -144,6 +146,8 @@ int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
     }
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+
+  std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 
   index->add_with_ids (1, fvec.data(), &encoded_oid);
   er_log_debug (ARG_FILE_LINE, "Added element with ID %lld to HNSW Index.", static_cast<long long> (encoded_oid));
