@@ -2705,6 +2705,41 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
   return NULL;
 }
 
+
+static PARSER_VARCHAR *
+pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+{
+  unsigned int hash1 = 5381;
+  unsigned int hash2 = 5381;
+  unsigned char *s, *ps;
+  char buf[64];
+
+  assert (parser->dblink_server_text != NULL);
+  assert (parser->dblink_server_text->bytes != NULL);
+
+  ps = parser->dblink_server_text->bytes;
+  if (!ps || *ps == '\0')
+    {
+      return NULL;
+    }
+
+  // original
+  for (s = ps; *s; ++s)
+    {
+      hash1 = ((hash1 << 5) + hash1) + *s;	/* hash * 33 + c */
+    }
+
+  // reverse 
+  for (s--; s >= ps; s--)
+    {
+      hash2 = ((hash2 << 5) - hash2) + *s;	/* hash * 31 + c */
+    }
+
+  sprintf (buf, "%u,%u", hash1, hash2);
+
+  return pt_append_nulstring (parser, NULL, buf);
+}
+
 /*
  * parser_print_tree() -
  *   return:
@@ -2770,7 +2805,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       if ((parser->custom_print & PT_PRINT_DBLINK_INFO) && parser->dblink_server_text)
 	{
 	  string = pt_append_nulstring (parser, string, ";remote={");
-	  string = pt_append_varchar (parser, string, parser->dblink_server_text);
+	  string = pt_append_varchar (parser, string, pt_conv_server_2_hash_text (parser));
 	  string = pt_append_bytes (parser, string, "}", 1);
 	  parser->dblink_server_text = NULL;
 	}
