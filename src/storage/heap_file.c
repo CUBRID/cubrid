@@ -20446,7 +20446,7 @@ static int
 heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				    PGBUF_WATCHER * home_hint_p)
 {
-  int lk_result, slot_id = 0;
+  int slot_count, slot_id, lk_result;
   LOCK lock;
   int error_code = NO_ERROR;
 
@@ -20506,11 +20506,19 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
-  /* find REC_DELETED_WILL_REUSE slot or add new slot */
-  slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
+  /* retrieve number of slots in page */
+  slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
 
-  if (slot_id != SP_ERROR)
+  /* find REC_DELETED_WILL_REUSE slot or add new slot */
+  /* slot_id == slot_count means add new slot */
+  for (slot_id = 0; slot_id <= slot_count; slot_id++)
     {
+      slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
+      if (slot_id == SP_ERROR)
+	{
+	  break;		/* this will not happen */
+	}
+
       context->res_oid.slotid = slot_id;
 
       if (lock == NULL_LOCK)
@@ -20526,9 +20534,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  /* successfully locked! */
 	  return NO_ERROR;
 	}
-#if !defined(NDEBUG)
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
+#if !defined(NDEBUG)
 	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
 	    {
 	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -20538,8 +20546,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	    {
 	      assert (false);	/* unknown locking error */
 	    }
-	}
 #endif
+	  break;		/* go to error case */
+	}
     }
 
   /* either lock error or no slot was found in page (which should not happen) */
