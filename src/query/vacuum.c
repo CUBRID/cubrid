@@ -6068,6 +6068,11 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
 
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return;
+    }
+
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
 

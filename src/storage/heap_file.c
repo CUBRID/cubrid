@@ -721,7 +721,9 @@ static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent
 static DISK_ISVALID heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr);
 
 static int heap_chnguess_initialize (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int heap_chnguess_realloc (void);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_chnguess_finalize (void);
 static int heap_chnguess_decache (const OID * oid);
 static int heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore);
@@ -739,7 +741,7 @@ static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpi
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
-#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
+#endif /* ENABLE_UNUSED_FUNCTION */
 static HEAP_STATS_ENTRY *heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid,
 						   int freespace);
 static int heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -15458,6 +15460,7 @@ exit_on_error:
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_chnguess_realloc () - More clients that currently maintained
  *   return: NO_ERROR
@@ -15539,6 +15542,7 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_chnguess_finalize () - Finish chnguess information
@@ -15818,14 +15822,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 
   if (heap_Guesschn != NULL)
     {
-      if (heap_Guesschn->num_clients <= tran_index)
-	{
-	  if (heap_chnguess_realloc () != NO_ERROR)
-	    {
-	      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	      return NULL_CHN;
-	    }
-	}
+      assert (heap_Guesschn->num_clients > tran_index);
 
       /*
        * Do we have this entry in hash table, if we do then check corresponding
@@ -15873,14 +15870,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
       return NULL_CHN;
     }
 
-  if (heap_Guesschn->num_clients <= tran_index)
-    {
-      if (heap_chnguess_realloc () != NO_ERROR)
-	{
-	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	  return NULL_CHN;
-	}
-    }
+  assert (heap_Guesschn->num_clients > tran_index);
 
   /*
    * Is the entry already in the chnguess hash table ?
@@ -20699,7 +20689,7 @@ static int
 heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				    PGBUF_WATCHER * home_hint_p)
 {
-  int slot_count, slot_id, lk_result;
+  int lk_result, slot_id = 0;
   LOCK lock;
   int error_code = NO_ERROR;
 
@@ -20759,19 +20749,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
-  /* retrieve number of slots in page */
-  slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
-
   /* find REC_DELETED_WILL_REUSE slot or add new slot */
-  /* slot_id == slot_count means add new slot */
-  for (slot_id = 0; slot_id <= slot_count; slot_id++)
-    {
-      slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
-      if (slot_id == SP_ERROR)
-	{
-	  break;		/* this will not happen */
-	}
+  slot_id = spage_find_free_slot (context->home_page_watcher_p->pgptr, NULL, slot_id);
 
+  if (slot_id != SP_ERROR)
+    {
       context->res_oid.slotid = slot_id;
 
       if (lock == NULL_LOCK)
@@ -20787,9 +20769,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  /* successfully locked! */
 	  return NO_ERROR;
 	}
+#if !defined(NDEBUG)
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
-#if !defined(NDEBUG)
 	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
 	    {
 	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -20799,9 +20781,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	    {
 	      assert (false);	/* unknown locking error */
 	    }
-#endif
-	  break;		/* go to error case */
 	}
+#endif
     }
 
   /* either lock error or no slot was found in page (which should not happen) */
