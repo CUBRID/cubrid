@@ -24,6 +24,8 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
+#include "dbtype.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -36,7 +38,7 @@ int hnsw_index_id = 0;
 std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
 static faiss::idx_t encode_oid (const OID &oid);
-//static OID decode_oid (faiss::idx_t encoded_oid);
+static OID decode_oid (faiss::idx_t encoded_oid);
 static std::mutex hnsw_elem_mutex;
 
 BTID *
@@ -73,8 +75,9 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
   if (it == hnsw_index_map.end())
     {
       er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
-      assert (false);
-      return ER_FAILED;
+      // assert (false);
+      // return ER_FAILED;
+      return NO_ERROR;
     }
   else
     {
@@ -123,7 +126,6 @@ int hnsw_print_index_info (BTID *btid)
 int
 hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 {
-  std::vector<float> fvec;
   int hnsw_id;
   faiss::idx_t encoded_oid = encode_oid (*oid);
 
@@ -133,7 +135,8 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
       return ER_FAILED;
     }
 
-  fvec = db_value_get_stdvector_float (key_dbvalue);
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+
   hnsw_id = btid->root_pageid;
 
   auto it = hnsw_index_map.find (hnsw_id);
@@ -149,9 +152,40 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 
   std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 
-  index->add_with_ids (1, fvec.data(), &encoded_oid);
+  index->add_with_ids (1, vf->float_array, &encoded_oid);
   er_log_debug (ARG_FILE_LINE, "Added element with ID %lld to HNSW Index.", static_cast<long long> (encoded_oid));
 
+  return NO_ERROR;
+}
+
+int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
+{
+  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+
+  assert (hnsw_id > 0);
+
+  auto it = hnsw_index_map.find (hnsw_id);
+
+  if (it == hnsw_index_map.end())
+    {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+
+  int64_t *uids = new int64_t[k * 1];
+  index->search (1, vf->float_array, k, distances, uids);
+
+  if (uids != nullptr)
+    {
+      for (int i = 0; i < k; i++)
+	{
+	  rec_oids[i] = decode_oid (uids[i]);
+	}
+      delete[] uids;
+    }
   return NO_ERROR;
 }
 
@@ -162,7 +196,6 @@ static faiss::idx_t encode_oid (const OID &oid)
 	 (static_cast<uint16_t> (oid.volid));
 }
 
-/*
 static OID decode_oid (faiss::idx_t encoded_oid)
 {
   OID oid;
@@ -172,6 +205,5 @@ static OID decode_oid (faiss::idx_t encoded_oid)
 
   return oid;
 }
-*/
 
 #include "strict_warnings_off.hpp"

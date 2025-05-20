@@ -40,6 +40,8 @@ BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hn
 		       enum faiss::MetricType metric_type);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
+
+int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances);
 int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue);
 
 #endif

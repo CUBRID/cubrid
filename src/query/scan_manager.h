@@ -46,6 +46,7 @@
 #include "scan_json_table.hpp"
 #include "storage_common.h"	/* for PAGEID */
 #include "query_hash_scan.h"
+#include "hnsw.hpp"
 
 // forward definitions
 struct indx_info;
@@ -88,6 +89,7 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
+  S_VECTOR_INDEX_SCAN,		/* scans vector index */
   S_DBLINK_SCAN,		/* scans dblink */
   S_HEAP_SAMPLING_SCAN		/* scans sampling data */
 } SCAN_TYPE;
@@ -252,6 +254,34 @@ struct index_node_scan_id
   regu_variable_list_node *node_info_regu_list;	/* regulator variable list */
 };
 
+struct hnsw_indx_scan_id
+{
+  INDX_INFO *indx_info;		/* index information */
+  OID cls_oid;			/* class object identifier */
+  HFID hfid;			/* heap file identifier */
+  HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
+  OID *curr_oidp;		/* current oid pointer */
+  INT32 hnsw_id;
+
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  SCAN_ATTRS pred_attrs;	/* attr info from predicates */
+  regu_variable_list_node *rest_regu_list;	/* regulator variable list */
+  SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  bool scancache_inited;
+  bool scanattr_inited;
+
+  DB_VALUE *query_dbvalue;
+  DB_VALUE *k_dbvalue;
+
+  // OID buffer
+  OID *oidp;			/* OID buffer. */
+  int curr_oidno;		/* current oid number */
+  int oid_cnt;			/* Current OID count. */
+  float *distp;			/* distance buffer */
+};
+typedef struct hnsw_indx_scan_id VECTOR_INDEX_SCAN_ID;
+
+
 typedef struct llist_scan_id LLIST_SCAN_ID;
 struct llist_scan_id
 {
@@ -373,6 +403,7 @@ struct scan_id_struct
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
     JSON_TABLE_SCAN_ID jtid;
     METHOD_SCAN_ID msid;
+    VECTOR_INDEX_SCAN_ID visid;
   } s;
 
   SCAN_STATS scan_stats;
@@ -440,6 +471,17 @@ extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sc
 					   /* fields of INDX_SCAN_ID */
 					   indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
 					   regu_variable_list_node * node_info_regu_list);
+extern int scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+					/* fields of SCAN_ID */
+					val_list_node * val_list, VAL_DESCR * vd,
+					/* fields of INDX_SCAN_ID */
+					indx_info * indx_info, OID * cls_oid, HFID * hfid,
+					regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+					regu_variable_list_node * regu_list_rest,
+					valptr_list_node * output_val_list,
+					regu_variable_list_node * regu_val_list,
+					int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
+					int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
