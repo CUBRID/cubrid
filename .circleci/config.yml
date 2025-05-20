@@ -126,7 +126,7 @@ jobs:
                           circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=name | tee tc.list
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "cases" -type d| grep -v -f tc_dirs.list | xargs -r rm -rvf
+                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rvf
                         else
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
