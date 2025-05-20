@@ -336,4 +336,7 @@ SM_DOMAIN *sm_domain_alloc ();
 void sm_domain_free (SM_DOMAIN * ptr);
 SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
+extern int sm_update_timestamps (DB_DATETIME * created_time, DB_DATETIME * updated_time);
+extern int sm_update_checked_timestamp (DB_DATETIME * datetime);
+
 #endif /* _SCHEMA_MANAGER_H_ */

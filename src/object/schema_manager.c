@@ -442,8 +442,7 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
-static int update_checked_timestamp (SM_CLASS *class_);
-static int update_timestamps (SM_CLASS * current, SM_CLASS * class_);
+static DB_DATETIME *sm_get_now_datetime (void);
 
 /*
  * sc_set_current_schema()
@@ -4174,24 +4173,6 @@ sm_get_statistics_force (MOP classop)
   return stats;
 }
 
-static int
-update_checked_timestamp (SM_CLASS *class_)
-{
-  int error;
-  DB_VALUE value;
-  DB_DATETIME *now;
-
-  error = db_sys_datetime(&value);
-  now = db_get_datetime(&value);
-  
-  if (error != NO_ERROR || now == NULL)
-  {
-        return ER_FAILED;
-  }
-  
-  class_->checked_time = *now;
-}
-
 /*
  * sm_update_statistics () - Update statistics on the server for the
  *    particular class or index. When finished, fetch the new statistics and
@@ -4249,7 +4230,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
-                  error = update_checked_timestamp((SM_CLASS *)(classop->object));
+		  error = sm_update_checked_timestamp (&class_->checked_time);
 
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
@@ -13023,13 +13004,14 @@ update_timestamps (SM_CLASS * current, SM_CLASS * class_)
   error = db_sys_datetime (&value);
   now = db_get_datetime (&value);
 
-  if (error != NO_ERROR || now == NULL) {
-        return ER_FAILED;
-  }
+  if (error != NO_ERROR || now == NULL)
+    {
+      return ER_FAILED;
+    }
 
   /* Align created_time and updated_time for system-defined classes 
    * to ensure timestamp consistency after immediate internal updates. */
-    if (current == NULL || is_system_defined_class)
+  if (current == NULL || is_system_defined_class)
     {
       class_->created_time = *now;
     }
@@ -13333,7 +13315,17 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
-  error = update_timestamps (template_->current, class_);
+  /* Align created_time and updated_time for system-defined classes 
+   * to ensure timestamp consistency after immediate internal updates. */
+  if (template_->current == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
+    {
+      error = sm_update_timestamps (&class_->created_time, &class_->updated_time);
+    }
+  else
+    {
+      error = sm_update_timestamps (NULL, &class_->updated_time);
+    }
+
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -16668,4 +16660,48 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+DB_DATETIME *
+sm_get_now_datetime (void)
+{
+  DB_VALUE value;
+  int error = db_sys_datetime (&value);
+  DB_DATETIME *now = db_get_datetime (&value);
+
+  return (error == NO_ERROR) ? now : NULL;
+}
+
+int
+sm_update_timestamps (DB_DATETIME * created_time, DB_DATETIME * updated_time)
+{
+  DB_DATETIME *now = sm_get_now_datetime ();
+
+  if (now == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (created_time)
+    {
+      *created_time = *now;
+    }
+  *updated_time = *now;
+
+  return NO_ERROR;
+}
+
+int
+sm_update_checked_timestamp (DB_DATETIME * checked_time)
+{
+  DB_DATETIME *now = sm_get_now_datetime ();
+
+  if (now == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  *checked_time = *now;
+
+  return NO_ERROR;
 }
