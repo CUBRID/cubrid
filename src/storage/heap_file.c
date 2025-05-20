@@ -9802,13 +9802,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		    {
 		      value->last_attrepr->type = DB_TYPE_OID;
 		    }
-		  // 일단, 주석으로 제외해보고 테스트
-		  //   else if (value->last_attrepr->type == DB_TYPE_NUMERIC && (value->last_attrepr->domain->is_floating_point_numeric || value->last_attrepr->domain->precision == 0))
-		  //     {
-		  //       // CS모드에서 unpack 할 때, 테이블에 저장된 정보만 가져와 flag가 꺼져있음
-		  //       // 그래서 임시로 여기서 항상 켜주자!
-		  //       value->dbvalue.domain.numeric_info.is_floating_point_numeric = 1;
-		  //     }
 
 		  if (value->state == HEAP_UNINIT_ATTRVALUE)
 		    {
@@ -11380,6 +11373,11 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
+	  /* 일반 numeric 타입이고, insert select 수행시 연산 결과가 precision 값보다 클 경우 Overflow 에러로 변환해주자! */
+	  if (er_errid () == ER_INVALID_PRECISION)
+	    {
+	      dom_status = DOMAIN_OVERFLOW;
+	    }
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, value->last_attrepr->domain);
 	  assert (er_errid () != NO_ERROR);
 

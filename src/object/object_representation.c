@@ -2695,6 +2695,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 #define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
 #define OR_DOMAIN_SCHEMA_FLAG		(0x400)	/* for json */
+#define OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG	(0x500)	/* for floating point numeric */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -2863,6 +2864,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
   int has_oid, has_subdomain, has_enum;
   bool has_schema;
   bool has_collation;
+  bool has_floating_point_numeric;
   TP_DOMAIN *d;
   DB_TYPE id;
   int rc = NO_ERROR;
@@ -2922,7 +2924,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       has_enum = 0;
       has_collation = false;
       has_schema = false;
-
+      has_floating_point_numeric = false;
       switch (id)
 	{
 
@@ -2953,6 +2955,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
 	    {
 	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
+
+	  has_floating_point_numeric = d->is_floating_point_numeric;
+	  if (d->is_floating_point_numeric)
+	    {
+	      carrier |= OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG;
+	      has_floating_point_numeric = true;
 	    }
 	  break;
 
@@ -3174,7 +3183,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
   unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
     collation_storage;
   bool has_schema;
-  bool more, auto_precision, is_desc, has_collation;
+  bool more, auto_precision, is_desc, has_collation, has_floating_point_numeric;
   DB_TYPE type;
   int index;
   int rc = NO_ERROR;
@@ -3230,7 +3239,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  has_schema = false;
 	  auto_precision = false;
 	  has_collation = false;
-
+	  has_floating_point_numeric = false;
 	  if (carrier & OR_DOMAIN_DESC_FLAG)
 	    {
 	      is_desc = true;
@@ -3262,6 +3271,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_NUMERIC:
 	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+	      has_floating_point_numeric = (carrier & OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG) != 0;
 	      break;
 
 	    case DB_TYPE_NCHAR:
@@ -3481,6 +3491,11 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    {
 	      d->is_desc = 0;
 	    }
+
+	  if (type == DB_TYPE_NUMERIC && has_floating_point_numeric)
+	    {
+	      d->is_floating_point_numeric = 1;
+	    }
 	}
     }
 
@@ -3515,7 +3530,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   TP_DOMAIN *domain, *last, *dom;
   TP_DOMAIN *setdomain, *td, *next;
   DB_TYPE type;
-  bool more, is_desc;
+  bool more, is_desc, is_floating_point;
   unsigned int carrier, index;
   unsigned int precision, scale, codeset = 0, collation_id;
   OID class_oid;
@@ -3600,6 +3615,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      /* get precision and scale */
 	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+	      is_floating_point = (carrier & OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG) != 0;
 	      /* do we have an extra precision word ? */
 	      if (precision == OR_DOMAIN_PRECISION_MAX)
 		{
@@ -3618,7 +3634,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      goto error;
 		    }
 		}
-	      dom = tp_domain_find_numeric (type, precision, scale, is_desc);
+	      dom = tp_domain_find_numeric (type, precision, scale, is_desc, is_floating_point);
 	      break;
 
 	    case DB_TYPE_NCHAR:
@@ -3845,9 +3861,12 @@ unpack_domain (OR_BUF * buf, int *is_null)
 #endif /* !SERVER_MODE */
 		  break;
 		case DB_TYPE_NUMERIC:
-		  // 여기에 추가하는게 맞을지 추가 확인 필요!
-		  // 굳이 필요 없을지도??
-		  if (precision == 0)
+		  /*
+		   * tp_domain_find_numeric 결과가 null이 되어, 
+		   * tp_domain_construct을 수행할 경우 flag가 사라지는 경우가 있음.
+		   * 따라서, 해당 조건이 맞으면 flag를 적용해줌.
+		   */
+		  if (is_floating_point)
 		    {
 		      dom->is_floating_point_numeric = 1;
 		    }
@@ -5132,18 +5151,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  expected -= CAST_BUFLEN (buf->ptr - start);
 	  start = buf->ptr;
 	}
-      /* **중요** CS모드에서 flag 동작을 위해 조건이 꼭 필요함
-       * 해당 설정 후, tp_is_domain_cached 함수 에서도 처리 되야함.
-       * 캐시를 안하니, 컬럼의 P 값 까지 바뀌지 않고 잘 처리되네
+      /* **중요**
+       * 여기는 unpak 할 때 들어오는 곳 같음.
+       * or_put_domain 함수에서 값을 pack 해야 여기서, unpack 할 때 정상적으로 동작함.
        */
       if (domain->type->id == DB_TYPE_NUMERIC && domain->is_floating_point_numeric)
 	{
-	  //   printf ("domain->is_floating_point_numeric: %d\n", domain->is_floating_point_numeric);
-	  //   printf ("domain->precision: %d\n", domain->precision);
-	  //   printf ("domain->scale: %d\n", domain->scale);
-	  //   printf ("value->scale: %d\n", value->domain.numeric_info.scale);
-	  //   printf ("value->precision: %d\n", value->domain.numeric_info.precision);
-	  //   printf ("value->is_floating_point_numeric: %d\n", value->domain.numeric_info.is_floating_point_numeric);
 	  value->domain.numeric_info.is_floating_point_numeric = 1;
 	}
     }

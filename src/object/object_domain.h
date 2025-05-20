@@ -448,7 +448,7 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match);
   TP_DOMAIN *tp_domain_find_noparam (DB_TYPE type, bool is_desc);
-  TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc);
+  TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc, bool is_floating_point);
   TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned char collation_flag,
 				     int precision, bool is_desc);
   TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object *class_, bool is_desc);

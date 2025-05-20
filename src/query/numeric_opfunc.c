@@ -1696,6 +1696,10 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
    * 이런 경우, 결과가 100000000000000000000.000000000000000000 임으로 P : 39, S : 18 로 num(answer) 이 저장됨 
    * 사용자에게 보여주는 경우 . 과 소수부의 0 을 제거하여 100000000000000000000 이 보여지나, 값을 저장할 때 P : 21로 생성한 테이블에 저장이 불가능함.
    * 따라서, 이를 해결하기 위해 덧셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   * 
+   * 추가 노트, 
+   *   여기서 P/S 확인 안하면, 나중에 뒤에서 또 동일한 작업을 해줌. (heap_attrinfo_set->...->tp_value_cast_internal)
+   *   따라서, 여기에서 P/S 확인 하는 부분이 성능 저하를 발생시키는 부분이 아닐 가능성이 있음.
    */
   if (answer->domain.numeric_info.is_floating_point_numeric)
     {
@@ -1833,6 +1837,10 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* 뺼셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
    * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   * 
+   * 추가 노트, 
+   *   여기서 P/S 확인 안하면, 나중에 뒤에서 또 동일한 작업을 해줌. (heap_attrinfo_set->...->tp_value_cast_internal)
+   *   따라서, 여기에서 P/S 확인 하는 부분이 성능 저하를 발생시키는 부분이 아닐 가능성이 있음.
    */
   if (answer->domain.numeric_info.is_floating_point_numeric)
     {
@@ -1941,6 +1949,30 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   db_make_numeric (answer, result, prec, scale);
 
+  /* 곱셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
+   * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   * 
+   * 추가 노트, 
+   *   여기서 P/S 확인 안하면, 나중에 뒤에서 또 동일한 작업을 해줌. (heap_attrinfo_set->...->tp_value_cast_internal)
+   *   따라서, 여기에서 P/S 확인 하는 부분이 성능 저하를 발생시키는 부분이 아닐 가능성이 있음.
+   */
+  if (answer->domain.numeric_info.is_floating_point_numeric)
+    {
+      char str_buf[NUMERIC_MAX_STRING_SIZE];
+      DB_VALUE tmp_value;
+      tmp_value.domain.numeric_info.is_floating_point_numeric = 1;
+
+      numeric_db_value_print (answer, str_buf);
+
+      if (numeric_coerce_string_to_num (str_buf, strlen (str_buf), LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
+	{
+	  assert (false);
+	  goto exit_on_error;
+	}
+      db_make_numeric (answer, db_locate_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		       DB_VALUE_SCALE (&tmp_value));
+    }
+
   return ret;
 
 exit_on_error:
@@ -2040,12 +2072,12 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
   if (prec >
-      (answer->domain.
-       numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+      (answer->domain.numeric_info.
+       is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       prec =
-	(answer->domain.
-	 numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
+	(answer->domain.numeric_info.
+	 is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
     }
 
   if ((!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
@@ -2139,8 +2171,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec <
-	  (answer->domain.
-	   numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	  (answer->domain.numeric_info.
+	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -2157,6 +2189,10 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* 나눗셈 결과로 P/S 정보가 바뀌는 경우, num -> str -> num 다시 변경해주는 과정이 필요함.
    * 이로 인해, 성능 저하가 있을 수 있음 조금 더 최적화 할 수 있는 방법을 찾아야함!!
+   * 
+   * 추가 노트, 
+   *   여기서 P/S 확인 안하면, 나중에 뒤에서 또 동일한 작업을 해줌. (heap_attrinfo_set->...->tp_value_cast_internal)
+   *   따라서, 여기에서 P/S 확인 하는 부분이 성능 저하를 발생시키는 부분이 아닐 가능성이 있음.
    */
   if (answer->domain.numeric_info.is_floating_point_numeric)
     {

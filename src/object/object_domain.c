@@ -656,6 +656,7 @@ tp_init (void)
       d->is_cached = 1;
       d->built_in_index = i + 1;
       d->is_desc = false;
+      d->is_floating_point_numeric = 0;
 
       /* ! need to be adding this to the corresponding list */
     }
@@ -1008,6 +1009,7 @@ tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
   domain->self_ref = 0;
   domain->setdomain = NULL;
   domain->json_validator = NULL;
+  domain->is_floating_point_numeric = 0;
   DOM_SET_ENUM (domain, NULL, 0);
   OID_SET_NULL (&domain->class_oid);
 
@@ -2461,7 +2463,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
        * actually NUMERIC(15,0). We try to match it first.
        */
       if (transient->precision == domain->precision && transient->scale == domain->scale
-	  && transient->is_desc == domain->is_desc)
+	  && transient->is_desc == domain->is_desc
+	  && transient->is_floating_point_numeric == domain->is_floating_point_numeric)
 	{
 	  match = 1;
 	  break;
@@ -2475,7 +2478,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	   * by descending order of precision and scale.
 	   */
 	  if ((domain->precision < transient->precision)
-	      || ((domain->precision == transient->precision) && (domain->scale < transient->scale)))
+	      || ((domain->precision == transient->precision) && (domain->scale < transient->scale)
+		  && (domain->is_floating_point_numeric == transient->is_floating_point_numeric)))
 	    {
 	      break;
 	    }
@@ -2486,7 +2490,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	   * to perform the deferred coercion.
 	   */
 	  match = ((domain->precision == transient->precision) && (domain->scale == transient->scale)
-		   && (domain->is_desc == transient->is_desc));
+		   && (domain->is_desc == transient->is_desc)
+		   && (domain->is_floating_point_numeric == transient->is_floating_point_numeric));
 	  if (match)
 	    {
 	      break;
@@ -2618,7 +2623,7 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
  *    is_desc(in): desc order for index key_type
  */
 TP_DOMAIN *
-tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
+tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc, bool is_floating_point)
 {
   TP_DOMAIN *dom;
 
@@ -2631,7 +2636,8 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
    * actually NUMERIC(15,0). We try to match it first.
    */
   dom = tp_domain_get_list (type, NULL);
-  if (precision == dom->precision && scale == dom->scale && is_desc == dom->is_desc)
+  if (precision == dom->precision && scale == dom->scale && is_desc == dom->is_desc
+      && is_floating_point == dom->is_floating_point_numeric)
     {
       return dom;
     }
@@ -2639,13 +2645,16 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
   /* search the list for a domain that matches */
   for (dom = dom->next_list; dom != NULL; dom = dom->next_list)
     {
-      if ((precision > dom->precision) || ((precision == dom->precision) && (scale > dom->scale)))
+      if ((precision > dom->precision)
+	  || ((precision == dom->precision) && (scale > dom->scale)
+	      && (dom->is_floating_point_numeric == is_floating_point)))
 	{
 	  return NULL;		/* not exist */
 	}
 
       /* we MUST perform exact matches here */
-      if (dom->precision == precision && dom->scale == scale && dom->is_desc == is_desc)
+      if (dom->precision == precision && dom->scale == scale && dom->is_desc == is_desc
+	  && dom->is_floating_point_numeric == is_floating_point)
 	{
 	  break;		/* found */
 	}
@@ -3403,8 +3412,8 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 		(domain->is_floating_point_numeric) ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_SCALE;
 	    }
 
-	  // 은근히 여기도 포인트로 보임!
-	  if (val->domain.numeric_info.is_floating_point_numeric || domain->precision == 0)
+	  /* **중요!!**여기 or_pack_* 수행할 때, 들어오는 곳으로 확인됨 */
+	  if (val->domain.numeric_info.is_floating_point_numeric)
 	    {
 	      domain->is_floating_point_numeric = 1;
 	    }
@@ -7945,17 +7954,27 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
     case DB_TYPE_NUMERIC:
       /*
+       * Numeric-to-numeric coercion을 하기 전, desired_domain(domain)에 flag가 있는 경우 
+       * target(temp)에도 동일하게 flag를 적용해줌.
+       */
+      if (desired_domain->is_floating_point_numeric)
+	{
+	  target->domain.numeric_info.is_floating_point_numeric = 1;
+	  /*
+	   * 위에 If src == dest 같을 경우 target 변수를 dest가 아닌 &temp 로 변환하면서, flag가 사라지며 에러가 발생함.
+	   * 따라서, desired_domain의 flga가 true이면 err를 clear 해줌.
+	   */
+	  if (er_errid () != NO_ERROR)
+	    {
+	      er_clear ();
+	    }
+	}
+
+      /*
        * Numeric-to-numeric coercion will be handled in the nm_ module.
        * The desired precision & scale is communicated through the destination
        * value.
        */
-      // desired_domain 에서 온 값만 확인하는게 맞아보임, domain 값을 가지고 db_value에 flag를 처리해주는 곳 같음.
-      // 뭔가 이상함 next_list에 밀려서 flag가 0이됨..
-      if (desired_domain->is_floating_point_numeric || desired_domain->precision == 0)
-	{
-	  target->domain.numeric_info.is_floating_point_numeric = 1;
-	}
-
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:

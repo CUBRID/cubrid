@@ -174,8 +174,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_NUMERIC:
       // 초기화를 위해 필요
       value->domain.numeric_info.is_floating_point_numeric =
-	(value->domain.numeric_info.is_floating_point_numeric >
-	 1) ? 0 : value->domain.numeric_info.is_floating_point_numeric;
+	(value->domain.numeric_info.is_floating_point_numeric > 1
+	 || value->domain.numeric_info.is_floating_point_numeric < 0) ? 0
+	: value->domain.numeric_info.is_floating_point_numeric;
 
       // flag 임시 설정
       if (!value->domain.numeric_info.is_floating_point_numeric
