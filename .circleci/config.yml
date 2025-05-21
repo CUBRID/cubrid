@@ -232,6 +232,8 @@ jobs:
                       name: Get cubrid-testcases SHA
                       shell: /bin/bash
                       command: |
+                        echo "BRANCH_TESTCASES: \$BRANCH_TESTCASES"
+                        exit 1
                         TC_SHA=$(git ls-remote https://x-access-token:${GITHUB_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${BRANCH_TESTCASES} | awk '{print $1}')
                         echo "export TC_SHA=$TC_SHA" >> $BASH_ENV
                   - restore_cache:
