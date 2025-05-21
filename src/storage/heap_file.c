@@ -721,7 +721,9 @@ static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent
 static DISK_ISVALID heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr);
 
 static int heap_chnguess_initialize (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int heap_chnguess_realloc (void);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_chnguess_finalize (void);
 static int heap_chnguess_decache (const OID * oid);
 static int heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore);
@@ -739,7 +741,7 @@ static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpi
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
-#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
+#endif /* ENABLE_UNUSED_FUNCTION */
 static HEAP_STATS_ENTRY *heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid,
 						   int freespace);
 static int heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -15215,6 +15217,7 @@ exit_on_error:
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_chnguess_realloc () - More clients that currently maintained
  *   return: NO_ERROR
@@ -15296,6 +15299,7 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_chnguess_finalize () - Finish chnguess information
@@ -15575,14 +15579,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 
   if (heap_Guesschn != NULL)
     {
-      if (heap_Guesschn->num_clients <= tran_index)
-	{
-	  if (heap_chnguess_realloc () != NO_ERROR)
-	    {
-	      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	      return NULL_CHN;
-	    }
-	}
+      assert (heap_Guesschn->num_clients > tran_index);
 
       /*
        * Do we have this entry in hash table, if we do then check corresponding
@@ -15630,14 +15627,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
       return NULL_CHN;
     }
 
-  if (heap_Guesschn->num_clients <= tran_index)
-    {
-      if (heap_chnguess_realloc () != NO_ERROR)
-	{
-	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	  return NULL_CHN;
-	}
-    }
+  assert (heap_Guesschn->num_clients > tran_index);
 
   /*
    * Is the entry already in the chnguess hash table ?
