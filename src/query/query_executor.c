@@ -9475,7 +9475,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
   if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
     {
-      s_parts = qexec_init_next_partition (thread_p, curr_spec);
+      s_parts = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (s_parts != S_SUCCESS)
 	{
 	  ASSERT_ERROR ();
