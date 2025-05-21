@@ -192,7 +192,8 @@ jobs:
             executors:
               cubrid-default:
                 docker:
-                  - image: cubridci/cubridci:develop
+                  - image: twkang3219/cubridci:develop
+                  # - image: cubridci/cubridci:develop
                 working_directory: /home
 
               cubrid-test-shell:
@@ -209,8 +210,16 @@ jobs:
                 resource_class: xlarge
                 environment:
                   MAKEFLAGS: -j 8
+                  CMAKE_C_COMPILER_LAUNCHER: ccache
+                  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+                  CCACHE_DIR: /home/.ccache
+                  CCACHE_MAXSIZE: "5G"
                 steps:
                   - checkout
+                  - restore_cache:
+                      keys:
+                        - ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                        - ccache-global-v1
                   - run:
                       name: Submodules
                       command: |
@@ -219,7 +228,14 @@ jobs:
                   - run:
                       name: Build
                       command: |
+                        mkdir -p $CCACHE_DIR
+                        ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build
+                        ccache -s
+                  - save_cache:
+                      key: ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                      paths:
+                        - /home/.ccache
                   - collect-build-logs
                   - persist_to_workspace:
                       root: .
