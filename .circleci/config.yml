@@ -236,7 +236,7 @@ jobs:
                         echo "export TC_SHA=\$TC_SHA" >> \$BASH_ENV
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-\${TC_SHA}"
+                        - "cubrid-testcases-${TC_SHA}"
                         - "cubrid-testcases-"
                   - attach-and-run-tests
                   - run:
@@ -246,7 +246,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-\${TC_SHA}"
+                      key: "cubrid-testcases-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
