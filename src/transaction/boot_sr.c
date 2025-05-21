@@ -193,7 +193,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
+static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p,
 					 bool forward_dir, bool check_before_access);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
@@ -921,7 +921,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, true, true);
+  boot_find_rest_temp_volumes (thread_p, true, true);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -1160,14 +1160,13 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 /*
  * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
  *
- *   volid(in): Volume identifier
  *   forward_dir(in): direction of accessing the tempvols (forward/backward)
  *   check_before_access(in): if true, check the existence of volume before access
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid, bool forward_dir, bool check_before_access)
+boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir, bool check_before_access)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1200,7 +1199,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid, bool forward_
       for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
 	{
 	  temp_volid = (VOLID) num_vols;
-	  if (temp_volid != volid)
+	  if (temp_volid != NULL_VOLID)
 	    {
 	      /* Find the name of the volume */
 	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
@@ -1228,7 +1227,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid, bool forward_
       for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
 	{
 	  temp_volid = (VOLID) num_vols;
-	  if (temp_volid != volid)
+	  if (temp_volid != NULL_VOLID)
 	    {
 	      /* Find the name of the volume */
 	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
