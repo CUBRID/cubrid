@@ -63,6 +63,8 @@
 #include "tz_support.h"
 #include "func_type.hpp"
 
+#include "cubvec_assert.h"
+
 #include "dbtype.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
@@ -1647,6 +1649,22 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_MULTISET;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      num = 0;
+      vimkim_log ("op: %s\n", pt_show_binopcode (op));
+
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_VECTOR;
+      sig.arg2_type.type = pt_arg_type::NORMAL;
+      sig.arg2_type.val.type = PT_TYPE_VECTOR;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_FLOAT;
+
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -6006,6 +6024,7 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_GT:
     case PT_LT:
     case PT_LE:
+    case PT_DISTANCE_OP_EUCLIDEAN:
     case PT_NULLSAFE_EQ:
     case PT_GT_INF:
     case PT_LT_INF:
@@ -6020,6 +6039,10 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     case PT_BETWEEN_GT_INF:
       return true;
     default:
+      if (op == PT_DISTANCE_OP_EUCLIDEAN)
+	{
+	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not a range nor comp.\n");
+	}
       return false;
     }
 }
@@ -10422,6 +10445,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = node->info.expr.arg1->type_enum;
       break;
 
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	node->info.expr.arg1 = arg1;
+	node->info.expr.arg2 = arg2;
+	node->type_enum = PT_TYPE_VECTOR;
+	goto error;
+      }
+
     default:
       node->type_enum = PT_TYPE_NONE;
       break;
@@ -12696,6 +12727,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
   switch (op)
     {
+
+    case PT_DISTANCE_OP_EUCLIDEAN:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_l2_distance (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
+
     case PT_NOT:
       if (typ1 == DB_TYPE_NULL)
 	{

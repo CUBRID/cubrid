@@ -52,6 +52,8 @@
 #include "dbtype.h"
 #include "regu_var.hpp"
 
+#include "cubvec_assert.h"
+
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
 #define TITLE_WIDTH		7
@@ -9288,6 +9290,13 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  lhs_selectivity = qo_equal_selectivity (env, node);
 	  selectivity = qo_not_selectivity (env, lhs_selectivity);
 	  break;
+
+	case PT_DISTANCE_OP_EUCLIDEAN:
+	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	    {
+	      // CUBVEC todo: not yet analyzed
+	      ASSERT_CUBVEC (false);
+	    }
 
 	case PT_NULLSAFE_EQ:
 	  selectivity = qo_equal_selectivity (env, node);

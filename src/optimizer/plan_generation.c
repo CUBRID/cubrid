@@ -1718,9 +1718,13 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 
   if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_VECTOR_INDEX_SCAN)
     {
-      // TODO (CUBVEC)
-      // predicates for vector index scan are not required (for now)
-      return;
+      // TODO (CUBVEC): analysis is required
+      // key range predicates for vector index scan are not required
+      key_predp = NULL;
+
+      // TODO (CUBVEC): analysis is required
+      // continue to make predicates for data filter
+      // return;
     }
 
   /* This is safe guard code - DO NOT DELETE ME */

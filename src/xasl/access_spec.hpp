@@ -49,7 +49,8 @@ typedef enum			/* range search option */
   LE_GT,			/* key <= v1 || key > v2 or NOT (v1 < key <= v2) */
   LT_GE,			/* key < v1 || key >= v2 or NOT (v1 <= key < v2) */
   LT_GT,			/* key < v1 || key > v2 or NOT (v1 <= key <= v2) */
-  NEQ_NA			/* key != v1 */
+  NEQ_NA,			/* key != v1 */
+  K_NN,			        /* key for K-NN search */
 } RANGE;
 
 typedef struct key_val_range KEY_VAL_RANGE;

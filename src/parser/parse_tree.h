@@ -1692,6 +1692,12 @@ typedef enum
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
 
+  /* CUBVEC */
+  PT_DISTANCE_OP_COSINE,
+  PT_DISTANCE_OP_EUCLIDEAN,
+  PT_DISTANCE_OP_MANHATTAN,
+  PT_DISTANCE_OP_NEG_INNER_PROD,
+
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;
