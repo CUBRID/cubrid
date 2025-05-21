@@ -7080,7 +7080,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
 
       /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+      for (i = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
 	  /*
 	   * Don't checkpoint current system transaction. That is, the one of

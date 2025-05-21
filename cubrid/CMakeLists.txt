@@ -301,6 +301,41 @@ set(SP_HEADERS
   ${SP_DIR}/pl_signature.hpp
   ${SP_DIR}/pl_struct_compile.cpp
 )
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  )
+
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_error.cpp
@@ -524,6 +559,8 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -539,6 +576,8 @@ set (CUBRID_LIB_HEADERS
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_HEADERS}
   )
 
 add_library(cubrid SHARED

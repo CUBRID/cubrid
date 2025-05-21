@@ -13993,6 +13993,8 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       dest_query->info.query.q.select.use_hash =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_hash),
 			    dest_query->info.query.q.select.use_hash);
+
+      dest_query->info.query.q.select.num_parallel_threads = src_query->info.query.q.select.num_parallel_threads;
     }
 
   /* merge USING INDEX clause of vclass spec */
