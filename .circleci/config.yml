@@ -227,7 +227,19 @@ jobs:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "medium"
                   GITHUB_TOKEN: \$GHI_TOKEN
-                steps: [ attach-and-run-tests ]
+                steps:
+                  - run:
+                      name: Get cubrid-testcases SHA
+                      shell: /bin/bash
+                      command: |
+                        TC_SHA=$(git ls-remote https://x-access-token:${GITHUB_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${BRANCH_TESTCASES} | awk '{print $1}')
+                        echo "export TC_SHA=$TC_SHA" >> $BASH_ENV
+                  - restore_cache:
+                      keys: [cubrid-testcases-${TC_SHA}, cubrid-testcases-]
+                  - attach-and-run-tests
+                  - save_cache:
+                      key: cubrid-testcases-${TC_SHA}
+                      paths: [cubrid-testcases]
                       
               test_sql:
                 executor: cubrid-default
