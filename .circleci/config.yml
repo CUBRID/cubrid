@@ -236,8 +236,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - cubrid-testcases-${TC_SHA}
-                        - cubrid-testcases-
+                        - "cubrid-testcases-${TC_SHA}"
+                        - "cubrid-testcases-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -246,7 +246,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: cubrid-testcases-${TC_SHA}
+                      key: "cubrid-testcases-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -261,8 +261,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - cubrid-testcases-${TC_SHA}
-                        - cubrid-testcases-
+                        - "cubrid-testcases-${TC_SHA}"
+                        - "cubrid-testcases-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -271,7 +271,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: cubrid-testcases-${TC_SHA}
+                      key: "cubrid-testcases-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -286,8 +286,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - cubrid-testcases-${TC_SHA}
-                        - cubrid-testcases-
+                        - "cubrid-testcases-${TC_SHA}"
+                        - "cubrid-testcases-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -296,7 +296,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: cubrid-testcases-${TC_SHA}
+                      key: "cubrid-testcases-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -311,8 +311,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - cubrid-testcases-private-ex-${TC_PRIVATE_SHA}
-                        - cubrid-testcases-private-ex-
+                        - "cubrid-testcases-private-ex-${TC_PRIVATE_SHA}"
+                        - "cubrid-testcases-private-ex-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -321,7 +321,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: cubrid-testcases-private-ex-${TC_PRIVATE_SHA}
+                      key: "cubrid-testcases-private-ex-${TC_PRIVATE_SHA}"
                       paths:
                         - cubrid-testcases-private-ex
             
