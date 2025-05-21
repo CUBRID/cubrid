@@ -194,7 +194,6 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 							 void *args), void *args);
 
 static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-					 int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
 					 bool forward_dir, bool check_before_access);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
@@ -922,7 +921,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, true, true);
+  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, true, true);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -1162,16 +1161,13 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
  * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
  *
  *   volid(in): Volume identifier
- *   fun(in): Function to call on volid, vlabel, and arguments
  *   forward_dir(in): direction of accessing the tempvols (forward/backward)
  *   check_before_access(in): if true, check the existence of volume before access
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-			     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
-			     bool forward_dir, bool check_before_access)
+boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid, bool forward_dir, bool check_before_access)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1222,7 +1218,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 		}
 	      if (go_to_access)
 		{		/* Call the function */
-		  (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
+		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 		}
 	    }
 	}
@@ -1250,7 +1246,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 		}
 	      if (go_to_access)
 		{		/* Call the function */
-		  (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
+		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 		}
 	    }
 	}
