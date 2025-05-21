@@ -7718,7 +7718,6 @@ mr_data_readmem_vector_float (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, in
 static void
 mr_freemem_vector_float (void *memptr)
 {
-  vimkim_log ("freeing %p\n", mem);
 
   // TODO (CUBVEC): The following code causes segfault when shutting down the CAS.
   // We need to figure out why.
