@@ -193,8 +193,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p,
-					 bool forward_dir, bool check_before_access);
+static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -921,7 +920,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, true, true);
+  boot_find_rest_temp_volumes (thread_p, true);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -1161,12 +1160,11 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
  * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
  *
  *   forward_dir(in): direction of accessing the tempvols (forward/backward)
- *   check_before_access(in): if true, check the existence of volume before access
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir, bool check_before_access)
+boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1204,17 +1202,10 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir, bool che
 	      /* Find the name of the volume */
 	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 	      go_to_access = false;
-	      if (check_before_access)
-		{
-		  if (fileio_is_volume_exist (temp_vol_fullname) == true)
-		    {
-		      go_to_access = true;
-		    }
-		}
-	      else
-		{
-		  go_to_access = true;
-		}
+              if (fileio_is_volume_exist (temp_vol_fullname) == true)
+                {
+                  go_to_access = true;
+                }
 	      if (go_to_access)
 		{		/* Call the function */
 		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
@@ -1232,17 +1223,10 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir, bool che
 	      /* Find the name of the volume */
 	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 	      go_to_access = false;
-	      if (check_before_access)
-		{
-		  if (fileio_is_volume_exist (temp_vol_fullname) == true)
-		    {
-		      go_to_access = true;
-		    }
-		}
-	      else
-		{
-		  go_to_access = true;
-		}
+              if (fileio_is_volume_exist (temp_vol_fullname) == true)
+                {
+                  go_to_access = true;
+                }
 	      if (go_to_access)
 		{		/* Call the function */
 		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
