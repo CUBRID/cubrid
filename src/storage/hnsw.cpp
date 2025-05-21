@@ -26,6 +26,7 @@
 #include "vector_opfunc.hpp"
 #include "boot_sr.h"
 #include <fstream>
+#include <filesystem>
 #include "dbtype.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -41,6 +42,7 @@ std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 
 static int load_hnsw_index_from_file (int hnsw_id);
 static bool is_hnsw_index_file_exists (int hnsw_id);
+static std::string get_hnsw_index_file_path (int hnsw_id);
 static faiss::idx_t encode_oid (const OID &oid);
 static OID decode_oid (faiss::idx_t encoded_oid);
 static std::mutex hnsw_elem_mutex;
@@ -49,6 +51,7 @@ BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
+  fprintf (stderr, "%s\n", boot_get_lob_path());
   auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
   hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
 
@@ -101,10 +104,10 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 
   if (it == hnsw_index_map.end())
     {
-      std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
+      std::string filepath = get_hnsw_index_file_path (hnsw_id);
       if (is_hnsw_index_file_exists (hnsw_id))
 	{
-	  std::remove (filename.c_str());
+	  std::remove (filepath.c_str());
 	}
       else
 	{
@@ -249,15 +252,32 @@ void dump_all_hnsw_indices_to_files ()
     {
       int hnsw_id = pair.first;
       auto &index = pair.second;
-      std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
-      faiss::write_index (index.get(), filename.c_str());
-      er_log_debug (ARG_FILE_LINE, "Dumped HNSW Index to file %s", filename.c_str());
+      std::string filepath = get_hnsw_index_file_path (hnsw_id);
+      if (filepath.empty())
+	{
+	  er_log_debug (ARG_FILE_LINE, "Failed to get HNSW Index file path for ID %d", hnsw_id);
+	  continue;
+	}
+      // Create directory if it doesn't exist
+      std::string dir = filepath.substr (0, filepath.find_last_of ('/'));
+      if (!std::filesystem::exists (dir))
+	{
+	  std::filesystem::create_directories (dir);
+	}
+
+      faiss::write_index (index.get(), filepath.c_str());
+      er_log_debug (ARG_FILE_LINE, "Dumped HNSW Index to file %s", filepath.c_str());
     }
 }
 
 static int load_hnsw_index_from_file (int hnsw_id)
 {
-  std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
+  std::string filepath = get_hnsw_index_file_path (hnsw_id);
+  if (filepath.empty())
+    {
+      er_log_debug (ARG_FILE_LINE, "Failed to get HNSW Index file path for ID %d", hnsw_id);
+      return ER_FAILED;
+    }
 
   // Check if already loaded
   if (hnsw_index_map.find (hnsw_id) != hnsw_index_map.end())
@@ -269,19 +289,19 @@ static int load_hnsw_index_from_file (int hnsw_id)
     {
       if (is_hnsw_index_file_exists (hnsw_id)) // File exists
 	{
-	  faiss::Index *raw_index = faiss::read_index (filename.c_str());
+	  faiss::Index *raw_index = faiss::read_index (filepath.c_str());
 
 	  // Ensure it is IndexIDMap
 	  faiss::IndexIDMap *idmap = dynamic_cast<faiss::IndexIDMap *> (raw_index);
 	  if (idmap == nullptr)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "Invalid index format in file %s", filename.c_str());
+	      er_log_debug (ARG_FILE_LINE, "Invalid index format in file %s", filepath.c_str());
 	      delete raw_index;
 	      return ER_FAILED;
 	    }
 
 	  hnsw_index_map[hnsw_id] = std::unique_ptr<faiss::IndexIDMap> (idmap);
-	  er_log_debug (ARG_FILE_LINE, "Loaded HNSW Index ID %d from file %s", hnsw_id, filename.c_str());
+	  er_log_debug (ARG_FILE_LINE, "Loaded HNSW Index ID %d from file %s", hnsw_id, filepath.c_str());
 	}
       else
 	{
@@ -301,8 +321,51 @@ static int load_hnsw_index_from_file (int hnsw_id)
 
 static bool is_hnsw_index_file_exists (int hnsw_id)
 {
-  std::string filename = "hnsw_index_" + std::string (boot_db_name()) + "_" + std::to_string (hnsw_id) + ".bin";
+  std::string filename = get_hnsw_index_file_path (hnsw_id);
+  if (filename.empty())
+    {
+      return false;
+    }
   return std::ifstream (filename).good();
+}
+
+static std::string get_hnsw_index_file_path (int hnsw_id)
+{
+  const char *uri = boot_get_lob_path();
+  if (uri == nullptr)
+    {
+      return "";
+    }
+
+  std::string path = uri;
+
+  // Remove "file:" URI scheme if present
+  const std::string file_prefix = "file:";
+  if (path.rfind (file_prefix, 0) == 0)
+    {
+      path = path.substr (file_prefix.length());
+    }
+  else
+    {
+      return "";
+    }
+
+  // Replace trailing "/lob" with "/vindex"
+  const std::string lob = "/lob";
+  const std::string vindex = "/vindex";
+  if (path.size() >= lob.size() &&
+      path.compare (path.size() - lob.size(), lob.size(), lob) == 0)
+    {
+      path.replace (path.size() - lob.size(), lob.size(), vindex);
+    }
+  else
+    {
+      return "";
+    }
+
+  // Append db name and the index file name
+  path += "/" + std::string (boot_db_name()) + "/hnsw_" + std::to_string (hnsw_id) + ".bin";
+  return path;
 }
 
 static faiss::idx_t encode_oid (const OID &oid)
