@@ -52,6 +52,10 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
+            #get latest tc sha
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+            TC_Private_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git develop | cut -f1)
+
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
             version: 2.1
@@ -228,26 +232,19 @@ jobs:
                   TEST_SUITE: "medium"
                   GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - run:
-                      name: Get cubrid-testcases SHA
-                      shell: /bin/bash
-                      command: |
-                        TC_SHA=\$(git ls-remote https://x-access-token:\${GITHUB_TOKEN}@github.com/CUBRID/cubrid-testcases.git \${BRANCH_TESTCASES} | cut -f1)
-                        echo "TC_SHA: \$TC_SHA"
-                        echo 'export TC_SHA="\$TC_SHA"' >> "\$BASH_ENV"
                   - restore_cache:
                       keys:
-                        - cubrid-testcases-\${TC_SHA}
+                        - cubrid-testcases-${TC_SHA}
                         - cubrid-testcases-
                   - attach-and-run-tests
                   - run:
-                      name: Clean up cubrid-testcases before save_cache
+                      name: Clean up tc before save_cache
                       command: |
                         cd cubrid-testcases
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: cubrid-testcases-\${TC_SHA}
+                      key: cubrid-testcases-${TC_SHA}
                       paths:
                         - cubrid-testcases
                       
