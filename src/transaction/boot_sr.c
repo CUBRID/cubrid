@@ -914,13 +914,13 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       boot_remove_unknown_temp_volumes (thread_p);
     }
 
+  boot_find_rest_temp_volumes (thread_p);
+
   if (boot_Db_parm->temp_nvols == 0)
     {
       assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
       return NO_ERROR;
     }
-
-  boot_find_rest_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
