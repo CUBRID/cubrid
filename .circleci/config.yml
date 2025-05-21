@@ -228,7 +228,7 @@ jobs:
                   - run:
                       name: Build
                       command: |
-                        mkdir -p $CCACHE_DIR
+                        mkdir -p \$CCACHE_DIR
                         ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
