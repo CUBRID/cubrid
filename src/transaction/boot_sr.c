@@ -6121,6 +6121,13 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 
       error_code = boot_db_parm_update_heap (thread_p);
 
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  *boot_Db_parm = save_boot_db_parm;
+	  goto exit;
+	}
+
       /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
        * during restart. that may not be possible during media crash though. */
       heap_flush (thread_p, boot_Db_parm_oid);
@@ -6138,13 +6145,6 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	}
       boot_Db_parm->temp_nvols++;
       boot_Db_parm->temp_last_volid = volid;
-    }
-
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      *boot_Db_parm = save_boot_db_parm;
-      goto exit;
     }
 
 exit:
