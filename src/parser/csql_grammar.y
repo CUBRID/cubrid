@@ -2840,8 +2840,8 @@ create_stmt
 			    PT_NODE *ef_construction_node = kv_pair_lookup(kvp, "ef_construction");
 
 			    // TODO (CUBVEC): default m and ef_con?
-			    int default_m = 30;
-			    int default_ef_con = 100;
+			    int default_m = 16;
+			    int default_ef_con = 64;
 
 			    int m = m_node ? m_node->info.value.data_value.i : default_m;
 			    int ef_con = ef_construction_node ? ef_construction_node->info.value.data_value.i : default_ef_con;

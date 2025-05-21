@@ -42,7 +42,7 @@ static OID decode_oid (faiss::idx_t encoded_oid);
 static std::mutex hnsw_elem_mutex;
 
 BTID *
-xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
+xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
   auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
