@@ -193,7 +193,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir);
+static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -920,7 +920,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, true);
+  boot_find_rest_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -1159,12 +1159,10 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 /*
  * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
  *
- *   forward_dir(in): direction of accessing the tempvols (forward/backward)
- *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir)
+boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1192,47 +1190,23 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, bool forward_dir)
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
   /* Cycle over all temporarily volumes, skip the given one */
-  if (forward_dir)
+  for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
     {
-      for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
-	{
-	  temp_volid = (VOLID) num_vols;
-	  if (temp_volid != NULL_VOLID)
-	    {
-	      /* Find the name of the volume */
-	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-	      go_to_access = false;
-              if (fileio_is_volume_exist (temp_vol_fullname) == true)
-                {
-                  go_to_access = true;
-                }
-	      if (go_to_access)
-		{		/* Call the function */
-		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
-		}
-	    }
-	}
-    }
-  else
-    {
-      for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
-	{
-	  temp_volid = (VOLID) num_vols;
-	  if (temp_volid != NULL_VOLID)
-	    {
-	      /* Find the name of the volume */
-	      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-	      go_to_access = false;
-              if (fileio_is_volume_exist (temp_vol_fullname) == true)
-                {
-                  go_to_access = true;
-                }
-	      if (go_to_access)
-		{		/* Call the function */
-		  (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
-		}
-	    }
-	}
+      temp_volid = (VOLID) num_vols;
+      if (temp_volid != NULL_VOLID)
+        {
+          /* Find the name of the volume */
+          fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+          go_to_access = false;
+          if (fileio_is_volume_exist (temp_vol_fullname) == true)
+            {
+              go_to_access = true;
+            }
+          if (go_to_access)
+            {		/* Call the function */
+              (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+            }
+        }
     }
 
   if (alloc_tempath)
