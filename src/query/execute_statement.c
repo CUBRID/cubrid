@@ -6943,8 +6943,15 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      break;
 		    }
 		}
+        
+              error = tr_update_updated_time(t->op);
+              if (error != NO_ERROR)
+              {
+                      ASSERT_ERROR();
+                      break;
+              }
 
-	      error = locator_flush_instance (t->op);
+              error = locator_flush_instance (t->op);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

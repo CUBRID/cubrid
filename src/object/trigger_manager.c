@@ -147,6 +147,8 @@ const char *TR_ATT_ACTION = "action_definition";
 const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
+const char *TR_ATT_CREATED_TIME = "created_time";
+const char *TR_ATT_UPDATED_TIME = "updated_time";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -413,6 +415,8 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
+  sm_initialize_timestamp(&trigger->created_time);
+  sm_initialize_timestamp(&trigger->updated_time);
 
   return trigger;
 }
@@ -1136,6 +1140,18 @@ trigger_to_object (TR_TRIGGER * trigger)
   if (err != NO_ERROR)
     {
       goto error;
+    }
+
+    db_make_datetime(&value, &trigger->created_time);
+    if (dbt_put_internal(obt_p, TR_ATT_CREATED_TIME, &value) != NO_ERROR)
+    {
+            goto error;
+    }
+
+    db_make_datetime(&value, &trigger->updated_time);
+    if (dbt_put_internal(obt_p, TR_ATT_UPDATED_TIME, &value) != NO_ERROR)
+    {
+            goto error;
     }
 
   object_p = dbt_finish_object (obt_p);
@@ -3964,6 +3980,8 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   trigger->event = event;
   trigger->class_mop = class_mop;
   trigger->comment = (comment == NULL) ? NULL : strdup (comment);
+  sm_initialize_timestamp(&trigger->created_time);
+  sm_initialize_timestamp(&trigger->updated_time);
 
   if (class_mop != NULL)
     {
@@ -4097,6 +4115,8 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 
       has_savepoint = true;
     }
+
+  sm_update_timestamps(&trigger->created_time, &trigger->updated_time);
 
   /* from here down, the unwinding when errors are encountered gets rather complex */
 
@@ -6917,6 +6937,14 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
+  error = tr_update_updated_time (trigger_object);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+
   if (!deferred_flush)
     {
       error = locator_flush_instance (trigger_object);
@@ -7166,6 +7194,28 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
     }
 
   AU_ENABLE (save);
+
+  return error;
+}
+
+int tr_update_updated_time(DB_OBJECT * trigger_object)
+{
+  int error = NO_ERROR;
+  DB_VALUE value;
+  DB_DATETIME datetime;
+  int save;
+
+  error = sm_update_timestamps(NULL, &datetime);
+
+  if (error == NO_ERROR)
+  {
+          AU_DISABLE(save);
+
+          (void)db_make_datetime(&value, &datetime);
+          error = db_put_internal(trigger_object, TR_ATT_UPDATED_TIME, &value);
+
+          AU_ENABLE(save);
+  }
 
   return error;
 }
@@ -7450,6 +7500,16 @@ define_trigger_classes (void)
     }
 
   if (dbt_add_attribute (tmp, TR_ATT_COMMENT, "varchar(1024)", NULL))
+    {
+      goto tmp_error;
+    }
+
+  if (dbt_add_attribute (tmp, TR_ATT_CREATED_TIME, "datetime", NULL))
+    {
+      goto tmp_error;
+    }
+
+  if (dbt_add_attribute (tmp, TR_ATT_UPDATED_TIME, "datetime", NULL))
     {
       goto tmp_error;
     }
