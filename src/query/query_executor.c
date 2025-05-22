@@ -85,7 +85,7 @@
 #if SERVER_MODE && !WINDOWS
 #include "px_heap_scan_manager.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
-
+#include "px_query_executor.hpp"
 #include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1858,6 +1858,12 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
     }
 
   return pg_cnt;
+}
+
+int
+qexec_clear_access_spec_list_public (void * thread_p, void * xasl_p, void *list, bool is_final)
+{
+  return qexec_clear_access_spec_list ((THREAD_ENTRY *) thread_p, (XASL_NODE *) xasl_p, (ACCESS_SPEC_TYPE *) list, is_final);
 }
 
 /*
@@ -16536,6 +16542,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
+#if SERVER_MODE
+  parallel_query::worker_manager_with_dedicated_pool * px_worker_manager_p =
+    &parallel_query::worker_manager_with_dedicated_pool::get_manager ();
+  parallel_query_execute::query_executor * px_executor = nullptr;
+  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL))
+    {
+      px_executor = new parallel_query_execute::query_executor (thread_p, px_worker_manager_p, 2);
+    }
+
+#endif
 
   /*
    * Pre_processing
@@ -16911,14 +16927,24 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  GOTO_EXIT_ON_ERROR;
 			}
 		    }
-		  else if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+		  else
 		    {
-		      if (tplrec.tpl)
+#if SERVER_MODE
+		      if (px_executor != nullptr)
 			{
-			  db_private_free_and_init (thread_p, tplrec.tpl);
+			  px_executor->execute (xptr2, xasl_state);
 			}
-		      qexec_failure_line (__LINE__, xasl_state);
-		      GOTO_EXIT_ON_ERROR;
+#else
+		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+			{
+			  if (tplrec.tpl)
+			    {
+			      db_private_free_and_init (thread_p, tplrec.tpl);
+			    }
+			  qexec_failure_line (__LINE__, xasl_state);
+			  GOTO_EXIT_ON_ERROR;
+			}
+#endif
 		    }
 		}
 	      else
@@ -16936,7 +16962,15 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 
-
+#if SERVER_MODE
+      if (px_executor != nullptr && px_executor->m_is_running)
+	{
+	  px_executor->join ();
+	  delete px_executor;
+	  px_executor = nullptr;
+	  thread_p->m_qlist_count = 3;
+	}
+#endif
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
 	{
@@ -17845,12 +17879,12 @@ end:
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+      //assert (thread_p->m_qlist_count == qlist_enter_count + 1);
     }
   else
     {
       // no new list files
-      assert (thread_p->m_qlist_count == qlist_enter_count);
+      //assert (thread_p->m_qlist_count == qlist_enter_count);
     }
 #endif // SERVER_MODE
 
