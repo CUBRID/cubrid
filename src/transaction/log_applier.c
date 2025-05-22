@@ -8023,7 +8023,7 @@ check_reinit_copylog (void)
       return error;
     }
 
-	return NO_ERROR;
+  return error;
 }
 
 static inline void
