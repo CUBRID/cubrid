@@ -192,8 +192,7 @@ jobs:
             executors:
               cubrid-default:
                 docker:
-                  - image: twkang3219/cubridci:develop
-                  # - image: cubridci/cubridci:develop
+                  - image: cubridci/cubridci:develop_cl7.9
                 working_directory: /home
 
               cubrid-test-shell:
