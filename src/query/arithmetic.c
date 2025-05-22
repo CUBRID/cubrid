@@ -1019,7 +1019,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) s1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1168,7 +1168,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) i1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1317,7 +1317,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) bi1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1718,7 +1718,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) s2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1731,7 +1731,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) i2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1744,7 +1744,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) bi2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1798,7 +1798,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
-						 &s);
+						 &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;

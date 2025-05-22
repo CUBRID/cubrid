@@ -147,7 +147,7 @@ static int numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *
 static int numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
-					 bool is_float);
+					 bool is_float, int is_floating_point);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
 				       const int dst_prec, DB_C_NUMERIC dest);
 static void numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_prec,
@@ -2072,12 +2072,12 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
   if (prec >
-      (answer->domain.numeric_info.
-       is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+      (answer->domain.
+       numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       prec =
-	(answer->domain.numeric_info.
-	 is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
+	(answer->domain.
+	 numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
     }
 
   if ((!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
@@ -2171,8 +2171,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec <
-	  (answer->domain.numeric_info.
-	   is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	  (answer->domain.
+	   numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -2662,7 +2662,6 @@ numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result)
 	    {
 	      numeric_scale_dec (big_chunk, ntot_digits - dec_dig - 1, big_chunk);
 	    }
-	  // P,S 각각 1 byte 차지하니까 2 byte 빼줘야함
 	  numeric_add (big_chunk, result, result, DB_NUMERIC_BUF_SIZE);
 	}
     }
@@ -2985,9 +2984,10 @@ numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
  *   scale(in)  :
  */
 int
-numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale)
+numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+				int is_floating_point)
 {
-  return numeric_internal_real_to_num (adouble, dst_scale, num, prec, scale, false);
+  return numeric_internal_real_to_num (adouble, dst_scale, num, prec, scale, false, is_floating_point);
 }
 
 
@@ -3003,9 +3003,10 @@ numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num,
  * scale(out): resulting scale of the converted value
  */
 int
-numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale)
+numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+			       int is_floating_point)
 {
-  return numeric_internal_real_to_num (afloat, dst_scale, num, prec, scale, true);
+  return numeric_internal_real_to_num (afloat, dst_scale, num, prec, scale, true, is_floating_point);
 }
 
 /*
@@ -3065,10 +3066,12 @@ get_fp_value_type (double d)
  * is_float(in):    indicates adouble is a float promoted to double
  */
 int
-numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float)
+numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float,
+			      int is_floating_point)
 {
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
   int i = 0;
+  int max_precision = is_floating_point ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION;
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, max_precision + 4)];
 
   switch (get_fp_value_type (adouble))
     {
@@ -3168,7 +3171,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
 
-		  if (decpt > DB_MAX_NUMERIC_PRECISION)
+		  if (decpt > max_precision)
 		    {
 		      /* should not happen since overflow has been checked for previously */
 		      return ER_IT_DATA_OVERFLOW;
@@ -3200,7 +3203,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		}
 
 	      /* append zeroes until dst_scale is reached */
-	      while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
+	      while (*prec < max_precision && *scale < dst_scale)
 		{
 		  numeric_str[1 + *prec] = '0';
 		  (*prec)++;
@@ -3221,11 +3224,36 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		  numeric_coerce_dec_str_to_num (numeric_str + 1, num);
 		}
 
-	      return NO_ERROR;
+	      /*
+	       * FLOATING POINT NUMERIC인 경우,  반올림을 위해 여기서 num_to_num 함수를 호출함.
+	       * 일단, 우리 spec 문제로  반올림 처리는 조금 힘듬, 향후 논의 하여 수정 하자.
+	       * 즉, FLOAT 과 DOUBLE의 OVERFLOW 처리는 내림(버림) 이다. 이걸 반올림으로 변경해야한다.
+	       */
+	      //       if (is_floating_point)
+	      //         {
+	      //           DB_C_NUMERIC new_num = num;
+	      //        int error = NO_ERROR;
+
+	      //        // dst_scale : pack, unpack 으로 이동하는 domain 값으로 생각됨 F-P NUMERIC은 0,0 일거임.
+	      //        // F-P 의 dst_prec, dst_scale 은 항상 0 이여야함.
+	      //        // 일단, dst_scale 값이 지금 5인 경우가 있는데, 이 경우를 찾긴해야함. (일단 임시로 0으로 만들어주도록 처리)
+	      //        dst_scale = (dst_scale == 5) ? 0 : dst_scale;
+	      //           error = numeric_coerce_num_to_num (num, *prec, *scale, dst_scale, dst_scale, new_num);
+	      //        if (error != NO_ERROR)
+	      //          {
+	      //               // 에러 처리는 잠시 대기
+	      //            assert (false);
+	      //            return ER_IT_DATA_OVERFLOW;
+	      //             }
+
+	      //        numeric_copy (num, new_num);
+	      //         }
 	    }
 	}
       break;
     }
+
+  return NO_ERROR;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -3243,12 +3271,12 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
  *     about the scale of the destination.
  */
 int
-numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale)
+numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale, int is_floating_point)
 {
   /*
    *   return numeric_internal_double_to_num(adouble, DB_MAX_NUMERIC_PRECISION,
    */
-  return numeric_internal_double_to_num (adouble, 16, num, prec, scale);
+  return numeric_internal_double_to_num (adouble, 16, num, prec, scale, is_floating_point);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -3640,10 +3668,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int precision, scale;
   int desired_precision, desired_scale;
+  int is_floating_point = 0;
 
   *data_status = DATA_STATUS_OK;
   desired_precision = DB_VALUE_PRECISION (dest);
   desired_scale = DB_VALUE_SCALE (dest);
+  is_floating_point = dest->domain.numeric_info.is_floating_point_numeric;
   /* Check for a non NULL src and a dest whose type is DB_TYPE_NUMERIC */
   /* Switch on the src type */
   switch (DB_VALUE_TYPE (src))
@@ -3651,21 +3681,21 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     case DB_TYPE_DOUBLE:
       {
 	double adouble = db_get_double (src);
-	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale);
+	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
 	break;
       }
 
     case DB_TYPE_FLOAT:
       {
 	float adouble = (float) db_get_float (src);
-	ret = numeric_internal_float_to_num (adouble, desired_scale, num, &precision, &scale);
+	ret = numeric_internal_float_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
 	break;
       }
 
     case DB_TYPE_MONETARY:
       {
 	double adouble = db_value_get_monetary_amount_as_double (src);
-	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale);
+	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
 	break;
       }
 

@@ -4761,6 +4761,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
   PT_NODE *new_node = NULL, *new_dt = NULL;
   TP_DOMAIN *d;
   int scale = DB_DEFAULT_SCALE, precision = DB_DEFAULT_PRECISION;
+  int is_floating_point_numeric = 0;
 
   if (node == NULL)
     {
@@ -4817,7 +4818,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       // default:
       precision = 0;
       scale = 0;
-      node->info.value.db_value.domain.numeric_info.is_floating_point_numeric = 1;
+      is_floating_point_numeric = 1;
       //break;
       //}
       break;
@@ -4898,6 +4899,11 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	   * DB_TYPE_VARIABLE domain */
 	  node->expected_domain = NULL;
 
+	  if (is_floating_point_numeric)
+	    {
+	      new_node->data_type->info.data_type.is_floating_point_numeric = 1;
+	    }
+
 	  *arg = new_node;
 	}
       else
@@ -4957,6 +4963,10 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	{
 	  assert (new_node->node_type == PT_EXPR);
 	  PT_EXPR_INFO_SET_FLAG (new_node, PT_EXPR_INFO_CAST_NOFAIL);
+	}
+      if (is_floating_point_numeric)
+	{
+	  new_node->data_type->info.data_type.is_floating_point_numeric = 1;
 	}
 
       *arg = new_node;
@@ -10754,7 +10764,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_STRING_TYPE (arg2_type))
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && PT_IS_STRING_TYPE (arg1_type)))
     {
-      common_type = PT_TYPE_DOUBLE;
+      common_type = PT_TYPE_NUMERIC;
     }
   else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
@@ -10764,7 +10774,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
-      common_type = PT_TYPE_DOUBLE;
+      common_type = PT_TYPE_NUMERIC;
     }
   else
     {
@@ -10862,8 +10872,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10892,8 +10904,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
@@ -10926,8 +10940,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_TIME:
-	    case PT_TYPE_NUMERIC:
 	      common_type = arg2_type;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    default:
 	      common_type = PT_TYPE_NONE;
