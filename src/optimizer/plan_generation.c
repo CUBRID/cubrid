@@ -72,6 +72,7 @@ static void make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_ac
 static PT_NODE *make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan);
+static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset);
 
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
@@ -1835,30 +1836,88 @@ make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
 static PT_NODE *
 make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
 {
+  return make_namelist_from_bitset (env, &plan->info->projected_segs);
+}
+
+/*
+ * make_namelist_from_bitset() -
+ *   return: List of PT_NAME nodes corresponding to the given segment bitset.
+ *   env(in): Optimization environment.
+ *   bitset(in): Bitset of segments to extract PT_NAME nodes from.
+ */
+static PT_NODE *
+make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
+{
   PARSER_CONTEXT *parser;
-  PT_NODE *namelist;
-  PT_NODE **namelistp;
-  BITSET_ITERATOR bi;
-  int i;
+  PT_NODE *node, *name_list = NULL;
+
+  QO_SEGMENT *seg;
+  BITSET name_segs_set;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
+
+  assert (env != NULL);
+  assert (bitset != NULL);
 
   parser = QO_ENV_PARSER (env);
-  namelist = NULL;
-  namelistp = &namelist;
 
-  for (i = bitset_iterate (&((plan->info)->projected_segs), &bi); namelistp != NULL && i != -1;
-       i = bitset_next_member (&bi))
+  bitset_init (&name_segs_set, env);
+  bitset_assign (&name_segs_set, bitset);
+
+  for (bitset_index = bitset_iterate (bitset, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
     {
-      QO_SEGMENT *seg;
-      PT_NODE *name;
-
-      seg = QO_ENV_SEG (env, i);
-      name = pt_point (parser, QO_SEG_PT_NODE (seg));
-
-      *namelistp = name;
-      namelistp = &name->next;
+      seg = QO_ENV_SEG (env, bitset_index);
+      if (seg->is_function_index)
+	{
+	  node = QO_SEG_PT_NODE (seg);
+	  if (node->node_type != PT_NAME)
+	    {
+	      /*
+	       * Only table column names or constants are allowed as function arguments in a function-based index.
+	       * Complex or nested expressions are not allowed.
+	       * This is checked by calling pt_is_nested_expr in pt_is_function_index_expr.
+	       */
+	      qo_expr_segs (env, node, &name_segs_set);
+	    }
+	}
     }
 
-  return namelist;
+  if (!bitset_is_empty (&name_segs_set))
+    {
+      for (bitset_index = bitset_iterate (&name_segs_set, &bitset_iter); bitset_index != -1;
+	   bitset_index = bitset_next_member (&bitset_iter))
+	{
+	  seg = QO_ENV_SEG (env, bitset_index);
+	  node = QO_SEG_PT_NODE (seg);
+	  if (node->node_type == PT_NAME)
+	    {
+	      name_list = parser_append_node (pt_point (parser, node), name_list);
+	    }
+	  else
+	    {
+	      /*
+	       * Each segment must be of type PT_NAME,
+	       * unless it is a function expression for a function-based index that has already been created.
+	       * This is because segments are added using as_attr_list or referenced_attrs,
+	       * which are both lists of type PT_NAME in the build_graph_for_entity function.
+	       *
+	       * Function expressions are added as segments in the build_query_graph_function_index function.
+	       * A function expression is only added if a function-based index with the same expression already exists.
+	       * QO_SEG_FUNC_INDEX(seg) is set to true when a function expression is added to a segment.
+	       *
+	       * Only PT_NAME segments are allowed,
+	       * except for function expressions that match an existing function-based index.
+	       */
+	      assert_release (QO_SEG_FUNC_INDEX (seg));
+	      /* Nothing to do */
+	    }
+	}
+    }
+
+  bitset_delset (&name_segs_set);
+
+  return name_list;
 }
 
 /*
@@ -2484,18 +2543,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* generate left name list of projected segs */
 	    bitset_assign (&temp_segs, &((outer->info)->projected_segs));
 	    bitset_intersect (&temp_segs, &plan_segs);
-	    for (i = bitset_iterate (&temp_segs, &bi); i != -1; i = bitset_next_member (&bi))
-	      {
-		seg_nlist = parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, i))), seg_nlist);
-	      }
+	    seg_nlist = make_namelist_from_bitset (env, &temp_segs);
+
 
 	    /* generate right name list of projected segs */
 	    bitset_assign (&temp_segs, &((inner->info)->projected_segs));
 	    bitset_intersect (&temp_segs, &plan_segs);
-	    for (i = bitset_iterate (&temp_segs, &bi); i != -1; i = bitset_next_member (&bi))
-	      {
-		seg_nlist = parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, i))), seg_nlist);
-	      }
+	    seg_nlist = parser_append_node (make_namelist_from_bitset (env, &temp_segs), seg_nlist);
 
 	    seg_nlen = pt_length_of_list (seg_nlist);
 
@@ -2921,21 +2975,11 @@ gen_outer_hash_join (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * s
    */
   bitset_assign (&temp_segs_set, &(outer_plan->info->projected_segs));
   bitset_intersect (&temp_segs_set, &plan_segs_set);
-  for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
-       bitset_index = bitset_next_member (&bitset_iter))
-    {
-      plan_seg_list =
-	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
-    }
+  plan_seg_list = make_namelist_from_bitset (env, &temp_segs_set);
 
   bitset_assign (&temp_segs_set, &(inner_plan->info->projected_segs));
   bitset_intersect (&temp_segs_set, &plan_segs_set);
-  for (bitset_index = bitset_iterate (&temp_segs_set, &bitset_iter); bitset_index != -1;
-       bitset_index = bitset_next_member (&bitset_iter))
-    {
-      plan_seg_list =
-	parser_append_node (pt_point (parser, QO_SEG_PT_NODE (QO_ENV_SEG (env, bitset_index))), plan_seg_list);
-    }
+  plan_seg_list = parser_append_node (make_namelist_from_bitset (env, &temp_segs_set), plan_seg_list);
 
   plan_seg_count = pt_length_of_list (plan_seg_list);
 

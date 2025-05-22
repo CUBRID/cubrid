@@ -12071,6 +12071,19 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	{
 	  return;
 	}
+      // Under the current implementation of DBLink, host variables cannot be idenfified at compile time
+      // due to the lack of schema information of the remote tables.
+      // Therefore, DBLink in Static SQL DML is prohibited for now.
+      // Note that this is not the case for Static SQL SELECT statements.
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	    {
+	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
+	      return;
+	    }
+	}
+
       break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
