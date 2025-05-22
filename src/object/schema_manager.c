@@ -442,7 +442,7 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
-static DB_DATETIME *sm_get_now_datetime (void);
+static DB_DATETIME *sm_get_now_datetime (DB_VALUE *value);
 
 /*
  * sc_set_current_schema()
@@ -16663,11 +16663,10 @@ sm_domain_copy (SM_DOMAIN * ptr)
 }
 
 DB_DATETIME *
-sm_get_now_datetime (void)
+sm_get_now_datetime (DB_VALUE *value)
 {
-  DB_VALUE value;
-  int error = db_sys_datetime (&value);
-  DB_DATETIME *now = db_get_datetime (&value);
+  int error = db_sys_datetime (value);
+  DB_DATETIME *now = db_get_datetime (value);
 
   return (error == NO_ERROR) ? now : NULL;
 }
@@ -16675,7 +16674,8 @@ sm_get_now_datetime (void)
 int
 sm_update_timestamps (DB_DATETIME * created_time, DB_DATETIME * updated_time)
 {
-  DB_DATETIME *now = sm_get_now_datetime ();
+  DB_VALUE value;
+  DB_DATETIME *now = sm_get_now_datetime (&value);
 
   if (now == NULL)
     {
@@ -16691,10 +16691,19 @@ sm_update_timestamps (DB_DATETIME * created_time, DB_DATETIME * updated_time)
   return NO_ERROR;
 }
 
+void
+sm_initialize_timestamp (DB_DATETIME * datetime)
+{
+  // *INDENT-OFF*
+  *datetime = {0};
+  // *INDENT-ON*
+}
+
 int
 sm_update_checked_timestamp (DB_DATETIME * checked_time)
 {
-  DB_DATETIME *now = sm_get_now_datetime ();
+  DB_VALUE value;
+  DB_DATETIME *now = sm_get_now_datetime (&value);
 
   if (now == NULL)
     {
