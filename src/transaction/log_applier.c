@@ -8006,16 +8006,24 @@ la_destroy_repl_filter (void)
 static int
 check_reinit_copylog (void)
 {
-  if (la_fetch_log_hdr (&la_Info.act_log) != NO_ERROR)
-    return ER_FAILED;
+  int error = NO_ERROR;
 
-  if (la_Info.act_log.log_hdr->mark_will_del)
+  /* fetch header */
+  error = la_fetch_log_hdr (&la_Info.act_log);
+  if (error != NO_ERROR)
     {
-      la_Info.reinit_copylog = true;
-      return ER_FAILED;
+      error = ER_FAILED;
+      return error;
     }
 
-  return NO_ERROR;
+  if (la_Info.act_log.log_hdr->mark_will_del == true)
+    {
+      la_Info.reinit_copylog = true;
+      error = ER_FAILED;
+      return error;
+    }
+
+	return NO_ERROR;
 }
 
 static inline void
