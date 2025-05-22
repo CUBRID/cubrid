@@ -1093,7 +1093,7 @@ exit:
     if (m_query_handlers[id] != nullptr)
       {
 	// clear <query ID -> handler ID>
-	if (m_query_handlers[id]->get_query_id () != -1)
+	if (m_query_handlers[id]->get_query_id () != (uint64_t) (-1))
 	  {
 	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
 	  }
