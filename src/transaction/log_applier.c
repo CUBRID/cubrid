@@ -8003,6 +8003,15 @@ la_destroy_repl_filter (void)
   return;
 }
 
+/* 
+ * check_reinit_copylog() - check if the copy log is reinitialized.
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *   In copylogdb, the 'mark_will_del' flag in the log header is set
+ *   when an error occurs during log retrieval.
+ * 
+ */
 static int
 check_reinit_copylog (void)
 {
