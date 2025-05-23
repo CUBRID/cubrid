@@ -41,6 +41,13 @@
 
 #define BOOT_IS_CLIENT_RESTARTED() (tm_Tran_index != NULL_TRAN_INDEX)
 
+enum
+{
+  ALL_FINALIZATION = 0,
+  EXCEPT_ER_FINALIZATION = 1,
+  OPTIONAL_FINALIZATION = 2
+};
+
 /* Volume assigned for new files/objects  (e.g., heap files) */
 extern VOLID boot_User_volid;
 #if defined(CS_MODE)
@@ -53,10 +60,10 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, B
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
-extern int boot_shutdown_client (bool iserfinal);
+extern int boot_shutdown_client (bool is_er_final);
 extern void boot_donot_shutdown_client_at_exit (void);
 extern void boot_server_die_or_changed (void);
-extern void boot_client_all_finalize (bool iserfinal);
+extern void boot_client_all_finalize (int final_level);
 #if defined(CS_MODE)
 extern char *boot_get_host_connected (void);
 #if defined(ENABLE_UNUSED_FUNCTION)

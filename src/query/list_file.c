@@ -1216,6 +1216,14 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       return NULL;
     }
 
+  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+    {
+      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
+      list_id_p->tfile_vfid->membuf = NULL;
+      list_id_p->tfile_vfid->membuf_npages = 0;
+      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
+    }
+
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
   list_id_p->type_list.domp = NULL;
 

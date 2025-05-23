@@ -176,5 +176,8 @@ extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
 extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort);
+extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password);
+extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
+					char *password);
 
 #endif /* _QUERY_MANAGER_H_ */

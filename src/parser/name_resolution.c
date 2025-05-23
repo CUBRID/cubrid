@@ -2043,6 +2043,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    }
+	}
+
+      if (node->info.query.q.select.hint & PT_HINT_PARALLEL)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.num_parallel_threads = node->info.query.q.select.num_parallel_threads;
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
+
       if (node->info.query.q.select.from != NULL && node->info.query.q.select.from->next == NULL)
 	{
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
@@ -9442,15 +9459,12 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
 		    {
-		      /* exclude update for system class or view */
-		      break;
+		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+				   "UPDATE", entity->info.name.original);
+		      return NULL;
 		    }
 		}
-
-	      if (entity == NULL)
-		{
-		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
-		}
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }

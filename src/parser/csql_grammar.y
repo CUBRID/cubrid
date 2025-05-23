@@ -100,6 +100,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int yylex(void);
 
 #if defined(SA_MODE)
      /*
@@ -12993,28 +12994,28 @@ plcsql_text_part
 		DBG_PRINT}}
         | CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "'");
+                    char* val = pt_append_string(this_parser, NULL, "'");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "'");
                     $$ = val;
 		DBG_PRINT}}
         | DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "\"");
+                    char* val = pt_append_string(this_parser, NULL, "\"");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "\"");
                     $$ = val;
 		DBG_PRINT}}
         | BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "[");
+                    char* val = pt_append_string(this_parser, NULL, "[");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "]");
                     $$ = val;
 		DBG_PRINT}}
         | BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "`");
+                    char* val = pt_append_string(this_parser, NULL, "`");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "`");
                     $$ = val;
@@ -26749,6 +26750,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
+  INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),

@@ -72,6 +72,9 @@ namespace cubquery
 	rest_regu_list = sid.s.isid.rest_regu_list;
 	qualification = sid.qualification;
 	break;
+      case S_PARALLEL_HEAP_SCAN:
+	assert (0);
+	break;
 
       default:
 	break;

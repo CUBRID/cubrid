@@ -2358,6 +2358,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
+  memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
   xasl->max_iterations = -1;
 
   return ptr;
@@ -4699,6 +4700,9 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   ptr = or_unpack_int (ptr, &val);
   access_spec->flags = (ACCESS_SPEC_FLAG) val;
+
+  ptr = or_unpack_int (ptr, &val);
+  access_spec->num_parallel_threads = val;
 
   return ptr;
 

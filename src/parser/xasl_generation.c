@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-
+#include "px_heap_scan_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -12356,6 +12356,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
+	      if (access_method == ACCESS_METHOD_SEQUENTIAL
+		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		}
+
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		}
 
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
@@ -12781,7 +12792,8 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   XASL_NODE *subquery_proc;
   REGU_VARIABLE_LIST regu_attributes;
   ACCESS_SPEC_TYPE *access;
-  PL_SIGNATURE_ARRAY_TYPE *sig_array;
+  PL_SIGNATURE_ARRAY_TYPE *sig_array = NULL;
+  PL_SIGNATURE_TYPE *sig_list = NULL;
   int idx = 0;
 
   /* every cselect must have a subquery for its source list file, this is pointed to by the methods of the cselect */
@@ -12792,10 +12804,21 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   subquery_proc = (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
-  regu_new (sig_array, pt_length_of_list (cselect));
+  regu_alloc (sig_array);
   if (sig_array == NULL)
     {
       return NULL;
+    }
+  new (sig_array) cubpl::pl_signature_array ();
+
+  sig_array->num_sigs = pt_length_of_list (cselect);
+
+  regu_array_alloc (&sig_list, sig_array->num_sigs);
+  sig_array->sigs = sig_list;
+
+  for (int i = 0; i < sig_array->num_sigs; i++)
+    {
+      new (&sig_array->sigs[i]) cubpl::pl_signature ();
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
@@ -12803,7 +12826,6 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
       int error = jsp_make_pl_signature (parser, node, src_derived_tbl->info.spec.as_attr_list, sig_array->sigs[idx]);
       if (error != NO_ERROR)
 	{
-	  regu_delete (sig_array);
 	  return NULL;
 	}
       idx++;
@@ -12816,11 +12838,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   access =
     pt_make_cselect_access_spec (subquery_proc, sig_array, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, regu_attributes);
 
-  if (!access)
-    {
-      regu_delete (sig_array);
-    }
-  else if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
+  if (subquery_proc && sig_array && (regu_attributes || !spec->info.spec.as_attr_list))
     {
       return access;
     }
@@ -18298,6 +18316,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
+  scan_check_parallel_heap_scan_possible (xasl);
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -22087,6 +22107,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       break;
     }
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)
