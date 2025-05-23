@@ -51,6 +51,7 @@ static int create_hnsw_index_directory ();
 static bool is_hnsw_index_file_exists (int hnsw_id);
 static int load_hnsw_index_from_file (int hnsw_id);
 static int hnsw_check_and_load_index (int hnsw_id);
+static void get_new_hnsw_index_id ();
 static faiss::idx_t encode_oid (const OID &oid);
 static OID decode_oid (faiss::idx_t encoded_oid);
 
@@ -58,31 +59,12 @@ BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 128, int hnsw_efConstruction = 40,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
 {
+  get_new_hnsw_index_id ();
+
   auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
   hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
 
   auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
-
-  while (true)
-    {
-      if (is_hnsw_index_file_exists (hnsw_index_id))
-	{
-	  hnsw_index_id++;
-	  continue;
-	}
-      else
-	{
-	  if (hnsw_index_map.find (hnsw_index_id) == hnsw_index_map.end())
-	    {
-	      break;
-	    }
-	  else
-	    {
-	      hnsw_index_id++;
-	      continue;
-	    }
-	}
-    }
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
@@ -424,6 +406,30 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
       delete[] uids;
     }
   return NO_ERROR;
+}
+
+static void get_new_hnsw_index_id ()
+{
+  while (true)
+    {
+      if (is_hnsw_index_file_exists (hnsw_index_id))
+	{
+	  hnsw_index_id++;
+	  continue;
+	}
+      else
+	{
+	  if (hnsw_index_map.find (hnsw_index_id) == hnsw_index_map.end())
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      hnsw_index_id++;
+	      continue;
+	    }
+	}
+    }
 }
 
 static faiss::idx_t encode_oid (const OID &oid)
