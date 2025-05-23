@@ -2695,7 +2695,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 #define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
 #define OR_DOMAIN_SCHEMA_FLAG		(0x400)	/* for json */
-#define OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG	(0x500)	/* for floating point numeric */
+#define OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG	(0x20000000)	/* for floating point numeric */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -2931,6 +2931,21 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_NUMERIC:
 	  /* second byte contains scale, third & fourth bytes have precision */
 
+	  /* floating point numeric 일 경우 scale 이 0이면 저장하지 않음.
+	   * 0을 저장했더니, scale 값이 5가 계속 나옴.
+	   * 수정 전, 범인은 OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG(0x500) 으로 확인
+	   * 0x100, 0x200 등으로 변경 했으나, scale을 구하기가 어려웠음,
+	   * 해결 방안 :
+	   *  0x20000000 로 변경
+	   *   - 0x20000000(bit 29) 도 precision 영역(OR_DOMAIN_PRECISION_MASK = 0xFFFF0000)과는 겹치나
+	   *     unpack 할 때 carrier를 temp로 옮겨, floating‐point flag(0x20000000)만 제거한 뒤에 precision, scale 추출
+	   */
+	  if (d->is_floating_point_numeric)
+	    {
+	      carrier |= OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG;
+	      has_floating_point_numeric = true;
+	    }
+
 	  /* safe guard for scale */
 	  scale = d->scale;
 	  if (scale <= DB_DEFAULT_SCALE)
@@ -2954,14 +2969,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
 	    {
-	      precision = DB_MAX_NUMERIC_PRECISION;
-	    }
-
-	  has_floating_point_numeric = d->is_floating_point_numeric;
-	  if (d->is_floating_point_numeric)
-	    {
-	      carrier |= OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG;
-	      has_floating_point_numeric = true;
+	      precision = has_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION;
 	    }
 	  break;
 
@@ -3181,7 +3189,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
-    collation_storage;
+    collation_storage, tmp_carrier;
   bool has_schema;
   bool more, auto_precision, is_desc, has_collation, has_floating_point_numeric;
   DB_TYPE type;
@@ -3269,9 +3277,13 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
+	      /* get floating-point flag */
+	      has_floating_point_numeric = (carrier & OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG) != 0;
+	      tmp_carrier = carrier & ~OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG;
+
+	      /* get precision and scale */
 	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
-	      has_floating_point_numeric = (carrier & OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG) != 0;
 	      break;
 
 	    case DB_TYPE_NCHAR:
@@ -3531,7 +3543,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
   TP_DOMAIN *setdomain, *td, *next;
   DB_TYPE type;
   bool more, is_desc, is_floating_point;
-  unsigned int carrier, index;
+  unsigned int carrier, index, tmp_carrier;
   unsigned int precision, scale, codeset = 0, collation_id;
   OID class_oid;
   struct db_object *class_mop = NULL;
@@ -3612,10 +3624,21 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_NUMERIC:
-	      /* get precision and scale */
-	      precision = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+	      /* get floating-point flag */
 	      is_floating_point = (carrier & OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG) != 0;
+	      tmp_carrier = carrier & ~OR_DOMAIN_FLOATING_POINT_NUMERIC_FLAG;
+
+	      /* get precision and scale */
+	      precision = (tmp_carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
+	      scale = (tmp_carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
+
+	      /* Add debug prints */
+	      //       printf("DEBUG: carrier=0x%x, scale_mask=0x%x, scale_shift=%d\n", carrier, OR_DOMAIN_SCALE_MASK, OR_DOMAIN_SCALE_SHIFT);
+	      //       printf("DEBUG: tmp_carrier=0x%x\n", tmp_carrier);
+	      //       printf("DEBUG: precision=%d\n", precision);
+	      //       printf("DEBUG: scale=%d\n", scale);
+	      //       printf("DEBUG: is_floating_point=%d\n", is_floating_point);
+
 	      /* do we have an extra precision word ? */
 	      if (precision == OR_DOMAIN_PRECISION_MAX)
 		{

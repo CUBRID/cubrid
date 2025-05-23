@@ -8573,8 +8573,8 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
        */
       if (value->data.num.d.buf[0] & 0x80)
 	{
-	  value->data.num.d.buf[0] -= value->domain.numeric_info.precision;
-	  value->data.num.d.buf[1] -= value->domain.numeric_info.scale;
+	  value->data.num.d.buf[0] = (unsigned char) (255 - (int) value->domain.numeric_info.precision);
+	  value->data.num.d.buf[1] = (unsigned char) (255 - (int) value->domain.numeric_info.scale);
 	}
       else
 	{
