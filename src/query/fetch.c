@@ -4089,6 +4089,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case TYPE_SP:		/* fetch stored procedure value */
       {
+        if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
+	  {
+	    *peek_dbval = regu_var->value.sp_ptr->value;
+	    return NO_ERROR;
+	  }
+
 	/* clear any value from a previous iteration */
 	pr_clear_value (regu_var->value.sp_ptr->value);
 	fetch_force_not_const_recursive (*regu_var);

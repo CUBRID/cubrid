@@ -452,7 +452,6 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, S
 						      XASL_NODE * xasl, XASL_STATE * xasl_state,
 						      QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 						      QFILE_TUPLE_RECORD * tplrec);
-static bool qexec_dbval_is_referenced (DB_VALUE * dbval, REGU_VARIABLE * regu);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
 static int qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final);
 static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
@@ -20188,10 +20187,9 @@ exit_on_error:
 static void
 qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N)
 {
-  int i, j;
+  int i;
   QPROC_DB_VALUE_LIST gby_vallist;
   REGU_VARIABLE_LIST g_outptrlist;
-  DB_VALUE *dbval_p;
   int error = NO_ERROR;
 
   if (gbstate->state != NO_ERROR)
@@ -20217,123 +20215,30 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
       assert (N > 0);
       assert (gbstate->g_dim[N].d_flag & GROUPBY_DIM_FLAG_ROLLUP);
 
-      i = 0;
-      gby_vallist = gbstate->g_val_list->valp;
-
-      while (gby_vallist)
+      for (gby_vallist = gbstate->g_val_list->valp, g_outptrlist = gbstate->g_outptr_list->valptrp, i = 0;
+	   gby_vallist && g_outptrlist; gby_vallist = gby_vallist->next, g_outptrlist = g_outptrlist->next, i++)
 	{
 	  if (i >= N - 1)
 	    {
-	      bool is_found = false;
-	      j = 0;
-	      g_outptrlist = gbstate->g_outptr_list->valptrp;
-
-	      /* when processing rollup, before clearing a g_val_list item,
-	       * we must check if it is referenced by any g_outptr_list item whose index is less than the current dimension level.
-	       * the value should be removed only if it is not referenced. */
-	      while (g_outptrlist)
+	      (void) pr_clear_value (gby_vallist->val);
+	      db_make_null (gby_vallist->val);
+	    }
+	  else
+	    {
+	      switch (g_outptrlist->value.type)
 		{
-		  if (j < N - 1)
-		    {
-		      if (qexec_dbval_is_referenced (gby_vallist->val, &g_outptrlist->value))
-			{
-			  if (g_outptrlist->value.type != TYPE_SP)
-			    {
-			      /* CBRD-25416:
-			       * when TYPE_SP, if the REGU_VARIABLE_FETCH_ALL_CONST flag is set,
-			       * it was previously allowed to return the constant folded value as is.
-			       *
-			       * however, in CBRD-25308, this behavior was blocked again.
-			       * will investigate related code further and make modifications if necessary.
-			       */
-			      REGU_VARIABLE_SET_FLAG (&g_outptrlist->value, REGU_VARIABLE_FETCH_ALL_CONST);
-			    }
-			  break;
-			}
-		    }
-		  j++;
-		  g_outptrlist = g_outptrlist->next;
-		}
-
-	      if (!is_found)
-		{
-		  (void) pr_clear_value (gby_vallist->val);
-		  db_make_null (gby_vallist->val);
+		case TYPE_INARITH:
+		case TYPE_OUTARITH:
+		case TYPE_FUNC:
+		case TYPE_SP:
+		  REGU_VARIABLE_SET_FLAG (&g_outptrlist->value, REGU_VARIABLE_FETCH_ALL_CONST);
+		  break;
+		default:
+		  break;
 		}
 	    }
-	  i++;
-	  gby_vallist = gby_vallist->next;
 	}
     }
-}
-
-
-static bool
-qexec_dbval_is_referenced (DB_VALUE * dbval, REGU_VARIABLE * regu)
-{
-  REGU_VARIABLE_LIST regu_list = NULL;
-  switch (regu->type)
-    {
-    case TYPE_CONSTANT:
-      if (regu->value.dbvalptr == dbval)
-	{
-	  return true;
-	}
-      break;
-    case TYPE_INARITH:
-      if (regu->value.arithptr->leftptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->leftptr))
-	    {
-	      return true;
-	    }
-	}
-      if (regu->value.arithptr->rightptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->rightptr))
-	    {
-	      return true;
-	    }
-	}
-      if (regu->value.arithptr->thirdptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->thirdptr))
-	    {
-	      return true;
-	    }
-	}
-      break;
-    case TYPE_SP:
-      {
-	regu_list = regu->value.sp_ptr->args;
-	while (regu_list)
-	  {
-	    if (qexec_dbval_is_referenced (dbval, &regu_list->value))
-	      {
-		return true;
-	      }
-	    regu_list = regu_list->next;
-	  }
-      }
-      break;
-
-    case TYPE_FUNC:
-      {
-	regu_list = regu->value.funcp->operand;
-	while (regu_list)
-	  {
-	    if (qexec_dbval_is_referenced (dbval, &regu_list->value))
-	      {
-		return true;
-	      }
-	    regu_list = regu_list->next;
-	  }
-      }
-    default:
-      break;
-    }
-
-  return false;
 }
 
 /*
@@ -20594,7 +20499,6 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
       ASSERT_ERROR_AND_SET (error_code);
       GOTO_EXIT_ON_ERROR;
     }
-
   regu_list = gbstate->g_outptr_list->valptrp;
   while (regu_list)
     {
