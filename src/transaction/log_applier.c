@@ -8008,7 +8008,7 @@ la_destroy_repl_filter (void)
  *   return: NO_ERROR or error code
  *
  * Note:
- *   In copylogdb, the 'mark_will_del' flag in the log header is set
+ *   In copylogdb, the 'mark_will_del' flag in the act log header is set
  *   when an error occurs during log retrieval.
  * 
  */
