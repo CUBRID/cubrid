@@ -20637,11 +20637,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	case TYPE_OUTARITH:
 	case TYPE_FUNC:
 	case TYPE_SP:
-	  //   fetch_force_not_const_recursive(&regu_list->value);
-	  if (REGU_VARIABLE_IS_FLAGED (&regu_list->value, REGU_VARIABLE_FETCH_ALL_CONST))
-	    {
-	      REGU_VARIABLE_CLEAR_FLAG (&regu_list->value, REGU_VARIABLE_FETCH_ALL_CONST);
-	    }
+	  REGU_VARIABLE_CLEAR_FLAG (&regu_list->value, REGU_VARIABLE_FETCH_ALL_CONST);
 	  break;
 	default:
 	  break;
