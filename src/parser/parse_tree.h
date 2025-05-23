@@ -965,7 +965,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
-  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28)
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
+  PT_PRINT_DBLINK_INFO = (0x1 << 29)	/* If you use DBLINK, specify it when generating the SHA hash value. */
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -1412,6 +1413,12 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
+#define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
+#define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
+
+/* Parallel query execution threads limits */
+#define  PT_MAX_PARALLEL_THREADS  64
+#define  PT_MIN_PARALLEL_THREADS  0
 
 /* Codes for error messages */
 typedef enum
@@ -1744,7 +1751,9 @@ typedef enum
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
-  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000	/* spec for odku assignment */
+  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
+  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000	/* spec for setted number of parallel query execution threads */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2382,6 +2391,7 @@ struct pt_spec_info
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
+  int num_parallel_threads;	/* number of parallel threads for this spec */
 };
 
 /* Info for an EVALUATE object */
@@ -2953,6 +2963,7 @@ struct pt_select_info
   PT_HINT_ENUM hint;
   int flavor;
   int flag;			/* flags */
+  int num_parallel_threads;
   PT_CONNECT_BY_CHECK_CYCLES check_cycles;	/* CONNECT BY CHECK CYCLES */
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
@@ -3998,6 +4009,7 @@ struct parser_context
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
+  PARSER_VARCHAR *dblink_server_text;	/* Contains access information to be used in generating SHA hash values ​​when using the Server name in DBLINK. */
 
   struct
   {

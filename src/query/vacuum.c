@@ -20,6 +20,11 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "system.h"
 #include "vacuum.h"
 
@@ -1131,7 +1136,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
 
   if (logpb_is_page_in_archive (min_log_pageid))
     {
@@ -6067,6 +6072,11 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
 {
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return;
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
