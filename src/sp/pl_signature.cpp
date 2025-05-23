@@ -161,9 +161,9 @@ namespace cubpl
   }
 
   pl_signature::pl_signature ()
-    : name {nullptr}
+    : type {PL_TYPE_NONE}
+    , name {nullptr}
     , auth {nullptr}
-    , type {PL_TYPE_NONE}
     , result_type {0}
   {
     memset (&ext, 0, sizeof (pl_ext));

@@ -1020,8 +1020,8 @@ extern "C"
       unsigned char compressed_need_clear;
       int size;
       const char *buf;
-      char *compressed_buf;
       int compressed_size;
+      char *compressed_buf;
       int length;		/* Only Use for group_concat() now */
     } medium;
     struct

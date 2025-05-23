@@ -7202,22 +7202,23 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 	  type = log_rec->type;
 
-	  {
-	    /*
-	     * The following is just for debugging next address calculations
-	     */
-	    LOG_LSA next_lsa;
+	  if (type != LOG_END_OF_LOG)
+	    {
+	      /*
+	       * The following is just for debugging next address calculations
+	       */
+	      LOG_LSA next_lsa;
 
-	    LSA_COPY (&next_lsa, &lsa);
-	    if (log_startof_nxrec (thread_p, &next_lsa, false) == NULL
-		|| (!LSA_EQ (&next_lsa, &log_rec->forw_lsa) && !LSA_ISNULL (&log_rec->forw_lsa)))
-	      {
-		fprintf (out_fp, "\n\n>>>>>****\n");
-		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n",
-			 LSA_AS_ARGS (&next_lsa), LSA_AS_ARGS (&lsa));
-		fprintf (out_fp, "<<<<<****\n");
-	      }
-	  }
+	      LSA_COPY (&next_lsa, &lsa);
+	      if (log_startof_nxrec (thread_p, &next_lsa, false) == NULL
+		  || (!LSA_EQ (&next_lsa, &log_rec->forw_lsa) && !LSA_ISNULL (&log_rec->forw_lsa)))
+		{
+		  fprintf (out_fp, "\n\n>>>>>****\n");
+		  fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n",
+			   LSA_AS_ARGS (&next_lsa), LSA_AS_ARGS (&lsa));
+		  fprintf (out_fp, "<<<<<****\n");
+		}
+	    }
 
 	  /* Find the next log record to dump .. after current one is dumped */
 	  if (isforward != false)
@@ -11279,7 +11280,7 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
  * preserved  (in/out)        : preserve existing log page if needed
  */
 static int
-cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, size_t size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
+cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, int size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
 					     LOG_PAGE * preserved)
 {
   if (lsa->offset + size >= (int) LOGAREA_SIZE)

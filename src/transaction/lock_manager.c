@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <array>
@@ -3246,7 +3251,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
-  TRAN_ISOLATION isolation;
   int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
   LK_RES *res_ptr;
@@ -3314,9 +3318,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 	       wait_msecs);
     }
 #endif /* LK_DUMP */
-
-  /* isolation */
-  isolation = logtb_find_isolation (tran_index);
 
   /* initialize */
   *entry_addr_ptr = NULL;
@@ -5982,7 +5983,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
   int granted;
@@ -6064,7 +6064,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     {
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* check if the given oid is root class oid */
   if (OID_IS_ROOTOID (oid))
@@ -6196,7 +6195,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   int granted;
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -6235,7 +6233,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
     {
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* get the intentional lock mode to be acquired on class oid */
   if (lock <= S_LOCK)
@@ -6343,7 +6340,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
@@ -6375,7 +6371,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
       assert (cond_flag == LK_UNCOND_LOCK);
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
@@ -6432,7 +6427,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
   LK_LOCKINFO *cls_lockinfo;
   LK_ENTRY *root_class_entry = NULL;
@@ -6469,7 +6463,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   wait_msecs = logtb_find_wait_msecs (tran_index);
-  isolation = logtb_find_isolation (tran_index);
 
   /* We do not want to rollback the transaction in the event of a deadlock. For now, let's just wait a long time. If
    * deadlock, the transaction is going to be notified of lock timeout instead of aborted. */
@@ -8306,8 +8299,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r = lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid, &acqlocks->obj[i].class_oid,
-					     acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      r =
+	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
+					   OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid,
+					   acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8566,15 +8561,15 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < ONE_K)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "\n\n", size_alloc);
     }
   else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "K\n\n", size_alloc / ONE_K);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "M\n\n", size_alloc / ONE_M);
     }
 
   // *INDENT-OFF*
