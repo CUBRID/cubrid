@@ -311,7 +311,59 @@ set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # include 3rdparty
 message("Including Third Party Libraries")
-add_subdirectory(3rdparty)
+
+find_package(expat CONFIG REQUIRED)
+find_package(jansson CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(unixodbc CONFIG REQUIRED)
+find_package(re2 CONFIG REQUIRED)
+find_package(lz4 CONFIG REQUIRED)
+find_package(TBB CONFIG REQUIRED)
+find_package(RapidJSON CONFIG REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+# mock
+list(APPEND EP_TARGETS UNIX::odbc)
+
+list(APPEND EP_LIBS expat::expat)
+set(LIBEXPAT expat::expat)
+include_directories(${EXPAT_INCLUDE_DIRS})
+
+list(APPEND EP_LIBS jansson::jansson)
+set(LIBJANSSON jansson::jansson)
+include_directories(${JANSSON_INCLUDE_DIRS})
+
+pkg_check_modules(LIBEDIT REQUIRED libedit)
+include_directories(${LIBEDIT_INCLUDE_DIRS})
+list(APPEND EP_LIBS ${LIBEDIT_LIBRARIES})
+
+list(APPEND EP_LIBS UNIX::odbc)
+set(LIBUNIXODBC UNIX::odbc)
+include_directories(${UNIXODBC_INCLUDE_DIRS})
+
+list(APPEND EP_LIBS re2::re2)
+set(RE2 re2::re2)
+include_directories(${RE2_INCLUDE_DIRS})
+
+list(APPEND EP_LIBS OpenSSL::SSL)
+list(APPEND EP_LIBS OpenSSL::Crypto)
+include_directories(${OPENSSL_INCLUDE_DIR})
+
+list(APPEND EP_LIBS TBB::tbb)
+list(APPEND EP_INCLUDES ${TBB_INCLUDE_DIRS})
+include_directories(${TBB_INCLUDE_DIRS})
+set(TBB_LIBS TBB::tbb)
+list(APPEND TBB_INCLUDES ${TBB_INCLUDE_DIRS})
+
+list(APPEND EP_LIBS lz4::lz4)
+set(LZ4 lz4::lz4)
+include_directories(${LZ4_INCLUDE_DIRS})
+
+list(APPEND EP_LIBS RapidJSON)
+set(RAPIDJSON RapidJSON)
+include_directories(${RAPIDJSON_INCLUDE_DIRS})
+
+# add_subdirectory(3rdparty)
 
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
@@ -328,8 +380,25 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 # whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
+find_package(FLEX 2.5.34 REQUIRED)
+find_package(BISON 3.0.0 REQUIRED)
+
+if(NOT BISON_FOUND OR NOT FLEX_FOUND)
+  if(UNIX)
+    message(FATAL_ERROR "Please install bison and flex.")
+  else()
+    message(
+      FATAL_ERROR
+      "Please install bison and flex.\nDownload the latest archive from"
+      " https://github.com/lexxmark/winflexbison/releases"
+      " extract it to a directory in the Path (e.g. %USERPROFILE%\\AppData\\Local\\Microsoft\\WindowsApps)"
+      " and retry running cmake."
+    )
+  endif()
+endif(NOT BISON_FOUND OR NOT FLEX_FOUND)
+
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+  COMPILE_FLAGS "--yacc --no-lines --name-prefix=csql_yy -d -r all")
 flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
 add_flex_bison_dependency(csql_lexer csql_grammar)
