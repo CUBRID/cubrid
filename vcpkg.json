@@ -1,0 +1,27 @@
+{
+  "name": "cubrid-project",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "expat",
+    "jansson",
+    "libedit",
+    "lz4",
+    "openssl",
+    "rapidjson",
+    "rapidjson",
+    "re2",
+    "tbb",
+    "unixodbc",
+    "vcpkg-cmake"
+  ],
+  "overrides": [
+    {
+      "name": "re2",
+      "version": "2021-11-01#1"
+    },
+    {
+      "name": "tbb",
+      "version": "2021.11.0"
+    }
+  ]
+}
