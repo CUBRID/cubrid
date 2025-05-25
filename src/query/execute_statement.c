@@ -9310,7 +9310,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE);
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -10673,7 +10673,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE);
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -11320,7 +11320,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.dont_prt_long_string = 1;
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
-  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE);
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -14536,7 +14536,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement,
+			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err =
@@ -17539,7 +17540,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->flag.dont_prt_long_string = 1;
       parser->flag.long_string_skipped = 0;
       parser->flag.print_type_ambiguity = 0;
-      PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE);
+      PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
       contextp->sql_hash_text = (char *) statement->alias_print;
       err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
