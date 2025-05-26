@@ -373,7 +373,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
   if (list_id != NULL)
     {
-      assert (VPID_ISNULL (&list_id->last_vpid));
       assert (list_id->last_pgptr == NULL);
 
       qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
@@ -479,7 +478,6 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   ASSERT_NO_ERROR ();
 
-  assert (VPID_ISNULL (&list_id->last_vpid));
   assert (list_id->last_pgptr == NULL);
 
   return list_id;
@@ -558,7 +556,6 @@ hjoin_with_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       return NULL;
     }
 
-  assert (VPID_ISNULL (&list_id->last_vpid));
   assert (list_id->last_pgptr == NULL);
 
   return list_id;
@@ -681,7 +678,6 @@ cleanup:
   qfile_close_list (thread_p, outer_list_id);
   qfile_destroy_list (thread_p, outer_list_id);
 
-  assert (VPID_ISNULL (&list_id->last_vpid));
   assert (list_id->last_pgptr == NULL);
 
   return list_id;
@@ -796,7 +792,6 @@ cleanup:
 
   hjoin_scan_clear (thread_p, &context->hash_scan);
 
-  assert (VPID_ISNULL (&list_id->last_vpid));
   assert (list_id->last_pgptr == NULL);
 
   return list_id;
