@@ -8961,6 +8961,29 @@ dump_la_info (void)
 #endif
   fflush (out);
 }
+
+void
+dump_la_act_log (FILE * out, int indent)
+{
+  LA_ACT_LOG *a = &la_Info.act_log;
+
+  fprintf (out, "%*sla_act_log: {\n", indent, "");
+  fprintf (out, "%*spath: %s,\n", indent + 2, "", a->path);
+  fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", a->log_vdes);
+
+  /* hdr_page */
+  dump_log_page_hdr (out, &a->hdr_page->hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  /* log_hdr */
+  dump_log_header (out, a->log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*sdb_iopagesize: %d,\n", indent + 2, "", a->db_iopagesize);
+  fprintf (out, "%*sdb_logpagesize: %d\n", indent + 2, "", a->db_logpagesize);
+
+  fprintf (out, "%*s}\n", indent, "");
+}
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int
 la_start_dk_sharing (void)
