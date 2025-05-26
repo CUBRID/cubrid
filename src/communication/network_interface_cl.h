@@ -467,4 +467,5 @@ extern int mmon_disable_force ();
 
 extern void dump_logwr_global (void);
 extern void dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent);
+extern void dump_log_header (FILE * out, const LOG_HEADER * log_hdr, int indent);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

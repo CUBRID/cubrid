@@ -11579,3 +11579,134 @@ dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
   fprintf (out, "%*soffset: %lld\n", indent + 2, "", (long long) lsa->offset);
   fprintf (out, "%*s}", indent, "");
 }
+
+void
+dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
+{
+#if defined(CS_MODE)
+
+  const char *ha_file_status = NULL;
+  switch (hdr->ha_file_status)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      ha_file_status = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      ha_file_status = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      ha_file_status = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      ha_file_status = "UNKNOWN";
+      break;
+    }
+
+  const char *ha_server_state = NULL;
+  switch (hdr->ha_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      ha_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      ha_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      ha_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      ha_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      ha_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      ha_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      ha_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      ha_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      ha_server_state = "UNKNOWN";
+      break;
+    }
+
+  fprintf (out, "%*slog_header : {\n", indent, "");
+  fprintf (out, "%*sdb_creation: %lld,\n", indent + 2, "", (long long) hdr->db_creation);
+  fprintf (out, "%*svol_creation: %lld,\n", indent + 2, "", (long long) hdr->vol_creation);
+  fprintf (out, "%*sdb_release: %s,\n", indent + 2, "", hdr->db_release);
+  fprintf (out, "%*sdb_compatibility: %f,\n", indent + 2, "", hdr->db_compatibility);
+  fprintf (out, "%*sdb_iopagesize: %d,\n", indent + 2, "", hdr->db_iopagesize);
+  fprintf (out, "%*sdb_logpagesize: %d,\n", indent + 2, "", hdr->db_logpagesize);
+  fprintf (out, "%*sis_shutdown: %s,\n", indent + 2, "", hdr->is_shutdown ? "true" : "false");
+  fprintf (out, "%*snext_trid: %d,\n", indent + 2, "", hdr->next_trid);
+  fprintf (out, "%*smvcc_next_id: %llu,\n", indent + 2, "", (unsigned long long) hdr->mvcc_next_id);
+  fprintf (out, "%*savg_ntrans: %d,\n", indent + 2, "", hdr->avg_ntrans);
+  fprintf (out, "%*savg_nlocks: %d,\n", indent + 2, "", hdr->avg_nlocks);
+  fprintf (out, "%*snpages: %d,\n", indent + 2, "", hdr->npages);
+  fprintf (out, "%*sdb_charset: %d,\n", indent + 2, "", hdr->db_charset);
+  fprintf (out, "%*swas_copied: %s,\n", indent + 2, "", hdr->was_copied ? "true" : "false");
+  fprintf (out, "%*sfpageid: %lld,\n", indent + 2, "", (long long) hdr->fpageid);
+
+  /* append_lsa */
+  fprintf (out, "%*sappend_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &hdr->append_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  /* chkpt_lsa */
+  fprintf (out, "%*schkpt_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &hdr->chkpt_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*snxarv_pageid: %lld,\n", indent + 2, "", (long long) hdr->nxarv_pageid);
+  fprintf (out, "%*snxarv_phy_pageid: %lld,\n", indent + 2, "", (long long) hdr->nxarv_phy_pageid);
+  fprintf (out, "%*snxarv_num: %d,\n", indent + 2, "", hdr->nxarv_num);
+  fprintf (out, "%*slast_arv_num_for_syscrashes: %d,\n", indent + 2, "", hdr->last_arv_num_for_syscrashes);
+  fprintf (out, "%*slast_deleted_arv_num: %d,\n", indent + 2, "", hdr->last_deleted_arv_num);
+
+  /* bkinfo array */
+  fprintf (out, "%*sbkinfo: [\n", indent + 2, "");
+  for (int i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
+    {
+      fprintf (out, "%*s{ bkup_attime: %lld, io_baseln_time: %lld, io_bkuptime: %lld, "
+	       "ndirty_pages_post_bkup: %d, io_numpages: %d }%s\n",
+	       indent + 4, "",
+	       (long long) hdr->bkinfo[i].bkup_attime,
+	       (long long) hdr->bkinfo[i].io_baseln_time,
+	       (long long) hdr->bkinfo[i].io_bkuptime,
+	       hdr->bkinfo[i].ndirty_pages_post_bkup,
+	       hdr->bkinfo[i].io_numpages, (i + 1 < FILEIO_BACKUP_UNDEFINED_LEVEL) ? "," : "");
+    }
+  fprintf (out, "%*s],\n\n", indent + 2, "");
+
+  fprintf (out, "%*sprefix_name: %s,\n", indent + 2, "", hdr->prefix_name);
+  fprintf (out, "%*shas_logging_been_skipped: %s,\n", indent + 2, "", hdr->has_logging_been_skipped ? "true" : "false");
+  fprintf (out, "%*svacuum_last_blockid: %lld,\n", indent + 2, "", (long long) hdr->vacuum_last_blockid);
+  fprintf (out, "%*sperm_status_obsolete: %d,\n", indent + 2, "", hdr->perm_status_obsolete);
+
+  fprintf (out, "%*sha_server_state: %s,\n", indent + 2, "", ha_server_state);
+  fprintf (out, "%*sha_file_status: %s,\n", indent + 2, "", ha_file_status);
+
+  /* eof_lsa */
+  fprintf (out, "%*seof_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &hdr->eof_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  /* smallest_lsa_at_last_chkpt */
+  fprintf (out, "%*ssmallest_lsa_at_last_chkpt: ", indent + 2, "");
+  dump_log_lsa (out, &hdr->smallest_lsa_at_last_chkpt, indent + 4);
+  fprintf (out, ",\n\n");
+
+  /* mvcc_op_log_lsa */
+  fprintf (out, "%*smvcc_op_log_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &hdr->mvcc_op_log_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*soldest_visible_mvccid: %llu,\n", indent + 2, "", (unsigned long long) hdr->oldest_visible_mvccid);
+  fprintf (out, "%*snewest_block_mvccid: %llu\n", indent + 2, "", (unsigned long long) hdr->newest_block_mvccid);
+  fprintf (out, "%*s}", indent, "");
+#endif
+}
