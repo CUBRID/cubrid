@@ -11545,3 +11545,28 @@ mmon_disable_force ()
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
+
+void
+dump_logwr_global (void)
+{
+#if defined(CS_MODE)
+  int indent = 2;
+  fprintf (stdout, "%*slogwr_global : {\n", indent, "");
+
+  /* dump log header */
+  dump_log_header (stdout, &logwr_Gl.hdr, indent + 2);
+  fprintf (stdout, ",\n\n");
+
+  /* dump log page header */
+  dump_log_page_hdr (stdout, &logwr_Gl.loghdr_pgptr->hdr, indent + 2);
+  fprintf (stdout, ",\n\n");
+
+  /* top-level fields */
+  dump_logwr_global_topfields (stdout, indent + 2);
+
+  fprintf (stdout, "%*s}\n\n", indent, "");
+#else
+  fprintf (stdout, "{ /* SA mode doesn’t provide logwr dump */ }\n\n");
+#endif
+  fflush (stdout);
+}
