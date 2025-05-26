@@ -27,7 +27,6 @@ set(MSG_FILES
   cubrid
   csql
   utils
-  esql
   )
 
 if(WIN32)
@@ -101,7 +100,7 @@ foreach(locale ${LOCALE_DIRS})
       )
   endforeach(msgfile)
 
-  add_custom_target(gen_msgs_${locale} ALL DEPENDS ${locale}/cubrid.cat ${locale}/csql.cat ${locale}/utils.cat ${locale}/esql.cat)
+  add_custom_target(gen_msgs_${locale} ALL DEPENDS ${locale}/cubrid.cat ${locale}/csql.cat ${locale}/utils.cat)
 
   install(DIRECTORY
     ${CMAKE_CURRENT_BINARY_DIR}/${locale}
