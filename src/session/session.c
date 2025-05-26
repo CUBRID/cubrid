@@ -2451,6 +2451,7 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
 		{
 		  file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
 		  tfile_vfid_p->preserved = true;
+		  er_log_debug (ARG_FILE_LINE, "preserved temp file : %p|%d|%d, tran_index = %d, query_id = %d, membuf=%p", tfile_vfid_p, tfile_vfid_p->temp_vfid.volid, tfile_vfid_p->temp_vfid.fileid, thread_p->tran_index, qentry_p->query_id, tfile_vfid_p->membuf);
 		}
 	    }
 	  temp = tfile_vfid_p;
@@ -2564,6 +2565,11 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
 
   if (sentry_p->temp_file != NULL)
     {
+      QMGR_TEMP_FILE *temp = NULL;
+      for (temp = sentry_p->temp_file; temp != NULL; temp = temp->next)
+	{
+	  er_log_debug (ARG_FILE_LINE, "free temp file :%p|%d|%d, preserved = %d, tran_index = %d, type = %d, membuf=%p", temp, temp->temp_vfid.volid, temp->temp_vfid.fileid, temp->preserved, thread_p->tran_index, temp->temp_file_type, temp->membuf);
+	}
       qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
     }
 

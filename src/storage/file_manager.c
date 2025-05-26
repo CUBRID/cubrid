@@ -9516,7 +9516,8 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	}
       prev_entry = entry;
     }
-
+  er_log_debug (ARG_FILE_LINE, "where is %d|%d? tran_index = %d", vfid->volid, vfid->fileid, thread_p->tran_index);
+  file_tempcache_dump (stderr);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9598,6 +9599,28 @@ file_tempcache_dump (FILE * fp)
 		   VFID_AS_ARGS (&cached_files->vfid), file_type_to_string (cached_files->ftype));
 	}
       fprintf (fp, "\n");
+    }
+
+  if (file_Tempcache.free_entries != NULL)
+    {
+      FILE_TEMPCACHE_ENTRY *p = file_Tempcache.free_entries;
+      while (p != NULL)
+	{
+	  er_log_debug (ARG_FILE_LINE, "    VFID = %d|%d, file type = %s \n", VFID_AS_ARGS (&p->vfid),
+			file_type_to_string (p->ftype));
+	  p = p->next;
+	}
+    }
+  int max_trans = logtb_get_number_of_total_tran_indices () + 1;
+  for (int i = 0; i < max_trans; i++)
+    {
+      FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[i];
+      FILE_TEMPCACHE_ENTRY *p;
+      for (p = *tran_files_p; p != NULL; p = p->next)
+	{
+	  er_log_debug (ARG_FILE_LINE, "    VFID = %d|%d, file type = %s, tran_index = %d \n",
+			VFID_AS_ARGS (&p->vfid), file_type_to_string (p->ftype), i);
+	}
     }
 
   file_tempcache_unlock ();
