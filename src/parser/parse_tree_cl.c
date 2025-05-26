@@ -4093,6 +4093,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return " <c> ";
     case PT_DISTANCE_OP_EUCLIDEAN:
       return " <-> ";
+    case PT_DISTANCE_OP_MANHATTAN:
+      return " <+> ";
     case PT_DISTANCE_OP_NEG_INNER_PROD:
       return " <#> ";
     default:

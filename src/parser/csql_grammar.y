@@ -16985,6 +16985,11 @@ expression_vector_distance
 			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_EUCLIDEAN, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| expression_vector_distance DISTANCE_OP_MANHATTAN expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_MANHATTAN, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| expression_vector_distance DISTANCE_OP_NEG_INNER_PROD expression_strcat
 		{{
 			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_NEG_INNER_PROD, $1, $3, NULL);
