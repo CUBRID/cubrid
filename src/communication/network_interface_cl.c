@@ -11710,3 +11710,23 @@ dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, "%*s}", indent, "");
 #endif
 }
+
+void
+dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int indent)
+{
+#if defined(CS_MODE)
+  if (arv_hdr == NULL)
+    {
+      fprintf (out, "%*slog_arv_header: NULL\n", indent, "");
+      return;
+    }
+  fprintf (out, "%*slog_arv_header: {\n", indent, "");
+  fprintf (out, "%*sdb_creation: %lld,\n", indent + 2, "", (long long) arv_hdr->db_creation);
+  fprintf (out, "%*svol_creation: %lld,\n", indent + 2, "", (long long) arv_hdr->vol_creation);
+  fprintf (out, "%*snext_trid: %d,\n", indent + 2, "", arv_hdr->next_trid);
+  fprintf (out, "%*snpages: %d,\n", indent + 2, "", arv_hdr->npages);
+  fprintf (out, "%*sfpageid: %lld,\n", indent + 2, "", (long long) arv_hdr->fpageid);
+  fprintf (out, "%*sarv_num: %d\n", indent + 2, "", arv_hdr->arv_num);
+  fprintf (out, "%*s}", indent, "");
+#endif
+}
