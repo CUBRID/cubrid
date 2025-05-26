@@ -11748,3 +11748,92 @@ dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
   fprintf (out, "%*s}", indent, "");
 #endif
 }
+
+void
+dump_logwr_global_topfields (FILE * out, int indent)
+{
+#if defined(CS_MODE)
+  const char *mode, *action;
+  switch (logwr_Gl.mode)
+    {
+    case LOGWR_MODE_ASYNC:
+      mode = "LOGWR_MODE_ASYNC";
+      break;
+    case LOGWR_MODE_SEMISYNC:
+      mode = "LOGWR_MODE_SEMISYNC";
+      break;
+    case LOGWR_MODE_SYNC:
+      mode = "LOGWR_MODE_SYNC";
+      break;
+    default:
+      mode = "LOGWR_MODE_UNKNOWN";
+      break;
+    }
+  switch (logwr_Gl.action)
+    {
+    case LOGWR_ACTION_NONE:
+      action = "LOGWR_ACTION_NONE";
+      break;
+    case LOGWR_ACTION_DELAYED_WRITE:
+      action = "LOGWR_ACTION_DELAYED_WRITE";
+      break;
+    case LOGWR_ACTION_ASYNC_WRITE:
+      action = "LOGWR_ACTION_ASYNC_WRITE";
+      break;
+    case LOGWR_ACTION_HDR_WRITE:
+      action = "LOGWR_ACTION_HDR_WRITE";
+      break;
+    case LOGWR_ACTION_ARCHIVING:
+      action = "LOGWR_ACTION_ARCHIVING";
+      break;
+    default:
+      action = "LOGWR_ACTION_UNKNOWN";
+      break;
+    }
+
+  fprintf (stdout, "%*sdb_name: \"%s\",\n", indent, "", logwr_Gl.db_name);
+  fprintf (stdout, "%*shostname: \"%s\",\n", indent, "", logwr_Gl.hostname ? logwr_Gl.hostname : "");
+  fprintf (stdout, "%*slog_path: \"%s\",\n", indent, "", logwr_Gl.log_path);
+  fprintf (stdout, "%*sloginf_path: \"%s\",\n", indent, "", logwr_Gl.loginf_path);
+  fprintf (stdout, "%*sactive_name: \"%s\",\n", indent, "", logwr_Gl.active_name);
+  fprintf (stdout, "%*sappend_vdes: %d,\n", indent, "", logwr_Gl.append_vdes);
+  fprintf (stdout, "%*slogpg_area: %p,\n", indent, "", (void *) logwr_Gl.logpg_area);
+  fprintf (stdout, "%*slogpg_area_size: %d,\n", indent, "", logwr_Gl.logpg_area_size);
+  fprintf (stdout, "%*slogpg_fill_size: %d,\n", indent, "", logwr_Gl.logpg_fill_size);
+  fprintf (stdout, "%*smax_toflush: %d,\n", indent, "", logwr_Gl.max_toflush);
+  fprintf (stdout, "%*snum_toflush: %d,\n", indent, "", logwr_Gl.num_toflush);
+  fprintf (stdout, "%*smode: %s,\n", indent, "", mode);
+  fprintf (stdout, "%*saction: %s,\n", indent, "", action);
+
+  fprintf (stdout, "%*slast_chkpt_pageid: %lld,\n", indent, "", (long long) logwr_Gl.last_chkpt_pageid);
+  fprintf (stdout, "%*slast_recv_pageid: %lld,\n", indent, "", (long long) logwr_Gl.last_recv_pageid);
+
+  fprintf (stdout, "%*slast_arv_page_range: {\n", indent, "");
+  fprintf (stdout, "%*sfrom: %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_fpageid);
+  fprintf (stdout, "%*sto:   %lld,\n", indent + 2, "", (long long) logwr_Gl.last_arv_lpageid);
+  fprintf (stdout, "%*scount: %d\n", indent + 2, "", logwr_Gl.last_arv_num);
+  fprintf (stdout, "%*s},\n\n", indent, "");
+
+  fprintf (stdout, "%*sforce_flush: %s,\n", indent, "", logwr_Gl.force_flush ? "true" : "false");
+
+  fprintf (stdout, "%*slast_flush_time: {\n", indent, "");
+  fprintf (stdout, "%*stv_sec:  %ld,\n", indent + 2, "", (long) logwr_Gl.last_flush_time.tv_sec);
+  fprintf (stdout, "%*stv_usec: %ld\n", indent + 2, "", (long) logwr_Gl.last_flush_time.tv_usec);
+  fprintf (stdout, "%*s},\n\n", indent, "");
+
+  fprintf (stdout, "%*sbackground_archiving_info: {\n", indent, "");
+  fprintf (stdout, "%*sstart_page_id:   %lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.start_page_id);
+  fprintf (stdout, "%*scurrent_page_id: %lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.current_page_id);
+  fprintf (stdout, "%*slast_sync_pageid:%lld,\n", indent + 2, "",
+	   (long long) logwr_Gl.bg_archive_info.last_sync_pageid);
+  fprintf (stdout, "%*svdes:            %d\n", indent + 2, "", logwr_Gl.bg_archive_info.vdes);
+  fprintf (stdout, "%*s},\n\n", indent, "");
+
+  fprintf (stdout, "%*sbg_archive_name: \"%s\",\n", indent, "", logwr_Gl.bg_archive_name);
+  fprintf (stdout, "%*sori_nxarv_pageid: %lld,\n", indent, "", (long long) logwr_Gl.ori_nxarv_pageid);
+  fprintf (stdout, "%*sstart_pageid: %lld,\n", indent, "", (long long) logwr_Gl.start_pageid);
+  fprintf (stdout, "%*sreinit_copylog: %s\n", indent, "", logwr_Gl.reinit_copylog ? "true" : "false");
+
+  fprintf (stdout, "%*s}\n", indent, "");
+#endif
+}
