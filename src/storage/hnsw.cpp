@@ -74,8 +74,6 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
 
-  hnsw_index_id++;
-
   return btid;
 }
 
@@ -382,6 +380,13 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
   assert (hnsw_id > 0);
+
+  if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
+      assert (false);
+      return ER_FAILED;
+    }
 
   auto it = hnsw_index_map.find (hnsw_id);
 
