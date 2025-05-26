@@ -12119,21 +12119,6 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	}
       break;
-    case PT_CREATE_TRIGGER:
-      if (stmt->info.create_trigger.trigger_action)
-	{
-	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
-
-	  if (tr_action && tr_action->info.trigger_action.expression)
-	    {
-	      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
-	    }
-	  if (pt_has_error (parser))
-	    {
-	      return;
-	    }
-	}
-      break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:

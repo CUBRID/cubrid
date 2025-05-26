@@ -11500,7 +11500,16 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.insert.spec->info.spec.remote_server_name)
     {
-      xasl = pt_to_insert_xasl_for_dblink_trigger (parser, statement);
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return er_errid ();
+	}
+
+      xasl = pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
   else
     {
