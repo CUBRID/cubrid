@@ -8027,32 +8027,38 @@ check_reinit_copylog (void)
 }
 
 static inline void
-la_extract_db_name (char *dest, const char *src)
+set_la_slave_db_name (const char *database_name)
 {
-  char *at;
+  const char *at = strchr (database_name, '@');
+  size_t len;
 
-  strncpy (dest, src, DB_MAX_IDENTIFIER_LENGTH);
-  at = strchr (dest, '@');
-  if (at)
-    *at = '\0';
+  if (at != NULL)
+    {
+      len = at - database_name;
+    }
+  else
+    {
+      len = DB_MAX_IDENTIFIER_LENGTH;
+    }
+
+  snprintf (la_slave_db_name, DB_MAX_IDENTIFIER_LENGTH, "%.*s", (int) len, database_name);
 }
 
 static inline void
-la_extract_peer_host (char *dest, const char *log_path)
+set_la_peer_host (const char *log_path)
 {
   const char *host = la_get_hostname_from_log_path ((char *) log_path);
 
-  if (host)
-    strncpy (la_peer_host, host, CUB_MAXHOSTNAMELEN);
-  else
-    strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
+  snprintf (la_peer_host, CUB_MAXHOSTNAMELEN, "%s", host ? host : "unknown");
 }
 
 static inline void
-init_delay_hist (int *delay_hist)
+init_delay_history (int *delay_history)
 {
   for (int i = 0; i < LA_NUM_DELAY_HISTORY; i++)
-    delay_hist[i] = -1;
+    {
+      delay_history[i] = -1;
+    }
 }
 
 /*
@@ -8109,8 +8115,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
-  la_extract_db_name (la_slave_db_name, database_name);
-  la_extract_peer_host (la_peer_host, log_path);
+  set_la_slave_db_name (database_name);
+  set_la_peer_host (log_path);
 
   /* init la_Info */
   la_init (log_path, max_mem_size);
@@ -8190,7 +8196,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       return error;
     }
 
-  init_delay_hist (delay_hist);
+  init_delay_history (delay_hist);
 
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
