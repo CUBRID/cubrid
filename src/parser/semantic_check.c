@@ -14687,6 +14687,23 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (stmt->node_type == PT_INSERT)
     {
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
+  else if (stmt->node_type == PT_MERGE)
+    {
+      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
+
+  if (stmt->node_type == PT_INSERT)
+    {
       attr_list = stmt->info.insert.attr_list;
       value_clauses = stmt->info.insert.value_clauses;
     }
