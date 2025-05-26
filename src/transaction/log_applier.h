@@ -64,6 +64,8 @@ void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process
 extern void dump_la_info (void);
 extern void dump_la_act_log (FILE * out, int indent);
 extern void dump_la_arv_log (FILE * out, int indent);
+extern void dump_la_apply_list (FILE * out, int indent);
+extern void dump_la_apply (FILE * out, int i, int indent);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int la_start_dk_sharing ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */

@@ -9011,6 +9011,54 @@ dump_la_arv_log (FILE * out, int indent)
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
   fprintf (out, "%*s}\n", indent, "");
 }
+
+void
+dump_la_apply_list (FILE * out, int indent)
+{
+  if (la_Info.repl_lists == NULL)
+    {
+      fprintf (out, "%*srepl_lists: NULL\n", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*srepl_lists: [\n", indent, "");
+  for (int i = 0; i < la_Info.repl_cnt; i++)
+    {
+      dump_la_apply (out, i, indent + 2);
+      fprintf (out, "%s\n", (i + 1 < la_Info.repl_cnt) ? "," : "");
+    }
+  fprintf (out, "%*s]\n", indent, "");
+}
+
+void
+dump_la_apply (FILE * out, int idx, int indent)
+{
+  LA_APPLY *apply = la_Info.repl_lists[idx];
+  if (apply == NULL)
+    {
+      fprintf (out, "%*sNULL\n", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*sLA_APPLY [%d]: {\n", indent, "", idx);
+  fprintf (out, "%*stranid: %d,\n", indent + 2, "", apply->tranid);
+  fprintf (out, "%*snum_items: %d,\n", indent + 2, "", apply->num_items);
+  fprintf (out, "%*sis_long_trans: %s,\n", indent + 2, "", apply->is_long_trans ? "true" : "false");
+
+  fprintf (out, "%*sstart_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &apply->start_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*slast_lsa: ", indent + 2, "");
+  dump_log_lsa (out, &apply->last_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*shead: %p,\n", indent + 2, "", (void *) apply->head);
+  fprintf (out, "%*stail: %p\n", indent + 2, "", (void *) apply->tail);
+
+  fprintf (out, "%*s}\n", indent, "");
+}
+
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int
 la_start_dk_sharing (void)
