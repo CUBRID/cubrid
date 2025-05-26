@@ -104,6 +104,11 @@ typedef enum
   SORT_COLUMN_TYPE_STR,
 } SORT_COLUMN_TYPE;
 
+#if defined(CS_MODE)
+static volatile sig_atomic_t sigusr1_running = 0;
+static pthread_t sigusr1_tid;
+#endif /* CS_MODE */
+
 static int tranlist_Sort_column = 0;
 static bool tranlist_Sort_desc = false;
 
@@ -2661,6 +2666,90 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
+#if defined (CS_MODE)
+/*
+ * Thread function that waits for SIGUSR1 and dumps information
+ * depending on which utility (COPYLOGDB or APPLYLOGDB) is running.
+ */
+static void *
+sigusr1_monitor_thread (void *arg)
+{
+  int util_index = (int) (intptr_t) arg;
+  sigset_t set;
+  int sig;
+
+  /* Prepare a signal set containing only SIGUSR1 */
+  sigemptyset (&set);
+  sigaddset (&set, SIGUSR1);
+
+  /* Loop until running flag is cleared */
+  while (sigusr1_running)
+    {
+      /* Wait synchronously for SIGUSR1 */
+      if (sigwait (&set, &sig) == 0 && sig == SIGUSR1)
+	{
+	  /* If running was turned off, break out to exit */
+	  if (!sigusr1_running)
+	    {
+	      break;
+	    }
+	  /* Dispatch the appropriate dump function */
+	  switch (util_index)
+	    {
+	    case COPYLOGDB:
+	      logwr_dump_logwr_global ();
+	      break;
+	    case APPLYLOGDB:
+	      la_dump_la_info ();
+	      break;
+	    default:
+	      break;
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * Start the SIGUSR1 monitor thread.
+ * Blocks SIGUSR1 in the calling thread, then spawns a joinable
+ * monitor thread that will handle SIGUSR1.
+ */
+void
+start_sigusr1_monitor (int util_index)
+{
+  sigset_t set;
+
+  /* Block SIGUSR1 in this (main) thread so it can be handled only by our monitor thread */
+  sigemptyset (&set);
+  sigaddset (&set, SIGUSR1);
+  pthread_sigmask (SIG_BLOCK, &set, NULL);
+
+  /* Set running flag and create the monitor thread (joinable) */
+  sigusr1_running = true;
+  pthread_create (&sigusr1_tid, NULL, sigusr1_monitor_thread, (void *) (intptr_t) util_index);
+}
+
+/*
+ * Stop the SIGUSR1 monitor thread.
+ * Clears the running flag, sends SIGUSR1 to wake up sigwait(),
+ * and then joins the thread to clean up.
+ */
+void
+stop_sigusr1_monitor (void)
+{
+  /* Clear the running flag so thread will exit on next wakeup */
+  sigusr1_running = false;
+
+  /* Send SIGUSR1 to the monitor thread to wake it from sigwait() */
+  pthread_kill (sigusr1_tid, SIGUSR1);
+
+  /* Wait for the monitor thread to terminate and reclaim resources */
+  pthread_join (sigusr1_tid, NULL);
+}
+#endif
+
 /*
  * copylogdb() - copylogdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -2761,6 +2850,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   os_set_signal_handler (SIGSYS, crash_handler);
 #endif
 
+  start_sigusr1_monitor (COPYLOGDB);
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
   if (db_login ("DBA", NULL) != NO_ERROR)
@@ -2801,6 +2891,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 	      util_log_write_errstr ("%s\n", db_error_string (3));
 	    }
 
+	  stop_sigusr1_monitor ();
 	  return EXIT_FAILURE;
 	}
       er_set_ignore_uninit (true);
@@ -2846,6 +2937,7 @@ retry:
     }
 
   (void) db_shutdown ();
+  stop_sigusr1_monitor ();
   return EXIT_SUCCESS;
 
 print_copylog_usage:
@@ -2853,12 +2945,14 @@ print_copylog_usage:
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
+  stop_sigusr1_monitor ();
   return EXIT_FAILURE;
 
 error_exit:
 #if !defined(WINDOWS)
   if (hb_Proc_shutdown)
     {
+      stop_sigusr1_monitor ();
       return EXIT_SUCCESS;
     }
 #endif
@@ -2885,6 +2979,7 @@ error_exit:
       goto retry;
     }
 
+  stop_sigusr1_monitor ();
   return EXIT_FAILURE;
 #else /* CS_MODE */
   PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
@@ -2970,6 +3065,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   os_set_signal_handler (SIGSEGV, crash_handler);
   os_set_signal_handler (SIGSYS, crash_handler);
 #endif
+  start_sigusr1_monitor (APPLYLOGDB);
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
@@ -3006,6 +3102,8 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      util_log_write_errstr ("%s\n", db_error_string (3));
 	    }
+
+	  stop_sigusr1_monitor ();
 	  return EXIT_FAILURE;
 	}
       er_set_ignore_uninit (true);
@@ -3022,6 +3120,8 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 						     MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
 				     prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
 				     "(the correct format: YYYY-MM-DD hh:mm:ss)");
+
+	      stop_sigusr1_monitor ();
 	      return EXIT_FAILURE;
 	    }
 	}
@@ -3073,6 +3173,7 @@ retry:
     }
 
   (void) db_shutdown ();
+  stop_sigusr1_monitor ();
   return EXIT_SUCCESS;
 
 print_applylog_usage:
@@ -3084,6 +3185,7 @@ error_exit:
 #if !defined(WINDOWS)
   if (hb_Proc_shutdown)
     {
+      stop_sigusr1_monitor ();
       return EXIT_SUCCESS;
     }
 #endif
@@ -3104,6 +3206,7 @@ error_exit:
       goto retry;
     }
 
+  stop_sigusr1_monitor ();
   return EXIT_FAILURE;
 #else /* CS_MODE */
   PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB,
