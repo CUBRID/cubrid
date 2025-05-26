@@ -8752,6 +8752,215 @@ la_delay_replica (time_t eot_time)
   return NO_ERROR;
 }
 
+void
+dump_la_info (void)
+{
+#if defined(CS_MODE)
+  FILE *out = stdout;
+  int indent = 2;
+  LA_INFO *info = &la_Info;
+
+  /* apply_state */
+  const char *apply_state = NULL;
+  switch (info->apply_state)
+    {
+    case HA_LOG_APPLIER_STATE_NA:
+      apply_state = "HA_LOG_APPLIER_STATE_NA";
+      break;
+    case HA_LOG_APPLIER_STATE_UNREGISTERED:
+      apply_state = "HA_LOG_APPLIER_STATE_UNREGISTERED";
+      break;
+    case HA_LOG_APPLIER_STATE_RECOVERING:
+      apply_state = "HA_LOG_APPLIER_STATE_RECOVERING";
+      break;
+    case HA_LOG_APPLIER_STATE_WORKING:
+      apply_state = "HA_LOG_APPLIER_STATE_WORKING";
+      break;
+    case HA_LOG_APPLIER_STATE_DONE:
+      apply_state = "HA_LOG_APPLIER_STATE_DONE";
+      break;
+    case HA_LOG_APPLIER_STATE_ERROR:
+      apply_state = "HA_LOG_APPLIER_STATE_ERROR";
+      break;
+    default:
+      apply_state = "UNKNOWN";
+    }
+
+  /* last_file_state */
+  const char *last_file_state = NULL;
+  switch (info->last_file_state)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      last_file_state = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      last_file_state = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      last_file_state = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      last_file_state = "UNKNOWN";
+    }
+
+  /* last_server_state */
+  const char *last_server_state = NULL;
+  switch (info->last_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      last_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      last_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      last_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      last_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      last_server_state = "UNKNOWN";
+    }
+
+  /* LA_STATUS */
+  const char *la_status = NULL;
+  switch (info->status)
+    {
+    case LA_STATUS_BUSY:
+      la_status = "LA_STATUS_BUSY";
+      break;
+    case LA_STATUS_IDLE:
+      la_status = "LA_STATUS_IDLE";
+      break;
+    default:
+      la_status = "UNKNOWN";
+    }
+
+  /* opening */
+  fprintf (out, "la_info: {\n");
+
+  /* log info */
+  fprintf (out, "%*slog_path: %s,\n", indent, "", info->log_path);
+  fprintf (out, "%*sloginf_path: %s,\n", indent, "", info->loginf_path);
+
+  dump_la_act_log (out, indent);
+  fprintf (out, ",\n\n");
+
+  dump_la_arv_log (out, indent);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*slast_file_state: %s,\n", indent, "", last_file_state);
+  fprintf (out, "%*sstart_vsize: %lu,\n", indent, "", info->start_vsize);
+  fprintf (out, "%*sstart_time: %ld,\n", indent, "", (long) info->start_time);
+
+  /* lsa */
+  fprintf (out, "%*sfinal_lsa: ", indent, "");
+  dump_log_lsa (out, &info->final_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*scommitted_lsa: ", indent, "");
+  dump_log_lsa (out, &info->committed_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*scommitted_rep_lsa: ", indent, "");
+  dump_log_lsa (out, &info->committed_rep_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*slast_committed_lsa: ", indent, "");
+  dump_log_lsa (out, &info->last_committed_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*slast_committed_rep_lsa: ", indent, "");
+  dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  /* replication lists */
+  dump_la_apply_list (out, indent);
+  fprintf (out, ",\n\n");
+
+  /* commit queue */
+  fprintf (out, "%*scommit_head: %p,\n", indent, "", (void *) info->commit_head);
+  fprintf (out, "%*scommit_tail: %p,\n", indent, "", (void *) info->commit_tail);
+
+  /* more scalar fields */
+  fprintf (out, "%*slast_deleted_archive_num: %d,\n", indent, "", info->last_deleted_archive_num);
+  fprintf (out, "%*slast_time_archive_deleted: %ld,\n", indent, "", (long) info->last_time_archive_deleted);
+
+  /* slave info */
+  fprintf (out, "%*slog_data: %p,\n", indent, "", (void *) info->log_data);
+  fprintf (out, "%*srec_type: %p,\n", indent, "", (void *) info->rec_type);
+
+  /* undo_unzip_ptr, redo_unzip_ptr */
+  fprintf (out, "%*sundo_unzip_ptr: %p,\n", indent, "", (void *) info->undo_unzip_ptr);
+  fprintf (out, "%*sredo_unzip_ptr: %p,\n", indent, "", (void *) info->redo_unzip_ptr);
+
+  /* apply_state, max_mem_size */
+  fprintf (out, "%*sapply_state: %s,\n", indent, "", apply_state);
+  fprintf (out, "%*smax_mem_size: %d,\n", indent, "", info->max_mem_size);
+
+  /* master info */
+  fprintf (out, "%*scache_pb: %p,\n", indent, "", (void *) info->cache_pb);
+  fprintf (out, "%*scache_buffer_size: %d,\n", indent, "", info->cache_buffer_size);
+  fprintf (out, "%*slast_is_end_of_record: %s,\n", indent, "", info->last_is_end_of_record ? "true" : "false");
+  fprintf (out, "%*sis_end_of_record: %s,\n", indent, "", info->is_end_of_record ? "true" : "false");
+  fprintf (out, "%*slast_server_state: %s,\n", indent, "", last_server_state);
+  fprintf (out, "%*sis_role_changed: %s,\n", indent, "", info->is_role_changed ? "true" : "false");
+
+  /* db_ha_apply_info */
+  fprintf (out, "%*sappend_lsa: ", indent, "");
+  dump_log_lsa (out, &info->append_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*seof_lsa: ", indent, "");
+  dump_log_lsa (out, &info->eof_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*srequired_lsa: ", indent, "");
+  dump_log_lsa (out, &info->required_lsa, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*sinsert_counter: %lu,\n", indent, "", info->insert_counter);
+  fprintf (out, "%*supdate_counter: %lu,\n", indent, "", info->update_counter);
+  fprintf (out, "%*sdelete_counter: %lu,\n", indent, "", info->delete_counter);
+  fprintf (out, "%*sschema_counter: %lu,\n", indent, "", info->schema_counter);
+  fprintf (out, "%*scommit_counter: %lu,\n", indent, "", info->commit_counter);
+  fprintf (out, "%*sfail_counter: %lu,\n", indent, "", info->fail_counter);
+  fprintf (out, "%*slog_commit_time: %ld,\n", indent, "", (long) info->log_commit_time);
+  fprintf (out, "%*srequired_lsa_changed: %s,\n", indent, "", info->required_lsa_changed ? "true" : "false");
+  fprintf (out, "%*sstatus: %s,\n", indent, "", la_status);
+  fprintf (out, "%*sis_apply_info_updated: %s,\n", indent, "", info->is_apply_info_updated ? "true" : "false");
+  fprintf (out, "%*snum_unflushed: %d,\n", indent, "", info->num_unflushed);
+
+  /* file locks */
+  fprintf (out, "%*slog_path_lockf_vdes: %d,\n", indent, "", info->log_path_lockf_vdes);
+  fprintf (out, "%*sdb_lockf_vdes: %d,\n", indent, "", info->db_lockf_vdes);
+
+  /* repl_filter */
+  fprintf (out, "%*srepl_filter: %p,\n", indent, "", (void *) &info->repl_filter);
+
+  fprintf (out, "%*sreinit_copylog: %s,\n", indent, "", info->reinit_copylog ? "true" : "false");
+  fprintf (out, "%*smaxslotted_reclength: %d\n", indent, "", info->maxslotted_reclength);
+
+  /* closing */
+  fprintf (out, "}\n\n");
+#else
+  fprintf (out, "%*s{ /* SA mode doesn’t provide LA_INFO dump */ }\n\n", indent, "");
+#endif
+  fflush (out);
+}
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int
 la_start_dk_sharing (void)
