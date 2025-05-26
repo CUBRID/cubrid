@@ -34,11 +34,10 @@ namespace parallel_query
   class worker_manager
   {
     public:
-      static worker_manager &get_manager()
-      {
-	thread_local static worker_manager instance;
-	return instance;
-      }
+      static worker_manager &get_manager (int tran_index);
+      static worker_manager *get_manager_p (int tran_index);
+      static worker_manager &get_manager ();
+      static worker_manager *get_manager_p ();
 
       bool try_reserve_workers (int parallelism);
       void release_workers ();
@@ -48,23 +47,44 @@ namespace parallel_query
 	m_working_workers--;
       }
 
+      worker_manager();
+      ~worker_manager();
+
+      worker_manager (worker_manager &&other) noexcept
+	: m_reserved_workers (other.m_reserved_workers),
+	  m_working_workers (other.m_working_workers.load())
+      {
+	other.m_reserved_workers = 0;
+	other.m_working_workers = 0;
+      }
+
+      worker_manager &operator= (worker_manager &&other) noexcept
+      {
+	if (this != &other)
+	  {
+	    m_reserved_workers = other.m_reserved_workers;
+	    m_working_workers = other.m_working_workers.load();
+	    other.m_reserved_workers = 0;
+	    other.m_working_workers = 0;
+	  }
+	return *this;
+      }
+
+      worker_manager (const worker_manager &) = delete;
+      worker_manager &operator= (const worker_manager &) = delete;
+
     private:
       int m_reserved_workers;
       std::atomic<int> m_working_workers;
-      worker_manager();
-      ~worker_manager();
-      worker_manager (const worker_manager &) = delete;
-      worker_manager &operator= (const worker_manager &) = delete;
   };
 
   class worker_manager_with_dedicated_pool
   {
     public:
-      static worker_manager_with_dedicated_pool &get_manager()
-      {
-	thread_local static worker_manager_with_dedicated_pool instance;
-	return instance;
-      }
+      static worker_manager_with_dedicated_pool &get_manager (int tran_index);
+      static worker_manager_with_dedicated_pool *get_manager_p (int tran_index);
+      static worker_manager_with_dedicated_pool &get_manager ();
+      static worker_manager_with_dedicated_pool *get_manager_p ();
 
       bool try_reserve_workers (int parallelism, int task_queue_size);
       void release_workers ();
@@ -74,14 +94,40 @@ namespace parallel_query
 	m_active_tasks--;
       }
 
+      worker_manager_with_dedicated_pool();
+      ~worker_manager_with_dedicated_pool();
+
+      worker_manager_with_dedicated_pool (worker_manager_with_dedicated_pool &&other) noexcept
+	: m_reserved_workers (other.m_reserved_workers),
+	  m_active_tasks (other.m_active_tasks.load()),
+	  m_worker_pool (other.m_worker_pool)
+      {
+	other.m_reserved_workers = 0;
+	other.m_active_tasks = 0;
+	other.m_worker_pool = nullptr;
+      }
+
+      worker_manager_with_dedicated_pool &operator= (worker_manager_with_dedicated_pool &&other) noexcept
+      {
+	if (this != &other)
+	  {
+	    m_reserved_workers = other.m_reserved_workers;
+	    m_active_tasks = other.m_active_tasks.load();
+	    m_worker_pool = other.m_worker_pool;
+	    other.m_reserved_workers = 0;
+	    other.m_active_tasks = 0;
+	    other.m_worker_pool = nullptr;
+	  }
+	return *this;
+      }
+
+      worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
+      worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
+
     private:
       int m_reserved_workers;
       std::atomic<int> m_active_tasks;
       cubthread::entry_workpool *m_worker_pool;
-      worker_manager_with_dedicated_pool();
-      ~worker_manager_with_dedicated_pool();
-      worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
-      worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
   };
 }
 

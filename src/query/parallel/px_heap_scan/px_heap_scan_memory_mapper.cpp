@@ -588,6 +588,8 @@ namespace parallel_heap_scan
 
   memory_mapper::~memory_mapper()
   {
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info();
+    HL_HEAPID orig_heap_id = db_change_private_heap (thread_p, 0);
     if (val_descr_ptr)
       {
 	clear_and_free ((val_descr *) val_descr_ptr);
@@ -642,6 +644,7 @@ namespace parallel_heap_scan
     free (scan_id);
     m_map.clear();
     m_resolved_dbval_map.clear();
+    (void) db_change_private_heap (thread_p, orig_heap_id);
   }
 
   bool memory_mapper::add_resolved_dbval_all()

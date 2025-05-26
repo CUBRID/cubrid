@@ -32,6 +32,8 @@
 
 namespace parallel_query
 {
+  class worker_manager;
+  class worker_manager_with_dedicated_pool;
   class worker_manager_global
   {
     private:
@@ -42,6 +44,8 @@ namespace parallel_query
       int m_max_parallel_workers;
       std::atomic<int> m_current_parallel_workers;
       cubthread::entry_workpool *m_worker_pool;
+      std::vector<worker_manager> m_worker_managers;
+      std::vector<worker_manager_with_dedicated_pool> m_worker_managers_with_dedicated_pool;
       worker_manager_global();
       ~worker_manager_global();
 
@@ -51,6 +55,8 @@ namespace parallel_query
       bool try_reserve_workers (int parallelism);
       void release_workers (int parallelism);
       void push_task (cubthread::entry_task *task);
+      worker_manager &get_worker_manager (int tran_index);
+      worker_manager_with_dedicated_pool &get_worker_manager_with_dedicated_pool (int tran_index);
     public:
       static worker_manager_global &get_manager()
       {

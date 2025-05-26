@@ -227,6 +227,10 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
+		    if (m_context->has_error() || m_context->is_scan_external_ended)
+		      {
+			break;
+		      }
 		    writer_error_code = m_mergable_list_writer->write (thread_p);
 
 		    if (!resolved_dbval_stored)
@@ -288,8 +292,8 @@ namespace parallel_heap_scan
   void
   task::retire ()
   {
-    m_worker_manager->pop_task();
     cubthread::entry_task::retire();
+    m_worker_manager->pop_task();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */

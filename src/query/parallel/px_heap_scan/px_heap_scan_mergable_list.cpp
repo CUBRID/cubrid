@@ -112,6 +112,11 @@ namespace parallel_heap_scan
       {
 	return m_error_code;
       }
+    if ((*m_list_id_p)->tfile_vfid == NULL)
+      {
+	/* maybe interrupted */
+	return S_ERROR;
+      }
     err_code = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
     return err_code;
   }
