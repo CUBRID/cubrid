@@ -11726,7 +11726,6 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* already checked */
       return NO_ERROR;
     }
-
   statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
 
   AU_DISABLE (save_au);

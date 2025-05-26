@@ -11574,6 +11574,8 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
+
+      /* alias is not needed for remote table */
       spec->info.spec.range_var = NULL;
     }
 
