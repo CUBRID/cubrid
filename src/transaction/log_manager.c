@@ -11280,7 +11280,7 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
  * preserved  (in/out)        : preserve existing log page if needed
  */
 static int
-cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, size_t size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
+cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, int size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
 					     LOG_PAGE * preserved)
 {
   if (lsa->offset + size >= (int) LOGAREA_SIZE)

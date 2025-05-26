@@ -2003,8 +2003,8 @@ move (int x, int y)
 
   if (tgetent (NULL, term) == 1)
     {
-      lines = tgetnum ("li");
-      cols = tgetnum ("co");
+      lines = tgetnum ((char *) "li");
+      cols = tgetnum ((char *) "co");
     }
 
   tty_Lines = lines < 0 ? tty_Lines : lines;
@@ -2233,7 +2233,7 @@ initscr ()
   term = getenv ("TERM");
   if (term == NULL)
     {
-      term = "xterm";
+      term = (char *) "xterm";
     }
 
   if (tgetent (NULL, term) != 1)
@@ -2242,38 +2242,38 @@ initscr ()
       return NULL;
     }
 
-  if ((cm = tgetstr ("cm", NULL)) == NULL)
+  if ((cm = tgetstr ((char *) "cm", NULL)) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'cursor motion (cm)' capability for the terminal\n");
       return NULL;
     }
 
-  if ((cd = tgetstr ("cd", NULL)) == NULL)
+  if ((cd = tgetstr ((char *) "cd", NULL)) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'clear to end of screen (cd)' capability for the terminal\n");
       return NULL;
     }
 
-  if ((ce = tgetstr ("ce", NULL)) == NULL)
+  if ((ce = tgetstr ((char *) "ce", NULL)) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'Clear to end of line (ce)' capability for the terminal\n");
       return NULL;
     }
 
-  if ((cl = tgetstr ("cl", NULL)) == NULL)
+  if ((cl = tgetstr ((char *) "cl", NULL)) == NULL)
     {
       fprintf (stderr, "ERROR: Cannot find 'Clear screen and cursor home (cl)' capability for the terminal\n");
       return NULL;
     }
 
-  tty_Lines = tgetnum ("li");
+  tty_Lines = tgetnum ((char *) "li");
   if (tty_Lines < 1)
     {
       fprintf (stderr, "ERROR: cannot get #LINES for the terminal, check TERM environment variable\n");
       return NULL;
     }
 
-  tty_Cols = tgetnum ("co");
+  tty_Cols = tgetnum ((char *) "co");
   if (tty_Cols < 1)
     {
       fprintf (stderr, "ERROR: cannot get #COLUMNS for the terminal, check TERM environment variable\n");

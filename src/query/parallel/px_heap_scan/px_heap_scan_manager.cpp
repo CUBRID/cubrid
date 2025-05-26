@@ -538,7 +538,11 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
     }
   else
     {
-      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+      if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE && xasl->list_id->tfile_vfid != NULL
+	  && !VPID_ISNULL (&xasl->list_id->first_vpid))
+	{
+	  qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+	}
     }
   return ret;
 }

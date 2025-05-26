@@ -187,7 +187,6 @@ namespace cubpl
       exec_stack_map_type m_stack_map; // method executor storage
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
       exec_stack_id_type m_deferred_free_stack;
-      int m_stack_idx;
 
       cursor_map_type m_cursor_map; // server-side cursor storage
 
@@ -204,6 +203,7 @@ namespace cubpl
       std::unordered_set<int> m_session_param_changed_ids;
       bool m_all_session_params_required;
       int m_last_conn_epoch;
+      int m_stack_idx;
 
       // interrupt
       bool m_is_interrupted;
