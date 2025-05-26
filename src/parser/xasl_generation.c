@@ -20933,6 +20933,7 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 static PT_NODE *
 pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  PT_NODE *prev = NULL, *values, *list;
   DB_VALUE tmp;
 
   if (node == NULL)
@@ -20940,7 +20941,33 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       return NULL;
     }
 
-  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
+  if (node->node_type == PT_NODE_LIST && node->info.node_list.list_type == PT_IS_VALUE)
+    {
+      for (list = node->info.node_list.list; list; list = list->next)
+	{
+	  if (list->node_type == PT_NAME && list->info.name.meta_class == PT_TRIGGER_OID)
+	    {
+	      pt_evaluate_tree (parser, list, &tmp, 1);
+	      values = pt_dbval_to_value (parser, &tmp);
+	      db_value_clear (&tmp);
+	      if (prev == NULL)
+		{
+		  node->info.node_list.list = values;
+		}
+	      else
+		{
+		  prev->next = values;
+		}
+	      values->next = list->next;
+	      prev = values;
+	    }
+	  else
+	    {
+	      prev = list;
+	    }
+	}
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
     {
       pt_evaluate_tree (parser, node, &tmp, 1);
       node = pt_dbval_to_value (parser, &tmp);
