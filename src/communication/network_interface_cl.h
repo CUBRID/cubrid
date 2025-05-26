@@ -469,4 +469,5 @@ extern void dump_logwr_global (void);
 extern void dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent);
 extern void dump_log_header (FILE * out, const LOG_HEADER * log_hdr, int indent);
 extern void dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * log_arv_hdr, int indent);
+extern void dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * log_page_hdr, int indent);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

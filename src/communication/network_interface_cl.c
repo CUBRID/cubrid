@@ -11730,3 +11730,21 @@ dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int indent)
   fprintf (out, "%*s}", indent, "");
 #endif
 }
+
+void
+dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
+{
+#if defined(CS_MODE)
+  if (p == NULL)
+    {
+      fprintf (out, "%*slog_page_hdr: NULL\n", indent, "");
+      return;
+    }
+  fprintf (out, "%*slog_page_hdr : {\n", indent, "");
+  fprintf (out, "%*slogical_pageid: %lld,\n", indent + 2, "", (long long) p->logical_pageid);
+  fprintf (out, "%*soffset: %d,\n", indent + 2, "", p->offset);
+  fprintf (out, "%*sflags: %d,\n", indent + 2, "", p->flags);
+  fprintf (out, "%*schecksum: %d\n", indent + 2, "", p->checksum);
+  fprintf (out, "%*s}", indent, "");
+#endif
+}
