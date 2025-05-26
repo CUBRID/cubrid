@@ -91,7 +91,7 @@ namespace parallel_heap_scan
     for (size_t i = 0; i < parallelism; i++)
       {
 	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
-					   m_memory_mappers[i]->get_outptr_list()));
+					   m_memory_mappers[i]->get_outptr_list(), &m_mergable_list->opened_seq[i]));
       }
   }
 

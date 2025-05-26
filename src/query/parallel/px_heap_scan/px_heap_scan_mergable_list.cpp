@@ -39,6 +39,7 @@ namespace parallel_heap_scan
     m_thread_p = thread_p;
     m_size = size;
     m_list_ids.resize (size);
+    opened_seq.resize (size);
   }
 
   mergable_list_array::~mergable_list_array()
@@ -59,9 +60,22 @@ namespace parallel_heap_scan
   QFILE_LIST_ID *mergable_list_array::get_merged_list_id()
   {
     parallel_query::list_merger merger (m_thread_p);
-    for (QFILE_LIST_ID *list_id : m_list_ids)
+    for (int i = 0; i < m_size; i++)
       {
-	merger.add_list_id (list_id);
+	int list_id_idx = -1;
+	for (int j = 0; j < m_size; j++)
+	  {
+	    if (opened_seq[j] == i)
+	      {
+		list_id_idx = j;
+		break;
+	      }
+	  }
+	if (list_id_idx != -1)
+	  {
+	    merger.add_list_id (m_list_ids[list_id_idx]);
+	  }
+	assert (list_id_idx != -1);
       }
     return merger.get_merged_list_id();
   }
@@ -71,13 +85,15 @@ namespace parallel_heap_scan
     return &m_list_ids[index];
   }
 
-  mergable_list_writer::mergable_list_writer (QFILE_LIST_ID **list_id_p, QUERY_ID query_id, VALPTR_LIST *outptr_list)
+  mergable_list_writer::mergable_list_writer (QFILE_LIST_ID **list_id_p, QUERY_ID query_id, VALPTR_LIST *outptr_list,
+      int  *seq)
   {
     m_list_id_p = list_id_p;
     m_query_id = query_id;
     m_outptr_list = outptr_list;
     m_tpl_buf.tpl = (char *) malloc (DB_PAGESIZE);
     m_tpl_buf.size = DB_PAGESIZE;
+    m_seq = seq;
   }
 
   mergable_list_writer::~mergable_list_writer()

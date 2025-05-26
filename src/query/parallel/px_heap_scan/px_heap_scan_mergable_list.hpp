@@ -37,6 +37,7 @@ namespace parallel_heap_scan
       ~mergable_list_array();
       QFILE_LIST_ID *get_merged_list_id();
       QFILE_LIST_ID **get_list_id_p (std::size_t index);
+      std::vector<int> opened_seq;
 
     private:
       THREAD_ENTRY *m_thread_p;
@@ -48,7 +49,7 @@ namespace parallel_heap_scan
   {
     public:
       mergable_list_writer() = delete;
-      mergable_list_writer (QFILE_LIST_ID **list_id_p, QUERY_ID query_id, VALPTR_LIST *outptr_list);
+      mergable_list_writer (QFILE_LIST_ID **list_id_p, QUERY_ID query_id, VALPTR_LIST *outptr_list, int *seq);
       ~mergable_list_writer();
 
       bool open (THREAD_ENTRY *thread_p, PARALLEL_HEAP_SCAN_ID *phsid,
@@ -59,6 +60,7 @@ namespace parallel_heap_scan
       {
 	return (*m_list_id_p)->is_domain_resolved;
       }
+      int *m_seq;
 
     private:
       QFILE_LIST_ID **m_list_id_p;

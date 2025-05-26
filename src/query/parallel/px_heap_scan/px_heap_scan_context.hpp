@@ -55,6 +55,7 @@ namespace parallel_heap_scan
       THREAD_ENTRY *m_orig_thread_p;
       std::atomic<bool> is_scan_internal_ended;
       std::atomic<bool> is_scan_external_ended;
+      std::atomic<int> m_opened_seq;
 
       context (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
       ~context();
