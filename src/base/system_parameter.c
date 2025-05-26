@@ -771,6 +771,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
+#define PRM_NAME_VECTOR_INDEX_EF_SEARCH "vector_index_ef_search"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2498,6 +2500,12 @@ static bool PRM_ENABLE_JVM_HEAP_DUMP = true;
 static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
+
+int PRM_VECTOR_INDEX_EF_SEARCH = 0;
+static int prm_vector_index_ef_search_default = 40;
+static int prm_vector_index_ef_search_lower = 1;
+static int prm_vector_index_ef_search_upper = 32768;
+static unsigned int prm_vector_index_ef_search_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6587,6 +6595,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_enable_jvm_heap_dump_flag,
    (void *) &prm_enable_jvm_heap_dump_default,
    (void *) &PRM_ENABLE_JVM_HEAP_DUMP,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_VECTOR_INDEX_EF_SEARCH,
+   PRM_NAME_VECTOR_INDEX_EF_SEARCH,
+   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_vector_index_ef_search_flag,
+   (void *) &prm_vector_index_ef_search_default,
+   (void *) &PRM_VECTOR_INDEX_EF_SEARCH,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
