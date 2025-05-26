@@ -8984,6 +8984,33 @@ dump_la_act_log (FILE * out, int indent)
 
   fprintf (out, "%*s}\n", indent, "");
 }
+
+void
+dump_la_arv_log (FILE * out, int indent)
+{
+  LA_ARV_LOG *r = &la_Info.arv_log;
+
+  if (r == NULL || r->log_vdes <= 0)
+    {
+      fprintf (out, "%*sla_arv_log: NULL\n", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*sla_arv_log: {\n", indent, "");
+  fprintf (out, "%*spath: %s,\n", indent + 2, "", r->path);
+  fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", r->log_vdes);
+
+  fprintf (out, "%*s", indent + 2, "");
+  dump_log_page_hdr (out, &r->hdr_page->hdr, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s", indent + 2, "");
+  dump_log_arv_header (out, r->log_hdr, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
+  fprintf (out, "%*s}\n", indent, "");
+}
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int
 la_start_dk_sharing (void)
