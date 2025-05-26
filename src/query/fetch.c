@@ -183,6 +183,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_MUL:
     case T_DIV:
     case T_MOD:
+    case T_DISTANCE_OP_COSINE:
     case T_DISTANCE_OP_EUCLIDEAN:
       {
 	if (arithptr->opcode == T_DISTANCE_OP_EUCLIDEAN)
@@ -822,6 +823,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      break;
+
+    case T_DISTANCE_OP_COSINE:
+      {
+	DB_VALUE *args[2] = { peek_left, peek_right };
+	int err = vector_cosine_distance (arithptr->value, args, 2);
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
       break;
 
     case T_DISTANCE_OP_EUCLIDEAN:
