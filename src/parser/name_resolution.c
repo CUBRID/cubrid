@@ -3029,10 +3029,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      if (node->info.update.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -4163,6 +4161,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
       else
 	{
+	  /* in case of remote server, it always returns true */
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      return 1;
+	    }
 	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
 	}
     }
@@ -5962,6 +5965,18 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
+	      if (spec->info.spec.remote_server_name)
+		{
+		  /* only column name with remote server name is resolved
+		   * PT_DOT node such as new.col obj.old does not resolve */
+		  if (col_name && spec->info.spec.range_var)
+		    {
+		      in_node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+		      return in_node;
+		    }
+		  return NULL;
+		}
+
 	      if (savespec)
 		{
 		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,

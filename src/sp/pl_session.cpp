@@ -64,20 +64,20 @@ namespace cubpl
 //////////////////////////////////////////////////////////////////////////
 
   session::session (SESSION_ID id)
-    : m_id (id)
-    , m_mutex ()
-    , m_exec_stack {}
-    , m_stack_idx {-1}
+    : m_mutex ()
     , m_session_cursors {}
     , m_stack_map {}
+    , m_exec_stack {}
     , m_cursor_map {}
+    , m_req_id {0}
+    , m_param_info {nullptr}
+    , m_all_session_params_required {true}
+    , m_last_conn_epoch (-1)
+    , m_stack_idx {-1}
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
     , m_is_running (false)
-    , m_req_id {0}
-    , m_param_info {nullptr}
-    , m_last_conn_epoch (-1)
-    , m_all_session_params_required {true}
+    , m_id (id)
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
   }
