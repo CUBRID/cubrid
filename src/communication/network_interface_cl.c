@@ -11570,3 +11570,12 @@ dump_logwr_global (void)
 #endif
   fflush (stdout);
 }
+
+void
+dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
+{
+  fprintf (out, "{\n");
+  fprintf (out, "%*spageid: %lld,\n", indent + 2, "", (long long) lsa->pageid);
+  fprintf (out, "%*soffset: %lld\n", indent + 2, "", (long long) lsa->offset);
+  fprintf (out, "%*s}", indent, "");
+}

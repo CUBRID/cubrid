@@ -466,4 +466,5 @@ extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 extern int mmon_disable_force ();
 
 extern void dump_logwr_global (void);
+extern void dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
