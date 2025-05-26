@@ -209,8 +209,8 @@ jobs:
                 resource_class: xlarge
                 environment:
                   MAKEFLAGS: -j 8
-                  CMAKE_C_COMPILER_LAUNCHER: ccache
-                  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+                  CC: "ccache gcc"
+                  CXX: "ccache g++"
                   CCACHE_DIR: /home/.ccache
                   CCACHE_MAXSIZE: "5G"
                 steps:
