@@ -895,6 +895,7 @@ typedef enum
   T_CONV_TZ,
   T_DISTANCE_OP_COSINE,
   T_DISTANCE_OP_EUCLIDEAN,
+  T_DISTANCE_OP_NEG_INNER_PROD,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/
