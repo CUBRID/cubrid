@@ -7904,7 +7904,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 		{
 		  assert (scan_cache->m_index_stats != NULL);
-		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+
+		  // TODO (CUBVEC): refactor this code
+		  if (!BTID_IS_VECTOR_INDEX (&index->btid))
+		    {
+		      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+		    }
 		}
 	      else
 		{
@@ -8540,7 +8545,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  if (op_type == MULTI_ROW_UPDATE || op_type == MULTI_ROW_INSERT || op_type == MULTI_ROW_DELETE)
 	    {
 	      assert (scan_cache->m_index_stats != NULL);
-	      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+	      // TODO (CUBVEC): refactor this code
+	      if (!BTID_IS_VECTOR_INDEX (&index->btid))
+		{
+		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
+		}
 	    }
 	  else
 	    {

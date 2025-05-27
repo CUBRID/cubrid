@@ -387,8 +387,12 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIM
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
+static INDX_INFO *pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred,
+					   QO_PLAN * plan, QO_XASL_INDEX_INFO * qo_index_infop);
+
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
 						PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred);
 static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery,
@@ -11781,6 +11785,170 @@ error:
 }
 
 /*
+ * pt_to_vector_index_info () - Create an INDX_INFO structure for VECTOR index search
+ *   return:
+ *   parser(in):
+ *   class(in):
+ *   where_pred(in):
+ *   plan(in):
+ *   qo_index_infop(in):
+*/
+static INDX_INFO *
+pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
+			 QO_XASL_INDEX_INFO * qo_index_infop)
+{
+  INDX_INFO *indx_infop;
+  QO_NODE_INDEX_ENTRY *ni_entryp;
+  QO_INDEX_ENTRY *index_entryp;
+  int i;
+
+  assert (parser != NULL);
+  assert (class_ != NULL);
+  assert (plan != NULL);
+  assert (qo_index_infop->ni_entry != NULL && qo_index_infop->ni_entry->head != NULL);
+
+  ni_entryp = qo_index_infop->ni_entry;
+
+  for (i = 0, index_entryp = ni_entryp->head; i < ni_entryp->n; i++, index_entryp = index_entryp->next)
+    {
+      if (class_ == index_entryp->class_->mop)
+	{
+	  break;		/* found */
+	}
+    }
+  assert (index_entryp != NULL);
+
+  if (class_ == NULL || index_entryp == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - invalid arg");
+      return NULL;
+    }
+
+  /* make INDX_INFO structure and fill it up using information in QO_XASL_INDEX_INFO structure */
+  regu_alloc (indx_infop);
+  if (indx_infop == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+      return NULL;
+    }
+
+  /* BTID */
+  BTID_COPY (&indx_infop->btid, &index_entryp->constraints->index_btid);
+
+  indx_infop->class_oid = class_->oid_info.oid;
+  indx_infop->use_desc_index = index_entryp->use_descending;
+  indx_infop->orderby_skip = index_entryp->orderby_skip;
+  indx_infop->groupby_skip = index_entryp->groupby_skip;
+
+  /* 0 for now, see gen optimized plan for its computation */
+  indx_infop->orderby_desc = 0;
+  indx_infop->groupby_desc = 0;
+  indx_infop->use_iss = 0;	/* init */
+  indx_infop->ils_prefix_len = 0;	/* init */
+
+  indx_infop->range_type = R_KEY;
+
+  {
+    KEY_INFO *key_infop = &indx_infop->key_info;
+    PT_NODE *query = QO_ENV_PT_TREE (plan->info->env);
+    PT_NODE *select_list = query->info.query.q.select.list;
+    PT_NODE *orderby = query->info.query.order_by;
+    PT_NODE *orderby_for = query->info.query.orderby_for;
+    PT_NODE *vector_query = NULL;
+    PT_NODE *save_next = NULL;
+    PT_NODE *arg_list = NULL;
+
+    for (PT_NODE * sort_col = orderby; sort_col != NULL; sort_col = sort_col->next)
+      {
+	int pos_spec = sort_col->info.sort_spec.pos_descr.pos_no;
+
+	int i;
+	PT_NODE *col;
+
+	/* sort_col is a position specifier in select list. Have to walk the select list to find the actual node */
+	for (i = 1, col = select_list; col != NULL && i != pos_spec; col = col->next, i++);
+
+	if (col == NULL)
+	  {
+	    assert_release (col != NULL);
+	  }
+
+	save_next = col->next;
+	col->next = NULL;
+
+	PT_NODE *node = col;
+	if (node->node_type == PT_EXPR)
+	  {
+	    // FUNCTION HOLDER
+	    node = node->info.expr.arg1;
+	    if (!node)
+	      {
+		goto exit;
+	      }
+	  }
+
+	if (pt_is_vector_function (parser, node))
+	  {
+	    arg_list = node->info.function.arg_list;
+
+	    if (arg_list->node_type == PT_NAME)
+	      {
+		vector_query = arg_list->next;
+	      }
+	    else if (arg_list->node_type == PT_VALUE)
+	      {
+		vector_query = arg_list;
+	      }
+	  }
+
+	col->next = save_next;
+
+	// TODO (CUBVEC): only one orderby is supported for now
+	break;
+      }
+
+    key_infop->key_cnt = 1;	/* single range */
+    regu_array_alloc (&key_infop->key_ranges, 1);
+    if (!key_infop->key_ranges)
+      {
+	goto exit;
+      }
+
+    REGU_VARIABLE *q_regu_var = pt_to_regu_variable (parser, vector_query, UNBOX_AS_VALUE);
+    if (q_regu_var == NULL)
+      {
+	goto exit;
+      }
+
+    REGU_VARIABLE *k_regu_var = pt_to_regu_variable (parser, query->info.query.limit, UNBOX_AS_VALUE);
+    if (k_regu_var == NULL)
+      {
+	goto exit;
+      }
+
+    key_infop->key_ranges[0].range = K_NN;
+    key_infop->key_ranges[0].key1 = q_regu_var;
+    key_infop->key_ranges[0].key2 = k_regu_var;
+
+    if (key_infop->key_cnt > 0)
+      {
+	regu_array_alloc (&key_infop->key_vals, key_infop->key_cnt);
+	if (key_infop->key_vals == NULL)
+	  {
+	    goto exit;
+	  }
+      }
+  }
+
+  return indx_infop;
+
+exit:
+
+  assert (false);
+  return indx_infop;
+}
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -12465,11 +12633,46 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* TODO (CUBVEC) */
 	      // very happy!
 	      // assert (false);
+
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
+				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
+		{
+		  return NULL;
+		}
+
+	      symbols->current_class = class_;
+
+	      regu_alloc (cache_pred);
+	      regu_alloc (cache_rest);
+
+	      symbols->cache_attrinfo = cache_pred;
+	      where = pt_to_pred_expr (parser, where_part);
+	      regu_attributes_pred =
+		pt_to_regu_variable_list (parser, pred_attrs, UNBOX_AS_VALUE, table_info->value_list, pred_offsets);
+
+	      symbols->cache_attrinfo = cache_rest;
+	      regu_attributes_rest =
+		pt_to_regu_variable_list (parser, rest_attrs, UNBOX_AS_VALUE, table_info->value_list, rest_offsets);
+
+	      output_val_list = pt_make_outlist_from_vallist (parser, table_info->value_list);
+
+	      regu_var_list =
+		pt_to_position_regu_variable_list (parser, rest_attrs, table_info->value_list, rest_offsets);
+
+	      parser_free_tree (parser, pred_attrs);
+	      parser_free_tree (parser, rest_attrs);
+
+	      index_info = pt_to_vector_index_info (parser, class_->info.name.db_object, where, plan, index_pred);
+	      if (pt_has_error (parser))
+		{
+		  return NULL;
+		}
+
 	      access =
 		pt_make_class_access_spec (parser, flat, class_->info.name.db_object, TARGET_CLASS,
-					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL, NULL,
-					   NULL, NULL, output_val_list, NULL, NULL, NULL, NULL, NULL, NO_SCHEMA, NULL,
-					   NULL);
+					   ACCESS_METHOD_VECTOR_INDEX_SCAN, index_info, NULL, where, NULL, NULL,
+					   regu_attributes_pred, regu_attributes_rest, NULL, output_val_list,
+					   regu_var_list, NULL, cache_pred, cache_rest, NULL, NO_SCHEMA, NULL, NULL);
 	    }
 	  else
 	    {

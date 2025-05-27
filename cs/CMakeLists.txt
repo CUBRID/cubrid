@@ -226,6 +226,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/xasl_regu_alloc.cpp
   ${PARSER_DIR}/xasl_generation.c
   ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/parser_kv_pair.c
   )
 set(PARSER_HEADERS
   ${PARSER_DIR}/func_type.hpp

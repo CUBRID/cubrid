@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "parse_tree.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -87,6 +88,11 @@
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
+
+namespace hnsw
+{
+  PT_VECTOR_INDEX_INFO vindex_info;
+};
 
 typedef enum
 {
@@ -3235,6 +3241,12 @@ do_create_vector_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  // TODO (CUBVEC): pass these values to create_vector_index
+  // TODO (CUBVEC): temporarily use global variables for quick prototype.
+  hnsw::vindex_info.hnsw_m = statement->info.index.vector_index.hnsw_m;
+  hnsw::vindex_info.hnsw_ef_construction = statement->info.index.vector_index.hnsw_ef_construction;
+  hnsw::vindex_info.metric = statement->info.index.vector_index.metric;
 
   error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				       &statement->info.index, obj, DO_VECTOR_INDEX_CREATE);

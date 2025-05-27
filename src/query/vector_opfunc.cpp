@@ -117,6 +117,12 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   // Ensure we have the correct number of arguments.
   assert (num_args == 2);
 
+  if (DB_IS_NULL (args[0]) || DB_IS_NULL (args[1]))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
   const DB_VECTOR_FLOAT *vf1 = db_get_vector_float (args[0]);
   const auto dim1 = vf1->dim;
   const auto arr1 = vf1->float_array;
@@ -136,6 +142,7 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
       std::fprintf (stderr, "faiss error: %s\n", e.what());
       std::abort();
     }
+
 
   db_make_double (result, static_cast<double> (distance));
   return NO_ERROR;

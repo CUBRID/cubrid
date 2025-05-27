@@ -36,6 +36,7 @@
 #if !defined(SERVER_MODE)
 #include "virtual_object.h"
 #endif
+#include "db_vector.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -406,6 +407,7 @@ void db_value_printer::describe_data (const db_value *value)
   DB_SET      *set = 0;
   db_elo      *elo = 0;
   DB_MIDXKEY *midxkey;
+  const DB_VECTOR_FLOAT *vec;
   const char *src, *pos, *end;
   double d;
   char line[1025];
@@ -540,8 +542,15 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_VECTOR:
-      ASSERT_CUBVEC (false);
-      m_buf ("Not implemented for VECTOR yet.");
+      vec = db_get_vector_float (value);
+      if (vec != NULL)
+	{
+	  m_buf ("%s", db_vector_float_to_string (*vec).c_str ());
+	}
+      else
+	{
+	  m_buf ("NULL");
+	}
       break;
 
     case DB_TYPE_JSON:

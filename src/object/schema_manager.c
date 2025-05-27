@@ -77,6 +77,7 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
+#include "parse_tree.h"
 #include "faiss/IndexHNSW.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -99,6 +100,11 @@
    NOTE: This is simple-minded implementation for now since we don't yet
          support CREATE SCHEMA, SET SCHEMA, and associated statements.
  */
+
+namespace hnsw
+{
+  extern PT_VECTOR_INDEX_INFO vindex_info;
+};
 
 typedef struct schema_def
 {
@@ -10823,7 +10829,36 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_msg.c_str ());
 	      return error;
 	    }
-	  error = hnsw_add_index (index, domain->precision, 32, 100, faiss::METRIC_L2);
+
+	  auto m = hnsw::vindex_info.hnsw_m;
+	  auto ef_construction = hnsw::vindex_info.hnsw_ef_construction;
+	  auto metric = hnsw::vindex_info.metric;
+
+	  vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
+
+	  faiss::MetricType faiss_metric;
+	  switch (metric)
+	    {
+	    case METRIC_UNKNOWN:
+	    case METRIC_COSINE:
+	    case METRIC_DOT:
+	      // TODO (CUBVEC): Faiss does not support cosine distance directly?
+	      faiss_metric = faiss::METRIC_INNER_PRODUCT;
+	      break;
+
+	    case METRIC_EUCLIDEAN:
+	      faiss_metric = faiss::METRIC_L2;
+	      break;
+
+	    case METRIC_MANHATTAN:
+	      faiss_metric = faiss::METRIC_L1;
+	      break;
+
+	    default:
+	      ASSERT_CUBVEC (false);
+	    }
+
+	  error = hnsw_add_index (index, domain->precision, m, ef_construction, faiss_metric);
 	}
       else
 	{
@@ -14807,6 +14842,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
     case DB_CONSTRAINT_VECTOR_INDEX:
+
       DB_AUTH auth;
       bool is_secondary_index;
 
