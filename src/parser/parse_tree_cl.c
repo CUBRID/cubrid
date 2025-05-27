@@ -2705,6 +2705,41 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
   return NULL;
 }
 
+
+static PARSER_VARCHAR *
+pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+{
+  unsigned int hash1 = 5381;
+  unsigned int hash2 = 5381;
+  unsigned char *s, *ps;
+  char buf[64];
+
+  assert (parser->dblink_server_text != NULL);
+  assert (parser->dblink_server_text->bytes != NULL);
+
+  ps = parser->dblink_server_text->bytes;
+  if (!ps || *ps == '\0')
+    {
+      return NULL;
+    }
+
+  // original
+  for (s = ps; *s; ++s)
+    {
+      hash1 = ((hash1 << 5) + hash1) + *s;	/* hash * 33 + c */
+    }
+
+  // reverse 
+  for (s--; s >= ps; s--)
+    {
+      hash2 = ((hash2 << 5) - hash2) + *s;	/* hash * 31 + c */
+    }
+
+  sprintf (buf, "%u,%u", hash1, hash2);
+
+  return pt_append_nulstring (parser, NULL, buf);
+}
+
 /*
  * parser_print_tree() -
  *   return:
@@ -2724,6 +2759,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
   PARSER_VARCHAR *string;
   char user_text_buffer[PT_QUERY_STRING_USER_TEXT];
 
+  assert (parser->dblink_server_text == NULL);
   string = pt_print_bytes (parser, node);
   if (string)
     {
@@ -2742,6 +2778,38 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      string = pt_append_nulstring (parser, string, user_text_buffer);
 	    }
 	}
+      if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+	{
+	  char host_var_count[12];
+	  if ((node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_QUERY
+	       || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+	       || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && node->info.query.correlation_level == 0
+	      && (node->info.query.hint & PT_HINT_QUERY_CACHE))
+	    {
+	      /* 
+	       * This condition is identical to the one used in do_prepare_subquery_pre function to call do_prepare_subquery.
+	       * Both functions must maintain the same condition to ensure consistency.
+	       * Be careful not to modify only one of them.
+	       */
+	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
+	    }
+	  else
+	    {
+	      snprintf (host_var_count, sizeof (host_var_count), "%d",
+			parser->host_var_count + parser->auto_param_count);
+	    }
+	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
+	  string = pt_append_nulstring (parser, string, host_var_count);
+	}
+
+      if ((parser->custom_print & PT_PRINT_DBLINK_INFO) && parser->dblink_server_text)
+	{
+	  string = pt_append_nulstring (parser, string, ";remote={");
+	  string = pt_append_varchar (parser, string, pt_conv_server_2_hash_text (parser));
+	  string = pt_append_bytes (parser, string, "}", 1);
+	  parser->dblink_server_text = NULL;
+	}
+
       return (char *) string->bytes;
     }
   return NULL;
@@ -5378,7 +5446,16 @@ pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const ch
       || parser->custom_print & PT_PRINT_QUOTES)
     {
       string = pt_append_nulstring (parser, string, "[");
-      string = pt_append_nulstring (parser, string, name);
+      if (parser->custom_print & PT_PRINT_LOWER)
+	{
+	  char lcase_name[DB_MAX_IDENTIFIER_LENGTH];
+	  intl_identifier_lower (name, lcase_name);
+	  string = pt_append_nulstring (parser, string, lcase_name);
+	}
+      else
+	{
+	  string = pt_append_nulstring (parser, string, name);
+	}
       string = pt_append_nulstring (parser, string, "]");
     }
   else
@@ -8610,35 +8687,35 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, buf);
 	}
       break;
+
     case PT_TYPE_NCHAR:
-      if (parser->flag.is_parsing_unload_schema)
-	{
-	  q = pt_append_nulstring (parser, q, "national character");
-	  break;
-	}
     case PT_TYPE_VARNCHAR:
-      if (parser->flag.is_parsing_unload_schema)
-	{
-	  q = pt_append_nulstring (parser, q, "national character varying");
-	  break;
-	}
     case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
       if (parser->flag.is_parsing_unload_schema)
 	{
-	  q = pt_append_nulstring (parser, q, "character");
+	  switch (p->type_enum)
+	    {
+	    case PT_TYPE_CHAR:
+	      q = pt_append_nulstring (parser, q, "character");
+	      break;
+	    case PT_TYPE_VARCHAR:
+	      q = pt_append_nulstring (parser, q, "character varying");
+	      break;
+	    case PT_TYPE_NCHAR:
+	      q = pt_append_nulstring (parser, q, "national character");
+	      break;
+	    case PT_TYPE_VARNCHAR:
+	      q = pt_append_nulstring (parser, q, "national character varying");
+	      break;
+	    default:
+	      assert (false);
+	    }
 	  break;
 	}
-    case PT_TYPE_VARCHAR:
-      if (!parser->flag.is_parsing_unload_schema)
-	{
-	  show_collation = true;
-	  /* FALLTHRU */
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, "character varying");
-	  break;
-	}
+
+      show_collation = true;
+      /* FALLTHRU */
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -11223,10 +11300,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_DEFAULTF:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      q = pt_append_nulstring (parser, q, " default(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
+      if (parser->flag.is_parsing_static_sql && !p->flag.for_default_func)
+	{
+	  q = pt_append_nulstring (parser, q, " default");
+	}
+      else
+	{
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_nulstring (parser, q, " default(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_OID_OF_DUPLICATE_KEY:
@@ -11668,6 +11752,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  if (parser->flag.is_parsing_trigger && p->info.expr.flag)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
+
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -13042,7 +13132,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql || parser->flag.is_parsing_trigger)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
@@ -13598,8 +13688,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
 
-  char *dot = NULL;
-
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
@@ -13622,14 +13710,9 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* print the correlation name, which may be in one of two locations, before and after name resolution. */
       if (p->info.name.original && p->info.name.original[0])
 	{
-	  char *lcase_name;
-	  int name_size;
-
-	  name_size = intl_identifier_lower_string_size (p->info.name.original);
-	  lcase_name = (char *) db_private_alloc (NULL, name_size + 1);
+	  char lcase_name[DB_MAX_IDENTIFIER_LENGTH];
 	  intl_identifier_lower (p->info.name.original, lcase_name);
 	  q = pt_append_name (parser, q, lcase_name);
-	  db_private_free_and_init (NULL, lcase_name);
 	}
       else if (p->info.name.resolved)
 	{
@@ -14639,6 +14722,21 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_SUBQUERY_CACHE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HEAP_SCAN ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
+	    {
+	      q = pt_append_nulstring (parser, q, "PARALLEL");
+	      char buffer[10];
+	      snprintf (buffer, sizeof (buffer), "%d", p->info.query.q.select.num_parallel_threads);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_nulstring (parser, q, buffer);
+	      q = pt_append_nulstring (parser, q, ") ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
@@ -19172,9 +19270,61 @@ pt_apply_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 static PARSER_VARCHAR *
+pt_print_remote_info (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pt, bool is_dml)
+{
+  PARSER_VARCHAR *var = 0;
+  char *t, *s;
+
+  var = pt_append_bytes (parser, var, "'", 1);
+
+  // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
+  s = (char *) pt->url->info.value.data_value.str->bytes;
+  // skip cci:
+  s = strchr (s, ':');
+  // skip CUBRID:
+  s = strchr (s + 1, ':');
+
+  t = ++s;
+  // host           
+  s = strchr (s, ':');
+  // port           
+  s = strchr (s + 1, ':');
+  // dbname           
+  s = strchr (s + 1, ':');
+  var = pt_append_bytes (parser, var, t, (int) (s - t));
+  t = s + 2;
+
+  var = pt_append_nulstring (parser, var, ":");
+  var =
+    pt_append_bytes (parser, var, (char *) pt->user->info.value.data_value.str->bytes,
+		     pt->user->info.value.data_value.str->length);
+  var = pt_append_nulstring (parser, var, ":");
+
+  if (pt->is_name || is_dml)
+    {
+      var = pt_append_nulstring (parser, var, "*");
+    }
+  else
+    {
+      var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
+			     pt->pwd->info.value.data_value.str->length);
+    }
+
+  // properties
+  if (!is_dml)
+    {
+      var = pt_append_nulstring (parser, var, t);
+    }
+
+  var = pt_append_bytes (parser, var, "'", 1);
+
+  return var;
+}
+
+static PARSER_VARCHAR *
 pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r;
+  PARSER_VARCHAR *q = 0, *var = 0, *r;
   PT_DBLINK_INFO *pt = &(p->info.dblink_table);
   bool print_detail = true;
 
@@ -19191,7 +19341,7 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       r = pt_print_bytes (parser, p->info.dblink_table.conn);
       q = pt_append_varchar (parser, q, r);
 
-      if (!pt->url || !pt->user || !pt->pwd)
+      if (((parser->custom_print & PT_PRINT_DBLINK_INFO) == 0) || !pt->url || !pt->user || !pt->pwd)
 	{
 	  print_detail = false;
 	}
@@ -19200,58 +19350,32 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* For Query-cache:
 	   * Separate comments have been added 
 	   * for cases where there is no change in the query but information on the server has changed. */
-	  q = pt_append_bytes (parser, q, " /* ", 4);
 	}
     }
 
   if (print_detail)
     {
-      q = pt_append_bytes (parser, q, "'", 1);
+      var = pt_print_remote_info (parser, pt, false);
+    }
 
-      char *t, *s;
-
-      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
-      s = (char *) pt->url->info.value.data_value.str->bytes;
-      // skip cci:
-      s = strchr (s, ':');
-      // skip CUBRID:
-      s = strchr (s + 1, ':');
-
-      t = ++s;
-      // host           
-      s = strchr (s, ':');
-      // port           
-      s = strchr (s + 1, ':');
-      // dbname           
-      s = strchr (s + 1, ':');
-      q = pt_append_bytes (parser, q, t, (int) (s - t));
-      t = s + 2;
-
-      q = pt_append_nulstring (parser, q, ":");
-      q =
-	pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
-			 pt->user->info.value.data_value.str->length);
-      q = pt_append_nulstring (parser, q, ":");
-
-      if (p->info.dblink_table.is_name)
+  if ((parser->custom_print & PT_PRINT_DBLINK_INFO) == 0)
+    {
+      q = pt_append_varchar (parser, q, var);
+    }
+  else
+    {
+      if (parser->dblink_server_text == NULL)
 	{
-	  q = pt_append_nulstring (parser, q, "*");
+	  parser->dblink_server_text = var;
 	}
       else
 	{
-	  q = pt_append_bytes (parser, q, (char *) pt->pwd->info.value.data_value.str->bytes,
-			       pt->pwd->info.value.data_value.str->length);
+	  if (var)
+	    {
+	      parser->dblink_server_text = pt_append_nulstring (parser, parser->dblink_server_text, ",");
+	    }
+	  parser->dblink_server_text = pt_append_varchar (parser, parser->dblink_server_text, var);
 	}
-
-      // properties
-      q = pt_append_nulstring (parser, q, t);
-
-      q = pt_append_bytes (parser, q, "'", 1);
-    }
-
-  if (p->info.dblink_table.is_name && print_detail)
-    {
-      q = pt_append_bytes (parser, q, " */ ", 4);
     }
 
   q = pt_append_bytes (parser, q, ", ", 2);
@@ -19294,44 +19418,23 @@ pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
   /* For Query-cache:
    * Separate comments have been added 
    * for cases where there is no change in the query but information on the server has changed. */
-  q = pt_append_nulstring (parser, q, " /* DBLINK(");
-
-  if (pt->url && pt->user && pt->pwd)
+  if ((parser->custom_print & PT_PRINT_DBLINK_INFO) && (pt->url && pt->user && pt->pwd))
     {
-      q = pt_append_bytes (parser, q, "'", 1);
+      PARSER_VARCHAR *var = pt_print_remote_info (parser, pt, true);
 
-      char *t, *s;
-
-      // "cci:CUBRID:{HOST}:{PORT}:{DBNAME}:<user-name>:<password>:{PROPERITIES}"
-      s = (char *) pt->url->info.value.data_value.str->bytes;
-      // skip cci:
-      s = strchr (s, ':');
-      // skip CUBRID:
-      s = strchr (s + 1, ':');
-
-      t = ++s;
-      // host           
-      s = strchr (s, ':');
-      // port           
-      s = strchr (s + 1, ':');
-      // dbname           
-      s = strchr (s + 1, ':');
-      q = pt_append_bytes (parser, q, t, (int) (s - t));
-      t = s + 2;
-      // user
-      q = pt_append_nulstring (parser, q, ":");
-      q = pt_append_bytes (parser, q, (char *) pt->user->info.value.data_value.str->bytes,
-			   pt->user->info.value.data_value.str->length);
-      // password                           
-      q = pt_append_nulstring (parser, q, ":");
-      q = pt_append_nulstring (parser, q, "*");
-      // properties
-      //q = pt_append_nulstring (parser, q, t);
-
-      q = pt_append_bytes (parser, q, "'", 1);
+      if (parser->dblink_server_text == NULL)
+	{
+	  parser->dblink_server_text = var;
+	}
+      else
+	{
+	  if (var)
+	    {
+	      parser->dblink_server_text = pt_append_nulstring (parser, parser->dblink_server_text, ",");
+	    }
+	  parser->dblink_server_text = pt_append_varchar (parser, parser->dblink_server_text, var);
+	}
     }
-
-  q = pt_append_bytes (parser, q, ") */ ", 5);
 
   return q;
 }

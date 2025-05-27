@@ -113,7 +113,7 @@ extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-extern void ux_database_shutdown (void);
+extern void ux_database_shutdown (bool request_server);
 extern int ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF * net_buf);

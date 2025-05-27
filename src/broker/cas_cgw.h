@@ -120,10 +120,11 @@ struct t_odbc_col_info
   SQLSMALLINT is_not_null;
 };
 
-typedef union odbc_bind_info ODBC_BIND_INFO;
-union odbc_bind_info
+typedef struct odbc_bind_info ODBC_BIND_INFO;
+struct odbc_bind_info
 {
   char *string_val;
+  wchar_t *wchar_val;
   SQLSMALLINT smallInt_val;
   SQLINTEGER integer_val;
   SQLREAL real_val;

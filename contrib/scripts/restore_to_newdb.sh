@@ -27,7 +27,7 @@ function show_usage() {
     echo "  -d date  restore to specific date (dd-mm-yyyy:hh:mm:ss or 'backuptime')"
     echo "  -l level backup level (0, 1, 2) default: 0 (full backup)"
     echo "  -p       partial recovery if any log archive is absent"
-    echo "  -k path  path of key file (_keys) for tde (default: current directory)"
+    echo "  -k file  path of key file (_keys) for tde (default: current directory)"
     echo ""
     echo " EXAMPLES"
     echo "  sh $0 backupdb newdb"
@@ -96,9 +96,9 @@ function check_volpath() {
     if [[ -n "$match" ]]; then
         echo "Error: newdb_path ($volpath) is the same as an existing vol-path ($match) in $datafile."
         exit 1
-    else
-        echo ""
-        echo "Validation passed: newdb_path and vol-path are different."
+    #else
+    #    echo ""
+    #    echo "Validation passed: newdb_path and vol-path are different."
     fi
 }
 
@@ -110,9 +110,9 @@ function check_dbname_uniqueness() {
     if grep -qw "$dbname" "$datafile"; then
         echo "Error: Database name '$dbname' already exists in $datafile."
         exit 1
-    else
-        echo ""
-        echo "Validation passed: '$dbname' does not exist in $datafile."
+    #else
+    #    echo ""
+    #    echo "Validation passed: '$dbname' does not exist in $datafile."
     fi
 }
 
@@ -209,11 +209,16 @@ function verify_files() {
 
     # Check if the asis_dbname keyfile exists
     if [[ -n "$keys_file_path" ]]; then
-        # Check for the presence of files in keys_file_path and assign to keys_files
-        keys_files=$(ls "$keys_file_path" 2>/dev/null)
-
-        # Pass the found files to check_files function
-        check_files "$keys_files" "Search keyfile"
+        #키 파일 검증
+        if [[ ! -f "$keys_file_path" ]]; then
+            echo "Error: Key file not found at specified path: $keys_file_path"
+            exit 1
+        fi
+        # 파일 내용 검증(파일이 비어있는지 확인)
+        if [[ ! -s "$keys_file_path" ]]; then
+            echo "Error: Key file is empty: $keys_file_path"
+            exit 1
+        fi
     fi
 
     # Check if the tobe_dbname backup level file exists
@@ -355,7 +360,7 @@ function rollback_databases_txt() {
 
     # Find line number for tobe_dbname
     local search_line
-    search_line=$(grep -n "^$tobe_dbname" "$newdb_datafile" | cut -d: -f1)
+    search_line=$(grep -n "\b$tobe_dbname\b" "$newdb_datafile" | cut -d: -f1)
 
     if [ -z "$search_line" ]; then
         echo "Error: The specified line with $tobe_dbname not found in $newdb_datafile"

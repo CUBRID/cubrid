@@ -26,6 +26,10 @@
 #ifndef _PL_SR_H_
 #define _PL_SR_H_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include <mutex>
 #include <condition_variable>
 
@@ -39,9 +43,6 @@ extern EXPORT_IMPORT int pl_server_wait_for_ready ();
 
 extern EXPORT_IMPORT PL_CONNECTION_POOL *get_connection_pool ();
 
-extern EXPORT_IMPORT int pl_start_jvm_server (const char *server_name, const char *path, int port_number);
-extern EXPORT_IMPORT int pl_server_port (void);
 extern EXPORT_IMPORT int pl_server_port_from_info (void);
-extern EXPORT_IMPORT int pl_jvm_is_loaded (void);
 
 #endif /* _PL_SR_H_ */

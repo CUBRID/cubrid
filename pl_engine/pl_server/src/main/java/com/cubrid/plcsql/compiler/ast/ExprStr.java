@@ -34,7 +34,7 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
 
-public class ExprStr extends Expr {
+public class ExprStr extends Expr implements SqlLiteral {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
