@@ -2697,7 +2697,7 @@ sigusr1_monitor_thread (void *arg)
 	  switch (util_index)
 	    {
 	    case COPYLOGDB:
-	      logwr_dump_logwr_global ();
+	      logwr_dump_logwr_gl ();
 	      break;
 	    case APPLYLOGDB:
 	      la_dump_la_info ();

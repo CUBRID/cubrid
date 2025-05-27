@@ -464,11 +464,4 @@ EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 extern int mmon_disable_force ();
-
-extern void dump_logwr_global (void);
-extern void dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent);
-extern void dump_log_header (FILE * out, const LOG_HEADER * log_hdr, int indent);
-extern void dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * log_arv_hdr, int indent);
-extern void dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * log_page_hdr, int indent);
-extern void dump_logwr_global_topfields (FILE * out, int indent);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

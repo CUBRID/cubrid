@@ -8753,7 +8753,7 @@ la_delay_replica (time_t eot_time)
 }
 
 void
-dump_la_info (void)
+la_dump_la_info (void)
 {
 #if defined(CS_MODE)
   FILE *out = stdout;
@@ -8856,10 +8856,10 @@ dump_la_info (void)
   fprintf (out, "%*slog_path: %s,\n", indent, "", info->log_path);
   fprintf (out, "%*sloginf_path: %s,\n", indent, "", info->loginf_path);
 
-  dump_la_act_log (out, indent);
+  la_dump_la_act_log (out, indent);
   fprintf (out, ",\n\n");
 
-  dump_la_arv_log (out, indent);
+  la_dump_la_arv_log (out, indent);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*slast_file_state: %s,\n", indent, "", last_file_state);
@@ -8868,28 +8868,28 @@ dump_la_info (void)
 
   /* lsa */
   fprintf (out, "%*sfinal_lsa: ", indent, "");
-  dump_log_lsa (out, &info->final_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->final_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*scommitted_lsa: ", indent, "");
-  dump_log_lsa (out, &info->committed_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->committed_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*scommitted_rep_lsa: ", indent, "");
-  dump_log_lsa (out, &info->committed_rep_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->committed_rep_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*slast_committed_lsa: ", indent, "");
-  dump_log_lsa (out, &info->last_committed_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->last_committed_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*slast_committed_rep_lsa: ", indent, "");
-  dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   /* replication lists */
   fprintf (out, "%*srepl_cnt: %d,\n", indent, "", info->repl_cnt);
-  dump_la_apply_list (out, indent);
+  la_dump_la_apply_list (out, indent);
   fprintf (out, ",\n\n");
 
   /* commit queue */
@@ -8922,15 +8922,15 @@ dump_la_info (void)
 
   /* db_ha_apply_info */
   fprintf (out, "%*sappend_lsa: ", indent, "");
-  dump_log_lsa (out, &info->append_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->append_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*seof_lsa: ", indent, "");
-  dump_log_lsa (out, &info->eof_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->eof_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*srequired_lsa: ", indent, "");
-  dump_log_lsa (out, &info->required_lsa, indent + 2);
+  logwr_dump_log_lsa (out, &info->required_lsa, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*sinsert_counter: %lu,\n", indent, "", info->insert_counter);
@@ -8964,7 +8964,7 @@ dump_la_info (void)
 }
 
 void
-dump_la_act_log (FILE * out, int indent)
+la_dump_la_act_log (FILE * out, int indent)
 {
   LA_ACT_LOG *a = &la_Info.act_log;
 
@@ -8973,11 +8973,11 @@ dump_la_act_log (FILE * out, int indent)
   fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", a->log_vdes);
 
   /* hdr_page */
-  dump_log_page_hdr (out, &a->hdr_page->hdr, indent + 2);
+  logwr_dump_log_page_hdr (out, &a->hdr_page->hdr, indent + 2);
   fprintf (out, ",\n\n");
 
   /* log_hdr */
-  dump_log_header (out, a->log_hdr, indent + 2);
+  logwr_dump_log_header (out, a->log_hdr, indent + 2);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*sdb_iopagesize: %d,\n", indent + 2, "", a->db_iopagesize);
@@ -8987,7 +8987,7 @@ dump_la_act_log (FILE * out, int indent)
 }
 
 void
-dump_la_arv_log (FILE * out, int indent)
+la_dump_la_arv_log (FILE * out, int indent)
 {
   LA_ARV_LOG *r = &la_Info.arv_log;
 
@@ -9002,11 +9002,11 @@ dump_la_arv_log (FILE * out, int indent)
   fprintf (out, "%*slog_vdes: %d,\n", indent + 2, "", r->log_vdes);
 
   fprintf (out, "%*s", indent + 2, "");
-  dump_log_page_hdr (out, &r->hdr_page->hdr, indent + 4);
+  logwr_dump_log_page_hdr (out, &r->hdr_page->hdr, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*s", indent + 2, "");
-  dump_log_arv_header (out, r->log_hdr, indent + 4);
+  logwr_dump_log_arv_header (out, r->log_hdr, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
@@ -9014,7 +9014,7 @@ dump_la_arv_log (FILE * out, int indent)
 }
 
 void
-dump_la_apply_list (FILE * out, int indent)
+la_dump_la_apply_list (FILE * out, int indent)
 {
   if (la_Info.repl_lists == NULL)
     {
@@ -9025,14 +9025,14 @@ dump_la_apply_list (FILE * out, int indent)
   fprintf (out, "%*srepl_lists: [\n", indent, "");
   for (int i = 0; i < la_Info.repl_cnt; i++)
     {
-      dump_la_apply (out, i, indent + 2);
+      la_dump_la_apply (out, i, indent + 2);
       fprintf (out, "%s\n", (i + 1 < la_Info.repl_cnt) ? "," : "");
     }
   fprintf (out, "%*s]\n", indent, "");
 }
 
 void
-dump_la_apply (FILE * out, int idx, int indent)
+la_dump_la_apply (FILE * out, int idx, int indent)
 {
   LA_APPLY *apply = la_Info.repl_lists[idx];
   if (apply == NULL)
@@ -9047,11 +9047,11 @@ dump_la_apply (FILE * out, int idx, int indent)
   fprintf (out, "%*sis_long_trans: %s,\n", indent + 2, "", apply->is_long_trans ? "true" : "false");
 
   fprintf (out, "%*sstart_lsa: ", indent + 2, "");
-  dump_log_lsa (out, &apply->start_lsa, indent + 4);
+  logwr_dump_log_lsa (out, &apply->start_lsa, indent + 4);
   fprintf (out, ",\n");
 
   fprintf (out, "%*slast_lsa: ", indent + 2, "");
-  dump_log_lsa (out, &apply->last_lsa, indent + 4);
+  logwr_dump_log_lsa (out, &apply->last_lsa, indent + 4);
   fprintf (out, ",\n");
 
   fprintf (out, "%*shead: %p,\n", indent + 2, "", (void *) apply->head);
