@@ -233,4 +233,10 @@ extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * cl
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
+
+/* to generate xasl for dblink */
+extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
+
+/* to check dblink in trigger action */
+extern void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */

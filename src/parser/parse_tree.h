@@ -966,7 +966,9 @@ enum pt_custom_print
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
   PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
-  PT_PRINT_DBLINK_INFO = (0x1 << 29)	/* If you use DBLINK, specify it when generating the SHA hash value. */
+  PT_PRINT_DBLINK_INFO = (0x1 << 29),	/* If you use DBLINK, specify it when generating the SHA hash value. */
+  /* print lower case */
+  PT_PRINT_LOWER = (0x1 << 30)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -1937,6 +1939,7 @@ struct semantic_chk_info
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
   bool donot_fold;		/* false - off, true - on */
   bool system_class;		/* system class(es) is(are) referenced */
+  bool has_dblink;
 };
 
 struct nested_view_version_info

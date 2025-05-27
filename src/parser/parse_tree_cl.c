@@ -5446,7 +5446,16 @@ pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const ch
       || parser->custom_print & PT_PRINT_QUOTES)
     {
       string = pt_append_nulstring (parser, string, "[");
-      string = pt_append_nulstring (parser, string, name);
+      if (parser->custom_print & PT_PRINT_LOWER)
+	{
+	  char lcase_name[DB_MAX_IDENTIFIER_LENGTH];
+	  intl_identifier_lower (name, lcase_name);
+	  string = pt_append_nulstring (parser, string, lcase_name);
+	}
+      else
+	{
+	  string = pt_append_nulstring (parser, string, name);
+	}
       string = pt_append_nulstring (parser, string, "]");
     }
   else
@@ -13701,14 +13710,9 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* print the correlation name, which may be in one of two locations, before and after name resolution. */
       if (p->info.name.original && p->info.name.original[0])
 	{
-	  char *lcase_name;
-	  int name_size;
-
-	  name_size = intl_identifier_lower_string_size (p->info.name.original);
-	  lcase_name = (char *) db_private_alloc (NULL, name_size + 1);
+	  char lcase_name[DB_MAX_IDENTIFIER_LENGTH];
 	  intl_identifier_lower (p->info.name.original, lcase_name);
 	  q = pt_append_name (parser, q, lcase_name);
-	  db_private_free_and_init (NULL, lcase_name);
 	}
       else if (p->info.name.resolved)
 	{
