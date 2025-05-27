@@ -37,7 +37,6 @@ namespace parallel_heap_scan
     , m_orig_thread_p (thread_p)
     , is_scan_internal_ended (false)
     , is_scan_external_ended (false)
-    , m_opened_seq (0)
     , m_tasks_executed (0)
     , m_tasks_started (0)
     , m_tasks_scan_ended (0)

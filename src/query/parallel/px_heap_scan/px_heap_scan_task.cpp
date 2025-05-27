@@ -132,7 +132,6 @@ namespace parallel_heap_scan
       {
 	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
 	outptr_list = m_memory_mapper->get_outptr_list();
-	*m_mergable_list_writer->m_seq = m_context->m_opened_seq.fetch_add (1);
 	assert (outptr_list);
       }
     else
