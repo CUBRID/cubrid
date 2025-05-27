@@ -119,7 +119,7 @@ jobs:
                           cubvec)
                             TEST_SUITE="sql"
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/sql/_36_cubvec
+                            glob_path="\$base_dir/sql/_36_cubvec"
                             ;;
                           plcsql)
                             TEST_SUITE="sql"
