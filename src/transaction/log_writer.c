@@ -3151,8 +3151,7 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
   fprintf (out, "%*sbackground_archiving_info: {\n", indent, "");
   fprintf (out, "%*sstart_page_id:   %lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.start_page_id);
   fprintf (out, "%*scurrent_page_id: %lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.current_page_id);
-  fprintf (out, "%*slast_sync_pageid:%lld,\n", indent + 2, "",
-	   (long long) logwr_Gl.bg_archive_info.last_sync_pageid);
+  fprintf (out, "%*slast_sync_pageid:%lld,\n", indent + 2, "", (long long) logwr_Gl.bg_archive_info.last_sync_pageid);
   fprintf (out, "%*svdes:            %d\n", indent + 2, "", logwr_Gl.bg_archive_info.vdes);
   fprintf (out, "%*s},\n\n", indent, "");
 
