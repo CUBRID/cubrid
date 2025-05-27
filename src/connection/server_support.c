@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "hnsw.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1401,7 +1402,7 @@ shutdown:
    * start to shutdown server
    */
   css_start_shutdown_server ();
-
+  dump_all_hnsw_indices_to_files ();
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
