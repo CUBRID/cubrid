@@ -258,7 +258,6 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
-static bool is_in_create_trigger = false;
 static bool is_in_sp_func_type = false;
 
 
@@ -5793,11 +5792,6 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-		if (is_in_create_trigger)
-		  {
-		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
-		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
-		  }
                 DBG_PRINT}}
         ;
 
@@ -12496,12 +12490,9 @@ trigger_action_in
 	;
 
 trigger_action
-	:
-	  { is_in_create_trigger = true; }
-	  trigger_action_in
-	    {{
-		is_in_create_trigger = false;
-		$$ = $2;
+	: trigger_action_in
+	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
+		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
 	;
