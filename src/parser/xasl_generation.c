@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-
+#include "px_heap_scan_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -312,6 +312,7 @@ static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
+static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -12558,6 +12559,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
+	      if (access_method == ACCESS_METHOD_SEQUENTIAL
+		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		}
+
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		}
 
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
@@ -18553,6 +18565,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
+  scan_check_parallel_heap_scan_possible (xasl);
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -18738,7 +18752,7 @@ outofmem:
 
 }
 
-static XASL_NODE *
+XASL_NODE *
 pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   assert (parser != NULL && spec != NULL);
@@ -21165,6 +21179,45 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   return false;
 }
 
+static PT_NODE *
+pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_VALUE tmp;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
+    {
+      pt_evaluate_tree (parser, node, &tmp, 1);
+      node = pt_dbval_to_value (parser, &tmp);
+      db_value_clear (&tmp);
+    }
+
+  return node;
+}
+
+void
+pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      break;
+    case PT_UPDATE:
+      statement = parser_walk_tree (parser, statement, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
+      break;
+    case PT_DELETE:
+      break;
+    default:
+      break;
+    }
+
+  return;
+}
+
 /*
  * pt_to_update_xasl () - Converts an update parse tree to
  * 			  an XASL graph for an update
@@ -22342,6 +22395,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       break;
     }
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)

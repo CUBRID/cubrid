@@ -4458,6 +4458,11 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       /* check for dblink's function term */
       if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
+	  if (parser->flag.is_parsing_static_sql)
+	    {
+	      continue;
+	    }
+
 	  if (!mq_is_dblink_pushable_term (parser, term))
 	    {
 	      continue;
@@ -13988,6 +13993,8 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       dest_query->info.query.q.select.use_hash =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_hash),
 			    dest_query->info.query.q.select.use_hash);
+
+      dest_query->info.query.q.select.num_parallel_threads = src_query->info.query.q.select.num_parallel_threads;
     }
 
   /* merge USING INDEX clause of vclass spec */

@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "btree.h"
 
 #include "btree_load.h"
@@ -81,7 +86,7 @@
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page */
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(thread_p, page_ptr) \
-  (DB_PAGESIZE - SPAGE_HEADER_SIZE - spage_get_space_for_record(thread_p, (page_ptr), HEADER))
+  ((int) (DB_PAGESIZE - SPAGE_HEADER_SIZE - spage_get_space_for_record(thread_p, (page_ptr), HEADER)))
 
 #define OID_MSG_BUF_SIZE 64
 
@@ -4768,8 +4773,8 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
 
   fprintf (fp, "==============    R O O T    P A G E   ================\n\n");
   fprintf (fp, " Key_Type: %s\n", pr_type_name (TP_DOMAIN_TYPE (key_type)));
-  fprintf (fp, " Num OIDs: %lld, Num NULLs: %lld, Num keys: %lld\n", root_header->num_oids, root_header->num_nulls,
-	   root_header->num_keys);
+  fprintf (fp, " Num OIDs: %" PRId64 ", Num NULLs: %" PRId64 ", Num keys: %" PRId64 "\n", root_header->num_oids,
+	   root_header->num_nulls, root_header->num_keys);
   fprintf (fp, " Topclass_oid: (%d %d %d)\n", root_header->topclass_oid.volid, root_header->topclass_oid.pageid,
 	   root_header->topclass_oid.slotid);
   fprintf (fp, " Unique: ");
@@ -6175,7 +6180,7 @@ btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
 	}
 
       assert ((num_attrs - 1) == key->data.midxkey.ncolumns);
-      if (key->data.midxkey.ncolumns <= (sizeof (new_key_dbvals_array) / sizeof (DB_VALUE)))
+      if (key->data.midxkey.ncolumns <= DIM (new_key_dbvals_array))
 	{
 	  new_key_dbvals = new_key_dbvals_array;
 	}
@@ -6300,7 +6305,7 @@ btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_doma
   DB_VALUE *dbvals_ptr = dbvals_ary;
 
   pk_column_cnt = fk_key->data.midxkey.ncolumns - 1;
-  if (pk_column_cnt > (sizeof (dbvals_ary) / sizeof (DB_VALUE)))
+  if (pk_column_cnt > DIM (dbvals_ary))
     {
       dbvals_ptr = (DB_VALUE *) db_private_alloc (thread_p, pk_column_cnt * sizeof (DB_VALUE));
       if (dbvals_ptr == NULL)
@@ -9273,7 +9278,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
-  fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
+  fprintf (fp, "Total Value Count: %" PRId64 "\n", cpc.tot_val_cnt);
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
   fprintf (fp, "Fence Key Count: %d\n", cpc.fence_key_cnt);
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);

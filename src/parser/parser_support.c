@@ -12087,6 +12087,14 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   switch (stmt->node_type)
     {
+    case PT_SCOPE:
+      /* for trigger action */
+      stmt = stmt->info.scope.stmt->info.trigger_action.expression;
+      if (stmt == NULL)
+	{
+	  return;
+	}
+      [[fallthrough]];
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
@@ -12095,6 +12103,34 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       if (pt_has_error (parser))
 	{
 	  return;
+	}
+      // Under the current implementation of DBLink, host variables cannot be idenfified at compile time
+      // due to the lack of schema information of the remote tables.
+      // Therefore, DBLink in Static SQL DML is prohibited for now.
+      // Note that this is not the case for Static SQL SELECT statements.
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	    {
+	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
+	      return;
+	    }
+	}
+      break;
+    case PT_CREATE_TRIGGER:
+      /* for trigger create */
+      if (stmt->info.create_trigger.trigger_action)
+	{
+	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
+
+	  if (tr_action->info.trigger_action.expression)
+	    {
+	      parser_walk_tree (parser, tr_action->info.trigger_action.expression, NULL, NULL, pt_convert_dml, &snl);
+	    }
+	  if (pt_has_error (parser))
+	    {
+	      return;
+	    }
 	}
       break;
     case PT_DIFFERENCE:
