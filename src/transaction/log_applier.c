@@ -8888,6 +8888,7 @@ dump_la_info (void)
   fprintf (out, ",\n\n");
 
   /* replication lists */
+  fprintf (out, "%*srepl_cnt: %d,\n", indent, "", info->repl_cnt);
   dump_la_apply_list (out, indent);
   fprintf (out, ",\n\n");
 
@@ -9056,7 +9057,7 @@ dump_la_apply (FILE * out, int idx, int indent)
   fprintf (out, "%*shead: %p,\n", indent + 2, "", (void *) apply->head);
   fprintf (out, "%*stail: %p\n", indent + 2, "", (void *) apply->tail);
 
-  fprintf (out, "%*s}\n", indent, "");
+  fprintf (out, "%*s}", indent, "");
 }
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
