@@ -45,6 +45,13 @@
 #define HASHJOIN_DUMP_PROBE 0
 
 /*
+ * 0: qfile_combine_two_list
+ * 1: qfile_append_list
+ * 2: qfile_connect_list
+ */
+#define HASHJOIN_TEST_MERGE_LIST 1
+
+/*
  * Forward Declarations
  */
 

@@ -284,6 +284,145 @@ static void hjoin_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * has
 static void hjoin_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple, HASHJOIN_PRINT_STEP step);
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
+/* *INDENT-OFF* */
+typedef class hashjoin_parallel_context HASHJOIN_PARALLEL_CONTEXT;
+class hashjoin_parallel_context : public cubthread::entry_manager
+{
+  public:
+    std::atomic_bool m_has_error;
+    std::atomic<std::uint64_t> m_tasks_executed;
+    int m_error_code;
+    css_conn_entry *m_conn; /* 외부에서 전달 ? */
+
+    hashjoin_parallel_context () = default;
+    ~hashjoin_parallel_context () = default;
+
+  private:
+    void on_create (cubthread::entry & context) override
+      {
+	context.claim_system_worker ();
+	context.conn_entry = m_conn;
+      }
+
+    void on_retire (cubthread::entry & context) override
+      {
+	context.retire_system_worker ();
+	context.conn_entry = NULL;
+      }
+
+    void on_recycle (cubthread::entry & context) override
+      {
+	context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+      }
+};
+
+typedef class hashjoin_parallel_partition_task HASHJOIN_PARALLEL_PARTITION_TASK;
+class hashjoin_parallel_partition_task: public cubthread::entry_task
+{
+  private:
+    THREAD_ENTRY *m_thread_p;
+    HASHJOIN_PARTITION_INFO *m_part_info;
+    HASHJOIN_FETCH_INFO *m_fetch_info;
+    bool m_is_null_allowed;
+    HASH_SCAN_KEY *m_key;
+    HASHJOIN_PARALLEL_CONTEXT *m_parallel_context;
+
+  public:
+    hashjoin_parallel_partition_task () = delete;
+    hashjoin_parallel_partition_task (THREAD_ENTRY * thread_p, HASHJOIN_PARTITION_INFO * part_info,
+				      HASHJOIN_FETCH_INFO * fetch_info, bool is_null_allowed, HASH_SCAN_KEY * key,
+				      HASHJOIN_PARALLEL_CONTEXT *parallel_context)
+    : m_thread_p (thread_p)
+    , m_part_info (part_info)
+    , m_fetch_info (fetch_info)
+    , m_is_null_allowed (is_null_allowed)
+    , m_key (key)
+    , m_parallel_context (parallel_context)
+      {
+	//
+      }
+    ~hashjoin_parallel_partition_task () = default;
+
+    void execute (cubthread::entry &thread_ref) override
+      {
+	int error = NO_ERROR;
+
+	if (m_parallel_context->m_has_error)
+	  {
+	    return;
+	  }
+
+	thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
+
+	error = hjoin_make_partition_input (&thread_ref, NULL, m_part_info, m_fetch_info, m_is_null_allowed, m_key);
+	if (error != NO_ERROR)
+	  {
+	    if (!m_parallel_context->m_has_error.exchange (true))
+	      {
+		m_parallel_context->m_error_code = error;
+	      }
+	
+	    return;
+	  }
+
+	m_parallel_context->m_tasks_executed++;
+      }
+};
+
+typedef class hashjoin_parallel_task HASHJOIN_PARALLEL_TASK;
+class hashjoin_parallel_task: public cubthread::entry_task
+{
+  private:
+    THREAD_ENTRY *m_thread_p;
+    HASHJOIN_MANAGER *m_manager;
+    HASHJOIN_CONTEXT *m_context;
+    QFILE_LIST_ID **m_part_list_id;
+    HASHJOIN_PARALLEL_CONTEXT *m_parallel_context;
+
+  public:
+    hashjoin_parallel_task () = delete;
+    hashjoin_parallel_task (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			    QFILE_LIST_ID **part_list_id, HASHJOIN_PARALLEL_CONTEXT *parallel_context)
+    : m_thread_p (thread_p)
+    , m_manager (manager)
+    , m_context (context)
+    , m_part_list_id (part_list_id)
+    , m_parallel_context (parallel_context)
+      {
+	//
+      }
+    ~hashjoin_parallel_task () = default;
+
+    void execute (cubthread::entry &thread_ref) override
+      {
+	int error = NO_ERROR;
+
+	if (m_parallel_context->m_has_error)
+	  {
+	    return;
+	  }
+
+	thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
+	
+	*m_part_list_id = hjoin_with_context (&thread_ref, m_manager, m_context);
+	if (*m_part_list_id == NULL)
+	  {
+	    if (er_errid () != NO_ERROR)
+	      {
+		if (!m_parallel_context->m_has_error.exchange (true))
+		  {
+		    m_parallel_context->m_error_code = er_errid ();
+		  }
+	      }
+
+	    return;
+	  }
+
+	m_parallel_context->m_tasks_executed++;
+      }
+};
+/* *INDENT-ON* */
+
 /*
  * Function Definitions
  */
@@ -428,10 +567,32 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   context_cnt = manager->context_cnt;
 
+#if defined (SERVER_MODE)
+  cubthread::entry_workpool * hashjoin_workpool = NULL;
+  HASHJOIN_PARALLEL_CONTEXT parallel_context;
+  HASHJOIN_PARALLEL_TASK *parallel_task = NULL;
+  uint64_t tasks_started = 0;
+
+  QFILE_LIST_ID **part_list_id = NULL;
+  part_list_id = (QFILE_LIST_ID **) malloc (sizeof (QFILE_LIST_ID *) * context_cnt);
+  memset (part_list_id, 0, sizeof (QFILE_LIST_ID *) * context_cnt);
+
+  /* *INDENT-OFF* */
+  hashjoin_workpool = thread_get_manager()->create_worker_pool (4, 4, "parallel hash join pool", &parallel_context,
+								true, false);
+  /* *INDENT-ON* */
+
+  parallel_context.m_has_error = false;
+  parallel_context.m_error_code = NO_ERROR;
+  parallel_context.m_tasks_executed = 0UL;
+  parallel_context.m_conn = thread_p->conn_entry;
+#endif /* defined (SERVER_MODE) */
+
   for (context_index = 0; context_index < context_cnt; context_index++)
     {
       current_context = &manager->contexts[context_index];
 
+#if !defined (SERVER_MODE)
       context_list_id = hjoin_with_context (thread_p, manager, current_context);
 
       if (thread_is_on_trace (thread_p))
@@ -455,6 +616,7 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
       if (list_id != NULL)
 	{
+#if !HASHJOIN_TEST_MERGE_LIST
 	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
 	  if (t_list_id == NULL)
 	    {
@@ -469,12 +631,114 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 	  list_id = t_list_id;
 	  t_list_id = NULL;
+#elif HASHJOIN_TEST_MERGE_LIST == 1
+	  error = qfile_append_list (thread_p, list_id, context_list_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  qfile_destroy_list (thread_p, context_list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+#else
+	  error = qfile_connect_list (thread_p, list_id, context_list_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+#endif
 	}
       else
 	{
 	  list_id = context_list_id;
 	}
     }
+#else /* defined (SERVER_MODE) */
+      /* *INDENT-OFF* */
+      parallel_task = new HASHJOIN_PARALLEL_TASK (thread_p, manager, current_context, &part_list_id[context_index],
+						  &parallel_context);
+      thread_get_manager ()->push_task (hashjoin_workpool, parallel_task);
+      tasks_started++;
+      /* *INDENT-ON* */
+    }
+
+  if (parallel_context.m_has_error)
+    {
+      assert (false);
+      error = parallel_context.m_error_code;
+    }
+
+  do
+    {
+      thread_sleep (10);
+    }
+  while (parallel_context.m_tasks_executed != tasks_started);
+
+  for (context_index = 0; context_index < context_cnt; context_index++)
+    {
+      current_context = &manager->contexts[context_index];
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  hjoin_trace_merge_stats (total_stats, current_context->stats);
+	}
+
+      context_list_id = part_list_id[context_index];
+      if (context_list_id == NULL)
+	{
+	  continue;
+	}
+
+      if (list_id != NULL)
+	{
+#if !HASHJOIN_TEST_MERGE_LIST
+	  t_list_id = qfile_combine_two_list (thread_p, list_id, context_list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
+	  if (t_list_id == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  qfile_destroy_list (thread_p, list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (list_id);
+
+	  qfile_destroy_list (thread_p, context_list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+
+	  list_id = t_list_id;
+	  t_list_id = NULL;
+#elif HASHJOIN_TEST_MERGE_LIST == 1
+	  error = qfile_append_list (thread_p, list_id, context_list_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  qfile_destroy_list (thread_p, context_list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+#else
+	  error = qfile_connect_list (thread_p, list_id, context_list_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+#endif
+	}
+      else
+	{
+	  list_id = context_list_id;
+	}
+    }
+
+  free_and_init (part_list_id);
+
+  /* *INDENT-OFF* */
+  thread_get_manager ()->destroy_worker_pool (hashjoin_workpool);
+  /* *INDENT-ON* */
+#endif /* defined (SERVER_MODE) */
 
   ASSERT_NO_ERROR ();
 
@@ -614,7 +878,13 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       goto error_exit;
     }
 
+#if HASHJOIN_TEST_MERGE_LIST == 2
+  list_id =
+    qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL | QFILE_FLAG_MERGE_CONNECT,
+		     NULL);
+#else
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
+#endif
   if (list_id == NULL)
     {
       goto error_exit;
@@ -722,7 +992,13 @@ hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CO
   build_list_scan_id.status = S_CLOSED;
   probe_list_scan_id.status = S_CLOSED;
 
+#if HASHJOIN_TEST_MERGE_LIST == 2
+  list_id =
+    qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL | QFILE_FLAG_MERGE_CONNECT,
+		     NULL);
+#else
   list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
+#endif
   if (list_id == NULL)
     {
       goto error_exit;
@@ -1231,6 +1507,28 @@ hjoin_make_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   HASHJOIN_STATS *stats = &manager->stats_group->stats;
   assert (stats != NULL || !thread_is_on_trace (thread_p));
 
+#if defined (SERVER_MODE)
+  cubthread::entry_workpool * hashjoin_workpool = NULL;
+  HASHJOIN_PARALLEL_CONTEXT parallel_context;
+  HASHJOIN_PARALLEL_PARTITION_TASK *parallel_task = NULL;
+  uint64_t tasks_started = 0;
+
+  HASHJOIN_PARTITION_INFO outer_part_info = HASHJOIN_PARTITION_INFO_INITIALIZER;
+  HASHJOIN_PARTITION_INFO inner_part_info = HASHJOIN_PARTITION_INFO_INITIALIZER;
+  HASH_SCAN_KEY *outer_part_key = NULL;
+  HASH_SCAN_KEY *inner_part_key = NULL;
+
+  /* *INDENT-OFF* */
+  hashjoin_workpool = thread_get_manager()->create_worker_pool (2, 2, "parallel hash join pool", &parallel_context,
+								true, false);
+  /* *INDENT-ON* */
+
+  parallel_context.m_has_error = false;
+  parallel_context.m_error_code = NO_ERROR;
+  parallel_context.m_tasks_executed = 0UL;
+  parallel_context.m_conn = thread_p->conn_entry;
+#endif /* defined (SERVER_MODE) */
+
   /* Do not perform NULL checks; 
    * validation is expected to be handled by the caller */
   merge_info = manager->merge_info;
@@ -1345,6 +1643,75 @@ hjoin_make_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   /* common */
   part_info.part_cnt = part_cnt;
 
+#if defined (SERVER_MODE)
+  /* outer */
+  outer_part_info.part_cnt = part_cnt;
+  outer_part_info.list_id = outer_list_id;
+  outer_part_info.part_list_id = outer_part_list_id;
+  outer_part_info.stats = &stats->outer;
+  outer_part_key = qdata_alloc_hscan_key (thread_p, merge_info->ls_column_cnt, true);
+  if (outer_part_key == NULL)
+    {
+      goto error_exit;
+    }
+
+  /* *INDENT-OFF* */
+  parallel_task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, &outer_part_info, &single_context->outer_fetch_info,
+							is_outer_join, outer_part_key, &parallel_context);
+  thread_get_manager ()->push_task (hashjoin_workpool, parallel_task);
+  tasks_started++;
+  /* *INDENT-ON* */
+
+  /* inner */
+  inner_part_info.part_cnt = part_cnt;
+  inner_part_info.list_id = inner_list_id;
+  inner_part_info.part_list_id = inner_part_list_id;
+  inner_part_info.stats = &stats->inner;
+  inner_part_key = qdata_alloc_hscan_key (thread_p, merge_info->ls_column_cnt, true);
+  if (inner_part_key == NULL)
+    {
+      goto error_exit;
+    }
+
+  /* *INDENT-OFF* */
+  parallel_task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, &inner_part_info, &single_context->inner_fetch_info,
+							is_outer_join, inner_part_key, &parallel_context);
+  thread_get_manager ()->push_task (hashjoin_workpool, parallel_task);
+  tasks_started++;
+  /* *INDENT-ON* */
+
+  if (parallel_context.m_has_error)
+    {
+      assert (false);
+      error = parallel_context.m_error_code;
+    }
+
+  do
+    {
+      thread_sleep (10);
+    }
+  while (parallel_context.m_tasks_executed != tasks_started);
+
+  if (thread_is_on_trace (thread_p))
+    {
+      hjoin_trace_skew (outer_list_id, outer_part_list_id, part_cnt, &stats->outer);
+      hjoin_trace_skew (inner_list_id, inner_part_list_id, part_cnt, &stats->inner);
+    }
+
+  if (outer_part_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, outer_part_key, merge_info->ls_column_cnt);
+    }
+
+  if (inner_part_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, inner_part_key, merge_info->ls_column_cnt);
+    }
+
+  /* *INDENT-OFF* */
+  thread_get_manager ()->destroy_worker_pool (hashjoin_workpool);
+  /* *INDENT-ON* */
+#else /* defined (SERVER_MODE) */
   /* outer */
   part_info.list_id = outer_list_id;
   part_info.part_list_id = outer_part_list_id;
@@ -1378,6 +1745,7 @@ hjoin_make_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       hjoin_trace_skew (inner_list_id, inner_part_list_id, part_cnt, &stats->inner);
     }
+#endif /* defined (SERVER_MODE) */
 
   qfile_close_list (thread_p, outer_list_id);
   qfile_destroy_list (thread_p, outer_list_id);
