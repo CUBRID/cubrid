@@ -24,6 +24,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
+#include "system_parameter.h"
 #include "dbtype.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -174,6 +175,8 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     }
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
+  hnsw_index->hnsw.efSearch = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
 
   int64_t *uids = new int64_t[k * 1];
   index->search (1, vf->float_array, k, distances, uids);

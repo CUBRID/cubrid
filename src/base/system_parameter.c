@@ -2501,7 +2501,7 @@ static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
-int PRM_VECTOR_INDEX_EF_SEARCH = 0;
+int PRM_VECTOR_INDEX_EF_SEARCH = 40;
 static int prm_vector_index_ef_search_default = 40;
 static int prm_vector_index_ef_search_lower = 1;
 static int prm_vector_index_ef_search_upper = 32768;
@@ -6601,7 +6601,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_VECTOR_INDEX_EF_SEARCH,
    PRM_NAME_VECTOR_INDEX_EF_SEARCH,
-   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER),
+   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT),
    PRM_INTEGER,
    &prm_vector_index_ef_search_flag,
    (void *) &prm_vector_index_ef_search_default,
