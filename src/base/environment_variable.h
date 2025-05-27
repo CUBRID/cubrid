@@ -41,7 +41,7 @@ extern "C"
 
   extern char *envvar_bindir_file (char *path, size_t size, const char *filename);
   extern char *envvar_libdir_file (char *path, size_t size, const char *filename);
-  extern char *envvar_javadir_file (char *path, size_t size, const char *filename);
+  extern char *envvar_vmdir_file (char *path, size_t size, const char *filename);
   extern char *envvar_localedir_file (char *path, size_t size, const char *langpath, const char *filename);
   extern char *envvar_confdir_file (char *path, size_t size, const char *filename);
   extern char *envvar_vardir_file (char *path, size_t size, const char *filename);

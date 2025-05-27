@@ -93,32 +93,37 @@ public class StoredProcedure {
 
         Class<?> c = null;
         ClassNotFoundException ex = null;
-        if (lang == LANG_PLCSQL) {
-            try {
-                c = ctx.getSessionCLManager().findClass(sig.getClassName());
-                if (c == null) {
-                    CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
-                    if (codeset != null) {
-                        c = ctx.getSessionCLManager().loadClass(codeset);
-                    }
-                }
-            } catch (ClassNotFoundException e) {
-                ex = e;
-            }
-        } else if (lang == LANG_JAVASP) {
-            try {
-                c = ctx.getOldClassLoader().loadClass(sig.getClassName());
-            } catch (ClassNotFoundException e) {
-                ex = e;
-            }
-        } else {
-            assert false;
-            throw new ClassNotFoundException(sig.getClassName());
+
+        try {
+            // find a class in static directory first
+            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
+        } catch (ClassNotFoundException e) {
+            // do nothing
         }
 
-        // find a class in static directory and system loader
         if (c == null) {
-            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
+            if (lang == LANG_PLCSQL) {
+                try {
+                    c = ctx.getSessionCLManager().findClass(sig.getClassName());
+                    if (c == null) {
+                        CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
+                        if (codeset != null) {
+                            c = ctx.getSessionCLManager().loadClass(codeset);
+                        }
+                    }
+                } catch (ClassNotFoundException e) {
+                    ex = e;
+                }
+            } else if (lang == LANG_JAVASP) {
+                try {
+                    c = ctx.getOldClassLoader().loadClass(sig.getClassName());
+                } catch (ClassNotFoundException e) {
+                    ex = e;
+                }
+            } else {
+                assert false;
+                throw new ClassNotFoundException(sig.getClassName());
+            }
         }
 
         if (c == null) {

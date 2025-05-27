@@ -70,8 +70,7 @@ enum sp_entry_index
 enum sp_args_entry_index
 {
   SP_ARGS_ATTR_INDEX_SP_OF,
-  SP_ARGS_ATTR_INDEX_PKG,
-  SP_ARGS_ATTR_INDEX_OF,
+  SP_ARGS_ATTR_INDEX_INDEX_OF,
   SP_ARGS_ATTR_INDEX_IS_SYSTEM_GENERATED,
   SP_ARGS_ATTR_INDEX_ARG_NAME,
   SP_ARGS_ATTR_INDEX_DATA_TYPE,
@@ -97,7 +96,6 @@ struct sp_entry
 struct sp_arg_info
 {
   std::string sp_name;
-  std::string pkg_name;
   int index_of;
   bool is_system_generated;
   std::string arg_name;
@@ -107,9 +105,8 @@ struct sp_arg_info
   bool is_optional;
   std::string comment;
 
-  sp_arg_info (const std::string& s_name, const std::string& p_name) 
+  sp_arg_info (const std::string& s_name) 
   : sp_name {s_name}
-  , pkg_name {p_name}
   , index_of {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , is_system_generated {false}
   , arg_name {}
@@ -121,7 +118,7 @@ struct sp_arg_info
   {}
 
   sp_arg_info ()
-  : sp_arg_info ("", "")
+  : sp_arg_info ("")
   {}
 };
 typedef sp_arg_info SP_ARG_INFO;

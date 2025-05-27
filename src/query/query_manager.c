@@ -96,6 +96,8 @@ struct qmgr_tran_entry
   QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
   QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
 
+  DBLINK_CONN_ENTRY *dblink_entry;	/* for dblink tranaction */
+
   OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
   pthread_mutex_t mutex;
 };
@@ -215,7 +217,13 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   int i;
   bool usable = false;
 
-  static int qmgr_max_query_entry_per_tran = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+  static int prm_max_entry = prm_get_integer_value (PRM_ID_QMGR_MAX_QUERY_PER_TRAN);
+
+  /*
+   * The maximum number of query entries is increased by 1.5 times
+   * to reflect internal queries such as authorization checks.
+   */
+  static int max_query_entry = prm_max_entry + ((prm_max_entry < 2) ? 1 : prm_max_entry / 2);
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -225,9 +233,8 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
     }
-  else if (qmgr_max_query_entry_per_tran < tran_entry_p->num_query_entries)
+  else if (max_query_entry <= tran_entry_p->num_query_entries)
     {
-      assert (qmgr_max_query_entry_per_tran >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -246,7 +253,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   /* assign query id */
   hint_query_id = 0;
-  for (i = 0; i < qmgr_max_query_entry_per_tran; i++)
+  for (i = 0; i < max_query_entry; i++)
     {
       if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
 	{
@@ -382,6 +389,26 @@ qmgr_deallocate_query_entries (QMGR_QUERY_ENTRY * query_p)
 	}
 
       free_and_init (p);
+    }
+}
+
+/*
+ * qmgr_deallocate_dblink_entries () -
+ *   return:
+ *   dblink_p(in)  : dblink entry pointer
+ *
+ * Note: Free the area allocated for the dblink entry list
+ */
+static void
+qmgr_deallocate_dblink_entries (DBLINK_CONN_ENTRY * dblink_p)
+{
+  DBLINK_CONN_ENTRY *p;
+
+  while (dblink_p)
+    {
+      p = dblink_p;
+      dblink_p = dblink_p->next;
+      free (p);
     }
 }
 
@@ -569,6 +596,7 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->num_query_entries = 0;
   tran_entry_p->query_entry_list_p = NULL;
   tran_entry_p->free_query_entry_list_p = NULL;
+  tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
@@ -662,6 +690,7 @@ qmgr_free_tran_entries (void)
       qmgr_deallocate_query_entries (tran_entry_p->query_entry_list_p);
       qmgr_deallocate_query_entries (tran_entry_p->free_query_entry_list_p);
       qmgr_deallocate_oid_blocks (tran_entry_p->modified_classes_p);
+      qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
 
       pthread_mutex_destroy (&tran_entry_p->mutex);
 
@@ -1824,6 +1853,11 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+  if (query_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
+      goto exit_on_error;
+    }
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
@@ -2125,6 +2159,32 @@ qmgr_is_related_class_modified (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl
   return false;
 }
 
+QMGR_TRAN_STATUS
+qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
+
+  QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
+
+  if (rc == ER_DBLINK_TRAN)
+    {
+      /* remote transactions will be rollbacked */
+      status = QMGR_TRAN_DBLINK_ABORTED;
+      er_log_debug (ARG_FILE_LINE, "dblink transaction is not completed !\n");
+    }
+  else if (rc != NO_ERROR)
+    {
+      /* error occurred while remote transaction is committed or rollbacked */
+      er_log_debug (ARG_FILE_LINE, "dblink transaction is completed with some errors !\n");
+    }
+
+  tran_entry_p->dblink_entry = NULL;
+
+  return status;
+}
+
 /*
  * qmgr_clear_trans_wakeup () -
  *   return:
@@ -2180,17 +2240,32 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       return;
     }
 
+  bool is_pl_session_running = session_has_pl_session (thread_p);
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* there should be no active query */
   for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
     {
-      assert (query_p->query_status == QUERY_COMPLETED);
+      if (is_pl_session_running && query_p->query_status == QUERY_IN_PROGRESS)
+	{
+	  er_log_debug (ARG_FILE_LINE, "query %d is in progress, including an SP that contains COMMIT or ROLLBACK\n",
+			query_p->query_id);
+	}
+      else
+	{
+	  assert (query_p->query_status == QUERY_COMPLETED);
+	}
     }
 #endif
 
   query_p = tran_entry_p->query_entry_list_p;
   while (query_p)
     {
+      if (is_pl_session_running && query_p->query_status == QUERY_IN_PROGRESS)
+	{
+	  query_p = query_p->next;
+	  continue;
+	}
+
       if (query_p->is_holdable)
 	{
 	  if (is_abort || is_tran_died)
@@ -2243,7 +2318,10 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       query_p = tran_entry_p->query_entry_list_p;
     }
 
-  assert (tran_entry_p->query_entry_list_p == NULL);
+  if (!is_pl_session_running)
+    {
+      assert (tran_entry_p->query_entry_list_p == NULL);
+    }
   tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
 }
 
@@ -3089,7 +3167,12 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      return true;
+      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
+	{
+	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
+	  // And this routine is called in the middle of processing the root query.
+	  return true;
+	}
     }
 
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
@@ -3536,4 +3619,53 @@ qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tr
     }
 
   return query_str;
+}
+
+int
+qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (!strcmp (dblink->conn_url, conn_url) && !strcmp (dblink->user_name, user_name)
+	  && !strcmp (dblink->password, password))
+	{
+	  return dblink->conn_handle;
+	}
+
+      dblink = dblink->next;
+    }
+
+  return -1;
+}
+
+int
+qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  DBLINK_CONN_ENTRY *dblink_conn_entry;
+
+  dblink_conn_entry = (DBLINK_CONN_ENTRY *) malloc (sizeof (DBLINK_CONN_ENTRY));
+  if (dblink_conn_entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DBLINK_CONN_ENTRY));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  dblink_conn_entry->conn_handle = conn_handle;
+
+  strcpy (dblink_conn_entry->conn_url, conn_url);
+  strcpy (dblink_conn_entry->user_name, user_name);
+  strcpy (dblink_conn_entry->password, password);
+
+  dblink_conn_entry->next = tran_entry_p->dblink_entry;
+
+  tran_entry_p->dblink_entry = dblink_conn_entry;
+
+  return NO_ERROR;
 }

@@ -826,7 +826,7 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 	  assert (strcasecmp (pk->keyword, keywords[i].keyword) == 0);
 	}
 
-      for (i = 0; i < sizeof (functions) / sizeof (functions[0]); i++)
+      for (i = 0; i < DIM (functions); i++)
 	{
 	  pk = pt_find_keyword (functions[i].keyword);
 	  if (pk)
@@ -845,7 +845,7 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 	  assert (strcasecmp (pf->keyword, functions[i].keyword) == 0);
 	}
 
-      for (i = 0; i < sizeof (keywords) / sizeof (keywords[0]); i++)
+      for (i = 0; i < DIM (keywords); i++)
 	{
 	  pf = pt_find_function_name (keywords[i].keyword);
 	  if (pf)

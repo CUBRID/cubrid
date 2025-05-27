@@ -100,6 +100,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int yylex(void);
 
 #if defined(SA_MODE)
      /*
@@ -257,7 +258,6 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
-static bool is_in_create_trigger = false;
 static bool is_in_sp_func_type = false;
 
 
@@ -5792,11 +5792,6 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-		if (is_in_create_trigger)
-		  {
-		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
-		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
-		  }
                 DBG_PRINT}}
         ;
 
@@ -12495,12 +12490,9 @@ trigger_action_in
 	;
 
 trigger_action
-	:
-	  { is_in_create_trigger = true; }
-	  trigger_action_in
-	    {{
-		is_in_create_trigger = false;
-		$$ = $2;
+	: trigger_action_in
+	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
+		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
 	;
@@ -12993,28 +12985,28 @@ plcsql_text_part
 		DBG_PRINT}}
         | CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "'");
+                    char* val = pt_append_string(this_parser, NULL, "'");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "'");
                     $$ = val;
 		DBG_PRINT}}
         | DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "\"");
+                    char* val = pt_append_string(this_parser, NULL, "\"");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "\"");
                     $$ = val;
 		DBG_PRINT}}
         | BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "[");
+                    char* val = pt_append_string(this_parser, NULL, "[");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "]");
                     $$ = val;
 		DBG_PRINT}}
         | BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "`");
+                    char* val = pt_append_string(this_parser, NULL, "`");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "`");
                     $$ = val;
@@ -18084,6 +18076,7 @@ reserved_func
 			  {
 			    pt_set_fill_default_in_path_expression (path);
 			    node = parser_make_expression (this_parser, PT_DEFAULTF, path, NULL, NULL);
+                            node->flag.for_default_func = 1;
 			    PICE (node);
 			  }
 			$$ = node;
@@ -26748,6 +26741,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
+  INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),

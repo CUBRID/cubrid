@@ -785,7 +785,7 @@ conn_retry:
 
 	if (as_info->reset_flag == TRUE || is_xa_prepared ())
 	  {
-	    ux_database_shutdown ();
+	    ux_database_shutdown (true);
 	    as_info->reset_flag = FALSE;
 	    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	  }
@@ -1496,13 +1496,13 @@ cas_main (void)
 #if !defined(CAS_FOR_CGW)
 	    if (is_xa_prepared ())
 	      {
-		ux_database_shutdown ();
+		ux_database_shutdown (true);
 		ux_database_connect (db_name, db_user, db_passwd, NULL);
 	      }
 
 	    if (as_info->reset_flag == TRUE)
 	      {
-		ux_database_shutdown ();
+		ux_database_shutdown (true);
 		as_info->reset_flag = FALSE;
 		cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	      }
@@ -1658,14 +1658,28 @@ check_server_alive (const char *db_name, const char *db_host)
   return true;
 }
 
-
 static void
 cas_sig_handler (int signo)
 {
+  static int is_doing_signal_handler = 0;
+
+  if (is_doing_signal_handler)
+    {
+      return;
+    }
+  is_doing_signal_handler = 1;
+
   signal (signo, SIG_IGN);
-  cas_free (true);
+
+  er_print_crash_callstack (signo);
+
+  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
+    {
+      cas_free (true);
+    }
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+
 #ifdef _GCOV
   exit (0);
 #else
@@ -1695,22 +1709,11 @@ cas_free (bool from_sighandler)
 
   if (from_sighandler)
     {
-      cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
-
-      as_info->database_name[0] = '\0';
-      as_info->database_host[0] = '\0';
-      as_info->database_user[0] = '\0';
-      as_info->database_passwd[0] = '\0';
-      as_info->last_connect_time = 0;
-
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
     }
   else
     {
-#if defined(CAS_FOR_CGW)
-      cgw_cleanup ();
-#else
-      ux_database_shutdown ();
-#endif /* CAS_FOR_CGW */
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
     }
 
   if (as_info->cur_statement_pooling && !from_sighandler)
@@ -1826,6 +1829,20 @@ cas_free (bool from_sighandler)
       close (fd);
     }
 #endif
+
+#if defined(CAS_FOR_CGW)
+  cgw_cleanup ();
+#else
+  if (from_sighandler)
+    {
+      ux_database_shutdown (false);
+    }
+  else
+    {
+      ux_database_shutdown (true);
+    }
+#endif /* CAS_FOR_CGW */
+
 }
 
 static void
@@ -2899,7 +2916,7 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
   CloseHandle (FileHandle);
 
-  ux_database_shutdown ();
+  ux_database_shutdown (true);
 
   return EXCEPTION_EXECUTE_HANDLER;
 }

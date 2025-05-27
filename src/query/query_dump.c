@@ -37,6 +37,7 @@
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
+#include "px_heap_scan_perf_monitor.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -551,6 +552,11 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
   fprintf (foutput, " %s", qdump_target_type_string (type));
 
   fprintf (foutput, ",%s", qdump_access_method_string (spec_list_p->access));
+
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN)
+    {
+      fprintf (foutput, ",no_parallel_heap_scan");
+    }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
     {
@@ -2993,6 +2999,21 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
       scan_print_stats_json (&spec->s_id, scan);
 
+#if !WINDOWS
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+	{
+	  if (spec->s_id.s.phsid.perf_monitor != NULL)
+	    {
+	      if (!spec->s_id.scan_stats.noscan)
+		{
+		  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name,
+							       (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		}
+	      delete spec->s_id.s.phsid.perf_monitor;
+	      spec->s_id.s.phsid.perf_monitor = NULL;
+	    }
+	}
+#endif
       if (scan_array != NULL)
 	{
 	  json_array_append_new (scan_array, scan);
@@ -3024,6 +3045,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
+  json_t *func;
   xasl_node *xptr;
   json_t *sq_cache;
 
@@ -3055,6 +3077,16 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      if (xasl_p->func_stats.calls > 0)
+	{
+	  func = json_object ();
+	  json_object_set_new (func, "time", json_integer (xasl_p->func_stats.time));
+	  json_object_set_new (func, "fetch", json_integer (xasl_p->func_stats.fetches));
+	  json_object_set_new (func, "ioread", json_integer (xasl_p->func_stats.ioreads));
+	  json_object_set_new (func, "calls", json_integer (xasl_p->func_stats.calls));
+
+	  json_object_set_new (proc, "func", func);
+	}
       break;
 
     case UNION_PROC:
@@ -3412,7 +3444,21 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 
 	  scan_print_stats_text (fp, &spec->s_id);
-
+#if !WINDOWS
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+	    {
+	      if (spec->s_id.s.phsid.perf_monitor)
+		{
+		  if (!spec->s_id.scan_stats.noscan)
+		    {
+		      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name,
+								   (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		    }
+		  delete spec->s_id.s.phsid.perf_monitor;
+		  spec->s_id.s.phsid.perf_monitor = NULL;
+		}
+	    }
+#endif
 	  if (class_name != NULL)
 	    {
 	      free_and_init (class_name);
@@ -3475,6 +3521,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
       indent += 2;
+      if (xasl_p->func_stats.calls > 0)
+	{
+	  fprintf (fp, "%*cFUNC (time: %lld, fetch: %lld, ioread: %lld, calls: %lld)\n", indent, ' ',
+		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
+		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
+	}
       break;
 
     case UNION_PROC:

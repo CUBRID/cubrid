@@ -42,6 +42,8 @@
 struct adj_array;
 // from connection_defs.h
 struct css_conn_entry;
+// from connection_defs.h
+struct dblink_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
 // from log_system_tran.hpp

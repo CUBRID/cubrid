@@ -30,11 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprBuiltinFuncCall extends Expr {
+public class ExprBuiltinFuncCall extends BuiltinFuncCall {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -44,16 +43,11 @@ public class ExprBuiltinFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
-    public Type resultType;
-
-    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
-        super(ctx);
+    public ExprBuiltinFuncCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
+        super(ctx, sqlSerialNo);
 
         this.name = name;
         this.args = args;
-    }
-
-    public void setResultType(Type resultType) {
-        this.resultType = resultType;
     }
 }

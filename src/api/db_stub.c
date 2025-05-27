@@ -2708,10 +2708,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_v
 
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && defined(LINUX)
-      if (!pl_jvm_is_loaded ())
-	{
-	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
-	}
+      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
       prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */

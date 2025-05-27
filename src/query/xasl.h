@@ -158,6 +158,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
 typedef struct xasl_stat XASL_STATS;
+typedef struct func_stat FUNC_STATS;
 
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
@@ -591,6 +592,7 @@ struct cte_proc_node
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	      0x40000	/* subquery uses result cache */
 
+
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
@@ -835,7 +837,10 @@ typedef enum
 typedef enum
 {
   ACCESS_SPEC_FLAG_NONE = 0,
-  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01,	/* used with FOR UPDATE clause. The spec that will be locked. */
+  ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x02,	/* used with parallel heap scan. */
+  ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x04,	/* used with parallel heap scan. */
+  ACCESS_SPEC_FLAG_MERGED_LIST = 0x08	/* used with parallel heap scan. */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node
@@ -1041,6 +1046,14 @@ struct xasl_stat
   UINT64 fetch_time;
 };
 
+struct func_stat
+{
+  UINT64 time;
+  UINT64 fetches;
+  UINT64 ioreads;
+  UINT64 calls;
+};
+
 /* top-n sorting object */
 struct topn_tuples
 {
@@ -1082,6 +1095,7 @@ struct access_spec_node
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   int pruning_type;		/* how pruning should be performed on this access spec performed */
   ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
@@ -1196,6 +1210,7 @@ struct xasl_node
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
   XASL_STATS xasl_stats;
+  FUNC_STATS func_stats;
 
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 

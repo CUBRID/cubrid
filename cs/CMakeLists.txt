@@ -387,7 +387,6 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   )
 
-
 set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
@@ -405,6 +404,14 @@ set(API_SOURCES
 
 set(API_HEADERS
   ${API_DIR}/cubrid_log.h
+  )
+
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -489,13 +496,12 @@ SET_SOURCE_FILES_PROPERTIES(
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${API_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -532,6 +538,8 @@ add_library(cubridcs SHARED
   ${LOADDB_HEADERS}
   ${API_SOURCES}
   ${API_HEADERS}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -546,8 +554,6 @@ if(WIN32)
     ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
     ${LOADER_LEXER_OUTPUT}
-    ${ESQL_GRAMMAR_OUTPUT}
-    ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
@@ -555,14 +561,14 @@ if(WIN32)
   target_link_libraries(cubridcs LINK_PRIVATE ws2_32)
   set_target_properties(cubridcs PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridcs/cubridcs.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${JAVA_INC} ${EP_INCLUDES})
+target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridcs PUBLIC stdc++fs)
   target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubridcs LINK_PUBLIC rt)
 else(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS} ${JVM_LIBS})
+  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridcs PUBLIC cascci)

@@ -194,6 +194,7 @@ extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmo
 extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name - au_check_authorization
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
+extern int au_check_procedure_authorization (MOP procedure_object);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 //
 
@@ -231,11 +232,12 @@ extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, 
  */
 extern int au_check_owner (DB_VALUE * creator_val);
 
-extern int au_change_owner (MOP class_mop, MOP owner_mop);
+extern int au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop);
 extern int au_change_class_owner (MOP class_mop, MOP owner_mop);
 extern int au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_change);
 extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
-extern int au_change_sp_owner (MOP sp, MOP owner);
+extern int au_change_sp_owner (PARSER_CONTEXT * parser, MOP sp, MOP owner);
+extern int au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT * parser, MOP sp_mop, MOP owner_mop);
 extern MOP au_get_class_owner (MOP classmop);
 //
 
@@ -247,7 +249,6 @@ extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 extern void au_dump_auth (FILE * fp);
 
-#if defined (SA_MODE)
 #ifdef __cplusplus
 extern "C"
 {
@@ -256,7 +257,6 @@ extern "C"
 
 #ifdef __cplusplus
 }
-#endif
 
 #endif
 //

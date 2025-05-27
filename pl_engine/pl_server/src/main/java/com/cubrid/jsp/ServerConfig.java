@@ -50,6 +50,7 @@ public class ServerConfig {
     private final String rootPath; // $CUBRID
     private final String dbPath; // $CUBRID_DATABASES
 
+    private final String vmPath; // $CUBRID/vm
     private final String logPath;
     private final String tmpPath;
 
@@ -70,8 +71,9 @@ public class ServerConfig {
         this.rootPath = rPath;
         this.dbPath = dbPath;
 
+        this.vmPath = rootPath + File.separatorChar + "vm";
         this.logPath =
-                rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_java.log";
+                rootPath + File.separatorChar + LOG_DIR + File.separatorChar + name + "_pl.log";
 
         String cubridTmpEnv = System.getenv("CUBRID_TMP");
         this.tmpPath =
@@ -95,6 +97,10 @@ public class ServerConfig {
 
     public String getRootPath() {
         return rootPath;
+    }
+
+    public String getVmPath() {
+        return vmPath;
     }
 
     public String getLogPath() {
