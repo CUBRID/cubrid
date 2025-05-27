@@ -516,10 +516,14 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
 			     num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
-  if (!HFID_IS_NULL (hfid) && file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages) != NO_ERROR)
+  if (!HFID_IS_NULL (hfid))
     {
-      assert (false);
-      return S_ERROR;
+      int ret = file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages);
+      if (ret != NO_ERROR)
+	{
+	  /* maybe query interrupted */
+	  return S_ERROR;
+	}
     }
   if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
     {

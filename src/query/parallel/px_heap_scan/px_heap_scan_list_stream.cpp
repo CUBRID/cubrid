@@ -400,7 +400,8 @@ namespace parallel_heap_scan
       {
 	m_task_thread_p = thread_p;
       }
-    m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL, nullptr);
+    m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF,
+				 nullptr);
     assert (m_list_id != nullptr);
   }
 

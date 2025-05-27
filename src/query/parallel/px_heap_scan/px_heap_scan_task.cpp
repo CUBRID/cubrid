@@ -106,6 +106,7 @@ namespace parallel_heap_scan
     list_id_data data;
     OUTPTR_LIST *outptr_list;
     bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
+    bool is_tfile_locked = false;
     int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -138,7 +139,6 @@ namespace parallel_heap_scan
       {
 	m_list_id_wrapper->open (thread_p);
       }
-    lock.unlock();
     m_context->add_tasks_list_opened();
 
     list_writer writer (m_list_stream, m_list_id_wrapper.get());
@@ -150,6 +150,7 @@ namespace parallel_heap_scan
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
+    lock.unlock();
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -227,6 +228,11 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
+		    if (!m_mergable_list_writer->is_tfile_allocated())
+		      {
+			lock.lock();
+			is_tfile_locked = true;
+		      }
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
 		      {
 			break;
@@ -243,6 +249,11 @@ namespace parallel_heap_scan
 			m_context->set_has_error();
 			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
 			break;
+		      }
+		    if (is_tfile_locked)
+		      {
+			lock.unlock();
+			is_tfile_locked = false;
 		      }
 		  }
 		else

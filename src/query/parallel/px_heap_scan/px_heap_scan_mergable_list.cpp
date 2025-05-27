@@ -148,6 +148,11 @@ namespace parallel_heap_scan
 
     return &m_tpl_buf;
   }
+
+  bool mergable_list_writer::is_tfile_allocated() const
+  {
+    return (*m_list_id_p)->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
+  }
 }
 
 #endif /* SERVER_MODE && !WINDOWS */
