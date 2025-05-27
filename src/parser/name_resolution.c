@@ -969,14 +969,7 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    {
 	      if (er_errid () != NO_ERROR)
 		{
-		  if (scopes && scopes->specs && scopes->specs->info.spec.remote_server_name)
-		    {
-		      er_clear ();
-		    }
-		  else
-		    {
-		      PT_ERRORc (parser, in_node, er_msg ());
-		    }
+		  PT_ERRORc (parser, in_node, er_msg ());
 		}
 	      else
 		{

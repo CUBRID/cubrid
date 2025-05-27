@@ -8550,23 +8550,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  if (statement->info.update.spec->info.spec.remote_server_name)
-    {
-      pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
-
-      if (pt_has_error (parser))
-	{
-	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-	  return er_errid ();
-	}
-
-      xasl = pt_to_xasl_for_dblink (parser, statement->info.update.spec);
-    }
-  else
-    {
-      xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
-    }
+  xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
 
   if (xasl)
     {

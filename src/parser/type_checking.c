@@ -7944,10 +7944,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
       break;
 
     case PT_DELETE:
-      if (sc_info->remote_server_name == NULL)
-	{
-	  node->info.delete_.search_cond = pt_where_type (parser, node->info.delete_.search_cond);
-	}
+      node->info.delete_.search_cond = pt_where_type (parser, node->info.delete_.search_cond);
       break;
 
     case PT_UPDATE:
