@@ -2889,19 +2889,20 @@ logwr_dump_logwr_gl (void)
   logwr_dump_logwr_gl_topfields (stdout, indent + 2);
 
   fprintf (stdout, "%*s}\n\n", indent, "");
-#else
-  fprintf (stdout, "{ /* SA mode doesn’t provide l ogwr dump */ }\n\n");
-#endif
+
   fflush (stdout);
+#endif /* CS_MODE */
 }
 
 void
 logwr_dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
 {
+#if defined(CS_MODE)
   fprintf (out, "{\n");
   fprintf (out, "%*spageid: %lld,\n", indent + 2, "", (long long) lsa->pageid);
   fprintf (out, "%*soffset: %lld\n", indent + 2, "", (long long) lsa->offset);
   fprintf (out, "%*s}", indent, "");
+#endif /* CS_MODE */
 }
 
 void

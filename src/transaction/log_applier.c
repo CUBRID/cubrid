@@ -8957,15 +8957,15 @@ la_dump_la_info (void)
 
   /* closing */
   fprintf (out, "}\n\n");
-#else
-  fprintf (out, "%*s{ /* SA mode doesn’t provide LA_INFO dump */ }\n\n", indent, "");
-#endif
+
   fflush (out);
+#endif /* CS_MODE */
 }
 
 void
 la_dump_la_act_log (FILE * out, int indent)
 {
+#if defined(CS_MODE)
   LA_ACT_LOG *a = &la_Info.act_log;
 
   fprintf (out, "%*sla_act_log: {\n", indent, "");
@@ -8984,11 +8984,13 @@ la_dump_la_act_log (FILE * out, int indent)
   fprintf (out, "%*sdb_logpagesize: %d\n", indent + 2, "", a->db_logpagesize);
 
   fprintf (out, "%*s}\n", indent, "");
+#endif /* CS_MODE */
 }
 
 void
 la_dump_la_arv_log (FILE * out, int indent)
 {
+#if defined(CS_MODE)
   LA_ARV_LOG *r = &la_Info.arv_log;
 
   if (r == NULL || r->log_vdes <= 0)
@@ -9011,6 +9013,7 @@ la_dump_la_arv_log (FILE * out, int indent)
 
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
   fprintf (out, "%*s}\n", indent, "");
+#endif /* CS_MODE */
 }
 
 void
@@ -9034,6 +9037,7 @@ la_dump_la_apply_list (FILE * out, int indent)
 void
 la_dump_la_apply (FILE * out, int idx, int indent)
 {
+#if defined(CS_MODE)
   LA_APPLY *apply = la_Info.repl_lists[idx];
   if (apply == NULL)
     {
@@ -9058,6 +9062,7 @@ la_dump_la_apply (FILE * out, int idx, int indent)
   fprintf (out, "%*stail: %p\n", indent + 2, "", (void *) apply->tail);
 
   fprintf (out, "%*s}", indent, "");
+#endif /* CS_MODE */
 }
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
