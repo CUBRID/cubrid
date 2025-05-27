@@ -12062,6 +12062,14 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   switch (stmt->node_type)
     {
+    case PT_SCOPE:
+      /* for trigger action */
+      stmt = stmt->info.scope.stmt->info.trigger_action.expression;
+      if (stmt == NULL)
+	{
+	  return;
+	}
+      [[fallthrough]];
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
@@ -12083,7 +12091,22 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      return;
 	    }
 	}
+      break;
+    case PT_CREATE_TRIGGER:
+      /* for trigger create */
+      if (stmt->info.create_trigger.trigger_action)
+	{
+	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
 
+	  if (tr_action->info.trigger_action.expression)
+	    {
+	      parser_walk_tree (parser, tr_action->info.trigger_action.expression, NULL, NULL, pt_convert_dml, &snl);
+	    }
+	  if (pt_has_error (parser))
+	    {
+	      return;
+	    }
+	}
       break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:

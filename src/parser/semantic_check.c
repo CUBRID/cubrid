@@ -259,7 +259,7 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NOD
 						 int *continue_walk);
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts, PT_NODE * node, MOP db_obj);
 static PT_NODE *pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
-static PT_NODE *pt_get_assignments (PT_NODE * node);
+static PT_NODE *pt_get_assignments (PT_NODE * node, bool * dblinked);
 static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static PT_UNION_COMPATIBLE pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query,
 							   SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
@@ -11374,7 +11374,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 
 	  /* Update of views hierarchies not allowed */
-	  if (db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
+	  if (entity->info.spec.flat_entity_list	/* for local query only, but not for remote */
+	      && db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
@@ -12978,10 +12979,11 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *next, *lhs, *rhs, *list, *rhs_list;
   PT_NODE *assignment_list;
+  bool dblinked;
 
   assert (parser != NULL);
 
-  assignment_list = pt_get_assignments (stmt);
+  assignment_list = pt_get_assignments (stmt, &dblinked);
   if (assignment_list == NULL)
     {
       return;
@@ -13005,7 +13007,7 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		      /* e.g., a = (select 1, 2 from ...) */
 		      PT_ERRORm (parser, lhs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ILLEGAL_RHS);
 		    }
-		  else
+		  else if (!dblinked)	/* for local query only */
 		    {
 		      (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
 		    }
@@ -13014,7 +13016,10 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		{
 		  /* Not a query, just check if assignment is possible. The call below will wrap the rhs node with a
 		   * cast to the type of the lhs_node */
-		  (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		  if (!dblinked)	/* for local query only */
+		    {
+		      (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		    }
 		}
 	    }
 	  else if (lhs->node_type == PT_EXPR && PT_IS_N_COLUMN_UPDATE_EXPR (lhs) && (list = lhs->info.expr.arg1))
@@ -13295,8 +13300,9 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool has_attrib = false, has_meta_attrib = false;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *assignments;
+  bool dblinked;
 
-  assignments = pt_get_assignments (statement);
+  assignments = pt_get_assignments (statement, &dblinked);
   if (assignments == NULL)
     {
       return;
@@ -13385,10 +13391,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *b, *att_a, *att_b;
   PT_NODE *assignment_list;
+  bool dblinked;
 
   assert (parser != NULL);
 
-  assignment_list = pt_get_assignments (stmt);
+  assignment_list = pt_get_assignments (stmt, &dblinked);
   if (assignment_list == NULL)
     {
       return;
@@ -17063,8 +17070,12 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * node (in): statement node
  */
 static PT_NODE *
-pt_get_assignments (PT_NODE * node)
+pt_get_assignments (PT_NODE * node, bool * dblinked)
 {
+  PT_NODE *spec, *assignment;
+
+  *dblinked = false;
+
   if (node == NULL)
     {
       return NULL;
@@ -17073,14 +17084,27 @@ pt_get_assignments (PT_NODE * node)
   switch (node->node_type)
     {
     case PT_UPDATE:
-      return node->info.update.assignment;
+      spec = node->info.update.spec;
+      assignment = node->info.update.assignment;
+      break;
     case PT_MERGE:
-      return node->info.merge.update.assignment;
+      spec = node->info.merge.into;
+      assignment = node->info.merge.update.assignment;
+      break;
     case PT_INSERT:
-      return node->info.insert.odku_assignments;
+      spec = node->info.insert.spec;
+      assignment = node->info.insert.odku_assignments;
+      break;
     default:
       return NULL;
     }
+
+  if (spec && spec->info.spec.remote_server_name)
+    {
+      *dblinked = true;
+    }
+
+  return assignment;
 }
 
 /*
