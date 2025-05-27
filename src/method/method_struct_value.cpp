@@ -508,6 +508,13 @@ namespace cubmethod
 	codeset = LANG_SYS_CODESET;
 #endif
 	db_make_null (v);
+
+	// 이렇게 추가할 수 있는 방법을 찾아보자!!
+	//v->domain.numeric_info.is_floating_point_numeric = m_sig.is_floating_point_numeric;
+	// (임시) 해당 DB_VALUE 는 static sql 에서 사용되는 테이블의 domain을 보고 확인하지 않음
+	// 따라서, 그냥 무조건 flga를 켜주는것도 방법 같음
+	v->domain.numeric_info.is_floating_point_numeric = true;
+
 	if (numeric_coerce_string_to_num (numeric_str.c_str (), numeric_str.size (), codeset, v) != NO_ERROR)
 	  {
 	    // TODO: needs error handling?

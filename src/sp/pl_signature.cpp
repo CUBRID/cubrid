@@ -165,6 +165,7 @@ namespace cubpl
     , name {nullptr}
     , auth {nullptr}
     , result_type {0}
+    , is_floating_point_numeric {false}
   {
     memset (&ext, 0, sizeof (pl_ext));
 
@@ -210,6 +211,8 @@ namespace cubpl
       }
 
     serializator.pack_int (result_type);
+
+    serializator.pack_bool (is_floating_point_numeric);
 
     // arg
     arg.pack (serializator);
@@ -271,6 +274,8 @@ namespace cubpl
       }
 
     deserializator.unpack_int (result_type);
+
+    deserializator.unpack_bool (is_floating_point_numeric);
 
     arg.unpack (deserializator);
 
@@ -346,6 +351,8 @@ namespace cubpl
       }
 
     size += serializator.get_packed_int_size (size); /* result_type */
+
+    size += serializator.get_packed_bool_size (size); /* is_floating_point_numeric*/
 
     size += arg.get_packed_size (serializator, size); // arg
 

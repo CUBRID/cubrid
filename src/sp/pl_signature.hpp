@@ -90,6 +90,7 @@ namespace cubpl
     char *name;
     char *auth;
     int result_type; // DB_TYPE
+    bool is_floating_point_numeric;
 
 #if defined (CS_MODE)
     bool is_deterministic; // DETERMINISTIC

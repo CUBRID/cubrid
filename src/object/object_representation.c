@@ -2971,6 +2971,13 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    {
 	      precision = has_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION;
 	    }
+
+	  /* Add debug prints */
+	  //   printf("pack \n");
+	  //   printf("DEBUG: carrier=0x%x, scale_mask=0x%x, scale_shift=%d\n", carrier, OR_DOMAIN_SCALE_MASK, OR_DOMAIN_SCALE_SHIFT);
+	  //   printf("DEBUG: precision=%d\n", precision);
+	  //   printf("DEBUG: scale=%d\n", scale);
+	  //   printf("DEBUG: is_floating_point=%d\n", has_floating_point_numeric);
 	  break;
 
 	case DB_TYPE_NCHAR:
@@ -3633,6 +3640,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      scale = (tmp_carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 
 	      /* Add debug prints */
+	      //       printf("unpack \n");
 	      //       printf("DEBUG: carrier=0x%x, scale_mask=0x%x, scale_shift=%d\n", carrier, OR_DOMAIN_SCALE_MASK, OR_DOMAIN_SCALE_SHIFT);
 	      //       printf("DEBUG: tmp_carrier=0x%x\n", tmp_carrier);
 	      //       printf("DEBUG: precision=%d\n", precision);

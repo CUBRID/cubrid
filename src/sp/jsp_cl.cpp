@@ -2089,6 +2089,25 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	    goto exit;
 	  }
 
+	// f-p numeric flag 값을 pack에 담는 곳
+	// 이렇게 검증을 해도 될까? 뭔가 더 좋은 방법 찾아봐야함!!!
+	// 나중에 사용하게 될 경우, 함수로 빼서 최적화 방법으로 바꾸자!!
+	sig.is_floating_point_numeric = false;
+	if ((node->info.method_call.method_type == PT_SP_FUNCTION && result_type == DB_TYPE_NUMERIC) ||
+	    node->info.method_call.method_type == PT_SP_PROCEDURE)
+	  {
+	    PT_NODE *tmp_arg = node->info.method_call.arg_list;
+	    //sig.is_floating_point_numeric = get_is_floating_point_numeric(tmp_arg);
+	    if (tmp_arg->node_type == PT_VALUE && tmp_arg->type_enum == PT_TYPE_NUMERIC)
+	      {
+		sig.is_floating_point_numeric = tmp_arg->data_type->info.data_type.is_floating_point_numeric;
+	      }
+	    else if (tmp_arg->node_type == PT_EXPR && tmp_arg->info.expr.arg1->type_enum == PT_TYPE_NUMERIC)
+	      {
+		sig.is_floating_point_numeric = tmp_arg->info.expr.arg1->data_type->info.data_type.is_floating_point_numeric;
+	      }
+	  }
+
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)

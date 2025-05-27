@@ -11055,6 +11055,10 @@ error:
   {
     DB_VALUE ret_value;
     cubpl::executor executor ((cubpl::pl_signature &) sig);
+
+    // SA 모드에서 pack에 담은 f-p numeric flag 넘기기
+    ret_value.domain.numeric_info.is_floating_point_numeric = sig.is_floating_point_numeric;
+
     req_error = executor.fetch_args_peek (args);
     if (req_error == NO_ERROR)
       {
