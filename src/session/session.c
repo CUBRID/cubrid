@@ -2442,10 +2442,6 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
 		{
 		  file_temp_preserve (thread_p, &tfile_vfid_p->temp_vfid);
 		  tfile_vfid_p->preserved = true;
-		  er_log_debug (ARG_FILE_LINE,
-				"preserved temp file : %p|%d|%d, tran_index = %d, query_id = %d, membuf=%p",
-				tfile_vfid_p, tfile_vfid_p->temp_vfid.volid, tfile_vfid_p->temp_vfid.fileid,
-				thread_p->tran_index, qentry_p->query_id, tfile_vfid_p->membuf);
 		}
 	    }
 	  temp = tfile_vfid_p;
