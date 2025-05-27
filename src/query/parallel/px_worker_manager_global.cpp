@@ -26,8 +26,6 @@
 
 #include "px_worker_manager_global.hpp"
 #include "system_parameter.h"
-#include "log_impl.h"
-#include "px_worker_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -64,15 +62,6 @@ namespace parallel_query
       }
     int pool_size = m_max_parallel_workers;
     int task_max_count = m_max_parallel_workers * TASK_QUEUE_SIZE_PER_CORE;
-    int max_trans = logtb_get_number_of_total_tran_indices();
-    m_worker_managers.reserve (max_trans);
-    m_worker_managers_with_dedicated_pool.reserve (max_trans);
-    for (int i = 0; i < max_trans; i++)
-      {
-	m_worker_managers.push_back (worker_manager());
-	m_worker_managers_with_dedicated_pool.push_back (worker_manager_with_dedicated_pool());
-      }
-
     m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, task_max_count,
 		    "parallel_query_worker_pool", NULL, 1, false);
   }
@@ -120,13 +109,4 @@ namespace parallel_query
     cubthread::get_manager()->push_task (m_worker_pool, task);
   }
 
-  worker_manager &worker_manager_global::get_worker_manager (int tran_index)
-  {
-    return m_worker_managers[tran_index];
-  }
-
-  worker_manager_with_dedicated_pool &worker_manager_global::get_worker_manager_with_dedicated_pool (int tran_index)
-  {
-    return m_worker_managers_with_dedicated_pool[tran_index];
-  }
 }

@@ -43,32 +43,8 @@ namespace parallel_query
     assert (m_reserved_workers == 0);
   }
 
-  worker_manager &worker_manager::get_manager (int tran_index)
-  {
-    return worker_manager_global::get_manager().get_worker_manager (tran_index);
-  }
-
-  worker_manager *worker_manager::get_manager_p (int tran_index)
-  {
-    return &worker_manager_global::get_manager().get_worker_manager (tran_index);
-  }
-
-  worker_manager &worker_manager::get_manager ()
-  {
-    return worker_manager::get_manager (thread_get_thread_entry_info ()->tran_index);
-  }
-
-  worker_manager *worker_manager::get_manager_p ()
-  {
-    return &worker_manager::get_manager (thread_get_thread_entry_info ()->tran_index);
-  }
-
   bool worker_manager::try_reserve_workers (int parallelism)
   {
-    if (m_reserved_workers > 0)
-      {
-	return false;
-      }
     bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
     if (result)
       {
@@ -79,10 +55,6 @@ namespace parallel_query
 
   void worker_manager::release_workers ()
   {
-    if (m_reserved_workers == 0)
-      {
-	return;
-      }
     while (m_working_workers.load () > 0)
       {
 	thread_sleep (1);
@@ -110,25 +82,6 @@ namespace parallel_query
     assert (m_reserved_workers == 0);
     assert (m_active_tasks.load () == 0);
     assert (m_worker_pool == nullptr);
-  }
-
-  worker_manager_with_dedicated_pool &worker_manager_with_dedicated_pool::get_manager (int tran_index)
-  {
-    return worker_manager_global::get_manager().get_worker_manager_with_dedicated_pool (tran_index);
-  }
-  worker_manager_with_dedicated_pool *worker_manager_with_dedicated_pool::get_manager_p (int tran_index)
-  {
-    return &worker_manager_global::get_manager().get_worker_manager_with_dedicated_pool (tran_index);
-  }
-
-  worker_manager_with_dedicated_pool &worker_manager_with_dedicated_pool::get_manager ()
-  {
-    return worker_manager_with_dedicated_pool::get_manager (thread_get_thread_entry_info ()->tran_index);
-  }
-
-  worker_manager_with_dedicated_pool *worker_manager_with_dedicated_pool::get_manager_p ()
-  {
-    return &worker_manager_with_dedicated_pool::get_manager (thread_get_thread_entry_info ()->tran_index);
   }
 
   bool worker_manager_with_dedicated_pool::try_reserve_workers (int parallelism, int task_queue_size)

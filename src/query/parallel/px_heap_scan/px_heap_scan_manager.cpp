@@ -224,9 +224,6 @@ namespace parallel_heap_scan
 	  }
       }
     parallel_query::worker_manager::get_manager ().release_workers ();
-#if (PARALLEL_HEAP_SCAN_LOG)
-    er_log_debug (ARG_FILE_LINE, "manager thread : %ld joined tasks", syscall (SYS_gettid));
-#endif
     /* all scan ended, merge lists */
     if (m_context->has_error())
       {
@@ -379,9 +376,6 @@ namespace parallel_heap_scan
 	list_id_data data;
 	m_list_stream->dequeue_timeout (data, 1);
       }
-#if (PARALLEL_HEAP_SCAN_LOG)
-    er_log_debug (ARG_FILE_LINE, "manager thread : %ld joined tasks", syscall (SYS_gettid));
-#endif
     parallel_query::worker_manager::get_manager ().release_workers ();
     m_is_start_once = false;
     timeout_occurred = false;
