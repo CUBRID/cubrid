@@ -1196,7 +1196,6 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
       temp_volid = (VOLID) num_vols;
       if (temp_volid != NULL_VOLID)
 	{
-	  /* Find the name of the volume */
 	  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 	  go_to_access = false;
 	  if (fileio_is_volume_exist (temp_vol_fullname) == true)
