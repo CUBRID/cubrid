@@ -1172,7 +1172,6 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
   const char *temp_name;
   char *alloc_tempath = NULL;
   int num_vols;
-  bool go_to_access;
 
   /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
@@ -1197,14 +1196,9 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
       if (temp_volid != NULL_VOLID)
 	{
 	  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-	  go_to_access = false;
 	  if (fileio_is_volume_exist (temp_vol_fullname) == true)
-	    {
-	      go_to_access = true;
-	    }
-	  if (go_to_access)
-	    {			/* Call the function */
-	      (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+	    {			/* Call the remove function */
+              (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 	    }
 	}
     }
