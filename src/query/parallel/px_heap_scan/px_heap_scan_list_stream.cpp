@@ -27,6 +27,7 @@
 #include "object_representation.h"
 #include "query_opfunc.h"
 #include "object_primitive.h"
+#include "query_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -106,8 +107,7 @@ namespace parallel_heap_scan
 
   bool list_writer::is_tfile_allocated() const
   {
-    if (m_list_id_wrapper_p->m_list_id && m_list_id_wrapper_p->m_list_id->tfile_vfid
-	&& m_list_id_wrapper_p->m_list_id->tfile_vfid->temp_vfid)
+    if (m_list_id_wrapper_p->m_list_id && m_list_id_wrapper_p->m_list_id->tfile_vfid)
       {
 	return m_list_id_wrapper_p->m_list_id->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
       }
