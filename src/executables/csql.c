@@ -163,8 +163,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
-static char csql_Prompt_offline[100];
-static char csql_Name[100];
+static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warning
 
 /*
  * Handles for the various files
@@ -2949,7 +2948,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       strncat (csql_Prompt, " ", avail_size);
     }
   snprintf (csql_Prompt_offline, sizeof (csql_Prompt_offline), "!%s", csql_Prompt);
-  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */

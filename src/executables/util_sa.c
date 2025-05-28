@@ -645,7 +645,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
       if (getcwd (cwd, PATH_MAX) != NULL)
 	{
-	  snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path);
+	  if (snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path) >= PATH_MAX)
+	    {
+	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
+	       * Additional review will be required.        
+	       */
+	      goto error_exit;
+	    }
+
 	  lob_path = abs_lob_path;
 	}
       else
@@ -1836,7 +1843,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION )
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * estimatedb_data() - estimatedb_data main routine
  *   return: EXIT_SUCCES/EXIT_FAILURE
@@ -1845,6 +1852,7 @@ int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
   /* todo: remove me */
+  return -1;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

@@ -676,7 +676,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
-    m_query_id = -1;
+    m_query_id = (uint64_t) (-1);
   }
 
   int
