@@ -30,6 +30,7 @@
 
 #include "query_bitset.h"
 
+#include "error_manager.h"
 #include "memory_alloc.h"
 
 #define NBYTES(n)	((n) * sizeof(BITSET_CARRIER))

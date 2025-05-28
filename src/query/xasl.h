@@ -31,6 +31,7 @@
 #include "access_spec.hpp"
 #include "memory_hash.h"
 
+#include "query_hash_join.h"
 #include "query_hash_scan.h"
 #include "query_list.h"
 #include "regu_var.hpp"
@@ -373,91 +374,16 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
-typedef struct hashjoin_input HASHJOIN_INPUT;
-struct hashjoin_input
-{
-  XASL_NODE *xasl;
-  ACCESS_SPEC_TYPE *spec_list;
-  VAL_LIST *val_list;
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  TP_DOMAIN **domains;
-  int *value_indexes;
-#endif
-};
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct hashjoin_stats HASHJOIN_STATS;
-struct hashjoin_stats
-{
-  HASH_METHOD hash_method;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    struct timeval build_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval insert;	/* qexec_hash_join_build_key */
-    } profile;
-#endif
-  } build;
-
-  struct
-  {
-    struct timeval elapsed_time;
-    struct timeval probe_time;
-    UINT64 fetches;
-    UINT64 fetch_time;
-    UINT64 ioreads;
-    UINT64 readkeys;
-    UINT64 rows;
-    UINT32 max_collisions;
-
-#if defined(TEST_HASH_JOIN_PROFILE_TIME)
-    struct
-    {
-      struct timeval fetch;	/* qexec_hash_join_fetch_key */
-      struct timeval hash;	/* qdata_hash_scan_key */
-      struct timeval search;	/* qexec_hash_join_probe_key */
-      struct timeval match;	/* qexec_hash_join_fetch_key */
-      struct timeval add;	/* qexec_merge_tuple_add_list */
-    } profile;
-#endif
-  } probe;
-};
-#endif
-
-typedef struct hashjoin_proc_node HASHJOIN_PROC_NODE;
-struct hashjoin_proc_node
+typedef struct hashjoin_proc_node
 {
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
-
   QFILE_LIST_MERGE_INFO merge_info;
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  HASHJOIN_STATS stats;
-
-  HASH_LIST_SCAN hash_scan;
-
-  HASHJOIN_INPUT *build;
-  HASHJOIN_INPUT *probe;
-
-  /* The common domains between the domains of values used in the build and probe inputs. */
-  TP_DOMAIN **coerce_domains;
-
-  /* Whether there is a need to use the coerce domain. */
-  bool need_coerce_domains;
-#endif
-};
+  HASHJOIN_DOMAIN_INFO domain_info;
+  HASHJOIN_STATS_GROUP stats_group;
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
+} HASHJOIN_PROC_NODE;
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
@@ -1077,6 +1003,7 @@ struct partition_spec_node
   HFID hfid;			/* class hfid */
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
+  SCAN_STATS scan_stats;
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
