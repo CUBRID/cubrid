@@ -57,9 +57,9 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            TC_PRIVATE_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git develop | cut -f1)
-            echo "sha value from tc repository.(only from develop branch)"
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git cubvec/cubvec | cut -f1)
+            TC_PRIVATE_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git cubvec/cubvec | cut -f1)
+            echo "sha value from tc repository.(only from cubvec/cubvec branch)"
             echo "TC_SHA: $TC_SHA"
             echo "TC_PRIVATE_SHA: $TC_PRIVATE_SHA"
 
@@ -119,7 +119,7 @@ jobs:
                           cubvec)
                             TEST_SUITE="sql"
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/sql/_36_cubvec
+                            glob_path="\$base_dir/sql/_36_cubvec"
                             ;;
                           plcsql)
                             TEST_SUITE="sql"
