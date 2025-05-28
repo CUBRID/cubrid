@@ -1191,7 +1191,6 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  /* Cycle over all temporarily volumes, skip the given one */
   for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
     {
       temp_volid = (VOLID) num_vols;
