@@ -636,7 +636,7 @@ logddl_make_copy_filename (T_APP_NAME app_name, const char *file_full_path, char
   const char *name_tmp = NULL;
   int retval = 0;
 
-  if (file_full_path == NULL || copy_filename == NULL || buf_size < 0)
+  if (file_full_path == NULL || copy_filename == NULL)
     {
       return -1;
     }
@@ -672,7 +672,7 @@ logddl_make_copy_dir (T_APP_NAME app_name, char *copy_filename, char *copy_fullp
   const char *env_root = NULL;
   int retval = 0;
 
-  if (copy_filename == NULL || copy_fullpath == NULL || buf_size < 0)
+  if (copy_filename == NULL || copy_fullpath == NULL)
     {
       return -1;
     }
@@ -951,7 +951,7 @@ logddl_write_tran_str (const char *fmt, ...)
 	  len = DDL_LOG_BUFFER_SIZE;
 	}
 
-      if (len < 0 || fwrite (msg, sizeof (char), len, fp) != len)
+      if (len < 0 || fwrite (msg, sizeof (char), len, fp) != (size_t) len)
 	{
 	  goto write_error;
 	}
@@ -1287,6 +1287,7 @@ logddl_create_dir (const char *new_dir)
 #if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
+  // cppcheck-suppress arrayIndexOutOfBounds
   else if (strlen (path) > 3 && path[2] == '/')
     p = path + 3;
 #else /* WINDOWS */

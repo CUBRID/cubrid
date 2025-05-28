@@ -32,12 +32,12 @@ namespace cubpl
 {
   query_cursor::query_cursor (cubthread::entry *thread_p, QUERY_ID qid, bool oid_included)
     : m_thread (thread_p)
-    , m_is_oid_included (oid_included)
-    , m_is_opened (false)
-    , m_fetch_count (1000) // FIXME: change the fixed value, 1000
     , m_query_id (qid)
     , m_query_entry (nullptr)
     , m_current_row_index (0)
+    , m_is_oid_included (oid_included)
+    , m_is_opened (false)
+    , m_fetch_count (1000) // FIXME: change the fixed value, 1000
   {
     //
   }
