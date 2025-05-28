@@ -11416,7 +11416,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
    * then the resulting type MUST be integer. Otherwise strange things happen
    * while generating xasl: predicate expressions with wrong operators.
    */
-  if (t1 == PT_TYPE_LOGICAL && t2 == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
+  if (result_type == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
     {
       result_type = PT_TYPE_INTEGER;
     }

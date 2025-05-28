@@ -11469,6 +11469,11 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 
   /* If it is a synonym name, change it to the target name. */
   class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  if (class_name == NULL)
+    {
+      return spec;
+    }
+
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {

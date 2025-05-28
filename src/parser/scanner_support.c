@@ -1124,6 +1124,10 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 
 	  return in + 1;
 	}
+      else if (*in == NULL)
+	{
+	  break;
+	}
 
       in++;
     }
@@ -1131,9 +1135,11 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   /* illegal hint expression */
   if (is_first_hit)
     {
-      parser_free_node (this_parser, hint_table[hint_idx].arg_list);
-      hint_table[hint_idx].arg_list = NULL;
-
+      if (hint_table[hint_idx].arg_list != NULL)
+	{
+	  parser_free_node (this_parser, hint_table[hint_idx].arg_list);
+	  hint_table[hint_idx].arg_list = NULL;
+	}
 #if 1
       // This code has been inserted to handle the same as the existing code.
       // It responds to the following types of errors:  INDEX_SS( (idx)
