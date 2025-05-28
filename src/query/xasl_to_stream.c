@@ -4666,6 +4666,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
   ptr = or_pack_int (ptr, access_spec->flags);
 
+  ptr = or_pack_int (ptr, access_spec->num_parallel_threads);
+
   return ptr;
 }
 
@@ -6819,6 +6821,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
   size += (OR_INT_SIZE		/* type */
 	   + OR_INT_SIZE	/* access */
 	   + OR_INT_SIZE	/* flags */
+	   + OR_INT_SIZE	/* num_parallel_threads */
 	   + PTR_SIZE		/* index_ptr */
 	   + PTR_SIZE		/* where_key */
 	   + PTR_SIZE		/* where_pred */

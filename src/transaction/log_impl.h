@@ -57,6 +57,7 @@
 #include "storage_common.h"
 #include "tde.h"
 #include "thread_entry.hpp"
+#include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
 
@@ -947,6 +948,12 @@ extern char log_Name_removed_archive[];
 extern CDC_GLOBAL cdc_Gl;
 extern bool cdc_Logging;
 
+#if defined (SERVER_MODE)
+// *INDENT-OFF*
+extern cubthread::entry_workpool *g_backup_read_worker_pool;
+// *INDENT-ON*
+#endif
+
 /* logging */
 #if defined (SA_MODE)
 #define LOG_THREAD_TRAN_MSG "%s"
@@ -1030,6 +1037,9 @@ extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char 
 			 FILEIO_BACKUP_LEVEL backup_level, bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file_path, int num_threads, FILEIO_ZIP_METHOD zip_method,
 			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool separate_keys);
+extern void logpb_create_backup_read_worker_pool (size_t thread_count);
+extern void logpb_push_backup_read_task (cubthread::entry_task * task);
+extern void logpb_destroy_backup_read_worker_pool ();
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			  const char *prefix_logname, bo_restart_arg * r_args);
 extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,

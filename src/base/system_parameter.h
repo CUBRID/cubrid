@@ -500,6 +500,9 @@ enum param_id
 
   PRM_ID_ENABLE_JVM_HEAP_DUMP,
 
+  PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
+  PRM_ID_MAX_PARALLEL_WORKERS,
+
   PRM_ID_VECTOR_INDEX_EF_SEARCH,
 
   /* change PRM_LAST_ID when adding new system parameters */

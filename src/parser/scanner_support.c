@@ -366,6 +366,7 @@ void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
+  int num_parallel_threads = 0;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   bool first_hit = true;
@@ -740,6 +741,37 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_NO_PARALLEL_HEAP_SCAN:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_PARALLEL:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.query.q.select.hint =
+			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			}
+		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			}
+		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  break;
 	case PT_HINT_NO_ELIMINATE_JOIN:
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -1092,6 +1124,10 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 
 	  return in + 1;
 	}
+      else if (*in == NULL)
+	{
+	  break;
+	}
 
       in++;
     }
@@ -1099,9 +1135,11 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   /* illegal hint expression */
   if (is_first_hit)
     {
-      parser_free_node (this_parser, hint_table[hint_idx].arg_list);
-      hint_table[hint_idx].arg_list = NULL;
-
+      if (hint_table[hint_idx].arg_list != NULL)
+	{
+	  parser_free_node (this_parser, hint_table[hint_idx].arg_list);
+	  hint_table[hint_idx].arg_list = NULL;
+	}
 #if 1
       // This code has been inserted to handle the same as the existing code.
       // It responds to the following types of errors:  INDEX_SS( (idx)
