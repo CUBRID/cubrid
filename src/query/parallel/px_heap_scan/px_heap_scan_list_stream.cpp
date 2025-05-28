@@ -104,6 +104,16 @@ namespace parallel_heap_scan
       }
   }
 
+  bool list_writer::is_tfile_allocated() const
+  {
+    if (m_list_id_wrapper_p->m_list_id && m_list_id_wrapper_p->m_list_id->tfile_vfid
+	&& m_list_id_wrapper_p->m_list_id->tfile_vfid->temp_vfid)
+      {
+	return m_list_id_wrapper_p->m_list_id->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
+      }
+    return false;
+  }
+
   void list_writer::write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data)
   {
     list_id_wrapper::status status = list_id_wrapper::status::NONE;

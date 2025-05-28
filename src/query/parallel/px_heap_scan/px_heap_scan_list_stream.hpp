@@ -150,6 +150,8 @@ namespace parallel_heap_scan
       void write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data);
       void close (list_id_data &data);
 
+      bool is_tfile_allocated() const;
+
     private:
       std::shared_ptr<list_stream> m_stream;
       list_id_wrapper *m_list_id_wrapper_p;

@@ -228,9 +228,10 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
+		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
 		    if (!m_mergable_list_writer->is_tfile_allocated())
 		      {
-			lock.lock();
+			tfile_lock.lock();
 			is_tfile_locked = true;
 		      }
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
@@ -252,13 +253,24 @@ namespace parallel_heap_scan
 		      }
 		    if (is_tfile_locked)
 		      {
-			lock.unlock();
+			tfile_lock.unlock();
 			is_tfile_locked = false;
 		      }
 		  }
 		else
 		  {
+		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		    if (!writer.is_tfile_allocated())
+		      {
+			tfile_lock.lock();
+			is_tfile_locked = true;
+		      }
 		    writer.write (thread_p, scan_id, data);
+		    if (is_tfile_locked)
+		      {
+			tfile_lock.unlock();
+			is_tfile_locked = false;
+		      }
 		  }
 		if (on_trace)
 		  {
