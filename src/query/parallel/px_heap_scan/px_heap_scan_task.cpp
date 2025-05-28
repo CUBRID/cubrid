@@ -241,17 +241,18 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
-		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
-		    if (!m_mergable_list_writer->is_tfile_allocated())
-		      {
-			tfile_lock.lock();
-		      }
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
 		      {
 			break;
 		      }
-		    writer_error_code = m_mergable_list_writer->write (thread_p);
-
+		    {
+		      std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		      if (!m_mergable_list_writer->is_tfile_allocated())
+			{
+			  tfile_lock.lock();
+			}
+		      writer_error_code = m_mergable_list_writer->write (thread_p);
+		    }
 		    if (!resolved_dbval_stored)
 		      {
 			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
