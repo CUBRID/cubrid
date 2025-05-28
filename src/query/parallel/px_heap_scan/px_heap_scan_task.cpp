@@ -133,34 +133,23 @@ namespace parallel_heap_scan
       {
 	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
 			 scan_id->vd);
-	if (!open_succeeded)
-	  {
-	    /* maybe interrupted */
-	    db_change_private_heap (thread_p, orig_heap_id);
-	    thread_p->tran_index = orig_tran_index;
-	    thread_p->conn_entry = orig_conn_entry;
-	    m_context->add_tasks_scan_ended();
-	    m_context->add_tasks_executed();
-	    m_context->add_tasks_list_opened();
-	    return;
-	  }
 	outptr_list = m_memory_mapper->get_outptr_list();
 	assert (outptr_list);
       }
     else
       {
 	open_succeeded = m_list_id_wrapper->open (thread_p);
-	if (!open_succeeded)
-	  {
-	    /* maybe interrupted */
-	    db_change_private_heap (thread_p, orig_heap_id);
-	    thread_p->tran_index = orig_tran_index;
-	    thread_p->conn_entry = orig_conn_entry;
-	    m_context->add_tasks_scan_ended();
-	    m_context->add_tasks_executed();
-	    m_context->add_tasks_list_opened();
-	    return;
-	  }
+      }
+    if (!open_succeeded)
+      {
+	/* maybe interrupted */
+	db_change_private_heap (thread_p, orig_heap_id);
+	thread_p->tran_index = orig_tran_index;
+	thread_p->conn_entry = orig_conn_entry;
+	m_context->add_tasks_scan_ended();
+	m_context->add_tasks_executed();
+	m_context->add_tasks_list_opened();
+	return;
       }
     m_context->add_tasks_list_opened();
 
