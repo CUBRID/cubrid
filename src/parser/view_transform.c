@@ -5106,7 +5106,9 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
-	  if (hint & (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO))
+	  if (hint &
+	      (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO |
+	       PT_HINT_QUERY_CACHE))
 	    {
 	      /* materialize CTE if it is referenced at least once. */
 	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
