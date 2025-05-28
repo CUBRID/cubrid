@@ -68,7 +68,7 @@
 #include "subquery_cache.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-
+#include "px_heap_scan_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -310,6 +310,7 @@ static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
+static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -471,9 +472,6 @@ static DB_VALUE *pt_index_value (const VAL_LIST * value, int index);
 static REGU_VARIABLE *pt_join_term_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * join_term);
 
 static PT_NODE *pt_query_set_reference (PARSER_CONTEXT * parser, PT_NODE * node);
-
-static REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
-							     VAL_LIST * value_list, int *attr_offsets);
 
 static DB_VALUE *pt_regu_to_dbvalue (PARSER_CONTEXT * parser, REGU_VARIABLE * regu);
 
@@ -9665,7 +9663,7 @@ pt_make_pos_regu_var_from_scratch (TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos
  *   value_list(in):
  *   attr_offsets(in):
  */
-static REGU_VARIABLE_LIST
+REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list, VAL_LIST * value_list,
 				   int *attr_offsets)
 {
@@ -12356,6 +12354,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
+	      if (access_method == ACCESS_METHOD_SEQUENTIAL
+		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		}
+
+	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		{
+		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		}
 
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
@@ -14487,34 +14496,41 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 }
 
 
+/*
+ * pt_to_hashjoin_proc() -
+ *   return: XASL node for hash join execution; NULL on error.
+ *   parser(in): Parser context.
+ *   outer_xasl(in): XASL node for outer input of the hash join.
+ *   inner_xasl(in): XASL node for inner input of the hash join.
+ */
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
+pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
 {
   XASL_NODE *xasl;
+  HASHJOIN_PROC_NODE *proc;
 
-  if ((parser == NULL) || (outer_xasl == NULL) || (inner_xasl == NULL))
-    {
-      assert (false);
-      return NULL;
-    }
+  assert (parser != NULL);
+  assert (outer_xasl != NULL);
+  assert (inner_xasl != NULL);
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
-  if (!xasl)
+  if (xasl == NULL)
     {
-      PT_NODE dummy;
-
-      memset (&dummy, 0, sizeof (dummy));
-      PT_ERROR (parser, &dummy,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-
+      if (er_errid () == NO_ERROR)
+	{
+	  assert_release (false);
+	}
       return NULL;
     }
 
-  xasl->aptr_list = outer_xasl;
-  xasl->aptr_list->next = inner_xasl;
+  outer_xasl->next = inner_xasl;
+  inner_xasl->next = NULL;
 
-  xasl->proc.hashjoin.outer.xasl = outer_xasl;
-  xasl->proc.hashjoin.inner.xasl = inner_xasl;
+  xasl->aptr_list = outer_xasl;
+
+  proc = &xasl->proc.hashjoin;
+  proc->outer.xasl = outer_xasl;
+  proc->inner.xasl = inner_xasl;
 
   return xasl;
 }
@@ -18305,6 +18321,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
+  scan_check_parallel_heap_scan_possible (xasl);
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -18490,7 +18508,7 @@ outofmem:
 
 }
 
-static XASL_NODE *
+XASL_NODE *
 pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   assert (parser != NULL && spec != NULL);
@@ -20917,6 +20935,45 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   return false;
 }
 
+static PT_NODE *
+pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_VALUE tmp;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
+    {
+      pt_evaluate_tree (parser, node, &tmp, 1);
+      node = pt_dbval_to_value (parser, &tmp);
+      db_value_clear (&tmp);
+    }
+
+  return node;
+}
+
+void
+pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      break;
+    case PT_UPDATE:
+      statement = parser_walk_tree (parser, statement, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
+      break;
+    case PT_DELETE:
+      break;
+    default:
+      break;
+    }
+
+  return;
+}
+
 /*
  * pt_to_update_xasl () - Converts an update parse tree to
  * 			  an XASL graph for an update
@@ -22094,6 +22151,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     default:
       break;
     }
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)

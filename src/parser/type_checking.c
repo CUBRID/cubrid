@@ -7886,7 +7886,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   switch (node->node_type)
     {
     case PT_EXPR:
-      node = pt_eval_expr_type (parser, node);
+      if (sc_info->has_dblink == false)
+	{
+	  node = pt_eval_expr_type (parser, node);
+	}
 #if 1				//original code but it doesn't check for errors
       if (node == NULL)
 	{
@@ -11413,7 +11416,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
    * then the resulting type MUST be integer. Otherwise strange things happen
    * while generating xasl: predicate expressions with wrong operators.
    */
-  if (t1 == PT_TYPE_LOGICAL && t2 == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
+  if (result_type == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
     {
       result_type = PT_TYPE_INTEGER;
     }
@@ -19265,7 +19268,8 @@ end:
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false };
+  PT_NODE *spec = NULL;
+  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
 
   if (pt_has_error (parser))
     {
@@ -19275,6 +19279,32 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       sc_info_ptr = &sc_info;
     }
+
+  sc_info_ptr->has_dblink = false;
+
+  if (tree)
+    {
+      switch (tree->node_type)
+	{
+	case PT_DELETE:
+	  spec = tree->info.delete_.spec;
+	  break;
+	case PT_INSERT:
+	  spec = tree->info.insert.spec;
+	  break;
+	case PT_UPDATE:
+	  spec = tree->info.update.spec;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (spec && spec->info.spec.remote_server_name)
+    {
+      sc_info_ptr->has_dblink = true;
+    }
+
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   if (pt_has_error (parser))
