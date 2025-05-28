@@ -106,7 +106,7 @@ namespace parallel_heap_scan
     list_id_data data;
     OUTPTR_LIST *outptr_list;
     bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
-    bool is_tfile_locked = false;
+    bool open_succeeded = false;
     int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -131,13 +131,36 @@ namespace parallel_heap_scan
     std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
-	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
+	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
+			 scan_id->vd);
+	if (!open_succeeded)
+	  {
+	    /* maybe interrupted */
+	    db_change_private_heap (thread_p, orig_heap_id);
+	    thread_p->tran_index = orig_tran_index;
+	    thread_p->conn_entry = orig_conn_entry;
+	    m_context->add_tasks_scan_ended();
+	    m_context->add_tasks_executed();
+	    m_context->add_tasks_list_opened();
+	    return;
+	  }
 	outptr_list = m_memory_mapper->get_outptr_list();
 	assert (outptr_list);
       }
     else
       {
-	m_list_id_wrapper->open (thread_p);
+	open_succeeded = m_list_id_wrapper->open (thread_p);
+	if (!open_succeeded)
+	  {
+	    /* maybe interrupted */
+	    db_change_private_heap (thread_p, orig_heap_id);
+	    thread_p->tran_index = orig_tran_index;
+	    thread_p->conn_entry = orig_conn_entry;
+	    m_context->add_tasks_scan_ended();
+	    m_context->add_tasks_executed();
+	    m_context->add_tasks_list_opened();
+	    return;
+	  }
       }
     m_context->add_tasks_list_opened();
 
@@ -150,6 +173,7 @@ namespace parallel_heap_scan
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
+    /* lock because of mvcc_snapshot */
     lock.unlock();
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
@@ -232,7 +256,6 @@ namespace parallel_heap_scan
 		    if (!m_mergable_list_writer->is_tfile_allocated())
 		      {
 			tfile_lock.lock();
-			is_tfile_locked = true;
 		      }
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
 		      {
@@ -251,11 +274,6 @@ namespace parallel_heap_scan
 			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
 			break;
 		      }
-		    if (is_tfile_locked)
-		      {
-			tfile_lock.unlock();
-			is_tfile_locked = false;
-		      }
 		  }
 		else
 		  {
@@ -263,14 +281,8 @@ namespace parallel_heap_scan
 		    if (!writer.is_tfile_allocated())
 		      {
 			tfile_lock.lock();
-			is_tfile_locked = true;
 		      }
 		    writer.write (thread_p, scan_id, data);
-		    if (is_tfile_locked)
-		      {
-			tfile_lock.unlock();
-			is_tfile_locked = false;
-		      }
 		  }
 		if (on_trace)
 		  {

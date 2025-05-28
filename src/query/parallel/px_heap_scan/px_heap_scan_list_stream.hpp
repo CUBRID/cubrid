@@ -59,7 +59,7 @@ namespace parallel_heap_scan
       int close_list_scan ();
       status read (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, QFILE_LIST_SCAN_ID *list_scan_id);
       status write (THREAD_ENTRY *thread_p, QFILE_TUPLE_RECORD *tplrec);
-      void open (THREAD_ENTRY *thread_p);
+      bool open (THREAD_ENTRY *thread_p);
       void close ();
       VPID m_read_vpid;
       VPID m_write_vpid;

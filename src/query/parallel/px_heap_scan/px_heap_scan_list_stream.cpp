@@ -404,7 +404,7 @@ namespace parallel_heap_scan
     return status::WRITE_SUCCESS;
   }
 
-  void list_id_wrapper::open (THREAD_ENTRY *thread_p)
+  bool list_id_wrapper::open (THREAD_ENTRY *thread_p)
   {
     if (m_task_thread_p != thread_p)
       {
@@ -412,7 +412,11 @@ namespace parallel_heap_scan
       }
     m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF,
 				 nullptr);
-    assert (m_list_id != nullptr);
+    if (m_list_id == nullptr)
+      {
+	return false;
+      }
+    return true;
   }
 
   void list_id_wrapper::close ()

@@ -468,6 +468,7 @@ extern void
 scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
   HL_HEAPID orig_heap_id;
+  parallel_query::worker_manager::get_manager ().release_workers ();
   if (thread_is_on_trace (thread_p))
     {
       std::size_t parallelism = scan_id->s.phsid.manager->m_parallelism;
