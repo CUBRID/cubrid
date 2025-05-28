@@ -11578,11 +11578,22 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 	      break;
 	    }
 
-	  if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
-	      || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+	  /*
+	   * 아래 예제에서 rownum일 경우 해당 부분에서 overflow 에러가 발생함.
+	   * 이유는 desired_domain->precision 값이 0으로 설정되어 있기 때문에 해당 조건에 만족하게됨.
+	   * desired_domain->precision 값이 0인 이유는 floating point numeric 타입의 경우 precision을 0으로 셋팅함.
+	   * ex)
+	   *     create table t1 (col1 numeric);
+	   *     insert into t1 select rownum from dual;
+	   */
+	  if (!desired_domain->is_floating_point_numeric && !dest->domain.numeric_info.is_floating_point_numeric)
 	    {
-	      /* can not coerce for overflow */
-	      dom_status = DOMAIN_OVERFLOW;
+	      if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
+		  || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+		{
+		  /* can not coerce for overflow */
+		  dom_status = DOMAIN_OVERFLOW;
+		}
 	    }
 	}
     }
