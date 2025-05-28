@@ -28,7 +28,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "optimizer.h"
+/*
+ * Forward Declarations
+ */
+struct qo_env;
+typedef struct qo_env QO_ENV;
 
 /*
  * The maximum number of elements permitted in a set.
@@ -46,6 +50,7 @@
 		>> _LOG2_WORDSIZE)
 
 typedef unsigned int BITSET_CARRIER;
+typedef struct bitset BITSET;
 typedef struct bitset_iterator BITSET_ITERATOR;
 
 struct bitset
