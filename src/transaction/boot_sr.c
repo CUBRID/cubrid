@@ -914,11 +914,11 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
     }
 
   /* if (boot_Db_parm->temp_nvols == 0)
-    {
-      assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
-      return NO_ERROR;
-    }
-    TODO: Even when boot_Db_parm->temp_nvols == 0, temp volumes are still removed, so they should always be subject to removal
+     {
+     assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
+     return NO_ERROR;
+     }
+     TODO: Even when boot_Db_parm->temp_nvols == 0, temp volumes are still removed, so they should always be subject to removal
    */
 
   boot_find_and_remove_temp_volumes (thread_p);
@@ -1181,7 +1181,7 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
 	  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 	  if (fileio_is_volume_exist (temp_vol_fullname) == true)
 	    {			/* Call the remove function */
-              (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+	      (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 	    }
 	}
     }
