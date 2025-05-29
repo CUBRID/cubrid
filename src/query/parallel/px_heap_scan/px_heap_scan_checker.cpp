@@ -230,7 +230,14 @@ namespace parallel_heap_scan
       case TYPE_SP:
 	result = check (src->value.sp_ptr->args, is_outptr_list);
 	/* cannot execute sp in child threads */
-	result = CHECK_RESULT::CANNOT_PARALLEL;
+	if (is_outptr_list)
+	  {
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	  }
+	else
+	  {
+	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	  }
 	break;
       case TYPE_FUNC:
 	temp = check (src->value.funcp->operand, is_outptr_list);
