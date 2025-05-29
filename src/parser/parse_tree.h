@@ -2164,6 +2164,9 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+#define HNSW_DEFAULT_M 16
+#define HNSW_DEFAULT_EF_CONSTRUCTION 64
+
 /* Structure for vector index specific information */
 typedef struct pt_vector_index_info
 {
