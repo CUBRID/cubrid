@@ -182,7 +182,6 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID
 static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 static void boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
@@ -946,22 +945,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
   return error_code;
 }
 
-/*
- * boot_xremove_temp_volume () - remove a temporary volume from the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- *   volid(in): Volume identifier to remove
- *   vlabel(in): Volume label
- *
- * Note: Pass control to boot_remove_temp_volume to remove the temporary volume.
- */
-static int
-boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
-{
-  return boot_remove_temp_volume (thread_p, volid, vlabel);
-}
-
 static void
 boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
 {
@@ -1159,7 +1142,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * boot_find_and_remove_temp_volumes () - Find temporary volumes and remove them using boot_xremove_temp_volume()
+ * boot_find_and_remove_temp_volumes () - Find temporary volumes and remove them using boot_remove_temp_volume()
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
@@ -1198,7 +1181,7 @@ boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
 	  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 	  if (fileio_is_volume_exist (temp_vol_fullname) == true)
 	    {			/* Call the remove function */
-              (void) boot_xremove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+              (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 	    }
 	}
     }
