@@ -640,6 +640,12 @@ typedef enum
   PSTAT_LOG_REDO_ASYNC,
   PSTAT_LOG_REDO_FUNC_EXEC,
 
+  /* Execution statistics for regu var evaluation */
+  PSTAT_REGU_EVAL_TIME_10USEC,
+  PSTAT_REGU_NUM_FETCHES,
+  PSTAT_REGU_NUM_IOREADS,
+  PSTAT_REGU_NUM_CALL_EVALS,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,

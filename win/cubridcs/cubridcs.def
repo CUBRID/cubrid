@@ -344,6 +344,7 @@ EXPORTS
     db_set_connect_order
     db_set_client_ip_addr
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_synchronize_cache
     db_time_decode

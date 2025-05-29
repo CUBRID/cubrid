@@ -33,9 +33,9 @@ namespace cubpl
   execution_stack::execution_stack (cubthread::entry *thread_p)
     : m_id ((std::uint64_t) this)
     , m_thread_p (thread_p)
+    , m_connection {nullptr}
     , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */, 0)
     , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */, 0)
-    , m_connection {nullptr}
     , m_req_id {0}
   {
     m_tid = logtb_find_current_tranid (thread_p);
@@ -57,12 +57,15 @@ namespace cubpl
       {
 	destory_all_cursors (sess);
 
-	if (m_connection && (sess->is_interrupted () || er_errid () != NO_ERROR))
+	if (m_connection)
 	  {
-	    m_connection->invalidate ();
+	    if (sess->is_interrupted () || er_errid () != NO_ERROR)
+	      {
+		m_connection->invalidate ();
+	      }
+	    sess->release_connection (m_connection); // release connection to session
 	  }
 
-	sess->release_connection (m_connection); // release connection to session
 	sess->pop_and_destroy_stack (get_id ());
       }
   }

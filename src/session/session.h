@@ -97,5 +97,5 @@ extern bool session_has_pl_session (THREAD_ENTRY * thread_p);
 extern void session_notify_pl_task_completion (const struct session_state *session_arg);
 #endif
 
-extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
+extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory);
 #endif /* _SESSION_H_ */

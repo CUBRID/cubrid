@@ -375,7 +375,13 @@ exit:
     m_stack->set_java_command (SP_CODE_INVOKE);
 
     // get changed session parameters
-    const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (true);
+    cubpl::session *sess = get_session ();
+    std::vector<sys_param> session_params;
+    if (sess)
+      {
+	session_params = sess->obtain_session_parameters (m_stack->get_connection ());
+      }
+    // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
     invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig,
@@ -577,6 +583,10 @@ exit:
 	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
+	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
       default:
 	// TODO: not implemented yet, do we need error handling?
@@ -1017,6 +1027,38 @@ exit:
 
     error = m_stack->send_data_to_java (blk);
     blk.freemem ();
+
+    return error;
+  }
+
+  int
+  executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_SET_PL_SESSION_PARAM;
+
+    std::vector<sys_param> params;
+    unpacker.unpack_all (params);
+
+    for (const auto &prm : params)
+      {
+	if (prm.prm_id < static_cast<int> (sys_param_id::PRM_ID_BEGIN))
+	  {
+	    continue;
+	  }
+	else
+	  {
+	    get_session ()->mark_session_param_changed (prm.prm_id);
+	    get_session ()->set_session_param (prm);
+	  }
+      }
+
+    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS));
+    if (blk.is_valid ())
+      {
+	m_stack->send_data_to_java (blk);
+	blk.freemem ();
+      }
 
     return error;
   }

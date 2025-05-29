@@ -769,6 +769,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DBLINK_AUTO_COMMIT "dblink_auto_commit"
 
+#define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
+
+#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
+
+#define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1195,7 +1201,7 @@ static unsigned int prm_pb_num_LRU_chains_flag = 0;
 
 int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = 1000;
 static int prm_page_bg_flush_interval_msec_default = 1000;
-static int prm_page_bg_flush_interval_msec_lower = -1;
+static int prm_page_bg_flush_interval_msec_lower = 0;
 static unsigned int prm_page_bg_flush_interval_msec_flag = 0;
 
 bool PRM_ADAPTIVE_FLUSH_CONTROL = true;
@@ -2487,6 +2493,27 @@ static unsigned int prm_max_subquery_cache_size_flag = 0;
 static bool PRM_DBLINK_AUTO_COMMIT = true;
 static bool prm_dblink_auto_commit_default = true;
 static unsigned int prm_dblink_auto_commit_flag = 0;
+
+#if defined(NDEBUG)
+static bool PRM_ENABLE_JVM_HEAP_DUMP = false;
+static bool prm_enable_jvm_heap_dump_default = false;
+#else
+static bool PRM_ENABLE_JVM_HEAP_DUMP = true;
+static bool prm_enable_jvm_heap_dump_default = true;
+#endif
+static unsigned int prm_enable_jvm_heap_dump_flag = 0;
+
+int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
+static int prm_parallel_heap_scan_threads_default = 2;
+static int prm_parallel_heap_scan_threads_lower = 0;
+static int prm_parallel_heap_scan_threads_upper = 32;
+static unsigned int prm_parallel_heap_scan_threads_flag = 0;
+
+int PRM_MAX_PARALLEL_WORKERS = 0;
+static int prm_max_parallel_workers_default = 32;
+static int prm_max_parallel_workers_lower = 0;
+static int prm_max_parallel_workers_upper = 128;
+static unsigned int prm_max_parallel_workers_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5001,7 +5028,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_HASH_LIST_SCAN_SIZE,
    PRM_NAME_MAX_HASH_LIST_SCAN_SIZE,
-   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_SIZE_UNIT),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_max_hash_list_scan_size_flag,
    (void *) &prm_max_hash_list_scan_size_default,
@@ -6077,7 +6104,7 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_STORED_PROCEDURE_JVM_OPTIONS,
+  {PRM_ID_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
    PRM_NAME_JAVA_STORED_PROCEDURE_JVM_OPTIONS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_STRING,
@@ -6568,7 +6595,42 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_JVM_HEAP_DUMP,
+   PRM_NAME_ENABLE_JVM_HEAP_DUMP,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_enable_jvm_heap_dump_flag,
+   (void *) &prm_enable_jvm_heap_dump_default,
+   (void *) &PRM_ENABLE_JVM_HEAP_DUMP,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
+   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_parallel_heap_scan_threads_flag,
+   (void *) &prm_parallel_heap_scan_threads_default,
+   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
+   (void *) &prm_parallel_heap_scan_threads_upper,
+   (void *) &prm_parallel_heap_scan_threads_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MAX_PARALLEL_WORKERS,
+   PRM_NAME_MAX_PARALLEL_WORKERS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_max_parallel_workers_flag,
+   (void *) &prm_max_parallel_workers_default,
+   (void *) &PRM_MAX_PARALLEL_WORKERS,
+   (void *) &prm_max_parallel_workers_upper,
+   (void *) &prm_max_parallel_workers_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;

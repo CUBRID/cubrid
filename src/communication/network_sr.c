@@ -942,7 +942,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p, false);
     }
 
 loop:
@@ -1117,7 +1117,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL);
+  sysprm_load_and_init (server_name, NULL, SYSPRM_LOAD_ALL);
   sysprm_set_er_log_file (server_name);
 
   if (sync_initialize_sync_stats () != NO_ERROR)

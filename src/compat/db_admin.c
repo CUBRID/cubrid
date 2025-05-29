@@ -1006,6 +1006,12 @@ db_shutdown (void)
   return (error);
 }
 
+void
+db_shutdown_without_request_to_server (void)
+{
+  boot_client_all_finalize (OPTIONAL_FINALIZATION);
+}
+
 int
 db_ping_server (int client_val, int *server_val)
 {
