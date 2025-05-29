@@ -97,25 +97,6 @@ struct symbol_info
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
 };
 
-typedef struct projection_part_info PROJECTION_PART_INFO;
-struct projection_part_info
-{
-  PT_NODE *name_list;
-  PT_NODE *expr_list;
-  PT_NODE *expr_name_list;
-  BITSET *exprs_set;
-  int name_count;
-  int expr_count;
-  int expr_name_count;
-};
-
-typedef struct projection_info PROJECTION_INFO;
-struct projection_info
-{
-  PROJECTION_PART_INFO outer;
-  PROJECTION_PART_INFO inner;
-};
-
 typedef struct aggregate_info AGGREGATE_INFO;
 struct aggregate_info
 {
@@ -168,6 +149,8 @@ extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 						     char *password, int host_var_count, int *host_var_index,
 						     char *sql);
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
+extern REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
+							     VAL_LIST * value_list, int *attr_offsets);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
@@ -200,7 +183,7 @@ extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * x
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);
-extern XASL_NODE *ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl);
+extern XASL_NODE *pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl);
 extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -233,4 +216,10 @@ extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * cl
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
+
+/* to generate xasl for dblink */
+extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
+
+/* to check dblink in trigger action */
+extern void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */

@@ -52,6 +52,12 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+            TC_PRIVATE_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git develop | cut -f1)
+            echo "sha value from tc repository.(only from develop branch)"
+            echo "TC_SHA: $TC_SHA"
+            echo "TC_PRIVATE_SHA: $TC_PRIVATE_SHA"
+
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
             version: 2.1
@@ -186,7 +192,7 @@ jobs:
             executors:
               cubrid-default:
                 docker:
-                  - image: cubridci/cubridci:develop
+                  - image: cubridci/cubridci:develop_cl7.9
                 working_directory: /home
 
               cubrid-test-shell:
@@ -203,8 +209,16 @@ jobs:
                 resource_class: xlarge
                 environment:
                   MAKEFLAGS: -j 8
+                  CC: "ccache gcc"
+                  CXX: "ccache g++"
+                  CCACHE_DIR: /home/.ccache
+                  CCACHE_MAXSIZE: "5G"
                 steps:
                   - checkout
+                  - restore_cache:
+                      keys:
+                        - ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                        - ccache-global-v1
                   - run:
                       name: Submodules
                       command: |
@@ -213,7 +227,14 @@ jobs:
                   - run:
                       name: Build
                       command: |
+                        mkdir -p \$CCACHE_DIR
+                        ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build
+                        ccache -s
+                  - save_cache:
+                      key: ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                      paths:
+                        - /home/.ccache
                   - collect-build-logs
                   - persist_to_workspace:
                       root: .
@@ -224,30 +245,69 @@ jobs:
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "medium"
-                  GITHUB_TOKEN: \$GHI_TOKEN
-                steps: [ attach-and-run-tests ]
+                steps:
+                  - restore_cache:
+                      keys:
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
+                  - attach-and-run-tests
+                  - run:
+                      name: Clean up tc before save_cache
+                      command: |
+                        cd cubrid-testcases
+                        git clean -fd
+                        git reset --hard
+                  - save_cache:
+                      key: "cubrid-testcases-develop-${TC_SHA}"
+                      paths:
+                        - cubrid-testcases
                       
               test_sql:
                 executor: cubrid-default
                 resource_class: medium
                 parallelism: 8
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "sql"
-                  GITHUB_TOKEN: \$GHI_TOKEN
-                steps: [ attach-and-run-tests ]
+                steps:
+                  - restore_cache:
+                      keys:
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
+                  - attach-and-run-tests
+                  - run:
+                      name: Clean up tc before save_cache
+                      command: |
+                        cd cubrid-testcases
+                        git clean -fd
+                        git reset --hard
+                  - save_cache:
+                      key: "cubrid-testcases-develop-${TC_SHA}"
+                      paths:
+                        - cubrid-testcases
                       
               test_plcsql:
                 executor: cubrid-default
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "plcsql"
-                  GITHUB_TOKEN: \$GHI_TOKEN
-                steps: [ attach-and-run-tests ]
+                steps:
+                  - restore_cache:
+                      keys:
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
+                  - attach-and-run-tests
+                  - run:
+                      name: Clean up tc before save_cache
+                      command: |
+                        cd cubrid-testcases
+                        git clean -fd
+                        git reset --hard
+                  - save_cache:
+                      key: "cubrid-testcases-develop-${TC_SHA}"
+                      paths:
+                        - cubrid-testcases
                       
               test_shell:
                 executor: cubrid-test-shell
@@ -257,7 +317,22 @@ jobs:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
                   GITHUB_TOKEN: \$GHI_TOKEN
-                steps: [ attach-and-run-tests ]
+                steps:
+                  - restore_cache:
+                      keys:
+                        - "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
+                        - "cubrid-testcases-private-ex-develop-"
+                  - attach-and-run-tests
+                  - run:
+                      name: Clean up tc before save_cache
+                      command: |
+                        cd cubrid-testcases-private-ex
+                        git clean -fd
+                        git reset --hard
+                  - save_cache:
+                      key: "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
+                      paths:
+                        - cubrid-testcases-private-ex
             
             # --------------------------------------------------
             # 4. Conditional workflows

@@ -7633,6 +7633,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
   size_t read_thread_count = 0;
+  int specified_thread_count = num_threads;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7910,7 +7911,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{

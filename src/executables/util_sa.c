@@ -540,12 +540,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_check_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &db_volume_size) != NO_ERROR)
+  if (sysprm_check_range (PRM_ID_DB_VOLUME_SIZE, &db_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64], vol_buf[64];
 
-      if (sysprm_get_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &min, &max) != NO_ERROR)
+      if (sysprm_get_range (PRM_ID_DB_VOLUME_SIZE, &min, &max) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -574,12 +574,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
 			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf, max_buf);
       goto error_exit;
     }
-  if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &log_volume_size) != NO_ERROR)
+  if (sysprm_check_range (PRM_ID_LOG_VOLUME_SIZE, &log_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64], vol_buf[64];
 
-      if (sysprm_get_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &min, &max) != NO_ERROR)
+      if (sysprm_get_range (PRM_ID_LOG_VOLUME_SIZE, &min, &max) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -632,9 +632,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_XASL_CACHE_MAX_ENTRIES), "-1");
-  sysprm_set_force (prm_get_name (PRM_ID_SUPPLEMENTAL_LOG), "0");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
+  sysprm_set_force (PRM_ID_XASL_CACHE_MAX_ENTRIES, "-1");
+  sysprm_set_force (PRM_ID_SUPPLEMENTAL_LOG, "0");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -645,7 +645,14 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
       if (getcwd (cwd, PATH_MAX) != NULL)
 	{
-	  snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path);
+	  if (snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path) >= PATH_MAX)
+	    {
+	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
+	       * Additional review will be required.        
+	       */
+	      goto error_exit;
+	    }
+
 	  lob_path = abs_lob_path;
 	}
       else
@@ -814,7 +821,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1126,7 +1133,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1347,7 +1354,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1536,8 +1543,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   is_emergency = utility_get_option_bool_value (arg_map, DIAG_EMERGENCY_S);
   if (is_emergency)
     {
-      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "yes");
-      sysprm_set_force (prm_get_name (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY), "yes");
+      sysprm_set_force (PRM_ID_DISABLE_VACUUM, "yes");
+      sysprm_set_force (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY, "yes");
     }
 
   output_file = utility_get_option_string_value (arg_map, DIAG_OUTPUT_FILE_S, 0);
@@ -1838,7 +1845,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION )
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * estimatedb_data() - estimatedb_data main routine
  *   return: EXIT_SUCCES/EXIT_FAILURE
@@ -1847,6 +1854,7 @@ int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
   /* todo: remove me */
+  return -1;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 

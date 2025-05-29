@@ -16,29 +16,6 @@
 # 
 #
 
-set(LIBCUBRIDESQL_SOURCES
-  ${EXECUTABLES_DIR}/esql_gadget.c
-  ${EXECUTABLES_DIR}/esql_cli.c
-  )
-SET_SOURCE_FILES_PROPERTIES(
-  ${LIBCUBRIDESQL_SOURCES}
-  PROPERTIES LANGUAGE CXX
-  )
-add_library(cubridesql SHARED ${LIBCUBRIDESQL_SOURCES})
-set_target_properties(cubridesql PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cubridesql PROPERTIES PUBLIC_HEADER "${EXECUTABLES_DIR}/cubrid_esql.h")
-target_include_directories(cubridesql PRIVATE ${EP_INCLUDES})
-target_compile_definitions(cubridesql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
-if(WIN32)
-  set_target_properties(cubridesql PROPERTIES OUTPUT_NAME libesql)
-  target_compile_definitions(cubridesql PRIVATE YY_CHAR=char)
-  set_target_properties(cubridesql PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libesql/libesql.def\"")
-  target_link_libraries(cubridesql LINK_PRIVATE cubridcs)
-endif(WIN32)
-
-add_dependencies(cubridesql ${EP_TARGETS})
-add_dependencies(cubridesql cubridcs)
-
 set(CSQL_SOURCES
   ${EXECUTABLES_DIR}/csql_launcher.c
   ${EXECUTABLES_DIR}/util_support.c
@@ -265,47 +242,6 @@ else(UNIX)
 endif(UNIX)
 add_dependencies(cub_admin cubridsa cubridcs)
 
-
-set(CUBRID_ESQL_SOURCES
-  ${BISON_esql_grammar_OUTPUTS}
-  ${FLEX_esql_lexer_OUTPUTS}
-  ${EXECUTABLES_DIR}/esql_symbol_table.c
-  ${EXECUTABLES_DIR}/esql_declare.c
-  ${EXECUTABLES_DIR}/esql_cursor.c
-  ${EXECUTABLES_DIR}/esql_misc.c
-  ${EXECUTABLES_DIR}/esql_whenever.c
-  ${EXECUTABLES_DIR}/esql_hash.c
-  ${EXECUTABLES_DIR}/esql_translate.c
-  ${EXECUTABLES_DIR}/esql_host_variable.c
-  )
-SET_SOURCE_FILES_PROPERTIES(
-  ${EXECUTABLES_DIR}/esql_symbol_table.c
-  ${EXECUTABLES_DIR}/esql_declare.c
-  ${EXECUTABLES_DIR}/esql_cursor.c
-  ${EXECUTABLES_DIR}/esql_misc.c
-  ${EXECUTABLES_DIR}/esql_whenever.c
-  ${EXECUTABLES_DIR}/esql_hash.c
-  ${EXECUTABLES_DIR}/esql_translate.c
-  ${EXECUTABLES_DIR}/esql_host_variable.c
-  PROPERTIES LANGUAGE CXX
-  )  
-if(WIN32)
-  list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-endif(WIN32)
-set_source_files_properties(${BISON_esql_grammar_OUTPUTS} PROPERTIES GENERATED true)
-set_source_files_properties(${FLEX_esql_lexer_OUTPUTS} PROPERTIES GENERATED true)
-
-add_executable(cubrid_esql ${CUBRID_ESQL_SOURCES})
-
-target_include_directories(cubrid_esql PRIVATE ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
-target_compile_definitions(cubrid_esql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
-if(WIN32)
-  target_compile_definitions(cubrid_esql PRIVATE YY_NO_UNISTD_H)
-endif(WIN32)
-target_link_libraries(cubrid_esql LINK_PRIVATE cubridcs)
-
-add_dependencies(cubrid_esql gen_esql_grammar gen_esql_lexer)
-
 set(GENCAT_SOURCES
   ${BASE_DIR}/porting.c
   ${EXECUTABLES_DIR}/gencat.c
@@ -385,7 +321,6 @@ endif(UNIX)
 
 # install
 install(TARGETS
-  cubridesql
   csql
   cub_master
   cub_server
@@ -395,7 +330,6 @@ install(TARGETS
   loadjava
   cub_pl
   cub_admin
-  cubrid_esql
   plcsql_helper
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library

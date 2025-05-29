@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <array>
@@ -8556,15 +8561,15 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < ONE_K)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "\n\n", size_alloc);
     }
   else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "K\n\n", size_alloc / ONE_K);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "M\n\n", size_alloc / ONE_M);
     }
 
   // *INDENT-OFF*
