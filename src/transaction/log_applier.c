@@ -8752,10 +8752,10 @@ la_delay_replica (time_t eot_time)
   return NO_ERROR;
 }
 
+#if defined(CS_MODE)
 void
 la_dump_la_info (void)
 {
-#if defined(CS_MODE)
   FILE *out = stdout;
   int indent = 2;
   LA_INFO *info = &la_Info;
@@ -8849,7 +8849,6 @@ la_dump_la_info (void)
       la_status = "UNKNOWN";
     }
 
-  /* opening */
   fprintf (out, "la_info: {\n");
 
   /* log info */
@@ -8955,17 +8954,14 @@ la_dump_la_info (void)
   fprintf (out, "%*sreinit_copylog: %s,\n", indent, "", info->reinit_copylog ? "true" : "false");
   fprintf (out, "%*smaxslotted_reclength: %d\n", indent, "", info->maxslotted_reclength);
 
-  /* closing */
   fprintf (out, "}\n\n");
 
   fflush (out);
-#endif /* CS_MODE */
 }
 
 void
 la_dump_la_act_log (FILE * out, int indent)
 {
-#if defined(CS_MODE)
   LA_ACT_LOG *a = &la_Info.act_log;
 
   fprintf (out, "%*sla_act_log: {\n", indent, "");
@@ -8984,13 +8980,11 @@ la_dump_la_act_log (FILE * out, int indent)
   fprintf (out, "%*sdb_logpagesize: %d\n", indent + 2, "", a->db_logpagesize);
 
   fprintf (out, "%*s}\n", indent, "");
-#endif /* CS_MODE */
 }
 
 void
 la_dump_la_arv_log (FILE * out, int indent)
 {
-#if defined(CS_MODE)
   LA_ARV_LOG *r = &la_Info.arv_log;
 
   if (r == NULL || r->log_vdes <= 0)
@@ -9013,7 +9007,6 @@ la_dump_la_arv_log (FILE * out, int indent)
 
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", r->arv_num);
   fprintf (out, "%*s}\n", indent, "");
-#endif /* CS_MODE */
 }
 
 void
@@ -9037,7 +9030,6 @@ la_dump_la_apply_list (FILE * out, int indent)
 void
 la_dump_la_apply (FILE * out, int idx, int indent)
 {
-#if defined(CS_MODE)
   LA_APPLY *apply = la_Info.repl_lists[idx];
   if (apply == NULL)
     {
@@ -9062,8 +9054,8 @@ la_dump_la_apply (FILE * out, int idx, int indent)
   fprintf (out, "%*stail: %p\n", indent + 2, "", (void *) apply->tail);
 
   fprintf (out, "%*s}", indent, "");
-#endif /* CS_MODE */
 }
+#endif /* CS_MODE */
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int

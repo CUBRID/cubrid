@@ -2870,10 +2870,10 @@ logwr_get_min_copied_fpageid (void)
 #endif /* SERVER_MODE */
 
 
+#if defined(CS_MODE)
 void
 logwr_dump_logwr_gl (void)
 {
-#if defined(CS_MODE)
   FILE *out = stdout;
   int indent = 2;
 
@@ -2893,25 +2893,20 @@ logwr_dump_logwr_gl (void)
   fprintf (out, "%*s}\n\n", indent, "");
 
   fflush (out);
-#endif /* CS_MODE */
 }
 
 void
 logwr_dump_log_lsa (FILE * out, const LOG_LSA * lsa, int indent)
 {
-#if defined(CS_MODE)
   fprintf (out, "{\n");
   fprintf (out, "%*spageid: %lld,\n", indent + 2, "", (long long) lsa->pageid);
   fprintf (out, "%*soffset: %lld\n", indent + 2, "", (long long) lsa->offset);
   fprintf (out, "%*s}", indent, "");
-#endif /* CS_MODE */
 }
 
 void
 logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
 {
-#if defined(CS_MODE)
-
   const char *ha_file_status = NULL;
   switch (hdr->ha_file_status)
     {
@@ -3035,13 +3030,11 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, "%*soldest_visible_mvccid: %llu,\n", indent + 2, "", (unsigned long long) hdr->oldest_visible_mvccid);
   fprintf (out, "%*snewest_block_mvccid: %llu\n", indent + 2, "", (unsigned long long) hdr->newest_block_mvccid);
   fprintf (out, "%*s}", indent, "");
-#endif
 }
 
 void
 logwr_dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int indent)
 {
-#if defined(CS_MODE)
   if (arv_hdr == NULL)
     {
       fprintf (out, "%*slog_arv_header: NULL\n", indent, "");
@@ -3055,13 +3048,11 @@ logwr_dump_log_arv_header (FILE * out, const LOG_ARV_HEADER * arv_hdr, int inden
   fprintf (out, "%*sfpageid: %lld,\n", indent + 2, "", (long long) arv_hdr->fpageid);
   fprintf (out, "%*sarv_num: %d\n", indent + 2, "", arv_hdr->arv_num);
   fprintf (out, "%*s}", indent, "");
-#endif
 }
 
 void
 logwr_dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
 {
-#if defined(CS_MODE)
   if (p == NULL)
     {
       fprintf (out, "%*slog_page_hdr: NULL\n", indent, "");
@@ -3073,13 +3064,11 @@ logwr_dump_log_page_hdr (FILE * out, const LOG_HDRPAGE * p, int indent)
   fprintf (out, "%*sflags: %d,\n", indent + 2, "", p->flags);
   fprintf (out, "%*schecksum: %d\n", indent + 2, "", p->checksum);
   fprintf (out, "%*s}", indent, "");
-#endif
 }
 
 void
 logwr_dump_logwr_gl_topfields (FILE * out, int indent)
 {
-#if defined(CS_MODE)
   const char *mode, *action;
   switch (logwr_Gl.mode)
     {
@@ -3161,5 +3150,5 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
   fprintf (out, "%*sreinit_copylog: %s\n", indent, "", logwr_Gl.reinit_copylog ? "true" : "false");
 
   fprintf (out, "%*s}\n", indent, "");
-#endif
 }
+#endif
