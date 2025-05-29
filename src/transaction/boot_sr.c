@@ -6043,7 +6043,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
@@ -6058,8 +6058,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  *boot_Db_parm = save_boot_db_parm;
-	  goto exit;
+	  goto error;
 	}
 
       /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
@@ -6075,13 +6074,18 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	  /* invalid volid */
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->temp_nvols++;
       boot_Db_parm->temp_last_volid = volid;
     }
 
-exit:
+  return error_code;
+
+error:
+
+  *boot_Db_parm = save_boot_db_parm;
+
   return error_code;
 }
 
