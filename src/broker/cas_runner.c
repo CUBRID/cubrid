@@ -147,7 +147,7 @@ static void cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time, doub
 static THREAD_FUNC thr_main (void *arg);
 static int process_execute (char *msg, int *req_h, int num_bind, T_BIND_INFO * bind_info, FILE * result_fp,
 			    double *sum_execute_time);
-static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info);
+static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info, int bind_len);
 static int process_endtran (int con_h, int *req_h, FILE * result_fp);
 static int process_close_req (char *linebuf, int *req_h, FILE * result_fp);
 static void print_result (int cci_res, int req_id, FILE * fp);
@@ -656,7 +656,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time, double *ret_prep
   int req_stat_h = -1;
   int error;
   int ind;
-  int i;
+  int i, t_str_len;
   T_STRING *linebuf_tstr = NULL;
 #ifdef DUP_RUN
   int dup_con_h;
@@ -757,12 +757,16 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time, double *ret_prep
 	  fprintf (stderr, "malloc error\n");
 	  goto end_cas_runner;
 	}
-      if (t_string_len (linebuf_tstr) <= 0)
+      t_str_len = t_string_len (linebuf_tstr);
+      if (t_str_len <= 0)
 	break;
       linebuf = t_string_str (linebuf_tstr);
 
-      if (linebuf[strlen (linebuf) - 1] == '\n')
-	linebuf[strlen (linebuf) - 1] = '\0';
+      if (linebuf[t_str_len - 1] == '\n')
+	linebuf[t_str_len - 1] = '\0';
+
+      if (t_str_len == 1 && linebuf[0] == '\0')
+	continue;
 
       if (linebuf[0] == 'Q')
 	{
@@ -819,7 +823,7 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time, double *ret_prep
 	}
       else if (linebuf[0] == 'B')
 	{
-	  if (process_bind (linebuf, &num_bind, bind_info) < 0)
+	  if (process_bind (linebuf, &num_bind, bind_info, t_string_bind_len (linebuf_tstr)) < 0)
 	    {
 	      FREE_BIND_INFO (num_bind, bind_info);
 	      goto end_cas_runner;
@@ -1086,7 +1090,7 @@ error:
 }
 
 static int
-process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
+process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info, int bind_len)
 {
   char *p;
   int num_bind = *num_bind_p;
@@ -1124,12 +1128,27 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
       bind_info[num_bind].type = CCI_U_TYPE_NULL;
     }
 
-  bind_info[num_bind].value = strdup (p + 1);
-  if (bind_info[num_bind].value == NULL)
+  if (bind_len > 0)
     {
-      fprintf (stderr, "malloc error\n");
-      return -1;
+      bind_info[num_bind].value = (char *) malloc (bind_len + 1);
+      if (bind_info[num_bind].value == NULL)
+	{
+	  fprintf (stderr, "malloc error\n");
+	  return -1;
+	}
+      memcpy (bind_info[num_bind].value, p + 1, bind_len);
+      bind_info[num_bind].value[bind_len] = 0x00;
     }
+  else
+    {
+      bind_info[num_bind].value = strdup (p + 1);
+      if (bind_info[num_bind].value == NULL)
+	{
+	  fprintf (stderr, "malloc error\n");
+	  return -1;
+	}
+    }
+
   *num_bind_p = num_bind + 1;
   return 0;
 }

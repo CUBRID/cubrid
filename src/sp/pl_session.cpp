@@ -688,7 +688,7 @@ namespace cubpl
   }
 
   sys_param::sys_param (const SYSPRM_PARAM *db_param)
-    : sys_param ((int) db_param->id, (int) GET_PRM_DATATYPE (db_param->id), "")
+    : sys_param ((int) db_param->id, (int) GET_PRM (db_param->id)->datatype, "")
   {
     if (prm_id < static_cast<int> (sys_param_id::PRM_ID_BEGIN))
       {
