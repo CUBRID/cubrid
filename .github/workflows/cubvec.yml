@@ -66,7 +66,7 @@ jobs:
       - name: Trigger CircleCI Test
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
-          BRANCH_NAME: pull/${{ github.event.issue.number }}/head
+          BRANCH_NAME: pull/${{ github.event.pull_request.number }}/head
           TEST_JSON: ${{ env.TEST_JSON }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
