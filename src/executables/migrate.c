@@ -467,7 +467,7 @@ main (int argc, char *argv[])
       goto error_undo_vol_header;
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
 

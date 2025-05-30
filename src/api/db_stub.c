@@ -2681,7 +2681,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_v
   if (port > 0)
     {
       sprintf (port_string, "%d", port);
-      sysprm_set_force ("cubrid_port_id", port_string);
+      sysprm_set_force (PRM_NAME_TCP_PORT_ID, port_string);
     }
   client_credential.client_type = DB_CLIENT_TYPE_DEFAULT;
   client_credential.client_info = NULL;
