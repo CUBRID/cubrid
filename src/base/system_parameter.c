@@ -775,7 +775,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
-#define PRM_NAME_VECTOR_INDEX_EF_SEARCH "vector_index_ef_search"
+#define PRM_NAME_VECTOR_INDEX_EF_SEARCH "hnsw_ef_search"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2520,7 +2520,7 @@ static unsigned int prm_max_parallel_workers_flag = 0;
 int PRM_VECTOR_INDEX_EF_SEARCH = 40;
 static int prm_vector_index_ef_search_default = 40;
 static int prm_vector_index_ef_search_lower = 1;
-static int prm_vector_index_ef_search_upper = 32768;
+static int prm_vector_index_ef_search_upper = 1000;
 static unsigned int prm_vector_index_ef_search_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
