@@ -20,7 +20,7 @@ parameters:
     default: false
   run_cubvec_test:
     type: boolean
-    default: false
+    default: true
   run_plcsql_test:
     type: boolean
     default: false
