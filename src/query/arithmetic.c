@@ -76,7 +76,7 @@ static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value);
 static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
 					      const DB_VALUE * value3, const DB_VALUE * value4);
-static int is_str_find_all (DB_VALUE * val, bool & find_all);
+static int is_str_find_all (DB_VALUE * val, bool &find_all);
 static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
 
 /*
@@ -86,7 +86,7 @@ static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
  *   value(in)   : input db_value
  */
 int
-db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
+db_floor_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE res_type;
   double dtmp;
@@ -253,7 +253,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in)   : input db_value
  */
 int
-db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
+db_ceil_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE res_type;
   double dtmp;
@@ -428,7 +428,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in)   : input db_value
  */
 int
-db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
+db_sign_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE res_type;
   int itmp;
@@ -564,7 +564,7 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in)   : input db_value
  */
 int
-db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
+db_abs_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE res_type;
   short stmp;
@@ -658,7 +658,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in)   : input db_value
  */
 int
-db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
+db_exp_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   short s;
@@ -730,7 +730,7 @@ exp_overflow:
  *   value(in) : input db_value
  */
 int
-db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
+db_sqrt_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   short s;
@@ -835,7 +835,7 @@ sqrt_error:
  *   value2(in)  : second db_value
  */
 int
-db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_power_dbval (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   double d1, d2;
   double dtmp;
@@ -906,7 +906,7 @@ pow_error:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_short (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -922,6 +922,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int p, s;
   int er_status = NO_ERROR;
+  int dst_scale;
   DB_VALUE cast_value2;
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
@@ -1019,7 +1020,8 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) s1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value2);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1055,7 +1057,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_int (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1071,6 +1073,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int p, s;
   int er_status = NO_ERROR;
+  int dst_scale;
   DB_VALUE cast_value2;
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
@@ -1168,7 +1171,8 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) i1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value2);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1204,7 +1208,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_bigint (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1220,6 +1224,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int p, s;
   int er_status = NO_ERROR;
+  int dst_scale;
   DB_VALUE cast_value2;
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
@@ -1317,7 +1322,8 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) bi1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value2);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1353,7 +1359,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_float (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1497,7 +1503,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_double (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1640,7 +1646,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_string (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_TYPE type1;
   int er_status = NO_ERROR;
@@ -1677,7 +1683,7 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
  *   value2(in)  : second db_value
  */
 static int
-db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_numeric (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1693,6 +1699,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int p, s;
   int er_status = NO_ERROR;
+  int dst_scale;
   DB_VALUE cast_value2;
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
@@ -1718,7 +1725,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) s2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value1);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1731,7 +1739,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) i2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value1);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1744,7 +1753,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) bi2);
-	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s, 0);
+	  dst_scale = DB_VALUE_SCALE (value1);
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1797,8 +1807,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
-						 &s, 0);
+	  dst_scale = MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2));
+	  (void) numeric_internal_double_to_num (dtmp, &dst_scale, num, &p, &s, 0);
 	  db_make_numeric (result, num, p, s);
 	}
       break;
@@ -1834,7 +1844,7 @@ exit:
  *   value2(in)  : second db_value
  */
 static int
-db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_monetary (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
 #if !defined(NDEBUG)
   DB_TYPE type1;
@@ -1927,7 +1937,7 @@ exit:
  *   value2(in)  : second db_value
  */
 int
-db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_mod_dbval (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_TYPE type1;
 
@@ -2048,7 +2058,7 @@ move_n_days (int *monthp, int *dayp, int *yearp, const int interval)
  */
 
 static int
-round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+round_date (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_DATETIME *pdatetime, local_dt;
   DB_DATETIMETZ *pdatetimetz;
@@ -2314,7 +2324,7 @@ end:
  *   value2(in) : second db_value
  */
 int
-db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_round_dbval (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_TYPE type1, type2;
   short s1;
@@ -2602,7 +2612,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
  *   value2(in) : second db_value
  */
 int
-db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_log_dbval (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_TYPE type1, type2;
   short s1, s2;
@@ -3202,7 +3212,7 @@ truncate_bigint (DB_BIGINT num, DB_BIGINT integer)
  *   fmt(in):
  */
 static int
-truncate_date (DB_DATE * date, const DB_VALUE * format_str)
+truncate_date (DB_DATE *date, const DB_VALUE *format_str)
 {
   int year, month, day;
   int error = NO_ERROR;
@@ -3310,7 +3320,7 @@ end:
  *   value2(in) : second db_value
  */
 int
-db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
+db_trunc_dbval (DB_VALUE *result, DB_VALUE *value1, DB_VALUE *value2)
 {
   DB_TYPE type1, type2;
   DB_BIGINT bi2;
@@ -3658,7 +3668,7 @@ end:
  *   result(out) : resultant db_value
  */
 int
-db_random_dbval (DB_VALUE * result)
+db_random_dbval (DB_VALUE *result)
 {
   db_make_int (result, lrand48 ());
 
@@ -3671,7 +3681,7 @@ db_random_dbval (DB_VALUE * result)
  *   result(out) : resultant db_value
  */
 int
-db_drandom_dbval (DB_VALUE * result)
+db_drandom_dbval (DB_VALUE *result)
 {
   db_make_double (result, drand48 ());
 
@@ -3685,7 +3695,7 @@ db_drandom_dbval (DB_VALUE * result)
  *   value(in) : input db_value
  */
 static int
-get_number_dbval_as_double (double *d, const DB_VALUE * value)
+get_number_dbval_as_double (double *d, const DB_VALUE *value)
 {
   short s;
   int i;
@@ -3736,7 +3746,7 @@ get_number_dbval_as_double (double *d, const DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_cos_dbval (DB_VALUE * result, DB_VALUE * value)
+db_cos_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3768,7 +3778,7 @@ db_cos_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_sin_dbval (DB_VALUE * result, DB_VALUE * value)
+db_sin_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3800,7 +3810,7 @@ db_sin_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_tan_dbval (DB_VALUE * result, DB_VALUE * value)
+db_tan_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3832,7 +3842,7 @@ db_tan_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_cot_dbval (DB_VALUE * result, DB_VALUE * value)
+db_cot_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3871,7 +3881,7 @@ db_cot_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_acos_dbval (DB_VALUE * result, DB_VALUE * value)
+db_acos_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3920,7 +3930,7 @@ error:
  *   value(in) : input db_value
  */
 int
-db_asin_dbval (DB_VALUE * result, DB_VALUE * value)
+db_asin_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -3969,7 +3979,7 @@ error:
  *   value(in) : input db_value
  */
 int
-db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
+db_atan_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -4005,7 +4015,7 @@ db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
  *	  separated and then convert all to double. Then just one call of atan2.
  */
 int
-db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
+db_atan2_dbval (DB_VALUE *result, DB_VALUE *value, DB_VALUE *value2)
 {
   DB_TYPE type, type2;
   int err;
@@ -4053,7 +4063,7 @@ db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
  *   value(in) : input db_value
  */
 int
-db_degrees_dbval (DB_VALUE * result, DB_VALUE * value)
+db_degrees_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -4085,7 +4095,7 @@ db_degrees_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_radians_dbval (DB_VALUE * result, DB_VALUE * value)
+db_radians_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int err;
@@ -4117,7 +4127,7 @@ db_radians_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
+db_log_generic_dbval (DB_VALUE *result, DB_VALUE *value, long b)
 {
   DB_TYPE type;
   int err;
@@ -4177,7 +4187,7 @@ db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
  *   value(in) : input db_value
  */
 int
-db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
+db_bit_count_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   short s;
@@ -4301,7 +4311,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) : input db_value
  */
 int
-db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
+db_typeof_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   const char *type_name;
@@ -4359,7 +4369,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
  *   value(in) :
  */
 static int
-get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
+get_number_dbval_as_long_double (long double *ld, const DB_VALUE *value)
 {
   short s;
   int i;
@@ -4425,8 +4435,8 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
  *   value1-4(in) : input db_value
  */
 static int
-db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
-				   const DB_VALUE * value3, const DB_VALUE * value4)
+db_width_bucket_calculate_numeric (double *result, const DB_VALUE *value1, const DB_VALUE *value2,
+				   const DB_VALUE *value3, const DB_VALUE *value4)
 {
   int er_status = NO_ERROR, c;
   DB_VALUE cmp_result;
@@ -4597,8 +4607,8 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
  *   value1-4(in) : input db_value
  */
 int
-db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * value2, const DB_VALUE * value3,
-		 const DB_VALUE * value4)
+db_width_bucket (DB_VALUE *result, const DB_VALUE *value1, const DB_VALUE *value2, const DB_VALUE *value3,
+		 const DB_VALUE *value4)
 {
 #define RETURN_ERROR(err) \
   do \
@@ -4975,7 +4985,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
  *   value(in) : input db_value
  */
 int
-db_sleep (DB_VALUE * result, DB_VALUE * value)
+db_sleep (DB_VALUE *result, DB_VALUE *value)
 {
   int error = NO_ERROR;
   long million_sec = 0;
@@ -5019,7 +5029,7 @@ end:
  *   value(in) : input db_value
  */
 int
-db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
+db_crc32_dbval (DB_VALUE *result, DB_VALUE *value)
 {
   DB_TYPE type;
   int error_status = NO_ERROR;
@@ -5068,7 +5078,7 @@ error:
 }
 
 int
-db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_contains (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE source;
@@ -5144,7 +5154,7 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
 }
 
 int
-db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_type_dbval (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5177,7 +5187,7 @@ db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const
 }
 
 int
-db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_valid (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5211,7 +5221,7 @@ db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_length (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   JSON_DOC_STORE source_doc;
   int error_code = NO_ERROR;
@@ -5268,7 +5278,7 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
 }
 
 int
-db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_depth (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5293,7 +5303,7 @@ db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_evaluate_json_quote (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_quote (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   if (num_args != 1)
     {
@@ -5304,7 +5314,7 @@ db_evaluate_json_quote (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_unquote (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   db_make_null (result);
@@ -5344,7 +5354,7 @@ db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *arg, int const nu
 }
 
 int
-db_evaluate_json_pretty (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_pretty (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   db_make_null (result);
@@ -5382,7 +5392,7 @@ db_evaluate_json_pretty (DB_VALUE * result, DB_VALUE * const *arg, int const num
 }
 
 int
-db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_accumulate_json_arrayagg (const DB_VALUE *json_db_val, DB_VALUE *json_res)
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE val_doc;
@@ -5436,7 +5446,7 @@ db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
  * json_res (in)           : the DB_VALUE that contains the document where we want to insert
  */
 int
-db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_accumulate_json_objectagg (const DB_VALUE *json_key, const DB_VALUE *json_db_val, DB_VALUE *json_res)
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE val_doc;
@@ -5510,7 +5520,7 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
 // TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
 //
 int
-db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_args)
+db_evaluate_json_extract (DB_VALUE *result, DB_VALUE *const *args, int num_args)
 {
   db_make_null (result);
 
@@ -5568,7 +5578,7 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
 }
 
 int
-db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_object (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i;
   int error_code = NO_ERROR;
@@ -5625,7 +5635,7 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 }
 
 int
-db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_array (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code;
   JSON_DOC_STORE new_doc;
@@ -5652,7 +5662,7 @@ db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_insert (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -5720,7 +5730,7 @@ db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num
 }
 
 int
-db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_replace (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -5787,7 +5797,7 @@ db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const nu
 }
 
 int
-db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_set (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -5854,7 +5864,7 @@ db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 }
 
 int
-db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_keys (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -5911,7 +5921,7 @@ db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
 }
 
 int
-db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_remove (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code;
   JSON_DOC_STORE new_doc;
@@ -5963,7 +5973,7 @@ db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num
 }
 
 int
-db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_array_append (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -6031,7 +6041,7 @@ db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int con
 }
 
 int
-db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_array_insert (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -6099,7 +6109,7 @@ db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int con
 }
 
 int
-db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
+db_evaluate_json_contains_path (DB_VALUE *result, DB_VALUE *const *arg, const int num_args)
 {
   bool exists = false;
   int error_code = NO_ERROR;
@@ -6162,7 +6172,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
  * num_args (in)
  */
 int
-db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
+db_evaluate_json_merge_preserve (DB_VALUE *result, DB_VALUE *const *arg, const int num_args)
 {
   int error_code;
   JSON_DOC *accumulator = nullptr;
@@ -6214,7 +6224,7 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
  * num_args (in)
  */
 int
-db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
+db_evaluate_json_merge_patch (DB_VALUE *result, DB_VALUE *const *arg, const int num_args)
 {
   int error_code;
   JSON_DOC *accumulator = nullptr;
@@ -6418,7 +6428,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 /* *INDENT-ON* */
 
 int
-db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_get_all_paths (DB_VALUE *result, DB_VALUE *const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC_STORE new_doc;
@@ -6453,7 +6463,7 @@ db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int co
 }
 
 int
-db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
+db_least_or_greatest (DB_VALUE *arg1, DB_VALUE *arg2, DB_VALUE *result, bool least)
 {
   int error_code = NO_ERROR;
   bool can_compare = false;
@@ -6502,7 +6512,7 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
 }
 
 static int
-is_str_find_all (DB_VALUE * val, bool & find_all)
+is_str_find_all (DB_VALUE *val, bool &find_all)
 {
   if (DB_IS_NULL (val))
     {
@@ -6538,7 +6548,7 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
 }
 
 static bool
-is_any_arg_null (DB_VALUE * const *args, int num_args)
+is_any_arg_null (DB_VALUE *const *args, int num_args)
 {
   for (int i = 0; i < num_args; ++i)
     {

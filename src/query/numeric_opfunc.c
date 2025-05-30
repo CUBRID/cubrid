@@ -129,7 +129,7 @@ static bool numeric_is_bit_set (DB_C_NUMERIC arg, int pos);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
 static void numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
-static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_flag, DB_C_NUMERIC answer);
+static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool *positive_flag, DB_C_NUMERIC answer);
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
@@ -146,7 +146,7 @@ static int numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *
 				    DB_C_NUMERIC dest, int is_floating_point);
 static int numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 static FP_VALUE_TYPE get_fp_value_type (double d);
-static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+static int numeric_internal_real_to_num (double adouble, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float, int is_floating_point);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
 				       const int dst_prec, DB_C_NUMERIC dest);
@@ -314,7 +314,7 @@ numeric_negative_one (DB_C_NUMERIC answer, int size)
  *       values: -1  -1  -1 ...... -1  -1   0
  */
 static void
-numeric_init_dec_str (DEC_STRING * answer)
+numeric_init_dec_str (DEC_STRING *answer)
 {
   /* sizeof(answer->digits[0]) == 1 */
   memset (answer->digits, -1, TWICE_NUM_MAX_PREC);
@@ -334,7 +334,7 @@ numeric_init_dec_str (DEC_STRING * answer)
  */
 
 static void
-numeric_add_dec_str (DEC_STRING * arg1, DEC_STRING * arg2, DEC_STRING * answer)
+numeric_add_dec_str (DEC_STRING *arg1, DEC_STRING *arg2, DEC_STRING *answer)
 {
   unsigned int answer_bit = 0;
   int digit;
@@ -869,7 +869,7 @@ numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
  * Note: This routine multiplies two numerics and returns the results.
  */
 static void
-numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_ans, DB_C_NUMERIC answer)
+numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool *positive_ans, DB_C_NUMERIC answer)
 {
   unsigned int answer_bit;
   int digit1;
@@ -1358,7 +1358,7 @@ numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
  *       when an error occurs.
  */
 static int
-numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common, DB_VALUE * dbv2_common,
+numeric_common_prec_scale (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *dbv1_common, DB_VALUE *dbv2_common,
 			   int is_floating_point)
 {
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
@@ -1424,8 +1424,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
  *   dbv2_common(out)    :
  */
 static int
-numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common,
-				  DB_VALUE * dbv2_common)
+numeric_prec_scale_when_overflow (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *dbv1_common,
+				  DB_VALUE *dbv2_common)
 {
   int prec1, scale1, prec2, scale2;
   int prec, scale;
@@ -1598,7 +1598,7 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
  *
  */
 int
-numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_add (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1745,7 +1745,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_sub (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1887,7 +1887,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_mul (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
 {
   int ret = NO_ERROR;
   int prec;
@@ -2001,7 +2001,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_div (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
 {
   int prec;
   int max_scale, scale1, scale2;
@@ -2231,7 +2231,7 @@ exit_on_error:
  * Note: This routine returns the negative (2's complement) of arg in answer.
  */
 int
-numeric_db_value_negate (DB_VALUE * answer)
+numeric_db_value_negate (DB_VALUE *answer)
 {
   /* Check for NULL value */
   if (DB_IS_NULL (answer))
@@ -2273,7 +2273,7 @@ numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num)
  *   dbvalue(in): ptr to a DB_VALUE of type DB_TYPE_NUMERIC
  */
 int
-numeric_db_value_is_positive (const DB_VALUE * dbvalue)
+numeric_db_value_is_positive (const DB_VALUE *dbvalue)
 {
   int ret;
 
@@ -2306,7 +2306,7 @@ numeric_db_value_is_positive (const DB_VALUE * dbvalue)
  *           1   if    dbv1 > dbv2.
  */
 int
-numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
+numeric_db_value_compare (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
 {
   int ret = NO_ERROR;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
@@ -2548,7 +2548,7 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer)
  * If arg overflows answer, answer is set to +/- MAXINT.
  */
 int
-numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
+numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT *answer)
 {
   DB_NUMERIC zero_scale_numeric, numeric_rem, numeric_tmp;
 
@@ -2984,7 +2984,7 @@ numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
  *   scale(in)  :
  */
 int
-numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+numeric_internal_double_to_num (double adouble, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 				int is_floating_point)
 {
   return numeric_internal_real_to_num (adouble, dst_scale, num, prec, scale, false, is_floating_point);
@@ -3003,7 +3003,7 @@ numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num,
  * scale(out): resulting scale of the converted value
  */
 int
-numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+numeric_internal_float_to_num (float afloat, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 			       int is_floating_point)
 {
   return numeric_internal_real_to_num (afloat, dst_scale, num, prec, scale, true, is_floating_point);
@@ -3066,7 +3066,7 @@ get_fp_value_type (double d)
  * is_float(in):    indicates adouble is a float promoted to double
  */
 int
-numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float,
+numeric_internal_real_to_num (double adouble, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float,
 			      int is_floating_point)
 {
   int i = 0;
@@ -3080,8 +3080,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
     case FP_VALUE_TYPE_NAN:
     case FP_VALUE_TYPE_ZERO:
       /* currently CUBRID returns 0 for a NaN converted to NUMERIC (??) */
-      *scale = dst_scale;
-      *prec = dst_scale ? dst_scale : 1;
+      *scale = *dst_scale;
+      *prec = *dst_scale ? *dst_scale : 1;
 
       while (i < *prec)
 	{
@@ -3103,8 +3103,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 	    {
 	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no
 	       * other conversion */
-	      *scale = dst_scale;
-	      *prec = dst_scale ? dst_scale : 1;
+	      *scale = *dst_scale;
+	      *prec = *dst_scale ? *dst_scale : 1;
 
 	      while (i < *prec)
 		{
@@ -3170,6 +3170,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		{
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
+		  // decpt <= 0 이 false인 경우는 dst_scale 값을 0으로 다시 초기화 해줌
+		  *dst_scale = 0;
 
 		  if (decpt > max_precision)
 		    {
@@ -3203,7 +3205,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		}
 
 	      /* append zeroes until dst_scale is reached */
-	      while (*prec < max_precision && *scale < dst_scale)
+	      while (*prec < max_precision && *scale < *dst_scale)
 		{
 		  numeric_str[1 + *prec] = '0';
 		  (*prec)++;
@@ -3223,31 +3225,6 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		{
 		  numeric_coerce_dec_str_to_num (numeric_str + 1, num);
 		}
-
-	      /*
-	       * FLOATING POINT NUMERIC인 경우,  반올림을 위해 여기서 num_to_num 함수를 호출함.
-	       * 일단, 우리 spec 문제로  반올림 처리는 조금 힘듬, 향후 논의 하여 수정 하자.
-	       * 즉, FLOAT 과 DOUBLE의 OVERFLOW 처리는 내림(버림) 이다. 이걸 반올림으로 변경해야한다.
-	       */
-	      //       if (is_floating_point)
-	      //         {
-	      //           DB_C_NUMERIC new_num = num;
-	      //        int error = NO_ERROR;
-
-	      //        // dst_scale : pack, unpack 으로 이동하는 domain 값으로 생각됨 F-P NUMERIC은 0,0 일거임.
-	      //        // F-P 의 dst_prec, dst_scale 은 항상 0 이여야함.
-	      //        // 일단, dst_scale 값이 지금 5인 경우가 있는데, 이 경우를 찾긴해야함. (일단 임시로 0으로 만들어주도록 처리)
-	      //        dst_scale = (dst_scale == 5) ? 0 : dst_scale;
-	      //           error = numeric_coerce_num_to_num (num, *prec, *scale, dst_scale, dst_scale, new_num);
-	      //        if (error != NO_ERROR)
-	      //          {
-	      //               // 에러 처리는 잠시 대기
-	      //            assert (false);
-	      //            return ER_IT_DATA_OVERFLOW;
-	      //             }
-
-	      //        numeric_copy (num, new_num);
-	      //         }
 	    }
 	}
       break;
@@ -3293,7 +3270,7 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  *	 grouping symbols.
  */
 int
-numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
+numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE *result)
 {
   char num_string[TWICE_NUM_MAX_PREC + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -3662,7 +3639,7 @@ get_significant_digit (DB_BIGINT i)
  * amount necessary in order to preserve as much data as possible.
  */
 int
-numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
+numeric_db_value_coerce_to_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status)
 {
   int ret = NO_ERROR;
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
@@ -3681,21 +3658,53 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     case DB_TYPE_DOUBLE:
       {
 	double adouble = db_get_double (src);
-	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
+	/* NOTE :
+	 *   dest 또는 desired_* 값은 DOMAIN 값을 DB_VALUE로 만든 것임
+	 *   F-P NUMEIRC 타입의 경우 P/S = 0/0 임으로 double 및 float 타입의 경우,
+	 *   Overflow된 값이 들어올 경우 지수 표현도 이상하게 바뀌어 이를 다시 numeric으로 바꾸면서 값이 이상해질 수 있음
+	 *   기존에는 domain에 P/S이 고정되어 있어 이를 방지할 수 있으나, F-P NUMERIC 타입의 경우 이를 방지할 수 없음
+	 *
+	 * 해결 방안 :
+	 *   numeric_coerce_num_to_double 함수에서 numeric -> float, double 변환시, 정확한 P/S 값을 그대로 넘겨주도록 수정함 (= src)
+	 *   F-P NUMERIC 타입인 경우, src 값의 P/S 값을 복사하도록 수정함.
+	 *   
+	 *   추가, numeric_internal_double_to_num 내부에서 decpt <= 0 이 false인 경우는 dst_scale 값을 0으로 다시 초기화 해줌
+	 *   그 이유는 아래 (!is_double_or_float || is_desired_zero) 조건을 만족하기 위해 필요함
+	 *   ex) decpt 값은 0.0001 -> 1e-4 -> e 뒤에 -4를 의미함
+	 */
+	if (is_floating_point)
+	  {
+	    desired_scale = src->domain.numeric_info.scale;
+	    ret = numeric_internal_double_to_num (adouble, &desired_scale, num, &precision, &scale, is_floating_point);
+	    desired_precision = desired_scale == 0 ? desired_precision : src->domain.numeric_info.precision;
+	  }
+	else
+	  {
+	    ret = numeric_internal_double_to_num (adouble, &desired_scale, num, &precision, &scale, is_floating_point);
+	  }
 	break;
       }
 
     case DB_TYPE_FLOAT:
       {
 	float adouble = (float) db_get_float (src);
-	ret = numeric_internal_float_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
+	if (is_floating_point)
+	  {
+	    desired_scale = src->domain.numeric_info.scale;
+	    ret = numeric_internal_float_to_num (adouble, &desired_scale, num, &precision, &scale, is_floating_point);
+	    desired_precision = desired_scale == 0 ? desired_precision : src->domain.numeric_info.precision;
+	  }
+	else
+	  {
+	    ret = numeric_internal_float_to_num (adouble, &desired_scale, num, &precision, &scale, is_floating_point);
+	  }
 	break;
       }
 
     case DB_TYPE_MONETARY:
       {
 	double adouble = db_value_get_monetary_amount_as_double (src);
-	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale, is_floating_point);
+	ret = numeric_internal_double_to_num (adouble, &desired_scale, num, &precision, &scale, is_floating_point);
 	break;
       }
 
@@ -3762,10 +3771,23 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  goto exit_on_error;
 	}
 
-      if (dest->domain.numeric_info.is_floating_point_numeric)
+      /*
+       * NOTE :
+       *   DOUBLE, FLOAT 타입을 F-P NUMERIC 타입으로 변환할 경우 (다른 타입은 desired_* 값이 0임으로 복사해야함),
+       *   DOUBLE, FLOAT 타입에 Overflow된 값이 들어올 경우 지수 표현이 이상해져 p/s 값이 정확하지 않음.
+       *   따라서, 위에서 변환을 할때 src의 P/S 값을 복사 하고, 아래 조건에서 desired_* 값을 다시 복사하면 안됨.
+       *   그래서 (!is_double_or_float || is_desired_zero) 조건이 추가됨
+       */
+      if (is_floating_point)
 	{
-	  desired_precision = DB_VALUE_PRECISION (dest);
-	  desired_scale = DB_VALUE_SCALE (dest);
+	  bool is_double_or_float = (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE || DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
+	  bool is_desired_zero = (desired_precision == 0 && desired_scale == 0);
+
+	  if (!is_double_or_float || is_desired_zero)
+	    {
+	      desired_precision = DB_VALUE_PRECISION (dest);
+	      desired_scale = DB_VALUE_SCALE (dest);
+	    }
 	}
 
       ret =
@@ -3811,7 +3833,7 @@ exit_on_error:
  * numerical type.
  */
 int
-numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
+numeric_db_value_coerce_from_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status)
 {
   int ret = NO_ERROR;
 
@@ -3830,6 +3852,21 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    goto exit_on_error;
 	  }
 	db_make_double (dest, adouble);
+
+	/*
+	 * NOTE : (numeric -> double, float 변환)
+	 *   src 값이 F-P NUMERIC 타입이고, DOUBLE, FLOAT 타입으로 변경할 때 (src -> dest),
+	 *   dest 값을 다시 F-P NUMERIC 타입으로 변경할 때, 정확한 P/S 값을 파악하기 어려움.
+	 *   따라서, src 값의 정확한 P/S 값을 파악하기 위해 dest에 src 값의 P/S 값을 복사함
+	 *
+	 * ex) select cast(cast(0.01 as double) as numeric);
+	 */
+	if (src->domain.numeric_info.is_floating_point_numeric)
+	  {
+	    dest->domain.numeric_info.precision = src->domain.numeric_info.precision;
+	    dest->domain.numeric_info.scale = src->domain.numeric_info.scale;
+	    dest->domain.numeric_info.is_floating_point_numeric = true;
+	  }
 	break;
       }
 
@@ -3843,6 +3880,13 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    goto exit_on_error;
 	  }
 	db_make_float (dest, (float) adouble);
+
+	if (src->domain.numeric_info.is_floating_point_numeric)
+	  {
+	    dest->domain.numeric_info.precision = src->domain.numeric_info.precision;
+	    dest->domain.numeric_info.scale = src->domain.numeric_info.scale;
+	    dest->domain.numeric_info.is_floating_point_numeric = true;
+	  }
 	break;
       }
 
@@ -4022,7 +4066,7 @@ exit_on_error:
  * dest(in/out) : the value to coerce to
  */
 int
-numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
+numeric_db_value_coerce_from_num_strict (DB_VALUE *src, DB_VALUE *dest)
 {
   int ret = NO_ERROR;
 
@@ -4138,7 +4182,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
  * Note: returns the null-terminated string form of val
  */
 char *
-numeric_db_value_print (const DB_VALUE * val, char *buf)
+numeric_db_value_print (const DB_VALUE *val, char *buf)
 {
   char temp[80];
   int nbuf;
@@ -4237,7 +4281,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
  *
  */
 bool
-numeric_db_value_is_zero (const DB_VALUE * arg)
+numeric_db_value_is_zero (const DB_VALUE *arg)
 {
   if (DB_IS_NULL (arg))		/* NULL values are not 0 */
     {
@@ -4258,7 +4302,7 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
  *
  */
 int
-numeric_db_value_increase (DB_VALUE * arg)
+numeric_db_value_increase (DB_VALUE *arg)
 {
   /* Check for bad inputs */
   if (DB_IS_NULL (arg) || DB_VALUE_TYPE (arg) != DB_TYPE_NUMERIC)

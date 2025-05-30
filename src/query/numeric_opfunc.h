@@ -73,9 +73,9 @@ extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC res
 extern void numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str);
 
 extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble);
-extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+extern int numeric_internal_double_to_num (double adouble, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					   int is_floating_point);
-extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
+extern int numeric_internal_float_to_num (float afloat, int *dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					  int is_floating_point);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
