@@ -7718,7 +7718,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-		  || node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		  || node->info.expr.op == PT_DISTANCE_OP_COSINE || node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT) && node->info.expr.arg2 == NULL)
@@ -8124,10 +8124,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
 		  break;
 
-		case PT_DISTANCE_OP_EUCLIDEAN:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_EUCLIDEAN, domain);
-		  break;
-
 		case PT_MINUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SUB, domain);
 		  break;
@@ -8174,6 +8170,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_MOD:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_INTMOD, domain);
+		  break;
+
+		case PT_DISTANCE_OP_COSINE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_COSINE, domain);
+		  break;
+
+		case PT_DISTANCE_OP_EUCLIDEAN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_EUCLIDEAN, domain);
 		  break;
 
 		case PT_IF:

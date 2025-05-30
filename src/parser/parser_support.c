@@ -8435,9 +8435,10 @@ pt_is_operator_arith (PT_OP_TYPE op)
 {
   switch (op)
     {
+    case PT_DISTANCE_OP_COSINE:
     case PT_DISTANCE_OP_EUCLIDEAN:
       {
-	vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is arithmetic.");
+	vimkim_log ("PT_DISTANCE_OP_<vector metric> is arithmetic.");
 	return true;
       }
     case PT_PLUS:

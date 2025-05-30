@@ -16975,7 +16975,12 @@ normal_expression
 ;
 
 expression_vector_distance
-	: expression_vector_distance DISTANCE_OP_EUCLIDEAN expression_strcat
+	: expression_vector_distance DISTANCE_OP_COSINE expression_strcat
+		{{
+			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_COSINE, $1, $3, NULL);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| expression_vector_distance DISTANCE_OP_EUCLIDEAN expression_strcat
 		{{
 			$$ = parser_make_expression (this_parser, PT_DISTANCE_OP_EUCLIDEAN, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)

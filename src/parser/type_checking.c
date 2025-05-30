@@ -1654,6 +1654,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_DISTANCE_OP_COSINE:
     case PT_DISTANCE_OP_EUCLIDEAN:
       num = 0;
       vimkim_log ("op: %s\n", pt_show_binopcode (op));
@@ -10448,6 +10449,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = node->info.expr.arg1->type_enum;
       break;
 
+    case PT_DISTANCE_OP_COSINE:
     case PT_DISTANCE_OP_EUCLIDEAN:
       {
 	node->info.expr.arg1 = arg1;
@@ -12730,6 +12732,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
   switch (op)
     {
+
+    case PT_DISTANCE_OP_COSINE:
+      {
+	DB_VALUE *arr[2] = { arg1, arg2 };
+	error = vector_cosine_distance (result, arr, 2);
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	break;
+      }
 
     case PT_DISTANCE_OP_EUCLIDEAN:
       {

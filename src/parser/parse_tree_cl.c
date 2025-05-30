@@ -4089,6 +4089,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_DISTANCE_OP_COSINE:
+      return " <c> ";
     case PT_DISTANCE_OP_EUCLIDEAN:
       return " <-> ";
     default:
