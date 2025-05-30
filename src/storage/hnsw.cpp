@@ -151,6 +151,49 @@ int hnsw_print_index_info (BTID *btid)
   er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
   er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
 
+  /*
+  This works because, in faiss/impl/HNSW.cpp
+
+  ```cpp
+
+  // initialize the assign_probas and cum_nneighbor_per_level to
+  // have 2*M links on level 0 and M links on levels > 0
+  void HNSW::set_default_probas(int M, float levelMult) {
+    int nn = 0;
+    cum_nneighbor_per_level.push_back(0);
+    for (int level = 0;; level++) {
+        float proba = exp(-level / levelMult) * (1 - exp(-1 / levelMult));
+        if (proba < 1e-9)
+            break;
+        assign_probas.push_back(proba);
+        nn += level == 0 ? M * 2 : M;
+        cum_nneighbor_per_level.push_back(nn);
+    }
+  }
+
+  ```
+
+  */
+
+  const auto& neighbor_counts = hnsw_index->hnsw.cum_nneighbor_per_level;
+
+  std::string output = "  - HNSW neighbor_counts: [";
+  for (size_t i = 0; i < neighbor_counts.size(); ++i)
+    {
+      output += std::to_string (neighbor_counts[i]);
+      if (i + 1 < neighbor_counts.size())
+	{
+	  output += ", ";
+	}
+    }
+  output += "]";
+
+  er_log_debug (ARG_FILE_LINE, "%s", output.c_str());
+  if (neighbor_counts.size() > 1)
+    {
+      er_log_debug (ARG_FILE_LINE, "  - HNSW M is assumed to be %d", neighbor_counts[1] / 2);
+    }
+
   return NO_ERROR;
 }
 
