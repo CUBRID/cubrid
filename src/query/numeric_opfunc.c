@@ -2072,12 +2072,12 @@ numeric_db_value_div (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answ
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
   if (prec >
-      (answer->domain.
-       numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+      (answer->domain.numeric_info.is_floating_point_numeric ?
+       DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
     {
       prec =
-	(answer->domain.
-	 numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
+	(answer->domain.numeric_info.is_floating_point_numeric ?
+	 DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION);
     }
 
   if ((!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
@@ -2171,8 +2171,8 @@ numeric_db_value_div (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answ
   if (numeric_overflow (temp_quo, prec))
     {
       if (prec <
-	  (answer->domain.
-	   numeric_info.is_floating_point_numeric ? DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
+	  (answer->domain.numeric_info.is_floating_point_numeric ?
+	   DB_MAX_NUMERIC_PRECISION_FLOATING : DB_MAX_NUMERIC_PRECISION))
 	{
 	  prec++;
 	}
@@ -3170,8 +3170,11 @@ numeric_internal_real_to_num (double adouble, int *dst_scale, DB_C_NUMERIC num, 
 		{
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
-		  // decpt <= 0 이 false인 경우는 dst_scale 값을 0으로 다시 초기화 해줌
-		  *dst_scale = 0;
+		  if (is_floating_point)
+		    {
+		      // decpt <= 0 이 false인 경우는 dst_scale 값을 0으로 다시 초기화 해줌
+		      *dst_scale = 0;
+		    }
 
 		  if (decpt > max_precision)
 		    {
