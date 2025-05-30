@@ -144,17 +144,18 @@ int hnsw_print_index_info (BTID *btid)
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
   auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
 
-  er_log_debug (ARG_FILE_LINE, "HNSW Index Information for ID %d:", hnsw_id);
-  er_log_debug (ARG_FILE_LINE, "  - Dimension: %d", index->d);
-  er_log_debug (ARG_FILE_LINE, "  - Metric Type: %d", index->metric_type);
-  er_log_debug (ARG_FILE_LINE, "  - Total Elements: %d", index->ntotal);
-  er_log_debug (ARG_FILE_LINE, "  - HNSW efConstruction: %d", hnsw_index->hnsw.efConstruction);
-  er_log_debug (ARG_FILE_LINE, "  - HNSW efSearch: %d", hnsw_index->hnsw.efSearch);
+  std::ostringstream oss;
+
+  oss << "HNSW Index Information for ID " << hnsw_id << ":\n";
+  oss << "  - Dimension: " << index->d << "\n";
+  oss << "  - Metric Type: " << index->metric_type << "\n";
+  oss << "  - Total Elements: " << index->ntotal << "\n";
+  oss << "  - HNSW efConstruction: " << hnsw_index->hnsw.efConstruction << "\n";
+  oss << "  - HNSW efSearch: " << hnsw_index->hnsw.efSearch << "\n";
 
   /*
-  This works because, in faiss/impl/HNSW.cpp
-
-  ```cpp
+  * This works because, in faiss/impl/HNSW.cpp, HNSW is initialized with
+  * set_default_probas(M, ...);
 
   // initialize the assign_probas and cum_nneighbor_per_level to
   // have 2*M links on level 0 and M links on levels > 0
@@ -170,29 +171,27 @@ int hnsw_print_index_info (BTID *btid)
         cum_nneighbor_per_level.push_back(nn);
     }
   }
-
-  ```
-
   */
 
-  const auto& neighbor_counts = hnsw_index->hnsw.cum_nneighbor_per_level;
-
-  std::string output = "  - HNSW neighbor_counts: [";
+  // Print neighbor counts
+  const auto &neighbor_counts = hnsw_index->hnsw.cum_nneighbor_per_level;
+  oss << "  - HNSW neighbor_counts: [";
   for (size_t i = 0; i < neighbor_counts.size(); ++i)
     {
-      output += std::to_string (neighbor_counts[i]);
+      oss << neighbor_counts[i];
       if (i + 1 < neighbor_counts.size())
 	{
-	  output += ", ";
+	  oss << ", ";
 	}
     }
-  output += "]";
+  oss << "]\n";
 
-  er_log_debug (ARG_FILE_LINE, "%s", output.c_str());
   if (neighbor_counts.size() > 1)
     {
-      er_log_debug (ARG_FILE_LINE, "  - HNSW M is assumed to be %d", neighbor_counts[1] / 2);
+      oss << "  - HNSW M is assumed to be " << (neighbor_counts[1] / 2) << "\n";
     }
+
+  er_log_debug (ARG_FILE_LINE, "%s", oss.str().c_str());
 
   return NO_ERROR;
 }
