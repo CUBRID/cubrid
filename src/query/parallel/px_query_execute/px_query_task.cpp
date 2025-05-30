@@ -81,8 +81,10 @@ namespace parallel_query_execute
     int err = 0;
     int temp_tran_index = thread_ref.tran_index;
     css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
+    bool temp_on_trace = thread_ref.on_trace;
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
+    thread_ref.on_trace = m_orig_thread_p->on_trace;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
     qexec_clear_access_spec_list_public ((void *)&thread_ref, (void *)m_xasl, (void *)m_xasl->spec_list, true);
@@ -90,6 +92,7 @@ namespace parallel_query_execute
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
+    thread_ref.on_trace = temp_on_trace;
   }
   void task::retire ()
   {
