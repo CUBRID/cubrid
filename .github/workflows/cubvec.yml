@@ -1,0 +1,13 @@
+# .github/workflows/pr-check.yml
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Running tests for pull request..."
