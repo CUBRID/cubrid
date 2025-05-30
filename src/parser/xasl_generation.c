@@ -7719,6 +7719,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
 		  || node->info.expr.op == PT_DISTANCE_OP_COSINE || node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN
+		  || node->info.expr.op == PT_DISTANCE_OP_MANHATTAN
 		  || node->info.expr.op == PT_DISTANCE_OP_NEG_INNER_PROD)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -8179,6 +8180,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_DISTANCE_OP_EUCLIDEAN:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_EUCLIDEAN, domain);
+		  break;
+
+		case PT_DISTANCE_OP_MANHATTAN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DISTANCE_OP_MANHATTAN, domain);
 		  break;
 
 		case PT_DISTANCE_OP_NEG_INNER_PROD:
