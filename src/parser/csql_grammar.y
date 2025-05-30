@@ -2833,21 +2833,24 @@ create_stmt
 
 			node->info.index.is_vector_index = true;
 
+			node->info.index.vector_index.hnsw_m = HNSW_DEFAULT_M;
+			node->info.index.vector_index.hnsw_ef_construction = HNSW_DEFAULT_EF_CONSTRUCTION;
+
 			kv_pair *kvp = $13; // opt_vector_index_with_clause
 			if (kvp) 
 			  {
 			    PT_NODE *m_node = kv_pair_lookup(kvp, "m");
+			    if (m_node != NULL)
+			      {
+				int m = m_node->info.value.data_value.i;
+				node->info.index.vector_index.hnsw_m = m;
+			      }
 			    PT_NODE *ef_construction_node = kv_pair_lookup(kvp, "ef_construction");
-
-			    // TODO (CUBVEC): default m and ef_con?
-			    int default_m = 16;
-			    int default_ef_con = 64;
-
-			    int m = m_node ? m_node->info.value.data_value.i : default_m;
-			    int ef_con = ef_construction_node ? ef_construction_node->info.value.data_value.i : default_ef_con;
-
-			    node->info.index.vector_index.hnsw_m = m;
-			    node->info.index.vector_index.hnsw_ef_construction = ef_con;
+			    if (ef_construction_node != NULL)
+			      {
+				int ef_con = ef_construction_node->info.value.data_value.i;
+				node->info.index.vector_index.hnsw_ef_construction = ef_con;
+			      }
 			  }
 
 			bool opt_unique = false; // original $5
