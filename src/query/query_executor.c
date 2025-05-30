@@ -14415,23 +14415,23 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			  is_aptr_parallel_query_executor_allocated = true;
 			}
-			if (xasl->px_executor)
+		      if (xasl->px_executor)
 			{
-				xasl->px_executor->add_task (xptr2, xasl_state);
+			  xasl->px_executor->add_task (xptr2, xasl_state);
 			}
-			else
+		      else
 			{
-				if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
-			{
-			  if (tplrec.tpl)
+			  if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			    {
-			      db_private_free_and_init (thread_p, tplrec.tpl);
+			      if (tplrec.tpl)
+				{
+				  db_private_free_and_init (thread_p, tplrec.tpl);
+				}
+			      qexec_failure_line (__LINE__, xasl_state);
+			      GOTO_EXIT_ON_ERROR;
 			    }
-			  qexec_failure_line (__LINE__, xasl_state);
-			  GOTO_EXIT_ON_ERROR;
 			}
-			}
-		      
+
 #else
 		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			{
