@@ -27,27 +27,33 @@
 
 #include "px_worker_manager.hpp"
 #include "xasl.h"
+#include "px_query_task.hpp"
 
 //forward definition
 struct xasl_state;
 
 namespace parallel_query_execute
 {
+  using pool = parallel_query::worker_manager_with_dedicated_pool;
   class query_executor
   {
     public:
-      query_executor (THREAD_ENTRY *thread_p, parallel_query::worker_manager_with_dedicated_pool *worker_manager_p,
+      static bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, XASL_NODE *xasl, pool *worker_manager_p,
+	  query_executor *parent_p, int parallelism);
+      query_executor (THREAD_ENTRY *thread_p, pool *worker_manager_p,
 		      int parallelism);
+      query_executor (query_executor *);
       ~query_executor ();
-      void execute (XASL_NODE *xasl, xasl_state *xasl_state);
-      void join ();
-
-      bool m_is_running;
+      void add_task (XASL_NODE *xasl, xasl_state *xasl_state);
+      void run_tasks (THREAD_ENTRY *thread_p);
 
     private:
       THREAD_ENTRY *m_thread_p;
-      parallel_query::worker_manager_with_dedicated_pool *m_worker_manager_p;
+      pool *m_worker_manager_p;
+      pthread_mutex_t *m_mutex_p;
+      task_queue m_task_queue;
       int m_parallelism;
+      int m_recursion_level;
   };
 }
 

@@ -1824,9 +1824,10 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 }
 
 int
-qexec_clear_access_spec_list_public (void * thread_p, void * xasl_p, void *list, bool is_final)
+qexec_clear_access_spec_list_public (void *thread_p, void *xasl_p, void *list, bool is_final)
 {
-  return qexec_clear_access_spec_list ((THREAD_ENTRY *) thread_p, (XASL_NODE *) xasl_p, (ACCESS_SPEC_TYPE *) list, is_final);
+  return qexec_clear_access_spec_list ((THREAD_ENTRY *) thread_p, (XASL_NODE *) xasl_p, (ACCESS_SPEC_TYPE *) list,
+				       is_final);
 }
 
 /*
@@ -14024,16 +14025,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
-#if SERVER_MODE
-  parallel_query::worker_manager_with_dedicated_pool * px_worker_manager_p =
-    &parallel_query::worker_manager_with_dedicated_pool::get_manager ();
-  parallel_query_execute::query_executor * px_executor = nullptr;
-  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL))
-    {
-      px_executor = new parallel_query_execute::query_executor (thread_p, px_worker_manager_p, 2);
-    }
-
-#endif
+  bool is_aptr_parallel_query_executor_allocated = false;
 
   /*
    * Pre_processing
@@ -14412,10 +14404,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 #if SERVER_MODE
-		      if (px_executor != nullptr)
+		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && !is_aptr_parallel_query_executor_allocated)
 			{
-			  px_executor->execute (xptr2, xasl_state);
+			  parallel_query::worker_manager_with_dedicated_pool * px_worker_manager_p =
+			    &parallel_query::worker_manager_with_dedicated_pool::get_manager ();
+			  if (parallel_query_execute::query_executor::make_parallel_query_executor_recursively
+			      (thread_p, xasl, px_worker_manager_p, nullptr, 2) != true)
+			    {
+			      GOTO_EXIT_ON_ERROR;
+			    }
+			  is_aptr_parallel_query_executor_allocated = true;
 			}
+		      xasl->px_executor->add_task (xptr2, xasl_state);
 #else
 		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			{
@@ -14445,13 +14445,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
 #if SERVER_MODE
-      if (px_executor != nullptr && px_executor->m_is_running)
+      if (xasl->px_executor)
 	{
-	  px_executor->join ();
-	  delete px_executor;
-	  px_executor = nullptr;
-	  thread_p->m_qlist_count = 3;
+	  xasl->px_executor->run_tasks (thread_p);
+	  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && is_aptr_parallel_query_executor_allocated)
+	    {
+	      delete xasl->px_executor;
+	      xasl->px_executor = nullptr;
+	    }
 	}
+
 #endif
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
