@@ -106,6 +106,7 @@ namespace parallel_heap_scan
     list_id_data data;
     OUTPTR_LIST *outptr_list;
     bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
+    bool open_succeeded = false;
     int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -130,15 +131,26 @@ namespace parallel_heap_scan
     std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
-	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
+	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
+			 scan_id->vd);
 	outptr_list = m_memory_mapper->get_outptr_list();
 	assert (outptr_list);
       }
     else
       {
-	m_list_id_wrapper->open (thread_p);
+	open_succeeded = m_list_id_wrapper->open (thread_p);
       }
-    lock.unlock();
+    if (!open_succeeded)
+      {
+	/* maybe interrupted */
+	db_change_private_heap (thread_p, orig_heap_id);
+	thread_p->tran_index = orig_tran_index;
+	thread_p->conn_entry = orig_conn_entry;
+	m_context->add_tasks_scan_ended();
+	m_context->add_tasks_executed();
+	m_context->add_tasks_list_opened();
+	return;
+      }
     m_context->add_tasks_list_opened();
 
     list_writer writer (m_list_stream, m_list_id_wrapper.get());
@@ -150,6 +162,8 @@ namespace parallel_heap_scan
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
     ret = scan_start_scan (thread_p, scan_id);
+    /* lock because of mvcc_snapshot */
+    lock.unlock();
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -227,8 +241,18 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
-		    writer_error_code = m_mergable_list_writer->write (thread_p);
-
+		    if (m_context->has_error() || m_context->is_scan_external_ended)
+		      {
+			break;
+		      }
+		    {
+		      std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		      if (!m_mergable_list_writer->is_tfile_allocated())
+			{
+			  tfile_lock.lock();
+			}
+		      writer_error_code = m_mergable_list_writer->write (thread_p);
+		    }
 		    if (!resolved_dbval_stored)
 		      {
 			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
@@ -243,6 +267,11 @@ namespace parallel_heap_scan
 		  }
 		else
 		  {
+		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		    if (!writer.is_tfile_allocated())
+		      {
+			tfile_lock.lock();
+		      }
 		    writer.write (thread_p, scan_id, data);
 		  }
 		if (on_trace)
@@ -288,8 +317,9 @@ namespace parallel_heap_scan
   void
   task::retire ()
   {
-    m_worker_manager->pop_task();
+    parallel_query::worker_manager *worker_manager_p = m_worker_manager;
     cubthread::entry_task::retire();
+    worker_manager_p->pop_task();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */

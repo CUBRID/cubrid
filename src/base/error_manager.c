@@ -1303,7 +1303,6 @@ er_notify_event_on_error (int err_id)
 {
   assert (err_id != NO_ERROR);
 
-  err_id = abs (err_id);
   if (sysprm_find_err_in_integer_list (PRM_ID_EVENT_ACTIVATION, err_id))
     {
       er_event ();
@@ -1350,7 +1349,6 @@ er_call_stack_dump_on_error (int severity, int err_id)
 {
   assert (err_id != NO_ERROR);
 
-  err_id = abs (err_id);
   if (severity == ER_FATAL_ERROR_SEVERITY)
     {
       er_dump_call_stack (er_Msglog_fh);
