@@ -210,7 +210,7 @@ static PT_TYPE_ENUM pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, 
 						    PT_OP_TYPE op);
 static PT_NODE *pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type, const PT_TYPE_ENUM new_type,
 					   PT_NODE * data_type);
-static PT_TYPE_ENUM pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype);
+static PT_TYPE_ENUM pt_get_common_collection_type (const PT_NODE * set, bool *is_multitype);
 static bool pt_is_collection_of_type (const PT_NODE * collection, const PT_TYPE_ENUM collection_type,
 				      const PT_TYPE_ENUM element_type);
 static bool pt_is_symmetric_type (const PT_TYPE_ENUM type_enum);
@@ -271,7 +271,7 @@ static COLLATION_RESULT pt_get_collation_info_for_collection_type (PARSER_CONTEX
 								   PT_COLL_INFER * coll_infer);
 static COLLATION_RESULT pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node,
 							PT_COLL_INFER * coll_infer, const bool is_inner_collection,
-							bool * is_first_element);
+							bool *is_first_element);
 static PT_NODE *pt_coerce_node_collection_of_collection (PARSER_CONTEXT * parser, PT_NODE * node, const int coll_id,
 							 const INTL_CODESET codeset, bool force_mode,
 							 bool use_collate_modifier, PT_TYPE_ENUM wrap_type_for_maybe,
@@ -300,7 +300,7 @@ static bool pt_is_dblink_related (PT_NODE * p);
  *   def(in/out): the expression definition
  */
 static bool
-pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
+pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION *def)
 {
   EXPRESSION_SIGNATURE sig;
   int num;
@@ -4754,8 +4754,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
  *   data_type(in): precision and scale information for arg
  */
 static int
-pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE ** arg, const PT_TYPE_ENUM def_type,
-			       PT_NODE * data_type)
+pt_coerce_expression_argument (PARSER_CONTEXT *parser, PT_NODE *expr, PT_NODE **arg, const PT_TYPE_ENUM def_type,
+			       PT_NODE *data_type)
 {
   PT_NODE *node = *arg;
   PT_NODE *new_node = NULL, *new_dt = NULL;
@@ -4996,7 +4996,7 @@ pt_are_unmatchable_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type
 }
 
 static PT_NODE *
-pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type, const PT_TYPE_ENUM new_type, PT_NODE * data_type)
+pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type, const PT_TYPE_ENUM new_type, PT_NODE *data_type)
 {
   if (new_type == PT_TYPE_NUMERIC)
     {
@@ -5039,8 +5039,8 @@ pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type, const PT_TYPE_ENUM new_t
  *	  arguments there.
  */
 static PT_TYPE_ENUM
-pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * arg2, PT_TYPE_ENUM * arg3,
-		      const TP_DOMAIN * expected_domain)
+pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM *arg1, PT_TYPE_ENUM *arg2, PT_TYPE_ENUM *arg3,
+		      const TP_DOMAIN *expected_domain)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_NONE;
   PT_TYPE_ENUM arg1_eq_type = *arg1;
@@ -5142,7 +5142,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
  *  are counted as one.
  */
 static PT_TYPE_ENUM
-pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype)
+pt_get_common_collection_type (const PT_NODE *set, bool *is_multitype)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_NONE, temp_type = PT_TYPE_NONE;
   bool is_multitype_temp = false;
@@ -5192,7 +5192,7 @@ pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype)
  *  element_type(in)	: the type of the elements in the collection
  */
 static bool
-pt_is_collection_of_type (const PT_NODE * node, const PT_TYPE_ENUM collection_type, const PT_TYPE_ENUM element_type)
+pt_is_collection_of_type (const PT_NODE *node, const PT_TYPE_ENUM collection_type, const PT_TYPE_ENUM element_type)
 {
   PT_NODE *temp = NULL;
   assert (node != NULL);
@@ -5234,7 +5234,7 @@ pt_is_collection_of_type (const PT_NODE * node, const PT_TYPE_ENUM collection_ty
  *
  */
 static PT_NODE *
-pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3,
+pt_coerce_range_expr_arguments (PARSER_CONTEXT *parser, PT_NODE *expr, PT_NODE *arg1, PT_NODE *arg2, PT_NODE *arg3,
 				EXPRESSION_SIGNATURE sig)
 {
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE;
@@ -5632,7 +5632,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
  *  sig(in)	: the expression signature
  */
 static PT_NODE *
-pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3,
+pt_coerce_expr_arguments (PARSER_CONTEXT *parser, PT_NODE *expr, PT_NODE *arg1, PT_NODE *arg2, PT_NODE *arg3,
 			  EXPRESSION_SIGNATURE sig)
 {
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE;
@@ -6078,7 +6078,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
  *  node(in/out): an SQL expression
  */
 static int
-pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
+pt_apply_expressions_definition (PARSER_CONTEXT *parser, PT_NODE **node)
 {
   PT_OP_TYPE op;
   PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
@@ -6247,7 +6247,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
  *	     proper CUBRID types (i.e.: not generic types)
  */
 static PT_TYPE_ENUM
-pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
+pt_expr_get_return_type (PT_NODE *expr, const EXPRESSION_SIGNATURE sig)
 {
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE;
   PT_TYPE_ENUM arg3_type = PT_TYPE_NONE;
@@ -6671,7 +6671,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
  */
 
 static PT_NODE *
-pt_propagate_types (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * otype1, PT_NODE * otype2)
+pt_propagate_types (PARSER_CONTEXT *parser, PT_NODE *expr, PT_NODE *otype1, PT_NODE *otype2)
 {
   PT_NODE *o1, *o2;
 
@@ -6709,8 +6709,7 @@ pt_propagate_types (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * otype1, P
  */
 
 static int
-pt_union_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_VALUE * set2, DB_VALUE * result,
-	       PT_NODE * o2)
+pt_union_sets (PARSER_CONTEXT *parser, TP_DOMAIN *domain, DB_VALUE *set1, DB_VALUE *set2, DB_VALUE *result, PT_NODE *o2)
 {
   DB_SET *set, *s1, *s2;
   int error;
@@ -6743,8 +6742,8 @@ pt_union_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_
  */
 
 static int
-pt_difference_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_VALUE * set2, DB_VALUE * result,
-		    PT_NODE * o2)
+pt_difference_sets (PARSER_CONTEXT *parser, TP_DOMAIN *domain, DB_VALUE *set1, DB_VALUE *set2, DB_VALUE *result,
+		    PT_NODE *o2)
 {
   DB_SET *set, *s1, *s2;
   int error;
@@ -6776,8 +6775,8 @@ pt_difference_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1
  *           (used purely for generating error messages)
  */
 static int
-pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_VALUE * set2, DB_VALUE * result,
-		 PT_NODE * o2)
+pt_product_sets (PARSER_CONTEXT *parser, TP_DOMAIN *domain, DB_VALUE *set1, DB_VALUE *set2, DB_VALUE *result,
+		 PT_NODE *o2)
 {
   DB_SET *set, *s1, *s2;
   int error;
@@ -6811,7 +6810,7 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
  */
 
 PT_NODE *
-pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
+pt_where_type (PARSER_CONTEXT *parser, PT_NODE *where)
 {
   PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
   bool cut_off;
@@ -7005,7 +7004,7 @@ always_false:
  *   is true it is folded to a true value rather than a NULL.
  */
 PT_NODE *
-pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where)
+pt_where_type_keep_true (PARSER_CONTEXT *parser, PT_NODE *where)
 {
   PT_NODE *save_where = where;
 
@@ -7035,7 +7034,7 @@ pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where)
  */
 
 bool
-pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_false_where (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *from, *where;
 
@@ -7163,7 +7162,7 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 bool
-pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
+pt_false_search_condition (PARSER_CONTEXT *parser, const PT_NODE *node)
 {
   while (node)
     {
@@ -7188,7 +7187,7 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
  *   node(in/out):
  */
 static PT_NODE *
-pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_to_false_subquery (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *next;
   int line, column;
@@ -7356,7 +7355,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
  *   recursive_expr(in): recursive expression node to evaluate.
  */
 static PT_NODE *
-pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * recursive_expr)
+pt_eval_recursive_expr_type (PARSER_CONTEXT *parser, PT_NODE *recursive_expr)
 {
   PT_OP_TYPE op;
 
@@ -7398,7 +7397,7 @@ pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * recursive_expr)
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_eval_type_pre (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *arg1, *arg2;
   PT_NODE *derived_table;
@@ -7786,14 +7785,14 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT *parser, PT_NODE *expr, void *arg, int *continue_walk)
 {
   expr->flag.do_not_fold = 1;
   return expr;
 }
 
 static PT_NODE *
-pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_fold_constants_pre (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   if (node == NULL)
     {
@@ -7834,7 +7833,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_fold_constants_post (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
 
@@ -7887,7 +7886,7 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_eval_type (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *dt = NULL, *arg1 = NULL, *arg2 = NULL;
   PT_NODE *spec = NULL;
@@ -8205,7 +8204,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
  *   node(in/out): an EXISTS subquery
  */
 static void
-pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_chop_to_one_select_item (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   if (pt_is_query (node))
     {
@@ -8242,7 +8241,7 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
  *  attrs(in): list of attributes to append to the query
  */
 PT_NODE *
-pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs)
+pt_append_query_select_list (PARSER_CONTEXT *parser, PT_NODE *query, PT_NODE *attrs)
 {
   if (!attrs)
     {
@@ -8285,8 +8284,8 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE *
  *   force_wrap(in): forces wrapping with cast for collatable nodes
  */
 int
-pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query, PT_TYPE_ENUM new_type, int p, int s,
-				  PT_NODE * data_type, bool force_wrap)
+pt_wrap_select_list_with_cast_op (PARSER_CONTEXT *parser, PT_NODE *query, PT_TYPE_ENUM new_type, int p, int s,
+				  PT_NODE *data_type, bool force_wrap)
 {
   switch (query->node_type)
     {
@@ -8420,7 +8419,7 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query, PT_T
  */
 
 PT_NODE *
-pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type, PT_NODE * set_data,
+pt_wrap_collection_with_cast_op (PARSER_CONTEXT *parser, PT_NODE *arg, PT_TYPE_ENUM set_type, PT_NODE *set_data,
 				 bool for_collation)
 {
   PT_NODE *new_att, *set_dt, *next_att;
@@ -8541,7 +8540,7 @@ pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE
  *   desired_dt(in):
  */
 PT_NODE *
-pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s, PT_NODE * desired_dt)
+pt_wrap_with_cast_op (PARSER_CONTEXT *parser, PT_NODE *arg, PT_TYPE_ENUM new_type, int p, int s, PT_NODE *desired_dt)
 {
   PT_NODE *new_att, *new_dt, *next_att;
 
@@ -8640,7 +8639,7 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
  *   hv_node(in):
  */
 void
-pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
+pt_preset_hostvar (PARSER_CONTEXT *parser, PT_NODE *hv_node)
 {
   pt_hv_consistent_data_type_with_domain (parser, hv_node);
   if (parser->host_var_count <= hv_node->info.host_var.index)
@@ -8658,7 +8657,7 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
  *  domain (in)	  : the expected domain
  */
 void
-pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain)
+pt_set_expected_domain (PT_NODE *node, TP_DOMAIN *domain)
 {
   PT_NODE *_or_next = NULL;
   node->expected_domain = domain;
@@ -8823,8 +8822,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
  *   arg1(in):
  */
 static PT_TYPE_ENUM
-pt_get_common_datetime_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM common_type, PT_TYPE_ENUM arg1_type,
-			     PT_TYPE_ENUM arg2_type, PT_NODE * arg1, PT_NODE * arg2)
+pt_get_common_datetime_type (PARSER_CONTEXT *parser, PT_TYPE_ENUM common_type, PT_TYPE_ENUM arg1_type,
+			     PT_TYPE_ENUM arg2_type, PT_NODE *arg1, PT_NODE *arg2)
 {
   PT_TYPE_ENUM arg_type, arg_base_type;
   PT_NODE *arg_ptr = NULL;
@@ -8883,7 +8882,7 @@ pt_get_common_datetime_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM common_type, 
  *   node(in):
  */
 static PT_NODE *
-pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_expr_type (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_OP_TYPE op;
   PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
@@ -10671,7 +10670,7 @@ error:
  *   node(in/out):
  */
 static PT_NODE *
-pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_opt_type (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_MISC_TYPE option;
   PT_NODE *arg1, *arg2;
@@ -11619,8 +11618,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
  */
 
 static int
-pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_OP_TYPE op, PT_TYPE_ENUM common_type,
-		    PT_NODE * node)
+pt_upd_domain_info (PARSER_CONTEXT *parser, PT_NODE *arg1, PT_NODE *arg2, PT_OP_TYPE op, PT_TYPE_ENUM common_type,
+		    PT_NODE *node)
 {
   int arg1_prec = 0;
   int arg1_dec_prec = 0;
@@ -11674,9 +11673,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     }
   else if (arg1 && arg1->type_enum == PT_TYPE_NUMERIC)
     {
-      arg1_is_floating_point_numeric = arg1->data_type->info.data_type.is_floating_point_numeric;
-      arg1_prec = arg1_is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_PRECISION;
-      arg1_dec_prec = arg1_is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_SCALE;
+      arg1_prec = DB_DEFAULT_NUMERIC_PRECISION;
+      arg1_dec_prec = DB_DEFAULT_NUMERIC_SCALE;
       arg1_units = 0;
     }
   else if (arg1 && arg1->type_enum == PT_TYPE_MAYBE)
@@ -11726,9 +11724,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     }
   else if (arg2 && arg2->type_enum == PT_TYPE_NUMERIC)
     {
-      arg2_is_floating_point_numeric = arg2->data_type->info.data_type.is_floating_point_numeric;
-      arg2_prec = arg2_is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_PRECISION;
-      arg2_dec_prec = arg2_is_floating_point_numeric ? DB_DEFAULT_NUMERIC_PRECISION_FLOATING : DB_DEFAULT_NUMERIC_SCALE;
+      arg2_prec = DB_DEFAULT_NUMERIC_PRECISION;
+      arg2_dec_prec = DB_DEFAULT_NUMERIC_SCALE;
       arg2_units = 0;
     }
   else if (arg2 && arg2->type_enum == PT_TYPE_MAYBE)
@@ -12497,7 +12494,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
  *   src(in/out): a pointer to the original PT_VALUE
  */
 static int
-pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
+pt_check_and_coerce_to_time (PARSER_CONTEXT *parser, PT_NODE *src)
 {
   DB_VALUE *db_src = NULL;
   const char *cp;
@@ -12539,7 +12536,7 @@ pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
  *   src(in/out): node to be checked
  */
 static int
-pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
+pt_check_and_coerce_to_date (PARSER_CONTEXT *parser, PT_NODE *src)
 {
   DB_VALUE *db_src = NULL;
   const char *str = NULL;
@@ -12581,7 +12578,7 @@ pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
  *   result_type(out): the result type of the coerced result
  */
 static int
-pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, PT_NODE * src, PT_TYPE_ENUM * result_type)
+pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT *parser, PT_NODE *src, PT_TYPE_ENUM *result_type)
 {
   int result = -1;
 
@@ -12648,7 +12645,7 @@ pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, PT_NODE * sr
  */
 
 static int
-pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3)
+pt_coerce_3args (PARSER_CONTEXT *parser, PT_NODE *arg1, PT_NODE *arg2, PT_NODE *arg3)
 {
   PT_TYPE_ENUM common_type;
   PT_NODE *data_type = NULL;
@@ -12715,7 +12712,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NOD
 }
 
 static int
-pt_wrap_logical_arglist_with_integer (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * arg_list)
+pt_wrap_logical_arglist_with_integer (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *arg_list)
 {
   PT_NODE *prev = NULL;
   PT_NODE *arg = NULL;
@@ -12751,7 +12748,7 @@ pt_wrap_logical_arglist_with_integer (PARSER_CONTEXT * parser, PT_NODE * node, P
     return: type checked and evaluated PT_FUNCTION node
 */
 static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_function_type (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   assert (node->node_type == PT_FUNCTION);
 
@@ -12811,7 +12808,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static PT_NODE *
-pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_method_call_type (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *method_name;
   PT_NODE *on_call_target;
@@ -12906,9 +12903,9 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 int
-pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2,
-			   DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain, PT_NODE * o1, PT_NODE * o2,
-			   PT_NODE * o3, PT_MISC_TYPE qualifier)
+pt_evaluate_db_value_expr (PARSER_CONTEXT *parser, PT_NODE *expr, PT_OP_TYPE op, DB_VALUE *arg1, DB_VALUE *arg2,
+			   DB_VALUE *arg3, DB_VALUE *result, TP_DOMAIN *domain, PT_NODE *o1, PT_NODE *o2,
+			   PT_NODE *o3, PT_MISC_TYPE qualifier)
 {
   DB_TYPE typ;
   DB_TYPE typ1, typ2;
@@ -18026,7 +18023,7 @@ error_zerodate:
  * check if the expr node has any dblink-related term
  */
 static bool
-pt_is_dblink_related (PT_NODE * p)
+pt_is_dblink_related (PT_NODE *p)
 {
   PT_OP_TYPE op;
 
@@ -18079,7 +18076,7 @@ pt_is_dblink_related (PT_NODE * p)
  */
 
 static PT_NODE *
-pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
+pt_fold_const_expr (PARSER_CONTEXT *parser, PT_NODE *expr, void *arg)
 {
   PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3, result_type;
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL, *result = NULL;
@@ -19096,8 +19093,8 @@ end:
  *   result(out): result value of function (if evaluated)
  */
 int
-pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[], const int num_args,
-			     DB_VALUE * result)
+pt_evaluate_function_w_args (PARSER_CONTEXT *parser, FUNC_CODE fcode, DB_VALUE *args[], const int num_args,
+			     DB_VALUE *result)
 {
   int error = NO_ERROR, i;
 
@@ -19268,7 +19265,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE 
  *   func(in): a parse tree representation of a possibly constant function
  */
 static PT_NODE *
-pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
+pt_fold_const_function (PARSER_CONTEXT *parser, PT_NODE *func)
 {
   PT_TYPE_ENUM result_type = PT_TYPE_NONE;
   PT_NODE *result = NULL;
@@ -19418,7 +19415,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
  *   dbval_res(in/out): the result DB_VALUE of evaluation
  */
 int
-pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res)
+pt_evaluate_function (PARSER_CONTEXT *parser, PT_NODE *func, DB_VALUE *dbval_res)
 {
   PT_NODE *operand;
   DB_VALUE dummy, **arg_array;
@@ -19542,7 +19539,7 @@ end:
  */
 
 PT_NODE *
-pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+pt_semantic_type (PARSER_CONTEXT *parser, PT_NODE *tree, SEMANTIC_CHK_INFO *sc_info_ptr)
 {
   PT_NODE *spec = NULL;
   SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
@@ -19610,7 +19607,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
  *   type(in): a data_type node
  */
 static const char *
-pt_class_name (const PT_NODE * type)
+pt_class_name (const PT_NODE *type)
 {
   if (!type || type->node_type != PT_DATA_TYPE || !type->info.data_type.entity
       || type->info.data_type.entity->node_type != PT_NAME)
@@ -19631,7 +19628,7 @@ pt_class_name (const PT_NODE * type)
  *   dtp(in):
  */
 static int
-pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE ** dtp)
+pt_set_default_data_type (PARSER_CONTEXT *parser, PT_TYPE_ENUM type, PT_NODE **dtp)
 {
   PT_NODE *dt;
   int error = NO_ERROR;
@@ -19693,7 +19690,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
  *   desired_type(in): desired type
  */
 static bool
-pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * parser, PT_TYPE_ENUM data_type,
+pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT *parser, PT_TYPE_ENUM data_type,
 						 PT_TYPE_ENUM desired_type)
 {
   /* Complete this function with other types that allow explicit coerce for default value */
@@ -19719,7 +19716,7 @@ pt_is_explicit_coerce_allowed_for_default_value (PARSER_CONTEXT * parser, PT_TYP
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  */
 int
-pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type, PT_NODE * data_type)
+pt_coerce_value (PARSER_CONTEXT *parser, PT_NODE *src, PT_NODE *dest, PT_TYPE_ENUM desired_type, PT_NODE *data_type)
 {
   return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, false, true);
 }
@@ -19734,8 +19731,8 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  */
 int
-pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-			  PT_NODE * data_type)
+pt_coerce_value_explicit (PARSER_CONTEXT *parser, PT_NODE *src, PT_NODE *dest, PT_TYPE_ENUM desired_type,
+			  PT_NODE *data_type)
 {
   return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, false);
 }
@@ -19752,8 +19749,8 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
  *   check_string_precision(in): true, if needs to consider string precision
  */
 int
-pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
+pt_coerce_value_for_default_value (PARSER_CONTEXT *parser, PT_NODE *src, PT_NODE *dest, PT_TYPE_ENUM desired_type,
+				   PT_NODE *data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
 				   bool check_string_precision)
 {
   bool implicit_coercion;
@@ -19786,8 +19783,8 @@ pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NO
  *   do_implicit_coercion(in): true for implicit coercion, false for explicit coercion
  */
 static int
-pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-			  PT_NODE * data_type, bool check_string_precision, bool implicit_coercion)
+pt_coerce_value_internal (PARSER_CONTEXT *parser, PT_NODE *src, PT_NODE *dest, PT_TYPE_ENUM desired_type,
+			  PT_NODE *data_type, bool check_string_precision, bool implicit_coercion)
 {
   PT_TYPE_ENUM original_type;
   PT_NODE *dest_next;
@@ -20102,7 +20099,7 @@ init_generic_funcs (void)
  */
 
 int
-pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_type_generic_func (PARSER_CONTEXT *parser, PT_NODE *node)
 {
 #if !defined(ENABLE_UNUSED_FUNCTION)
   /* If you want to use generic function, remove this block. */
@@ -20168,8 +20165,8 @@ pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static PT_NODE *
-pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, PT_TYPE_ENUM lhs_type,
-			    DB_VALUE * rhs_val, PT_TYPE_ENUM rhs_type)
+pt_compare_bounds_to_value (PARSER_CONTEXT *parser, PT_NODE *expr, PT_OP_TYPE op, PT_TYPE_ENUM lhs_type,
+			    DB_VALUE *rhs_val, PT_TYPE_ENUM rhs_type)
 {
   bool lhs_less = false;
   bool lhs_greater = false;
@@ -20645,7 +20642,7 @@ pt_negate_op (PT_OP_TYPE op)
  *   between(out):
  */
 int
-pt_comp_to_between_op (PT_OP_TYPE left, PT_OP_TYPE right, PT_COMP_TO_BETWEEN_OP_CODE_TYPE type, PT_OP_TYPE * between)
+pt_comp_to_between_op (PT_OP_TYPE left, PT_OP_TYPE right, PT_COMP_TO_BETWEEN_OP_CODE_TYPE type, PT_OP_TYPE *between)
 {
   size_t i;
 
@@ -20680,7 +20677,7 @@ pt_comp_to_between_op (PT_OP_TYPE left, PT_OP_TYPE right, PT_COMP_TO_BETWEEN_OP_
  *   right(out):
  */
 int
-pt_between_to_comp_op (PT_OP_TYPE between, PT_OP_TYPE * left, PT_OP_TYPE * right)
+pt_between_to_comp_op (PT_OP_TYPE between, PT_OP_TYPE *left, PT_OP_TYPE *right)
 {
   size_t i;
 
@@ -20797,7 +20794,7 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
  *   expr(in): expression node to be checked and wrapped
  */
 static PT_NODE *
-pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
+pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT *parser, PT_NODE *expr)
 {
   /* expressions returning MAYBE, but with an expected domain are wrapped with cast */
   if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_hv_late_bind (expr->info.expr.op)
@@ -20876,7 +20873,7 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
  *	   which may cause performance problem
  */
 static bool
-pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3, TP_DOMAIN * domain)
+pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE *arg1, DB_VALUE *arg2, DB_VALUE *arg3, TP_DOMAIN *domain)
 {
   const int MAX_RESULT_SIZE_ON_CONST_FOLDING = 256;
   switch (op)
@@ -21062,7 +21059,7 @@ pt_is_op_w_collation (const PT_OP_TYPE op)
  *   coll_infer(out): collation inference data
  */
 bool
-pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
+pt_get_collation_info (const PT_NODE *node, PT_COLL_INFER *coll_infer)
 {
   bool has_collation = false;
 
@@ -21266,7 +21263,7 @@ pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
  *
  */
 static COLLATION_RESULT
-pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NODE * node, PT_COLL_INFER * coll_infer)
+pt_get_collation_info_for_collection_type (PARSER_CONTEXT *parser, const PT_NODE *node, PT_COLL_INFER *coll_infer)
 {
   bool has_collation = false;
   bool is_collection_of_collection = false;
@@ -21489,8 +21486,8 @@ error:
  *
  */
 static COLLATION_RESULT
-pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node, PT_COLL_INFER * coll_infer,
-				const bool is_inner_collection, bool * is_first_element)
+pt_get_collation_of_collection (PARSER_CONTEXT *parser, const PT_NODE *node, PT_COLL_INFER *coll_infer,
+				const bool is_inner_collection, bool *is_first_element)
 {
   const PT_NODE *current_node;
   bool has_collation = false;
@@ -21588,7 +21585,7 @@ error:
  *			       a collection
  */
 static PT_NODE *
-pt_coerce_node_collection_of_collection (PARSER_CONTEXT * parser, PT_NODE * node, const int coll_id,
+pt_coerce_node_collection_of_collection (PARSER_CONTEXT *parser, PT_NODE *node, const int coll_id,
 					 const INTL_CODESET codeset, bool force_mode, bool use_collate_modifier,
 					 PT_TYPE_ENUM wrap_type_for_maybe, PT_TYPE_ENUM wrap_type_collection)
 {
@@ -21731,7 +21728,7 @@ cannot_coerce:
  *
  */
 PT_NODE *
-pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int coll_id, const INTL_CODESET codeset,
+pt_coerce_node_collation (PARSER_CONTEXT *parser, PT_NODE *node, const int coll_id, const INTL_CODESET codeset,
 			  bool force_mode, bool use_collate_modifier, PT_TYPE_ENUM wrap_type_for_maybe,
 			  PT_TYPE_ENUM wrap_type_collection)
 {
@@ -22380,8 +22377,8 @@ cannot_coerce:
  *
  */
 int
-pt_common_collation (PT_COLL_INFER * arg1_coll_infer, PT_COLL_INFER * arg2_coll_infer, PT_COLL_INFER * arg3_coll_infer,
-		     const int args_w_coll, bool op_has_3_args, int *common_coll, INTL_CODESET * common_cs)
+pt_common_collation (PT_COLL_INFER *arg1_coll_infer, PT_COLL_INFER *arg2_coll_infer, PT_COLL_INFER *arg3_coll_infer,
+		     const int args_w_coll, bool op_has_3_args, int *common_coll, INTL_CODESET *common_cs)
 {
 #define MORE_COERCIBLE(arg1_coll_infer, arg2_coll_infer)		     \
   ((((arg1_coll_infer)->can_force_cs) && !((arg2_coll_infer)->can_force_cs)) \
@@ -22545,7 +22542,7 @@ error:
  *
  */
 static int
-pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
+pt_check_expr_collation (PARSER_CONTEXT *parser, PT_NODE **node)
 {
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE;
   PT_TYPE_ENUM arg3_type = PT_TYPE_NONE;
@@ -23140,7 +23137,7 @@ error_exit:
  *
  */
 static int
-pt_check_recursive_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
+pt_check_recursive_expr_collation (PARSER_CONTEXT *parser, PT_NODE **node)
 {
   PT_NODE *expr = *node;
   PT_OP_TYPE op;
@@ -23310,7 +23307,7 @@ error:
 * node (in) :
 */
 static PT_NODE *
-pt_node_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type, PT_NODE * node)
+pt_node_to_enumeration_expr (PARSER_CONTEXT *parser, PT_NODE *data_type, PT_NODE *node)
 {
   PT_NODE *expr = NULL;
   if (parser == NULL || data_type == NULL || node == NULL)
@@ -23352,7 +23349,7 @@ pt_node_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type, PT_NO
 * node (in) :
 */
 static PT_NODE *
-pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type, PT_NODE * node)
+pt_select_list_to_enumeration_expr (PARSER_CONTEXT *parser, PT_NODE *data_type, PT_NODE *node)
 {
   PT_NODE *new_node = NULL;
 
@@ -23431,7 +23428,7 @@ pt_select_list_to_enumeration_expr (PARSER_CONTEXT * parser, PT_NODE * data_type
 * arg2 (in) : right argument
 */
 static bool
-pt_is_enumeration_special_comparison (PT_NODE * arg1, PT_OP_TYPE op, PT_NODE * arg2)
+pt_is_enumeration_special_comparison (PT_NODE *arg1, PT_OP_TYPE op, PT_NODE *arg2)
 {
   PT_NODE *arg_tmp = NULL;
 
@@ -23497,7 +23494,7 @@ pt_is_enumeration_special_comparison (PT_NODE * arg1, PT_OP_TYPE op, PT_NODE * a
 * expr (in) :
 */
 static PT_NODE *
-pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
+pt_fix_enumeration_comparison (PARSER_CONTEXT *parser, PT_NODE *expr)
 {
   PT_NODE *arg1 = NULL, *arg2 = NULL;
   PT_NODE *node = NULL, *save_next = NULL;
@@ -23698,7 +23695,7 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
  *  node(in):
  */
 static PT_TYPE_ENUM
-pt_get_common_arg_type_of_width_bucket (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_get_common_arg_type_of_width_bucket (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_NONE;
   PT_NODE *arg1 = NULL;
@@ -23751,7 +23748,7 @@ pt_get_common_arg_type_of_width_bucket (PARSER_CONTEXT * parser, PT_NODE * node)
  *  expr(in):
  */
 static bool
-pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser, PT_NODE * expr)
+pt_is_const_foldable_width_bucket (PARSER_CONTEXT *parser, PT_NODE *expr)
 {
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL;
   PT_NODE *between_ge_lt = NULL;
@@ -23808,8 +23805,8 @@ pt_is_const_foldable_width_bucket (PARSER_CONTEXT * parser, PT_NODE * expr)
  *	  already been detected as errors by type inference.
  */
 static PT_TYPE_ENUM
-pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT_NODE * arg3,
-			    PT_TYPE_ENUM * wrap_type_collection)
+pt_wrap_type_for_collation (const PT_NODE *arg1, const PT_NODE *arg2, const PT_NODE *arg3,
+			    PT_TYPE_ENUM *wrap_type_collection)
 {
   PT_TYPE_ENUM common_type = PT_TYPE_VARCHAR;
   PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE;
@@ -23912,7 +23909,7 @@ pt_wrap_type_for_collation (const PT_NODE * arg1, const PT_NODE * arg2, const PT
  *	  This function, changes the CAST to a normal one.
  */
 static void
-pt_fix_arguments_collation_flag (PT_NODE * expr)
+pt_fix_arguments_collation_flag (PT_NODE *expr)
 {
   EXPRESSION_DEFINITION def;
   int i;
@@ -24053,7 +24050,7 @@ pt_fix_arguments_collation_flag (PT_NODE * expr)
  *  node (in/out) :
  */
 static void
-pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *p = NULL;
 
@@ -24081,7 +24078,7 @@ pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node)
  *  hv_node (in/out) :
  */
 static void
-pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
+pt_update_host_var_data_type (PARSER_CONTEXT *parser, PT_NODE *hv_node)
 {
   PT_NODE *dt;
   TP_DOMAIN *dom;
@@ -24110,7 +24107,7 @@ pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 }
 
 static bool
-pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset)
+pt_cast_needs_wrap_for_collation (PT_NODE *node, const INTL_CODESET codeset)
 {
   assert (node != NULL);
   assert (node->node_type == PT_EXPR);

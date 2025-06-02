@@ -226,7 +226,7 @@ static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID
  * Note:
  */
 static void
-initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2, PT_OP_TYPE cmp_op,
+initialize_serial_invariant (SERIAL_INVARIANT *invariant, DB_VALUE val1, DB_VALUE val2, PT_OP_TYPE cmp_op,
 			     int val1_msgid, int val2_msgid, int error_type)
 {
   invariant->val1 = val1;
@@ -248,7 +248,7 @@ initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VAL
  */
 
 static int
-check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id)
+check_serial_invariants (SERIAL_INVARIANT *invariants, int num_invariants, int *ret_msg_id)
 {
   int i, c;
   int error;
@@ -336,7 +336,7 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int 
  *   statement(in):
  */
 static bool
-truncate_need_repl_log (PT_NODE * statement)
+truncate_need_repl_log (PT_NODE *statement)
 {
   PT_NODE *entity_spec = NULL;
   PT_NODE *entity_list = NULL;
@@ -387,7 +387,7 @@ truncate_need_repl_log (PT_NODE * statement)
  *   node(in):
  */
 bool
-is_stmt_based_repl_type (const PT_NODE * node)
+is_stmt_based_repl_type (const PT_NODE *node)
 {
   /* All DDLs will be replicated via schema replication */
   if (pt_is_ddl_statement (node))
@@ -433,7 +433,7 @@ is_stmt_based_repl_type (const PT_NODE * node)
  *   class_name(in):
  */
 int
-do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+do_evaluate_default_expr (PARSER_CONTEXT *parser, PT_NODE *class_name)
 {
   SM_ATTRIBUTE *att;
   SM_CLASS *smclass;
@@ -669,8 +669,8 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  * Note:
  */
 static int
-do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * current_val, DB_VALUE * inc_val,
-			   DB_VALUE * min_val, DB_VALUE * max_val, const int cyclic, const int cached_num,
+do_create_serial_internal (MOP *serial_object, const char *serial_name, DB_VALUE *current_val, DB_VALUE *inc_val,
+			   DB_VALUE *min_val, DB_VALUE *max_val, const int cyclic, const int cached_num,
 			   const int started, const char *comment, const char *class_name, const char *att_name)
 {
   DB_OBJECT *ret_obj = NULL;
@@ -1085,7 +1085,7 @@ error_exit:
  *   serial_obj(in/out):
  */
 int
-do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, PT_NODE * node_new_val)
+do_change_auto_increment_serial (PARSER_CONTEXT *const parser, MOP serial_obj, PT_NODE *node_new_val)
 {
   int error_code = NO_ERROR;
   DB_OBJECT *const serial_object = serial_obj;
@@ -1121,10 +1121,10 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
   db_make_null (&started);
   db_make_int (&cmp_result, 0);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  max_val.domain.numeric_info.is_floating_point_numeric = 0;
-  new_val.domain.numeric_info.is_floating_point_numeric = 0;
-  started.domain.numeric_info.is_floating_point_numeric = 0;
-  cmp_result.domain.numeric_info.is_floating_point_numeric = 0;
+//   max_val.domain.numeric_info.is_floating_point_numeric = 0;
+//   new_val.domain.numeric_info.is_floating_point_numeric = 0;
+//   started.domain.numeric_info.is_floating_point_numeric = 0;
+//   cmp_result.domain.numeric_info.is_floating_point_numeric = 0;
 
   /* create a NUMERIC value in new_val */
   db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
@@ -1238,7 +1238,7 @@ normal_exit:
 
 
 static MOP
-do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, const char *attr_name)
+do_get_obj_id (DB_IDENTIFIER *obj_id, DB_OBJECT *class_mop, const char *name, const char *attr_name)
 {
   DB_OBJECT *mop;
   DB_VALUE val;
@@ -1309,7 +1309,7 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
  * Note:
  */
 MOP
-do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mop, const char *serial_name)
+do_get_serial_obj_id (DB_IDENTIFIER *serial_obj_id, DB_OBJECT *serial_class_mop, const char *serial_name)
 {
   MOP serial_mop = NULL;
 
@@ -1374,7 +1374,7 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
  * Note:
  */
 int
-do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_create_serial (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *serial_class = NULL, *serial_object = NULL;
   MOP serial_mop;
@@ -1424,9 +1424,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&abs_inc_val);
   db_make_null (&range_val);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  zero.domain.numeric_info.is_floating_point_numeric = 0;
-  e38.domain.numeric_info.is_floating_point_numeric = 0;
-  negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   zero.domain.numeric_info.is_floating_point_numeric = 0;
+//   e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   /*
    * find db_serial_class
@@ -1469,7 +1469,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (inc_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -1519,7 +1519,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (start_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
@@ -1555,7 +1555,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (min_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
 	{
@@ -1605,7 +1605,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (max_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
 	{
@@ -1852,7 +1852,7 @@ end:
  * Note:
  */
 int
-do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, const char *class_name, PT_NODE * att)
+do_create_auto_increment_serial (PARSER_CONTEXT *parser, MOP *serial_object, const char *class_name, PT_NODE *att)
 {
   MOP serial_class = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
@@ -1879,8 +1879,8 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&max_val);
   db_make_null (&min_val);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  zero.domain.numeric_info.is_floating_point_numeric = 0;
-  e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   zero.domain.numeric_info.is_floating_point_numeric = 0;
+//   e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
   numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
@@ -1944,7 +1944,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   if (inc_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
 	{
@@ -1990,7 +1990,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   if (start_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
 	{
@@ -2116,8 +2116,8 @@ end:
  * Note:
  */
 int
-do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, const char *class_name,
-					     PT_NODE * att)
+do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT *parser, MOP *serial_object, const char *class_name,
+					     PT_NODE *att)
 {
   MOP serial_class, serial_mop;
   DB_OTMPL *obj_tmpl = NULL;
@@ -2139,9 +2139,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   db_make_null (&max_val);
   OID_SET_NULL (&serial_obj_id);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  e38.domain.numeric_info.is_floating_point_numeric = 0;
-  current_val.domain.numeric_info.is_floating_point_numeric = 0;
-  max_val.domain.numeric_info.is_floating_point_numeric = 0;
+//   e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   current_val.domain.numeric_info.is_floating_point_numeric = 0;
+//   max_val.domain.numeric_info.is_floating_point_numeric = 0;
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
 
@@ -2322,7 +2322,7 @@ end:
  * Note:
  */
 int
-do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_alter_serial (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *serial_class = NULL, *serial_object = NULL;
   DB_IDENTIFIER serial_obj_id;
@@ -2384,9 +2384,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  zero.domain.numeric_info.is_floating_point_numeric = 0;
-  e38.domain.numeric_info.is_floating_point_numeric = 0;
-  negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   zero.domain.numeric_info.is_floating_point_numeric = 0;
+//   e38.domain.numeric_info.is_floating_point_numeric = 0;
+//   negative_e38.domain.numeric_info.is_floating_point_numeric = 0;
 
   /*
    * find db_serial_class
@@ -2496,7 +2496,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (inc_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //inc_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       inc_val_change = true;
       pval = pt_value_to_db (parser, inc_val_node);
       if (pval == NULL)
@@ -2547,7 +2547,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (start_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //start_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       cur_val_change = true;
       pval = pt_value_to_db (parser, start_val_node);
       if (pval == NULL)
@@ -2575,7 +2575,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (max_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //max_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       max_val_change = true;
       pval = pt_value_to_db (parser, max_val_node);
       if (pval == NULL)
@@ -2626,7 +2626,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (min_val_node != NULL)
     {
       // 0을 제외한 임의의 값으로 초기화
-      min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
+      //min_val_node->info.value.db_value.domain.numeric_info.precision = 1;
       min_val_change = true;
       pval = pt_value_to_db (parser, min_val_node);
       if (pval == NULL)
@@ -2986,7 +2986,7 @@ end:
  * Note:
  */
 int
-do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_drop_serial (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *serial_class = NULL, *serial_object = NULL;
   DB_IDENTIFIER serial_obj_id;
@@ -3101,7 +3101,7 @@ bool cdc_Trigger_involved = false;
  * Note: Side effects can exist at the statement, especially schema information
  */
 int
-do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   bool need_stmt_replication = false;
@@ -3557,7 +3557,7 @@ end:
 }
 
 static PT_NODE *
-do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_clear_subquery_cache_flag (PARSER_CONTEXT *parser, PT_NODE *stmt, void *arg, int *continue_walk)
 {
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3573,7 +3573,7 @@ do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg
 }
 
 static PT_NODE *
-do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_check_cte_or_system_class_spec (PARSER_CONTEXT *parser, PT_NODE *stmt, void *arg, int *continue_walk)
 {
   PT_NODE *q = (PT_NODE *) arg;
 
@@ -3622,7 +3622,7 @@ stop_walk:
 }
 
 static PT_NODE *
-do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+do_prepare_subquery_pre (PARSER_CONTEXT *parser, PT_NODE *stmt, void *arg, int *continue_walk)
 {
   int *err = (int *) arg;
   PT_NODE *saved;
@@ -3707,7 +3707,7 @@ stop_walk:
 }
 
 static int
-do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_check_subquery_cache (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
 
@@ -3741,7 +3741,7 @@ do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
  * 	statements, this function will return NO_ERROR.
  */
 int
-do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
 
@@ -3799,7 +3799,7 @@ err_exit:
  * 	at the time of execution stage.
  */
 int
-do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   bool need_stmt_based_repl = false;
@@ -4237,7 +4237,7 @@ end:
  * Note: Side effects can exist at the statement list
  */
 int
-do_statements (PARSER_CONTEXT * parser, PT_NODE * statement_list)
+do_statements (PARSER_CONTEXT *parser, PT_NODE *statement_list)
 {
   int error = 0;
   PT_NODE *statement;
@@ -4271,7 +4271,7 @@ do_statements (PARSER_CONTEXT * parser, PT_NODE * statement_list)
  *   if an error happens, rollback to the savepoint.
  */
 int
-do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
+do_check_internal_statements (PARSER_CONTEXT *parser, PT_NODE *statement,
 			      /* PT_NODE * internal_stmt_list, */
 			      PT_DO_FUNC do_func)
 {
@@ -4331,7 +4331,7 @@ do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
  *
  */
 int
-do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list, const int phase)
+do_internal_statements (PARSER_CONTEXT *parser, PT_NODE *internal_stmt_list, const int phase)
 {
   PT_NODE *stmt_str;
   DB_QUERY_RESULT *query_result;
@@ -4420,7 +4420,7 @@ static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_
  *   statement(in/out): Parse tree of a update statistics statement
  */
 int
-do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_update_stats (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
 
@@ -4570,7 +4570,7 @@ extract_bt_idx (const char *str)
  *   db_val(in):
  */
 static int
-make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
+make_cst_item_value (DB_OBJECT *obj, const char *str, DB_VALUE *db_val)
 {
   CST_ITEM cst_item = { CST_UNDEFINED, "", -1, -1 };
   char *att_name = NULL;
@@ -4734,7 +4734,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
  *   statement(in/out): Parse tree of a get statistics statement
  */
 int
-do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_get_stats (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   PT_NODE *cls, *arg, *into;
   DB_OBJECT *obj;
@@ -4799,7 +4799,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 static int map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN_ISOLATION * tran_isolation,
 			   PT_NODE * node);
-static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws,
+static int set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool *async_ws,
 			  PT_NODE * statement, const DB_VALUE * level);
 static int check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val);
 static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
@@ -4813,7 +4813,7 @@ static const char *get_savepoint_name_from_db_value (DB_VALUE * val);
  * Note:
  */
 int
-do_attach (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_attach (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   if (!parser || pt_has_error (parser) || !statement || statement->node_type != PT_2PC_ATTACH)
     {
@@ -4833,7 +4833,7 @@ do_attach (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_to_commit (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   if (!parser || pt_has_error (parser) || !statement || statement->node_type != PT_PREPARE_TO_COMMIT)
     {
@@ -4852,7 +4852,7 @@ do_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_commit (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   /* Row count should be reset to -1 for explicit commits (i.e: commit statements) but should not be reset in
    * AUTO_COMMIT mode. This is the best place to reset it for commit statements. */
@@ -4871,7 +4871,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   the savepoint, otherwise the entire transaction is rolled back.
  */
 int
-do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_rollback (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   const char *save_name;
@@ -4925,7 +4925,7 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   with that name, if no savepoint name is given, we generate a unique one.
  */
 int
-do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_savepoint (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   const char *save_name;
@@ -4977,7 +4977,7 @@ do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_get_xaction (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int lock_timeout_in_msecs = 0;
   DB_TRAN_ISOLATION tran_isolation = TRAN_UNKNOWN_ISOLATION;
@@ -5087,7 +5087,7 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_xaction (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_TRAN_ISOLATION tran_isolation;
   DB_VALUE val;
@@ -5175,7 +5175,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_get_optimization_param (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_VALUE *val;
   PT_NODE *into_var;
@@ -5253,7 +5253,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_optimization_param (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   PT_NODE *p1, *p2;
   DB_VALUE val1, val2;
@@ -5341,7 +5341,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_sys_params (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   PT_NODE *val;
   DB_VALUE db_val;
@@ -5387,7 +5387,7 @@ do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note: Initializes isolation_levels array
  */
 static int
-map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN_ISOLATION * tran_isolation, PT_NODE * node)
+map_iso_levels (PARSER_CONTEXT *parser, PT_NODE *statement, DB_TRAN_ISOLATION *tran_isolation, PT_NODE *node)
 {
   PT_MISC_TYPE instances = node->info.isolation_lvl.instances;
   PT_MISC_TYPE schema = node->info.isolation_lvl.schema;
@@ -5454,8 +5454,8 @@ map_iso_levels (PARSER_CONTEXT * parser, PT_NODE * statement, DB_TRAN_ISOLATION 
  *       the enumerated type.
  */
 static int
-set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool * async_ws, PT_NODE * statement,
-	       const DB_VALUE * level)
+set_iso_level (PARSER_CONTEXT *parser, DB_TRAN_ISOLATION *tran_isolation, bool *async_ws, PT_NODE *statement,
+	       const DB_VALUE *level)
 {
   int error = NO_ERROR;
   int isolvl = db_get_int (level) & 0x0F;
@@ -5518,7 +5518,7 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
  *                    >0 : Wait this number of seconds
  */
 static int
-check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * val)
+check_timeout_value (PARSER_CONTEXT *parser, PT_NODE *statement, DB_VALUE *val)
 {
   float timeout;
 
@@ -5546,7 +5546,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
  *       name came from a parse tree.
  */
 const static char *
-get_savepoint_name_from_db_value (DB_VALUE * val)
+get_savepoint_name_from_db_value (DB_VALUE *val)
 {
   if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
       && DB_VALUE_TYPE (val) != DB_TYPE_NCHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARNCHAR)
@@ -5657,7 +5657,7 @@ static void get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type
  * Note:
  */
 static int
-merge_mop_list_extension (DB_OBJLIST * new_objlist, DB_OBJLIST ** list)
+merge_mop_list_extension (DB_OBJLIST *new_objlist, DB_OBJLIST **list)
 {
   DB_OBJLIST *obj, *next;
   int added = 0;
@@ -5824,7 +5824,7 @@ convert_misc_to_tr_status (const PT_MISC_TYPE pt_status)
  *    which we don't have authorization.
  */
 static int
-convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
+convert_speclist_to_objlist (DB_OBJLIST **triglist, PT_NODE *specnode)
 {
   int error = NO_ERROR;
   DB_OBJLIST *triggers, *etrigs;
@@ -5924,7 +5924,7 @@ convert_speclist_to_objlist (DB_OBJLIST ** triglist, PT_NODE * specnode)
  *    with a double value.  Now we use coersion.
  */
 static double
-get_priority (PARSER_CONTEXT * parser, PT_NODE * node)
+get_priority (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_VALUE *src, value;
   double priority;
@@ -5958,7 +5958,7 @@ get_priority (PARSER_CONTEXT * parser, PT_NODE * node)
  *       perform the given do_ function.
  */
 static int
-check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * statement)
+check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC *do_func, PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err, result = NO_ERROR;
   TR_STATE *state;
@@ -6189,7 +6189,7 @@ exit:
  *	  original DELETE statement.
  */
 static int
-do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_check_for_empty_classes_in_delete (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR, num_classes = 0, idx, partition_type = 0;
   PT_NODE *node = statement->info.delete_.del_stmt_list, *flat = NULL;
@@ -6400,7 +6400,7 @@ cleanup:
  *   given do_ function.
  */
 int
-do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
+do_check_delete_trigger (PARSER_CONTEXT *parser, PT_NODE *statement, PT_DO_FUNC *do_func)
 {
   PT_NODE *node = NULL;
   int affected_count, error = 0;
@@ -6479,7 +6479,7 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
  *   given do_ function.
  */
 int
-do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
+do_check_insert_trigger (PARSER_CONTEXT *parser, PT_NODE *statement, PT_DO_FUNC *do_func)
 {
   if (statement->flag.use_auto_commit)
     {
@@ -6504,7 +6504,7 @@ do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
  *    the array.
  */
 static char **
-find_update_columns (int *count_ptr, PT_NODE * statement)
+find_update_columns (int *count_ptr, PT_NODE *statement)
 {
   PT_NODE *assign;
   char **columns;
@@ -6566,7 +6566,7 @@ find_update_columns (int *count_ptr, PT_NODE * statement)
  *   given do_ function.
  */
 int
-do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
+do_check_update_trigger (PARSER_CONTEXT *parser, PT_NODE *statement, PT_DO_FUNC *do_func)
 {
   int err;
 
@@ -6611,7 +6611,7 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
  *    call pt_compile_trigger_stmt when necessary.
  */
 static void
-get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source, PT_NODE * statement)
+get_activity_info (PARSER_CONTEXT *parser, DB_TRIGGER_ACTION *type, const char **source, PT_NODE *statement)
 {
   PT_NODE *str;
   unsigned int save_custom;
@@ -6662,7 +6662,7 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
  *   create function.
  */
 int
-do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_create_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   PT_NODE *cond, *action, *target, *attr, *pri, *comment_node;
   const char *name, *comment;
@@ -6802,7 +6802,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_drop_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *speclist;
@@ -6861,7 +6861,7 @@ do_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_alter_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *speclist = NULL, *p_node = NULL, *comment_node = NULL;
@@ -7041,7 +7041,7 @@ cleanup:
  * Note:
  */
 int
-do_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *speclist;
@@ -7073,7 +7073,7 @@ do_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_remove_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *speclist;
@@ -7106,7 +7106,7 @@ do_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_rename_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   const char *old_name, *new_name;
@@ -7136,7 +7136,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_VALUE src, dst;
@@ -7206,7 +7206,7 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_get_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_get_trigger (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   const char *into_label;
@@ -7313,7 +7313,7 @@ static int has_unique_constraint (DB_OBJECT * mop);
  * Note:
  */
 static void
-unlink_list (PT_NODE * list)
+unlink_list (PT_NODE *list)
 {
   PT_NODE *next;
 
@@ -7341,9 +7341,9 @@ unlink_list (PT_NODE * list)
  * Note:
  */
 static QFILE_LIST_ID *
-get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names, PT_NODE * column_values,
-			   PT_NODE * with, PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for,
-			   PT_NODE * using_index, PT_NODE * class_specs, PT_NODE * update_stmt)
+get_select_list_to_update (PARSER_CONTEXT *parser, PT_NODE *from, PT_NODE *column_names, PT_NODE *column_values,
+			   PT_NODE *with, PT_NODE *where, PT_NODE *order_by, PT_NODE *orderby_for,
+			   PT_NODE *using_index, PT_NODE *class_specs, PT_NODE *update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -7404,8 +7404,8 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
  * Note: If db_put fails, return an error
  */
 static int
-update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * name, DB_ATTDESC * attr_desc,
-			 DB_VALUE * value)
+update_object_attribute (PARSER_CONTEXT *parser, DB_OTMPL *otemplate, PT_NODE *name, DB_ATTDESC *attr_desc,
+			 DB_VALUE *value)
 {
   int error = NO_ERROR;
 
@@ -7447,8 +7447,8 @@ update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE 
  * Note:
  */
 static int
-update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int assigns_count,
-		     CLIENT_UPDATE_CLASS_INFO * upd_classes_info, int classes_cnt, const int turn_off_unique_check,
+update_object_tuple (PARSER_CONTEXT *parser, CLIENT_UPDATE_INFO *assigns, int assigns_count,
+		     CLIENT_UPDATE_CLASS_INFO *upd_classes_info, int classes_cnt, const int turn_off_unique_check,
 		     const int turn_off_serializable_conflict_check, UPDATE_TYPE update_type, bool should_delete)
 {
   int error = NO_ERROR;
@@ -7649,7 +7649,7 @@ update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int 
  * Note:
  */
 static int
-update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE update_type)
+update_object_by_oid (PARSER_CONTEXT *parser, PT_NODE *statement, UPDATE_TYPE update_type)
 {
   int error = NO_ERROR;
   DB_OBJECT *oid = statement->info.update.object;
@@ -7795,7 +7795,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
  * cls (in)	: update class info
  */
 static int
-do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLASS_INFO * cls)
+do_set_pruning_type (PARSER_CONTEXT *parser, PT_NODE *spec, CLIENT_UPDATE_CLASS_INFO *cls)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -7916,8 +7916,8 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
  * Note:
  */
 int
-init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data, int *assigns_count,
-		  CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values, int *values_cnt,
+init_update_data (PARSER_CONTEXT *parser, PT_NODE *statement, CLIENT_UPDATE_INFO **assigns_data, int *assigns_count,
+		  CLIENT_UPDATE_CLASS_INFO **cls_data, int *cls_count, DB_VALUE **values, int *values_cnt,
 		  bool has_delete)
 {
   int error = NO_ERROR;
@@ -8174,8 +8174,7 @@ error_return:
  * Note:
  */
 static int
-update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_NODE * statement,
-			   bool savepoint_started)
+update_objs_for_list_file (PARSER_CONTEXT *parser, QFILE_LIST_ID *list_id, PT_NODE *statement, bool savepoint_started)
 {
   int error = NO_ERROR;
   int idx = 0, count = 0, assign_count = 0;
@@ -8407,7 +8406,7 @@ done:
  * Note:
  */
 static int
-update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
+update_class_attributes (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_OTMPL *otemplate = NULL;
@@ -8513,7 +8512,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 static XASL_NODE *
-statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs)
+statement_to_update_xasl (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE **non_null_attrs)
 {
   return pt_to_update_xasl (parser, statement, non_null_attrs);
 }
@@ -8525,7 +8524,7 @@ statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE 
  *
  */
 static void
-init_compile_context (PARSER_CONTEXT * parser)
+init_compile_context (PARSER_CONTEXT *parser)
 {
   memset (&parser->context, 0x00, sizeof (COMPILE_CONTEXT));
   parser->context.is_xasl_pinned_reference = (bool) parser->flag.is_xasl_pinned_reference;
@@ -8539,7 +8538,7 @@ init_compile_context (PARSER_CONTEXT * parser)
  *
  */
 static void
-init_xasl_stream (XASL_STREAM * stream)
+init_xasl_stream (XASL_STREAM *stream)
 {
   memset (stream, 0x00, sizeof (XASL_STREAM));
 }
@@ -8573,8 +8572,7 @@ init_xasl_stream (XASL_STREAM * stream)
  *  are not mixed in the same update statement.
  */
 static int
-update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, PT_NODE ** non_null_attrs,
-		  int has_uniques)
+update_at_server (PARSER_CONTEXT *parser, PT_NODE *from, PT_NODE *statement, PT_NODE **non_null_attrs, int has_uniques)
 {
   int error = NO_ERROR;
   int i;
@@ -8718,7 +8716,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
  * Note:
  */
 static int
-update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** not_nulls, const PT_NODE * statement)
+update_check_for_constraints (PARSER_CONTEXT *parser, int *has_unique, PT_NODE **not_nulls, const PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *lhs = NULL, *att = NULL, *pointer = NULL, *spec = NULL;
@@ -8836,7 +8834,7 @@ exit_on_error:
  * Note:
  */
 static bool
-update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment)
+update_check_having_meta_attr (PARSER_CONTEXT *parser, PT_NODE *assignment)
 {
   PT_NODE *lhs, *att;
 
@@ -8882,7 +8880,7 @@ update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment)
  *   are not mixed in the same update statement.
  */
 static int
-update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started)
+update_real_class (PARSER_CONTEXT *parser, PT_NODE *statement, bool savepoint_started)
 {
   int error = NO_ERROR;
   PT_NODE *non_null_attrs = NULL, *spec = statement->info.update.spec;
@@ -9054,8 +9052,8 @@ exit_on_error:
  *   statement(in): Parse tree of an update statement
  */
 static int
-is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
-			  int *const server_allowed, const PT_NODE * statement)
+is_server_update_allowed (PARSER_CONTEXT *parser, PT_NODE **non_null_attrs, int *has_uniques,
+			  int *const server_allowed, const PT_NODE *statement)
 {
   int error = NO_ERROR;
   int is_partition = 0;
@@ -9133,7 +9131,7 @@ error_exit:
  * Note:
  */
 int
-do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_update (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
@@ -9229,7 +9227,7 @@ end:
  * Note:
  */
 int
-do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_update (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err;
   PT_NODE *flat, *not_nulls, *lhs, *spec = NULL;
@@ -9622,7 +9620,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_update (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   INT64 err, result = 0;
   PT_NODE *flat, *spec = NULL;
@@ -9915,7 +9913,7 @@ static int delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
  * Note : The list_id is allocated during query execution
  */
 static int
-select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE * delete_stmt)
+select_delete_list (PARSER_CONTEXT *parser, QFILE_LIST_ID **result_p, PT_NODE *delete_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -9981,7 +9979,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
  *   object(in): object to delete
  */
 static int
-delete_object_tuple (DB_OBJECT * object)
+delete_object_tuple (DB_OBJECT *object)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_obj;
@@ -10039,7 +10037,7 @@ delete_object_tuple (DB_OBJECT * object)
  *   statement(in): Parse tree representing object to delete
  */
 static int
-delete_object_by_oid (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+delete_object_by_oid (const PARSER_CONTEXT *parser, const PT_NODE *statement)
 {
   int error = NO_ERROR;
 
@@ -10058,7 +10056,7 @@ delete_object_by_oid (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  *   savepoint_started(in): true, if savepoint already started
  */
 static int
-delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID * list_id, bool savepoint_started)
+delete_list_by_oids (PARSER_CONTEXT *parser, PT_NODE *statement, QFILE_LIST_ID *list_id, bool savepoint_started)
 {
   int error = NO_ERROR;
   int cursor_status;
@@ -10269,7 +10267,7 @@ cleanup:
  *  decached from the client after the delete is executed.
  */
 static int
-build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
+build_xasl_for_server_delete (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -10380,7 +10378,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   mop(in/out): Class object to be checked
  */
 static int
-has_unique_constraint (DB_OBJECT * mop)
+has_unique_constraint (DB_OBJECT *mop)
 {
   DB_CONSTRAINT *constraint_list, *c;
   SM_CONSTRAINT_TYPE ctype;
@@ -10410,7 +10408,7 @@ has_unique_constraint (DB_OBJECT * mop)
  *   statement(in): Delete statement
  */
 static int
-delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+delete_real_class (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   QFILE_LIST_ID *oid_list = NULL;
@@ -10523,7 +10521,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
  *       affected objects for a successful DELETE, UPDATE, INSERT, SELECT.
  */
 int
-do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_delete (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
@@ -10616,7 +10614,7 @@ end:
  *   parent(in): Parent statement if using multi-delete list
  */
 int
-do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * parent)
+do_prepare_delete (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *parent)
 {
   int err;
   PT_NODE *flat;
@@ -10931,7 +10929,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
  *   statement(in): Delete statement
  */
 int
-do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_delete (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   INT64 err, result = 0;
   PT_NODE *flat, *node;
@@ -11186,7 +11184,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   statement(in/out): Parse tree of a insert statement
  */
 int
-do_evaluate (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_evaluate (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_VALUE expr_value, *into_val;
@@ -11294,8 +11292,8 @@ static PT_NODE *do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NO
  *   attr_desc(in): Attr descriptor of attribute to update
  */
 static int
-insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALUE * value, PT_NODE * name,
-		    DB_ATTDESC * attr_desc)
+insert_object_attr (const PARSER_CONTEXT *parser, DB_OTMPL *otemplate, DB_VALUE *value, PT_NODE *name,
+		    DB_ATTDESC *attr_desc)
 {
   int error = NO_ERROR;
 
@@ -11338,7 +11336,7 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
  * statement (in) : Parse tree node for insert statement.
  */
 static int
-do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_insert_internal (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *val = NULL, *head = NULL, *prev = NULL;
@@ -11519,7 +11517,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
  *  insert is executed.
  */
 static int
-do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_insert_at_server (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -11647,8 +11645,8 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
  */
 static int
-check_for_cons (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** non_null_attrs, const PT_NODE * attr_list,
-		DB_OBJECT * class_obj)
+check_for_cons (PARSER_CONTEXT *parser, int *has_unique, PT_NODE **non_null_attrs, const PT_NODE *attr_list,
+		DB_OBJECT *class_obj)
 {
   PT_NODE *pointer;
 
@@ -11731,7 +11729,7 @@ check_for_cons (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** non_null_at
  * statement (in) : Parse tree node for insert statement.
  */
 static int
-is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
+is_server_insert_allowed (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   int trigger_involved;
@@ -11908,7 +11906,7 @@ end:
  * continue_walk (in) : Continue walk.
  */
 static PT_NODE *
-do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+do_check_insert_server_allowed (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *server_allowed = (int *) arg;
   int error = NO_ERROR;
@@ -11942,7 +11940,7 @@ do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * continue_walk (in) : Continue walk.
  */
 static PT_NODE *
-do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+do_set_insert_server_not_allowed (PARSER_CONTEXT *parser, PT_NODE *node, void *void_arg, int *continue_walk)
 {
   int error = NO_ERROR;
 
@@ -11978,7 +11976,7 @@ do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void 
  * key (in/out)	   : the MIDX key
  */
 static int
-do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+do_create_midxkey_for_constraint (DB_OTMPL *tmpl, SM_CLASS_CONSTRAINT *constraint, DB_VALUE *key)
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
@@ -12119,7 +12117,7 @@ error_return:
  *   when they're finished with the UPDATE statement.
  */
 static PT_NODE *
-do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
+do_create_odku_stmt (PARSER_CONTEXT *parser, PT_NODE *insert)
 {
   PT_NODE *update = NULL;
 
@@ -12185,7 +12183,7 @@ error_return:
  * oids_count (in) : number of OIDs in array
  */
 static int
-do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** oids, int *oids_count)
+do_find_unique_constraint_violations (DB_OTMPL *tmpl, bool for_update, OID **oids, int *oids_count)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *constraint = NULL;
@@ -12353,7 +12351,7 @@ cleanup:
  *	  should proceed with the insert.
  */
 static int
-do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * update_stmt)
+do_on_duplicate_key_update (PARSER_CONTEXT *parser, DB_OTMPL *tmpl, PT_NODE *update_stmt)
 {
   int retval = NO_ERROR;
   int ret_code = 0;
@@ -12409,7 +12407,7 @@ cleanup:
  *        OIDs with which tmpl would generate unique key violations
  */
 static int
-do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * spec, PT_NODE * class_specs)
+do_replace_into (PARSER_CONTEXT *parser, DB_OTMPL *tmpl, PT_NODE *spec, PT_NODE *class_specs)
 {
   int retval = 0, error = NO_ERROR;
   OID *oids = NULL;
@@ -12472,7 +12470,7 @@ cleanup:
  *
  */
 static int
-is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
+is_replace_or_odku_allowed (DB_OBJECT *obj, int *allowed)
 {
   int error = NO_ERROR;
   SM_CLASS *smclass = NULL;
@@ -12519,7 +12517,7 @@ is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
  * row_count_ptr (in/out)  : Pointer to row counter.
  */
 int
-do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement, const char **savepoint_name,
+do_insert_template (PARSER_CONTEXT *parser, DB_OTMPL **otemplate, PT_NODE *statement, const char **savepoint_name,
 		    int *row_count_ptr)
 {
   const char *into_label = NULL;
@@ -13081,7 +13079,7 @@ cleanup:
  *   target class.
  */
 static int
-insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * values_list, PT_NODE * class_,
+insert_subquery_results (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *values_list, PT_NODE *class_,
 			 const char **savepoint_name)
 {
   int error = NO_ERROR;
@@ -13486,7 +13484,7 @@ cleanup:
  * Note: If you feel the need
  */
 static int
-is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, const char *name)
+is_attr_not_in_insert_list (const PARSER_CONTEXT *parser, PT_NODE *name_list, const char *name)
 {
   PT_NODE *tmp;
   int not_on_list = 1;
@@ -13516,7 +13514,7 @@ is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, 
  *                                default values
  */
 static int
-check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spec, PT_NODE * attr_list,
+check_missing_non_null_attrs (const PARSER_CONTEXT *parser, const PT_NODE *spec, PT_NODE *attr_list,
 			      const bool has_default_values_list)
 {
   DB_ATTRIBUTE *attr;
@@ -13557,7 +13555,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
  *   continue_walk(in/out):
  */
 static PT_NODE *
-make_vmops (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+make_vmops (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   DB_OBJECT **vobj = ((DB_OBJECT **) arg);
   DB_OBJECT *vclass_mop, *obj;
@@ -13603,7 +13601,7 @@ make_vmops (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_wa
  *   continue_walk(in/out):
  */
 static PT_NODE *
-test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+test_check_option (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *found = (int *) arg;
   PT_NODE *class_;
@@ -13646,7 +13644,7 @@ test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
  * statement (in) : Parse tree node for insert statement.
  */
 static int
-insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
+insert_local (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   int row_count_total = 0;
@@ -13856,7 +13854,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement(in): Parse tree of a insert statement.
  */
 int
-do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
+do_insert (PARSER_CONTEXT *parser, PT_NODE *root_statement)
 {
   PT_NODE *statement = root_statement;
   int error;
@@ -13909,7 +13907,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
  *   statement(in):
  */
 int
-do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_insert (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *class_;
@@ -14001,7 +13999,7 @@ cleanup:
  *   statement(in):
  */
 int
-do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_insert (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   INT64 err;
   QFILE_LIST_ID *list_id;
@@ -14119,7 +14117,7 @@ static int call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
  * Note:
  */
 static int
-call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
+call_method (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   const char *into_label, *proc;
   int error = NO_ERROR;
@@ -14290,7 +14288,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_call_method (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   PT_NODE *method;
 
@@ -14327,7 +14325,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 int
-do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_select (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   return do_select_internal (parser, statement, false);
 }
@@ -14341,7 +14339,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note: Side effects can exist at returned result through application extern
  */
 int
-do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_select_for_ins_upd (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   return do_select_internal (parser, statement, true);
 }
@@ -14356,7 +14354,7 @@ do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note: Side effects can exist at returned result through application extern
  */
 static int
-do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd)
+do_select_internal (PARSER_CONTEXT *parser, PT_NODE *statement, bool for_ins_upd)
 {
   int error;
   XASL_NODE *xasl = NULL;
@@ -14527,7 +14525,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 }
 
 static PT_NODE *
-pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_sub_host_vars_index (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE **host_var_p = (PT_NODE **) arg;
 
@@ -14565,7 +14563,7 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  * Note:
  */
 int
-do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_select (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   int au_save;
@@ -14759,7 +14757,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement (in) : prepared statement
  */
 int
-do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_session_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   assert (statement->node_type == PT_EXECUTE_PREPARE);
   if (statement->xasl_id != NULL)
@@ -14784,7 +14782,7 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * stmt (in) : subquery statement to prepare
  */
 int
-do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
+do_prepare_subquery (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   int err = NO_ERROR;
   PARSER_CONTEXT context;
@@ -14929,7 +14927,7 @@ err_exit:
  * info (in) : prepare info. for subquery 
  */
 int
-do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
+do_execute_prepared_subquery (PARSER_CONTEXT *parser, PT_NODE *stmt, int num_query, DB_PREPARE_SUBQUERY_INFO *info)
 {
   int i, q, err = NO_ERROR;
   QUERY_ID query_id;
@@ -14994,7 +14992,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
  * query_flag     : query flag for execution
  */
 int
-do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
+do_execute_subquery (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   QUERY_ID query_id;
   QFILE_LIST_ID *list_id;
@@ -15052,7 +15050,7 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * statement (in) : statement to execute
  */
 int
-do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_session_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err;
   QFILE_LIST_ID *list_id;
@@ -15204,7 +15202,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_select (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   QFILE_LIST_ID *list_id;
@@ -15376,7 +15374,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }				/* do_execute_select() */
 
 static int
-do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserved_oid)
+do_reserve_oidinfo (PARSER_CONTEXT *parser, PT_NODE *statement, OID **reserved_oid)
 {
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15416,7 +15414,7 @@ do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** reserve
 }
 
 static int
-do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TYPE * objtype)
+do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TYPE *objtype)
 {
   DB_OBJECT *class_obj;
 
@@ -15454,7 +15452,7 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+do_reserve_classinfo (PARSER_CONTEXT *parser, PT_NODE *statement, RESERVED_CLASS_INFO **cls_info)
 {
   int count = 0;
   PT_NODE *entity = NULL;
@@ -15509,8 +15507,8 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 }
 
 static int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-			   OID * reserved_oid)
+do_supplemental_statement (PARSER_CONTEXT *parser, PT_NODE *statement, RESERVED_CLASS_INFO **cls_info,
+			   OID *reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -16156,7 +16154,7 @@ end:
  * Note:
  */
 int
-do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_replicate_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   REPL_INFO repl_info;
@@ -16511,7 +16509,7 @@ end:
  * Note:
  */
 int
-do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_scope (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *stmt;
@@ -16581,7 +16579,7 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_do (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -16678,7 +16676,7 @@ end:
  * statement (in) : statement
  */
 int
-do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_session_variables (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_VALUE *variables = NULL;
@@ -16746,7 +16744,7 @@ cleanup:
  * statement (in) : statement
  */
 int
-do_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_drop_session_variables (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_VALUE *values = NULL;
@@ -16811,7 +16809,7 @@ static int merge_savepoint_number = 0;
  *   given do_ function.
  */
 int
-do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
+do_check_merge_trigger (PARSER_CONTEXT *parser, PT_NODE *statement, PT_DO_FUNC *do_func)
 {
   int err;
 
@@ -16845,7 +16843,7 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC
  *       INSERT, or DELETE statements of a MERGE statement.
  */
 static int
-check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, PT_NODE * statement)
+check_merge_trigger (PT_DO_FUNC *do_func, PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err, result = NO_ERROR;
   TR_STATE *state;
@@ -16980,7 +16978,7 @@ exit:
  *
  */
 int
-do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_merge (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   PT_NODE *not_nulls = NULL, *lhs, *spec = NULL;
@@ -17400,7 +17398,7 @@ exit:
  *
  */
 int
-do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_merge (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
@@ -17833,7 +17831,7 @@ cleanup:
  *
  */
 int
-do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_execute_merge (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   INT64 result = 0;
@@ -18237,7 +18235,7 @@ exit:
  * Note:
  */
 int
-do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_names (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = ER_GENERIC_ERROR;
   int charset_id, collation_id;
@@ -18270,7 +18268,7 @@ do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement)
  * Note:
  */
 int
-do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_timezone (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
 #define MAX_LEN  100
   int error = NO_ERROR;
@@ -18296,7 +18294,7 @@ do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement(in): parse tree of a statement
  */
 int
-do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_alter_synonym (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -18375,7 +18373,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * is_public_synonym(in): access modifiers for synonyms
  */
 static int
-do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
+do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT *target_owner,
 			   const char *comment, const int is_public_synonym, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
@@ -18538,7 +18536,7 @@ end:
  * statement(in): parse tree of a statement
  */
 int
-do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_create_synonym (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *synonym_obj = NULL;
   DB_OBJECT *synonym_owner_obj = NULL;
@@ -18622,8 +18620,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  * or_replace(in): or replace
  */
 static int
-do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
-			    DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
+do_create_synonym_internal (const char *synonym_name, DB_OBJECT *synonym_owner, const char *target_name,
+			    DB_OBJECT *target_owner, const char *comment, const int is_public_synonym,
 			    const int or_replace, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
@@ -18831,7 +18829,7 @@ end:
  * statement(in): parse tree of a statement
  */
 int
-do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_drop_synonym (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *synonym_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -18872,7 +18870,7 @@ do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 static int
 do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
-			  DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj)
+			  DB_OBJECT *synonym_class_obj, DB_OBJECT *synonym_obj)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -18971,7 +18969,7 @@ end:
  * statement(in): parse tree of a statement
  */
 int
-do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_rename_synonym (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   char old_synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char new_synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -19178,7 +19176,7 @@ end:
  *  an error when we try to evaluate them.
  */
 static PT_NODE *
-pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_append_odku_references (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   ODKU_TUPLE_VALUE_ARG *odku_arg;
   PT_NODE *insert_spec = NULL;
@@ -19283,7 +19281,7 @@ pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
  *	 value.
  */
 static int
-do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
+do_evaluate_insert_values (PARSER_CONTEXT *parser, PT_NODE *insert_statement)
 {
   PT_NODE *val = NULL, *prev = NULL;
   PT_NODE *result = NULL, *save_next = NULL;
@@ -19518,7 +19516,7 @@ end_error:
  *	 the node remains "evaluated".
  */
 static void
-do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
+do_clear_insert_values (PARSER_CONTEXT *parser, PT_NODE *insert_statement)
 {
   PT_NODE *value_list = NULL, *value = NULL;
   if (insert_statement == NULL || insert_statement->node_type != PT_INSERT)
@@ -19567,7 +19565,7 @@ do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
  *	 3. PT_PARAMETER names that point to object type values are replaced.
  */
 void
-insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
+insert_rewrite_names_in_value_clauses (PARSER_CONTEXT *parser, PT_NODE *insert_statement)
 {
   PT_NODE *attr_list = NULL, *value_clauses = NULL, *value_list = NULL;
   PT_NODE *value = NULL, *value_tmp = NULL, *save_next = NULL, *prev = NULL;
@@ -19657,7 +19655,7 @@ insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser, PT_NODE * insert
  *	    pt_evaluate_tree_having_serial will have to evaluate the name.
  */
 static PT_NODE *
-do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+do_replace_names_for_insert_values_pre (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int count, found, error = NO_ERROR;
   PT_NODE *attr = NULL, *val = NULL, *result = NULL;
@@ -19858,7 +19856,7 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node,
  * statement (in) : VACUUM parse tree node.
  */
 static int
-do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_vacuum (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
 
@@ -19877,7 +19875,7 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  */
 int
-do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_set_query_trace (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
 #if defined(SA_MODE)
   return NO_ERROR;
@@ -19912,7 +19910,7 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  */
 int
-do_kill (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_kill (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
 #if defined(SA_MODE)
   return NO_ERROR;
@@ -20430,7 +20428,7 @@ end:
  *   query_flag(in):
  */
 static void
-do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
+do_set_trace_to_query_flag (QUERY_FLAG *query_flag)
 {
   int trace_format;
 
@@ -20452,7 +20450,7 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
  *   parser(in):
  */
 static void
-do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
+do_send_plan_trace_to_session (PARSER_CONTEXT *parser)
 {
   DB_VALUE var[2];
   char *plan_str = NULL;
@@ -20543,7 +20541,7 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
  */
 
 static int
-do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_, PT_NODE ** update, PT_NODE * values)
+do_insert_checks (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE **class_, PT_NODE **update, PT_NODE *values)
 {
   int error = NO_ERROR;
   int upd_has_uniques = 0;
@@ -20667,13 +20665,13 @@ exit:
 #define SERVER_ATTR_LINK_NAME_BUF_SIZE  (255)	// link_name varchar(255)
 
 static MOP
-do_get_server_obj_id (DB_IDENTIFIER * server_obj_id, DB_OBJECT * server_class_mop, const char *server_name)
+do_get_server_obj_id (DB_IDENTIFIER *server_obj_id, DB_OBJECT *server_class_mop, const char *server_name)
 {
   return do_get_obj_id (server_obj_id, server_class_mop, server_name, SERVER_ATTR_LINK_NAME);
 }
 
 int
-do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_drop_server (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *server_object = NULL;
   PT_DROP_SERVER_INFO *drop_server;
@@ -20702,7 +20700,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
 static int
-do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * passwd, MOP owner,
+do_create_server_internal (MOP *server_object, DB_VALUE *port_no, DB_VALUE *passwd, MOP owner,
 			   const char **attr_names, char **attr_val, int attr_cnt)
 {
   DB_OBJECT *ret_obj = NULL;
@@ -20795,7 +20793,7 @@ end:
 }
 
 int
-do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_create_server (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   DB_OBJECT *server_object = NULL;
   DB_VALUE *pval = NULL;
@@ -20819,7 +20817,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&passwd);
   db_make_int (&port_no, 0);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  port_no.domain.numeric_info.is_floating_point_numeric = 0;
+  //port_no.domain.numeric_info.is_floating_point_numeric = 0;
 
   if (create_server->owner_name)
     {
@@ -20875,7 +20873,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
 
   // 0을 제외한 임의의 값으로 초기화
-  create_server->port->info.value.db_value.domain.numeric_info.precision = 1;
+  //create_server->port->info.value.db_value.domain.numeric_info.precision = 1;
   pval = pt_value_to_db (parser, create_server->port);
   if (pval == NULL)
     {
@@ -20987,7 +20985,7 @@ end:
 }
 
 int
-do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_rename_server (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   DB_OBJECT *server_object = NULL;
@@ -21091,7 +21089,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 int
-do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_alter_server (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   char *pt;
@@ -21105,7 +21103,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   db_make_null (&value);
   // numeric_coerce_string_to_num 함수 전에 초기화
-  value.domain.numeric_info.is_floating_point_numeric = 0;
+  //value.domain.numeric_info.is_floating_point_numeric = 0;
 
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
@@ -21173,7 +21171,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
 
       // 0을 제외한 임의의 값으로 초기화
-      alter->port->info.value.db_value.domain.numeric_info.precision = 1;
+      //alter->port->info.value.db_value.domain.numeric_info.precision = 1;
       pval = pt_value_to_db (parser, alter->port);
       if (pval == NULL)
 	{
@@ -21352,7 +21350,7 @@ end:
 }
 
 int
-get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name, DB_VALUE * out_val)
+get_dblink_info_from_dbserver (PARSER_CONTEXT *parser, PT_NODE *server_name, PT_NODE *owner_name, DB_VALUE *out_val)
 {
   DB_OBJECT *server_object = NULL;
   DB_VALUE values[4], pwd_val;
@@ -21462,8 +21460,7 @@ error_end:
 }
 
 int
-get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
-				     DB_VALUE * out_val)
+get_dblink_owner_name_from_dbserver (PARSER_CONTEXT *parser, PT_NODE *server_nm, PT_NODE *owner_nm, DB_VALUE *out_val)
 {
   DB_OBJECT *server_object = NULL;
   MOP user_obj = NULL;
@@ -21520,7 +21517,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
  *     Even if there is no raw password, it will be returned as an encrypted password.
  */
 int
-pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher_buf, int ciper_buf_size)
+pt_check_dblink_password (PARSER_CONTEXT *parser, const char *passwd, char *cipher_buf, int ciper_buf_size)
 {
   DB_VALUE val;
   char *str;
@@ -21600,7 +21597,7 @@ ret_pos:
 }
 
 int
-pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external)
+pt_remake_dblink_password (const char *passwd, DB_VALUE *outval, bool is_external)
 {
   int error;
   DB_VALUE tmp_passwd;
@@ -21654,7 +21651,7 @@ pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_extern
  *      
  */
 static int
-get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external)
+get_dblink_password_encrypt (const char *passwd, DB_VALUE *encrypt_val, bool is_external)
 {
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
@@ -21726,7 +21723,7 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
  *      
  */
 static int
-get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
+get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE *decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
@@ -21782,7 +21779,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
  *      
  */
 static MOP
-server_find (PT_NODE * node_server, PT_NODE * node_owner)
+server_find (PT_NODE *node_server, PT_NODE *node_owner)
 {
   int error = NO_ERROR;
   MOP server_obj = NULL;
