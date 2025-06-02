@@ -311,6 +311,7 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
 static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -18586,6 +18587,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
 
@@ -20981,7 +20991,7 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
-void
+static void
 pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   switch (statement->node_type)
