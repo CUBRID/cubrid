@@ -21072,6 +21072,15 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (from && from->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, from);
     }
 
