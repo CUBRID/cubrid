@@ -26,6 +26,7 @@
 #include "vector_opfunc.hpp"
 #include "boot_sr.h"
 #include "file_io.h"
+#include "system_parameter.h"
 #include "dbtype.h"
 #include "porting.h"
 #include <fstream>
@@ -421,7 +422,7 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 {
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
-  assert (hnsw_id > 0);
+  assert (hnsw_id >= 0);
 
   if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
     {
@@ -440,6 +441,8 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     }
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
+  hnsw_index->hnsw.efSearch = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
 
   int64_t *uids = new int64_t[k * 1];
   index->search (1, vf->float_array, k, distances, uids);

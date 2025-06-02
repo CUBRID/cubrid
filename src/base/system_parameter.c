@@ -775,6 +775,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
+#define PRM_NAME_VECTOR_INDEX_EF_SEARCH "hnsw_ef_search"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2514,6 +2516,12 @@ static int prm_max_parallel_workers_default = 32;
 static int prm_max_parallel_workers_lower = 0;
 static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
+
+int PRM_VECTOR_INDEX_EF_SEARCH = 40;
+static int prm_vector_index_ef_search_default = 40;
+static int prm_vector_index_ef_search_lower = 1;
+static int prm_vector_index_ef_search_upper = 1000;
+static unsigned int prm_vector_index_ef_search_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6631,6 +6639,17 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_VECTOR_INDEX_EF_SEARCH,
+   PRM_NAME_VECTOR_INDEX_EF_SEARCH,
+   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   &prm_vector_index_ef_search_flag,
+   (void *) &prm_vector_index_ef_search_default,
+   (void *) &PRM_VECTOR_INDEX_EF_SEARCH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 static int num_session_parameters = 0;
