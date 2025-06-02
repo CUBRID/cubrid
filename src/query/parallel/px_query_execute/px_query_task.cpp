@@ -22,6 +22,9 @@
 #if SERVER_MODE
 #include "px_query_task.hpp"
 #include "query_executor.h"
+#include "query_list.h"
+#include "object_representation.h"
+#include "px_query_executor.hpp"
 
 namespace parallel_query_execute
 {
@@ -40,7 +43,6 @@ namespace parallel_query_execute
 
   task::~task()
   {
-
   }
 
   void task::execute_on_main (cubthread::entry &thread_ref)
@@ -60,8 +62,17 @@ namespace parallel_query_execute
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    qexec_clear_access_spec_list_public ((void *)&thread_ref, (void *)m_xasl, (void *)m_xasl->spec_list, true);
-    assert (err == 0);
+    QFILE_LIST_ID *list_id = qexec_get_xasl_list_id (m_xasl);
+
+    /* set last_pgptr->next_vpid to NULL */
+    if (list_id && list_id->last_pgptr != NULL)
+      {
+	QFILE_PUT_NEXT_VPID_NULL (list_id->last_pgptr);
+      }
+
+    /* clear XASL tree */
+    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+    m_xasl->list_id = list_id;
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
@@ -69,6 +80,7 @@ namespace parallel_query_execute
 
   void task::execute (cubthread::entry &thread_ref)
   {
+    er_log_debug (ARG_FILE_LINE, "task : execute %p, xasl: %p", this, m_xasl);
     pthread_mutex_lock (m_mutex_p);
     if (m_task_state_p->get_state() != state_enum::WILL_RUN_ON_WORKER)
       {
@@ -87,20 +99,32 @@ namespace parallel_query_execute
     thread_ref.on_trace = m_orig_thread_p->on_trace;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    qexec_clear_access_spec_list_public ((void *)&thread_ref, (void *)m_xasl, (void *)m_xasl->spec_list, true);
-    assert (err == 0);
+    QFILE_LIST_ID *list_id = qexec_get_xasl_list_id (m_xasl);
+
+    /* set last_pgptr->next_vpid to NULL */
+    if (list_id && list_id->last_pgptr != NULL)
+      {
+	QFILE_PUT_NEXT_VPID_NULL (list_id->last_pgptr);
+      }
+
+    /* clear XASL tree */
+    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+    m_xasl->list_id = list_id;
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
     thread_ref.on_trace = temp_on_trace;
   }
+
+
   void task::retire ()
   {
     m_worker_manager_p->pop_task();
     if (m_task_state_p->get_state() == state_enum::RUN_ON_WORKER
-	|| m_task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER)
+	|| m_task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER
+	|| m_task_state_p->get_state() == state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED)
       {
-	m_task_state_p->set_state (state_enum::ENDED);
+	m_task_state_p->set_state (state_enum::ENDED_ON_WORKER);
       }
   }
 
@@ -112,31 +136,37 @@ namespace parallel_query_execute
   {}
   task_queue::~task_queue()
   {
-    for (auto &task_tuple : m_tasks)
-      {
-	delete task_tuple.first;
-	delete task_tuple.second;
-      }
+    er_log_debug (ARG_FILE_LINE, "task_queue : delete task_queue %p", this);
     m_tasks.clear();
   }
 
-  void task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p)
+  task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
+				    pthread_mutex_t *mutex_p)
   {
     task_state *task_state_p = new task_state();
-    m_tasks.emplace_back (new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p), task_state_p);
+    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p);
+    task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
+    m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
       {
 	m_mutex_p = mutex_p;
       }
+    return task_tuple_p;
   }
 
   bool task_queue::get_not_started_task (task **task_out, task_state **task_state_out)
   {
+    if (m_tasks.size() == 0)
+      {
+	return false;
+      }
     pthread_mutex_lock (m_mutex_p);
     std::size_t iter = m_tasks.size()-1;
     for (; iter >= 0; iter--)
       {
-	auto [task_p, task_state_p] = m_tasks[iter];
+	auto it = m_tasks[iter];
+	auto task_p = it->first;
+	auto task_state_p = it->second;
 	if (task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER)
 	  {
 	    task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
@@ -157,12 +187,31 @@ namespace parallel_query_execute
   void task_queue::join()
   {
     bool not_ended;
+    state_enum state;
+    for (const auto &it : m_tasks)
+      {
+	state = it->second->get_state();
+	er_log_debug (ARG_FILE_LINE, "task_queue : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl, state);
+      }
     do
       {
 	not_ended = false;
-	for (const auto& [task_p, task_state_p] : m_tasks)
+	for (const auto &it : m_tasks)
 	  {
-	    if (task_state_p->get_state() != state_enum::ENDED)
+	    state = it->second->get_state();
+	    if (state == state_enum::ENDED_ON_WORKER)
+	      {
+		continue;
+	      }
+	    else if (state == state_enum::ENDED_ON_MAIN)
+	      {
+		continue;
+	      }
+	    else if (state == state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED)
+	      {
+		continue;
+	      }
+	    else
 	      {
 		not_ended = true;
 		break;
@@ -177,35 +226,102 @@ namespace parallel_query_execute
   {
     task *cur_task_p, *first_task_p;
     task_state *cur_task_state_p, *first_task_state_p;
+    bool all_ended = false;
     if (m_tasks.empty())
       {
 	return;
       }
+    for (const auto &it : m_tasks)
+      {
+	er_log_debug (ARG_FILE_LINE, "task_queue %p, xasl: %p", it->first, it->first->m_xasl);
+      }
     auto it = m_tasks.back();
     m_tasks.pop_back();
-    for (const auto& [task_p, task_state_p] : m_tasks)
+    for (const auto &it : m_tasks)
       {
-	m_worker_manager_p->push_task (task_p);
+	m_worker_manager_p->push_task (it->first);
+	er_log_debug (ARG_FILE_LINE, "task_queue : push task %p, xasl: %p", it->first, it->first->m_xasl);
       }
-    first_task_p = it.first;
-    first_task_state_p = it.second;
+    first_task_p = it->first;
+    first_task_state_p = it->second;
+    er_log_debug (ARG_FILE_LINE, "task_queue : first task %p, xasl: %p", first_task_p, first_task_p->m_xasl);
     first_task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
     first_task_p->execute_on_main (*thread_p);
-    delete first_task_p;
-    delete first_task_state_p;
+    first_task_state_p->set_state (state_enum::ENDED_ON_MAIN);
 
     while (1)
       {
 	if (get_not_started_task (&cur_task_p, &cur_task_state_p))
 	  {
+	    er_log_debug (ARG_FILE_LINE, "task_queue : execute task %p, xasl: %p", cur_task_p, cur_task_p->m_xasl);
 	    cur_task_p->execute_on_main (*thread_p);
-	    cur_task_state_p->set_state (state_enum::ENDED);
+	    cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED);
 	  }
 	else
 	  {
 	    break;
 	  }
       }
+    join();
   }
+
+  task_queue_global::task_queue_global()
+  {
+
+  }
+
+  task_queue_global::~task_queue_global()
+  {
+    for (auto &task_tuple_p : m_tasks)
+      {
+	er_log_debug (ARG_FILE_LINE, "task_queue_global : delete task %p, xasl: %p", task_tuple_p->first, task_tuple_p->first->m_xasl);
+	delete task_tuple_p->first;
+	delete task_tuple_p->second;
+      }
+  }
+
+  void task_queue_global::add_task (task_tuple *task_tuple_p)
+  {
+    m_tasks.emplace_back (task_tuple_p);
+  }
+
+  void task_queue_global::join()
+  {
+    bool not_ended = false;
+    state_enum state;
+    for (const auto &it : m_tasks)
+      {
+	state = it->second->get_state();
+	er_log_debug (ARG_FILE_LINE, "task_queue_global : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl,
+		      state);
+      }
+
+    do
+      {
+	not_ended = false;
+	for (const auto &it : m_tasks)
+	  {
+	    state = it->second->get_state();
+	    if (state == state_enum::ENDED_ON_WORKER)
+	      {
+		continue;
+	      }
+	    else if (state == state_enum::ENDED_ON_MAIN)
+	      {
+		continue;
+	      }
+	    else
+	      {
+		not_ended = true;
+		break;
+	      }
+	      assert (false);
+	  }
+	thread_sleep (1);
+      }
+    while (not_ended);
+  }
+
 }
+
 #endif

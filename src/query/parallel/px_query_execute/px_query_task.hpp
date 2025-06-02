@@ -39,11 +39,13 @@ namespace parallel_query_execute
     public:
       enum class state
       {
-	WILL_RUN_ON_WORKER,
-	WILL_RUN_ON_MAIN,
-	RUN_ON_MAIN,
-	RUN_ON_WORKER,
-	ENDED
+	WILL_RUN_ON_WORKER=0,
+	WILL_RUN_ON_MAIN=1,
+	RUN_ON_MAIN=2,
+	RUN_ON_WORKER=3,
+	ENDED_ON_MAIN=4,
+	ENDED_ON_MAIN_WORKER_RETIRE_NEEDED=5,
+	ENDED_ON_WORKER=6
       };
       task_state() : m_state (state::WILL_RUN_ON_WORKER) {}
       ~task_state() = default;
@@ -75,6 +77,8 @@ namespace parallel_query_execute
       void execute_on_main (cubthread::entry &thread_ref);
 
     private:
+      friend class task_queue;
+      friend class task_queue_global;
       THREAD_ENTRY *m_orig_thread_p;
       XASL_NODE *m_xasl;
       xasl_state *m_xasl_state;
@@ -83,21 +87,33 @@ namespace parallel_query_execute
       pool *m_worker_manager_p;
   };
 
+  using task_tuple = std::pair<task *, task_state *>;
   class task_queue
   {
     public:
       task_queue (THREAD_ENTRY *orig_thread_p, pool *worker_manager_p);
       ~task_queue();
-      void add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p);
+      task_tuple *add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p);
       void execute_tasks (THREAD_ENTRY *exec_thread_p);
       bool get_not_started_task (task **task_p, task_state **task_state_p);
       void join();
     private:
-      using task_tuple = std::pair<task *, task_state *>;
-      std::vector<task_tuple> m_tasks;
+      friend class task_queue_global;
+      std::vector<task_tuple *> m_tasks;
       THREAD_ENTRY *m_thread_p;
       pool *m_worker_manager_p;
       pthread_mutex_t *m_mutex_p;
+  };
+
+  class task_queue_global
+  {
+    public:
+      task_queue_global();
+      ~task_queue_global();
+      void add_task (task_tuple *task_tuple_p);
+      void join();
+    private:
+      std::vector<task_tuple *> m_tasks;
   };
 }
 #endif

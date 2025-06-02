@@ -52,6 +52,7 @@ namespace parallel_query_execute
       pool *m_worker_manager_p;
       pthread_mutex_t *m_mutex_p;
       task_queue m_task_queue;
+      task_queue_global *m_task_queue_global_p;
       int m_parallelism;
       int m_recursion_level;
   };
