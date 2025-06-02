@@ -33,6 +33,7 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.8.0.tar.gz")               # Faiss
 set(WITH_OPENBLAS_URL "https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.24.tar.gz")                  # OpenBLAS
 set(WITH_LAPACK_URL "http://www.netlib.org/lapack/lapack-3.11.0.tar.gz")                                      # LAPACK
+set(WITH_USEARCH_URL "https://github.com/unum-cloud/usearch")                  # usearch
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
@@ -693,6 +694,21 @@ list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
 list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
 list(APPEND EP_LIBS ${LIBFAISS_LIBS})
 
+include(FetchContent)
+
+# usearch
+FetchContent_Declare(
+  usearch
+  GIT_REPOSITORY https://github.com/unum-cloud/usearch.git
+  GIT_TAG        v2.17.8
+)
+
+FetchContent_MakeAvailable(usearch)
+set(USEARCH_TARGET usearch)
+list(APPEND USEARCH_INCLUDES ${usearch_SOURCE_DIR}/include ${usearch_SOURCE_DIR}/fp16/include)
+message(STATUS "usearch_SOURCE_DIR: ${usearch_SOURCE_DIR}")
+list(APPEND USEARCH_TARGETS usearch)
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -706,6 +722,9 @@ set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
 set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
 set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
 set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
+
+set (USEARCH_TARGETS ${USEARCH_TARGETS} PARENT_SCOPE)
+set (USEARCH_INCLUDES ${USEARCH_INCLUDES} PARENT_SCOPE)
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)
@@ -727,3 +746,4 @@ expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
 expose_3rdparty_variable(LIBTBB)
 expose_3rdparty_variable(LIBFAISS)
+expose_3rdparty_variable(USEARCH)

@@ -33,12 +33,18 @@
 #include "storage_common.h"
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
+
+#if 0
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIDMap.h"
 #include "faiss/index_io.h"
+#endif
+
+#include "usearch/index.hpp"
+#include "usearch/index_dense.hpp"
 
 BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
-		       enum faiss::MetricType metric_type);
+		       int metric);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 

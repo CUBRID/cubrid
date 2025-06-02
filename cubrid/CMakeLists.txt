@@ -436,7 +436,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw.cpp
+  ${STORAGE_DIR}/hnsw_usearch.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
@@ -618,9 +618,9 @@ if(UNIX)
   target_link_libraries(cubrid PUBLIC rt)
 
   # Add TBB
-  target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
+  target_include_directories(cubrid PUBLIC ${TBB_INCLUDES} ${USEARCH_INCLUDES})
   target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
-  add_dependencies(cubrid ${TBB_TARGETS})
+  add_dependencies(cubrid ${TBB_TARGETS} ${USEARCH_TARGETS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
