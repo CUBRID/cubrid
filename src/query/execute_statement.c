@@ -9708,7 +9708,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,

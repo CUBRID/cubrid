@@ -26686,38 +26686,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
 }
 
 /*
- * pt_to_null_ordering () - get null ordering from a sort spec
- * return : null ordering
- * sort_spec (in) : sort spec
- */
-SORT_NULLS
-pt_to_null_ordering (PT_NODE * sort_spec)
-{
-  assert_release (sort_spec != NULL);
-  assert_release (sort_spec->node_type == PT_SORT_SPEC);
-
-  switch (sort_spec->info.sort_spec.nulls_first_or_last)
-    {
-    case PT_NULLS_FIRST:
-      return S_NULLS_FIRST;
-
-    case PT_NULLS_LAST:
-      return S_NULLS_LAST;
-
-    case PT_NULLS_DEFAULT:
-    default:
-      break;
-    }
-
-  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
-    {
-      return S_NULLS_FIRST;
-    }
-
-  return S_NULLS_LAST;
-}
-
-/*
  * pt_to_cume_dist_percent_rank_regu_variable () - generate regu_variable
  *					 for 'CUME_DIST' and 'PERCENT_RANK'
  *   return: REGU_VARIABLE*

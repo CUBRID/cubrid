@@ -18061,6 +18061,18 @@ pt_is_const_expr_node (PT_NODE * node)
 }
 
 /*
+ * pt_is_ascii_string_value_node () -
+ *   return: whether the node is a non-national string value (CHAR or VARCHAR)
+ *   node(in):
+ */
+bool
+pt_is_ascii_string_value_node (const PT_NODE * const node)
+{
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum)
+	  && !PT_IS_NATIONAL_CHAR_STRING_TYPE (node->type_enum));
+}
+
+/*
  * pt_restore_assignment_links - restore assignments links after a call to
  *  get_assignments_lists.
  *   return:
