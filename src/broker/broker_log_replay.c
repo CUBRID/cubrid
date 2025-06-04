@@ -717,7 +717,7 @@ get_cci_type (char *p)
       else if (memcmp (p, "NULL", 5) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
-	}      
+	}
       break;
 
     case 'O':
@@ -772,7 +772,7 @@ get_cci_type (char *p)
       else if (memcmp (p, "VARBIT", 7) == 0)
 	{
 	  type = CCI_U_TYPE_VARBIT;
-	}      
+	}
       break;
 
     default:
