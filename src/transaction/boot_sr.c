@@ -913,13 +913,11 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       boot_remove_unknown_temp_volumes (thread_p);
     }
 
-  /* if (boot_Db_parm->temp_nvols == 0)
-     {
-     assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
-     return NO_ERROR;
-     }
-     TODO: Even when boot_Db_parm->temp_nvols == 0, temp volumes are still removed, so they should always be subject to removal
-   */
+  if (boot_Db_parm->temp_nvols == 0)
+    {
+      assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
+      return NO_ERROR;
+    }
 
   boot_find_and_remove_temp_volumes (thread_p);
 
