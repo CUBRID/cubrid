@@ -192,7 +192,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p);
+static void boot_remove_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -919,7 +919,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_and_remove_temp_volumes (thread_p);
+  boot_remove_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -1140,12 +1140,12 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * boot_find_and_remove_temp_volumes () - Find temporary volumes and remove them using boot_remove_temp_volume()
+ * boot_remove_temp_volumes () - Find temporary volumes and remove them using boot_remove_temp_volume()
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_and_remove_temp_volumes (THREAD_ENTRY * thread_p)
+boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
