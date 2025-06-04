@@ -43,9 +43,10 @@ namespace parallel_query_execute
 	WILL_RUN_ON_MAIN=1,
 	RUN_ON_MAIN=2,
 	RUN_ON_WORKER=3,
-	ENDED_ON_MAIN=4,
-	ENDED_ON_MAIN_WORKER_RETIRE_NEEDED=5,
-	ENDED_ON_WORKER=6
+	RUN_ON_MAIN_TASK_RETIRE_IGNORED=4,
+	ENDED_ON_MAIN=5,
+	ENDED_ON_MAIN_WORKER_RETIRE_NEEDED=6,
+	ENDED_ON_WORKER=7
       };
       task_state() : m_state (state::WILL_RUN_ON_WORKER) {}
       ~task_state() = default;

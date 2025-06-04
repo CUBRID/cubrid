@@ -48,12 +48,20 @@ namespace parallel_query_execute
   void task::execute_on_main (cubthread::entry &thread_ref)
   {
     pthread_mutex_lock (m_mutex_p);
-    if (m_task_state_p->get_state() != state_enum::WILL_RUN_ON_MAIN)
+    if (m_task_state_p->get_state() == state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED)
+      {
+	/* do nothing */
+	;
+      }
+    else if (m_task_state_p->get_state() == state_enum::WILL_RUN_ON_MAIN)
+      {
+	m_task_state_p->set_state (state_enum::RUN_ON_MAIN);
+      }
+    else
       {
 	pthread_mutex_unlock (m_mutex_p);
 	return;
       }
-    m_task_state_p->set_state (state_enum::RUN_ON_MAIN);
     pthread_mutex_unlock (m_mutex_p);
     int err = 0;
     int temp_tran_index = thread_ref.tran_index;
@@ -80,7 +88,7 @@ namespace parallel_query_execute
 
   void task::execute (cubthread::entry &thread_ref)
   {
-    er_log_debug (ARG_FILE_LINE, "task : execute %p, xasl: %p", this, m_xasl);
+    _er_log_debug (ARG_FILE_LINE, "ilhan : task : execute %p, xasl: %p", this, m_xasl);
     pthread_mutex_lock (m_mutex_p);
     if (m_task_state_p->get_state() != state_enum::WILL_RUN_ON_WORKER)
       {
@@ -119,13 +127,18 @@ namespace parallel_query_execute
 
   void task::retire ()
   {
-    m_worker_manager_p->pop_task();
     if (m_task_state_p->get_state() == state_enum::RUN_ON_WORKER
 	|| m_task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER
 	|| m_task_state_p->get_state() == state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED)
       {
 	m_task_state_p->set_state (state_enum::ENDED_ON_WORKER);
       }
+    else if (m_task_state_p->get_state() == state_enum::WILL_RUN_ON_MAIN
+	     || m_task_state_p->get_state() == state_enum::RUN_ON_MAIN)
+      {
+	m_task_state_p->set_state (state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED);
+      }
+    m_worker_manager_p->pop_task();
   }
 
 
@@ -136,7 +149,7 @@ namespace parallel_query_execute
   {}
   task_queue::~task_queue()
   {
-    er_log_debug (ARG_FILE_LINE, "task_queue : delete task_queue %p", this);
+    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : delete task_queue %p", this);
     m_tasks.clear();
   }
 
@@ -191,7 +204,8 @@ namespace parallel_query_execute
     for (const auto &it : m_tasks)
       {
 	state = it->second->get_state();
-	er_log_debug (ARG_FILE_LINE, "task_queue : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl, state);
+	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl,
+		       state);
       }
     do
       {
@@ -233,18 +247,18 @@ namespace parallel_query_execute
       }
     for (const auto &it : m_tasks)
       {
-	er_log_debug (ARG_FILE_LINE, "task_queue %p, xasl: %p", it->first, it->first->m_xasl);
+	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue %p, xasl: %p", it->first, it->first->m_xasl);
       }
     auto it = m_tasks.back();
     m_tasks.pop_back();
     for (const auto &it : m_tasks)
       {
 	m_worker_manager_p->push_task (it->first);
-	er_log_debug (ARG_FILE_LINE, "task_queue : push task %p, xasl: %p", it->first, it->first->m_xasl);
+	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : push task %p, xasl: %p", it->first, it->first->m_xasl);
       }
     first_task_p = it->first;
     first_task_state_p = it->second;
-    er_log_debug (ARG_FILE_LINE, "task_queue : first task %p, xasl: %p", first_task_p, first_task_p->m_xasl);
+    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : first task %p, xasl: %p", first_task_p, first_task_p->m_xasl);
     first_task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
     first_task_p->execute_on_main (*thread_p);
     first_task_state_p->set_state (state_enum::ENDED_ON_MAIN);
@@ -253,9 +267,16 @@ namespace parallel_query_execute
       {
 	if (get_not_started_task (&cur_task_p, &cur_task_state_p))
 	  {
-	    er_log_debug (ARG_FILE_LINE, "task_queue : execute task %p, xasl: %p", cur_task_p, cur_task_p->m_xasl);
+	    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : execute task %p, xasl: %p", cur_task_p, cur_task_p->m_xasl);
 	    cur_task_p->execute_on_main (*thread_p);
-	    cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED);
+	    if (cur_task_state_p->get_state() == state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED)
+	      {
+		cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN);
+	      }
+	    else
+	      {
+		cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED);
+	      }
 	  }
 	else
 	  {
@@ -274,7 +295,8 @@ namespace parallel_query_execute
   {
     for (auto &task_tuple_p : m_tasks)
       {
-	er_log_debug (ARG_FILE_LINE, "task_queue_global : delete task %p, xasl: %p", task_tuple_p->first, task_tuple_p->first->m_xasl);
+	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue_global : delete task %p, xasl: %p", task_tuple_p->first,
+		       task_tuple_p->first->m_xasl);
 	delete task_tuple_p->first;
 	delete task_tuple_p->second;
       }
@@ -292,8 +314,9 @@ namespace parallel_query_execute
     for (const auto &it : m_tasks)
       {
 	state = it->second->get_state();
-	er_log_debug (ARG_FILE_LINE, "task_queue_global : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl,
-		      state);
+	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue_global : join task %p, xasl: %p, state: %d", it->first,
+		       it->first->m_xasl,
+		       state);
       }
 
     do
@@ -315,7 +338,7 @@ namespace parallel_query_execute
 		not_ended = true;
 		break;
 	      }
-	      assert (false);
+	    assert (false);
 	  }
 	thread_sleep (1);
       }
