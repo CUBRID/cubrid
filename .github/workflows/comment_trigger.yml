@@ -1,9 +1,8 @@
 name: Comment trigger
 
-# Temporarily disabled - uncomment to re-enable
-# on:
-#   issue_comment:
-#     types: [created, edited]
+on:
+  issue_comment:
+    types: [created, edited]
 
 jobs:
   run_test:
