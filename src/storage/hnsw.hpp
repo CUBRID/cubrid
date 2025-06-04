@@ -40,9 +40,6 @@
 #include "faiss/index_io.h"
 #endif
 
-#include "usearch/index.hpp"
-#include "usearch/index_dense.hpp"
-
 BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 		       int metric);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
