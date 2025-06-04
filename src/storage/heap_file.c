@@ -10382,10 +10382,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 {
   OR_BUF buf;
   PR_TYPE *pr_type;		/* Primitive type array function structure */
-  OR_ATTRIBUTE *volatile attrepr;
+  OR_ATTRIBUTE *attrepr;
   char *disk_data = NULL;
   int disk_bound = false;
-  volatile int disk_length = -1;
+  int disk_length = -1;
   int ret = NO_ERROR;
 
   if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
@@ -10394,7 +10394,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
        * Therefore, the read operation is skipped and success is returned. */
       return NO_ERROR;
     }
-
   /* Initialize disk value information */
   disk_data = NULL;
   disk_bound = false;
@@ -10456,7 +10455,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	       * Find its location through the variable offset attribute table.
 	       */
 	      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
-
 	      disk_bound = true;
 	      switch (TP_DOMAIN_TYPE (attrepr->domain))
 		{
@@ -10487,7 +10485,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     {
       (void) pr_clear_value (&value->dbvalue);
     }
-
   /*
    * Now make the dbvalue according to the disk data value
    */
@@ -10510,34 +10507,25 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       or_init (&buf, disk_data, disk_length);
       buf.error_abort = 1;
 
-      switch (_setjmp (buf.env))
+      pr_type = pr_type_from_id (attrepr->type);
+      if (pr_type)
 	{
-	case 0:
-	  /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different
-	   * semantics for length. A negative length value for strings means "don't copy the string, just use the
-	   * pointer". For sets, don't translate the set into memory representation at this time.  It will only be
-	   * translated when needed. */
-	  pr_type = pr_type_from_id (attrepr->type);
-	  if (pr_type)
+	  if (pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0) != NO_ERROR)
 	    {
-	      pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
+	      ret = ER_FAILED;
 	    }
-	  value->state = HEAP_READ_ATTRVALUE;
-	  break;
-	default:
-	  /*
-	   * An error was found during the reading of the attribute value
-	   */
-	  (void) db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision,
-				       attrepr->domain->scale);
-	  value->state = HEAP_UNINIT_ATTRVALUE;
+	  else
+	    {
+	      value->state = HEAP_READ_ATTRVALUE;
+	    }
+	}
+      else
+	{
 	  ret = ER_FAILED;
-	  break;
 	}
     }
 
   return ret;
-
 exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
