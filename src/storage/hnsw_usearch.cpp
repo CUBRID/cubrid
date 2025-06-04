@@ -193,7 +193,7 @@ int hnsw_print_index_info (BTID *btid)
 
   oss << "HNSW Index Information for ID " << hnsw_id << ":\n";
   oss << "  - Dimension: " << index->dimensions() << "\n";
-  oss << "  - Metric Type: " << metric_kind_name(index->metric_kind()) << "\n";
+  oss << "  - Metric Type: " << metric_kind_name (index->metric_kind()) << "\n";
   oss << "  - Total Elements: " << index->size() << "\n";
   oss << "  - HNSW efConstruction: " << index->expansion_add() << "\n";
   oss << "  - HNSW efSearch: " << index->expansion_search() << "\n";
