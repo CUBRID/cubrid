@@ -4109,6 +4109,31 @@ pt_free_orphans (PARSER_CONTEXT * parser)
 }
 
 /*
+ * pt_free_escape_char () - Frees the escape sequence of a PT_LIKE node and
+ *                          leaves only the LIKE pattern in the parse tree.
+ *   parser(in):
+ *   like(in):
+ *   pattern(in):
+ *   escape(in):
+ */
+void
+pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like, PT_NODE * const pattern,
+		     PT_NODE * const escape)
+{
+  PT_NODE *const save_arg2 = like->info.expr.arg2;
+
+  assert (escape != NULL);
+  assert (PT_IS_EXPR_NODE_WITH_OPERATOR (save_arg2, PT_LIKE_ESCAPE));
+  assert (save_arg2->info.expr.arg1 == pattern);
+  assert (save_arg2->info.expr.arg2 == escape);
+
+  save_arg2->info.expr.arg1 = NULL;
+  parser_free_tree (parser, save_arg2);
+
+  like->info.expr.arg2 = pattern;
+}
+
+/*
  * pt_sort_spec_cover () -
  *   return:  true or false
  *   cur_list(in): current PT_SORT_SPEC list pointer
@@ -4529,6 +4554,38 @@ error_exit:
 }
 
 /*
+ * pt_to_null_ordering () - get null ordering from a sort spec
+ * return : null ordering
+ * sort_spec (in) : sort spec
+ */
+SORT_NULLS
+pt_to_null_ordering (PT_NODE * sort_spec)
+{
+  assert_release (sort_spec != NULL);
+  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+
+  switch (sort_spec->info.sort_spec.nulls_first_or_last)
+    {
+    case PT_NULLS_FIRST:
+      return S_NULLS_FIRST;
+
+    case PT_NULLS_LAST:
+      return S_NULLS_LAST;
+
+    case PT_NULLS_DEFAULT:
+    default:
+      break;
+    }
+
+  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
+    {
+      return S_NULLS_FIRST;
+    }
+
+  return S_NULLS_LAST;
+}
+
+/*
  * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
  *                                variable that replaces an existing value
  *   return: the node or NULL on error
@@ -4781,7 +4838,7 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
       goto error_exit;
     }
 
-  /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
+  /* We need the OID PT_VALUE to become a host variable, see qo_rewrite_queries () */
   node->info.update.search_cond->flag.force_auto_parameterize = 1;
 
   /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from

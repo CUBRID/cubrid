@@ -55,6 +55,10 @@ namespace parallel_query
 
   void worker_manager::release_workers ()
   {
+    if (m_reserved_workers == 0)
+      {
+	return;
+      }
     while (m_working_workers.load () > 0)
       {
 	thread_sleep (1);

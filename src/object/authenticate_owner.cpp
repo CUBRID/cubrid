@@ -446,7 +446,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	  if (owner == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      return error;
+	      goto end;
 	    }
 
 	  table_name = sm_get_ch_name (sub_partitions[i]);
@@ -477,21 +477,21 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   if (owner == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   table_name = sm_get_ch_name (class_mop);
   if (table_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner, owner_mop, table_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   /* change the owner of a class */

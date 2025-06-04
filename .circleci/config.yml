@@ -245,14 +245,12 @@ jobs:
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "medium"
-                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-${TC_SHA}"
-                        - "cubrid-testcases-"
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -261,7 +259,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-${TC_SHA}"
+                      key: "cubrid-testcases-develop-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -270,14 +268,12 @@ jobs:
                 resource_class: medium
                 parallelism: 8
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "sql"
-                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-${TC_SHA}"
-                        - "cubrid-testcases-"
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -286,7 +282,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-${TC_SHA}"
+                      key: "cubrid-testcases-develop-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -295,14 +291,12 @@ jobs:
                 resource_class: medium
                 parallelism: 1
                 environment:
-                  BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "plcsql"
-                  GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-${TC_SHA}"
-                        - "cubrid-testcases-"
+                        - "cubrid-testcases-develop-${TC_SHA}"
+                        - "cubrid-testcases-develop-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -311,7 +305,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-${TC_SHA}"
+                      key: "cubrid-testcases-develop-${TC_SHA}"
                       paths:
                         - cubrid-testcases
                       
@@ -326,8 +320,8 @@ jobs:
                 steps:
                   - restore_cache:
                       keys:
-                        - "cubrid-testcases-private-ex-${TC_PRIVATE_SHA}"
-                        - "cubrid-testcases-private-ex-"
+                        - "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
+                        - "cubrid-testcases-private-ex-develop-"
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -336,7 +330,7 @@ jobs:
                         git clean -fd
                         git reset --hard
                   - save_cache:
-                      key: "cubrid-testcases-private-ex-${TC_PRIVATE_SHA}"
+                      key: "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
                       paths:
                         - cubrid-testcases-private-ex
             
