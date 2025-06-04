@@ -721,7 +721,9 @@ static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent
 static DISK_ISVALID heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr);
 
 static int heap_chnguess_initialize (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int heap_chnguess_realloc (void);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_chnguess_finalize (void);
 static int heap_chnguess_decache (const OID * oid);
 static int heap_chnguess_remove_entry (const void *oid_key, void *ent, void *xignore);
@@ -739,7 +741,7 @@ static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpi
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
-#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
+#endif /* ENABLE_UNUSED_FUNCTION */
 static HEAP_STATS_ENTRY *heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid,
 						   int freespace);
 static int heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -8191,6 +8193,249 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   return scan;
 }
 
+
+/*
+ * heap_page_next_fix_old () - Fix next page in heap file
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   hfid(in): Heap file identifier
+ *   curr_vpid(in/out): Current page identifier
+ *   scan_cache(in): Scan cache
+ *
+ * Note: Fix the next page in the heap file chain. If curr_vpid is NULL,
+ *       fix the first page of heap file. The fixed page is kept in the
+ *       scan cache page watcher.
+ */
+SCAN_CODE
+heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid, HEAP_SCANCACHE * scan_cache)
+{
+  SCAN_CODE scan_code = S_SUCCESS;
+  /* get next page */
+  if (VPID_ISNULL (curr_vpid))
+    {
+      /* set to first page */
+      curr_vpid->pageid = hfid->hpgid;
+      curr_vpid->volid = hfid->vfid.volid;
+    }
+  else
+    {
+      scan_cache->page_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE, S_LOCK, NULL,
+								    &scan_cache->page_watcher);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  return S_ERROR;
+	}
+      heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, curr_vpid);
+      if (OID_ISNULL (curr_vpid))
+	{
+	  /* no more pages to scan, but do not unfix last page. (unfix at heap_next_1page) */
+	  return S_END;
+	}
+    }
+  return scan_code;
+}
+
+/*
+ * heap_next_1page () - Find next record in current page
+ *   return: SCAN_CODE
+ *           (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   hfid(in): Heap file identifier
+ *   vpid(in): Current page identifier
+ *   class_oid(in): Class object identifier
+ *   next_oid(in/out): Object identifier of current record
+ *   recdes(in/out): Record descriptor
+ *   scan_cache(in): Scan cache
+ *   ispeeking(in): PEEK when object is peeked, COPY when object is copied
+ *
+ * Note: Find the next record in the current page. If next_oid is NULL,
+ *       find the first record in the page. The record is either peeked
+ *       or copied according to ispeeking parameter.
+ */
+SCAN_CODE
+heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid, OID * next_oid,
+		 RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking)
+{
+  VPID *vpidptr_incache;
+  INT16 type = REC_UNKNOWN;
+  OID oid;
+  RECDES forward_recdes;
+  SCAN_CODE scan = S_ERROR;
+  bool is_null_recdata;
+
+  if (!OID_ISNULL (&scan_cache->node.class_oid))
+    {
+      class_oid = &scan_cache->node.class_oid;
+    }
+
+  if (OID_ISNULL (next_oid))
+    {
+      /* Retrieve the first object of the page */
+      oid.volid = vpid->volid;
+      oid.pageid = vpid->pageid;
+      oid.slotid = 0;		/* i.e., will get slot 1 */
+    }
+  else
+    {
+      oid = *next_oid;
+    }
+
+  is_null_recdata = (recdes->data == NULL);
+
+  /* Start looking for next object */
+  while (true)
+    {
+      /* Start looking for next object in current page. If we reach the end of this page without finding a new object,
+       * fetch next page and continue looking there. If no objects are found, end scanning */
+
+      while (true)
+	{
+
+	  /*
+	   * Fetch the page where the object of OID is stored. Use previous
+	   * scan page whenever possible, otherwise, deallocate the page.
+	   */
+	  if (scan_cache->page_watcher.pgptr != NULL)
+	    {
+	      vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
+	      if (!VPID_EQ (vpid, vpidptr_incache))
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		}
+	    }
+
+	  if (scan_cache->page_watcher.pgptr == NULL)
+	    {
+	      scan_cache->page_watcher.pgptr =
+		heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE, S_LOCK, scan_cache, &scan_cache->page_watcher);
+
+	      if (scan_cache->page_watcher.pgptr == NULL)
+		{
+		  if (er_errid () == ER_PB_BAD_PAGEID)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid.volid, oid.pageid,
+			      oid.slotid);
+		    }
+
+		  /* something went wrong, return */
+		  assert (scan_cache->page_watcher.pgptr == NULL);
+		  return S_ERROR;
+		}
+	    }
+
+	  {
+	    /* Find the next object. Skip relocated records (i.e., new_home records). This records must be accessed
+	     * through the relocation record (i.e., the object). */
+
+	    while (true)
+	      {
+		scan = spage_next_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+
+		if (scan != S_SUCCESS)
+		  {
+		    /* stop */
+		    break;
+		  }
+
+		if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
+		  {
+		    /* skip the header */
+		    continue;
+		  }
+		type = spage_get_record_type (scan_cache->page_watcher.pgptr, oid.slotid);
+		if (type == REC_NEWHOME || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN)
+		  {
+		    /* skip */
+		    continue;
+		  }
+
+		break;
+	      }
+	  }
+
+	  if (scan != S_SUCCESS)
+	    {
+	      if (scan == S_END)
+		{
+		  /* must be last slot of page, end scanning */
+		  OID_SET_NULL (next_oid);
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  return scan;
+		}
+	      else
+		{
+		  /* Error, stop scanning */
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  return scan;
+		}
+	    }
+	  else
+	    {
+	      /* found a new object */
+	      break;
+	    }
+	}
+
+      {
+	int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
+
+	scan_cache->cache_last_fix_page = true;
+
+	scan =
+	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
+					 NULL_CHN);
+	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
+      }
+
+
+      if (scan == S_SUCCESS)
+	{
+	  /*
+	   * Make sure that the found object is an instance of the desired
+	   * class. If it isn't then continue looking.
+	   */
+	  if (class_oid == NULL || OID_ISNULL (class_oid) || !OID_IS_ROOTOID (&oid))
+	    {
+	      /* stop */
+	      *next_oid = oid;
+	      break;
+	    }
+	  else
+	    {
+	      /* continue looking */
+	      if (is_null_recdata)
+		{
+		  /* reset recdes->data before getting next record */
+		  recdes->data = NULL;
+		}
+	      continue;
+	    }
+	}
+      else if (scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_DOESNT_EXIST)
+	{
+	  /* the record does not satisfies snapshot or was deleted - continue */
+	  if (is_null_recdata)
+	    {
+	      /* reset recdes->data before getting next record */
+	      recdes->data = NULL;
+	    }
+	  continue;
+	}
+
+      /* scan was not successful, stop scanning */
+      break;
+    }
+
+  if (scan_cache->page_watcher.pgptr != NULL && scan_cache->cache_last_fix_page == false)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+
+  return scan;
+}
+
+
 /*
  * heap_first () - Retrieve or peek first object of heap
  *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
@@ -15215,6 +15460,7 @@ exit_on_error:
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_chnguess_realloc () - More clients that currently maintained
  *   return: NO_ERROR
@@ -15296,6 +15542,7 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_chnguess_finalize () - Finish chnguess information
@@ -15575,14 +15822,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 
   if (heap_Guesschn != NULL)
     {
-      if (heap_Guesschn->num_clients <= tran_index)
-	{
-	  if (heap_chnguess_realloc () != NO_ERROR)
-	    {
-	      csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	      return NULL_CHN;
-	    }
-	}
+      assert (heap_Guesschn->num_clients > tran_index);
 
       /*
        * Do we have this entry in hash table, if we do then check corresponding
@@ -15630,14 +15870,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
       return NULL_CHN;
     }
 
-  if (heap_Guesschn->num_clients <= tran_index)
-    {
-      if (heap_chnguess_realloc () != NO_ERROR)
-	{
-	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
-	  return NULL_CHN;
-	}
-    }
+  assert (heap_Guesschn->num_clients > tran_index);
 
   /*
    * Is the entry already in the chnguess hash table ?

@@ -2346,6 +2346,8 @@ bind_value_print (char type, void *net_value, bool slow_log)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       {
 #if defined(CAS_FOR_CGW)
 	INTL_CODESET charset = INTL_CODESET_UTF8;
@@ -2368,8 +2370,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_JSON:
       {
 	char *str_val;
 	int val_size;
@@ -2377,8 +2377,12 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	if (type != CCI_U_TYPE_NUMERIC)
 	  {
 	    write2_func ("(%d)", val_size);
+	    fwrite_func (str_val, val_size);
 	  }
-	fwrite_func (str_val, val_size - 1);
+	else
+	  {
+	    fwrite_func (str_val, val_size - 1);
+	  }
       }
       break;
     case CCI_U_TYPE_BIGINT:
