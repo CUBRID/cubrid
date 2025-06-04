@@ -14,13 +14,13 @@ parameters:
     default: false
   run_sql_test:
     type: boolean
-    default: false
+    default: true
   run_medium_test:
     type: boolean
-    default: false
+    default: true
   run_plcsql_test:
     type: boolean
-    default: false
+    default: true
   run_all_test:
     type: boolean
     default: false
