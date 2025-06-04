@@ -755,10 +755,10 @@ target_external_dependencies(cubridsa
   RAPIDJSON
   RE2
   LIBFAISS
+  USEARCH
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
-  ${USEARCH_INCLUDES}
   )
 if(UNIX)
   # find out what this means:

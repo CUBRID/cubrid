@@ -618,9 +618,9 @@ if(UNIX)
   target_link_libraries(cubrid PUBLIC rt)
 
   # Add TBB
-  target_include_directories(cubrid PUBLIC ${TBB_INCLUDES} ${USEARCH_INCLUDES})
+  target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
-  add_dependencies(cubrid ${TBB_TARGETS} ${USEARCH_TARGETS})
+  add_dependencies(cubrid ${TBB_TARGETS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
