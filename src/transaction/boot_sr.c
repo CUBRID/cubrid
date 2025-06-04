@@ -6080,7 +6080,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       boot_Db_parm->temp_last_volid = volid;
     }
 
-  return error_code;
+  return NO_ERROR;
 
 error:
 
