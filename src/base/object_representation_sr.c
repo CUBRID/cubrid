@@ -1892,7 +1892,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 3) / 2;
+  att_cnt = (seq_size - 5) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -1965,19 +1965,19 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->btname = strdup (cons_name);
 
   /* Get the index status. */
-  set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
+  set_get_element_nocopy (constraint_seq, seq_size - 4, &stat_val);
   index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
 
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -1987,7 +1987,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {

@@ -1258,7 +1258,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner_mop = NULL, owner_mop = NULL;
-  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
+  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val, updated_time_val;
 
   assert (statement != NULL);
 
@@ -1274,6 +1274,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   db_make_null (&sp_type_val);
   db_make_null (&sp_lang_val);
   db_make_null (&target_cls_val);
+  db_make_null (&updated_time_val);
 
   type = PT_NODE_SP_TYPE (statement);
   sp_name = statement->info.sp.name;
@@ -1392,6 +1393,17 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
+    }
+
+  err = db_sys_datetime(&updated_time_val);
+  if (err != NO_ERROR)
+  {
+        goto error;
+  }
+    err = obj_set (sp_mop, SP_ATTR_UPDATED_TIME, &updated_time_val);
+    if (err != NO_ERROR)
+    {
+        goto error;
     }
 
 error:
@@ -1865,6 +1877,17 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   if (err != NO_ERROR)
     {
       goto error;
+    }
+
+  err = db_sys_datetime(&value);
+  if (err != NO_ERROR)
+  {
+        goto error;
+  }
+    err = dbt_put_internal (obt_p, SP_ATTR_UPDATED_TIME, &value);
+    if (err != NO_ERROR)
+    {
+        goto error;
     }
 
   object_p = dbt_finish_object (obt_p);

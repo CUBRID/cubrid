@@ -710,6 +710,30 @@ au_set_user_comment (MOP user, const char *comment)
   return error;
 }
 
+int
+au_set_user_created_time(MOP user, DB_VALUE *created_time)
+{
+        int save;
+
+        AU_SAVE_AND_DISABLE(save);
+        int error = obj_set(user, "created_time", created_time);
+        AU_RESTORE(save);
+
+        return error;
+}
+
+int
+au_set_user_updated_time(MOP user, DB_VALUE *updated_time)
+{
+        int save;
+
+        AU_SAVE_AND_DISABLE(save);
+        int error = obj_set(user, "updated_time", updated_time);
+        AU_RESTORE(save);
+
+        return error;
+}
+
 /*
  * GROUP HIERARCHY MAINTENANCE
  */
@@ -903,6 +927,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   DB_SET *group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
   const char *member_name = NULL;
+  DB_VALUE value;
 
   AU_DISABLE (save);
   db_make_object (&membervalue, member);
@@ -985,6 +1010,16 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	    }
 	}
     }
+
+    if (error == NO_ERROR)
+    {
+            error = db_sys_datetime(&value);
+            if (error == NO_ERROR)
+            {
+                    error = au_set_user_updated_time(member, &value);
+            }
+    }
+
   AU_ENABLE (save);
   return (error);
 }

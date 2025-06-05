@@ -548,6 +548,8 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
+  DB_DATETIME created_time;
+  DB_DATETIME updated_time;
 };
 
 /*

@@ -1526,3 +1526,11 @@ serial_get_index_btid (BTID * output)
   BTID_COPY (output, &serial_Cached_btid);
 }
 #endif /* SERVER_MODE */
+
+int
+serial_update_timestamps(DB_OTMPL *obj_tmpl)
+{
+  int error = NO_ERROR;
+
+  return error;
+}

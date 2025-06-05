@@ -657,7 +657,9 @@ namespace cubschema
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
       {"comment", format_varchar (1024)},
-      {"status", "integer"}
+      {"status", "integer"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
     },
 // constraints
     {
@@ -810,7 +812,9 @@ namespace cubschema
       {"target_class", format_varchar (1024)},
       {"target_method", format_varchar (1024)},
       {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)}
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
     },
 // constraints
     {
@@ -937,6 +941,8 @@ namespace cubschema
 	}
       },
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -1144,6 +1150,8 @@ namespace cubschema
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -1182,7 +1190,9 @@ namespace cubschema
       {"password", "string"},
       {"properties", format_varchar (2048)},
       {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)}
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {

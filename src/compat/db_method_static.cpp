@@ -177,6 +177,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
   int exists;
   MOP user;
   const char *tmp = NULL;
+  DB_VALUE value;
 
   if (name != NULL && DB_IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
     {
@@ -238,6 +239,19 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
       error = ER_AU_INVALID_USER;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
       db_make_error (returnval, error);
+    }
+
+    if (error == NO_ERROR)
+    {
+            error = db_sys_datetime(&value);
+            if (error == NO_ERROR)
+            {
+                    error = au_set_user_created_time(user, &value);
+            }
+            if (error == NO_ERROR)
+            {
+                    error = au_set_user_updated_time(user, &value);
+            }
     }
 }
 

@@ -287,6 +287,8 @@ authenticate_context::install (void)
   SM_TEMPLATE *def;
   AU_USER_CACHE *user_cache;
   int exists, save, index;
+  int error = NO_ERROR;
+  DB_VALUE value;
 
   AU_DISABLE (save);
 
@@ -367,6 +369,8 @@ authenticate_context::install (void)
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
   /* need signatures for these */
   smt_add_method (def, "set_password", "au_set_password_method");
   smt_add_method (def, "set_password_encoded", "au_set_password_encoded_method");
@@ -450,6 +454,24 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
+    error = db_sys_datetime(&value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
+    }
+
+    error = au_set_user_created_time(dba_user, &value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
+    }
+
+    error = au_set_user_updated_time(dba_user, &value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
+    }
+
   /* establish the DBA as the current user */
   user_cache = caches.find_user_cache_by_mop (dba_user);
   if (user_cache == NULL)
@@ -477,6 +499,24 @@ authenticate_context::install (void)
   if (public_user == NULL)
     {
       goto exit_on_error;
+    }
+
+    error = db_sys_datetime(&value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
+    }
+
+    error = au_set_user_created_time(public_user, &value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
+    }
+
+    error = au_set_user_updated_time(public_user, &value);
+    if (error != NO_ERROR)
+    {
+        goto exit_on_error;
     }
 
   /*

@@ -1979,6 +1979,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
   bool set_savepoint = false;
+  DB_VALUE value;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2174,6 +2175,25 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+    /* created_time */
+    error = db_sys_datetime(&value);
+    if (error != NO_ERROR)
+    {
+        goto end;
+    }
+    error = au_set_user_created_time(user, &value);
+    if (error != NO_ERROR)
+    {
+        goto end;
+    }
+
+    /* updated_time */
+    error = au_set_user_updated_time(user, &value);
+    if (error != NO_ERROR)
+    {
+        goto end;
+    }
+
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
@@ -2257,6 +2277,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password, *comment;
   const char *member_name;
   bool set_savepoint = false;
+  DB_VALUE value;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2394,6 +2415,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+    /* updated_time */
+    error = db_sys_datetime(&value);
+    if (error != NO_ERROR)
+    {
+        goto end;
+    }
+
+    error = au_set_user_updated_time(user, &value);
+    if (error != NO_ERROR)
+    {
+        goto end;
     }
 
 end:

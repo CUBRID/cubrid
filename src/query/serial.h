@@ -41,6 +41,7 @@ extern int xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_nu
 extern void serial_finalize_cache_pool (void);
 extern int serial_initialize_cache_pool (THREAD_ENTRY * thread_p);
 extern void xserial_decache (THREAD_ENTRY * thread_p, OID * oidp);
+extern int serial_update_timestamps(DB_OTMPL *obj_tmpl);
 
 #if defined (SERVER_MODE)
 extern int serial_cache_index_btid (THREAD_ENTRY * thread_p);

@@ -2321,13 +2321,31 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       /* the sequence of keys also includes the B+tree ID and the filter predicate expression in the first two
        * positions (0 and 1) */
       key_size = set_size (key_seq_p);
-      att_cnt = (key_size - 3) / 2;
+      att_cnt = (key_size - 5) / 2;
+
+      /* updated_time */
+      error = set_get_element (key_seq_p, key_size - 1, &attrs[13].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* created_time */
+      error = set_get_element (key_seq_p, key_size - 2, &attrs[12].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
 
       /* Get status. */
-      error = set_get_element (key_seq_p, key_size - 2, &attrs[11].value);
+      error = set_get_element (key_seq_p, key_size - 4, &attrs[11].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
 
       /* comment */
-      error = set_get_element (key_seq_p, key_size - 1, &attrs[10].value);
+      error = set_get_element (key_seq_p, key_size - 3, &attrs[10].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2337,7 +2355,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       if (!is_primary_key && !is_foreign_key)
 	{
 	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 3, &svalue);
+	  error = set_get_element (key_seq_p, key_size - 5, &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;

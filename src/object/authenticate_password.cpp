@@ -347,6 +347,16 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	    }
 	}
     }
+
+    if (error == NO_ERROR)
+    {
+        error = db_sys_datetime(&value);
+        if (error == NO_ERROR)
+        {
+                error = au_set_user_updated_time(user, &value);
+        }
+    }
+
   AU_ENABLE (save);
   return (error);
 }

@@ -3951,6 +3951,8 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   bool tr_object_map_added = false;
   bool has_savepoint = false;
   int error = NO_ERROR;
+  DB_VALUE value;
+  DB_DATETIME *now;
 
   object = NULL;
 
@@ -4116,7 +4118,13 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       has_savepoint = true;
     }
 
-  sm_update_timestamps(&trigger->created_time, &trigger->updated_time);
+  now = sm_get_datetime_now(&value);
+  if (now == NULL)
+  {
+        goto error;
+  }
+  trigger->created_time = *now;
+  trigger->updated_time = *now;
 
   /* from here down, the unwinding when errors are encountered gets rather complex */
 
@@ -6959,7 +6967,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
-  error = tr_update_updated_time (trigger_object);
+  error = tr_update_updated_time(trigger_object);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -7216,28 +7224,6 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
     }
 
   AU_ENABLE (save);
-
-  return error;
-}
-
-int tr_update_updated_time(DB_OBJECT * trigger_object)
-{
-  int error = NO_ERROR;
-  DB_VALUE value;
-  DB_DATETIME datetime;
-  int save;
-
-  error = sm_update_timestamps(NULL, &datetime);
-
-  if (error == NO_ERROR)
-  {
-          AU_DISABLE(save);
-
-          (void)db_make_datetime(&value, &datetime);
-          error = db_put_internal(trigger_object, TR_ATT_UPDATED_TIME, &value);
-
-          AU_ENABLE(save);
-  }
 
   return error;
 }
@@ -7703,4 +7689,22 @@ remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
     }
 
   return trigger_stmt_str;
+}
+
+int
+tr_update_updated_time(DB_OBJECT * trigger_object)
+{
+  int error = NO_ERROR;
+  DB_VALUE value;
+  int save;
+
+  error = db_sys_datetime(&value);
+  if (error == NO_ERROR)
+  {
+    AU_DISABLE(save);
+    error = db_put_internal(trigger_object, TR_ATT_UPDATED_TIME, &value);
+    AU_ENABLE(save);
+  }
+
+  return error;
 }

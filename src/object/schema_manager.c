@@ -442,7 +442,6 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
-static DB_DATETIME *sm_get_now_datetime (DB_VALUE *value);
 
 /*
  * sc_set_current_schema()
@@ -2902,6 +2901,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
   bool need_free_old_name = false;
   bool need_free_new_name = false;
   int error = NO_ERROR;
+  DB_VALUE value;
+  DB_DATETIME *now;
 
   er_clear ();
 
@@ -2961,6 +2962,13 @@ sm_rename_class (MOP class_mop, const char *new_name)
 
   need_free_old_name = true;
   need_free_new_name = false;
+
+  now = sm_get_datetime_now(&value);
+  if (now == NULL)
+  {
+        goto end;
+  }
+  class_->updated_time = *now;
 
   error = sm_flush_objects (class_mop);
   if (error != NO_ERROR)
@@ -4190,6 +4198,8 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
+  DB_VALUE value;
+  DB_DATETIME *now;
 
   assert_release (classop != NULL);
 
@@ -4230,7 +4240,12 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
-		  error = sm_update_checked_timestamp (&class_->checked_time);
+                  now = sm_get_datetime_now(&value);
+                  if (now == NULL)
+                  {
+                        return ER_FAILED;
+                  }
+                  class_->checked_time = *now;
 
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
@@ -12993,33 +13008,6 @@ update_subclasses (DB_OBJLIST * subclasses)
   return error;
 }
 
-static int
-update_timestamps (SM_CLASS * current, SM_CLASS * class_)
-{
-  int error;
-  DB_VALUE value;
-  DB_DATETIME *now;
-  bool is_system_defined_class = (class_->flags & SM_CLASSFLAG_SYSTEM) ? true : false;
-
-  error = db_sys_datetime (&value);
-  now = db_get_datetime (&value);
-
-  if (error != NO_ERROR || now == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* Align created_time and updated_time for system-defined classes 
-   * to ensure timestamp consistency after immediate internal updates. */
-  if (current == NULL || is_system_defined_class)
-    {
-      class_->created_time = *now;
-    }
-  class_->updated_time = *now;
-
-  return NO_ERROR;
-}
-
 /*
  * lockhint_subclasses() - This is called early during the processing of
  *    sm_update_class. It will use the new subclass lattice locking function
@@ -13123,6 +13111,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_TEMPLATE *flat;
   char owner_name[SM_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
+  DB_VALUE value;
+  DB_DATETIME *now;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13315,16 +13305,19 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
+  now = sm_get_datetime_now(&value);
+  if (now == NULL)
+  {
+        goto error_return;
+  }
+
   /* Align created_time and updated_time for system-defined classes 
    * to ensure timestamp consistency after immediate internal updates. */
   if (template_->current == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
     {
-      error = sm_update_timestamps (&class_->created_time, &class_->updated_time);
+        class_->created_time = *now;
     }
-  else
-    {
-      error = sm_update_timestamps (NULL, &class_->updated_time);
-    }
+    class_->updated_time = *now;
 
   if (error != NO_ERROR)
     {
@@ -16663,32 +16656,12 @@ sm_domain_copy (SM_DOMAIN * ptr)
 }
 
 DB_DATETIME *
-sm_get_now_datetime (DB_VALUE *value)
+sm_get_datetime_now (DB_VALUE *value)
 {
   int error = db_sys_datetime (value);
   DB_DATETIME *now = db_get_datetime (value);
 
   return (error == NO_ERROR) ? now : NULL;
-}
-
-int
-sm_update_timestamps (DB_DATETIME * created_time, DB_DATETIME * updated_time)
-{
-  DB_VALUE value;
-  DB_DATETIME *now = sm_get_now_datetime (&value);
-
-  if (now == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  if (created_time)
-    {
-      *created_time = *now;
-    }
-  *updated_time = *now;
-
-  return NO_ERROR;
 }
 
 void
@@ -16697,20 +16670,4 @@ sm_initialize_timestamp (DB_DATETIME * datetime)
   // *INDENT-OFF*
   *datetime = {0};
   // *INDENT-ON*
-}
-
-int
-sm_update_checked_timestamp (DB_DATETIME * checked_time)
-{
-  DB_VALUE value;
-  DB_DATETIME *now = sm_get_now_datetime (&value);
-
-  if (now == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *checked_time = *now;
-
-  return NO_ERROR;
 }

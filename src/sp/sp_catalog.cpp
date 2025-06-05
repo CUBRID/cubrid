@@ -58,7 +58,9 @@ static const std::vector<std::string> sp_entry_names
   SP_ATTR_TARGET_METHOD,
   SP_ATTR_DIRECTIVE,
   SP_ATTR_OWNER,
-  SP_ATTR_COMMENT
+  SP_ATTR_COMMENT,
+  SP_ATTR_CREATED_TIME,
+  SP_ATTR_UPDATED_TIME
 };
 
 static const std::vector<std::string> sp_args_entry_names
@@ -555,6 +557,23 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
       {
 	goto error;
       }
+
+  err = db_sys_datetime(&value);
+  if (err != NO_ERROR)
+  {
+        goto error;
+  }
+    err = dbt_put_internal (obt_p, SP_ATTR_CREATED_TIME, &value);
+    if (err != NO_ERROR)
+    {
+        goto error;
+    }
+
+    err = dbt_put_internal (obt_p, SP_ATTR_UPDATED_TIME, &value);
+    if (err != NO_ERROR)
+    {
+        goto error;
+    }
 
     object_p = dbt_finish_object (obt_p);
     if (!object_p)
