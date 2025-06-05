@@ -11702,7 +11702,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       assert (dt == NULL);
       if (PT_IS_HOSTVAR (arg1))
 	{
-	  /* we resolved the node type to a variable char type (VARCHAR orVARNCHAR) but we have to set an unknown
+	  /* we resolved the node type to a variable char type (VARCHAR) but we have to set an unknown
 	   * precision here */
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
 	  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;

@@ -3544,10 +3544,6 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
 	    /* CHAR */
 	    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
-	    /* NCHAR */
-	    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
-	    /* NCHAR VARYING */
-	    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
 	    /* ENUM */
 	    "WHEN 35 THEN ("
 		"SELECT "

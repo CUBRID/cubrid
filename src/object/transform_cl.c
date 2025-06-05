@@ -1463,7 +1463,7 @@ free_var_table (OR_VARINFO * vars)
 
 /*
  * string_disk_size - calculate the disk size of a NULL terminated ASCII
- * string that is supposed to be stored as a VARNCHAR attribute in one of
+ * string that is supposed to be stored as a VARCHAR attribute in one of
  * the various class objects.
  *    return: byte size for packed "varchar" string
  *    string(in):
@@ -1518,7 +1518,7 @@ get_string (OR_BUF * buf, int length)
   db_make_null (&value);
 
   /*
-   * The domain here is always a server side VARNCHAR.  Set a temporary
+   * The domain here is always a server side VARCHAR.  Set a temporary
    * domain to reflect this.
    */
   my_domain.precision = DB_MAX_VARCHAR_PRECISION;

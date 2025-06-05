@@ -56,9 +56,6 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2, ti) \
 	QSTR_COMPARE(id, string1, size1, string2, size2, ti)
 
-#define QSTR_NCHAR_COMPARE(id, string1, size1, string2, size2, codeset, ti) \
-        QSTR_COMPARE(id, string1, size1, string2, size2, ti)
-
 #define QSTR_COMPARE(id, string1, size1, string2, size2, ti) \
   (LANG_GET_COLLATION (id))->fastcmp ((LANG_GET_COLLATION (id)), (string1), \
 				      (size1), (string2), (size2), ti)
