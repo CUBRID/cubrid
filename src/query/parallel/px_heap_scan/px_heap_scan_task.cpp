@@ -317,8 +317,9 @@ namespace parallel_heap_scan
   void
   task::retire ()
   {
+    parallel_query::worker_manager *worker_manager_p = m_worker_manager;
     cubthread::entry_task::retire();
-    m_worker_manager->pop_task();
+    worker_manager_p->pop_task();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */
