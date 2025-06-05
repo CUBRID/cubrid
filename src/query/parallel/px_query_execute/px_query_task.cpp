@@ -70,17 +70,9 @@ namespace parallel_query_execute
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    QFILE_LIST_ID *list_id = qexec_get_xasl_list_id (m_xasl);
-
-    /* set last_pgptr->next_vpid to NULL */
-    if (list_id && list_id->last_pgptr != NULL)
-      {
-	QFILE_PUT_NEXT_VPID_NULL (list_id->last_pgptr);
-      }
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-    m_xasl->list_id = list_id;
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
@@ -107,17 +99,9 @@ namespace parallel_query_execute
     thread_ref.on_trace = m_orig_thread_p->on_trace;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    QFILE_LIST_ID *list_id = qexec_get_xasl_list_id (m_xasl);
-
-    /* set last_pgptr->next_vpid to NULL */
-    if (list_id && list_id->last_pgptr != NULL)
-      {
-	QFILE_PUT_NEXT_VPID_NULL (list_id->last_pgptr);
-      }
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-    m_xasl->list_id = list_id;
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;

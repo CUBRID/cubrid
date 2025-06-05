@@ -56,6 +56,21 @@ namespace parallel_query_execute
       int m_parallelism;
       int m_recursion_level;
   };
+  class xasl_checker
+  {
+    public:
+      xasl_checker()=default;
+      ~xasl_checker()=default;
+      bool is_parallel_executable (XASL_NODE *xasl);
+    private:
+      void add_xasl_recursive (XASL_NODE *xasl);
+      void check_xasl_recursive (XASL_NODE *xasl);
+      std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
+      std::multimap<XASL_NODE *, XASL_NODE *> m_xasl_map;
+      std::multimap<XASL_NODE *, XASL_NODE *> m_list_scan_map;
+      std::set<XASL_NODE *> m_aptr_head_set;
+      bool m_is_parallel_executable=true;
+  };
 }
 
 #endif // SERVER_MODE

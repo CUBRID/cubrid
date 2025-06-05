@@ -21,6 +21,7 @@
  */
 #if SERVER_MODE
 #include "px_query_executor.hpp"
+#include <algorithm>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -32,13 +33,26 @@ namespace parallel_query_execute
   {
     if (!parent_p)
       {
+	xasl_checker checker;
+	if (!checker.is_parallel_executable (xasl))
+	  {
+	    return false;
+	  }
+	bool reserved = worker_manager_p->try_reserve_workers (parallelism, parallelism);
+	if (!reserved)
+	  {
+	    return false;
+	  }
 	xasl->px_executor = new query_executor (thread_p, worker_manager_p, parallelism);
 	_er_log_debug (ARG_FILE_LINE,
 		       "ilhan : query_executor : make_parallel_query_executor_recursively xasl: %p, executor: %p", xasl,
 		       xasl->px_executor);
-	for (XASL_NODE *xptr = xasl->aptr_list; xptr != nullptr; xptr = xptr->next)
+	for (XASL_NODE *xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	  {
-	    make_parallel_query_executor_recursively (thread_p, xptr, worker_manager_p, xasl->px_executor, parallelism);
+	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
+	      {
+		make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+	      }
 	  }
 	return true;
       }
@@ -48,9 +62,20 @@ namespace parallel_query_execute
 	_er_log_debug (ARG_FILE_LINE,
 		       "ilhan : query_executor : make_parallel_query_executor_recursively xasl: %p, executor: %p", xasl,
 		       xasl->px_executor);
-	for (XASL_NODE *xptr = xasl->aptr_list; xptr != nullptr; xptr = xptr->next)
+	for (XASL_NODE *xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	  {
-	    make_parallel_query_executor_recursively (thread_p, xptr, worker_manager_p, xasl->px_executor, parallelism);
+	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
+	      {
+		make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+	      }
+	  }
+	if (xasl->type == CTE_PROC)
+	  {
+	    if (xasl->proc.cte.non_recursive_part)
+	      {
+		make_parallel_query_executor_recursively (thread_p, xasl->proc.cte.non_recursive_part, worker_manager_p,
+		    xasl->px_executor, parallelism);
+	      }
 	  }
 	return true;
       }
@@ -65,9 +90,7 @@ namespace parallel_query_execute
       m_parallelism (parallelism),
       m_recursion_level (0)
   {
-    bool reserved = m_worker_manager_p->try_reserve_workers (parallelism, parallelism);
     _er_log_debug (ARG_FILE_LINE, "ilhan : query_executor : started");
-    assert (reserved);
     m_mutex_p = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
     pthread_mutex_init (m_mutex_p, NULL);
   }
@@ -106,6 +129,187 @@ namespace parallel_query_execute
   void query_executor::run_tasks (THREAD_ENTRY *thread_p)
   {
     m_task_queue.execute_tasks (thread_p);
+  }
+
+  std::set<XASL_NODE *> xasl_checker::get_child_xasl_set_recursive (XASL_NODE *xasl)
+  {
+    std::set<XASL_NODE *> child_xasl_set;
+    auto child_set = m_xasl_map.equal_range (xasl);
+    for (auto it = child_set.first; it != child_set.second; it++)
+      {
+	child_xasl_set.insert (it->second);
+	auto child_child_set = get_child_xasl_set_recursive (it->second);
+	child_xasl_set.insert (child_child_set.begin(), child_child_set.end());
+      }
+    return child_xasl_set;
+  }
+
+  void xasl_checker::check_xasl_recursive (XASL_NODE *xasl)
+  {
+    std::size_t i,j;
+    for (XASL_NODE *aptr_head_xasl: m_aptr_head_set)
+      {
+	std::vector<std::set<XASL_NODE *>> aptr_set_vector;
+	_er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : aptr head : %p", aptr_head_xasl);
+	for (XASL_NODE *scan_ptr = aptr_head_xasl; scan_ptr != nullptr; scan_ptr= scan_ptr->scan_ptr)
+	  {
+	    for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
+	      {
+		auto child_set = get_child_xasl_set_recursive (aptr);
+		child_set.insert (aptr);
+		aptr_set_vector.push_back (child_set);
+	      }
+	  }
+	if (aptr_set_vector.size() > 1)
+	  {
+	    for (i=0; i<aptr_set_vector.size(); i++)
+	      {
+		auto src_set = aptr_set_vector[i];
+		for (j=0; j<aptr_set_vector.size(); j++)
+		  {
+		    if (i==j)
+		      {
+			continue;
+		      }
+		    else
+		      {
+			auto dst_set = aptr_set_vector[j];
+			for (auto aptr: src_set)
+			  {
+			    _er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : src_child_set[%d] : %p", i, aptr);
+			    auto list_scan_dst = m_list_scan_map.equal_range (aptr);
+			    for (auto it = list_scan_dst.first; it != list_scan_dst.second; it++)
+			      {
+				_er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : list_scan : %p -> %p", aptr, it->second);
+				if (dst_set.find (it->second) != dst_set.end())
+				  {
+				    _er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : non-parallelable ref : %p -> %p", aptr, it->second);
+				    m_is_parallel_executable = false;
+				    return;
+				  }
+			      }
+			  }
+		      }
+		  }
+	      }
+	  }
+      }
+  }
+
+  void xasl_checker::add_xasl_recursive (XASL_NODE *xasl)
+  {
+    if (!xasl)
+      {
+	return;
+      }
+
+    for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
+      {
+	add_xasl_recursive (aptr);
+	m_xasl_map.insert (std::make_pair (xasl, aptr));
+	m_aptr_head_set.insert (xasl);
+      }
+    for (XASL_NODE *scan_ptr = xasl->scan_ptr; scan_ptr != nullptr; scan_ptr = scan_ptr->scan_ptr)
+      {
+	for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
+	  {
+	    m_xasl_map.insert (std::make_pair (xasl, aptr));
+	    m_aptr_head_set.insert (xasl);
+	    if (aptr->outptr_list)
+	      {
+		for (REGU_VARIABLE_LIST outptr = aptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+		  {
+		    REGU_VARIABLE *regu_var = &outptr->value;
+		    if (regu_var->type == TYPE_SP)
+		      {
+			m_is_parallel_executable = false;
+		      }
+		  }
+	      }
+	    if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
+	      {
+		m_list_scan_map.insert (std::make_pair (xasl, aptr->spec_list->s.list_node.xasl_node));
+	      }
+	  }
+      }
+    for (XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	add_xasl_recursive (dptr );
+	m_xasl_map.insert (std::make_pair (xasl, dptr));
+      }
+    for (XASL_NODE *fptr = xasl->fptr_list; fptr != nullptr; fptr = fptr->next)
+      {
+	add_xasl_recursive (fptr );
+	m_xasl_map.insert (std::make_pair (xasl, fptr));
+      }
+
+    for (XASL_NODE *connect_by_ptr = xasl->connect_by_ptr; connect_by_ptr != nullptr; connect_by_ptr = connect_by_ptr->next)
+      {
+	add_xasl_recursive (connect_by_ptr );
+	m_xasl_map.insert (std::make_pair (xasl, connect_by_ptr));
+      }
+
+    if (xasl->type == CTE_PROC)
+      {
+	if (xasl->proc.cte.non_recursive_part)
+	  {
+	    add_xasl_recursive (xasl->proc.cte.non_recursive_part );
+	    m_xasl_map.insert (std::make_pair (xasl, xasl->proc.cte.non_recursive_part));
+	  }
+	if (xasl->proc.cte.recursive_part)
+	  {
+	    m_is_parallel_executable = false;
+	  }
+      }
+    else if (xasl->type == BUILDLIST_PROC)
+      {
+	for (XASL_NODE *eptr = xasl->proc.buildlist.eptr_list; eptr != nullptr; eptr = eptr->next)
+	  {
+	    add_xasl_recursive (eptr );
+	    m_xasl_map.insert (std::make_pair (xasl, eptr));
+	  }
+      }
+    if (xasl->outptr_list)
+      {
+	for (REGU_VARIABLE_LIST outptr = xasl->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+	  {
+	    REGU_VARIABLE *regu_var = &outptr->value;
+	    if (regu_var->type == TYPE_SP)
+	      {
+		m_is_parallel_executable = false;
+	      }
+	  }
+      }
+    if (xasl->spec_list && xasl->spec_list->type == TARGET_LIST)
+      {
+	m_list_scan_map.insert (std::make_pair (xasl, xasl->spec_list->s.list_node.xasl_node));
+      }
+  }
+
+  bool xasl_checker::is_parallel_executable (XASL_NODE *xasl)
+  {
+    try
+      {
+	add_xasl_recursive (xasl);
+	if (!m_is_parallel_executable)
+	  {
+	    return false;
+	  }
+	check_xasl_recursive (xasl);
+	_er_log_debug (ARG_FILE_LINE,
+		       "ilhan : is_executable : %p, n_aptr: %zu", xasl, m_aptr_head_set.size());
+	if (m_aptr_head_set.size() < 2)
+	  {
+	    return false;
+	  }
+	return m_is_parallel_executable;
+      }
+    catch (std::exception &e)
+      {
+	assert_release (false);
+	return false;
+      }
+
   }
 }
 #endif // SERVER_MODE

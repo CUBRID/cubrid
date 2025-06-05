@@ -128,7 +128,6 @@ namespace parallel_heap_scan
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
-    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
 	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
@@ -161,6 +160,7 @@ namespace parallel_heap_scan
 			 hsidp->pred_attrs.num_attrs, hsidp->pred_attrs.attr_ids, hsidp->pred_attrs.attr_cache,
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
+    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     ret = scan_start_scan (thread_p, scan_id);
     /* lock because of mvcc_snapshot */
     lock.unlock();
@@ -246,11 +246,11 @@ namespace parallel_heap_scan
 			break;
 		      }
 		    {
-		      std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		      /*std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
 		      if (!m_mergable_list_writer->is_tfile_allocated())
-			{
-			  tfile_lock.lock();
-			}
+		      {
+		        tfile_lock.lock();
+		      }*/
 		      writer_error_code = m_mergable_list_writer->write (thread_p);
 		    }
 		    if (!resolved_dbval_stored)
@@ -267,11 +267,11 @@ namespace parallel_heap_scan
 		  }
 		else
 		  {
-		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
+		    /*std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
 		    if (!writer.is_tfile_allocated())
 		      {
-			tfile_lock.lock();
-		      }
+		    tfile_lock.lock();
+		      }*/
 		    writer.write (thread_p, scan_id, data);
 		  }
 		if (on_trace)

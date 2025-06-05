@@ -2994,7 +2994,9 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   int pg_cnt;
   int query_save_state;
   unsigned int decache_clone_flag = 0;
-
+  VAL_LIST *single_tuple;
+  QPROC_DB_VALUE_LIST value_list;
+  int i;
   pg_cnt = 0;
   if (xasl == NULL)
     {
@@ -3014,8 +3016,32 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
   xasl->query_in_progress = true;
 
-  /* clear the head node */
-  qexec_clear_xasl_head (thread_p, xasl);
+  if (xasl->list_id && !xasl->list_id->is_result_cached)
+    {				/* destroy list file except for result-cached */
+      (void) qfile_close_list (thread_p, xasl->list_id);
+    }
+
+  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+    {
+      qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
+    }
+
+  if (xcache_uses_clones ())
+    {
+      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	{
+	  xasl->status = XASL_CLEARED;
+	}
+      else
+	{
+	  /* The values allocated during execution will be cleared and the xasl is reused. */
+	  xasl->status = XASL_INITIALIZED;
+	}
+    }
+  else
+    {
+      xasl->status = XASL_CLEARED;
+    }
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
@@ -3408,45 +3434,51 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
          if (xasl->proc.cte.non_recursive_part->list_id)
          {
          qfile_clear_list_id (xasl->proc.cte.non_recursive_part->list_id);
-         }
+         } */
+      if (xasl->proc.cte.non_recursive_part)
+	{
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	    {
+	      if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+		{
 
-         if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
-         {
-         if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
-         {
+		  XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+		}
+	    }
+	  else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+	    {
 
-         XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-         pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-         }
-         }
-         else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
-         {
+	      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+	    }
+	}
 
-         pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-         }
-         }
+      /*
          if (xasl->proc.cte.recursive_part)
          {
          if (xasl->proc.cte.recursive_part->list_id)
          {
          qfile_clear_list_id (xasl->proc.cte.recursive_part->list_id);
          }
+         } */
+      if (xasl->proc.cte.recursive_part)
+	{
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	    {
+	      if (xasl->proc.cte.recursive_part->status != XASL_CLEARED)
+		{
 
-         if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
-         {
-         if (xasl->proc.cte.recursive_part->status != XASL_CLEARED)
-         {
+		  XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
+		  pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.recursive_part, is_final);
+		}
+	    }
+	  else if (xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
+	    {
 
-         XASL_SET_FLAG (xasl->proc.cte.recursive_part, XASL_DECACHE_CLONE);
-         pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
-         }
-         }
-         else if (xasl->proc.cte.recursive_part->status != XASL_INITIALIZED)
-         {
-
-         pg_cnt += qexec_clear_xasl (thread_p, xasl->proc.cte.recursive_part, is_final);
-         }
-         }
+	      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.recursive_part, is_final);
+	    }
+	}
+      /*
          if (xasl->list_id)
          {
          qfile_clear_list_id (xasl->list_id);
@@ -15189,9 +15221,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (parallel_query_execute::query_executor::make_parallel_query_executor_recursively
 			      (thread_p, xasl, px_worker_manager_p, nullptr, 2) != true)
 			    {
-			      GOTO_EXIT_ON_ERROR;
+			      is_aptr_parallel_query_executor_allocated = false;
 			    }
-			  is_aptr_parallel_query_executor_allocated = true;
+			  else
+			    {
+			      is_aptr_parallel_query_executor_allocated = true;
+			    }
 			}
 		      if (xasl->px_executor)
 			{

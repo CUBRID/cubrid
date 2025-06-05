@@ -495,6 +495,7 @@ struct file_tempcache
 #endif				/* !NDEBUG */
 
   FILE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
+  pthread_mutex_t *tran_mutex_arr;
 
   /* space info */
   SPACEDB_FILES spacedb_temp;
@@ -9014,6 +9015,18 @@ file_tempcache_init (void)
     }
   memset (file_Tempcache.tran_files, 0, memsize);
 
+  file_Tempcache.tran_mutex_arr = (pthread_mutex_t *) malloc (ntrans * sizeof (pthread_mutex_t));
+  if (file_Tempcache.tran_mutex_arr == NULL)
+    {
+      pthread_mutex_destroy (&file_Tempcache.mutex);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ntrans * sizeof (pthread_mutex_t));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int i = 0; i < ntrans; i++)
+    {
+      pthread_mutex_init (&file_Tempcache.tran_mutex_arr[i], NULL);
+    }
+
   /* stats */
   memset (&file_Tempcache.spacedb_temp, 0, sizeof (file_Tempcache.spacedb_temp));
 
@@ -9054,8 +9067,10 @@ file_tempcache_final (void)
 	  /* should be empty */
 	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran]);
 	}
+	pthread_mutex_destroy (&file_Tempcache.tran_mutex_arr[tran]);
     }
   free_and_init (file_Tempcache.tran_files);
+  free_and_init (file_Tempcache.tran_mutex_arr);
 
   /* temporary volumes are removed, we don't have to destroy files */
   file_tempcache_free_entry_list (&file_Tempcache.cached_not_numerable);
@@ -9437,12 +9452,15 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
-  if (file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  if (file_Tempcache.tran_files[tran_index] != NULL)
     {
+	pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
       file_log ("file_tempcache_drop_tran_temp_files",
 		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
       file_tempcache_cache_or_drop_entries (thread_p,
-					    &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)]);
+					    &file_Tempcache.tran_files[tran_index]);
+	pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
     }
 }
 
@@ -9491,9 +9509,11 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 STATIC_INLINE FILE_TEMPCACHE_ENTRY *
 file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index];
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
+  pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
   for (entry = *tran_files_p; entry != NULL; entry = entry->next)
     {
       if (VFID_EQ (&entry->vfid, vfid))
@@ -9511,12 +9531,12 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
 		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-
+	  pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
 	  return entry;
 	}
       prev_entry = entry;
     }
-
+pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9532,13 +9552,16 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 STATIC_INLINE void
 file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index];
 
+  pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
   entry->next = *tran_files_p;
   *tran_files_p = entry;
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+  pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
 }
 
 /*
