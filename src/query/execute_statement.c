@@ -9692,7 +9692,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -11481,6 +11481,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
+
   xasl = pt_to_insert_xasl (parser, statement);
 
   if (xasl)
@@ -13759,8 +13760,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   row_count_total = 0;
 
-
-
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
   AU_ENABLE (save);
@@ -13804,7 +13803,15 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  error = insert_local (parser, statement);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      error = do_insert_at_server (parser, statement);
+    }
+  else
+    {
+      error = insert_local (parser, statement);
+    }
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);

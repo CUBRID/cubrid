@@ -474,9 +474,6 @@ static REGU_VARIABLE *pt_join_term_to_regu_variable (PARSER_CONTEXT * parser, PT
 
 static PT_NODE *pt_query_set_reference (PARSER_CONTEXT * parser, PT_NODE * node);
 
-static REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
-							     VAL_LIST * value_list, int *attr_offsets);
-
 static DB_VALUE *pt_regu_to_dbvalue (PARSER_CONTEXT * parser, REGU_VARIABLE * regu);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -9667,7 +9664,7 @@ pt_make_pos_regu_var_from_scratch (TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos
  *   value_list(in):
  *   attr_offsets(in):
  */
-static REGU_VARIABLE_LIST
+REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list, VAL_LIST * value_list,
 				   int *attr_offsets)
 {
@@ -14500,34 +14497,41 @@ ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * 
 }
 
 
+/*
+ * pt_to_hashjoin_proc() -
+ *   return: XASL node for hash join execution; NULL on error.
+ *   parser(in): Parser context.
+ *   outer_xasl(in): XASL node for outer input of the hash join.
+ *   inner_xasl(in): XASL node for inner input of the hash join.
+ */
 XASL_NODE *
-ptqo_to_hash_join_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
+pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl)
 {
   XASL_NODE *xasl;
+  HASHJOIN_PROC_NODE *proc;
 
-  if ((parser == NULL) || (outer_xasl == NULL) || (inner_xasl == NULL))
-    {
-      assert (false);
-      return NULL;
-    }
+  assert (parser != NULL);
+  assert (outer_xasl != NULL);
+  assert (inner_xasl != NULL);
 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
-  if (!xasl)
+  if (xasl == NULL)
     {
-      PT_NODE dummy;
-
-      memset (&dummy, 0, sizeof (dummy));
-      PT_ERROR (parser, &dummy,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-
+      if (er_errid () == NO_ERROR)
+	{
+	  assert_release (false);
+	}
       return NULL;
     }
 
-  xasl->aptr_list = outer_xasl;
-  xasl->aptr_list->next = inner_xasl;
+  outer_xasl->next = inner_xasl;
+  inner_xasl->next = NULL;
 
-  xasl->proc.hashjoin.outer.xasl = outer_xasl;
-  xasl->proc.hashjoin.inner.xasl = inner_xasl;
+  xasl->aptr_list = outer_xasl;
+
+  proc = &xasl->proc.hashjoin;
+  proc->outer.xasl = outer_xasl;
+  proc->inner.xasl = inner_xasl;
 
   return xasl;
 }
@@ -20952,6 +20956,7 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 static PT_NODE *
 pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  PT_NODE *prev = NULL, *values, *list;
   DB_VALUE tmp;
 
   if (node == NULL)
@@ -20959,7 +20964,33 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       return NULL;
     }
 
-  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
+  if (node->node_type == PT_NODE_LIST && node->info.node_list.list_type == PT_IS_VALUE)
+    {
+      for (list = node->info.node_list.list; list; list = list->next)
+	{
+	  if (list->node_type == PT_NAME && list->info.name.meta_class == PT_TRIGGER_OID)
+	    {
+	      pt_evaluate_tree (parser, list, &tmp, 1);
+	      values = pt_dbval_to_value (parser, &tmp);
+	      db_value_clear (&tmp);
+	      if (prev == NULL)
+		{
+		  node->info.node_list.list = values;
+		}
+	      else
+		{
+		  prev->next = values;
+		}
+	      values->next = list->next;
+	      prev = values;
+	    }
+	  else
+	    {
+	      prev = list;
+	    }
+	}
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
     {
       pt_evaluate_tree (parser, node, &tmp, 1);
       node = pt_dbval_to_value (parser, &tmp);
@@ -26704,38 +26735,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       assert (0);
       return RESERVED_NAME_INVALID;
     }
-}
-
-/*
- * pt_to_null_ordering () - get null ordering from a sort spec
- * return : null ordering
- * sort_spec (in) : sort spec
- */
-SORT_NULLS
-pt_to_null_ordering (PT_NODE * sort_spec)
-{
-  assert_release (sort_spec != NULL);
-  assert_release (sort_spec->node_type == PT_SORT_SPEC);
-
-  switch (sort_spec->info.sort_spec.nulls_first_or_last)
-    {
-    case PT_NULLS_FIRST:
-      return S_NULLS_FIRST;
-
-    case PT_NULLS_LAST:
-      return S_NULLS_LAST;
-
-    case PT_NULLS_DEFAULT:
-    default:
-      break;
-    }
-
-  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
-    {
-      return S_NULLS_FIRST;
-    }
-
-  return S_NULLS_LAST;
 }
 
 /*

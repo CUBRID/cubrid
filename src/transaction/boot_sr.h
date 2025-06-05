@@ -81,9 +81,7 @@ struct check_args
   bool check_timezone;
 };
 
-#define BO_IS_SERVER_RESTARTED() \
-        (boot_Server_status == BOOT_SERVER_UP \
-         || boot_Server_status == BOOT_SERVER_MAINTENANCE)
+#define BO_IS_SERVER_RESTARTED() (boot_Server_status != BOOT_SERVER_DOWN)
 
 #if defined(SERVER_MODE)
 extern bool boot_Enabled_flush_daemons;
