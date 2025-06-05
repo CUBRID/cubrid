@@ -724,13 +724,22 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 bool
-pt_is_vector_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+pt_is_vector_distance_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   return node->node_type == PT_FUNCTION && (node->info.function.function_type == F_VECTOR_DISTANCE
 					    || node->info.function.function_type == F_L1_DISTANCE
 					    || node->info.function.function_type == F_L2_DISTANCE
 					    || node->info.function.function_type == F_INNER_PRODUCT
 					    || node->info.function.function_type == F_COSINE_DISTANCE);
+}
+
+bool
+pt_is_vector_distance_expr (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  return node->node_type == PT_EXPR && (node->info.expr.op == PT_DISTANCE_OP_COSINE
+					|| node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN
+					|| node->info.expr.op == PT_DISTANCE_OP_MANHATTAN
+					|| node->info.expr.op == PT_DISTANCE_OP_NEG_INNER_PROD);
 }
 
 /*
