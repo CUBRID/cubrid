@@ -10941,10 +10941,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.insert.spec && node->info.insert.spec->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
+
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11548,7 +11549,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       node = pt_semantic_type (parser, node, info);
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.merge.into && node->info.merge.into->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}

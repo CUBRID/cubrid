@@ -311,6 +311,7 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
 static PT_NODE *pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
   do \
@@ -18559,6 +18560,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
     }
 
@@ -20309,7 +20319,6 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   return statement;
 }
 
-
 /*
  * pt_to_delete_xasl () - Converts an delete parse tree to
  *                        an XASL graph for an delete
@@ -20911,6 +20920,7 @@ pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 static PT_NODE *
 pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  PT_NODE *prev = NULL, *values, *list;
   DB_VALUE tmp;
 
   if (node == NULL)
@@ -20918,7 +20928,33 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       return NULL;
     }
 
-  if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
+  if (node->node_type == PT_NODE_LIST && node->info.node_list.list_type == PT_IS_VALUE)
+    {
+      for (list = node->info.node_list.list; list; list = list->next)
+	{
+	  if (list->node_type == PT_NAME && list->info.name.meta_class == PT_TRIGGER_OID)
+	    {
+	      pt_evaluate_tree (parser, list, &tmp, 1);
+	      values = pt_dbval_to_value (parser, &tmp);
+	      db_value_clear (&tmp);
+	      if (prev == NULL)
+		{
+		  node->info.node_list.list = values;
+		}
+	      else
+		{
+		  prev->next = values;
+		}
+	      values->next = list->next;
+	      prev = values;
+	    }
+	  else
+	    {
+	      prev = list;
+	    }
+	}
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class == PT_TRIGGER_OID)
     {
       pt_evaluate_tree (parser, node, &tmp, 1);
       node = pt_dbval_to_value (parser, &tmp);
@@ -20928,17 +20964,15 @@ pt_check_dblink_trigger_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
-void
+static void
 pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   switch (statement->node_type)
     {
     case PT_INSERT:
-      break;
     case PT_UPDATE:
-      statement = parser_walk_tree (parser, statement, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
-      break;
     case PT_DELETE:
+      statement = parser_walk_tree (parser, statement, pt_check_dblink_trigger_pre, NULL, NULL, NULL);
       break;
     default:
       break;
@@ -21011,6 +21045,15 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (from && from->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, from);
     }
 
@@ -26656,38 +26699,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       assert (0);
       return RESERVED_NAME_INVALID;
     }
-}
-
-/*
- * pt_to_null_ordering () - get null ordering from a sort spec
- * return : null ordering
- * sort_spec (in) : sort spec
- */
-SORT_NULLS
-pt_to_null_ordering (PT_NODE * sort_spec)
-{
-  assert_release (sort_spec != NULL);
-  assert_release (sort_spec->node_type == PT_SORT_SPEC);
-
-  switch (sort_spec->info.sort_spec.nulls_first_or_last)
-    {
-    case PT_NULLS_FIRST:
-      return S_NULLS_FIRST;
-
-    case PT_NULLS_LAST:
-      return S_NULLS_LAST;
-
-    case PT_NULLS_DEFAULT:
-    default:
-      break;
-    }
-
-  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
-    {
-      return S_NULLS_FIRST;
-    }
-
-  return S_NULLS_LAST;
 }
 
 /*
