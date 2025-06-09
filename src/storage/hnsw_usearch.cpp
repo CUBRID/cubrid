@@ -73,11 +73,12 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   switch (metric)
     {
     case METRIC_UNKNOWN:
+      ASSERT_CUBVEC (false);
     case METRIC_COSINE:
       metric_kind = usearch::metric_kind_t::cos_k;
       break;
+
     case METRIC_DOT:
-      // TODO (CUBVEC): Faiss does not support cosine distance directly?
       metric_kind = usearch::metric_kind_t::ip_k;
       break;
 
@@ -115,7 +116,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   btid->vfid.fileid = -1;
   btid->root_pageid = hnsw_index_id;
 
-  er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
+  _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
 
   hnsw_index_id++;
@@ -191,7 +192,7 @@ int hnsw_print_index_info (BTID *btid)
 
   std::ostringstream oss;
 
-  oss << "HNSW Index Information for ID " << hnsw_id << ":\n";
+  oss << "HNSW Index Information for ID: " << hnsw_id << "\n";
   oss << "  - Dimension: " << index->dimensions() << "\n";
   oss << "  - Metric Type: " << metric_kind_name (index->metric_kind()) << "\n";
   oss << "  - Total Elements: " << index->size() << "\n";
