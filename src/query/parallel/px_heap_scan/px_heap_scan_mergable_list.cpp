@@ -96,6 +96,11 @@ namespace parallel_heap_scan
 
     (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL);
 
+    if ((*m_list_id_p) == NULL)
+      {
+	return false;
+      }
+
     return true;
   }
 
@@ -142,6 +147,11 @@ namespace parallel_heap_scan
       }
 
     return &m_tpl_buf;
+  }
+
+  bool mergable_list_writer::is_tfile_allocated() const
+  {
+    return (*m_list_id_p)->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
   }
 }
 

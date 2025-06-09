@@ -480,7 +480,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -968,7 +968,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2788,7 +2788,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
    * during a retry loop, `db_restart` will reset the error file name as :
    * er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), ... ) 
    */
-  sysprm_set_force (prm_get_name (PRM_ID_ER_LOG_FILE), er_msg_file);
+  sysprm_set_force (PRM_ID_ER_LOG_FILE, er_msg_file);
 
   if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
@@ -2835,7 +2835,7 @@ retry:
     }
 
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
-  sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
+  sysprm_set_to_default (PRM_ID_LOG_BACKGROUND_ARCHIVING, true);
 
   error = logwr_copy_log_file (database_name, log_path, mode, start_pageid);
   if (error != NO_ERROR)
@@ -3706,7 +3706,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
+      sysprm_set_force (PRM_ID_DISABLE_VACUUM, "no");
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
     }
   db_login ("DBA", NULL);

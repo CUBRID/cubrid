@@ -18095,7 +18095,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       /* a NULL OID is returned; the resulting PT_VALUE node will be replaced with a PT_HOST_VAR by the auto
        * parameterization step because of the special force_auto_parameterize flag. Also see and pt_dup_key_update_stmt
-       * () and qo_optimize_queries () */
+       * () and qo_rewrite_queries () */
       tmp_value->type_enum = PT_TYPE_OBJECT;
       OID_SET_NULL (&null_oid);
       db_make_oid (&tmp_value->info.value.db_value, &null_oid);

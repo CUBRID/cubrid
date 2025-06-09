@@ -56,6 +56,8 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
+#define UNPACK_SCALE 3		// Assumed memory ratio when unpacking stream to XASL
+
 struct xasl_node;
 typedef struct xasl_node XASL_NODE;
 struct xasl_unpack_info;
@@ -1003,6 +1005,7 @@ struct partition_spec_node
   HFID hfid;			/* class hfid */
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
+  SCAN_STATS scan_stats;
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

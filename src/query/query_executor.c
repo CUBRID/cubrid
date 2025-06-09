@@ -6549,6 +6549,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   bool mvcc_select_lock_needed = false;
   int error_code = NO_ERROR;
   DBLINK_HOST_VARS host_vars;
+  SCAN_CODE s_parts;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
@@ -6924,6 +6925,16 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
     }
 
+  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
+    {
+      s_parts = qexec_init_next_partition (thread_p, curr_spec, xasl);
+      if (s_parts != S_SUCCESS)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+    }
+
   return NO_ERROR;
 
 exit_on_error:
@@ -7011,10 +7022,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
   /* reset pruning info */
   if (curr_spec->type == TARGET_CLASS && curr_spec->parts != NULL)
     {
-      db_private_free (thread_p, curr_spec->parts);
-      curr_spec->parts = NULL;
       curr_spec->curent = NULL;
-      curr_spec->pruned = false;
 
       /* init btid */
       if (curr_spec->indexptr)
@@ -7228,7 +7236,6 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
     }
   while (1);
-
 }
 
 /*
@@ -7832,6 +7839,28 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  spec->curent = spec->curent->next;
 	}
     }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      if (spec->curent != NULL)
+	{
+	  spec->s_id.partition_stats = &spec->curent->scan_stats;
+
+	  spec->s_id.partition_stats->covered_index = spec->s_id.scan_stats.covered_index;
+	  spec->s_id.partition_stats->multi_range_opt = spec->s_id.scan_stats.multi_range_opt;
+	  spec->s_id.partition_stats->index_skip_scan = spec->s_id.scan_stats.index_skip_scan;
+	  spec->s_id.partition_stats->loose_index_scan = spec->s_id.scan_stats.loose_index_scan;
+	  spec->s_id.partition_stats->noscan = spec->s_id.scan_stats.noscan;
+
+	  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+	  spec->s_id.partition_stats->agl = NULL;
+	}
+      else
+	{
+	  spec->s_id.partition_stats = NULL;
+	}
+    }
+
   /* close current scan and open a new one on the next partition */
   scan_end_scan (thread_p, &spec->s_id);
   scan_close_scan (thread_p, &spec->s_id);
@@ -8026,6 +8055,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       return S_ERROR;
     }
+
   return S_SUCCESS;
 }
 

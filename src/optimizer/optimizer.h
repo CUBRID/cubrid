@@ -210,7 +210,7 @@ extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-extern PT_NODE *mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0
 extern void *qo_malloc (QO_ENV *, unsigned, const char *, int);

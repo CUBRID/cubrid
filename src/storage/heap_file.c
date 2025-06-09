@@ -6828,7 +6828,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
        * Scanning the instances of a specific class
        */
       scan_cache->node.class_oid = *class_oid;
-
       if (is_queryscan == true)
 	{
 	  /*
@@ -6857,7 +6856,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
        * Scanning the instances of any class in the heap
        */
       OID_SET_NULL (&scan_cache->node.class_oid);
-
       if (hfid == NULL)
 	{
 	  HFID_SET_NULL (&scan_cache->node.hfid);
@@ -6883,7 +6881,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
     }
 
   scan_cache->page_latch = S_LOCK;
-
+  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -7081,12 +7079,13 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	    }
 	  assert (HFID_EQ (&scan_cache->node.hfid, hfid));
 	  scan_cache->node.class_oid = *class_oid;
+	  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
 	}
     }
   else
     {
       OID_SET_NULL (&scan_cache->node.class_oid);
-
+      scan_cache->mvcc_disabled_class = true;
       if (!HFID_EQ (&scan_cache->node.hfid, hfid))
 	{
 	  scan_cache->node.hfid.vfid.volid = hfid->vfid.volid;
@@ -7182,6 +7181,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
     }
   OID_SET_NULL (&scan_cache->node.class_oid);
+  scan_cache->mvcc_disabled_class = true;
   scan_cache->node.classname = NULL;
   scan_cache->page_latch = S_LOCK;
   scan_cache->cache_last_fix_page = true;
@@ -7221,7 +7221,6 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       delete scan_cache->m_index_stats;
       scan_cache->m_index_stats = NULL;
       scan_cache->num_btids = 0;
-
       if (scan_cache->cache_last_fix_page == true)
 	{
 	  /* Free fetched page */
@@ -7251,6 +7250,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   scan_cache->node.hfid.vfid.volid = NULL_VOLID;
   scan_cache->node.classname = NULL;
   OID_SET_NULL (&scan_cache->node.class_oid);
+  scan_cache->mvcc_disabled_class = true;
   scan_cache->page_latch = NULL_LOCK;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->end_area ();
@@ -7908,6 +7908,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 #endif /* CUBRID_DEBUG */
 
   hfid = &scan_cache->node.hfid;
+
   if (!OID_ISNULL (&scan_cache->node.class_oid))
     {
       class_oid = &scan_cache->node.class_oid;
@@ -19328,8 +19329,8 @@ SCAN_CODE
 heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true,
-			     cache_recordinfo, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, cache_recordinfo,
+			     NULL);
 }
 
 /*
@@ -25332,7 +25333,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
       if (class_oid != NULL)
 	{
-	  if (!mvcc_is_mvcc_disabled_class (class_oid))
+	  assert (OID_EQ (class_oid, &scan_cache->node.class_oid));
+	  if (!scan_cache->mvcc_disabled_class)
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
@@ -25409,10 +25411,13 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   if (context->scan_cache != NULL && context->scan_cache->mvcc_snapshot != NULL
       && context->scan_cache->mvcc_snapshot->snapshot_fnc != NULL
-      && !mvcc_is_mvcc_disabled_class (context->class_oid_p))
+      && (OID_EQ (context->class_oid_p, &context->scan_cache->node.class_oid) ?
+	  !context->scan_cache->mvcc_disabled_class : !mvcc_is_mvcc_disabled_class (context->class_oid_p)))
     {
       mvcc_snapshot = context->scan_cache->mvcc_snapshot;
     }
+  assert (mvcc_is_mvcc_disabled_class (&context->scan_cache->node.class_oid) ==
+	  context->scan_cache->mvcc_disabled_class);
 
   if (mvcc_snapshot != NULL || context->old_chn != NULL_CHN)
     {
@@ -25740,8 +25745,8 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
 		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   context->oid_p = oid;
-  context->class_oid_p = class_oid;
   OID_SET_NULL (&context->forward_oid);
+  context->class_oid_p = class_oid;
   context->recdes_p = recdes;
 
   if (scan_cache != NULL && !HFID_IS_NULL (&scan_cache->node.hfid))
