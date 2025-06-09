@@ -614,6 +614,7 @@ static UTIL_ARG_MAP ua_Paramdump_Option_Map[] = {
   {PARAMDUMP_BOTH_S, {ARG_BOOLEAN}, {0}},
   {PARAMDUMP_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {PARAMDUMP_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {PARAMDUMP_HA_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
@@ -622,6 +623,7 @@ static GETOPT_LONG ua_Paramdump_Option[] = {
   {PARAMDUMP_BOTH_L, 0, 0, PARAMDUMP_BOTH_S},
   {PARAMDUMP_SA_MODE_L, 0, 0, PARAMDUMP_SA_MODE_S},
   {PARAMDUMP_CS_MODE_L, 0, 0, PARAMDUMP_CS_MODE_S},
+  {PARAMDUMP_HA_L, 0, 0, PARAMDUMP_HA_S},
   {0, 0, 0, 0}
 };
 

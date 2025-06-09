@@ -7010,6 +7010,17 @@ prm_file_has_been_loaded (const char *conf_path, const char *db_name)
 
   for (i = 0; i < MAX_NUM_OF_PRM_FILES_LOADED; i++)
     {
+      if (prm_Files_loaded[i].conf_path != NULL
+	  && prm_Files_loaded[i].db_name != NULL
+	  && strcmp (prm_Files_loaded[i].conf_path, conf_path) == 0
+	  && strcmp (prm_Files_loaded[i].db_name, db_name) == 0)
+	{
+	  return;
+	}
+    }
+
+  for (i = 0; i < MAX_NUM_OF_PRM_FILES_LOADED; i++)
+    {
       if (prm_Files_loaded[i].conf_path == NULL)
 	{
 	  prm_Files_loaded[i].conf_path = strdup (conf_path);
@@ -7024,11 +7035,12 @@ prm_file_has_been_loaded (const char *conf_path, const char *db_name)
  * sysprm_dump_parameters - Print out current system parameters
  *   return: none
  *   fp(in):
+ *   filter(in):
  */
 void
-sysprm_dump_parameters (FILE * fp)
+sysprm_dump_parameters (FILE * fp, unsigned int filter)
 {
-  char buf[LINE_MAX];
+  char buf[LINE_MAX], tmpbuf[LINE_MAX];
   int i;
   const SYSPRM_PARAM *prm;
 
@@ -7058,8 +7070,36 @@ sysprm_dump_parameters (FILE * fp)
 	{
 	  continue;
 	}
+#if defined(SA_MODE)
+      if (PRM_IS_FOR_HA (prm->static_flag))
+	{
+	  continue;
+	}
       prm_print (prm, buf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
-      fprintf (fp, "%s\n", buf);
+      prm_print (prm, tmpbuf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_DEFAULT_VAL);
+      fprintf (fp, "[%c] %s\n", strcmp (buf, tmpbuf) != 0 ? '*' : ' ', buf);
+#else
+      if (PRM_IS_FOR_CLIENT (filter) && PRM_IS_FOR_CLIENT (prm->static_flag))
+	{
+	  if (PRM_IS_FOR_HA (filter) != PRM_IS_FOR_HA (prm->static_flag))
+	    {
+	      continue;
+	    }
+	  prm_print (prm, buf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+	  prm_print (prm, tmpbuf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_DEFAULT_VAL);
+	  fprintf (fp, "[C%c] %s\n", strcmp (buf, tmpbuf) != 0 ? '*' : ' ', buf);
+	}
+      else if (PRM_IS_FOR_SERVER (filter) && PRM_IS_FOR_SERVER (prm->static_flag))
+	{
+	  if (PRM_IS_FOR_HA (filter) != PRM_IS_FOR_HA (prm->static_flag))
+	    {
+	      continue;
+	    }
+	  prm_print (prm, buf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+	  prm_print (prm, tmpbuf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_DEFAULT_VAL);
+	  fprintf (fp, "[S%c] %s\n", strcmp (buf, tmpbuf) != 0 ? '*' : ' ', buf);
+	}
+#endif
     }
 
   return;
@@ -7291,7 +7331,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout);
+      sysprm_dump_parameters (stdout, 0);
     }
 #endif
 
@@ -9382,9 +9422,9 @@ cleanup:
  *   fp(in):
  */
 void
-xsysprm_dump_server_parameters (FILE * outfp)
+xsysprm_dump_server_parameters (FILE * outfp, unsigned int filter)
 {
-  sysprm_dump_parameters (outfp);
+  sysprm_dump_parameters (outfp, filter);
 }
 
 /*

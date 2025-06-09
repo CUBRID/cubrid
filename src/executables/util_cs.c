@@ -2248,6 +2248,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   bool both_flag = false;
+  bool ha_flag = false;
   FILE *outfp = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -2263,6 +2264,14 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   output_file = utility_get_option_string_value (arg_map, PARAMDUMP_OUTPUT_FILE_S, 0);
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
+  ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_S);
+
+#if defined(SA_MODE)
+  if (ha_flag)
+    {
+      goto print_dumpparam_usage;
+    }
+#endif
 
   if (output_file == NULL)
     {
@@ -2300,21 +2309,30 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (both_flag)
+  if (ha_flag)
     {
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
-      sysprm_dump_parameters (outfp);
+      sysprm_dump_parameters (outfp, PRM_FOR_CLIENT | PRM_FOR_HA);
       fprintf (outfp, "\n");
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
+	       database_name);
+      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | PRM_FOR_HA);
     }
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
-	   database_name);
-  sysprm_dump_server_parameters (outfp);
+  else
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
+      sysprm_dump_parameters (outfp, PRM_FOR_CLIENT);
+      fprintf (outfp, "\n");
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
+	       database_name);
+      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER);
+    }
   db_shutdown ();
 #else /* CS_MODE */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
   if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
     {
-      sysprm_dump_parameters (outfp);
+      sysprm_dump_parameters (outfp, 0);
     }
 #endif /* !CS_MODE */
 
