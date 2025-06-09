@@ -2252,14 +2252,7 @@ la_ignore_on_error (int errid)
 {
   assert_release (errid != NO_ERROR);
 
-  errid = abs (errid);
-
-  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid))
-    {
-      return true;
-    }
-
-  return false;
+  return sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid);
 }
 
 /*
@@ -2292,13 +2285,7 @@ la_retry_on_error (int errid)
       return true;
     }
 
-  errid = abs (errid);
-  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid))
-    {
-      return true;
-    }
-
-  return false;
+  return sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid);
 }
 
 /*

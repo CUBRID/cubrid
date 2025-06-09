@@ -3126,7 +3126,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-  sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+  sysprm_set_force (PRM_ID_SUPPRESS_FSYNC, "0");
 
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);

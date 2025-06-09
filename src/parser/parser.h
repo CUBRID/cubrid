@@ -192,7 +192,7 @@ extern "C"
   extern bool pt_is_reserved_word (const char *s);
   extern bool pt_is_keyword (const char *s);
   extern bool pt_is_const_expr_node (PT_NODE * node);
-
+  extern bool pt_is_ascii_string_value_node (const PT_NODE * const node);
   extern FUNCTION_MAP *pt_find_function_name (const char *name);
 
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -404,6 +404,8 @@ extern "C"
   extern int pt_user_specified_name_compare (const char *p, const char *q);
 
   extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
+  extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
+
   extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
@@ -571,6 +573,9 @@ extern "C"
   extern void pt_register_orphan_db_value (PARSER_CONTEXT * parser, const DB_VALUE * orphan);
   extern void pt_free_orphans (PARSER_CONTEXT * parser);
 
+  extern void pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like, PT_NODE * const pattern,
+				   PT_NODE * const escape);
+
   extern bool pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list);
   extern bool pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NODE * group_list,
 					  PT_NODE * tree);
@@ -594,7 +599,7 @@ extern "C"
   extern int pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list, PT_NODE * arg_array[],
 				    const int array_size, int *num_args);
   extern int pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
-  extern void qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
+  extern void qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
 
   extern PT_NODE *pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like_where_syntax,
 					    PT_NODE * like_or_where_expr);

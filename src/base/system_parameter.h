@@ -568,35 +568,6 @@ extern "C"
 {
 #endif
 
-/*
- * Macros to access bit fields
- */
-
-#define PRM_USER_CAN_CHANGE(x)    (x & PRM_USER_CHANGE)
-#define PRM_IS_FOR_CLIENT(x)      (x & PRM_FOR_CLIENT)
-#define PRM_IS_FOR_SERVER(x)      (x & PRM_FOR_SERVER)
-#define PRM_IS_HIDDEN(x)          (x & PRM_HIDDEN)
-#define PRM_IS_RELOADABLE(x)      (x & PRM_RELOADABLE)
-#define PRM_IS_COMPOUND(x)        (x & PRM_COMPOUND)
-#define PRM_TEST_CHANGE_ONLY(x)   (x & PRM_TEST_CHANGE)
-#define PRM_IS_FOR_HA(x)          (x & PRM_FOR_HA)
-#define PRM_IS_FOR_SESSION(x)	  (x & PRM_FOR_SESSION)
-#define PRM_GET_FROM_SERVER(x)	  (x & PRM_FORCE_SERVER)
-#define PRM_IS_FOR_QRY_STRING(x)  (x & PRM_FOR_QRY_STRING)
-#define PRM_CLIENT_SESSION_ONLY(x) (x & PRM_CLIENT_SESSION)
-#define PRM_HAS_SIZE_UNIT(x)      (x & PRM_SIZE_UNIT)
-#define PRM_HAS_TIME_UNIT(x)      (x & PRM_TIME_UNIT)
-#define PRM_DIFFERENT_UNIT(x)     (x & PRM_DIFFER_UNIT)
-#define PRM_IS_FOR_HA_CONTEXT(x)  (x & PRM_FOR_HA_CONTEXT)
-#define PRM_IS_FOR_PL_CONTEXT(x)  (x & PRM_FOR_PL_CONTEXT)
-#define PRM_IS_GET_SERVER(x)      (x & PRM_GET_SERVER)
-#define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
-#define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
-
-#define PRM_IS_SET(x)             (x & PRM_SET)
-#define PRM_IS_ALLOCATED(x)       (x & PRM_ALLOCATED)
-#define PRM_DEFAULT_VAL_USED(x)   (x & PRM_DEFAULT_USED)
-#define PRM_IS_DIFFERENT(x)	  (x & PRM_DIFFERENT)
 
 /*
  * Static flags
@@ -643,13 +614,6 @@ extern "C"
 					 * currently used by parameters that should be printed to query string */
 
 /*
- * Macros to manipulate bit fields
- */
-
-#define PRM_CLEAR_BIT(this, here)  (here &= ~this)
-#define PRM_SET_BIT(this, here)    (here |= this)
-
-/*
  * Macros to get values
  */
 
@@ -671,24 +635,14 @@ extern "C"
 #define PRM_IS_INTEGER_LIST(x)    ((x)->datatype == PRM_INTEGER_LIST)
 #define PRM_IS_BIGINT(x)          ((x)->datatype == PRM_BIGINT)
 
-#define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
 #define PARAM_MSG_FMT(msgid) msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, (msgid))
 
 #define GET_PRM(id) (&prm_Def[(id)])
-#define GET_PRM_STATIC_FLAG(id) ((GET_PRM (id))->static_flag)
-#define GET_PRM_DYNAMIC_FLAG(id) ((GET_PRM (id))->dynamic_flag)
-#define GET_PRM_DATATYPE(id) ((GET_PRM (id))->datatype)
 
-#if defined (CS_MODE)
-#define PRM_PRINT_QRY_STRING(id) (PRM_IS_DIFFERENT (*(GET_PRM_DYNAMIC_FLAG (id))) \
-			&& PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
-#else
-#define PRM_PRINT_QRY_STRING(id) (PRM_IS_FOR_QRY_STRING (GET_PRM_STATIC_FLAG (id)))
-#endif
+#define SERVER_SESSION_MASK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) | PRM_CLIENT_SESSION)	// 0x00000904
+#define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
+#define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
 
-#define PRM_SERVER_SESSION(id) (PRM_IS_FOR_SESSION (GET_PRM_STATIC_FLAG (id)) \
-			&& PRM_IS_FOR_SERVER (GET_PRM_STATIC_FLAG (id)) \
-			&& !PRM_CLIENT_SESSION_ONLY (GET_PRM_STATIC_FLAG (id)))
 
 /* 
  * for PRM_STORE_PROCEDURE_RETURN_NUMERIC_SIZE
@@ -717,6 +671,8 @@ extern "C"
   typedef struct sysprm_param SYSPRM_PARAM;
 
   extern SYSPRM_PARAM prm_Def[];
+  typedef int SYSPRM_INDIRECT_POS;
+  extern SYSPRM_INDIRECT_POS prm_Def_session_idx[];
 
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
@@ -761,10 +717,10 @@ extern "C"
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (int flag);
 #endif				/* !CS_MODE */
 
-  extern int sysprm_set_force (const char *pname, const char *pvalue);
-  extern int sysprm_set_to_default (const char *pname, bool set_to_force);
-  extern int sysprm_check_range (const char *pname, void *value);
-  extern int sysprm_get_range (const char *pname, void *min, void *max);
+  extern int sysprm_set_force (PARAM_ID param_id, const char *pvalue);
+  extern int sysprm_set_to_default (PARAM_ID param_id, bool set_to_force);
+  extern int sysprm_check_range (PARAM_ID param_id, void *value);
+  extern int sysprm_get_range (PARAM_ID id, void *min, void *max);
   extern int prm_get_master_port_id (void);
   extern bool prm_get_commit_on_shutdown (void);
 
@@ -825,18 +781,15 @@ extern "C"
   STATIC_INLINE int prm_get_integer_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+    assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INT (prm_Def[prm_id].value);
+	return PRM_GET_INT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_INT (prm_get_value (prm_id));
-#else				/* SERVER_MODE */
-      return PRM_GET_INT (prm_Def[prm_id].value);
-#endif				/* SERVER_MODE */
+#endif
+    return PRM_GET_INT (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -848,18 +801,15 @@ extern "C"
   STATIC_INLINE bool prm_get_bool_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_BOOLEAN (&prm_Def[prm_id]));
+    assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BOOL (prm_Def[prm_id].value);
+	return PRM_GET_BOOL (prm_get_value (prm_id));
       }
-
-    return PRM_GET_BOOL (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_BOOL (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
+#endif
+    return PRM_GET_BOOL (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -871,18 +821,15 @@ extern "C"
   STATIC_INLINE float prm_get_float_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_FLOAT (&prm_Def[prm_id]));
+    assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_FLOAT (prm_Def[prm_id].value);
+	return PRM_GET_FLOAT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_FLOAT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_FLOAT (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
+#endif
+    return PRM_GET_FLOAT (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -894,18 +841,15 @@ extern "C"
   STATIC_INLINE char *prm_get_string_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_STRING (&prm_Def[prm_id]));
+    assert (PRM_IS_STRING (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_STRING (prm_Def[prm_id].value);
+	return PRM_GET_STRING (prm_get_value (prm_id));
       }
-
-    return PRM_GET_STRING (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_STRING (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
+#endif
+    return PRM_GET_STRING (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -918,18 +862,15 @@ extern "C"
   STATIC_INLINE int *prm_get_integer_list_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_INTEGER_LIST (&prm_Def[prm_id]));
+    assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
+	return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
       }
-
-    return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_INTEGER_LIST (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
+#endif
+    return PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value);
   }
 
 /*
@@ -941,18 +882,15 @@ extern "C"
   STATIC_INLINE UINT64 prm_get_bigint_value (PARAM_ID prm_id)
   {
     assert (prm_id <= PRM_LAST_ID);
-    assert (PRM_IS_BIGINT (&prm_Def[prm_id]));
+    assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
 
 #if defined (SERVER_MODE)
-    if (!PRM_SERVER_SESSION (prm_id))
+    if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BIGINT (prm_Def[prm_id].value);
+	return PRM_GET_BIGINT (prm_get_value (prm_id));
       }
-
-    return PRM_GET_BIGINT (prm_get_value (prm_id));
-#else /* SERVER_MODE */
-    return PRM_GET_BIGINT (prm_Def[prm_id].value);
-#endif /* SERVER_MODE */
+#endif
+    return PRM_GET_BIGINT (GET_PRM (prm_id)->value);
   }
 
 #endif /* window */
