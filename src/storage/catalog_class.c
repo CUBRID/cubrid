@@ -1062,9 +1062,15 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   /* tde_algorithm */
   tp_Integer.data_readval (buf_p, &attrs[10].value, NULL, -1, true, NULL, 0);
 
+  /* created_time */
   tp_Datetime.data_readval (buf_p, &attrs[11].value, NULL, -1, true, NULL, 0);
+
+  /* updated_time */
   tp_Datetime.data_readval (buf_p, &attrs[12].value, NULL, -1, true, NULL, 0);
+
+  /* checked_time */
   tp_Datetime.data_readval (buf_p, &attrs[13].value, NULL, -1, true, NULL, 0);
+
   /* variable */
 
   /* unique_name */

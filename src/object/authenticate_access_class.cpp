@@ -81,7 +81,6 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   int save = 0;
   int error = NO_ERROR;
   DB_VALUE value;
-  DB_DATETIME *now;
 
   if (class_mop == NULL || owner_mop == NULL)
     {
@@ -277,22 +276,14 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 	}
     }
 
-    /* updated_time */
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
+  /* updated_time */
+  if (sm_update_class_timestamp (class_) != NO_ERROR)
     {
-        goto end;
+      goto end;
     }
 
-    now = sm_get_datetime_now(&value);
-    if (now == NULL)
-    {
-            goto end;
-    }
-    class_->updated_time = *now;
-
-    error = locator_flush_class(class_mop);
-    if (error != NO_ERROR)
+  error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;

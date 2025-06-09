@@ -227,22 +227,12 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     }
 
   /* updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
       ASSERT_ERROR ();
       is_abort = true;
       goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-      ASSERT_ERROR ();
-      is_abort = true;
-      goto end;
-  }
-
+    }
 
   serial_obj = dbt_finish_object (obj_tmpl);
   if (!serial_obj)
@@ -385,15 +375,6 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 	  assert (false);
 	}
     }
-
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-        goto end;
-    }
-    error = obj_set(trigger_mop, "updated_time", &value);
-
 
 end:
   AU_ENABLE (save);
@@ -629,18 +610,13 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 	  goto end;
 	}
     }
-    else 
+  else
     {
-            error = db_sys_datetime(&value);
-            if (error != NO_ERROR)
-            {
-                    goto end;
-            }
-            error = obj_set (sp, SP_ATTR_UPDATED_TIME, &value);
-            if (error != NO_ERROR)
-            {
-                    goto end;
-            }
+      error = db_update_obj_timestamp (sp);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
 end:

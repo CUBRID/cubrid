@@ -254,6 +254,7 @@ static int map_flush_helper (const void *key, void *data, void *args);
 static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
+static int tr_set_trigger_timestamps (TR_TRIGGER * trigger);
 
 /* ERROR HANDLING */
 
@@ -415,8 +416,10 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
-  sm_initialize_timestamp(&trigger->created_time);
-  sm_initialize_timestamp(&trigger->updated_time);
+  // *INDENT-OFF*
+  trigger->created_time = {0, 0};
+  trigger->updated_time = {0, 0};
+  // *INDENT-ON*
 
   return trigger;
 }
@@ -1142,16 +1145,9 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
-    db_make_datetime(&value, &trigger->created_time);
-    if (dbt_put_internal(obt_p, TR_ATT_CREATED_TIME, &value) != NO_ERROR)
+  if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
-            goto error;
-    }
-
-    db_make_datetime(&value, &trigger->updated_time);
-    if (dbt_put_internal(obt_p, TR_ATT_UPDATED_TIME, &value) != NO_ERROR)
-    {
-            goto error;
+      goto error;
     }
 
   object_p = dbt_finish_object (obt_p);
@@ -3951,8 +3947,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   bool tr_object_map_added = false;
   bool has_savepoint = false;
   int error = NO_ERROR;
-  DB_VALUE value;
-  DB_DATETIME *now;
 
   object = NULL;
 
@@ -3982,8 +3976,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   trigger->event = event;
   trigger->class_mop = class_mop;
   trigger->comment = (comment == NULL) ? NULL : strdup (comment);
-  sm_initialize_timestamp(&trigger->created_time);
-  sm_initialize_timestamp(&trigger->updated_time);
 
   if (class_mop != NULL)
     {
@@ -4118,13 +4110,10 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       has_savepoint = true;
     }
 
-  now = sm_get_datetime_now(&value);
-  if (now == NULL)
-  {
-        goto error;
-  }
-  trigger->created_time = *now;
-  trigger->updated_time = *now;
+  if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* from here down, the unwinding when errors are encountered gets rather complex */
 
@@ -6967,8 +6956,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
-  error = tr_update_updated_time(trigger_object);
-  if (error != NO_ERROR)
+  if (tr_update_trigger_timestamp (trigger_object) != NO_ERROR)
     {
       ASSERT_ERROR ();
       is_abort = true;
@@ -7691,20 +7679,31 @@ remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
   return trigger_stmt_str;
 }
 
-int
-tr_update_updated_time(DB_OBJECT * trigger_object)
+static int
+tr_set_trigger_timestamps (TR_TRIGGER * trigger)
 {
-  int error = NO_ERROR;
-  DB_VALUE value;
-  int save;
+  DB_VALUE current_datetime;
 
-  error = db_sys_datetime(&value);
-  if (error == NO_ERROR)
-  {
-    AU_DISABLE(save);
-    error = db_put_internal(trigger_object, TR_ATT_UPDATED_TIME, &value);
-    AU_ENABLE(save);
-  }
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  trigger->created_time = *db_get_datetime (&current_datetime);
+  trigger->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+int
+tr_update_trigger_timestamp (DB_OBJECT * obj)
+{
+  int save;
+  int error = NO_ERROR;
+
+  AU_DISABLE (save);
+  error = db_update_obj_timestamp (obj);
+  AU_ENABLE (save);
 
   return error;
 }

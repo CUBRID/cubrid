@@ -2901,8 +2901,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
   bool need_free_old_name = false;
   bool need_free_new_name = false;
   int error = NO_ERROR;
-  DB_VALUE value;
-  DB_DATETIME *now;
 
   er_clear ();
 
@@ -2963,12 +2961,10 @@ sm_rename_class (MOP class_mop, const char *new_name)
   need_free_old_name = true;
   need_free_new_name = false;
 
-  now = sm_get_datetime_now(&value);
-  if (now == NULL)
-  {
-        goto end;
-  }
-  class_->updated_time = *now;
+  if (sm_update_class_timestamp (class_) != NO_ERROR)
+    {
+      goto end;
+    }
 
   error = sm_flush_objects (class_mop);
   if (error != NO_ERROR)
@@ -4198,8 +4194,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
-  DB_VALUE value;
-  DB_DATETIME *now;
 
   assert_release (classop != NULL);
 
@@ -4240,12 +4234,11 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
-                  now = sm_get_datetime_now(&value);
-                  if (now == NULL)
-                  {
-                        return ER_FAILED;
-                  }
-                  class_->checked_time = *now;
+		  if (sm_update_class_checked_time (class_) != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      return er_errid ();
+		    }
 
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
@@ -13111,8 +13104,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_TEMPLATE *flat;
   char owner_name[SM_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
-  DB_VALUE value;
-  DB_DATETIME *now;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13305,20 +13296,16 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
-  now = sm_get_datetime_now(&value);
-  if (now == NULL)
-  {
-        goto error_return;
-  }
-
   /* Align created_time and updated_time for system-defined classes 
    * to ensure timestamp consistency after immediate internal updates. */
   if (template_->current == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
     {
-        class_->created_time = *now;
+      error = sm_set_class_timestamps (class_);
     }
-    class_->updated_time = *now;
-
+  else
+    {
+      error = sm_update_class_timestamp (class_);
+    }
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -16655,19 +16642,48 @@ sm_domain_copy (SM_DOMAIN * ptr)
   return new_ptr;
 }
 
-DB_DATETIME *
-sm_get_datetime_now (DB_VALUE *value)
+int
+sm_set_class_timestamps (SM_CLASS * class_)
 {
-  int error = db_sys_datetime (value);
-  DB_DATETIME *now = db_get_datetime (value);
+  DB_VALUE current_datetime;
 
-  return (error == NO_ERROR) ? now : NULL;
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  class_->created_time = *db_get_datetime (&current_datetime);
+  class_->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
 }
 
-void
-sm_initialize_timestamp (DB_DATETIME * datetime)
+int
+sm_update_class_timestamp (SM_CLASS * class_)
 {
-  // *INDENT-OFF*
-  *datetime = {0};
-  // *INDENT-ON*
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  class_->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+int
+sm_update_class_checked_time (SM_CLASS * class_)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  class_->checked_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
 }

@@ -830,23 +830,10 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* created_time && updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_CREATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   ret_obj = dbt_finish_object (obj_tmpl);
 
@@ -976,17 +963,11 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto update_auto_increment_error;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto update_auto_increment_error;
-  }
+  /* updated_time */
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
 
   serial_object = dbt_finish_object (obj_tmpl);
 
@@ -1128,7 +1109,6 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
   DB_VALUE new_val;
   DB_VALUE cmp_result;
   DB_VALUE *pval = NULL;
-  DB_VALUE value;
   DB_DATA_STATUS data_status;
 
 
@@ -1223,20 +1203,12 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       goto error_exit;
     }
-  
+
   /* updated_time */
-  error_code = db_sys_datetime(&value);
-  if (error_code != NO_ERROR)
-  {
-        goto error_exit;
-  }
-
-  error_code = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error_code != NO_ERROR)
-  {
-        goto error_exit;
-  }
-
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   edit_serial_object = dbt_finish_object (obj_tmpl);
   if (edit_serial_object == NULL)
@@ -2949,19 +2921,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
     }
-  
-  /* updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
 
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  /* updated_time */
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   serial_object = dbt_finish_object (obj_tmpl);
   if (serial_object == NULL)
@@ -7011,15 +6976,15 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      break;
 		    }
 		}
-        
-              error = tr_update_updated_time(t->op);
-              if (error != NO_ERROR)
-              {
-                      ASSERT_ERROR();
-                      break;
-              }
 
-              error = locator_flush_instance (t->op);
+	      error = tr_update_trigger_timestamp (t->op);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  break;
+		}
+
+	      error = locator_flush_instance (t->op);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -18525,17 +18490,10 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
     }
 
   /* updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, "updated_time", &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
@@ -18834,24 +18792,10 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	}
     }
   /* created_time && updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, "created_time", &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, "updated_time", &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
+  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   /* flush template */
   instance_obj = dbt_finish_object (obj_tmpl);
@@ -19173,19 +19117,12 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
       ASSERT_ERROR ();
       goto end;
     }
-  
-  /* updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
 
-  error = dbt_put_internal(obj_tmpl, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  /* updated_time */
+  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   if (sm_get_synonym_target_name (instance_obj, old_target_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
@@ -20732,8 +20669,6 @@ exit:
 #define SERVER_ATTR_COMMENT     "comment"
 #define SERVER_ATTR_PASSWORD    "password"
 #define SERVER_ATTR_OWNER       "owner"
-#define SERVER_ATTR_CREATED_TIME        "created_time"
-#define SERVER_ATTR_UPDATED_TIME        "updated_time"
 #define SERVER_ATTR_LINK_NAME_BUF_SIZE  (255)	// link_name varchar(255)
 
 static MOP
@@ -20845,23 +20780,10 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
     }
 
   /* created_time && updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERVER_ATTR_CREATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = dbt_put_internal(obj_tmpl, SERVER_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+    {
+      goto end;
+    }
 
   ret_obj = dbt_finish_object (obj_tmpl);
   if (ret_obj == NULL)
@@ -21172,15 +21094,12 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   pr_clear_value (&value);
 
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        return error;
-  }
-
-  AU_DISABLE (save);
-  error = db_put(server_object,SERVER_ATTR_UPDATED_TIME, &value);
-  AU_ENABLE (save);
+  if (error == NO_ERROR)
+    {
+      AU_DISABLE (save);
+      error = db_update_obj_timestamp (server_object);
+      AU_ENABLE (save);
+    }
 
   return error;
 }
@@ -21434,18 +21353,10 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* updated_time */
-  error = db_sys_datetime(&value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
-
-  error = db_put(server_object, SERIAL_ATTR_UPDATED_TIME, &value);
-  if (error != NO_ERROR)
-  {
-        goto end;
-  }
+  if (db_update_obj_timestamp (server_object) != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
   AU_ENABLE (save);

@@ -1090,6 +1090,7 @@ typedef enum
 #define SM_MAX_IDENTIFIER_LENGTH    DB_MAX_IDENTIFIER_LENGTH
 #define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
+// TODO: move to serial.c with related with serial
 #define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
@@ -1103,8 +1104,6 @@ typedef enum
 #define SERIAL_ATTR_ATTR_NAME       "attr_name"
 #define SERIAL_ATTR_CACHED_NUM      "cached_num"
 #define SERIAL_ATTR_COMMENT         "comment"
-#define SERIAL_ATTR_CREATED_TIME    "created_time"
-#define SERIAL_ATTR_UPDATED_TIME    "updated_time"
 
 static const bool PEEK = true;	/* Peek for a slotted record */
 static const bool COPY = false;	/* Don't peek, but copy a slotted record */
