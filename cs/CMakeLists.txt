@@ -237,7 +237,15 @@ set(OPTIMIZER_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_DIR}/plan_generation.c
-  ${OPTIMIZER_DIR}/query_rewrite.c
+  )
+
+set(REWRITER_SOURCES
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${REWRITER_DIR}/query_rewrite.c
   )
 
 set(QUERY_SOURCES
@@ -485,6 +493,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
@@ -522,6 +531,7 @@ add_library(cubridcs SHARED
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${PARSER_HEADERS}
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}

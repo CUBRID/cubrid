@@ -59,6 +59,7 @@ namespace parallel_heap_scan
       {
 	return (*m_list_id_p)->is_domain_resolved;
       }
+      bool is_tfile_allocated() const;
 
     private:
       QFILE_LIST_ID **m_list_id_p;
