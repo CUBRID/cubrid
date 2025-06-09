@@ -365,6 +365,44 @@ namespace parallel_query_execute
 	    break;
 	  }
       }
+    if (xasl->merge_spec)
+      {
+	switch (xasl->merge_spec->type)
+	  {
+	  case TARGET_LIST:
+	  {
+	    m_list_scan_map.insert (std::make_pair (xasl, xasl->merge_spec->s.list_node.xasl_node));
+	    break;
+	  }
+	  case TARGET_CLASS:
+	    break;
+	  case TARGET_CLASS_ATTR:
+	  case TARGET_DBLINK:
+	  case TARGET_METHOD:
+	  case TARGET_REGUVAL_LIST:
+	  case TARGET_SET:
+	  case TARGET_SHOWSTMT:
+	  default:
+	    m_is_parallel_executable = false;
+	    break;
+	  }
+	switch (xasl->merge_spec->access)
+	  {
+	  case ACCESS_METHOD_SEQUENTIAL:
+	  case ACCESS_METHOD_INDEX:
+	    break;
+	  case ACCESS_METHOD_JSON_TABLE:
+	  case ACCESS_METHOD_SCHEMA:
+	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+	  case ACCESS_METHOD_INDEX_KEY_INFO:
+	  case ACCESS_METHOD_INDEX_NODE_INFO:
+	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+	  default:
+	    m_is_parallel_executable = false;
+	    break;
+	  }
+      }
   }
 
   bool xasl_checker::is_parallel_executable (XASL_NODE *xasl)
