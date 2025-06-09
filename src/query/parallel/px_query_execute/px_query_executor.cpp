@@ -419,7 +419,7 @@ namespace parallel_query_execute
 	_er_log_debug (ARG_FILE_LINE,
 		       "parallel_detail_info : is_executable : %p, n_aptr: %zu", xasl, m_aptr_head_set.size());
 #endif
-	if (m_aptr_head_set.size() < 2)
+	if (m_aptr_head_set.size() < 1)
 	  {
 	    return false;
 	  }
