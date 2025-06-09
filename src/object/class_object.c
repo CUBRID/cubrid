@@ -2382,7 +2382,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
    *  encoded B-tree ID
    */
   info_len = set_size (constraint_seq);
-  att_cnt = (info_len - 3) / 2;	/* excludes BTID, status and comment */
+  att_cnt = (info_len - 5) / 2;	/* excludes BTID, status, comment, created_time, updated_time */
   e = 0;
 
   /* get the btid */

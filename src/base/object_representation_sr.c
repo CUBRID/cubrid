@@ -3593,7 +3593,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  info = db_get_set (&uvalue);
 	  info_len = set_size (info);
 
-	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
+	  if (set_get_element_nocopy (info, info_len - 3, &cvalue) || DB_IS_NULL (&cvalue))
 	    {
 	      /* if not exists, set comment to null */
 	      comment = NULL;
