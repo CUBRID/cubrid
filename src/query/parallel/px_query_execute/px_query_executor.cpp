@@ -44,9 +44,11 @@ namespace parallel_query_execute
 	    return false;
 	  }
 	xasl->px_executor = new query_executor (thread_p, worker_manager_p, parallelism);
+#if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE,
 		       "ilhan : query_executor : make_parallel_query_executor_recursively xasl: %p, executor: %p", xasl,
 		       xasl->px_executor);
+#endif
 	for (XASL_NODE *xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	  {
 	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
@@ -59,9 +61,11 @@ namespace parallel_query_execute
     else
       {
 	xasl->px_executor = new query_executor (parent_p);
+#if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE,
 		       "ilhan : query_executor : make_parallel_query_executor_recursively xasl: %p, executor: %p", xasl,
 		       xasl->px_executor);
+#endif
 	for (XASL_NODE *xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	  {
 	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
@@ -90,7 +94,9 @@ namespace parallel_query_execute
       m_parallelism (parallelism),
       m_recursion_level (0)
   {
+#if WITH_PARALLEL_DETAIL_INFO
     _er_log_debug (ARG_FILE_LINE, "ilhan : query_executor : started");
+#endif
     m_mutex_p = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
     pthread_mutex_init (m_mutex_p, NULL);
   }
@@ -108,10 +114,14 @@ namespace parallel_query_execute
 
   query_executor::~query_executor ()
   {
+#if WITH_PARALLEL_DETAIL_INFO
     _er_log_debug (ARG_FILE_LINE, "ilhan : query_executor : ended xasl->qe: %p", this);
+#endif
     if (m_recursion_level == 0)
       {
+#if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE, "ilhan : query_executor : destroyed");
+#endif
 	m_task_queue_global_p->join();
 	delete m_task_queue_global_p;
 	m_worker_manager_p->release_workers ();
@@ -150,7 +160,9 @@ namespace parallel_query_execute
     for (XASL_NODE *aptr_head_xasl: m_aptr_head_set)
       {
 	std::vector<std::set<XASL_NODE *>> aptr_set_vector;
+#if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : aptr head : %p", aptr_head_xasl);
+#endif
 	for (XASL_NODE *scan_ptr = aptr_head_xasl; scan_ptr != nullptr; scan_ptr= scan_ptr->scan_ptr)
 	  {
 	    for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
@@ -176,14 +188,20 @@ namespace parallel_query_execute
 			auto dst_set = aptr_set_vector[j];
 			for (auto aptr: src_set)
 			  {
+#if WITH_PARALLEL_DETAIL_INFO
 			    _er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : src_child_set[%d] : %p", i, aptr);
+#endif
 			    auto list_scan_dst = m_list_scan_map.equal_range (aptr);
 			    for (auto it = list_scan_dst.first; it != list_scan_dst.second; it++)
 			      {
+#if WITH_PARALLEL_DETAIL_INFO
 				_er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : list_scan : %p -> %p", aptr, it->second);
+#endif
 				if (dst_set.find (it->second) != dst_set.end())
 				  {
+#if WITH_PARALLEL_DETAIL_INFO
 				    _er_log_debug (ARG_FILE_LINE, "ilhan : check_xasl_recursive : non-parallelable ref : %p -> %p", aptr, it->second);
+#endif
 				    m_is_parallel_executable = false;
 				    return;
 				  }
@@ -280,9 +298,44 @@ namespace parallel_query_execute
 	      }
 	  }
       }
-    if (xasl->spec_list && xasl->spec_list->type == TARGET_LIST)
+
+    if (xasl->spec_list)
       {
-	m_list_scan_map.insert (std::make_pair (xasl, xasl->spec_list->s.list_node.xasl_node));
+	switch (xasl->spec_list->type)
+	  {
+	  case TARGET_LIST:
+	  {
+	    m_list_scan_map.insert (std::make_pair (xasl, xasl->spec_list->s.list_node.xasl_node));
+	    break;
+	  }
+	  case TARGET_CLASS:
+	    break;
+	  case TARGET_CLASS_ATTR:
+	  case TARGET_DBLINK:
+	  case TARGET_METHOD:
+	  case TARGET_REGUVAL_LIST:
+	  case TARGET_SET:
+	  case TARGET_SHOWSTMT:
+	  default:
+	    m_is_parallel_executable = false;
+	    break;
+	  }
+	switch (xasl->spec_list->access)
+	  {
+	  case ACCESS_METHOD_SEQUENTIAL:
+	  case ACCESS_METHOD_INDEX:
+	    break;
+	  case ACCESS_METHOD_JSON_TABLE:
+	  case ACCESS_METHOD_SCHEMA:
+	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+	  case ACCESS_METHOD_INDEX_KEY_INFO:
+	  case ACCESS_METHOD_INDEX_NODE_INFO:
+	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+	  default:
+	    m_is_parallel_executable = false;
+	    break;
+	  }
       }
   }
 
@@ -296,8 +349,10 @@ namespace parallel_query_execute
 	    return false;
 	  }
 	check_xasl_recursive (xasl);
+#if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE,
 		       "ilhan : is_executable : %p, n_aptr: %zu", xasl, m_aptr_head_set.size());
+#endif
 	if (m_aptr_head_set.size() < 2)
 	  {
 	    return false;

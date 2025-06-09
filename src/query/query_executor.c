@@ -1848,24 +1848,6 @@ qexec_clear_access_spec_list_except_trace (THREAD_ENTRY * thread_p, XASL_NODE * 
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
-      /* aggregate optimize related should be free */
-      if (p->s_id.scan_stats.agl)
-	{
-	  SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;;
-
-	  while (agl)
-	    {
-	      /* save before free */
-	      next = agl->next;
-
-	      free (agl->agg_index_name);
-	      free (agl);
-
-	      agl = next;
-	    }
-	}
-
-
       if (p->parts != NULL)
 	{
 	  db_private_free (thread_p, p->parts);
@@ -2963,7 +2945,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 
       if (xasl->proc.hashjoin.stats_group.context_stats != NULL)
 	{
-	  db_private_free_and_init (thread_p, xasl->proc.hashjoin.stats_group.context_stats);
+	  free_and_init (xasl->proc.hashjoin.stats_group.context_stats);
 	}
       break;
 
@@ -3488,11 +3470,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
     case HASHJOIN_PROC:
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.outer.regu_list_pred, is_final);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.inner.regu_list_pred, is_final);
-
-      if (xasl->proc.hashjoin.stats_group.context_stats != NULL)
-	{
-	  db_private_free_and_init (thread_p, xasl->proc.hashjoin.stats_group.context_stats);
-	}
       break;
 
     default:
