@@ -2016,7 +2016,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
   idx_seq = db_get_set (&cnstr_val);
   len = set_size (idx_seq);
 
-  /* comment stands at the end of the seq */
+  /* comment */
   set_get_element (idx_seq, len - 3, &curr_comment);
   if (!DB_IS_NULL (&curr_comment) && DB_VALUE_TYPE (&curr_comment) != DB_TYPE_STRING)
     {
@@ -2032,6 +2032,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
+  /* updated_time */
   error = db_sys_datetime (&value);
   error = set_put_element (idx_seq, len - 1, &value);
   if (error != NO_ERROR)
@@ -3214,9 +3215,11 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	  props = db_get_set (&pvalue);
 	  len = set_size (props);
 
-	  /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID,
-	   * [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment }, name, { BTID,
-	   * [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment }, ... } */
+	  /* this sequence is an alternating pair of constraint name & info sequence, as by: { 
+	   *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time },
+	   *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time }, 
+	   *  ... }
+	   */
 	  for (i = 0; i < len; i += 2)
 	    {
 
@@ -3261,7 +3264,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	      info = db_get_set (&uvalue);
 	      info_len = set_size (info);
 
-	      att_cnt = (info_len - 5) / 2;	/* excludes BTID and comment */
+	      att_cnt = (info_len - 5) / 2;	/* excludes BTID, status, comment, created_time, updated_time */
 	      assert (att_cnt > 0);
 
 	      e = 0;
@@ -8860,6 +8863,7 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
       goto end;
     }
 
+  /* updated_time */
   error = db_sys_datetime (&value);
   error = set_put_element (idx_seq, len - 1, &value);
   if (error != NO_ERROR)
