@@ -89,7 +89,7 @@ namespace parallel_query_execute
   void task::execute (cubthread::entry &thread_ref)
   {
 #if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "ilhan : task : execute %p, xasl: %p", this, m_xasl);
+    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute %p, xasl: %p", this, m_xasl);
 #endif
     pthread_mutex_lock (m_mutex_p);
     if (m_task_state_p->get_state() != state_enum::WILL_RUN_ON_WORKER)
@@ -154,7 +154,7 @@ namespace parallel_query_execute
   task_queue::~task_queue()
   {
 #if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : delete task_queue %p", this);
+    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : delete task_queue %p", this);
 #endif
     m_tasks.clear();
   }
@@ -215,7 +215,8 @@ namespace parallel_query_execute
       {
 	state = it->second->get_state();
 #if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : join task %p, xasl: %p, state: %d", it->first, it->first->m_xasl,
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : join task %p, xasl: %p, state: %d", it->first,
+		       it->first->m_xasl,
 		       state);
 #endif
       }
@@ -261,7 +262,7 @@ namespace parallel_query_execute
 #if WITH_PARALLEL_DETAIL_INFO
     for (const auto &it : m_tasks)
       {
-	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue %p, xasl: %p", it->first, it->first->m_xasl);
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue %p, xasl: %p", it->first, it->first->m_xasl);
       }
 #endif
     auto it = m_tasks.back();
@@ -270,13 +271,15 @@ namespace parallel_query_execute
       {
 	m_worker_manager_p->push_task (it->first);
 #if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : push task %p, xasl: %p", it->first, it->first->m_xasl);
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : push task %p, xasl: %p", it->first,
+		       it->first->m_xasl);
 #endif
       }
     first_task_p = it->first;
     first_task_state_p = it->second;
 #if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : first task %p, xasl: %p", first_task_p, first_task_p->m_xasl);
+    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : first task %p, xasl: %p", first_task_p,
+		   first_task_p->m_xasl);
 #endif
     first_task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
     first_task_p->execute_on_main (*thread_p);
@@ -287,7 +290,8 @@ namespace parallel_query_execute
 	if (get_not_started_task (&cur_task_p, &cur_task_state_p))
 	  {
 #if WITH_PARALLEL_DETAIL_INFO
-	    _er_log_debug (ARG_FILE_LINE, "ilhan : task_queue : execute task %p, xasl: %p", cur_task_p, cur_task_p->m_xasl);
+	    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : execute task %p, xasl: %p", cur_task_p,
+			   cur_task_p->m_xasl);
 #endif
 	    cur_task_p->execute_on_main (*thread_p);
 	    pthread_mutex_lock (m_mutex_p);
@@ -324,7 +328,8 @@ namespace parallel_query_execute
     for (auto &task_tuple_p : m_tasks)
       {
 #if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue_global : delete task %p, xasl: %p", task_tuple_p->first,
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue_global : delete task %p, xasl: %p",
+		       task_tuple_p->first,
 		       task_tuple_p->first->m_xasl);
 #endif
 	delete task_tuple_p->first;
@@ -345,7 +350,7 @@ namespace parallel_query_execute
       {
 	state = it->second->get_state();
 #if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "ilhan : task_queue_global : join task %p, xasl: %p, state: %d", it->first,
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue_global : join task %p, xasl: %p, state: %d", it->first,
 		       it->first->m_xasl,
 		       state);
 #endif

@@ -476,6 +476,14 @@ struct file_tempcache_entry
   FILE_TEMPCACHE_ENTRY *next;
 };
 
+typedef struct file_tempcache_tran_entry FILE_TEMPCACHE_TRAN_ENTRY;
+struct file_tempcache_tran_entry
+{
+  pthread_mutex_t mutex;
+
+  FILE_TEMPCACHE_ENTRY *head;
+};
+
 typedef struct file_tempcache FILE_TEMPCACHE;
 struct file_tempcache
 {
@@ -494,8 +502,7 @@ struct file_tempcache
   int owner_mutex;
 #endif				/* !NDEBUG */
 
-  FILE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
-  pthread_mutex_t *tran_mutex_arr;
+  FILE_TEMPCACHE_TRAN_ENTRY *tran_files;	/* transaction temporary files */
 
   /* space info */
   SPACEDB_FILES spacedb_temp;
@@ -9005,8 +9012,8 @@ file_tempcache_init (void)
 #endif
 
   /* allocate transaction temporary files lists */
-  memsize = ntrans * sizeof (FILE_TEMPCACHE_ENTRY *);
-  file_Tempcache.tran_files = (FILE_TEMPCACHE_ENTRY **) malloc (memsize);
+  memsize = ntrans * sizeof (FILE_TEMPCACHE_TRAN_ENTRY);
+  file_Tempcache.tran_files = (FILE_TEMPCACHE_TRAN_ENTRY *) malloc (memsize);
   if (file_Tempcache.tran_files == NULL)
     {
       pthread_mutex_destroy (&file_Tempcache.mutex);
@@ -9015,16 +9022,10 @@ file_tempcache_init (void)
     }
   memset (file_Tempcache.tran_files, 0, memsize);
 
-  file_Tempcache.tran_mutex_arr = (pthread_mutex_t *) malloc (ntrans * sizeof (pthread_mutex_t));
-  if (file_Tempcache.tran_mutex_arr == NULL)
-    {
-      pthread_mutex_destroy (&file_Tempcache.mutex);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ntrans * sizeof (pthread_mutex_t));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+
   for (int i = 0; i < ntrans; i++)
     {
-      pthread_mutex_init (&file_Tempcache.tran_mutex_arr[i], NULL);
+      pthread_mutex_init (&file_Tempcache.tran_files[i].mutex, NULL);
     }
 
   /* stats */
@@ -9062,15 +9063,14 @@ file_tempcache_final (void)
   /* free all transaction lists... they should be empty anyway, but be conservative */
   for (tran = 0; tran < ntrans; tran++)
     {
-      if (file_Tempcache.tran_files[tran] != NULL)
+      if (file_Tempcache.tran_files[tran].head != NULL)
 	{
 	  /* should be empty */
-	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran]);
+	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran].head);
 	}
-	pthread_mutex_destroy (&file_Tempcache.tran_mutex_arr[tran]);
+      pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
     }
   free_and_init (file_Tempcache.tran_files);
-  free_and_init (file_Tempcache.tran_mutex_arr);
 
   /* temporary volumes are removed, we don't have to destroy files */
   file_tempcache_free_entry_list (&file_Tempcache.cached_not_numerable);
@@ -9453,14 +9453,13 @@ void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
   int tran_index = file_get_tempcache_entry_index (thread_p);
-  if (file_Tempcache.tran_files[tran_index] != NULL)
+  if (file_Tempcache.tran_files[tran_index].head != NULL)
     {
-	pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
+      pthread_mutex_lock (&file_Tempcache.tran_files[tran_index].mutex);
       file_log ("file_tempcache_drop_tran_temp_files",
 		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
-      file_tempcache_cache_or_drop_entries (thread_p,
-					    &file_Tempcache.tran_files[tran_index]);
-	pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
+      file_tempcache_cache_or_drop_entries (thread_p, &file_Tempcache.tran_files[tran_index].head);
+      pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
     }
 }
 
@@ -9510,10 +9509,10 @@ STATIC_INLINE FILE_TEMPCACHE_ENTRY *
 file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   int tran_index = file_get_tempcache_entry_index (thread_p);
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index].head;
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
-  pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
+  pthread_mutex_lock (&file_Tempcache.tran_files[tran_index].mutex);
   for (entry = *tran_files_p; entry != NULL; entry = entry->next)
     {
       if (VFID_EQ (&entry->vfid, vfid))
@@ -9531,12 +9530,12 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
 		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-	  pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
+	  pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
 	  return entry;
 	}
       prev_entry = entry;
     }
-pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
+  pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9553,15 +9552,15 @@ STATIC_INLINE void
 file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
   int tran_index = file_get_tempcache_entry_index (thread_p);
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[tran_index].head;
 
-  pthread_mutex_lock (&file_Tempcache.tran_mutex_arr[tran_index]);
+  pthread_mutex_lock (&file_Tempcache.tran_files[tran_index].mutex);
   entry->next = *tran_files_p;
   *tran_files_p = entry;
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-  pthread_mutex_unlock (&file_Tempcache.tran_mutex_arr[tran_index]);
+  pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
 }
 
 /*
@@ -9573,7 +9572,7 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 int
 file_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)].head;
   FILE_TEMPCACHE_ENTRY *entry;
   int num = 0;
 

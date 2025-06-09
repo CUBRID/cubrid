@@ -1134,6 +1134,7 @@ struct xasl_node
   bool iscan_oid_order;
 
   SQ_CACHE *sq_cache;
+  int parallelism;		/* parallelism of the query */
 
 #if defined (CS_MODE) || defined (SA_MODE)
   int projected_size;		/* # of bytes per result tuple */
