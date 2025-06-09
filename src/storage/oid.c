@@ -83,7 +83,7 @@ OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
 OID *oid_Sp_code_class_oid = &oid_Stored_proc_code_class;
 
-OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
+const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
   {&oid_Class_class, CT_CLASS_NAME},
   {&oid_Attribute_class, CT_ATTRIBUTE_NAME},
