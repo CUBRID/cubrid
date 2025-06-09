@@ -27,12 +27,15 @@
 #include "thread_entry_task.hpp"
 #include "xasl.h"
 #include "px_worker_manager.hpp"
+#include "error_context.hpp"
 
 struct xasl_state;
 
 namespace parallel_query_execute
 {
   using pool = parallel_query::worker_manager_with_dedicated_pool;
+
+  using err_desc_t = std::pair<int, cuberr::er_message *>;
 
   class task_state
   {
@@ -71,7 +74,7 @@ namespace parallel_query_execute
       task (task &&) = delete;
       task &operator= (task &&) = delete;
       task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	    task_state *task_state_p, pool *worker_manager_p);
+	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p);
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;
       virtual void retire () override;
@@ -86,6 +89,7 @@ namespace parallel_query_execute
       pthread_mutex_t *m_mutex_p;
       task_state *m_task_state_p;
       pool *m_worker_manager_p;
+      std::vector<err_desc_t> *m_error_messages_p;
   };
 
   using task_tuple = std::pair<task *, task_state *>;
@@ -94,8 +98,9 @@ namespace parallel_query_execute
     public:
       task_queue (THREAD_ENTRY *orig_thread_p, pool *worker_manager_p);
       ~task_queue();
-      task_tuple *add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p);
-      void execute_tasks (THREAD_ENTRY *exec_thread_p);
+      task_tuple *add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
+			    std::vector<err_desc_t> *error_messages_p);
+      int execute_tasks (THREAD_ENTRY *exec_thread_p);
       bool get_not_started_task (task **task_p, task_state **task_state_p);
       void join();
     private:
@@ -104,6 +109,7 @@ namespace parallel_query_execute
       THREAD_ENTRY *m_thread_p;
       pool *m_worker_manager_p;
       pthread_mutex_t *m_mutex_p;
+      std::vector<err_desc_t> *m_error_messages_p;
   };
 
   class task_queue_global

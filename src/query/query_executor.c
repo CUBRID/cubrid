@@ -15253,7 +15253,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 #if SERVER_MODE
       if (xasl->px_executor)
 	{
-	  xasl->px_executor->run_tasks (thread_p);
+	  if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
+	    {
+	      if (xasl->px_executor->get_recursion_level () == 0)
+		{
+		  xasl->px_executor->get_error_from_childs ();
+		}
+	      if (tplrec.tpl)
+		{
+		  db_private_free_and_init (thread_p, tplrec.tpl);
+		}
+	      delete xasl->px_executor;
+	      xasl->px_executor = nullptr;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	  delete xasl->px_executor;
 	  xasl->px_executor = nullptr;
 	}

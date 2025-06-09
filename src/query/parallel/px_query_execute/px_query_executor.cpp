@@ -91,6 +91,7 @@ namespace parallel_query_execute
       m_worker_manager_p (worker_manager_p),
       m_task_queue (thread_p, worker_manager_p),
       m_task_queue_global_p (new task_queue_global()),
+      m_error_messages_p (new std::vector<err_desc_t>()),
       m_parallelism (parallelism),
       m_recursion_level (0)
   {
@@ -106,6 +107,7 @@ namespace parallel_query_execute
       m_worker_manager_p (executor->m_worker_manager_p),
       m_task_queue (executor->m_thread_p, executor->m_worker_manager_p),
       m_task_queue_global_p (executor->m_task_queue_global_p),
+      m_error_messages_p (executor->m_error_messages_p),
       m_mutex_p (executor->m_mutex_p),
       m_parallelism (executor->m_parallelism),
       m_recursion_level (executor->m_recursion_level+1)
@@ -127,18 +129,36 @@ namespace parallel_query_execute
 	m_worker_manager_p->release_workers ();
 	pthread_mutex_destroy (m_mutex_p);
 	free (m_mutex_p);
+	for (auto err_desc: *m_error_messages_p)
+	  {
+	    delete err_desc.second;
+	  }
+	delete m_error_messages_p;
       }
   }
 
   void query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
   {
-    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p);
+    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p);
     m_task_queue_global_p->add_task (task_tuple_p);
   }
 
-  void query_executor::run_tasks (THREAD_ENTRY *thread_p)
+  int query_executor::run_tasks (THREAD_ENTRY *thread_p)
   {
-    m_task_queue.execute_tasks (thread_p);
+    int err = m_task_queue.execute_tasks (thread_p);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    return NO_ERROR;
+  }
+
+  void query_executor::get_error_from_childs ()
+  {
+    if (m_error_messages_p->size() > 0)
+      {
+	cuberr::context::get_thread_local_context ().get_current_error_level ().swap (*m_error_messages_p->at (0).second);
+      }
   }
 
   std::set<XASL_NODE *> xasl_checker::get_child_xasl_set_recursive (XASL_NODE *xasl)
@@ -295,6 +315,13 @@ namespace parallel_query_execute
 	    if (regu_var->type == TYPE_SP)
 	      {
 		m_is_parallel_executable = false;
+	      }
+	    if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+	      {
+		if (regu_var->value.arithptr->opcode == T_EVALUATE_VARIABLE || regu_var->value.arithptr->opcode == T_DEFINE_VARIABLE)
+		  {
+		    m_is_parallel_executable = false;
+		  }
 	      }
 	  }
       }

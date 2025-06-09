@@ -32,13 +32,14 @@ namespace parallel_query_execute
 
 
   task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	      task_state *task_state_p, pool *worker_manager_p)
+	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p)
     : m_orig_thread_p (thread_p),
       m_xasl (xasl),
       m_xasl_state (xasl_state),
       m_mutex_p (mutex_p),
       m_task_state_p (task_state_p),
-      m_worker_manager_p (worker_manager_p)
+      m_worker_manager_p (worker_manager_p),
+      m_error_messages_p (error_messages_p)
   {}
 
   task::~task()
@@ -70,6 +71,13 @@ namespace parallel_query_execute
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
+    if (err != NO_ERROR)
+      {
+	pthread_mutex_lock (m_mutex_p);
+	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
+	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	pthread_mutex_unlock (m_mutex_p);
+      }
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
@@ -101,6 +109,13 @@ namespace parallel_query_execute
     thread_ref.on_trace = m_orig_thread_p->on_trace;
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
+    if (err != NO_ERROR)
+      {
+	pthread_mutex_lock (m_mutex_p);
+	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
+	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	pthread_mutex_unlock (m_mutex_p);
+      }
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
@@ -133,7 +148,8 @@ namespace parallel_query_execute
   task_queue::task_queue (THREAD_ENTRY *thread_p, pool *worker_manager_p)
     : m_thread_p (thread_p),
       m_worker_manager_p (worker_manager_p),
-      m_mutex_p (nullptr)
+      m_mutex_p (nullptr),
+      m_error_messages_p (nullptr)
   {}
   task_queue::~task_queue()
   {
@@ -144,15 +160,19 @@ namespace parallel_query_execute
   }
 
   task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
-				    pthread_mutex_t *mutex_p)
+				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p)
   {
     task_state *task_state_p = new task_state();
-    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p);
+    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p);
     task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
     m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
       {
 	m_mutex_p = mutex_p;
+      }
+    if (m_error_messages_p == nullptr)
+      {
+	m_error_messages_p = error_messages_p;
       }
     return task_tuple_p;
   }
@@ -228,14 +248,15 @@ namespace parallel_query_execute
     while (not_ended);
   }
 
-  void task_queue::execute_tasks (THREAD_ENTRY *thread_p)
+  int task_queue::execute_tasks (THREAD_ENTRY *thread_p)
   {
+    int err = NO_ERROR;
     task *cur_task_p, *first_task_p;
     task_state *cur_task_state_p, *first_task_state_p;
     bool all_ended = false;
     if (m_tasks.empty())
       {
-	return;
+	return err;
       }
 #if WITH_PARALLEL_DETAIL_INFO
     for (const auto &it : m_tasks)
@@ -286,6 +307,11 @@ namespace parallel_query_execute
 	  }
       }
     join();
+    if (m_error_messages_p->size() > 0)
+      {
+	err = m_error_messages_p->at (0).first;
+      }
+    return err;
   }
 
   task_queue_global::task_queue_global()

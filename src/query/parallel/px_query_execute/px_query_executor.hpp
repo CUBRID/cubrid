@@ -28,6 +28,7 @@
 #include "px_worker_manager.hpp"
 #include "xasl.h"
 #include "px_query_task.hpp"
+#include "error_context.hpp"
 
 //forward definition
 struct xasl_state;
@@ -35,6 +36,8 @@ struct xasl_state;
 namespace parallel_query_execute
 {
   using pool = parallel_query::worker_manager_with_dedicated_pool;
+
+  using err_desc_t = std::pair<int, cuberr::er_message *>;
   class query_executor
   {
     public:
@@ -45,7 +48,12 @@ namespace parallel_query_execute
       query_executor (query_executor *);
       ~query_executor ();
       void add_task (XASL_NODE *xasl, xasl_state *xasl_state);
-      void run_tasks (THREAD_ENTRY *thread_p);
+      int run_tasks (THREAD_ENTRY *thread_p);
+      inline int get_recursion_level() const
+      {
+	return m_recursion_level;
+      }
+      void get_error_from_childs ();
 
     private:
       THREAD_ENTRY *m_thread_p;
@@ -53,6 +61,7 @@ namespace parallel_query_execute
       pthread_mutex_t *m_mutex_p;
       task_queue m_task_queue;
       task_queue_global *m_task_queue_global_p;
+      std::vector<err_desc_t> *m_error_messages_p;
       int m_parallelism;
       int m_recursion_level;
   };
