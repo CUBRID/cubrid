@@ -1979,7 +1979,6 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password, *comment;
   const char *group_name, *member_name;
   bool set_savepoint = false;
-  DB_VALUE value;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2175,23 +2174,10 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-    /* created_time */
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
+  error = au_set_user_timestamps (user);
+  if (error != NO_ERROR)
     {
-        goto end;
-    }
-    error = au_set_user_created_time(user, &value);
-    if (error != NO_ERROR)
-    {
-        goto end;
-    }
-
-    /* updated_time */
-    error = au_set_user_updated_time(user, &value);
-    if (error != NO_ERROR)
-    {
-        goto end;
+      goto end;
     }
 
 end:
@@ -2417,17 +2403,10 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
-    /* updated_time */
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
+  error = au_set_user_timestamps (user);
+  if (error != NO_ERROR)
     {
-        goto end;
-    }
-
-    error = au_set_user_updated_time(user, &value);
-    if (error != NO_ERROR)
-    {
-        goto end;
+      goto end;
     }
 
 end:

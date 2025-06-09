@@ -288,7 +288,6 @@ authenticate_context::install (void)
   AU_USER_CACHE *user_cache;
   int exists, save, index;
   int error = NO_ERROR;
-  DB_VALUE value;
 
   AU_DISABLE (save);
 
@@ -454,22 +453,10 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
+  error = au_set_user_timestamps (dba_user);
+  if (error != NO_ERROR)
     {
-        goto exit_on_error;
-    }
-
-    error = au_set_user_created_time(dba_user, &value);
-    if (error != NO_ERROR)
-    {
-        goto exit_on_error;
-    }
-
-    error = au_set_user_updated_time(dba_user, &value);
-    if (error != NO_ERROR)
-    {
-        goto exit_on_error;
+      goto exit_on_error;
     }
 
   /* establish the DBA as the current user */
@@ -501,22 +488,10 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-    error = db_sys_datetime(&value);
-    if (error != NO_ERROR)
+  error = au_set_user_timestamps (public_user);
+  if (error != NO_ERROR)
     {
-        goto exit_on_error;
-    }
-
-    error = au_set_user_created_time(public_user, &value);
-    if (error != NO_ERROR)
-    {
-        goto exit_on_error;
-    }
-
-    error = au_set_user_updated_time(public_user, &value);
-    if (error != NO_ERROR)
-    {
-        goto exit_on_error;
+      goto exit_on_error;
     }
 
   /*

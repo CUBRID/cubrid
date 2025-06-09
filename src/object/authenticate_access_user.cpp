@@ -711,27 +711,48 @@ au_set_user_comment (MOP user, const char *comment)
 }
 
 int
-au_set_user_created_time(MOP user, DB_VALUE *created_time)
+au_set_user_timestamps (MOP user)
 {
-        int save;
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
 
-        AU_SAVE_AND_DISABLE(save);
-        int error = obj_set(user, "created_time", created_time);
-        AU_RESTORE(save);
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
-        return error;
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (user, "created_time", &current_datetime) != NO_ERROR ||
+      obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  AU_RESTORE (save);
+
+  return error;
 }
 
 int
-au_set_user_updated_time(MOP user, DB_VALUE *updated_time)
+au_update_user_timestamp (MOP user)
 {
-        int save;
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
 
-        AU_SAVE_AND_DISABLE(save);
-        int error = obj_set(user, "updated_time", updated_time);
-        AU_RESTORE(save);
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
-        return error;
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  AU_RESTORE (save);
+
+  return error;
 }
 
 /*
@@ -1011,13 +1032,9 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 	}
     }
 
-    if (error == NO_ERROR)
+  if (error == NO_ERROR)
     {
-            error = db_sys_datetime(&value);
-            if (error == NO_ERROR)
-            {
-                    error = au_set_user_updated_time(member, &value);
-            }
+      error = au_update_user_timestamp (member);
     }
 
   AU_ENABLE (save);
