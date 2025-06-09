@@ -6692,20 +6692,19 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   {
-		PRM_ID_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
-		PRM_NAME_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
-		(PRM_FOR_SERVER),
-		PRM_INTEGER,
-		&prm_uncorrelated_subquery_parallel_execution_threads_flag,
-		(void *) &prm_uncorrelated_subquery_parallel_execution_threads_default,
-		(void *) &PRM_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
-		(void *) &prm_uncorrelated_subquery_parallel_execution_threads_upper,
-		(void *) &prm_uncorrelated_subquery_parallel_execution_threads_lower,
-		(char *) NULL,
-		(DUP_PRM_FUNC) NULL,
-		(DUP_PRM_FUNC) NULL
-   },
+  {
+   PRM_ID_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
+   PRM_NAME_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_uncorrelated_subquery_parallel_execution_threads_flag,
+   (void *) &prm_uncorrelated_subquery_parallel_execution_threads_default,
+   (void *) &PRM_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS,
+   (void *) &prm_uncorrelated_subquery_parallel_execution_threads_upper,
+   (void *) &prm_uncorrelated_subquery_parallel_execution_threads_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];

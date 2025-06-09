@@ -26,6 +26,9 @@
 #include "object_representation.h"
 #include "px_query_executor.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace parallel_query_execute
 {
   using state_enum = task_state::state;
