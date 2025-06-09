@@ -2494,6 +2494,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       xasl->px_executor = NULL;
     }
 
+  xasl->executed_parallelism = 0;
+
   /* clear the head node */
   qexec_clear_xasl_head (thread_p, xasl);
 
@@ -15173,6 +15175,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (n_workers_to_reserve <= 0)
 			    {
 			      is_aptr_parallel_query_executor_allocated = false;
+			      xasl->executed_parallelism = 0;
 			    }
 			  else
 			    {
@@ -15182,10 +15185,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 				  (thread_p, xasl, px_worker_manager_p, nullptr, n_workers_to_reserve) != true)
 				{
 				  is_aptr_parallel_query_executor_allocated = false;
+				  xasl->executed_parallelism = 0;
 				}
 			      else
 				{
 				  is_aptr_parallel_query_executor_allocated = true;
+				  xasl->executed_parallelism = n_workers_to_reserve + 1;
 				}
 			    }
 			}

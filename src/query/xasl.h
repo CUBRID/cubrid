@@ -1158,6 +1158,7 @@ struct xasl_node
   int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
   // *INDENT-OFF*
   parallel_query_execute::query_executor *px_executor;
+  int executed_parallelism;	/* parallelism of the query */
   // *INDENT-ON*
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
