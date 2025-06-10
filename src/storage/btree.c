@@ -22081,7 +22081,7 @@ btree_or_get_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info, short btree_mv
   if (buf->ptr + size > buf->endptr)
     {
       /* Overflow error */
-      return or_overflow (buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   /* Unpack and update pointer */
