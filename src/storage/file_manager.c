@@ -9533,7 +9533,7 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    }
 	  else
 	    {
-	      *tran_files_p = entry->next;
+	      tran_entry->head = entry->next;
 	    }
 	  entry->next = NULL;
 
