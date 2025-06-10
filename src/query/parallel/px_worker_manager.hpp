@@ -73,6 +73,13 @@ namespace parallel_query
       {
 	m_active_tasks--;
       }
+      void join()
+      {
+	while (m_active_tasks.load() > 0)
+	  {
+	    ;
+	  }
+      }
 
     private:
       int m_reserved_workers;
