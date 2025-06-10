@@ -7097,9 +7097,9 @@ public:
 
     for (int i = 0; i < m_used; i++)
       {
-	if (m_loaded[i].conf_path != NULL
-	    && m_loaded[i].db_name != NULL
-	    && strcmp (conf_path, m_loaded[i].conf_path) == 0 && strcmp (db_name, m_loaded[i].db_name) == 0)
+	if ((m_loaded[i].conf_path != NULL && strcmp (conf_path, m_loaded[i].conf_path) == 0)
+	    && ((m_loaded[i].db_name != NULL && strcmp (db_name, m_loaded[i].db_name) == 0)
+		|| (db_name == NULL && m_loaded[i].db_name == NULL)))
 	  {
 	    return;
 	  }
