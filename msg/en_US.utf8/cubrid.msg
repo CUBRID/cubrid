@@ -970,12 +970,12 @@ $ LOADDB
 897 Decompression failed.
 898 Replication error: "%1$s"
 899 Invalid partition requests.
-900 Java VM library is not found: %1$s.
-901 Java VM can not be started: %1$s.
-902 Java VM is not running.
-903 Can't connect Java VM: %1$s
+900 VM library is not found: %1$s.
+901 PL server can not be started: %1$s.
+902 PL server is not running.
+903 Can't connect PL server: %1$s
 904 Invalid stored procedure name.
-905 Networking with JVM failed: %1$d
+905 Networking with PL server failed: %1$d
 906 Invalid java method signature.
 907 The owner or a member of DBA group can %1$s stored procedure.
 908 Too many arguments of stored procedure '%1$s'.
@@ -1446,8 +1446,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1357 Converting SQL string to wide string failed.
 1358 Number of rows affected is unknown.
 
-1359 Java VM crashed: %1$s
-1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 PL server crashed: %1$s
+1360 Stored procedure compile error: %1$s
 
 1361 Invalid result cache for subquery.
 
@@ -1459,7 +1459,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1366 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
 
-1367 Last Error
+1367 DBLINK Transaction ABORTED: %1$s
+
+1368 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

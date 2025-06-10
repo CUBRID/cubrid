@@ -4168,6 +4168,31 @@ pt_free_orphans (PARSER_CONTEXT * parser)
 }
 
 /*
+ * pt_free_escape_char () - Frees the escape sequence of a PT_LIKE node and
+ *                          leaves only the LIKE pattern in the parse tree.
+ *   parser(in):
+ *   like(in):
+ *   pattern(in):
+ *   escape(in):
+ */
+void
+pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like, PT_NODE * const pattern,
+		     PT_NODE * const escape)
+{
+  PT_NODE *const save_arg2 = like->info.expr.arg2;
+
+  assert (escape != NULL);
+  assert (PT_IS_EXPR_NODE_WITH_OPERATOR (save_arg2, PT_LIKE_ESCAPE));
+  assert (save_arg2->info.expr.arg1 == pattern);
+  assert (save_arg2->info.expr.arg2 == escape);
+
+  save_arg2->info.expr.arg1 = NULL;
+  parser_free_tree (parser, save_arg2);
+
+  like->info.expr.arg2 = pattern;
+}
+
+/*
  * pt_sort_spec_cover () -
  *   return:  true or false
  *   cur_list(in): current PT_SORT_SPEC list pointer
@@ -4588,6 +4613,38 @@ error_exit:
 }
 
 /*
+ * pt_to_null_ordering () - get null ordering from a sort spec
+ * return : null ordering
+ * sort_spec (in) : sort spec
+ */
+SORT_NULLS
+pt_to_null_ordering (PT_NODE * sort_spec)
+{
+  assert_release (sort_spec != NULL);
+  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+
+  switch (sort_spec->info.sort_spec.nulls_first_or_last)
+    {
+    case PT_NULLS_FIRST:
+      return S_NULLS_FIRST;
+
+    case PT_NULLS_LAST:
+      return S_NULLS_LAST;
+
+    case PT_NULLS_DEFAULT:
+    default:
+      break;
+    }
+
+  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
+    {
+      return S_NULLS_FIRST;
+    }
+
+  return S_NULLS_LAST;
+}
+
+/*
  * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
  *                                variable that replaces an existing value
  *   return: the node or NULL on error
@@ -4840,7 +4897,7 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
       goto error_exit;
     }
 
-  /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
+  /* We need the OID PT_VALUE to become a host variable, see qo_rewrite_queries () */
   node->info.update.search_cond->flag.force_auto_parameterize = 1;
 
   /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from
@@ -11528,6 +11585,11 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 
   /* If it is a synonym name, change it to the target name. */
   class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  if (class_name == NULL)
+    {
+      return spec;
+    }
+
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
@@ -11633,6 +11695,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
+
+      /* alias is not needed for remote table */
+      spec->info.spec.range_var = NULL;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -12121,6 +12186,14 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   switch (stmt->node_type)
     {
+    case PT_SCOPE:
+      /* for trigger action */
+      stmt = stmt->info.scope.stmt->info.trigger_action.expression;
+      if (stmt == NULL)
+	{
+	  return;
+	}
+      [[fallthrough]];
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
@@ -12129,6 +12202,34 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       if (pt_has_error (parser))
 	{
 	  return;
+	}
+      // Under the current implementation of DBLink, host variables cannot be idenfified at compile time
+      // due to the lack of schema information of the remote tables.
+      // Therefore, DBLink in Static SQL DML is prohibited for now.
+      // Note that this is not the case for Static SQL SELECT statements.
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	    {
+	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
+	      return;
+	    }
+	}
+      break;
+    case PT_CREATE_TRIGGER:
+      /* for trigger create */
+      if (stmt->info.create_trigger.trigger_action)
+	{
+	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
+
+	  if (tr_action->info.trigger_action.expression)
+	    {
+	      parser_walk_tree (parser, tr_action->info.trigger_action.expression, NULL, NULL, pt_convert_dml, &snl);
+	    }
+	  if (pt_has_error (parser))
+	    {
+	      return;
+	    }
 	}
       break;
     case PT_DIFFERENCE:

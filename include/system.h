@@ -229,7 +229,7 @@ typedef unsigned long long UINTPTR;
 #define DECODE(X)       ((int)((X) - '0'))
 
 /* number of elements in array A */
-#define DIM(A)          (sizeof(A) / sizeof(*(A)))
+#define DIM(A)          ((int) (sizeof(A) / sizeof(*(A))))
 
 #ifndef MAX
 #define MAX(a, b)       ((a) > (b) ? (a) : (b))

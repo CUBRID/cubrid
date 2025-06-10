@@ -1256,15 +1256,11 @@ stx_restore_pl_sig (THREAD_ENTRY * thread_p, char *ptr)
       return sig;
     }
 
-  //sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  //if (sig_array == NULL)
-  //  {
-  //   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-  //   return NULL;
-  // }
+#if defined(MMON_DEBUG_LEVEL)
   sig = new PL_SIGNATURE_TYPE;
-
-  // new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
+#else
+  sig = new (std::nothrow) PL_SIGNATURE_TYPE;
+#endif
 
   if (stx_mark_struct_visited (thread_p, ptr, sig) == ER_FAILED || stx_build_pl_sig (thread_p, ptr, sig) == NULL)
     {
@@ -1294,17 +1290,11 @@ stx_restore_pl_sig_array (THREAD_ENTRY * thread_p, char *ptr)
       return sig_array;
     }
 
-#if 0
-  sig_array = (PL_SIGNATURE_ARRAY_TYPE *) stx_alloc_struct (thread_p, sizeof (PL_SIGNATURE_ARRAY_TYPE));
-  if (sig_array == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
-    }
-  new (sig_array) PL_SIGNATURE_ARRAY_TYPE;
-#endif
-
+#if defined(MMON_DEBUG_LEVEL)
   sig_array = new PL_SIGNATURE_ARRAY_TYPE;
+#else
+  sig_array = new (std::nothrow) PL_SIGNATURE_ARRAY_TYPE;
+#endif
 
   if (stx_mark_struct_visited (thread_p, ptr, sig_array) == ER_FAILED ||
       stx_build_pl_sig_array (thread_p, ptr, sig_array) == NULL)
@@ -1751,6 +1741,19 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize xasl status */
   xasl->status = XASL_BUILD;
+  /* ************************************************************************** 
+   *  === Status transition diagram   
+   *       |------------------>----------------------------------|
+   *  XASL_BUILD -> XASL_SUCCESS/XASL_FAILURE -> XASL_INITIALIZED/XASL_CLEARED  
+   *                            |--------------<-----------------|
+   *  
+   * 1. When you first create an XASL, it starts with the XASL_BUILD status.
+   * 2. If the created XASL is executed successfully, it becomes XASL_SUCCESS, and if an error occurs, it becomes XASL_FAILURE.
+   *    When an error occurs, the status of XASLs that have not yet been executed does not change.
+   * 3. When the task execution is completed, whether successful or failed, 
+   *    it changes to XASL_INITIALIZED or XASL_CLEARED through qexec_clear_xasl().
+   * 4. If the XASL is cached and reused, steps 2 and 3 are repeated.
+   ************************************************************************** */
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2355,6 +2358,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
+  memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
   xasl->max_iterations = -1;
 
   return ptr;
@@ -3161,15 +3165,15 @@ static char *
 stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p)
 {
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  TP_DOMAIN **all_domains = NULL;
+  int domain_cnt;
   int offset;
 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
 
-  /**
-   * outer
-   */
+  /* outer */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3186,29 +3190,21 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  node_p->outer.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-  if (ptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->outer.val_list = NULL;
+      node_p->outer.regu_list_pred = NULL;
     }
   else
     {
-      node_p->outer.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->outer.val_list == NULL)
+      node_p->outer.regu_list_pred = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->outer.regu_list_pred == NULL)
 	{
 	  goto exit_on_error;
 	}
     }
 
-  /**
-   * inner
-   */
+  /* inner */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -3225,39 +3221,31 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
     }
 
-  node_p->inner.spec_list = stx_restore_access_spec_type (thread_p, &ptr, NULL);
-  if (ptr == NULL)
-    {
-      goto exit_on_error;
-    }
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      node_p->inner.val_list = NULL;
+      node_p->inner.regu_list_pred = NULL;
     }
   else
     {
-      node_p->inner.val_list = stx_restore_val_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (node_p->inner.val_list == NULL)
+      node_p->inner.regu_list_pred = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->inner.regu_list_pred == NULL)
 	{
 	  goto exit_on_error;
 	}
     }
 
-  /**
-   * merge_info
-   */
+  /* merge_info */
   ptr = stx_build_ls_merge_info (thread_p, ptr, &node_p->merge_info);
   if (ptr == NULL)
     {
       goto exit_on_error;
     }
+  assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
 
-  /**
-   * domains, value_indexes
-   */
-  if (node_p->merge_info.ls_column_cnt == 0)
+  /* domain_info */
+  domain_cnt = node_p->merge_info.ls_column_cnt;
+  if (domain_cnt == 0)
     {
       error = ER_QPROC_INVALID_XASLNODE;
       stx_set_xasl_errcode (thread_p, error);
@@ -3265,31 +3253,21 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   else
     {
-      node_p->outer.domains =
-	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->outer.domains == NULL)
+      all_domains = (TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * domain_cnt * 3);
+      if (all_domains == NULL)
 	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  stx_set_xasl_errcode (thread_p, error);
-	  return NULL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * domain_cnt * 3);
+	  goto exit_on_error;
 	}
 
-      node_p->outer.value_indexes = node_p->merge_info.ls_outer_column;
+      /* It is initialized before execution, so initialization here is unnecessary. */
+      node_p->domain_info.outer.domains = all_domains;
+      node_p->domain_info.inner.domains = all_domains + domain_cnt;
+      node_p->domain_info.coerce_domains = all_domains + domain_cnt * 2;
 
-      node_p->inner.domains =
-	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * node_p->merge_info.ls_column_cnt);
-      if (node_p->inner.domains == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  stx_set_xasl_errcode (thread_p, error);
-	  return NULL;
-	}
-
-      node_p->inner.value_indexes = node_p->merge_info.ls_inner_column;
+      node_p->domain_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
+      node_p->domain_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
     }
-
-  node_p->build = NULL;
-  node_p->probe = NULL;
 
   return ptr;
 
@@ -4690,12 +4668,11 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	}
     }
 
-  access_spec->parts = NULL;
-  access_spec->curent = NULL;
-  access_spec->pruned = false;
-
   ptr = or_unpack_int (ptr, &val);
   access_spec->flags = (ACCESS_SPEC_FLAG) val;
+
+  ptr = or_unpack_int (ptr, &val);
+  access_spec->num_parallel_threads = val;
 
   return ptr;
 

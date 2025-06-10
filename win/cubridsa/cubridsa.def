@@ -54,6 +54,7 @@ EXPORTS
     db_set_size
     db_set_page_size
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_trigger_action
     db_trigger_action_time
@@ -87,6 +88,7 @@ EXPORTS
     prm_get_bigint_value
     prm_get_string_value
     prm_get_name
+    prm_get_value
     prm_Def
     rel_copy_version_string
     rel_build_number
@@ -138,8 +140,6 @@ EXPORTS
     pl_disconnect_server
     pl_writen
     pl_readn
-    pl_start_jvm_server
-    pl_server_port
     pl_get_info_file
     pl_get_error_file
     pl_open_info_dir
@@ -831,4 +831,7 @@ EXPORTS
     windows_socket_shutdown
     gethostbyname_uhost
     getnameinfo_uhost
+    pl_get_socket_file_path
+    envvar_vmdir_file
+    envvar_logdir_file
 	

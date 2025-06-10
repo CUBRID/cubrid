@@ -31,8 +31,12 @@
 
 package com.cubrid.plcsql.builtin;
 
+import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class DBMS_OUTPUT {
 
@@ -44,18 +48,42 @@ public class DBMS_OUTPUT {
         return ContextManager.getContext(cId);
     }
 
-    public static void enable(int size) {
+    public static void enable(int size) throws Exception {
         Context c = getContext();
         c.getMessageBuffer().enable(size);
+
+        CUBRIDServerSideConnection conn = (CUBRIDServerSideConnection) c.getConnection();
+        conn.getSUConnection()
+                .setPLSessionParams(
+                        new ArrayList<SysParam>(
+                                Arrays.asList(
+                                        new SysParam(
+                                                SysParam.DBMS_OUTPUT,
+                                                SysParam.PRM_TYPE_BOOLEAN,
+                                                true))));
     }
 
-    public static void disable() {
+    public static void disable() throws Exception {
         Context c = getContext();
         c.getMessageBuffer().disable();
+
+        CUBRIDServerSideConnection conn = (CUBRIDServerSideConnection) c.getConnection();
+        conn.getSUConnection()
+                .setPLSessionParams(
+                        new ArrayList<SysParam>(
+                                Arrays.asList(
+                                        new SysParam(
+                                                SysParam.DBMS_OUTPUT,
+                                                SysParam.PRM_TYPE_BOOLEAN,
+                                                false))));
     }
 
     public static void getLine(String[] line, int[] status) {
         Context c = getContext();
+        if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
+                && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
+            c.getMessageBuffer().enable();
+        }
         String str = c.getMessageBuffer().getLine();
         line[0] = str;
         status[0] = c.getMessageBuffer().getStatus();
@@ -63,6 +91,11 @@ public class DBMS_OUTPUT {
 
     public static void getLines(String[] line, int[] cnt) {
         Context c = getContext();
+        if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
+                && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
+            c.getMessageBuffer().enable();
+        }
+
         String[] strs = c.getMessageBuffer().getLines(cnt[0]);
 
         StringBuilder builder = new StringBuilder();
@@ -82,16 +115,28 @@ public class DBMS_OUTPUT {
 
     public static void putLine(String line) {
         Context c = getContext();
+        if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
+                && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
+            c.getMessageBuffer().enable();
+        }
         c.getMessageBuffer().putLine(line);
     }
 
     public static void put(String str) {
         Context c = getContext();
+        if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
+                && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
+            c.getMessageBuffer().enable();
+        }
         c.getMessageBuffer().put(str);
     }
 
     public static void newLine() {
         Context c = getContext();
+        if (Context.getSystemParam(SysParam.DBMS_OUTPUT) != null
+                && Context.getSystemParameterBool(SysParam.DBMS_OUTPUT)) {
+            c.getMessageBuffer().enable();
+        }
         c.getMessageBuffer().newLine();
     }
 }

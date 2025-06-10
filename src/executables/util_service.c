@@ -537,6 +537,7 @@ main (int argc, char *argv[])
   bool process_window_service = false;
   pid_t pid = getpid ();
   char env_buf[16];
+  int util_name_pos = 0;
 
 #if defined (DO_NOT_USE_CUBRIDENV)
   char *envval;
@@ -591,13 +592,21 @@ main (int argc, char *argv[])
 	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME, argv[1]);
 	  goto error;
 	}
+      if (util_type == ADMIN)
+	{
+	  util_name_pos = 2;
+	}
+    }
+  else if (util_type == ADMIN)
+    {
+      util_name_pos = 1;
     }
 
   if (load_properties () != NO_ERROR)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 
       return EXIT_FAILURE;
@@ -607,7 +616,7 @@ main (int argc, char *argv[])
 
   if (util_type == ADMIN)
     {
-      util_log_write_command (argc, argv);
+      util_log_write_command (argc, argv, util_name_pos);
       status = process_admin (argc, argv);
       util_log_write_result (status);
 
@@ -647,7 +656,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  util_log_write_command (argc, argv);
+  util_log_write_command (argc, argv, util_name_pos);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)

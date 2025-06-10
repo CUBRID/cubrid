@@ -32,12 +32,12 @@ namespace cubpl
 {
   query_cursor::query_cursor (cubthread::entry *thread_p, QUERY_ID qid, bool oid_included)
     : m_thread (thread_p)
-    , m_is_oid_included (oid_included)
-    , m_is_opened (false)
-    , m_fetch_count (1000) // FIXME: change the fixed value, 1000
     , m_query_id (qid)
     , m_query_entry (nullptr)
     , m_current_row_index (0)
+    , m_is_oid_included (oid_included)
+    , m_is_opened (false)
+    , m_fetch_count (1000) // FIXME: change the fixed value, 1000
   {
     //
   }
@@ -72,7 +72,7 @@ namespace cubpl
   {
     if (m_is_opened == false)
       {
-	if (reset () == NO_ERROR && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
+	if (reset () == NO_ERROR && m_query_entry && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
 	  {
 	    m_is_opened = true;
 	  }
@@ -86,10 +86,17 @@ namespace cubpl
     if (m_is_opened)
       {
 	qfile_close_scan (m_thread, &m_scan_id);
+
 	if (m_query_entry->list_id)
 	  {
+	    // Since the list was not created in this thread, incrementing the count of the list (m_qlist_count) is required
+	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
+
+	// clear query entry
+	xqmgr_end_query (m_thread, m_query_id);
 	clear ();
 	m_is_opened = false;
       }

@@ -253,7 +253,8 @@ if(UNIX)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
-  else(CMAKE_COMPILER_IS_GNUCC)
+  elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
@@ -303,10 +304,6 @@ set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_grammar.yy)
 set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/load_grammar.cpp)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_lexer.l)
 set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
-set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
-set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # include 3rdparty
 message("Including Third Party Libraries")
@@ -343,36 +340,6 @@ flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
 add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
-
-# ESQL FLEX/BISON targets
-# replace old bison directives with new ones
-# use add_custom_command because we want to regenerate esql_grammar.yy
-# whenever esql_grammar.y is modified
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-)
-
-set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
-
-# because esql_grammar.yy are generated through a custom command
-# whenever esql_grammar.y is modified, bison and flex will be
-# run to create new outputs
-
-bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
-add_flex_bison_dependency(esql_lexer esql_grammar)
-add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
-add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
-
-# For java stored procedure server
-include(FindJNI)
-find_package(JNI 1.5)
-if(JNI_FOUND)
-  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-endif(JNI_FOUND)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
@@ -422,6 +389,7 @@ set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
 set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
 set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
+set(REWRITER_DIR             ${CMAKE_SOURCE_DIR}/src/optimizer/rewriter)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
 set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
@@ -432,6 +400,9 @@ set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
+set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
+set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
+set(PARALLEL_QUERY_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -459,6 +430,8 @@ include_directories(
   src/thread
   src/transaction
   src/xasl
+  src/query/parallel/px_heap_scan
+  src/query/parallel
   )
 if(WITH_CCI)
   include_directories(
@@ -708,6 +681,7 @@ endif(USE_DUMA)
 if(USE_CUBRID_ENV)
   message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
   set(CUBRID_PREFIXDIR .)
+  set(CUBRID_3RDPARTYDIR 3rdparty)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
   set(CUBRID_SRCDIR src)
@@ -715,7 +689,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
   set(CUBRID_CONFDIR conf)
-  set(CUBRID_JAVADIR java)
+  set(CUBRID_VMDIR vm)
   set(CUBRID_LOCALEDIR msg)
   set(CUBRID_LOGDIR log)
   set(CUBRID_TMPDIR tmp)
@@ -732,6 +706,8 @@ else(USE_CUBRID_ENV)
 
   set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
   list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
+  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
+  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
   set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
   if(IS_ABSOLUTE ${CUBRID_BINDIR})
     list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
@@ -768,11 +744,11 @@ else(USE_CUBRID_ENV)
   else()
     list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_PREFIXDIR}/${CUBRID_CONFDIR}")
   endif()
-  set(CUBRID_JAVADIR java CACHE STRING "The directory for JSP file")
-  if(IS_ABSOLUTE ${CUBRID_JAVADIR})
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_JAVADIR}")
+  set(CUBRID_VMDIR vm CACHE STRING "The directory for PL file")
+  if(IS_ABSOLUTE ${CUBRID_VMDIR})
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_VMDIR}")
   else()
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_PREFIXDIR}/${CUBRID_JAVADIR}")
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_PREFIXDIR}/${CUBRID_VMDIR}")
   endif()
   set(CUBRID_LOCALEDIR msg CACHE STRING "The directory for message files")
   if(IS_ABSOLUTE ${CUBRID_LOCALEDIR})
@@ -805,12 +781,6 @@ else(USE_CUBRID_ENV)
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
 
-# For JVM libraries
-if(WIN32)
-    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
-  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
-endif(WIN32)
-
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
 
@@ -834,6 +804,30 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   )
 endif()
 
+# include pl subdirectories
+add_subdirectory(pl_engine)
+
+set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+set(ENV{PATH} "$ENV{JAVA_HOME}/bin:$ENV{PATH}")
+
+# For PL server
+find_package(Java REQUIRED)
+find_package(JNI REQUIRED)
+
+if(JNI_FOUND)
+   set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+endif(JNI_FOUND)
+
+message(STATUS "Found Java: ${Java_JAVA_EXECUTABLE}")
+message(STATUS "Found JNI: ${JNI_INCLUDE_DIRS}")
+
+# For JVM libraries
+if(WIN32)
+    set(JVM_LIBS ${JAVA_HOME}/lib/jvm.lib)
+    list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
+endif(WIN32)
+
 # include subdirectories
 add_subdirectory(sa)
 add_subdirectory(cs)
@@ -850,7 +844,6 @@ add_subdirectory(demo)
 add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-add_subdirectory(pl_engine)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()
@@ -910,12 +903,16 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
 endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 # create empty directories
+install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+    DESTINATION ${CUBRID_3RDPARTYDIR}
+    FILES_MATCHING PATTERN "*.txt")
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS

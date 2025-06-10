@@ -2043,6 +2043,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    }
+	}
+
+      if (node->info.query.q.select.hint & PT_HINT_PARALLEL)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.num_parallel_threads = node->info.query.q.select.num_parallel_threads;
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
+
       if (node->info.query.q.select.from != NULL && node->info.query.q.select.from->next == NULL)
 	{
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
@@ -3012,10 +3029,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      if (node->info.update.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -3071,11 +3086,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
-      if (node->info.insert.spec->info.spec.remote_server_name)
-	{
-	  goto insert_end;
-	}
-
       result = pt_resolve_vclass_args (parser, node);
       if (!result)
 	{
@@ -3095,10 +3105,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
 
-      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* Check for double assignments */
       pt_no_double_insert_assignments (parser, node);
@@ -3324,7 +3331,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /*
 	       * When using a session variable in the first arg_list,
 	       * It is unknown whether the session variable contains a class, object, or constant value.
-	       * So, if it's not a Java stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
+	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
 	       * 
 	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
 	       *     insert into x values (4, 'string 4');
@@ -4146,6 +4153,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
       else
 	{
+	  /* in case of remote server, it always returns true */
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      return 1;
+	    }
 	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
 	}
     }
@@ -5945,6 +5957,18 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
+	      if (spec->info.spec.remote_server_name)
+		{
+		  /* only column name with remote server name is resolved
+		   * PT_DOT node such as new.col obj.old does not resolve */
+		  if (col_name && spec->info.spec.range_var)
+		    {
+		      in_node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+		      return in_node;
+		    }
+		  return NULL;
+		}
+
 	      if (savespec)
 		{
 		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
@@ -9405,6 +9429,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       PT_NODE *spec = NULL;
       PT_NODE *entity;
 
+      /* to process the clause "FOR UPDATE OF" */
       if (statement->info.query.q.select.for_update != NULL)
 	{
 	  /* Flag only the specified specs */
@@ -9437,7 +9462,6 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  /* Flag all specs */
 	  for (spec = statement->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
-	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	      for (entity = spec->info.spec.flat_entity_list; entity; entity = entity->next)
 		{
 		  if (sm_check_system_class_by_name (entity->info.name.original))
@@ -9446,8 +9470,8 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 				   "UPDATE", entity->info.name.original);
 		      return NULL;
 		    }
-		  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 		}
+	      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
 	    }
 	}
     }

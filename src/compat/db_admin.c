@@ -928,10 +928,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
-	  if (!pl_jvm_is_loaded ())
-	    {
-	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
-	    }
+	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
@@ -1009,6 +1006,12 @@ db_shutdown (void)
   return (error);
 }
 
+void
+db_shutdown_without_request_to_server (void)
+{
+  boot_client_all_finalize (OPTIONAL_FINALIZATION);
+}
+
 int
 db_ping_server (int client_val, int *server_val)
 {
@@ -1055,6 +1058,7 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
+static int is_doing_end_session = -1;
 int
 db_end_session (void)
 {
@@ -1062,9 +1066,28 @@ db_end_session (void)
 
   CHECK_CONNECT_ERROR ();
 
+  if (db_get_session_id () == DB_EMPTY_SESSION)
+    {
+      return NO_ERROR;
+    }
+
+  /* prevent additional execution during execting csession_end_session() */
+  if (is_doing_end_session > 0 && is_doing_end_session == (int) db_get_session_id ())
+    {
+      return NO_ERROR;
+    }
+  is_doing_end_session = (int) db_get_session_id ();
+
   retval = csession_end_session (db_get_session_id (), db_get_keep_session ());
 
+  if (retval != ER_FAILED && !db_get_keep_session ())
+    {
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
+
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
+
+  is_doing_end_session = -1;
 
   return (retval);
 }
@@ -2885,25 +2908,22 @@ db_set_system_parameters (const char *data)
     {
       if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
-	  if (tmp->value.i > 0)
-	    {
-	      tran_reset_wait_times (tmp->value.i * 1000);
-	    }
-	  else
-	    {
-	      tran_reset_wait_times (tmp->value.i);
-	    }
+	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LK_TIMEOUT));
+	  (void) tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}
       else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
-
-	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
+#if defined(CS_MODE)
+	  error = tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+	  if (error != NO_ERROR)
+	    {
+	      if (er_errid () == NO_ERROR)
+		goto cleanup;
+	    }
+#else
+	  (void) tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+#endif
 	}
     }
 

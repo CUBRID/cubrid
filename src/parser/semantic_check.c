@@ -259,7 +259,7 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NOD
 						 int *continue_walk);
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts, PT_NODE * node, MOP db_obj);
 static PT_NODE *pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
-static PT_NODE *pt_get_assignments (PT_NODE * node);
+static PT_NODE *pt_get_assignments (PT_NODE * node, bool * dblinked);
 static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static PT_UNION_COMPATIBLE pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query,
 							   SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
@@ -4775,7 +4775,6 @@ static void
 pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
   DB_OBJECT *db, *super;
-  SM_CLASS *class_ = NULL;
   PT_ALTER_CODE code;
   PT_MISC_TYPE type;
   PT_NODE *name, *sup, *att, *qry, *attr;
@@ -4809,13 +4808,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   /* We cannot change the schema of a class by using synonym names. */
   if (db_find_synonym (cls_nam) != NULL)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
   else
     {
-      /* db_find_synonym () == NULL */
       ASSERT_ERROR ();
 
       if (er_errid () == ER_SYNONYM_NOT_EXIST)
@@ -4831,8 +4828,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   db = pt_find_class (parser, name, for_update);
   if (!db)
     {
-      PT_ERRORmf (parser, alter->info.alter.entity_name, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
 
@@ -5252,6 +5248,87 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 	}
+      break;
+    case PT_CHANGE_OWNER:
+      {
+	const char *new_owner;
+	MOP new_owner_mop = NULL;
+	SM_CLASS *class_ = NULL;
+	char new_cls_nam[DB_MAX_IDENTIFIER_LENGTH];
+	new_cls_nam[0] = '\0';
+	int error = NO_ERROR;
+
+	new_owner = alter->info.alter.alter_clause.user.user_name->info.name.original;
+
+	new_owner_mop = au_find_user (new_owner);
+	if (new_owner_mop == NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_INVALID_USER), new_owner);
+	    break;
+	  }
+
+	error = au_fetch_class_force (db, &class_, AU_FETCH_UPDATE);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR_AND_SET (error);
+	    break;
+	  }
+
+	/* To change the owner of a system class is not allowed. */
+	if (sm_issystem (class_))
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS), "");
+	    return;
+	  }
+
+	/* When changing to the same owner, a No-Operation is performed. */
+	if (ws_is_same_object (class_->owner, new_owner_mop))
+	  {
+	    break;
+	  }
+
+	/* When changing the owner of a class, the synonym name cannot be changed to be the same as the class name. */
+	snprintf (new_cls_nam, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", new_owner, sm_remove_qualifier_name (cls_nam));
+
+	if (db_find_synonym (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST, new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+
+	/* When changing the owner of a class, the class name cannot be changed to be the same as the class name. */
+	if (db_find_class (new_cls_nam) != NULL)
+	  {
+	    PT_ERRORmf (parser, name, MSGCAT_SET_ERROR, -(ER_LC_CLASSNAME_EXIST), new_cls_nam);
+	    break;
+	  }
+	else
+	  {
+	    ASSERT_ERROR ();
+
+	    if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      {
+		er_clear ();
+	      }
+	    else
+	      {
+		break;
+	      }
+	  }
+      }
       break;
     default:
       break;
@@ -9520,12 +9597,13 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
   const char *default_value_print = NULL;
+  DB_VALUE tmp;
 
   default_value_node = param->info.sp_param.default_value =
     pt_check_data_default (parser, param->info.sp_param.default_value);
   if (pt_has_error (parser))
     {
-      return error;
+      return ER_FAILED;
     }
 
   assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
@@ -9539,22 +9617,42 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 		  param,
 		  MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
-      return error;
+      return ER_FAILED;
     }
 
-  {
-    PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
-    error =
-      pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
-					 default_value_node->info.data_default.default_expr_type, false);
-    parser_free_node (parser, dummy);
-    if (error != NO_ERROR)
-      {
-	error = (error == ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO;
-	PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, error,
-		     default_value_print, pt_get_type_name (param->type_enum, param->data_type));
-      }
-  }
+  if (default_value->node_type == PT_EXPR && default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+    {
+      db_make_null (&tmp);
+      pt_evaluate_tree (parser, default_value, &tmp, 1);
+      if (pt_has_error (parser))
+	{
+	  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, default_value));
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  parser_free_node (parser, default_value_node->info.data_default.default_value);
+	  default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
+	}
+      db_value_clear (&tmp);
+    }
+
+  if (error == NO_ERROR)
+    {
+      PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
+      error =
+	pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
+					   default_value_node->info.data_default.default_expr_type, false);
+      parser_free_node (parser, dummy);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		       (error ==
+			ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
+	}
+    }
 
   return error;
 }
@@ -10272,7 +10370,6 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  assert (node->info.serial.code != NULL);
   switch (node->info.serial.code)
     {
     case PT_SERIAL_OPTION:
@@ -10881,10 +10978,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.insert.spec && node->info.insert.spec->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
+
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11193,7 +11291,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 
 	  /* Update of views hierarchies not allowed */
-	  if (db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
+	  if (entity->info.spec.flat_entity_list	/* for local query only, but not for remote */
+	      && db_is_vclass (entity->info.spec.flat_entity_list->info.name.db_object) > 0
 	      && entity->info.spec.only_all == PT_ALL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_SUBVCLASS_NOT_ALLOWED,
@@ -11403,7 +11502,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       node = pt_semantic_type (parser, node, info);
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.merge.into && node->info.merge.into->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -12797,10 +12896,11 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *next, *lhs, *rhs, *list, *rhs_list;
   PT_NODE *assignment_list;
+  bool dblinked;
 
   assert (parser != NULL);
 
-  assignment_list = pt_get_assignments (stmt);
+  assignment_list = pt_get_assignments (stmt, &dblinked);
   if (assignment_list == NULL)
     {
       return;
@@ -12824,7 +12924,7 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		      /* e.g., a = (select 1, 2 from ...) */
 		      PT_ERRORm (parser, lhs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ILLEGAL_RHS);
 		    }
-		  else
+		  else if (!dblinked)	/* for local query only */
 		    {
 		      (void) pt_assignment_class_compatible (parser, lhs, rhs_list);
 		    }
@@ -12833,7 +12933,10 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 		{
 		  /* Not a query, just check if assignment is possible. The call below will wrap the rhs node with a
 		   * cast to the type of the lhs_node */
-		  (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		  if (!dblinked)	/* for local query only */
+		    {
+		      (void) pt_assignment_class_compatible (parser, lhs, rhs);
+		    }
 		}
 	    }
 	  else if (lhs->node_type == PT_EXPR && PT_IS_N_COLUMN_UPDATE_EXPR (lhs) && (list = lhs->info.expr.arg1))
@@ -13114,8 +13217,9 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool has_attrib = false, has_meta_attrib = false;
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *assignments;
+  bool dblinked;
 
-  assignments = pt_get_assignments (statement);
+  assignments = pt_get_assignments (statement, &dblinked);
   if (assignments == NULL)
     {
       return;
@@ -13204,10 +13308,11 @@ pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *a, *b, *att_a, *att_b;
   PT_NODE *assignment_list;
+  bool dblinked;
 
   assert (parser != NULL);
 
-  assignment_list = pt_get_assignments (stmt);
+  assignment_list = pt_get_assignments (stmt, &dblinked);
   if (assignment_list == NULL)
     {
       return;
@@ -17007,8 +17112,12 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * node (in): statement node
  */
 static PT_NODE *
-pt_get_assignments (PT_NODE * node)
+pt_get_assignments (PT_NODE * node, bool * dblinked)
 {
+  PT_NODE *spec, *assignment;
+
+  *dblinked = false;
+
   if (node == NULL)
     {
       return NULL;
@@ -17017,14 +17126,27 @@ pt_get_assignments (PT_NODE * node)
   switch (node->node_type)
     {
     case PT_UPDATE:
-      return node->info.update.assignment;
+      spec = node->info.update.spec;
+      assignment = node->info.update.assignment;
+      break;
     case PT_MERGE:
-      return node->info.merge.update.assignment;
+      spec = node->info.merge.into;
+      assignment = node->info.merge.update.assignment;
+      break;
     case PT_INSERT:
-      return node->info.insert.odku_assignments;
+      spec = node->info.insert.spec;
+      assignment = node->info.insert.odku_assignments;
+      break;
     default:
       return NULL;
     }
+
+  if (spec && spec->info.spec.remote_server_name)
+    {
+      *dblinked = true;
+    }
+
+  return assignment;
 }
 
 /*

@@ -24,7 +24,7 @@ on:
 jobs:
   license:
     name: license
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
@@ -78,14 +78,14 @@ jobs:
           test $result = "PASS" # if non-zero, fail
   pr-style:
     name: pr-style
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: deepakputhraya/action-pr-title@master
         with:
           regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
   code-style:
     name: code-style
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     env:
       working-directory: .github/workflows
     steps:
@@ -131,21 +131,21 @@ jobs:
           tool_name: code-style (indent, astyle, google-java-format)
   cppcheck:
     name: cppcheck
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Install packages
         run: |
           sudo apt-get install -yq wget build-essential
 
-          # Download cppcheck-2.4.1 source
+          # Download cppcheck-2.13.0 source
           wd=`pwd`
           cd ..
-          wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.4.1.tar.gz
-          tar xf 2.4.1.tar.gz
+          wget https://github.com/CUBRID/3rdparty/raw/develop/cppcheck/2.13.0.tar.gz
+          tar xf 2.13.0.tar.gz
 
-          # build cppcheck-2.4.1
-          cd cppcheck-2.4.1
-          make -j4 SRCDIR=build CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
+          # build cppcheck-2.13.0
+          cd cppcheck-2.13.0
+          make -j4 MATCHCOMPILER=yes CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
           echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
 
           cd $wd
@@ -216,7 +216,7 @@ jobs:
             ${{ steps.get-comment-body.outputs.body }}
   memory-monitor-check:
     name: memory-monitor-check
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v2
       - uses: jitterbit/get-changed-files@v1
@@ -250,7 +250,14 @@ jobs:
 
             # [exception case] lea_heap.c is third party code
             if [ "$f" != "src/heaplayers/lea_heap.c" ]; then
-              last_include_line=$(cat $f | grep -n "^#include" | cut -d':' -f1 | tail -1)
+              # "strict_warnings_(on|off).hpp" should be able to come after memory_wrapper.hpp
+              # Refer to CBRD-25966
+              last_include_line=$(
+                grep -n "^#include" "$f" \
+                | grep -v -E "strict_warnings_(on|off)\.hpp" \
+                | cut -d':' -f1 \
+                | tail -1
+              )
               wrapper_include_line=$(cat $f | grep -n "^#include" | grep "memory_wrapper.hpp" | cut -d':' -f1)
               if [ "$last_include_line" != "$wrapper_include_line" ]; then
                 result_for_f="FAIL"

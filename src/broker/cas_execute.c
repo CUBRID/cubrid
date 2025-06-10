@@ -484,7 +484,7 @@ ux_check_connection (void)
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
 			     dbuser);
-	      ux_database_shutdown ();
+	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
 	}
@@ -536,7 +536,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       if (database_name[0] != '\0')
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 	}
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -632,7 +632,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
@@ -695,46 +695,12 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
-  cas_default_ansi_quotes = true;
-  ux_get_system_parameter ("ansi_quotes", &cas_default_ansi_quotes);
-
-  cas_default_no_backslash_escapes = true;
-  ux_get_system_parameter ("no_backslash_escapes", &cas_default_no_backslash_escapes);
+  cas_default_ansi_quotes = PRM_GET_BOOL (prm_get_value (PRM_ID_ANSI_QUOTES));
+  cas_default_no_backslash_escapes = PRM_GET_BOOL (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
   return;
 }
 
-void
-ux_get_system_parameter (const char *param, bool * value)
-{
-  int err_code = 0;
-  char buffer[LINE_MAX], *p;
-
-  strncpy (buffer, param, LINE_MAX);
-  buffer[LINE_MAX - 1] = 0;
-  err_code = db_get_system_parameters (buffer, LINE_MAX);
-  if (err_code != NO_ERROR)
-    {
-      return;
-    }
-
-  p = strchr (buffer, '=');
-  if (p == NULL)
-    {
-      return;
-    }
-
-  if (*(p + 1) == 'n')
-    {
-      *value = false;
-    }
-  else
-    {
-      *value = true;
-    }
-
-  return;
-}
 
 void
 ux_set_default_setting ()
@@ -761,10 +727,20 @@ ux_set_default_setting ()
 }
 
 void
-ux_database_shutdown ()
+ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
-  db_shutdown ();
+  if (db_get_connect_status () != 0)	// only if connected to db
+    {
+      if (request_server)
+	{
+	  db_shutdown ();
+	}
+      else
+	{
+	  db_shutdown_without_request_to_server ();
+	}
+    }
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
@@ -1427,6 +1403,13 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (bind_data_list)
     {
+      for (int i = 0; i < num_bind; i++)
+	{
+	  if (bind_data_list[i].wchar_val)
+	    {
+	      FREE_MEM (bind_data_list[i].wchar_val);
+	    }
+	}
       FREE_MEM (bind_data_list);
     }
 

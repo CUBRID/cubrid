@@ -78,4 +78,7 @@ extern void au_print_grants (MOP auth, FILE *fp);
 
 extern int appropriate_error (unsigned int bits, unsigned int requested);
 
+extern int add_grant_entry (DB_SET *grants, DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP grantor);
+extern void drop_grant_entry (DB_SET *grants, int index);
+
 #endif
