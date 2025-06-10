@@ -1892,6 +1892,8 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
+  /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time);
+   * each attribute has 2 parts: att_name and asc_dsc */
   att_cnt = (seq_size - 5) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
