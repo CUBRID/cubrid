@@ -480,8 +480,10 @@ typedef struct file_tempcache_tran_entry FILE_TEMPCACHE_TRAN_ENTRY;
 struct file_tempcache_tran_entry
 {
   pthread_mutex_t mutex;
-
   FILE_TEMPCACHE_ENTRY *head;
+#if !defined (NDEBUG)
+  int owner_mutex;
+#endif
 };
 
 typedef struct file_tempcache FILE_TEMPCACHE;
@@ -806,6 +808,10 @@ STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file (THREAD_ENTRY *
 STATIC_INLINE void file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_lock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* File tracker section                                                 */
@@ -9063,11 +9069,13 @@ file_tempcache_final (void)
   /* free all transaction lists... they should be empty anyway, but be conservative */
   for (tran = 0; tran < ntrans; tran++)
     {
+      file_tempcache_lock_tran_entry (&file_Tempcache.tran_files[tran]);
       if (file_Tempcache.tran_files[tran].head != NULL)
 	{
 	  /* should be empty */
 	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran].head);
 	}
+      file_tempcache_unlock_tran_entry (&file_Tempcache.tran_files[tran]);
       pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
     }
   free_and_init (file_Tempcache.tran_files);
@@ -9453,16 +9461,12 @@ void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
   int tran_index = file_get_tempcache_entry_index (thread_p);
-  pthread_mutex_lock (&file_Tempcache.tran_files[tran_index].mutex);
+  file_tempcache_lock_tran_entry (&file_Tempcache.tran_files[tran_index]);
   if (file_Tempcache.tran_files[tran_index].head != NULL)
     {
-
-      file_log ("file_tempcache_drop_tran_temp_files",
-		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
       file_tempcache_cache_or_drop_entries (thread_p, &file_Tempcache.tran_files[tran_index].head);
-
     }
-  pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
+  file_tempcache_unlock_tran_entry (&file_Tempcache.tran_files[tran_index]);
 }
 
 /*
@@ -9477,6 +9481,7 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
+  int num = 0;
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
@@ -9496,7 +9501,9 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 	    }
 	  file_tempcache_retire_entry (temp_file);
 	}
+      num++;
     }
+  file_log ("file_tempcache_cache_or_drop_entries", "drop %d transaction temporary files", num);
   *entries = NULL;
 }
 
@@ -9514,7 +9521,7 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
   FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[tran_index];
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
-  pthread_mutex_lock (&tran_entry->mutex);
+  file_tempcache_lock_tran_entry (tran_entry);
   for (entry = tran_entry->head; entry != NULL; entry = entry->next)
     {
       if (VFID_EQ (&entry->vfid, vfid))
@@ -9532,12 +9539,12 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
 		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-	  pthread_mutex_unlock (&tran_entry->mutex);
+	  file_tempcache_unlock_tran_entry (tran_entry);
 	  return entry;
 	}
       prev_entry = entry;
     }
-  pthread_mutex_unlock (&tran_entry->mutex);
+  file_tempcache_unlock_tran_entry (tran_entry);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9556,13 +9563,13 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
   int tran_index = file_get_tempcache_entry_index (thread_p);
   FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[tran_index];
 
-  pthread_mutex_lock (&tran_entry->mutex);
+  file_tempcache_lock_tran_entry (tran_entry);
   entry->next = tran_entry->head;
   tran_entry->head = entry;
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-  pthread_mutex_unlock (&file_Tempcache.tran_files[tran_index].mutex);
+  file_tempcache_unlock_tran_entry (tran_entry);
 }
 
 /*
@@ -9577,12 +9584,12 @@ file_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
   FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   FILE_TEMPCACHE_ENTRY *entry;
   int num = 0;
-  pthread_mutex_lock (&tran_entry->mutex);
+  file_tempcache_lock_tran_entry (tran_entry);
   for (entry = tran_entry->head; entry != NULL; entry = entry->next)
     {
       num++;
     }
-  pthread_mutex_unlock (&tran_entry->mutex);
+  file_tempcache_unlock_tran_entry (tran_entry);
   return num;
 }
 
@@ -9630,6 +9637,30 @@ file_tempcache_dump (FILE * fp)
   /* todo: to print transaction temporary files we need some kind of synchronization... right now each transaction
    *       manages its own list freely. */
 }
+
+STATIC_INLINE void
+file_tempcache_lock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+{
+  assert (tran_entry->owner_mutex != thread_get_current_entry_index ());
+  pthread_mutex_lock (&tran_entry->mutex);
+  assert (tran_entry->owner_mutex == -1);
+#if !defined (NDEBUG)
+  tran_entry->owner_mutex = thread_get_current_entry_index ();
+#endif /* !NDEBUG */
+}
+
+STATIC_INLINE void
+file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+{
+  assert (tran_entry->owner_mutex == thread_get_current_entry_index ());
+  pthread_mutex_unlock (&tran_entry->mutex);
+#if !defined (NDEBUG)
+  tran_entry->owner_mutex = -1;
+#endif /* !NDEBUG */
+}
+
+
+
 
 /************************************************************************/
 /* File tracker section                                                 */
