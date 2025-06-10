@@ -93,7 +93,7 @@ typedef struct hashjoin_domain_info
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-typedef struct hashjoin_common_stats
+typedef struct hashjoin_input_stats
 {
   struct timeval elapsed_time;
   struct timeval time;
@@ -104,9 +104,8 @@ typedef struct hashjoin_common_stats
   UINT64 readkeys;
   UINT64 rows;
   UINT64 max_collisions;
-  double skew;
 } HASHJOIN_INPUT_STATS;
-#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0 }
+#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0 }
 
 #if HASHJOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats

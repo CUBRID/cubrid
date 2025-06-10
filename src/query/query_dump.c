@@ -3622,15 +3622,15 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       indent += 2;
 
       fprintf (fp,
-	       "%*cOUTER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld, skew: %.2f)\n",
+	       "%*cOUTER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld",
 	       indent, ' ', TO_MSEC (stats->outer.elapsed_time), TO_MSEC (stats->outer.time), stats->outer.fetches,
-	       stats->outer.fetch_time, stats->outer.ioreads, stats->outer.rows, stats->outer.skew);
+	       stats->outer.fetch_time, stats->outer.ioreads, stats->outer.rows);
       qdump_print_stats_text (fp, outer_xasl, indent);
 
       fprintf (fp,
-	       "%*cINNER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld, skew: %.2f)\n",
+	       "%*cINNER (time: %d, part_time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld",
 	       indent, ' ', TO_MSEC (stats->inner.elapsed_time), TO_MSEC (stats->inner.time), stats->inner.fetches,
-	       stats->inner.fetch_time, stats->inner.ioreads, stats->inner.rows, stats->inner.skew);
+	       stats->inner.fetch_time, stats->inner.ioreads, stats->inner.rows);
       qdump_print_stats_text (fp, inner_xasl, indent);
 
       indent -= 2;
@@ -3858,7 +3858,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   int part_cnt, part_index;
 
   char hash_method_str[32];
-  char skew_str[32];
   int len;
 
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -3920,10 +3919,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (outer, "ioread", json_integer (stats->outer.ioreads));
       json_object_set_new (outer, "rows", json_integer (stats->outer.rows));
 
-      len = sprintf (skew_str, "%.2f", stats->outer.skew);
-      skew_str[len] = '\0';
-      json_object_set_new (outer, "skew", json_string (skew_str));
-
       input = json_object ();
       qdump_print_stats_json (outer_xasl, input);
       json_object_set_new (outer, "input", input);
@@ -3937,10 +3932,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (inner, "fetch_time", json_integer (stats->inner.fetch_time));
       json_object_set_new (inner, "ioread", json_integer (stats->inner.ioreads));
       json_object_set_new (inner, "rows", json_integer (stats->inner.rows));
-
-      len = sprintf (skew_str, "%.2f", stats->inner.skew);
-      skew_str[len] = '\0';
-      json_object_set_new (inner, "skew", json_string (skew_str));
 
       input = json_object ();
       qdump_print_stats_json (inner_xasl, input);
