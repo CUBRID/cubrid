@@ -149,6 +149,7 @@ struct heap_scancache
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
     bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+    bool mvcc_disabled_class;	/* Indicates if the class is MVCC disabled */
     PGBUF_WATCHER page_watcher;
     int num_btids;		/* Total number of indexes defined on the scanning class */
     multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
@@ -157,7 +158,6 @@ struct heap_scancache
     MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
-
 
     void start_area ();
     void end_area ();
@@ -426,6 +426,10 @@ extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hf
 					DB_VALUE ** cache_recordinfo);
 extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * prev_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+extern SCAN_CODE heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid,
+					 HEAP_SCANCACHE * scan_cache);
+extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
+				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);

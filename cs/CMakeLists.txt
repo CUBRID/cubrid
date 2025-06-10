@@ -237,7 +237,15 @@ set(OPTIMIZER_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_DIR}/plan_generation.c
-  ${OPTIMIZER_DIR}/query_rewrite.c
+  )
+
+set(REWRITER_SOURCES
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${REWRITER_DIR}/query_rewrite.c
   )
 
 set(QUERY_SOURCES
@@ -387,7 +395,6 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   )
 
-
 set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
@@ -397,6 +404,14 @@ set(LOADDB_SOURCES
 set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_common.hpp
   ${LOADDB_DIR}/load_object.h
+  )
+
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -470,6 +485,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
@@ -480,13 +496,12 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -507,6 +522,7 @@ add_library(cubridcs SHARED
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${PARSER_HEADERS}
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
@@ -521,7 +537,8 @@ add_library(cubridcs SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
-  ${API_HEADERS}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -536,8 +553,6 @@ if(WIN32)
     ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
     ${LOADER_LEXER_OUTPUT}
-    ${ESQL_GRAMMAR_OUTPUT}
-    ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")

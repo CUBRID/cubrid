@@ -35,6 +35,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "parser.h"
+#include "query_bitset.h"
 #include "release_string.h"
 
 // forward definitions
@@ -106,7 +107,6 @@ typedef struct qo_node_index_entry QO_NODE_INDEX_ENTRY;
 typedef struct qo_index_xasl_info QO_INDEX_XASL_INFO;
 typedef struct qo_using_index QO_USING_INDEX;
 typedef struct qo_using_index_entry QO_USING_INDEX_ENTRY;
-typedef struct bitset BITSET;
 
 struct qo_summary
 {
@@ -147,6 +147,39 @@ typedef struct qo_limit_info
   regu_variable_node *upper;
 } QO_LIMIT_INFO;
 
+typedef struct projection_part_info PROJECTION_PART_INFO;
+struct projection_part_info
+{
+  PT_NODE *expr_list;
+  PT_NODE *name_list;
+  PT_NODE *expr_name_list;	/* expr_list->next = name_list */
+  PT_NODE *pred_list;
+  BITSET exprs_set;
+  int expr_count;
+  int name_count;
+  int expr_name_count;		/* expr_count + name_count */
+  int pred_count;
+};
+#define PROJECTION_PART_INFO_INITIALIZER { NULL, NULL, NULL, NULL, EMPTY_SET, 0, 0, 0, 0, NULL}
+
+typedef struct projection_final_info PROJECTION_FINAL_INFO;
+struct projection_final_info
+{
+  PT_NODE *name_list;
+  int name_count;
+};
+#define PROJECTION_FINAL_INFO_INITIALIZER { NULL, 0 }
+
+typedef struct projection_info PROJECTION_INFO;
+struct projection_info
+{
+  PROJECTION_PART_INFO outer;
+  PROJECTION_PART_INFO inner;
+  PROJECTION_FINAL_INFO final;
+};
+#define PROJECTION_INFO_INITIALIZER \
+  { PROJECTION_PART_INFO_INITIALIZER, PROJECTION_PART_INFO_INITIALIZER, PROJECTION_FINAL_INFO_INITIALIZER }
+
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);
 
 extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
@@ -177,7 +210,7 @@ extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-extern PT_NODE *mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0
 extern void *qo_malloc (QO_ENV *, unsigned, const char *, int);

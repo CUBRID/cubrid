@@ -137,6 +137,8 @@ static MATCH_STATUS partition_match_key_range (PRUNING_CONTEXT * pinfo, const KE
 					       PRUNING_BITSET * pruned);
 static bool partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
 					       const REGU_VARIABLE * right);
+static bool partition_do_regu_variables_contain (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
+						 const REGU_VARIABLE * right);
 static MATCH_STATUS partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNING_OP op,
 				     PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
@@ -155,9 +157,10 @@ static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALU
 					  PRUNING_BITSET * pruned);
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
 						OID * partition_oid, HFID * partition_hfid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
-
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int partition_find_inherited_btid (THREAD_ENTRY * thread_p, OID * src_class, OID * dest_class, BTID * src_btid,
 					  BTID * dest_btid);
@@ -167,6 +170,11 @@ static int partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT 
 /* misc pruning functions */
 static bool partition_decrement_value (DB_VALUE * val);
 
+static void partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VALUE * val);
+static bool partition_supports_pruning_op_for_function (const PRUNING_OP op, const REGU_VARIABLE * part_expr);
+static MATCH_STATUS partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
+						  const REGU_VARIABLE * right, REGU_VARIABLE * part_expr,
+						  const PRUNING_OP op, PRUNING_BITSET * pruned);
 
 /* PRUNING_BITSET manipulation functions */
 
@@ -1339,6 +1347,55 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   int rmin = DB_UNK, rmax = DB_UNK;
   MATCH_STATUS status;
 
+  if (db_value_type_is_collection (val))
+    {
+      PRUNING_BITSET new_pruned;
+      DB_COLLECTION *values = NULL;
+      DB_VALUE col;
+      int size, j;
+
+      values = db_get_set (val);
+      size = db_set_size (values);
+      if (size < 0)
+	{
+	  pinfo->error_code = ER_FAILED;
+	  status = MATCH_NOT_FOUND;
+	  goto cleanup;
+	}
+
+      for (j = 0; j < size; j++)
+	{
+	  if (db_set_get (values, j, &col) != NO_ERROR)
+	    {
+	      pinfo->error_code = ER_FAILED;
+	      status = MATCH_NOT_FOUND;
+	      goto cleanup;
+	    }
+
+	  pruningset_init (&new_pruned, PARTITIONS_COUNT (pinfo));
+	  status = partition_prune_range (pinfo, &col, op, &new_pruned);
+	  if (j > 0)
+	    {
+	      if (op == PO_EQ)
+		{
+		  pruningset_intersect (pruned, &new_pruned);
+		}
+	      else
+		{
+		  pruningset_union (pruned, &new_pruned);
+		}
+	    }
+	  else
+	    {
+	      pruningset_copy (pruned, &new_pruned);
+	    }
+
+	  pr_clear_value (&col);
+	}
+
+      return status;
+    }
+
   db_make_null (&min);
   db_make_null (&max);
 
@@ -1394,6 +1451,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
       status = MATCH_OK;
       switch (op)
 	{
+	case PO_IN:
 	case PO_EQ:
 	  /* Filter is part_expr = value. Find the *only* partition for which min <= value < max */
 	  if ((rmin == DB_EQ || rmin == DB_LT) && rmax == DB_LT)
@@ -1592,15 +1650,30 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_FUNC:
       {
-	if (regu->value.funcp->ftype != F_MIDXKEY)
+	if (regu->value.funcp->ftype == F_MIDXKEY)
+	  {
+	    if (partition_get_value_from_key (pinfo, regu, value_p, is_value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else if (regu->value.funcp->ftype == F_ELT || regu->value.funcp->ftype == F_INSERT_SUBSTRING)
+	  {
+	    /* 
+	     * Exceptionally use partition_get_value_from_inarith for these specific functions
+	     * as they can be evaluated in the same way as arithmetic operations.
+	     * Other TYPE_FUNC types are not handled here.
+	     */
+	    if (partition_get_value_from_inarith (pinfo, regu, value_p, is_value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else
 	  {
 	    *is_value = false;
 	    db_make_null (value_p);
 	    return NO_ERROR;
-	  }
-	if (partition_get_value_from_key (pinfo, regu, value_p, is_value) != NO_ERROR)
-	  {
-	    goto error;
 	  }
 	break;
       }
@@ -1638,6 +1711,8 @@ error:
 static bool
 partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 {
+  REGU_VARIABLE_LIST op;
+
   if (regu_var == NULL)
     {
       return false;
@@ -1666,6 +1741,31 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 	    return false;
 	  }
 	/* either all arguments are constants of this is an expression with no arguments */
+	return true;
+      }
+    case TYPE_FUNC:
+      {
+	op = regu_var->value.funcp->operand;
+	while (op != NULL)
+	  {
+	    if (!partition_is_reguvar_const (&op->value))
+	      {
+		return false;
+	      }
+	    op = op->next;
+	  }
+	return true;
+      }
+    case TYPE_ATTR_ID:
+      {
+	/* TYPE_ATTR_ID normally represents a non-constant.
+	 * As an exception, in partition.c, partition_set_cache_dbvalp_for_attribute
+	 * can cache a db_value in cache_dbvalp for TYPE_ATTR_ID.
+	 * This cached value is used specifically for partition pruning purposes. */
+	if (regu_var->value.attr_descr.cache_dbvalp == NULL)
+	  {
+	    return false;
+	  }
 	return true;
       }
     default:
@@ -1773,14 +1873,17 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 }
 
 /*
- * partition_get_value_from_key () - get a value from a reguvariable of type
- *				     INARITH
+ * partition_get_value_from_inarith () - get a value from a reguvariable of type TYPE_INARITH, TYPE_FUNC (pseudo constants)
  * return : error code or NO_ERROR
  * pinfo (in)		: pruning context
  * src (in)		: source reguvariable
  * value_p (in/out)	: the requested value
  * is_value (in/out)	: set to true if the value was successfully fetched
  *
+ * Note: This function is primarily used for TYPE_INARITH operations.
+ *       Additionally, it handles F_ELT and F_INSERT_SUBSTRING functions since they
+ *       can be evaluated in the same way as arithmetic operations.
+ *       Other TYPE_FUNC types are not handled here.
  */
 static int
 partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
@@ -1791,7 +1894,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
 
   assert_release (src != NULL);
   assert_release (value_p != NULL);
-  assert_release (src->type == TYPE_INARITH);
+  assert_release (src->type == TYPE_INARITH || src->type == TYPE_FUNC);
 
   *is_value = false;
   db_make_null (value_p);
@@ -1924,6 +2027,17 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	      {
 		status = partition_prune (pinfo, left, op, pruned);
 	      }
+	    else if (partition_supports_pruning_op_for_function (op, part_expr))
+	      {
+		if (partition_do_regu_variables_contain (pinfo, left, part_expr))
+		  {
+		    status = partition_prune_for_function (pinfo, left, right, part_expr, op, pruned);
+		  }
+		else if (partition_do_regu_variables_contain (pinfo, right, part_expr))
+		  {
+		    status = partition_prune_for_function (pinfo, right, left, part_expr, op, pruned);
+		  }
+	      }
 	    break;
 	  }
 
@@ -1951,6 +2065,13 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	      {
 		status = partition_prune (pinfo, list, op, pruned);
 	      }
+	    else if (partition_supports_pruning_op_for_function (op, part_expr))
+	      {
+		if (partition_do_regu_variables_contain (pinfo, regu, part_expr))
+		  {
+		    status = partition_prune_for_function (pinfo, regu, list, part_expr, op, pruned);
+		  }
+	      }
 	  }
 	  break;
 
@@ -1969,6 +2090,301 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
     }
 
   return status;
+}
+
+/*
+ * partition_prune_for_function () - perform pruning on the specified partitions list based on partition key expression
+ * return : match status
+ * pinfo (in)	  : pruning context
+ * left (in)	  : left operand
+ * right (in)	  : right operand
+ * part_expr (in) : partition key expression
+ * op (in)	  : pruning operator
+ * pruned (in/out): pruned partitions
+ */
+static MATCH_STATUS
+partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left, const REGU_VARIABLE * right,
+			      REGU_VARIABLE * part_expr, const PRUNING_OP op, PRUNING_BITSET * pruned)
+{
+  MATCH_STATUS status = MATCH_NOT_FOUND;
+  DB_VALUE val, casted_val;
+  DB_COLLECTION *collection = NULL;
+  DB_COLLECTION *new_collection = NULL;
+  DB_VALUE old_collection_val, new_collection_val, part_key_val;
+  TP_DOMAIN_STATUS dom_status;
+  bool is_value;
+
+  if (right == NULL)
+    {
+      status = partition_prune (pinfo, right, op, pruned);
+      return status;
+    }
+
+  db_make_null (&val);
+  db_make_null (&casted_val);
+  db_make_null (&part_key_val);
+  db_make_null (&old_collection_val);
+  db_make_null (&new_collection_val);
+
+  if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
+    {
+      if (db_value_type_is_collection (&val))
+	{
+	  DB_TYPE domain_type = DB_VALUE_DOMAIN_TYPE (&val);
+	  collection = db_get_collection (&val);
+	  int size = db_col_size (collection);
+	  if (size <= 0)
+	    {
+	      pinfo->error_code = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  new_collection = db_col_create (domain_type, size, NULL);
+	  if (new_collection == NULL)
+	    {
+	      pinfo->error_code = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  for (int i = 0; i < size; i++)
+	    {
+	      pr_clear_value (&part_key_val);
+	      pr_clear_value (&old_collection_val);
+	      pr_clear_value (&casted_val);
+
+	      if (db_col_get (collection, i, &old_collection_val) != NO_ERROR)
+		{
+		  pinfo->error_code = ER_FAILED;
+		  goto cleanup;
+		}
+
+	      if (db_value_is_null (&old_collection_val))
+		{
+		  if (db_col_put (new_collection, i, &old_collection_val) != NO_ERROR)
+		    {
+		      pinfo->error_code = ER_FAILED;
+		      goto cleanup;
+		    }
+		  continue;
+		}
+
+	      else if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&old_collection_val))
+		{
+		  dom_status = tp_value_cast (&old_collection_val, &casted_val, left->domain, false);
+
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &old_collection_val, left->domain);
+
+		      pinfo->error_code = ER_FAILED;
+		      goto cleanup;
+		    }
+
+		  partition_set_cache_dbvalp_for_attribute (part_expr, &casted_val);
+		}
+	      else
+		{
+		  partition_set_cache_dbvalp_for_attribute (part_expr, &old_collection_val);
+		}
+
+	      if (partition_get_value_from_regu_var (pinfo, part_expr, &part_key_val, &is_value) == NO_ERROR)
+		{
+		  if (is_value)
+		    {
+		      if (db_col_put (new_collection, i, &part_key_val) != NO_ERROR)
+			{
+			  pinfo->error_code = ER_FAILED;
+			  goto cleanup;
+			}
+		    }
+		  else
+		    {
+		      pinfo->error_code = ER_FAILED;
+		      goto cleanup;
+		    }
+		}
+	    }
+
+	  if (db_make_collection (&new_collection_val, new_collection) != NO_ERROR)
+	    {
+	      pinfo->error_code = ER_FAILED;
+	      goto cleanup;
+	    }
+
+	  status = partition_prune_db_val (pinfo, &new_collection_val, op, pruned);
+	}
+      else
+	{
+	  if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&val))
+	    {
+	      dom_status = tp_value_cast (&val, &casted_val, left->domain, false);
+
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &val, left->domain);
+
+		  pinfo->error_code = ER_FAILED;
+		  goto cleanup;
+		}
+
+	      partition_set_cache_dbvalp_for_attribute (part_expr, &casted_val);
+	    }
+	  else
+	    {
+	      partition_set_cache_dbvalp_for_attribute (part_expr, &val);
+	    }
+
+	  status = partition_prune (pinfo, part_expr, op, pruned);
+	}
+    }
+
+cleanup:
+  if (pinfo->error_code != NO_ERROR)
+    {
+      status = MATCH_NOT_FOUND;
+    }
+
+  partition_set_cache_dbvalp_for_attribute (part_expr, NULL);
+  pr_clear_value (&old_collection_val);
+  pr_clear_value (&new_collection_val);
+  pr_clear_value (&part_key_val);
+  pr_clear_value (&casted_val);
+  pr_clear_value (&val);
+
+  return status;
+}
+
+/*
+ * partition_supports_pruning_op_for_function () - check if the specified pruning operator is supported for the
+ *						     specified partition key expression
+ * return : true if supported, false otherwise
+ * op (in)	  : pruning operator
+ * part_expr (in) : partition key expression
+ */
+static bool
+partition_supports_pruning_op_for_function (const PRUNING_OP op, const REGU_VARIABLE * part_expr)
+{
+  if (part_expr->type != TYPE_INARITH)
+    {
+      return false;
+    }
+
+  switch (part_expr->value.arithptr->opcode)
+    {
+      /* although partition key expressions allow various functions and types,
+       * partition pruning is restricted to functions returning integer types */
+    case T_YEAR:
+    case T_TODAYS:
+    case T_UNIX_TIMESTAMP:
+      return true;
+
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+    case T_ABS:
+    case T_CEIL:
+    case T_DATEDIFF:
+    case T_DAY:
+    case T_DAYOFWEEK:
+    case T_DAYOFYEAR:
+    case T_EXTRACT:
+    case T_FLOOR:
+    case T_HOUR:
+    case T_SECOND:
+    case T_MINUTE:
+    case T_MOD:
+    case T_MONTH:
+    case T_QUARTER:
+    case T_TIMETOSEC:
+    case T_WEEKDAY:
+      if (op != PO_LT && op != PO_LE && op != PO_GT && op != PO_GE)
+	{
+	  return true;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return false;
+}
+
+/*
+ * partition_do_regu_variables_contain () - check if the left regu variable contains the right regu variable
+ * return : true if the left regu variable contains the right regu variable, false otherwise
+ * pinfo (in) : pruning context
+ * left (in)  : left regu variable, must be TYPE_ATTR_ID
+ * right (in) : right regu variable
+ */
+static bool
+partition_do_regu_variables_contain (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left, const REGU_VARIABLE * right)
+{
+  if (left == NULL || right == NULL)
+    {
+      return false;
+    }
+
+  if (left->type != TYPE_ATTR_ID)
+    {
+      return false;
+    }
+
+  switch (right->type)
+    {
+    case TYPE_ATTR_ID:
+      if (left->value.attr_descr.id == right->value.attr_descr.id)
+	{
+	  return true;
+	}
+      else
+	{
+	  return false;
+	}
+    case TYPE_INARITH:
+      if (right->value.arithptr->leftptr != NULL)
+	{
+	  if (partition_do_regu_variables_contain (pinfo, left, right->value.arithptr->leftptr))
+	    {
+	      return true;
+	    }
+	}
+      if (right->value.arithptr->rightptr != NULL)
+	{
+	  if (partition_do_regu_variables_contain (pinfo, left, right->value.arithptr->rightptr))
+	    {
+	      return true;
+	    }
+	}
+      if (right->value.arithptr->thirdptr != NULL)
+	{
+	  if (partition_do_regu_variables_contain (pinfo, left, right->value.arithptr->thirdptr))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    case TYPE_FUNC:
+      if (right->value.funcp->operand != NULL)
+	{
+	  REGU_VARIABLE_LIST op = right->value.funcp->operand;
+
+	  while (op != NULL)
+	    {
+	      if (partition_do_regu_variables_contain (pinfo, left, &op->value))
+		{
+		  return true;
+		}
+	      op = op->next;
+	    }
+	}
+      return false;
+
+    default:
+      return false;
+    }
 }
 
 /*
@@ -2576,6 +2992,50 @@ partition_set_cache_info_for_expr (REGU_VARIABLE * var, ATTR_ID attr_id, HEAP_CA
 }
 
 /*
+ * partition_set_cache_dbvalp_for_attribute () - set cache_dbvalp for the
+ *					  partition key expression
+ * return : void
+ * var (in/out) : expression to cache
+ * val (in) : value to be cached
+ */
+static void
+partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VALUE * val)
+{
+  REGU_VARIABLE_LIST op = NULL;
+  if (var == NULL)
+    {
+      return;
+    }
+
+  switch (var->type)
+    {
+    case TYPE_ATTR_ID:
+      /* Since partition key expression can only contain a single column,
+       * we can skip checking attribute id and simply check if the value is cached. */
+      var->value.attr_descr.cache_dbvalp = val;
+      break;
+
+    case TYPE_INARITH:
+      (void) partition_set_cache_dbvalp_for_attribute (var->value.arithptr->leftptr, val);
+      (void) partition_set_cache_dbvalp_for_attribute (var->value.arithptr->rightptr, val);
+      (void) partition_set_cache_dbvalp_for_attribute (var->value.arithptr->thirdptr, val);
+      break;
+    case TYPE_FUNC:
+      op = var->value.funcp->operand;
+
+      while (op != NULL)
+	{
+	  (void) partition_set_cache_dbvalp_for_attribute (&op->value, val);
+	  op = op->next;
+	}
+      break;
+
+    default:
+      return;
+    }
+}
+
+/*
  * partition_get_attribute_id () - get the id of the attribute of the
  *				   partition expression
  * return : attribute id
@@ -2702,6 +3162,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * partition_prune_heap_scan () - prune a access spec for heap scan
  * return : error code or NO_ERROR
@@ -2805,6 +3266,7 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 				       &pruned);
 	}
     }
+
   if (status == MATCH_NOT_FOUND)
     {
       if (pinfo->error_code != NO_ERROR)
@@ -2832,6 +3294,7 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * partition_prune_spec () - perform pruning on an access spec.
@@ -2844,6 +3307,8 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
 {
   int error = NO_ERROR;
   PRUNING_CONTEXT pinfo;
+  PRUNING_BITSET pruned, pruned_pred, pruned_key, pruned_range;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
 
   if (spec == NULL)
     {
@@ -2887,57 +3352,94 @@ partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node 
   pinfo.spec = spec;
   pinfo.vd = vd;
 
-  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-    {
-      error = partition_prune_heap_scan (&pinfo);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	}
-    }
-  else
-    {
-      if (spec->indexptr == NULL)
-	{
-	  assert (false);
+  /* set all bits of pruned to 1 */
+  pruningset_init (&pruned, PARTITIONS_COUNT (&pinfo));
+  pruningset_set_all (&pruned);
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  partition_clear_pruning_context (&pinfo);
-	  return ER_FAILED;
-	}
+  /* set bits matching pred_expr condition to 1 and intersect with pruned
+   * if no partitions match pred_expr condition, skip intersection */
+  if (pinfo.spec->where_pred != NULL)
+    {
+      pruningset_init (&pruned_pred, PARTITIONS_COUNT (&pinfo));
 
-      if (pinfo.partition_pred->func_regu->type != TYPE_ATTR_ID)
+      status = partition_match_pred_expr (&pinfo, pinfo.spec->where_pred, &pruned_pred);
+      if (status == MATCH_NOT_FOUND)
 	{
-	  /* In the case of index keys, we will only apply pruning if the partition expression is actually an
-	   * attribute. This is because we will not have expressions in the index key, only attributes (except for
-	   * function and filter indexes which are not handled yet) */
-	  pinfo.attr_position = -1;
+	  if (pinfo.error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      error = pinfo.error_code;
+	      goto error_exit;
+	    }
 	}
       else
 	{
-	  BTID *btid = &spec->indexptr->btid;
-	  error = partition_get_position_in_key (&pinfo, btid);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      partition_clear_pruning_context (&pinfo);
-	      return error;
-	    }
-	}
-      error = partition_prune_index_scan (&pinfo);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
+	  pruningset_intersect (&pruned, &pruned_pred);
 	}
     }
 
-  partition_clear_pruning_context (&pinfo);
+  if (pinfo.spec->where_key != NULL)
+    {
+      pruningset_init (&pruned_key, PARTITIONS_COUNT (&pinfo));
 
-  if (error == NO_ERROR)
+      status = partition_match_pred_expr (&pinfo, pinfo.spec->where_key, &pruned_key);
+      if (status == MATCH_NOT_FOUND)
+	{
+	  if (pinfo.error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      error = pinfo.error_code;
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  pruningset_intersect (&pruned, &pruned_key);
+	}
+    }
+
+  if (pinfo.spec->where_range != NULL)
+    {
+      pruningset_init (&pruned_range, PARTITIONS_COUNT (&pinfo));
+      status = partition_match_pred_expr (&pinfo, pinfo.spec->where_range, &pruned_range);
+      if (status == MATCH_NOT_FOUND)
+	{
+	  if (pinfo.error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      error = pinfo.error_code;
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  pruningset_intersect (&pruned, &pruned_range);
+	}
+    }
+
+  error = pruningset_to_spec_list (&pinfo, &pruned);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
+  else
     {
       spec->pruned = true;
     }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      PARTITION_SPEC_TYPE *curr_part;
+
+      for (curr_part = spec->parts; curr_part != NULL; curr_part = curr_part->next)
+	{
+	  memset (&curr_part->scan_stats, 0, sizeof (SCAN_STATS));
+	}
+    }
+
+error_exit:
+  partition_clear_pruning_context (&pinfo);
 
   return error;
 }
