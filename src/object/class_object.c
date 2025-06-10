@@ -1382,6 +1382,7 @@ int
 classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_info)
 {
   DB_VALUE prop_val, pk_val, fk_container_val, fk_val;
+  DB_VALUE updated_time, created_time, comment, status;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq;
   int size;
   int fk_container_pos, pk_seq_pos;
@@ -1391,6 +1392,10 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   PRIM_SET_NULL (&pk_val);
   PRIM_SET_NULL (&fk_container_val);
   PRIM_SET_NULL (&fk_val);
+  PRIM_SET_NULL (&updated_time);
+  PRIM_SET_NULL (&created_time);
+  PRIM_SET_NULL (&comment);
+  PRIM_SET_NULL (&status);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {
@@ -1455,44 +1460,33 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
     }
   else
     {
-      DB_VALUE updated_time;
-      PRIM_SET_NULL (&updated_time);
       err = set_get_element (pk_seq, size - 1, &updated_time);
       if (err != NO_ERROR)
 	{
 	  goto end;
 	}
 
-      DB_VALUE created_time;
-      PRIM_SET_NULL (&created_time);
       err = set_get_element (pk_seq, size - 2, &created_time);
       if (err != NO_ERROR)
 	{
 	  goto end;
 	}
 
-      DB_VALUE comment;
-      PRIM_SET_NULL (&comment);
       err = set_get_element (pk_seq, size - 3, &comment);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&comment);
 	  goto end;
 	}
 
-      DB_VALUE status;
-      PRIM_SET_NULL (&status);
       err = set_get_element (pk_seq, size - 4, &status);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&status);
 	  goto end;
 	}
       /* put fk_container */
       err = set_put_element (pk_seq, pk_seq_pos, &fk_container_val);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&comment);
 	  goto end;
 	}
 
@@ -1500,7 +1494,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
       err = set_put_element (pk_seq, pk_seq_pos + 1, &status);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&comment);
 	  goto end;
 	}
 
@@ -1508,7 +1501,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
       err = set_put_element (pk_seq, pk_seq_pos + 2, &comment);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&comment);
 	  goto end;
 	}
 
@@ -1543,6 +1535,10 @@ end:
   pr_clear_value (&pk_val);
   pr_clear_value (&fk_container_val);
   pr_clear_value (&fk_val);
+  pr_clear_value (&updated_time);
+  pr_clear_value (&created_time);
+  pr_clear_value (&comment);
+  pr_clear_value (&status);
 
   return err;
 }
@@ -1980,7 +1976,7 @@ end:
 int
 classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
 {
-  DB_VALUE prop_val, cnstr_val, curr_comment, new_comment, value;
+  DB_VALUE prop_val, cnstr_val, curr_comment, new_comment, updated_time;
   DB_SEQ *prop_seq, *idx_seq;
   const char *property_type;
   int found = 0;
@@ -1993,6 +1989,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
   db_make_null (&cnstr_val);
   db_make_null (&curr_comment);
   db_make_null (&new_comment);
+  db_make_null (&updated_time);
 
   property_type = classobj_map_constraint_to_property (cons->type);
 
@@ -2025,18 +2022,18 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
-  db_make_string (&new_comment, comment);
-  error = set_put_element (idx_seq, len - 3, &new_comment);
-  if (error != NO_ERROR)
+  if (db_make_string (&new_comment, comment) != NO_ERROR ||
+      set_put_element (idx_seq, len - 3, &new_comment) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
-  /* updated_time */
-  error = db_sys_datetime (&value);
-  error = set_put_element (idx_seq, len - 1, &value);
-  if (error != NO_ERROR)
+  if (db_sys_datetime (&updated_time) != NO_ERROR || set_put_element (idx_seq, len - 1, &updated_time) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
@@ -2063,6 +2060,8 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_comment);
   pr_clear_value (&new_comment);
+  pr_clear_value (&updated_time);
+
   return error;
 }
 
@@ -3617,6 +3616,8 @@ other_error:
   pr_clear_value (&uvalue);
   pr_clear_value (&pvalue);
   pr_clear_value (&statusval);
+  pr_clear_value (&created_time);
+  pr_clear_value (&updated_time);
 
   classobj_free_class_constraints (constraints);
 
@@ -8811,7 +8812,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 int
 classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, SM_INDEX_STATUS index_status)
 {
-  DB_VALUE prop_val, cnstr_val, curr_status, new_status, value;
+  DB_VALUE prop_val, cnstr_val, curr_status, new_status, updated_time;
   DB_SEQ *prop_seq, *idx_seq;
   const char *property_type;
   int found = 0;
@@ -8824,6 +8825,7 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
   db_make_null (&cnstr_val);
   db_make_null (&curr_status);
   db_make_null (&new_status);
+  db_make_null (&updated_time);
 
   property_type = classobj_map_constraint_to_property (cons->type);
 
@@ -8856,18 +8858,18 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
       goto end;
     }
 
-  db_make_int (&new_status, index_status);
-  error = set_put_element (idx_seq, len - 4, &new_status);
-  if (error != NO_ERROR)
+  if (db_make_int (&new_status, index_status) != NO_ERROR ||
+      set_put_element (idx_seq, len - 4, &new_status) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
-  /* updated_time */
-  error = db_sys_datetime (&value);
-  error = set_put_element (idx_seq, len - 1, &value);
-  if (error != NO_ERROR)
+  if (db_sys_datetime (&updated_time) != NO_ERROR || set_put_element (idx_seq, len - 1, &updated_time) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
@@ -8894,5 +8896,6 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_status);
   pr_clear_value (&new_status);
+  pr_clear_value (&updated_time);
   return error;
 }

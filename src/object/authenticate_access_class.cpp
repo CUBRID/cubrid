@@ -80,7 +80,6 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   bool has_savepoint = true;
   int save = 0;
   int error = NO_ERROR;
-  DB_VALUE value;
 
   if (class_mop == NULL || owner_mop == NULL)
     {
@@ -277,7 +276,8 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
     }
 
   /* updated_time */
-  if (sm_update_class_timestamp (class_) != NO_ERROR)
+  error = sm_update_class_timestamp (class_);
+  if (error != NO_ERROR)
     {
       goto end;
     }

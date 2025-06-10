@@ -2263,7 +2263,6 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *user_name, *password, *comment;
   const char *member_name;
   bool set_savepoint = false;
-  DB_VALUE value;
 
   CHECK_MODIFICATION_ERROR ();
 

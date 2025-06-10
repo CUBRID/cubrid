@@ -2961,7 +2961,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
   need_free_old_name = true;
   need_free_new_name = false;
 
-  if (sm_update_class_timestamp (class_) != NO_ERROR)
+  error = sm_update_class_timestamp (class_);
+  if (error != NO_ERROR)
     {
       goto end;
     }

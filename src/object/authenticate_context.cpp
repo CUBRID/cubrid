@@ -287,7 +287,6 @@ authenticate_context::install (void)
   SM_TEMPLATE *def;
   AU_USER_CACHE *user_cache;
   int exists, save, index;
-  int error = NO_ERROR;
 
   AU_DISABLE (save);
 
@@ -453,8 +452,7 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-  error = au_set_user_timestamps (dba_user);
-  if (error != NO_ERROR)
+  if (au_set_user_timestamps (dba_user) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -488,8 +486,7 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-  error = au_set_user_timestamps (public_user);
-  if (error != NO_ERROR)
+  if (au_set_user_timestamps (public_user) != NO_ERROR)
     {
       goto exit_on_error;
     }

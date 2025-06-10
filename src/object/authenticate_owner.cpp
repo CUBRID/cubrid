@@ -227,7 +227,8 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       is_abort = true;

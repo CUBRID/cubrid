@@ -830,7 +830,8 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* created_time && updated_time */
-  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -964,7 +965,8 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }
@@ -1205,7 +1207,8 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error_code = db_update_otmpl_timestamp (obj_tmpl);
+  if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
@@ -2923,7 +2926,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -18481,7 +18485,8 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -18783,7 +18788,8 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	}
     }
   /* created_time && updated_time */
-  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -19110,7 +19116,8 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
     }
 
   /* updated_time */
-  if (db_update_otmpl_timestamp (obj_tmpl) != NO_ERROR)
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -20771,7 +20778,8 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
     }
 
   /* created_time && updated_time */
-  if (db_set_otmpl_timestamps (obj_tmpl) != NO_ERROR)
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -21344,7 +21352,8 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (db_update_obj_timestamp (server_object) != NO_ERROR)
+  error = db_update_obj_timestamp (server_object);
+  if (error != NO_ERROR)
     {
       goto end;
     }

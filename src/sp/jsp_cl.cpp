@@ -1873,7 +1873,8 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       goto error;
     }
 
-  if (db_update_otmpl_timestamp (obt_p) != NO_ERROR)
+  err = db_update_otmpl_timestamp (obt_p);
+  if (err != NO_ERROR)
     {
       goto error;
     }

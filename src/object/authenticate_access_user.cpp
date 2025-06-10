@@ -948,7 +948,6 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   DB_SET *group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int save;
   const char *member_name = NULL;
-  DB_VALUE value;
 
   AU_DISABLE (save);
   db_make_object (&membervalue, member);

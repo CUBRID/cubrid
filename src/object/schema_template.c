@@ -1546,7 +1546,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  DB_VALUE cnstr_val, datetime;
+  DB_VALUE cnstr_val, current_datetime;
   const char *constraint = classobj_map_constraint_to_property (type);
 
   db_make_null (&cnstr_val);
@@ -1560,9 +1560,9 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
       goto end;
     }
 
-  error = db_sys_datetime (&datetime);
-  if (error != NO_ERROR)
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
       goto end;
     }
 
@@ -1581,8 +1581,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.index_btid = BTID_INITIALIZER;
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
-  con.created_time = *db_get_datetime (&datetime);
-  con.updated_time = *db_get_datetime (&datetime);
+  con.created_time = *db_get_datetime (&current_datetime);
+  con.updated_time = *db_get_datetime (&current_datetime);
 
   if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
@@ -1591,6 +1591,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 
 end:
   pr_clear_value (&cnstr_val);
+  pr_clear_value (&current_datetime);
 
   return error;
 }

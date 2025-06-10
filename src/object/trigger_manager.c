@@ -6956,7 +6956,8 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
-  if (tr_update_trigger_timestamp (trigger_object) != NO_ERROR)
+  error = tr_update_trigger_timestamp (trigger_object);
+  if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       is_abort = true;

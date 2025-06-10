@@ -558,7 +558,8 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
+    err = db_set_otmpl_timestamps (obt_p);
+    if (err != NO_ERROR)
       {
 	goto error;
       }
