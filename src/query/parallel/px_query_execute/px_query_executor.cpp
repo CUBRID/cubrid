@@ -139,7 +139,8 @@ namespace parallel_query_execute
 
   void query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
   {
-    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p);
+    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p,
+			       &m_task_queue_global_p->m_tran_index_qlist_count_map);
     m_task_queue_global_p->add_task (task_tuple_p);
   }
 

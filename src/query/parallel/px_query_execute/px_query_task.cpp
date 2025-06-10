@@ -35,14 +35,16 @@ namespace parallel_query_execute
 
 
   task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p)
+	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
+	      std::map<int, int> *tran_index_qlist_count_map_p)
     : m_orig_thread_p (thread_p),
       m_xasl (xasl),
       m_xasl_state (xasl_state),
       m_mutex_p (mutex_p),
       m_task_state_p (task_state_p),
       m_worker_manager_p (worker_manager_p),
-      m_error_messages_p (error_messages_p)
+      m_error_messages_p (error_messages_p),
+      m_tran_index_qlist_count_map_p (tran_index_qlist_count_map_p)
   {}
 
   task::~task()
@@ -87,8 +89,7 @@ namespace parallel_query_execute
     if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
       {
 	pthread_mutex_lock (m_mutex_p);
-	m_orig_thread_p->m_qlist_count += thread_ref.m_qlist_count;
-	thread_ref.m_qlist_count = 0;
+	(*m_tran_index_qlist_count_map_p)[thread_ref.index] = thread_ref.m_qlist_count;
 	pthread_mutex_unlock (m_mutex_p);
       }
 
@@ -132,8 +133,7 @@ namespace parallel_query_execute
     if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
       {
 	pthread_mutex_lock (m_mutex_p);
-	m_orig_thread_p->m_qlist_count += thread_ref.m_qlist_count;
-	thread_ref.m_qlist_count = 0;
+	(*m_tran_index_qlist_count_map_p)[thread_ref.index] = thread_ref.m_qlist_count;
 	pthread_mutex_unlock (m_mutex_p);
       }
 
@@ -177,10 +177,11 @@ namespace parallel_query_execute
   }
 
   task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
-				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p)
+				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p, std::map<int, int> *tran_index_qlist_count_map_p)
   {
     task_state *task_state_p = new task_state();
-    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p);
+    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p,
+			     tran_index_qlist_count_map_p);
     task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
     m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
@@ -363,6 +364,7 @@ namespace parallel_query_execute
   {
     bool not_ended = false;
     state_enum state;
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info();
     for (const auto &it : m_tasks)
       {
 	state = it->second->get_state();
@@ -397,8 +399,12 @@ namespace parallel_query_execute
 	thread_sleep (1);
       }
     while (not_ended);
+    for (const auto &it : m_tran_index_qlist_count_map)
+      {
+	thread_p->m_qlist_count += it.second;
+      }
+    m_tran_index_qlist_count_map.clear();
   }
-
 }
 
 #endif
