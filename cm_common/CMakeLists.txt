@@ -39,7 +39,6 @@ if(WIN32)
 endif(WIN32)
 add_library(cmstat SHARED ${CMSTAT_SOURCES})
 set_target_properties(cmstat PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cmstat PROPERTIES PUBLIC_HEADER "${CM_COMMON_DIR}/cm_stat.h")
 target_include_directories(cmstat PRIVATE ${JAVA_INC})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cmstat PRIVATE ${DIR_DEFS})
@@ -68,7 +67,6 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 add_library(cmdep SHARED ${CMDEP_SOURCES})
 set_target_properties(cmdep PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cmdep PROPERTIES PUBLIC_HEADER "${CM_COMMON_DIR}/cm_dep.h")
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cmdep PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -110,7 +108,6 @@ install(TARGETS cmstat cmdep cub_jobsa cub_sainfo
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   ARCHIVE DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
   )
 
 
