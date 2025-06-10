@@ -948,7 +948,7 @@ valid options:\n\
   -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
-      --ha                     dump only HA related parameters; CS-mode only\n 
+      --ha                     dump only HA related parameters\n 
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Wrong value \"%1$s\" for the server's HA running mode.\n

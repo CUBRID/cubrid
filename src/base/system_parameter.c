@@ -7097,14 +7097,13 @@ public:
 
     for (int i = 0; i < m_used; i++)
       {
-        if (m_loaded[i].conf_path != NULL 
-            && m_loaded[i].db_name != NULL
-            && strcmp (conf_path, m_loaded[i].conf_path) == 0
-            && strcmp (db_name, m_loaded[i].db_name) == 0)
-          {
-            return;
-          }
-      } 
+	if (m_loaded[i].conf_path != NULL
+	    && m_loaded[i].db_name != NULL
+	    && strcmp (conf_path, m_loaded[i].conf_path) == 0 && strcmp (db_name, m_loaded[i].db_name) == 0)
+	  {
+	    return;
+	  }
+      }
 
     if (m_used < MAX_NUM_OF_PRM_FILES_LOADED)
       {
@@ -7166,7 +7165,11 @@ sysprm_dump_parameters (FILE * fp, unsigned int filter)
 	  continue;
 	}
 #if defined(SA_MODE)
-      if (PRM_IS_FOR_HA (prm))
+      if ((filter & PRM_FOR_HA) != PRM_IS_FOR_HA (prm))
+	{
+	  continue;
+	}
+      else if (!(prm->static_flag & filter))
 	{
 	  continue;
 	}

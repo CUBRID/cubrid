@@ -2266,13 +2266,6 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
   ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_S);
 
-#if defined(SA_MODE)
-  if (ha_flag)
-    {
-      goto print_dumpparam_usage;
-    }
-#endif
-
   if (output_file == NULL)
     {
       outfp = stdout;
@@ -2332,7 +2325,14 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
   if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
     {
-      sysprm_dump_parameters (outfp, 0);
+      if (ha_flag)
+	{
+	  sysprm_dump_parameters (outfp, PRM_FOR_HA);
+	}
+      else
+	{
+	  sysprm_dump_parameters (outfp, PRM_FOR_CLIENT | PRM_FOR_SERVER);
+	}
     }
 #endif /* !CS_MODE */
 
