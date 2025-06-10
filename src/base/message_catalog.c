@@ -501,24 +501,22 @@ int
 msgcat_init (void)
 {
   size_t i;
+  int rc = NO_ERROR;
 
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
       if (msgcat_System[i].msg_catd == NULL)
 	{
 	  msgcat_System[i].msg_catd = msgcat_open (msgcat_System[i].name);
+	  if (msgcat_System[i].msg_catd == NULL)
+	    {
+	      // TODO: Need to decide whether to return immediately when an error occurs.  
+	      rc = ER_FAILED;
+	    }
 	}
     }
 
-  for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
-    {
-      if (msgcat_System[i].msg_catd == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
+  return rc;
 }
 
 /*

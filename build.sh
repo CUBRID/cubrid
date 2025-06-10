@@ -34,6 +34,8 @@ source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
+compiler=""
+
 # if you turn on the unit test of memory monitor
 # configure_options="-DUNIT_TEST_MEMORY_MONITOR=ON" or "-DUNIT_TESTS=ON"
 # default build_dir = "$source_dir/build_${build_target}_${build_mode}"
@@ -191,6 +193,38 @@ function build_clean ()
 }
 
 
+function set_compiler_env() {
+  # Setup compiler environment variables based on chosen compiler
+  print_check "Setting up compiler environment"
+  if [ -z "$compiler" ] || [ "$compiler" = "gcc" ]; then
+    # Default GCC settings
+    print_info "Using default GCC compiler"
+    export CC="gcc"
+    export CXX="g++"
+    # No special flags needed for gcc
+  elif [[ "$compiler" =~ ^clang[0-9]*$ ]]; then
+    # Extract version if specified (e.g., clang14 -> 14)
+    if [[ "$compiler" =~ ^clang([0-9]+)$ ]]; then
+      clang_version="${BASH_REMATCH[1]}"
+      print_info "Using Clang version $clang_version"
+      export CC="clang-$clang_version"
+      export CXX="clang++-$clang_version"
+    else
+      # Use default clang
+      print_info "Using default Clang compiler"
+      export CC="clang"
+      export CXX="clang++"
+    fi
+    # Add 'Wno' flags, otherwise Modern Clang treats them to be errors
+    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration -w"
+    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs -w"
+  else
+    print_fatal "Unknown compiler for -C option: $compiler"
+  fi
+  print_result "OK"
+}
+
+
 function build_configure ()
 {
   # configure with target and options
@@ -199,6 +233,11 @@ function build_configure ()
     mkdir -p $build_dir
   fi
   print_result "OK"
+
+  # Set up compiler environment variables if specified
+  if [ -n "$compiler" ]; then
+    set_compiler_env
+  fi
 
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
@@ -473,6 +512,7 @@ function show_usage ()
   echo "  -a      Run autogen.sh before build; [default: yes]"
   echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
   echo "  -c opts Set configure options; [default: NONE]"
+  echo "  -C opts Specify compiler (available options: gcc, clang). If not specified, it uses system default compiler; [default: none]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
   echo "  -p path Set prefix path; [default: <build_path>/_install/$product_name]"
@@ -501,7 +541,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:g:is:b:p:o:aj:c:z:vh" opt; do
+  while getopts ":t:m:g:is:b:p:o:aj:c:C:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -517,6 +557,7 @@ function get_options ()
 	  configure_options="$configure_options $optval"
 	done
       ;;
+      C ) compiler="$OPTARG" ;;
       z )
 	for optval in "$OPTARG"
 	do
