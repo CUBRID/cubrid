@@ -9032,6 +9032,9 @@ file_tempcache_init (void)
   for (int i = 0; i < ntrans; i++)
     {
       pthread_mutex_init (&file_Tempcache.tran_files[i].mutex, NULL);
+#if !defined (NDEBUG)
+      file_Tempcache.tran_files[i].owner_mutex = -1;
+#endif
     }
 
   /* stats */

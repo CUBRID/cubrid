@@ -84,6 +84,13 @@ namespace parallel_query_execute
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+    if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
+      {
+	pthread_mutex_lock (m_mutex_p);
+	m_orig_thread_p->m_qlist_count += thread_ref.m_qlist_count;
+	thread_ref.m_qlist_count = 0;
+	pthread_mutex_unlock (m_mutex_p);
+      }
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
@@ -122,6 +129,13 @@ namespace parallel_query_execute
 
     /* clear XASL tree */
     (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+    if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
+      {
+	pthread_mutex_lock (m_mutex_p);
+	m_orig_thread_p->m_qlist_count += thread_ref.m_qlist_count;
+	thread_ref.m_qlist_count = 0;
+	pthread_mutex_unlock (m_mutex_p);
+      }
 
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;

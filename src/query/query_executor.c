@@ -14780,7 +14780,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
-  bool is_aptr_parallel_query_executor_allocated = false;
 
   /*
    * Pre_processing
@@ -15159,7 +15158,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 #if SERVER_MODE
-		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && !is_aptr_parallel_query_executor_allocated)
+		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->px_executor == nullptr)
 			{
 			  int n_workers_to_reserve;
 			  if (xasl->parallelism == -1)
@@ -15174,7 +15173,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			  if (n_workers_to_reserve <= 0)
 			    {
-			      is_aptr_parallel_query_executor_allocated = false;
 			      xasl->executed_parallelism = 0;
 			    }
 			  else
@@ -15184,12 +15182,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      if (parallel_query_execute::query_executor::make_parallel_query_executor_recursively
 				  (thread_p, xasl, px_worker_manager_p, nullptr, n_workers_to_reserve) != true)
 				{
-				  is_aptr_parallel_query_executor_allocated = false;
 				  xasl->executed_parallelism = 0;
 				}
 			      else
 				{
-				  is_aptr_parallel_query_executor_allocated = true;
 				  xasl->executed_parallelism = n_workers_to_reserve + 1;
 				}
 			    }
@@ -16169,12 +16165,12 @@ end:
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      //assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
     }
   else
     {
       // no new list files
-      //assert (thread_p->m_qlist_count == qlist_enter_count);
+      assert (thread_p->m_qlist_count == qlist_enter_count);
     }
 #endif // SERVER_MODE
 

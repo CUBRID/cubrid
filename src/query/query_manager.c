@@ -283,31 +283,34 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
    * to reflect internal queries such as authorization checks.
    */
   static int max_query_entry = prm_max_entry + ((prm_max_entry < 2) ? 1 : prm_max_entry / 2);
-
+  pthread_mutex_lock (&tran_entry_p->mutex);
   query_p = tran_entry_p->free_query_entry_list_p;
 
   if (query_p)
     {
-      pthread_mutex_lock (&tran_entry_p->mutex);
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
     }
-  else if (max_query_entry <= tran_entry_p->num_query_entries)
-    {
-      return NULL;
-    }
   else
     {
-      query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
-      if (query_p == NULL)
+      pthread_mutex_unlock (&tran_entry_p->mutex);
+      if (max_query_entry <= tran_entry_p->num_query_entries)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_QUERY_ENTRY));
 	  return NULL;
 	}
+      else
+	{
+	  query_p = (QMGR_QUERY_ENTRY *) malloc (sizeof (QMGR_QUERY_ENTRY));
+	  if (query_p == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_QUERY_ENTRY));
+	      return NULL;
+	    }
 
-      query_p->list_id = NULL;
+	  query_p->list_id = NULL;
 
-      tran_entry_p->num_query_entries++;
+	  tran_entry_p->num_query_entries++;
+	}
     }
 
   /* assign query id */
