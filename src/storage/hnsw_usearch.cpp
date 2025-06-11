@@ -119,8 +119,6 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
 
-  hnsw_index_id++;
-
   return btid;
 }
 
