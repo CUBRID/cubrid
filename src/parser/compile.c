@@ -1242,6 +1242,10 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	  return NULL;
 	}
 
+      if (*new_trigger_stmt)
+	{
+	  free_and_init (*new_trigger_stmt);
+	}
       *new_trigger_stmt = new_trigger_stmt_str;
 
       statement->info.scope.stmt->info.trigger_action.expression =

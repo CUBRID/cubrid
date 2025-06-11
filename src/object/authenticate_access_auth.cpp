@@ -100,15 +100,15 @@ const char *AU_TYPE_SET[] =
   "EXECUTE"			/* DB_AUTH_EXECUTE */
 };
 
-const int AU_TYPE_SET_LEN[] =
+constexpr int AU_TYPE_SET_LEN[] =
 {
-  strlen ("SELECT"),		/* DB_AUTH_SELECT */
-  strlen ("INSERT"),		/* DB_AUTH_INSERT */
-  strlen ("UPDATE"),		/* DB_AUTH_UPDATE */
-  strlen ("DELETE"),		/* DB_AUTH_DELETE */
-  strlen ("ALTER"),		/* DB_AUTH_ALTER */
-  strlen ("INDEX"),		/* DB_AUTH_INDEX */
-  strlen ("EXECUTE")		/* DB_AUTH_EXECUTE */
+  sizeof ("SELECT") - 1,		/* DB_AUTH_SELECT */
+  sizeof ("INSERT") - 1,		/* DB_AUTH_INSERT */
+  sizeof ("UPDATE") - 1,		/* DB_AUTH_UPDATE */
+  sizeof ("DELETE") - 1,		/* DB_AUTH_DELETE */
+  sizeof ("ALTER") - 1,		/* DB_AUTH_ALTER */
+  sizeof ("INDEX") - 1,		/* DB_AUTH_INDEX */
+  sizeof ("EXECUTE") - 1		/* DB_AUTH_EXECUTE */
 };
 
 au_auth_accessor::au_auth_accessor ()
@@ -1400,7 +1400,11 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 		   * ================================
 		   *   grantee         {..,unique_name, grantor, ..}
 		   */
-		  if (!ws_is_same_object (grantee_mop, new_owner_mop))
+		  if (ws_is_same_object (grantee_mop, new_owner_mop))
+		    {
+		      /* privileges cannot be granted to the owner, so they are removed immediately without being temporarily stored. */
+		    }
+		  else
 		    {
 		      error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex), &element);
 		      if (error != NO_ERROR)
@@ -1724,19 +1728,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
        */
       if (ws_is_same_object (grantee_mop, new_owner_mop))
 	{
-	  error = obj_inst_lock (db_auth_object_mop, 1);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
-
-	  error = obj_delete (db_auth_object_mop);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
+	  /* privileges cannot be granted to the owner, so they are removed immediately without being temporarily stored. */
 	}
       else
 	{
@@ -1750,20 +1742,20 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	    {
 	      auth_unordered_map[key] = is_grantable;
 	    }
+	}
 
-	  error = obj_inst_lock (db_auth_object_mop, 1);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
+      error = obj_inst_lock (db_auth_object_mop, 1);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
+	}
 
-	  error = obj_delete (db_auth_object_mop);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      goto exit;
-	    }
+      error = obj_delete (db_auth_object_mop);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
 	}
     }
 

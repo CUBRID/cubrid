@@ -61,25 +61,29 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
   int type;
   int size;
 
-  if (tot_val_size)
-    {
-      *tot_val_size = 0;
-    }
-  if (info_size)
-    {
-      *info_size = 0;
-    }
+  assert (info_size && tot_val_size);
+  *tot_val_size = 0;
+  *info_size = 0;
 
-  if (strncmp (buf, "B ", 1) != 0)
+  if (memcmp (buf, "B ", 2) != 0)
     {
       return false;
     }
 
   type = atoi (buf + 2);
-  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING) && (type != CCI_U_TYPE_NCHAR)
-      && (type != CCI_U_TYPE_VARNCHAR) && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
-      && (type != CCI_U_TYPE_ENUM) && (type != CCI_U_TYPE_JSON))
+  switch (type)
     {
+    case CCI_U_TYPE_CHAR:
+    case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_NCHAR:
+    case CCI_U_TYPE_VARNCHAR:
+    case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
+    case CCI_U_TYPE_BIT:
+    case CCI_U_TYPE_VARBIT:
+      break;
+
+    default:
       return false;
     }
 
@@ -96,10 +100,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
       goto error_on_val_size;
     }
 
-  if (info_size)
-    {
-      *info_size = (char *) (p + 1) - (char *) buf;
-    }
+  *info_size = (char *) (p + 1) - (char *) buf;
 
   switch (type)
     {
@@ -116,27 +117,20 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 	    len--;
 	  }
 
-	if (tot_val_size)
-	  {
-	    *tot_val_size = len + 1;
-	  }
+	*tot_val_size = len + 1;
       }
       break;
     default:
-      if (tot_val_size)
-	{
-	  *tot_val_size = size;
-	}
+      *tot_val_size = size;
       break;
     }
 
   return true;
 
 error_on_val_size:
-  if (tot_val_size)
-    {
-      *tot_val_size = -1;
-    }
+  *tot_val_size = -1;
+  *info_size = -1;
+
   return false;
 }
 #else /* BROKER_LOG_RUNNER */
@@ -145,24 +139,17 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 {
   char *msg;
   char *p, *q;
-  char size[256] = { 0, };
   char *value_p;
   char *size_begin;
   char *size_end;
   char *info_end;
-  int len;
 
-  if (info_size)
-    {
-      *info_size = 0;
-    }
-  if (tot_val_size)
-    {
-      *tot_val_size = 0;
-    }
+  assert (info_size && tot_val_size);
+  *info_size = 0;
+  *tot_val_size = 0;
 
   msg = get_msg_start_ptr (buf);
-  if (strncmp (msg, "bind ", 5) != 0)
+  if (memcmp (msg, "bind ", 5) != 0)
     {
       return false;
     }
@@ -174,8 +161,14 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
   p += 2;
 
-  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) && (strncmp (p, "NCHAR", 5) != 0)
-      && (strncmp (p, "VARNCHAR", 8) != 0) && (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
+  if (p[0] == 'V')
+    {
+      if (memcmp (p, "VARCHAR", 7) && memcmp (p, "VARBIT", 6) && memcmp (p, "VARNCHAR", 8))
+	{
+	  return false;
+	}
+    }
+  else if (memcmp (p, "CHAR", 4) && memcmp (p, "BIT", 3) && memcmp (p, "NCHAR", 5))
     {
       return false;
     }
@@ -204,29 +197,25 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 
   info_end = size_end + 1;
 
-  if (info_size)
-    {
-      *info_size = (char *) info_end - (char *) buf;
-    }
+  *info_size = (char *) info_end - (char *) buf;
 
-  if ((strncmp (p, "CHAR", 4) != 0) || (strncmp (p, "VARCHAR", 7) != 0) || (strncmp (p, "NCHAR", 5) != 0)
-      || (strncmp (p, "VARNCHAR", 8) != 0))
+  if (memcmp (p, "BIT", 3) && memcmp (p, "VARBIT", 6))
     {
       *tot_val_size = strlen (info_end);
+      if (info_end[*tot_val_size - 1] == '\n')
+	{
+	  (*tot_val_size)--;
+	  /* trick: 
+	   * The caller of this function allocates a buffer of size (*tot_val_size + *info_size) and reads it from the file. 
+	   * Also, *info_size is not used for any other purpose. 
+	   * It is made to be a size that includes a newline character in order to maintain the line number correctly.
+	   */
+	  (*info_size)++;
+	}
     }
-  else if (tot_val_size)
+  else
     {
-      len = size_end - size_begin;
-      if (len > (int) sizeof (size))
-	{
-	  goto error_on_val_size;
-	}
-      if (len > 0)
-	{
-	  memcpy (size, size_begin, len);
-	  size[len] = '\0';
-	}
-      *tot_val_size = atoi (size);
+      *tot_val_size = atoi (size_begin);
       if (*tot_val_size < 0)
 	{
 	  goto error_on_val_size;
@@ -236,14 +225,8 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
   return true;
 
 error_on_val_size:
-  if (info_size)
-    {
-      *info_size = -1;
-    }
-  if (tot_val_size)
-    {
-      *tot_val_size = -1;
-    }
+  *info_size = -1;
+  *tot_val_size = -1;
   return false;
 }
 #endif /* BROKER_LOG_RUNNER */

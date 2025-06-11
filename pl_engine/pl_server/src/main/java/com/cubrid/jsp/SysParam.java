@@ -1,11 +1,13 @@
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.protocol.PackableObject;
 import com.cubrid.jsp.protocol.UnPackableObject;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
-public class SysParam implements UnPackableObject {
+public class SysParam implements UnPackableObject, PackableObject {
 
     // see src/base/system_parameter.h
     public static final int ORACLE_STYLE_EMPTY_STRING = 95;
@@ -16,6 +18,10 @@ public class SysParam implements UnPackableObject {
     public static final int TIMEZONE = 249;
     public static final int ORACLE_COMPAT_NUMBER_BEHAVIOR = 334;
     public static final int STORED_PROCEDURE_DUMP_ICODE = 354;
+
+    // PL session specific parameters
+    public static final int PL_SESSION_PARAM_START = 100000;
+    public static final int DBMS_OUTPUT = PL_SESSION_PARAM_START;
 
     // paramType
     public static final int PRM_TYPE_INTEGER = 0;
@@ -73,6 +79,26 @@ public class SysParam implements UnPackableObject {
     private int paramType;
     private String paramValue;
 
+    public SysParam(int id, int type, Object value) {
+        this.paramId = id;
+        this.paramType = type;
+
+        switch (this.paramType) {
+            case PRM_TYPE_INTEGER:
+                setParamValueInteger((Integer) value);
+                break;
+            case PRM_TYPE_BOOLEAN:
+                setParamValueBoolean((Boolean) value);
+                break;
+            case PRM_TYPE_FLOAT:
+                setParamValueFloat((Float) value);
+                break;
+            case PRM_TYPE_STRING:
+                setParamValueString((String) value);
+                break;
+        }
+    }
+
     public SysParam(CUBRIDUnpacker unpacker) {
         unpack(unpacker);
     }
@@ -99,10 +125,51 @@ public class SysParam implements UnPackableObject {
                 + "]";
     }
 
+    // setters
+    public void setParamValueBoolean(boolean val) {
+        this.paramValue = val ? "t" : "f";
+    }
+
+    public void setParamValueInteger(int val) {
+        this.paramValue = Integer.toString(val);
+    }
+
+    public void setParamValueString(String val) {
+        this.paramValue = val;
+    }
+
+    public void setParamValueFloat(float val) {
+        this.paramValue = Float.toString(val);
+    }
+
+    // getters
+    public boolean getParamValueBoolean() {
+        return this.paramValue.equals("t");
+    }
+
+    public int getParamValueInteger() {
+        return Integer.parseInt(this.paramValue);
+    }
+
+    public String getParamValueString() {
+        return this.paramValue;
+    }
+
+    public float getParamValueFloat() {
+        return Float.parseFloat(this.paramValue);
+    }
+
     @Override
     public void unpack(CUBRIDUnpacker unpacker) {
         this.paramId = unpacker.unpackInt(); // paramId
         this.paramType = unpacker.unpackInt(); // paramType
         this.paramValue = new String(unpacker.unpackCStringByteArray());
+    }
+
+    @Override
+    public void pack(CUBRIDPacker packer) {
+        packer.packInt(this.paramId);
+        packer.packInt(this.paramType);
+        packer.packString(this.paramValue);
     }
 }

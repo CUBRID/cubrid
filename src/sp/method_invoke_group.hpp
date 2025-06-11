@@ -67,7 +67,7 @@ namespace cubmethod
   {
     public:
       method_invoke_group () = delete; // Not DefaultConstructible
-      method_invoke_group (cubpl::pl_signature_array &sig);
+      method_invoke_group (cubpl::pl_signature_array *sig);
 
       method_invoke_group (method_invoke_group &&other) = delete; // Not MoveConstructible
       method_invoke_group (const method_invoke_group &copy) = delete; // Not CopyConstructible
@@ -104,7 +104,7 @@ namespace cubmethod
 
       METHOD_GROUP_ID m_id;
       cubpl::execution_stack *m_stack;
-      cubpl::pl_signature_array &m_sig_array;
+      cubpl::pl_signature_array *m_sig_array;
 
       std::vector <DB_VALUE> m_result_vector;	/* placeholder for result value */
   };

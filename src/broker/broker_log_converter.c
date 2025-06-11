@@ -278,127 +278,178 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	}
     }
 
-  if (strcmp (p, "NULL") == 0)
+  type = CCI_U_TYPE_LAST + 1;
+  switch (*p)
     {
-      type = CCI_U_TYPE_NULL;
+    case 'B':
+      if (memcmp (p, "BIGINT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_BIGINT;
+	}
+      else if (memcmp (p, "BIT", 4) == 0)
+	{
+	  type = CCI_U_TYPE_BIT;
+	}
+      else if (memcmp (p, "BLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	  fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
+	  value_p = (char *) "";
+	  bind_len = 0;
+	  /* type = CCI_U_TYPE_BLOB; */
+	}
+      break;
+
+    case 'C':
+      if (memcmp (p, "CHAR", 5) == 0)
+	{
+	  type = CCI_U_TYPE_CHAR;
+	}
+      else if (memcmp (p, "CLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	  fprintf (stderr, "%s\nCLOB type is not implemented. Replaced with NULL\n", value_p);
+	  value_p = (char *) "";
+	  bind_len = 0;
+	  /* type = CCI_U_TYPE_CLOB; */
+	}
+      break;
+
+    case 'E':
+      if (memcmp (p, "ENUM", 5) == 0)
+	{
+	  type = CCI_U_TYPE_ENUM;
+	}
+      break;
+
+    case 'J':
+      if (memcmp (p, "JSON", 5) == 0)
+	{
+	  type = CCI_U_TYPE_JSON;
+	}
+      break;
+
+
+    case 'I':
+      if (memcmp (p, "INT", 4) == 0)
+	{
+	  type = CCI_U_TYPE_INT;
+	}
+      break;
+
+    case 'D':
+      if (memcmp (p, "DOUBLE", 7) == 0)
+	{
+	  type = CCI_U_TYPE_DOUBLE;
+	}
+      else if (memcmp (p, "DATE", 5) == 0)
+	{
+	  type = CCI_U_TYPE_DATE;
+	}
+      else if (memcmp (p, "DATETIME", 9) == 0)
+	{
+	  type = CCI_U_TYPE_DATETIME;
+	}
+      else if (memcmp (p, "DATETIMETZ", 11) == 0)
+	{
+	  type = CCI_U_TYPE_DATETIMETZ;
+	}
+      break;
+
+    case 'F':
+      if (memcmp (p, "FLOAT", 6) == 0)
+	{
+	  type = CCI_U_TYPE_FLOAT;
+	}
+      break;
+
+    case 'M':
+      if (memcmp (p, "MONETARY", 9) == 0)
+	{
+	  type = CCI_U_TYPE_MONETARY;
+	}
+      break;
+
+    case 'N':
+      if (memcmp (p, "NUMERIC", 8) == 0)
+	{
+	  type = CCI_U_TYPE_NUMERIC;
+	}
+      else if (memcmp (p, "NULL", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
+      else if (memcmp (p, "NCHAR", 6) == 0)
+	{
+	  type = CCI_U_TYPE_NCHAR;
+	}
+      break;
+
+
+    case 'O':
+      if (memcmp (p, "OBJECT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_OBJECT;
+	}
+      break;
+
+    case 'S':
+      if (memcmp (p, "SHORT", 6) == 0)
+	{
+	  type = CCI_U_TYPE_SHORT;
+	}
+      break;
+
+    case 'T':
+      if (memcmp (p, "TIME", 5) == 0)
+	{
+	  type = CCI_U_TYPE_TIME;
+	}
+      else if (memcmp (p, "TIMESTAMP", 10) == 0)
+	{
+	  type = CCI_U_TYPE_TIMESTAMP;
+	}
+      else if (memcmp (p, "TIMESTAMPTZ", 12) == 0)
+	{
+	  type = CCI_U_TYPE_TIMESTAMPTZ;
+	}
+      break;
+
+    case 'U':
+      if (memcmp (p, "UINT", 5) == 0)
+	{
+	  type = CCI_U_TYPE_UINT;
+	}
+      else if (memcmp (p, "UBIGINT", 8) == 0)
+	{
+	  type = CCI_U_TYPE_UBIGINT;
+	}
+      else if (memcmp (p, "USHORT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_USHORT;
+	}
+      break;
+
+    case 'V':
+      if (memcmp (p, "VARCHAR", 8) == 0)
+	{
+	  type = CCI_U_TYPE_STRING;
+	}
+      else if (memcmp (p, "VARBIT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_VARBIT;
+	}
+      else if (memcmp (p, "VARNCHAR", 9) == 0)
+	{
+	  type = CCI_U_TYPE_VARNCHAR;
+	}
+      break;
+
+    default:
+      break;
     }
-  else if (strcmp (p, "CHAR") == 0)
-    {
-      type = CCI_U_TYPE_CHAR;
-    }
-  else if (strcmp (p, "VARCHAR") == 0)
-    {
-      type = CCI_U_TYPE_STRING;
-    }
-  else if (strcmp (p, "NCHAR") == 0)
-    {
-      type = CCI_U_TYPE_NCHAR;
-    }
-  else if (strcmp (p, "VARNCHAR") == 0)
-    {
-      type = CCI_U_TYPE_VARNCHAR;
-    }
-  else if (strcmp (p, "BIT") == 0)
-    {
-      type = CCI_U_TYPE_BIT;
-    }
-  else if (strcmp (p, "VARBIT") == 0)
-    {
-      type = CCI_U_TYPE_VARBIT;
-    }
-  else if (strcmp (p, "NUMERIC") == 0)
-    {
-      type = CCI_U_TYPE_NUMERIC;
-    }
-  else if (strcmp (p, "UBIGINT") == 0)
-    {
-      type = CCI_U_TYPE_UBIGINT;
-    }
-  else if (strcmp (p, "BIGINT") == 0)
-    {
-      type = CCI_U_TYPE_BIGINT;
-    }
-  else if (strcmp (p, "UINT") == 0)
-    {
-      type = CCI_U_TYPE_UINT;
-    }
-  else if (strcmp (p, "INT") == 0)
-    {
-      type = CCI_U_TYPE_INT;
-    }
-  else if (strcmp (p, "USHORT") == 0)
-    {
-      type = CCI_U_TYPE_USHORT;
-    }
-  else if (strcmp (p, "SHORT") == 0)
-    {
-      type = CCI_U_TYPE_SHORT;
-    }
-  else if (strcmp (p, "MONETARY") == 0)
-    {
-      type = CCI_U_TYPE_MONETARY;
-    }
-  else if (strcmp (p, "FLOAT") == 0)
-    {
-      type = CCI_U_TYPE_FLOAT;
-    }
-  else if (strcmp (p, "DOUBLE") == 0)
-    {
-      type = CCI_U_TYPE_DOUBLE;
-    }
-  else if (strcmp (p, "DATE") == 0)
-    {
-      type = CCI_U_TYPE_DATE;
-    }
-  else if (strcmp (p, "TIME") == 0)
-    {
-      type = CCI_U_TYPE_TIME;
-    }
-  else if (strcmp (p, "TIMESTAMP") == 0)
-    {
-      type = CCI_U_TYPE_TIMESTAMP;
-    }
-  else if (strcmp (p, "DATETIME") == 0)
-    {
-      type = CCI_U_TYPE_DATETIME;
-    }
-  else if (strcmp (p, "TIMESTAMPTZ") == 0)
-    {
-      type = CCI_U_TYPE_TIMESTAMPTZ;
-    }
-  else if (strcmp (p, "DATETIMETZ") == 0)
-    {
-      type = CCI_U_TYPE_DATETIMETZ;
-    }
-  else if (strcmp (p, "OBJECT") == 0)
-    {
-      type = CCI_U_TYPE_OBJECT;
-    }
-  else if (strcmp (p, "BLOB") == 0)
-    {
-      type = CCI_U_TYPE_NULL;
-      fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
-      value_p = (char *) "";
-      bind_len = 0;
-      /* type = CCI_U_TYPE_BLOB; */
-    }
-  else if (strcmp (p, "CLOB") == 0)
-    {
-      type = CCI_U_TYPE_NULL;
-      fprintf (stderr, "%s\nCLOB type is not implemented. Replaced with NULL\n", value_p);
-      value_p = (char *) "";
-      bind_len = 0;
-      /* type = CCI_U_TYPE_CLOB; */
-    }
-  else if (strcmp (p, "ENUM") == 0)
-    {
-      type = CCI_U_TYPE_ENUM;
-    }
-  else if (strcmp (p, "JSON") == 0)
-    {
-      type = CCI_U_TYPE_JSON;
-    }
-  else
+
+  if (type == (CCI_U_TYPE_LAST + 1))
     {
       fprintf (stderr, "log error [line:%d]\n", lineno);
       return -1;
@@ -406,7 +457,9 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 
   if (bind_len > 0)
     {
-      fprintf (outfp, "B %d %d %s\n", type, bind_len, value_p);
+      fprintf (outfp, "B %d %d ", type, bind_len);
+      fwrite (value_p, 1, bind_len, outfp);
+      fwrite ("\n", 1, 1, outfp);
     }
   else
     {

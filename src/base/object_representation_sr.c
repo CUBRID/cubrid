@@ -4525,13 +4525,9 @@ or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
     {
       return MVCCID_ALL_VISIBLE;
     }
-  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
   else
     {
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
       MVCCID insert_id = 0;
       OR_GET_BIGINT (buf->ptr, &insert_id);
       buf->ptr += OR_MVCCID_SIZE;
@@ -4580,16 +4576,9 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
   if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
       /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
+      OR_GET_BIGINT (buf->ptr, &(delid));
+      buf->ptr += OR_MVCCID_SIZE;
     }
   return delid;
 }
@@ -4613,15 +4602,9 @@ or_mvcc_get_chn (OR_BUF * buf, int *error)
 
   *error = NO_ERROR;
 
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-    }
+  assert (buf->ptr + OR_INT_SIZE <= buf->endptr);
+  chn = OR_GET_INT (buf->ptr);
+  buf->ptr += OR_INT_SIZE;
 
   return chn;
 }
@@ -4680,12 +4663,7 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
     {
       return NO_ERROR;
     }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
@@ -4713,11 +4691,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
       return NO_ERROR;
     }
 
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_underflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 

@@ -5722,8 +5722,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
-    case LOG_END_OF_LOG:
     case LOG_SYSOP_ATOMIC_START:
+      break;
+
+    case LOG_END_OF_LOG:
+      assert (false);
       break;
 
     case LOG_REPLICATION_DATA:
@@ -6045,7 +6048,7 @@ log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv
   if (rcv_buf->ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf->endptr)
     {
       assert_release (false);
-      return or_overflow (rcv_buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   /* Get offset_to_data. */

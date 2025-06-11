@@ -18,7 +18,7 @@
 
 
 /*
- * pl_file.h - Functions to manage files related to Procedure Language Server
+ * pl_file.h - Functions to manage files related to Procedural Language Server
  *
  * Note:
  */
