@@ -34,12 +34,6 @@
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
 
-#if 0
-#include "faiss/IndexHNSW.h"
-#include "faiss/IndexIDMap.h"
-#include "faiss/index_io.h"
-#endif
-
 BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 		       int metric);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);

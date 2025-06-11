@@ -32,6 +32,10 @@
 #include <fstream>
 #include <filesystem>
 
+#include "faiss/IndexHNSW.h"
+#include "faiss/IndexIDMap.h"
+#include "faiss/index_io.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -143,6 +147,7 @@ int hnsw_print_index_info (BTID *btid)
     }
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
 
   std::ostringstream oss;
 
@@ -156,6 +161,7 @@ int hnsw_print_index_info (BTID *btid)
   /*
   * This works because, in faiss/impl/HNSW.cpp, HNSW is initialized with
   * set_default_probas(M, ...);
+
   // initialize the assign_probas and cum_nneighbor_per_level to
   // have 2*M links on level 0 and M links on levels > 0
   void HNSW::set_default_probas(int M, float levelMult) {
