@@ -945,7 +945,7 @@ valid options:\n\
   -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
-      --ha                     HA관련 시스템 파라미터 출력\n
+      --ha                     HA관련 시스템 파라미터만 출력\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n
