@@ -5659,57 +5659,6 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
   return query;
 }
 
-/*
- * pt_make_collation_expr_node() - builds the node required to print the
- *                                 collation of column in SHOW COLUMNS
- *
- *    (IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4,
- *	   CL.coll_name, NULL)) AS Collation
- *
- *   return: newly build node (PT_NODE)
- *   parser(in): Parser context
- */
-static PT_NODE *
-pt_make_collation_expr_node (PARSER_CONTEXT * parser)
-{
-  PT_NODE *collation_name = NULL;
-  PT_NODE *null_expr = NULL;
-  PT_NODE *if_node = NULL;
-
-  collation_name = pt_make_dotted_identifier (parser, "CL.coll_name");
-
-  null_expr = parser_new_node (parser, PT_VALUE);
-  if (null_expr)
-    {
-      null_expr->type_enum = PT_TYPE_NULL;
-    }
-
-  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4, CL.name , NULL ) */
-  {
-    PT_NODE *cond_item1 = NULL;
-    PT_NODE *cond_item2 = NULL;
-    PT_NODE *pred_for_if = NULL;
-
-    /* CHAR */
-    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_CHAR /* 25 */ );
-
-    /* STRING */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", DB_TYPE_STRING /* 4 */ );
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-
-    pred_for_if = cond_item1;
-
-    if_node = parser_make_expression (parser, PT_IF, pred_for_if, collation_name, null_expr);
-
-    if (if_node != NULL)
-      {
-	if_node->alias_print = pt_append_string (parser, NULL, "Collation");
-      }
-  }
-
-  return if_node;
-}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
