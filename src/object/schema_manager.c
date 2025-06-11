@@ -16705,7 +16705,7 @@ sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
     {
       // *INDENT-OFF*
       class_->checked_time = (DB_DATETIME){0, 0};
-      // *INDENT-OFF*
+      // *INDENT-ON*
     }
   else
     {

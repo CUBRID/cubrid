@@ -3563,9 +3563,11 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
-       * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
-       * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
+      /* this sequence is an alternating pair of constraint name & info sequence, as by: { 
+       *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time },
+       *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time }, 
+       *  ... }
+       */
       props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
