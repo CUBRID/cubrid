@@ -11722,10 +11722,20 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
+	  char *a_name = NULL, *t_name, *r_name;
+
 	  if (spec->info.spec.range_var)
 	    {
+	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+	    }
+
+	  t_name = (char *) target->info.name.original;
+	  r_name = (char *) target->info.name.resolved;
+
+	  if (a_name)
+	    {
 	      /* checking alias for remote/local table */
-	      if (strcmp (spec->info.spec.range_var->info.name.original, target->info.name.original) == 0)
+	      if ((t_name && strcmp (a_name, t_name) == 0) || ((r_name && strcmp (a_name, r_name) == 0)))
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11740,8 +11750,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	    }
 	  else
 	    {
-	      if (spec->info.spec.entity_name
-		  && strcmp (spec->info.spec.entity_name->info.name.original, target->info.name.original) == 0)
+	      if (spec->info.spec.entity_name && t_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, t_name) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -12026,7 +12036,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  assert (server->node_type == PT_NAME);
+  if (server->node_type == PT_DBLINK_TABLE_DML)
+    {
+      /* already converted */
+      return;
+    }
 
   ct->info.dblink_table.is_name = true;
   ct->info.dblink_table.conn = server;

@@ -10280,7 +10280,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = statement->info.delete_.spec;
 	  while (node && error == NO_ERROR)
 	    {
-	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	      if (node->info.spec.flat_entity_list && (node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
 		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
@@ -10368,7 +10368,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   spec = statement->info.delete_.spec;
   while (spec)
     {
-      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && !spec->info.spec.remote_server_name)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
