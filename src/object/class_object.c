@@ -2675,8 +2675,8 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
   new_->index_status = SM_NO_INDEX;
   // *INDENT-OFF*
-  new_->created_time = {0, 0};
-  new_->updated_time = {0, 0};
+  new_->created_time = (DB_DATETIME){0, 0};
+  new_->updated_time = (DB_DATETIME){0, 0};
   // *INDENT-ON*
 
   return new_;
@@ -6934,9 +6934,9 @@ classobj_make_class (const char *name)
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
 
   // *INDENT-OFF*
-  class_->created_time = {0, 0};
-  class_->updated_time = {0, 0};
-  class_->checked_time = {0, 0};
+  class_->created_time = (DB_DATETIME){0, 0};
+  class_->updated_time = (DB_DATETIME){0, 0};
+  class_->checked_time = (DB_DATETIME){0, 0};
   // *INDENT-ON*
 
   if (name != NULL)

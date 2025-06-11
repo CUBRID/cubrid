@@ -442,6 +442,9 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
+static int sm_set_class_timestamps (SM_CLASS * class_);
+static int sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_);
+
 
 /*
  * sc_set_current_schema()
@@ -4226,19 +4229,13 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  if (classop->object != NULL)
 	    {			/* check cache */
 	      /* why are we checking authorization here ? */
-	      error = au_fetch_class_force (classop, &class_, AU_FETCH_UPDATE);
+	      error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
 	      if (error == NO_ERROR)
 		{
 		  if (class_->stats != NULL)
 		    {
 		      stats_free_statistics (class_->stats);
 		      class_->stats = NULL;
-		    }
-
-		  if (sm_update_class_checked_time (class_) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      return er_errid ();
 		    }
 
 		  /* make sure the class is flushed before acquiring stats, see comments above in
@@ -4252,6 +4249,16 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
+		  error = sm_set_checked_time_from_stats (classop, class_);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -4375,6 +4382,16 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
+		  error = sm_set_checked_time_from_stats (cl->op, class_);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -16643,7 +16660,7 @@ sm_domain_copy (SM_DOMAIN * ptr)
   return new_ptr;
 }
 
-int
+static int
 sm_set_class_timestamps (SM_CLASS * class_)
 {
   DB_VALUE current_datetime;
@@ -16668,23 +16685,45 @@ sm_update_class_timestamp (SM_CLASS * class_)
     {
       return ER_FAILED;
     }
-
   class_->updated_time = *db_get_datetime (&current_datetime);
 
   return NO_ERROR;
 }
 
-int
-sm_update_class_checked_time (SM_CLASS * class_)
+static int
+sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
 {
-  DB_VALUE current_datetime;
+  DB_VALUE timestamp, current_datetime;
+  time_t sec;
 
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+  if (au_fetch_class_force (op, &class_, AU_FETCH_UPDATE) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  class_->checked_time = *db_get_datetime (&current_datetime);
+  if (class_->stats == NULL || class_->stats->time_stamp == 0)
+    {
+      // *INDENT-OFF*
+      class_->checked_time = (DB_DATETIME){0, 0};
+      // *INDENT-OFF*
+    }
+  else
+    {
+      sec = (time_t) class_->stats->time_stamp;
+      db_make_timestamp (&timestamp, (DB_TIMESTAMP) sec);
+      if (db_timestamp_to_datetime (&timestamp, &current_datetime) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      class_->checked_time = *db_get_datetime (&current_datetime);
+    }
+
+  if (locator_flush_class (op) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   return NO_ERROR;
 }

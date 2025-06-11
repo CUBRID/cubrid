@@ -417,8 +417,8 @@ tr_make_trigger (void)
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
   // *INDENT-OFF*
-  trigger->created_time = {0, 0};
-  trigger->updated_time = {0, 0};
+  trigger->created_time = (DB_DATETIME){0, 0};
+  trigger->updated_time = (DB_DATETIME){0, 0};
   // *INDENT-ON*
 
   return trigger;
