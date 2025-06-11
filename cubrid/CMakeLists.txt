@@ -669,9 +669,30 @@ install(TARGETS cubrid
   )
 
 install(FILES
+  ${COMPAT_DIR}/dbi_compat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  RENAME dbi.h
+  )
+install(FILES
+  ${COMPAT_DIR}/dbtran_def.h
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_set_function.h
+  ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/db_date.h
+  ${COMPAT_DIR}/db_elo.h
+  ${COMPAT_DIR}/cache_time.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
+
+install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+install(FILES
+  ${API_DIR}/cubrid_log.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
+
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
