@@ -1892,8 +1892,12 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time);
-   * each attribute has 2 parts: att_name and asc_dsc */
+  /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+   * Each attribute consists of 2 parts: att_name and asc_dsc.
+   * optional_info (if present) is a single field and does not affect att_cnt calculation.
+   */
+  att_cnt = (seq_size - 5) / 2;
+
   att_cnt = (seq_size - 5) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
@@ -3508,6 +3512,9 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
  *       It's up to the caller to free the returned pointer.
  *       If the given constraint/index name does not exist for current
  *       representation, NULL is returned.
+ * 
+ * Notice: For constraint structure details, 
+ *         see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 const char *
 or_get_constraint_comment (RECDES * record, const char *constraint_name)
@@ -3563,11 +3570,6 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      /* this sequence is an alternating pair of constraint name & info sequence, as by: { 
-       *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time },
-       *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time }, 
-       *  ... }
-       */
       props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)

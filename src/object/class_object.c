@@ -931,26 +931,8 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  * classobj_put_index() - This is used to put and update indexes on the property list.
  *    The property list is composed of name/value pairs.  For unique
  *    indexes, this will be SM_PROPERTY_UNIQUE/{uniques} where {uniques}
- *    are another property list of unique instances.  The general form
- *    is;
- *        {"*U",
- *          {
- *           "name",
- *            {
- *               "volid|pageid|fileid",
- *               ["attr", asc_desc]+ {fk_info},
- *               "pred_expression",
- *               "comment"
- *             },
- *           "name",
- *            {
- *               "volid|pageid|fileid",
- *               ["attr", asc_desc]+ {fk_info},
- *               "pred_expression",
- *               "comment"
- *            }
- *          }
- *        }
+ *    are another property list of unique instances.
+ * 
  *    Until we fully support named constraints, use the attribute name as
  *    the constraint name.  Each constraint instance must be uniquely named.
  *    An old value will be overwritten with a new value with the same name.
@@ -967,6 +949,9 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  *   shared_cons_name(in):
  *   func_index_info(in):
  *   comment(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
@@ -1972,6 +1957,9 @@ end:
  *   properties(in): Class property list
  *   cons(in): constraint
  *   comment(in): new comment of property
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
@@ -2351,17 +2339,12 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *                               the associated attributes.
  *   return: true if constraint entry was cached
  *   name(in): Constraint name
- *   constraint_seq(in): Constraint entry.  This is a sequence of the form:
- *      {
- *	    "B-tree ID",
- *	    [ "att_name", "asc_dsc", ]
- *	    [ "att_name", "asc_dsc", ]
- *	    {fk_info | pk_info | prefix_length}
- *          "filter_predicate",
- *          "comment"
- *	}
+ *   constraint_seq(in): constraint entry 
  *   class(in): Class pointer.
  *   constraint_type(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -2382,8 +2365,10 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
    *  encoded B-tree ID
    */
   info_len = set_size (constraint_seq);
-  /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time);
-   * each attribute has 2 parts: att_name and asc_dsc */
+  /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+   * Each attribute consists of 2 parts: att_name and asc_dsc.
+   * optional_info (if present) is a single field and does not affect att_cnt calculation.
+   */
   att_cnt = (info_len - 5) / 2;
   e = 0;
 
@@ -2474,16 +2459,12 @@ finish:
  * classobj_cache_constraint_list() - Cache the constraint list into the appropriate
  *                              attribute caches
  *   return: non-zero if constraint list was cached
- *   seq(in): Unique constraint list.  This is a sequence of constraint
- *        name/ID pairs of the form:
- *	{
- *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
- *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
- *	    {fk_info | pk_info | prefix_length}
- *	    "filter_predicate"
- *	}
+ *   seq(in): Unique constraint list
  *   class(in): Class pointer
  *   constraint_type(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -3170,6 +3151,9 @@ error:
  *   class_props(in): class property list
  *   attributes(in):
  *   con_ptr(out):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 int
@@ -3216,11 +3200,6 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	  props = db_get_set (&pvalue);
 	  len = set_size (props);
 
-	  /* this sequence is an alternating pair of constraint name & info sequence, as by: { 
-	   *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time },
-	   *  name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment, created_time, updated_time }, 
-	   *  ... }
-	   */
 	  for (i = 0; i < len; i += 2)
 	    {
 
@@ -3265,8 +3244,10 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	      info = db_get_set (&uvalue);
 	      info_len = set_size (info);
 
-	      /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time); 
-	       * each attribute has 2 parts: att_name and asc_dsc */
+	      /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+	       * Each attribute consists of 2 parts: att_name and asc_dsc.
+	       * optional_info (if present) is a single field and does not affect att_cnt calculation.
+	       */
 	      att_cnt = (info_len - 5) / 2;
 
 	      assert (att_cnt > 0);
@@ -8814,6 +8795,10 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   return NO_ERROR;
 }
 
+/*
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ */
 int
 classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, SM_INDEX_STATUS index_status)
 {

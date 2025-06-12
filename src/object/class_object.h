@@ -529,6 +529,18 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+/* Property list format: { property_name, constraint... }
+ * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
+ * - constraint: { name, info }
+ *   - name: constraint name
+ *   - info: { BTID, [att_name, asc_dsc]..., optional_info?, status, comment, created_time, updated_time }
+ *     - BTID: volid|pageid|fileid
+ *     - [att_name, asc_dsc] can repeat for multiple attributes
+ *     - optional_info appears only when applicable:
+ *       - fk_info: for foreign key constraints
+ *       - pk_info: only if the primary key is referenced by a foreign key
+ *       - prefix_length, filter_predicate, func_index_info: for special index properties
+ */
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
