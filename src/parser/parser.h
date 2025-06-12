@@ -435,7 +435,9 @@ extern "C"
   extern bool pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern bool pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node);
 
-  extern bool pt_is_vector_function (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern bool pt_is_vector_distance_function (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern bool pt_is_vector_distance_expr (PARSER_CONTEXT * parser, const PT_NODE * node);
+
   extern bool pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node);
 
   extern PT_NODE *pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from, const PT_NODE * name);

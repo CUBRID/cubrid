@@ -10390,9 +10390,10 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
 
   int pos;
   PT_NODE *node = NULL;
-  PT_NODE *arg_list = NULL;
   PT_NODE *order_by = NULL;
   PT_NODE *order_by_for = NULL;
+  PT_NODE *arg1 = NULL;
+  PT_NODE *arg2 = NULL;
 
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
@@ -10433,7 +10434,7 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
       goto end;
     }
 
-  if (node->node_type == PT_EXPR)
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_FUNCTION_HOLDER)
     {
       // FUNCTION HOLDER
       node = node->info.expr.arg1;
@@ -10443,22 +10444,36 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
 	}
     }
 
-  if (!pt_is_vector_function (QO_ENV_PARSER (env), node))
+  if (pt_is_vector_distance_function (QO_ENV_PARSER (env), node))
     {
-      goto end;
+      // naiive check for vector index
+      PT_NODE *arg_list = node->info.function.arg_list;
+      arg1 = arg_list;
+      arg2 = arg_list->next;
+    }
+  else if (pt_is_vector_distance_expr (QO_ENV_PARSER (env), node))
+    {
+      arg1 = node->info.expr.arg1;
+      arg2 = node->info.expr.arg2;
     }
 
-  // naiive check for vector index
-  arg_list = node->info.function.arg_list;
-  if (arg_list->node_type == PT_NAME && arg_list->next->node_type == PT_NAME)
-    {
-      goto end;
-    }
+  // check arg1 and arg2
+  {
+    if (arg1 == NULL || arg2 == NULL)
+      {
+	goto end;
+      }
 
-  if (arg_list->node_type == PT_VALUE && arg_list->next->node_type == PT_VALUE)
-    {
-      goto end;
-    }
+    if (arg1->node_type == PT_NAME && arg2->node_type == PT_NAME)
+      {
+	goto end;
+      }
+
+    if (arg1->node_type == PT_VALUE && arg2->node_type == PT_VALUE)
+      {
+	goto end;
+      }
+  }
 
   return 1;
 
