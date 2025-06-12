@@ -245,8 +245,8 @@ class hashjoin_parallel_task: public cubthread::entry_task
       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
     }
 #else
-#define HJOIN_PROFILE_START(thread_p, start_stats, step) ((void) 0)
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
+#define HJOIN_PROFILE_START(thread_p, manager, start_stats, step) ((void) 0)
+#define HJOIN_PROFILE_END(thread_p, manager, stats_p, start_stats_p, step) ((void) 0)
 #endif /* HASHJOIN_PROFILE_TIME */
 
 #if HASHJOIN_DUMP_HASH_TABLE

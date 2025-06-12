@@ -38,8 +38,8 @@
  * Debug Macros
  */
 
-#define HASHJOIN_PROFILE_TIME 1
-#define HASHJOIN_DUMP_PARTITION 1
+#define HASHJOIN_PROFILE_TIME 0
+#define HASHJOIN_DUMP_PARTITION 0
 #define HASHJOIN_DUMP_HASH_TABLE 0
 #define HASHJOIN_DUMP_BUILD 0
 #define HASHJOIN_DUMP_PROBE 0
@@ -49,7 +49,7 @@
  * 1: qfile_append_list
  * 2: qfile_connect_list
  */
-#define HASHJOIN_TEST_MERGE_LIST 2
+#define HASHJOIN_TEST_MERGE_LIST 1
 
 /*
  * Forward Declarations
