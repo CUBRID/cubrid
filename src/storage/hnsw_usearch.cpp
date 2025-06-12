@@ -17,7 +17,7 @@
  */
 
 //
-// hnsw.cpp - implementation of HNSW index
+// hnsw_usearch.cpp - implementation of HNSW index using USearch
 //
 
 #include "hnsw.hpp"
@@ -29,50 +29,94 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "porting.h"
+#include "vector_distance_enum.h"
 #include <fstream>
 #include <filesystem>
+
+#include "usearch/index.hpp"
+#include "usearch/index_dense.hpp"
+#include "usearch/index_plugins.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#include "strict_warnings_on.hpp"
-// TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
+
+#include "strict_warnings_on.hpp"// TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
 //        We need to consider a better way to identify the hnsw index.
+
+
+using namespace unum;
+
 int hnsw_index_id = 0;
-std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
+std::unordered_map<int, std::unique_ptr<usearch::index_dense_t>> hnsw_index_map;
 char hnsw_index_directory[PATH_MAX] = {0};
 bool hnsw_index_directory_created = false;
 static std::mutex hnsw_elem_mutex;
 
-static int dump_hnsw_index (int hnsw_id, faiss::IndexIDMap *index);
+static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index);
 static int get_hnsw_index_file_path (int hnsw_id, char *out_path);
 static int create_hnsw_index_directory ();
 static bool is_hnsw_index_file_exists (int hnsw_id);
 static int load_hnsw_index_from_file (int hnsw_id);
 static int hnsw_check_and_load_index (int hnsw_id);
 static void get_new_hnsw_index_id ();
-static faiss::idx_t encode_oid (const OID &oid);
-static OID decode_oid (faiss::idx_t encoded_oid);
+static int64_t encode_oid (const OID &oid);
+static OID decode_oid (int64_t encoded_oid);
 
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
-		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
+		 int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN)
 {
+  usearch::metric_kind_t metric_kind = usearch::metric_kind_t::unknown_k;
+  switch (metric)
+    {
+    case METRIC_UNKNOWN:
+      ASSERT_CUBVEC (false);
+    case METRIC_COSINE:
+      metric_kind = usearch::metric_kind_t::cos_k;
+      break;
+
+    case METRIC_DOT:
+      metric_kind = usearch::metric_kind_t::ip_k;
+      break;
+
+    case METRIC_EUCLIDEAN:
+      metric_kind = usearch::metric_kind_t::l2sq_k;
+      break;
+
+    case METRIC_MANHATTAN:
+      // unsupported metric
+      ASSERT_CUBVEC (false);
+      break;
+
+    default:
+      ASSERT_CUBVEC (false);
+    }
+
   get_new_hnsw_index_id ();
 
-  auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
-  hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
+  usearch::metric_punned_t metric_punned (static_cast <std::size_t> (dimension), metric_kind,
+					  usearch::scalar_kind_t::f32_k);
 
-  auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
+  usearch::index_dense_config_t config;
+  config.connectivity = hnsw_M;
+  config.expansion_add = hnsw_efConstruction;
+
+  auto index_ptr = std::make_unique<usearch::index_dense_t> (
+			   usearch::index_dense_t::make (metric, config)
+		   );
+
+  index_ptr->reserve (10000);
+
+  hnsw_index_map[hnsw_index_id] = std::move (index_ptr);
 
   btid->vfid.volid = -1;
   btid->vfid.fileid = -1;
   btid->root_pageid = hnsw_index_id;
 
-  hnsw_index_map[hnsw_index_id] = std::move (index);
-  er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
+  _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
 
   return btid;
@@ -142,55 +186,16 @@ int hnsw_print_index_info (BTID *btid)
       return ER_FAILED;
     }
 
-  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
-  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
+  std::unique_ptr<usearch::index_dense_t> &index = it->second;
 
   std::ostringstream oss;
 
-  oss << "HNSW Index Information for ID " << hnsw_id << ":\n";
-  oss << "  - Dimension: " << index->d << "\n";
-  oss << "  - Metric Type: " << index->metric_type << "\n";
-  oss << "  - Total Elements: " << index->ntotal << "\n";
-  oss << "  - HNSW efConstruction: " << hnsw_index->hnsw.efConstruction << "\n";
-  oss << "  - HNSW efSearch: " << hnsw_index->hnsw.efSearch << "\n";
-
-  /*
-  * This works because, in faiss/impl/HNSW.cpp, HNSW is initialized with
-  * set_default_probas(M, ...);
-
-  // initialize the assign_probas and cum_nneighbor_per_level to
-  // have 2*M links on level 0 and M links on levels > 0
-  void HNSW::set_default_probas(int M, float levelMult) {
-    int nn = 0;
-    cum_nneighbor_per_level.push_back(0);
-    for (int level = 0;; level++) {
-        float proba = exp(-level / levelMult) * (1 - exp(-1 / levelMult));
-        if (proba < 1e-9)
-            break;
-        assign_probas.push_back(proba);
-        nn += level == 0 ? M * 2 : M;
-        cum_nneighbor_per_level.push_back(nn);
-    }
-  }
-  */
-
-  // Print neighbor counts
-  const auto &neighbor_counts = hnsw_index->hnsw.cum_nneighbor_per_level;
-  oss << "  - HNSW neighbor_counts: [";
-  for (size_t i = 0; i < neighbor_counts.size(); ++i)
-    {
-      oss << neighbor_counts[i];
-      if (i + 1 < neighbor_counts.size())
-	{
-	  oss << ", ";
-	}
-    }
-  oss << "]\n";
-
-  if (neighbor_counts.size() > 1)
-    {
-      oss << "  - HNSW M is assumed to be " << (neighbor_counts[1] / 2) << "\n";
-    }
+  oss << "HNSW Index Information for ID: " << hnsw_id << "\n";
+  oss << "  - Dimension: " << index->dimensions() << "\n";
+  oss << "  - Metric Type: " << metric_kind_name (index->metric_kind()) << "\n";
+  oss << "  - Total Elements: " << index->size() << "\n";
+  oss << "  - HNSW efConstruction: " << index->expansion_add() << "\n";
+  oss << "  - HNSW efSearch: " << index->expansion_search() << "\n";
 
   er_log_debug (ARG_FILE_LINE, "%s", oss.str().c_str());
 
@@ -214,7 +219,7 @@ void dump_all_hnsw_indices_to_files ()
       int hnsw_id = pair.first;
       auto &index = pair.second;
 
-      if (dump_hnsw_index (hnsw_id, index.get()) != NO_ERROR)
+      if (dump_hnsw_index (hnsw_id, index) != NO_ERROR)
 	{
 	  assert (false);
 	  _er_log_debug (ARG_FILE_LINE, "Failed to dump HNSW Index with ID %d", hnsw_id);
@@ -222,7 +227,7 @@ void dump_all_hnsw_indices_to_files ()
     }
 }
 
-static int dump_hnsw_index (int hnsw_id, faiss::IndexIDMap *index)
+static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index)
 {
   char filepath[PATH_MAX];
 
@@ -236,7 +241,7 @@ static int dump_hnsw_index (int hnsw_id, faiss::IndexIDMap *index)
       return ER_FAILED;
     }
 
-  faiss::write_index (index, filepath);
+  index->save (filepath);
 
   return NO_ERROR;
 }
@@ -330,24 +335,16 @@ static int load_hnsw_index_from_file (int hnsw_id)
 
   try
     {
-      faiss::Index *raw_index = faiss::read_index (filepath);
+      auto index = std::make_unique<usearch::index_dense_t> ();
+      index->load (filepath);
+      // index->view (filepath);
 
-      faiss::IndexIDMap *idmap = dynamic_cast<faiss::IndexIDMap *> (raw_index);
-      if (idmap == nullptr)
-	{
-	  assert (false);
-	  _er_log_debug (ARG_FILE_LINE, "Invalid HNSW Index file format for ID %d in %s", hnsw_id, filepath);
-
-	  delete raw_index;
-	  return ER_FAILED;
-	}
-
-      hnsw_index_map[hnsw_id] = std::unique_ptr<faiss::IndexIDMap> (idmap);
+      hnsw_index_map[hnsw_id] = std::move (index);
       er_log_debug (ARG_FILE_LINE, "HNSW Index loaded from file for ID %d in %s", hnsw_id, filepath);
 
       return NO_ERROR;
     }
-  catch (const faiss::FaissException &e)
+  catch (const std::runtime_error &e)
     {
       er_log_debug (ARG_FILE_LINE, "Failed to load/create HNSW Index %d: %s", hnsw_id, e.what());
       return ER_FAILED;
@@ -360,7 +357,7 @@ int
 hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 {
   int hnsw_id;
-  faiss::idx_t encoded_oid = encode_oid (*oid);
+  int64_t encoded_oid = encode_oid (*oid);
 
   if (!btid)
     {
@@ -385,17 +382,23 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
 
   try
     {
-      std::unique_ptr<faiss::IndexIDMap> &index = it->second;
-      std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
+      std::unique_ptr<usearch::index_dense_t> &index = it->second;
 
-      index->add_with_ids (1, vf->float_array, &encoded_oid);
+      std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
+      if (index->size() >= index->capacity())
+	{
+	  size_t new_cap = index->capacity() * 2;
+	  index->reserve (new_cap);
+	}
+
+      index->add (encoded_oid, vf->float_array);
 
       er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
 		    static_cast<long long> (encoded_oid), hnsw_id);
     }
-  catch (const faiss::FaissException &e)
+  catch (const std::runtime_error &e)
     {
-      er_log_debug (ARG_FILE_LINE, "FAISS exception during add_with_ids: %s", e.what());
+      er_log_debug (ARG_FILE_LINE, "USearch exception during add_with_ids: %s", e.what());
       return ER_FAILED;
     }
 
@@ -432,7 +435,6 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     }
 
   auto it = hnsw_index_map.find (hnsw_id);
-
   if (it == hnsw_index_map.end())
     {
       er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
@@ -440,21 +442,16 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
       return ER_FAILED;
     }
 
-  std::unique_ptr<faiss::IndexIDMap> &index = it->second;
-  auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
-  hnsw_index->hnsw.efSearch = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
+  std::unique_ptr<usearch::index_dense_t> &index = it->second;
+  index->change_expansion_search (prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH));
 
-  int64_t *uids = new int64_t[k * 1];
-  index->search (1, vf->float_array, k, distances, uids);
-
-  if (uids != nullptr)
+  auto results = index->search (vf->float_array, k);
+  for (std::size_t i = 0; i != results.size(); ++i)
     {
-      for (int i = 0; i < k; i++)
-	{
-	  rec_oids[i] = decode_oid (uids[i]);
-	}
-      delete[] uids;
+      rec_oids[i] = decode_oid (results[i].member.key);
+      distances[i] = results[i].distance;
     }
+
   return NO_ERROR;
 }
 
@@ -482,14 +479,14 @@ static void get_new_hnsw_index_id ()
     }
 }
 
-static faiss::idx_t encode_oid (const OID &oid)
+static int64_t encode_oid (const OID &oid)
 {
   return (static_cast<int64_t> (oid.pageid) << 32) |
 	 (static_cast<uint32_t> (oid.slotid) << 16) |
 	 (static_cast<uint16_t> (oid.volid));
 }
 
-static OID decode_oid (faiss::idx_t encoded_oid)
+static OID decode_oid (int64_t encoded_oid)
 {
   OID oid;
   oid.pageid = static_cast<int32_t> (encoded_oid >> 32);

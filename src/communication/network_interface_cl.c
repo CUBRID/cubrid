@@ -6880,7 +6880,7 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 int
-hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, enum faiss::MetricType metric_type)
+hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6904,7 +6904,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
   ptr = or_pack_int (ptr, dimension);
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
-  ptr = or_pack_int (ptr, metric_type);
+  ptr = or_pack_int (ptr, metric);
 
   req_error =
     net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,
@@ -6927,7 +6927,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xhnsw_add_index (thread_p, btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
+  btid = xhnsw_add_index (thread_p, btid, dimension, hnsw_M, hnsw_efConstruction, metric);
 
   exit_server (*thread_p);
 
