@@ -765,6 +765,7 @@ if(UNIX)
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
   target_link_libraries(cubridsa PUBLIC rt)
+  target_link_libraries(cubridsa PUBLIC lapack openblas)
 endif(UNIX)
 # for dblink
 target_link_libraries(cubridsa PUBLIC cascci)
