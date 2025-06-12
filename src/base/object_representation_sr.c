@@ -1898,8 +1898,6 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
    */
   att_cnt = (seq_size - 5) / 2;
 
-  att_cnt = (seq_size - 5) / 2;
-
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
     {
