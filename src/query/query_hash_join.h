@@ -38,8 +38,8 @@
  * Debug Macros
  */
 
-#define HASHJOIN_PROFILE_TIME 0
-#define HASHJOIN_DUMP_PARTITION 0
+#define HASHJOIN_PROFILE_TIME 1
+#define HASHJOIN_DUMP_PARTITION 1
 #define HASHJOIN_DUMP_HASH_TABLE 0
 #define HASHJOIN_DUMP_BUILD 0
 #define HASHJOIN_DUMP_PROBE 0
@@ -49,7 +49,7 @@
  * 1: qfile_append_list
  * 2: qfile_connect_list
  */
-#define HASHJOIN_TEST_MERGE_LIST 1
+#define HASHJOIN_TEST_MERGE_LIST 2
 
 /*
  * Forward Declarations
@@ -96,16 +96,15 @@ typedef struct hashjoin_domain_info
 typedef struct hashjoin_input_stats
 {
   struct timeval elapsed_time;
-  struct timeval time;
   UINT64 fetches;
   UINT64 fetch_time;
   UINT64 ioreads;
-  UINT64 part_rows;
-  UINT64 readkeys;
-  UINT64 rows;
-  UINT64 max_collisions;
+  UINT64 read_rows;
+  UINT64 read_keys;
+  UINT64 qualified_rows;
 } HASHJOIN_INPUT_STATS;
-#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0 }
+#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, 0, 0, 0, 0, 0, 0 }
+#define HASHJOIN_INPUT_STATS_MAX_INITIALIZER { { LONG_MAX, 999999 }, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX }
 
 #if HASHJOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
@@ -126,6 +125,7 @@ typedef struct hashjoin_profile_stats
     struct timeval add;		/* hjoin_merge_tuple_to_list_id */
   } probe;
 } HASHJOIN_PROFILE_STATS;
+#define HASHJOIN_PROFILE_STATS_INITIALIZER { { 0 }, { 0 } }
 #endif /* HASHJOIN_PROFILE_TIME */
 
 typedef struct hashjoin_stats
@@ -133,8 +133,7 @@ typedef struct hashjoin_stats
   HASH_METHOD hash_method;
   bool is_build_outer;
 
-  HASHJOIN_INPUT_STATS outer;
-  HASHJOIN_INPUT_STATS inner;
+  HASHJOIN_INPUT_STATS partitioning;
   HASHJOIN_INPUT_STATS build;
   HASHJOIN_INPUT_STATS probe;
 

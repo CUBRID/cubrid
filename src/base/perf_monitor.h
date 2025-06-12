@@ -874,6 +874,8 @@ STATIC_INLINE void perfmon_diff_timeval (struct timeval *elapsed, struct timeval
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_update_min_timeval (struct timeval *min, struct timeval *tv) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_update_max_timeval (struct timeval *max, struct timeval *tv) __attribute__ ((ALWAYS_INLINE));
 
 #ifdef __cplusplus
 /* TODO: it looks ugly now, but it should be fixed with stat tool patch */
@@ -1406,6 +1408,24 @@ perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeva
 
   total->tv_sec += total->tv_usec / 1000000;
   total->tv_usec %= 1000000;
+}
+
+STATIC_INLINE void
+perfmon_update_min_timeval (struct timeval *min, struct timeval *tv)
+{
+  if (tv->tv_sec < min->tv_sec || (tv->tv_sec == min->tv_sec && tv->tv_usec < min->tv_usec))
+    {
+      *min = *tv;
+    }
+}
+
+STATIC_INLINE void
+perfmon_update_max_timeval (struct timeval *max, struct timeval *tv)
+{
+  if (tv->tv_sec > max->tv_sec || (tv->tv_sec == max->tv_sec && tv->tv_usec > max->tv_usec))
+    {
+      *max = *tv;
+    }
 }
 
 #define TO_MSEC(elapsed) \
