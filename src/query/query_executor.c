@@ -2985,6 +2985,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   unsigned int decache_clone_flag = 0;
   VAL_LIST *single_tuple;
   QPROC_DB_VALUE_LIST value_list;
+  XASL_STATUS status;
   int i;
   pg_cnt = 0;
   if (xasl == NULL)
@@ -3004,33 +3005,9 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   query_save_state = xasl->query_in_progress;
 
   xasl->query_in_progress = true;
-
-  if (xasl->list_id && !xasl->list_id->is_result_cached)
-    {				/* not destrory list because qexec_clear_xasl() will clear the list after */
-      (void) qfile_close_list (thread_p, xasl->list_id);
-    }
-
-  if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
-    {
-      qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
-    }
-
-  if (xcache_uses_clones ())
-    {
-      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
-	{
-	  xasl->status = XASL_CLEARED;
-	}
-      else
-	{
-	  /* The values allocated during execution will be cleared and the xasl is reused. */
-	  xasl->status = XASL_INITIALIZED;
-	}
-    }
-  else
-    {
-      xasl->status = XASL_CLEARED;
-    }
+  status = xasl->status;
+  qexec_clear_xasl_head (thread_p, xasl);
+  xasl->status = status;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* free alloced memory for composite locking */
@@ -3046,6 +3023,17 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
   /* clear the body node */
   /* not clear aptr nodes; it will be cleared by other threads. */
+  if (xasl->aptr_list)
+    {
+      for (XASL_NODE * aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+	{
+	  if (XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE))
+	    {
+	      XASL_SET_FLAG (aptr, decache_clone_flag);
+	      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, aptr, is_final);
+	    }
+	}
+    }
   if (xasl->bptr_list)
     {
       XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
@@ -3404,23 +3392,23 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
     case CTE_PROC:
       /* not clearing list_id because it will be cleared by mother thread. */
-      if (xasl->proc.cte.non_recursive_part)
-	{
-	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
-	    {
-	      if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
-		{
+      /*if (xasl->proc.cte.non_recursive_part)
+         {
+         if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+         {
+         if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
+         {
 
-		  XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-		  pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-		}
-	    }
-	  else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
-	    {
+         XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
+         pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+         }
+         }
+         else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
+         {
 
-	      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-	    }
-	}
+         pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
+         }
+         } */
       if (xasl->proc.cte.recursive_part)
 	{
 	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
@@ -15160,7 +15148,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 #if SERVER_MODE
 		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->px_executor == nullptr)
 			{
-			  int n_workers_to_reserve;
+			  int n_workers_to_reserve = 0;
 			  if (xasl->parallelism == -1)
 			    {
 			      /* NO PARALLEL() HINT */
@@ -15171,6 +15159,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    {
 			      n_workers_to_reserve = xasl->parallelism - 1;
 			    }
+
 			  if (n_workers_to_reserve <= 0)
 			    {
 			      xasl->executed_parallelism = 0;
@@ -15236,26 +15225,28 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
 #if SERVER_MODE
-      if (xasl->px_executor)
+      if (xasl->type != CTE_PROC)
 	{
-	  if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
+	  if (xasl->px_executor)
 	    {
-	      if (xasl->px_executor->get_recursion_level () == 0)
+	      if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
 		{
-		  xasl->px_executor->get_error_from_childs ();
-		}
-	      if (tplrec.tpl)
-		{
-		  db_private_free_and_init (thread_p, tplrec.tpl);
+		  if (xasl->px_executor->get_recursion_level () == 0)
+		    {
+		      xasl->px_executor->get_error_from_childs ();
+		    }
+		  if (tplrec.tpl)
+		    {
+		      db_private_free_and_init (thread_p, tplrec.tpl);
+		    }
+		  delete xasl->px_executor;
+		  xasl->px_executor = nullptr;
+		  GOTO_EXIT_ON_ERROR;
 		}
 	      delete xasl->px_executor;
 	      xasl->px_executor = nullptr;
-	      GOTO_EXIT_ON_ERROR;
 	    }
-	  delete xasl->px_executor;
-	  xasl->px_executor = nullptr;
 	}
-
 #endif
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
@@ -17105,12 +17096,39 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
       if (non_recursive_part->sub_xasl_id == NULL
 	  || (qexec_execute_subquery_for_result_cache (thread_p, non_recursive_part, xasl_state) != NO_ERROR))
 	{
-	  /* re-execute CTE without resut-cache */
+#if SERVER_MODE
+	  if (xasl->px_executor)
+	    {
+	      xasl->px_executor->add_task (non_recursive_part, xasl_state);
+	      if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
+		{
+		  if (xasl->px_executor->get_recursion_level () == 0)
+		    {
+		      xasl->px_executor->get_error_from_childs ();
+		    }
+		  delete xasl->px_executor;
+		  xasl->px_executor = nullptr;
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      delete xasl->px_executor;
+	      xasl->px_executor = nullptr;
+	    }
+	  else
+	    {
+	      /* re-execute CTE without resut-cache */
+	      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+#else
 	  if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
 	      GOTO_EXIT_ON_ERROR;
 	    }
+#endif
 	}
     }
   else

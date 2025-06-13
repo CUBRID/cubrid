@@ -28,6 +28,167 @@
 
 namespace parallel_query_execute
 {
+
+  // XASL 타입을 문자열로 변환하는 함수
+  static const char *get_xasl_type_string (PROC_TYPE type)
+  {
+    switch (type)
+      {
+      case UNION_PROC:
+	return "UNION";
+      case DIFFERENCE_PROC:
+	return "DIFFERENCE";
+      case INTERSECTION_PROC:
+	return "INTERSECTION";
+      case BUILDLIST_PROC:
+	return "BUILDLIST";
+      case BUILDVALUE_PROC:
+	return "BUILDVALUE";
+      case MERGELIST_PROC:
+	return "MERGELIST";
+      case HASHJOIN_PROC:
+	return "HASHJOIN";
+      case UPDATE_PROC:
+	return "UPDATE";
+      case INSERT_PROC:
+	return "INSERT";
+      case DELETE_PROC:
+	return "DELETE";
+      case CONNECTBY_PROC:
+	return "CONNECTBY";
+      case MERGE_PROC:
+	return "MERGE";
+      case CTE_PROC:
+	return "CTE";
+      default:
+	return "UNKNOWN";
+      }
+  }
+
+  // XASL 트리를 문자열로 변환하는 함수
+  static std::string dump_xasl_tree_to_string (XASL_NODE *xasl, int depth = 0, bool is_last = true,
+      bool *parent_has_more = nullptr)
+  {
+    if (xasl == NULL)
+      {
+	return "";
+      }
+
+    std::string result;
+    std::string indent;
+
+    // 들여쓰기와 트리 구조 구성
+    for (int i = 0; i < depth; i++)
+      {
+	if (i == depth - 1)
+	  {
+	    if (is_last)
+	      {
+		indent += "└── ";
+	      }
+	    else
+	      {
+		indent += "├── ";
+	      }
+	  }
+	else
+	  {
+	    if (parent_has_more && parent_has_more[i])
+	      {
+		indent += "│   ";
+	      }
+	    else
+	      {
+		indent += "    ";
+	      }
+	  }
+      }
+
+    // 현재 XASL 노드 정보 구성
+    char node_info[1024];
+    int offset = 0;
+    offset += snprintf (node_info + offset, sizeof (node_info) - offset, "XASL[%p] Type: %s %s", xasl,
+			get_xasl_type_string (xasl->type), xasl->option == Q_DISTINCT ? "DISTINCT" : "");
+
+    // 플래그 정보 구성
+    if (xasl->flag & XASL_LINK_TO_REGU_VARIABLE)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " LINK_TO_REGU");
+      }
+    if (xasl->flag & XASL_SKIP_ORDERBY_LIST)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " SKIP_ORDERBY");
+      }
+    if (xasl->flag & XASL_ZERO_CORR_LEVEL)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " ZERO_CORR");
+      }
+    if (xasl->flag & XASL_TOP_MOST_XASL)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " TOP_MOST");
+      }
+    if (xasl->flag & XASL_TO_BE_CACHED)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " TO_BE_CACHED");
+      }
+    if (xasl->flag & XASL_HAS_NOCYCLE)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " HAS_NOCYCLE");
+      }
+    if (xasl->flag & XASL_HAS_CONNECT_BY)
+      {
+	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " HAS_CONNECT_BY");
+      }
+
+    result = indent + node_info + "\n";
+
+    // uncorrelated subquery와 CTE 처리
+    if (xasl->aptr_list)
+      {
+	bool has_more = (xasl->next != NULL);
+	bool *new_parent_has_more = new bool[depth + 1];
+	if (parent_has_more)
+	  {
+	    memcpy (new_parent_has_more, parent_has_more, depth * sizeof (bool));
+	  }
+	new_parent_has_more[depth] = has_more;
+
+	result += dump_xasl_tree_to_string (xasl->aptr_list, depth + 1, true, new_parent_has_more);
+	delete[] new_parent_has_more;
+      }
+
+    // CTE non_recursive_part 처리
+    if (xasl->type == CTE_PROC && xasl->proc.cte.non_recursive_part)
+      {
+	bool has_more = (xasl->next != NULL);
+	bool *new_parent_has_more = new bool[depth + 1];
+	if (parent_has_more)
+	  {
+	    memcpy (new_parent_has_more, parent_has_more, depth * sizeof (bool));
+	  }
+	new_parent_has_more[depth] = has_more;
+
+	result += dump_xasl_tree_to_string (xasl->proc.cte.non_recursive_part, depth + 1, true, new_parent_has_more);
+	delete[] new_parent_has_more;
+      }
+
+    // 다음 XASL 노드 처리
+    if (xasl->next)
+      {
+	bool has_more = (xasl->next->next != NULL);
+	bool *new_parent_has_more = new bool[depth + 1];
+	if (parent_has_more)
+	  {
+	    memcpy (new_parent_has_more, parent_has_more, depth * sizeof (bool));
+	  }
+	new_parent_has_more[depth] = has_more;
+
+	result += dump_xasl_tree_to_string (xasl->next, depth, false, new_parent_has_more);
+	delete[] new_parent_has_more;
+      }
+
+    return result;
+  }
   bool query_executor::make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, XASL_NODE *xasl,
       pool *worker_manager_p,  query_executor *parent_p, int parallelism)
   {
@@ -43,6 +204,10 @@ namespace parallel_query_execute
 	  {
 	    return false;
 	  }
+#if WITH_PARALLEL_DETAIL_INFO
+	std::string xasl_tree_str = dump_xasl_tree_to_string (xasl);
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : xasl tree: \n%s", xasl_tree_str.c_str());
+#endif
 	xasl->px_executor = new query_executor (thread_p, worker_manager_p, parallelism);
 #if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE,
@@ -54,6 +219,14 @@ namespace parallel_query_execute
 	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
 	      {
 		make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+	      }
+	  }
+	if (xasl->type == CTE_PROC)
+	  {
+	    if (xasl->proc.cte.non_recursive_part)
+	      {
+		make_parallel_query_executor_recursively (thread_p, xasl->proc.cte.non_recursive_part, worker_manager_p,
+		    xasl->px_executor, parallelism);
 	      }
 	  }
 	return true;
@@ -140,7 +313,7 @@ namespace parallel_query_execute
   void query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
   {
     task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p,
-			       &m_task_queue_global_p->m_tran_index_qlist_count_map);
+			       &m_task_queue_global_p->m_xasl_thread_executed_map);
     m_task_queue_global_p->add_task (task_tuple_p);
   }
 

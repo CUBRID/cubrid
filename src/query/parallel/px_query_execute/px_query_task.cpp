@@ -25,6 +25,7 @@
 #include "query_list.h"
 #include "object_representation.h"
 #include "px_query_executor.hpp"
+#include "list_file.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -33,10 +34,9 @@ namespace parallel_query_execute
 {
   using state_enum = task_state::state;
 
-
   task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
 	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
-	      std::map<int, int> *tran_index_qlist_count_map_p)
+	      std::map<XASL_NODE *, int> *xasl_thread_executed_map_p)
     : m_orig_thread_p (thread_p),
       m_xasl (xasl),
       m_xasl_state (xasl_state),
@@ -44,7 +44,7 @@ namespace parallel_query_execute
       m_task_state_p (task_state_p),
       m_worker_manager_p (worker_manager_p),
       m_error_messages_p (error_messages_p),
-      m_tran_index_qlist_count_map_p (tran_index_qlist_count_map_p)
+      m_xasl_thread_executed_map_p (xasl_thread_executed_map_p)
   {}
 
   task::~task()
@@ -72,6 +72,9 @@ namespace parallel_query_execute
     int err = 0;
     int temp_tran_index = thread_ref.tran_index;
     css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
+    int enter_qlist_count = thread_ref.m_qlist_count;
+    QFILE_LIST_ID list_id;
+    bool is_list_id_kept = false;
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
 
@@ -85,12 +88,38 @@ namespace parallel_query_execute
       }
 
     /* clear XASL tree */
-    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-    if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
+    if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	pthread_mutex_lock (m_mutex_p);
-	(*m_tran_index_qlist_count_map_p)[thread_ref.index] = thread_ref.m_qlist_count;
-	pthread_mutex_unlock (m_mutex_p);
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true); //+1
+	qfile_clear_list_id (m_xasl->list_id); //-1
+	is_list_id_kept = true;
+      }
+
+    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+
+    if (is_list_id_kept)
+      {
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true); //+1
+	qfile_clear_list_id (&list_id); //-1
+      }
+
+    pthread_mutex_lock (m_mutex_p);
+    (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
+    pthread_mutex_unlock (m_mutex_p);
+
+    if (m_orig_thread_p->index != thread_ref.index)
+      {
+#if WITH_PARALLEL_DETAIL_INFO
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(thread) : xasl: %p, qlist: %d",
+		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
+#endif
+      }
+    else
+      {
+#if WITH_PARALLEL_DETAIL_INFO
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(main) : xasl: %p, qlist: %d",
+		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
+#endif
       }
 
     thread_ref.tran_index = temp_tran_index;
@@ -115,6 +144,9 @@ namespace parallel_query_execute
     int temp_tran_index = thread_ref.tran_index;
     css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
     bool temp_on_trace = thread_ref.on_trace;
+    int enter_qlist_count = thread_ref.m_qlist_count;
+    QFILE_LIST_ID list_id;
+    bool is_list_id_kept = false;
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
     thread_ref.on_trace = m_orig_thread_p->on_trace;
@@ -129,12 +161,37 @@ namespace parallel_query_execute
       }
 
     /* clear XASL tree */
-    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-    if (m_orig_thread_p->index != thread_ref.index && thread_ref.m_qlist_count > 0)
+    if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	pthread_mutex_lock (m_mutex_p);
-	(*m_tran_index_qlist_count_map_p)[thread_ref.index] = thread_ref.m_qlist_count;
-	pthread_mutex_unlock (m_mutex_p);
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true);
+	qfile_clear_list_id (m_xasl->list_id);
+	is_list_id_kept = true;
+      }
+    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
+
+    if (is_list_id_kept)
+      {
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_clear_list_id (&list_id);
+      }
+
+    pthread_mutex_lock (m_mutex_p);
+    (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
+    pthread_mutex_unlock (m_mutex_p);
+
+    if (m_orig_thread_p->index != thread_ref.index)
+      {
+#if WITH_PARALLEL_DETAIL_INFO
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(thread) : xasl: %p, qlist: %d",
+		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
+#endif
+      }
+    else
+      {
+#if WITH_PARALLEL_DETAIL_INFO
+	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(main) : xasl: %p, qlist: %d",
+		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
+#endif
       }
 
     thread_ref.tran_index = temp_tran_index;
@@ -177,11 +234,12 @@ namespace parallel_query_execute
   }
 
   task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
-				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p, std::map<int, int> *tran_index_qlist_count_map_p)
+				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p,
+				    std::map<XASL_NODE *, int> *xasl_thread_executed_map_p)
   {
     task_state *task_state_p = new task_state();
     task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p,
-			     tran_index_qlist_count_map_p);
+			     xasl_thread_executed_map_p);
     task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
     m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
@@ -399,12 +457,132 @@ namespace parallel_query_execute
 	thread_sleep (1);
       }
     while (not_ended);
-    for (const auto &it : m_tran_index_qlist_count_map)
+    XASL_NODE *base;
+    for (auto &[xasl, index] : m_xasl_thread_executed_map)
       {
-	thread_p->m_qlist_count += it.second;
+	if (thread_p->index != index)
+	  {
+	    if (xasl->list_id->type_list.type_cnt > 0)
+	      {
+		thread_p->m_qlist_count += 1;
+	      }
+	  }
+	switch (xasl->type)
+	  {
+	  case UNION_PROC:
+	  {
+	    if (xasl->option == Q_DISTINCT)
+	      {
+		/* distinct query doesnt close list_id while execute set query */
+	      }
+	    else
+	      {
+		if (xasl->proc.union_.left->list_id->tuple_cnt==0 && xasl->proc.union_.right->list_id->tuple_cnt==0)
+		  {
+		    /* one side was zero, other side (cleared) check needed */
+		    if (xasl->proc.union_.left->list_id->type_list.type_cnt == 0)
+		      {
+			base = xasl->proc.union_.left;
+		      }
+		    else if (xasl->proc.union_.right->list_id->type_list.type_cnt == 0)
+		      {
+			base = xasl->proc.union_.right;
+		      }
+		    else
+		      {
+			base = nullptr;
+		      }
+		  }
+		else
+		  {
+		    base = xasl->proc.union_.left;
+		  }
+		if (base == nullptr)
+		  {
+		    continue;
+		  }
+		if (thread_p->index != index)
+		  {
+		    thread_p->m_qlist_count -= 1;
+		  }
+
+		auto it = m_xasl_thread_executed_map.find (base);
+		if (it != m_xasl_thread_executed_map.end())
+		  {
+		    if (it->second != thread_p->index)
+		      {
+			thread_p->m_qlist_count += 1;
+		      }
+		  }
+	      }
+	  }
+	  break;
+	  case HASHJOIN_PROC:
+	  {
+
+	    auto it = m_xasl_thread_executed_map.find (xasl->proc.hashjoin.outer.xasl);
+	    if (it != m_xasl_thread_executed_map.end())
+	      {
+		if (it->second != thread_p->index)
+		  {
+		    thread_p->m_qlist_count += 1;
+		  }
+		if (thread_p->index != index)
+		  {
+		    thread_p->m_qlist_count -= 1;
+		  }
+	      }
+	    auto it2 = m_xasl_thread_executed_map.find (xasl->proc.hashjoin.inner.xasl);
+	    if (it2 != m_xasl_thread_executed_map.end())
+	      {
+		if (it2->second != thread_p->index)
+		  {
+		    thread_p->m_qlist_count += 1;
+		  }
+		if (thread_p->index != index)
+		  {
+		    thread_p->m_qlist_count -= 1;
+		  }
+	      }
+	  }
+	  break;
+	  case MERGELIST_PROC:
+	  {
+	    auto it = m_xasl_thread_executed_map.find (xasl->proc.mergelist.outer_xasl);
+	    if (it != m_xasl_thread_executed_map.end())
+	      {
+		if (it->second != thread_p->index)
+		  {
+		    thread_p->m_qlist_count += 1;
+		  }
+		if (thread_p->index != index)
+		  {
+		    thread_p->m_qlist_count -= 1;
+		  }
+	      }
+	    auto it2 = m_xasl_thread_executed_map.find (xasl->proc.mergelist.inner_xasl);
+	    if (it2 != m_xasl_thread_executed_map.end())
+	      {
+		if (it2->second != thread_p->index)
+		  {
+		    thread_p->m_qlist_count += 1;
+		  }
+		if (thread_p->index != index)
+		  {
+		    thread_p->m_qlist_count -= 1;
+		  }
+	      }
+	  }
+	  break;
+	  case DIFFERENCE_PROC:
+	  case INTERSECTION_PROC:
+	  default:
+	    break;
+	  }
       }
-    m_tran_index_qlist_count_map.clear();
+    m_xasl_thread_executed_map.clear();
   }
+
 }
 
 #endif
