@@ -38,10 +38,56 @@ namespace parallel_heap_scan
 	m_scan_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->get_scan_id()->scan_stats;
 	m_memory_mapper_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->stats;
       }
+    m_prev_scan_stats.agl = NULL;
+    m_prev_scan_stats.qualified_rows = 0;
+    m_prev_scan_stats.read_rows = 0;
   }
 
   perf_monitor::~perf_monitor()
   {
+  }
+
+  void perf_monitor::set_partition_stats (PARTITION_SPEC_TYPE *ended_partition_spec)
+  {
+    if (ended_partition_spec == NULL)
+      {
+	return;
+      }
+    UINT64 qualified_rows = 0;
+    UINT64 read_rows = 0;
+
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	qualified_rows += m_scan_stats[i].qualified_rows;
+	read_rows += m_scan_stats[i].read_rows;
+      }
+
+    ended_partition_spec->scan_stats.qualified_rows = qualified_rows - m_prev_scan_stats.qualified_rows;
+    ended_partition_spec->scan_stats.read_rows = read_rows - m_prev_scan_stats.read_rows;
+
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	m_prev_scan_stats.qualified_rows = qualified_rows;
+	m_prev_scan_stats.read_rows = read_rows;
+      }
+  }
+
+  void perf_monitor::add_scan_stats (SCAN_ID *whole_scan_id)
+  {
+    if (whole_scan_id == NULL)
+      {
+	return;
+      }
+    UINT64 qualified_rows = 0;
+    UINT64 read_rows = 0;
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	qualified_rows += m_scan_stats[i].qualified_rows;
+	read_rows += m_scan_stats[i].read_rows;
+      }
+
+    whole_scan_id->scan_stats.qualified_rows += qualified_rows;
+    whole_scan_id->scan_stats.read_rows += read_rows;
   }
 
   void perf_monitor::add_statistics (SCAN_ID *scan_id, std::size_t parallelism)
