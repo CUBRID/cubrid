@@ -23,6 +23,7 @@
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
+// #include "schema_manager.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -120,8 +121,13 @@ namespace cubschema
 bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  return identifier_store::check_identifier_is_valid (name, false)
-	 && (sm_is_system_class (name) || sm_is_system_vclass (name));
+
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = {'\0'};
+  // 'name' is a null-terminated string, so it's safe to use string_view::data()
+  intl_identifier_lower (name.data(), downcase_name);
+
+  return identifier_store::check_identifier_is_valid (downcase_name, false)
+	 && (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
 }
 
 bool sm_is_system_class (const std::string_view name)
