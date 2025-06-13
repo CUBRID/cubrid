@@ -1174,9 +1174,9 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
     {
       fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
       if (fileio_is_volume_exist (temp_vol_fullname) == true)
-        {			/* Call the remove function */
-          (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
-        }
+	{			/* Call the remove function */
+	  (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+	}
     }
 
   if (alloc_tempath)
