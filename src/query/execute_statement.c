@@ -5986,6 +5986,13 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	PT_NODE *assign = NULL;
 	PT_SPEC_FLAG flag;
 
+	/* do not check it in case of dblink */
+	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
+	  {
+	    result = NO_ERROR;
+	    break;
+	  }
+
 	columns = (char **) (malloc (count * sizeof (char *)));
 	if (columns == NULL)
 	  {
@@ -8543,7 +8550,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  xasl = statement_to_update_xasl (parser, statement, non_null_attrs);
+  xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
+
   if (xasl)
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
@@ -8831,7 +8839,14 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       /* Safety check: make sure that we have access to the class. We're only setting a weak lock here which guarantees
        * that the schema for the classes which are updated in this query is not changed. The correct lock for this
        * operation will be set server side when the SELECT part of the operation is being performed. */
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (spec->info.spec.remote_server_name)
+	{
+	  /* always server update for dblink query */
+	  server_allowed = 1;
+	  break;
+	}
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec->info.spec.flat_entity_list)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 	  if (!locator_fetch_class (class_obj, DB_FETCH_READ))
@@ -8842,7 +8857,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       spec = spec->next;
     }
 
-  if (is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
+  if (!server_allowed
+      && is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -9676,7 +9692,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -10264,7 +10280,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = statement->info.delete_.spec;
 	  while (node && error == NO_ERROR)
 	    {
-	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	      if (node->info.spec.flat_entity_list && (node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
 		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
@@ -10352,7 +10368,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   spec = statement->info.delete_.spec;
   while (spec)
     {
-      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && !spec->info.spec.remote_server_name)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
@@ -11465,6 +11481,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
+
   xasl = pt_to_insert_xasl (parser, statement);
 
   if (xasl)
@@ -13743,8 +13760,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   row_count_total = 0;
 
-
-
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
   AU_ENABLE (save);
@@ -13788,7 +13803,15 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  error = insert_local (parser, statement);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      error = do_insert_at_server (parser, statement);
+    }
+  else
+    {
+      error = insert_local (parser, statement);
+    }
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);

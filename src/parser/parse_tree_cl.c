@@ -13091,7 +13091,13 @@ static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
-  PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+
+  /* do not check attribute list for dblink */
+  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+    }
+
   PT_APPLY_WALK (parser, p->info.insert.value_clauses, arg);
   PT_APPLY_WALK (parser, p->info.insert.into_var, arg);
   PT_APPLY_WALK (parser, p->info.insert.where, arg);
@@ -18068,6 +18074,18 @@ pt_is_const_expr_node (PT_NODE * node)
     }
 
   return false;
+}
+
+/*
+ * pt_is_ascii_string_value_node () -
+ *   return: whether the node is a non-national string value (CHAR or VARCHAR)
+ *   node(in):
+ */
+bool
+pt_is_ascii_string_value_node (const PT_NODE * const node)
+{
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum)
+	  && !PT_IS_NATIONAL_CHAR_STRING_TYPE (node->type_enum));
 }
 
 /*

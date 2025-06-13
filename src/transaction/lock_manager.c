@@ -3949,6 +3949,11 @@ end:
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
 
+  if (entry_ptr != NULL && ret_val == LK_GRANTED)
+    {
+      lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
+    }
+
   return ret_val;
 }
 #endif /* SERVER_MODE */
@@ -8489,7 +8494,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   int tran_index;
   LK_RES *res_ptr;
   int num_locked, num_entry_alloc, num_resource_alloc;
-  UINT64 size_alloc;
+  size_t size_alloc;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 
@@ -8553,7 +8558,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
   num_resource_alloc = (int) lk_Gl.m_obj_hash_table.get_alloc_element_count ();
   num_entry_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
-  size_alloc = ((UINT64) num_entry_alloc * sizeof (LK_ENTRY)) + ((UINT64) num_resource_alloc * sizeof (LK_RES));
+  size_alloc = (num_entry_alloc * sizeof (LK_ENTRY)) + (num_resource_alloc * sizeof (LK_RES));
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
@@ -9507,6 +9512,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
   LK_RES *res_ptr = NULL;
   LOCK_COMPATIBILITY compat1, compat2;
   int rv, indent = 2;
+  bool is_other_waiter = false;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -9549,6 +9555,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
     {
       if (entry == wait_entry)
 	{
+	  is_other_waiter = true;
 	  continue;
 	}
 
@@ -9557,9 +9564,16 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       if (compat1 == LOCK_COMPAT_NO)
 	{
+	  if (is_other_waiter)
+	    {
+	      /* first time for other waiter */
+	      fprintf (log_fp, "other waiters:\n");
+	      is_other_waiter = false;
+	    }
+
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 

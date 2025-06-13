@@ -1357,9 +1357,9 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
+#if !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH
   fhs_dump (thread_p, fhsid_p);
-#endif /* for debug */
+#endif /* !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH */
 
   if (file_destroy (thread_p, &(fhsid_p->bucket_file), true) != NO_ERROR)
     {
