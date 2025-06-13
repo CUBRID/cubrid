@@ -78,6 +78,7 @@ namespace parallel_query_execute
       std::multimap<XASL_NODE *, XASL_NODE *> m_xasl_map;
       std::multimap<XASL_NODE *, XASL_NODE *> m_list_scan_map;
       std::set<XASL_NODE *> m_aptr_head_set;
+      std::set<XASL_NODE *> m_aptr_set;
       bool m_is_parallel_executable=true;
   };
 }

@@ -143,18 +143,21 @@ namespace parallel_query_execute
     result = indent + node_info + "\n";
 
     // uncorrelated subquery와 CTE 처리
-    if (xasl->aptr_list)
+    for (XASL_NODE *xptr = xasl; xptr != nullptr; xptr = xptr->scan_ptr)
       {
-	bool has_more = (xasl->next != NULL);
-	bool *new_parent_has_more = new bool[depth + 1];
-	if (parent_has_more)
+	for (XASL_NODE *aptr = xptr->aptr_list; aptr != nullptr; aptr = aptr->next)
 	  {
-	    memcpy (new_parent_has_more, parent_has_more, depth * sizeof (bool));
-	  }
-	new_parent_has_more[depth] = has_more;
+	    bool has_more = (aptr->next != NULL);
+	    bool *new_parent_has_more = new bool[depth + 1];
+	    if (parent_has_more)
+	      {
+		memcpy (new_parent_has_more, parent_has_more, depth * sizeof (bool));
+	      }
+	    new_parent_has_more[depth] = has_more;
 
-	result += dump_xasl_tree_to_string (xasl->aptr_list, depth + 1, true, new_parent_has_more);
-	delete[] new_parent_has_more;
+	    result += dump_xasl_tree_to_string (aptr, depth + 1, true, new_parent_has_more);
+	    delete[] new_parent_has_more;
+	  }
       }
 
     // CTE non_recursive_part 처리
@@ -416,11 +419,62 @@ namespace parallel_query_execute
 	return;
       }
 
+    /*if (xasl->scan_op_type != S_SELECT)
+      {
+    m_is_parallel_executable = false;
+    return;
+      }*/
+
+    if (!XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+      {
+	m_is_parallel_executable = false;
+	return;
+      }
+
     for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
       {
 	add_xasl_recursive (aptr);
 	m_xasl_map.insert (std::make_pair (xasl, aptr));
 	m_aptr_head_set.insert (xasl);
+	m_aptr_set.insert (aptr);
+	if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+	  {
+	    m_is_parallel_executable = false;
+	    return;
+	  }
+	if (aptr->outptr_list)
+	  {
+	    for (REGU_VARIABLE_LIST outptr = aptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+	      {
+		REGU_VARIABLE *regu_var = &outptr->value;
+		if (regu_var->type == TYPE_SP)
+		  {
+		    m_is_parallel_executable = false;
+		  }
+	      }
+	  }
+	if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
+	  {
+	    m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
+	  }
+	for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
+	  {
+	    if (aptr_scan_ptr->outptr_list)
+	      {
+		for (REGU_VARIABLE_LIST outptr = aptr_scan_ptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+		  {
+		    REGU_VARIABLE *regu_var = &outptr->value;
+		    if (regu_var->type == TYPE_SP)
+		      {
+			m_is_parallel_executable = false;
+		      }
+		  }
+	      }
+	    if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
+	      {
+		m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
+	      }
+	  }
       }
     for (XASL_NODE *scan_ptr = xasl->scan_ptr; scan_ptr != nullptr; scan_ptr = scan_ptr->scan_ptr)
       {
@@ -428,6 +482,12 @@ namespace parallel_query_execute
 	  {
 	    m_xasl_map.insert (std::make_pair (xasl, aptr));
 	    m_aptr_head_set.insert (xasl);
+	    m_aptr_set.insert (aptr);
+	    if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+	      {
+		m_is_parallel_executable = false;
+		return;
+	      }
 	    if (aptr->outptr_list)
 	      {
 		for (REGU_VARIABLE_LIST outptr = aptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
@@ -441,7 +501,25 @@ namespace parallel_query_execute
 	      }
 	    if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
 	      {
-		m_list_scan_map.insert (std::make_pair (xasl, aptr->spec_list->s.list_node.xasl_node));
+		m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
+	      }
+	    for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
+	      {
+		if (aptr_scan_ptr->outptr_list)
+		  {
+		    for (REGU_VARIABLE_LIST outptr = aptr_scan_ptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+		      {
+			REGU_VARIABLE *regu_var = &outptr->value;
+			if (regu_var->type == TYPE_SP)
+			  {
+			    m_is_parallel_executable = false;
+			  }
+		      }
+		  }
+		if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
+		  {
+		    m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
+		  }
 	      }
 	  }
       }
@@ -593,7 +671,7 @@ namespace parallel_query_execute
 	_er_log_debug (ARG_FILE_LINE,
 		       "parallel_detail_info : is_executable : %p, n_aptr: %zu", xasl, m_aptr_head_set.size());
 #endif
-	if (m_aptr_head_set.size() < 1)
+	if (m_aptr_set.size() < 2)
 	  {
 	    return false;
 	  }

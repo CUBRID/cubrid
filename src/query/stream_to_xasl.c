@@ -2365,7 +2365,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
-
+  xasl->executed_parallelism = 0;
   return ptr;
 
 error:
