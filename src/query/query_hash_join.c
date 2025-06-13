@@ -1930,7 +1930,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 cleanup:
   if (manager->on_trace)
     {
-      hjoin_trace_end (thread_p, &manager->stats_group->stats.partitioning, &start_stats);
+      hjoin_trace_end (thread_p, &manager->stats_group->stats.split, &start_stats);
     }
 
   if (part_info.outer.part_list_id != NULL)
@@ -3821,7 +3821,7 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
   stats->build.fetch_time += context_stats->build.fetch_time;
   stats->build.ioreads += context_stats->build.ioreads;
   stats->build.read_rows += context_stats->build.read_rows;
-  /* stats->build.read_keys += context_stats->build.read_keys; - Unused */
+  /* stats->build.read_keys += context_stats->build.read_keys; - unused */
   stats->build.qualified_rows += context_stats->build.qualified_rows;
 
 #if HASHJOIN_PROFILE_TIME

@@ -133,7 +133,7 @@ typedef struct hashjoin_stats
   HASH_METHOD hash_method;
   bool is_build_outer;
 
-  HASHJOIN_INPUT_STATS partitioning;
+  HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS build;
   HASHJOIN_INPUT_STATS probe;
 
