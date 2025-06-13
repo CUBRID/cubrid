@@ -1368,7 +1368,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  init_hnsw_index_path ();
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
     {

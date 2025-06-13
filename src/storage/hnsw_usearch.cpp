@@ -126,15 +126,6 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 {
   char filepath[PATH_MAX];
 
-  if (!hnsw_index_directory_created)
-    {
-      if (create_hnsw_index_directory () != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "Failed to create HNSW Index directory");
-	  return ER_FAILED;
-	}
-    }
-
   if (!btid)
     {
       assert (false);
