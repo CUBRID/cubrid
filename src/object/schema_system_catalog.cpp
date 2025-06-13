@@ -23,7 +23,6 @@
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "schema_system_catalog_constants.h"
-// #include "schema_manager.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
