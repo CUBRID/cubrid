@@ -117,12 +117,18 @@ namespace cubschema
   static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
 }
 
+// 'name' is a null-terminated string, so it's safe to use string_view::data()
 bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = {'\0'};
-  // 'name' is a null-terminated string, so it's safe to use string_view::data()
+
+  // The user-specified name is not a system class name.
+  if (strchr (name.data(), '.') != NULL)
+    {
+      return false;
+    }
+
   intl_identifier_lower (name.data(), downcase_name);
 
   return identifier_store::check_identifier_is_valid (downcase_name, false)
