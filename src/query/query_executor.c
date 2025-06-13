@@ -11927,16 +11927,10 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
   bool copy = (pr_is_set_type (attr->type)) ? true : false;
   if (pr_type != NULL)
     {
+      /* initialized buffer size equals to the read size, so no overflow */
       or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
-      buf.error_abort = 1;
-      switch (_setjmp (buf.env))
-	{
-	case 0:
-	  return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
-					NULL, 0);
-	default:
-	  return ER_FAILED;
-	}
+      return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
+				    NULL, 0);
     }
   else
     {

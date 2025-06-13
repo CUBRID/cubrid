@@ -1993,12 +1993,71 @@ pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   int *op_list = (int *) arg;
   int i;
 
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
   if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
 
+  assert (op_list != NULL);
+
+  for (i = 1; i <= op_list[0]; i++)
+    {
+      if (op_list[i] == node->info.expr.op)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		      pt_show_binopcode (node->info.expr.op));
+	}
+    }
+  return node;
+}
+
+/*
+ * pt_expr_disallow_op_except_agg () - looks if the expression op is in the list
+ *				       given as argument and throws an error if
+ *				       found except aggregate function
+ *
+ * return: node
+ * parser(in):
+ * node(in):
+ * arg(in): integer list with forbidden operators. arg[0] keeps the number of
+ *	    operators
+ * continue_wals (in/out):
+ */
+PT_NODE *
+pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *op_list = (int *) arg;
+  int i;
+
   if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type) || pt_is_aggregate_function (parser, node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
@@ -11663,10 +11722,20 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
+	  char *a_name = NULL, *t_name, *r_name;
+
 	  if (spec->info.spec.range_var)
 	    {
+	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+	    }
+
+	  t_name = (char *) target->info.name.original;
+	  r_name = (char *) target->info.name.resolved;
+
+	  if (a_name)
+	    {
 	      /* checking alias for remote/local table */
-	      if (strcmp (spec->info.spec.range_var->info.name.original, target->info.name.original) == 0)
+	      if ((t_name && strcmp (a_name, t_name) == 0) || ((r_name && strcmp (a_name, r_name) == 0)))
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11681,8 +11750,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	    }
 	  else
 	    {
-	      if (spec->info.spec.entity_name
-		  && strcmp (spec->info.spec.entity_name->info.name.original, target->info.name.original) == 0)
+	      if (spec->info.spec.entity_name && t_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, t_name) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11967,7 +12036,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  assert (server->node_type == PT_NAME);
+  if (server->node_type == PT_DBLINK_TABLE_DML)
+    {
+      /* already converted */
+      return;
+    }
 
   ct->info.dblink_table.is_name = true;
   ct->info.dblink_table.conn = server;
