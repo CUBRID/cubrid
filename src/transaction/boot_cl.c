@@ -1486,6 +1486,15 @@ boot_server_die_or_changed (void)
 void
 boot_client_all_finalize (int final_level)
 {
+  void (*sigterm_handler) (int);
+  void (*sigabrt_handler) (int);
+  void (*sigint_handler) (int);
+
+  /* to prevent duplicate calls by signal handlers during execution of the function. */
+  sigterm_handler = signal (SIGTERM, SIG_IGN);
+  sigabrt_handler = signal (SIGABRT, SIG_IGN);
+  sigint_handler = signal (SIGINT, SIG_IGN);
+
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
       if (boot_Server_credential.db_full_name)
@@ -1554,6 +1563,11 @@ boot_client_all_finalize (int final_level)
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
+
+      /* restore the signals that was blocked, when the function started. */
+      signal (SIGTERM, sigterm_handler);
+      signal (SIGABRT, sigabrt_handler);
+      signal (SIGINT, sigint_handler);
     }
 }
 
