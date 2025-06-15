@@ -1134,6 +1134,12 @@ au_drop_member (MOP group, MOP member)
 	}
       set_free (member_groups);
     }
+
+  if (error == NO_ERROR)
+    {
+      error = au_update_user_timestamp (member);
+    }
+
   AU_ENABLE (save);
   return (error);
 }

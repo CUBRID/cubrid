@@ -1392,12 +1392,22 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
-  err = db_update_obj_timestamp (sp_mop);
-  if (err != NO_ERROR)
+  /*
+   * Timestamp already updated in au_change_sp_owner_with_transfer_privileges() and alter_stored_procedure_code()
+   */
+  if (sp_owner == NULL && (sp_recompile && lang != SP_LANG_PLCSQL))
     {
-      goto error;
+      err = db_update_obj_timestamp (sp_mop);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 error:
