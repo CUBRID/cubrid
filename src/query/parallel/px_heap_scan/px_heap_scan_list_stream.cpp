@@ -151,8 +151,9 @@ namespace parallel_heap_scan
     REGU_VARIABLE_LIST p;
     int n_preds, n_rests, n_all;
     char *tuple_p;
-    int i = 0, tval_size = 0, tlen, tpl_size;
-    int n_size, toffset;
+    int i = 0, tval_size = 0;
+    std::size_t  tlen, tpl_size, toffset;
+    int n_size;
     bool clear_compressed_string = true;
     DB_VALUE *dbval_p;
     HEAP_SCAN_ID *hsid = (HEAP_SCAN_ID *) &scan_id->s.hsid;
