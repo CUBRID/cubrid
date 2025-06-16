@@ -812,11 +812,11 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
     case SQL_FLOAT:
       code_set = INTL_CODESET_ASCII;
@@ -866,7 +866,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_BIGINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
