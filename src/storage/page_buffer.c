@@ -271,6 +271,13 @@ typedef enum
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
+/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+#else
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
+#endif
+
+#if defined (SERVER_MODE)
 /* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
 #else
@@ -6239,7 +6246,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
       aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bcb->vpid);
     }
 
-  if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
+  if (PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
     {
       /* we are not registering unfix for activity and we are not boosting or moving bcb's */
       if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -6316,7 +6323,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
   /* add to middle of shared list. */
   pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, pgbuf_get_shared_lru_index_for_add ());
   perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-  if (!PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
+  if (!PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
     {
       pgbuf_bcb_register_hit_for_lru (bcb);
     }
@@ -8268,7 +8275,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
 	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim.
 	   * note: except vacuum threads who ignore unfixes and have no quota. */
-	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	  if (!PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
 	    {
 	      /* still, offer a chance to those that are just slightly over quota. this actually targets new
 	       * transactions that do not have a quota yet... let them get a few bcb's first until their activity
