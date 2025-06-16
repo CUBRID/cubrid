@@ -33,6 +33,7 @@ namespace cubbase
 {
   // an exceptional case out of identifier rule for system classes
   const std::string SYSTEM_CLASS_PREFIX = "_db";
+  const std::string SYSTEM_VCLASS_PREFIX = "db_";
 
   /*
   * Table name, index name, view name, column name, user name etc. are included in identifier.

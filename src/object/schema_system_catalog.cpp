@@ -16,6 +16,8 @@
  *
  */
 
+#include <strings.h>
+
 #include "schema_system_catalog.hpp"
 
 #include "db.h"
@@ -27,6 +29,8 @@
 #include "memory_wrapper.hpp"
 
 using namespace cubbase;
+
+static bool is_reserved_catalog_name (const char *name_ptr);
 
 namespace cubschema
 {
@@ -117,22 +121,19 @@ namespace cubschema
   static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
 }
 
-// 'name' is a null-terminated string, so it's safe to use string_view::data()
 bool sm_check_system_class_by_name (const std::string_view name)
 {
-  // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = {'\0'};
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = {'\0'};
+  const char *name_ptr = name.data();  // 'name' is a null-terminated string, so it's safe to use string_view::data()
 
-  // The user-specified name is not a system class name.
-  if (strchr (name.data(), '.') != NULL)
+  if (!is_reserved_catalog_name (name_ptr))
     {
       return false;
     }
 
-  intl_identifier_lower (name.data(), downcase_name);
+  intl_identifier_lower (name_ptr, downcase_name);
 
-  return identifier_store::check_identifier_is_valid (downcase_name, false)
-	 && (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
+  return (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
 }
 
 bool sm_is_system_class (const std::string_view name)
@@ -143,4 +144,30 @@ bool sm_is_system_class (const std::string_view name)
 bool sm_is_system_vclass (const std::string_view name)
 {
   return cubschema::sm_catalog_vclass_names.is_exists (name);
+}
+
+static bool is_reserved_catalog_name (const char *name_ptr)
+{
+  if (name_ptr == NULL || *name_ptr == '\0')
+    {
+      return false;
+    }
+
+  if (*name_ptr == '_')
+    {
+      if (strncasecmp (name_ptr, SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) == 0)
+	{
+	  return true;
+	}
+    }
+  else if (tolower (*name_ptr) == 'd')
+    {
+      if (strncasecmp (name_ptr, SYSTEM_VCLASS_PREFIX.c_str(), SYSTEM_VCLASS_PREFIX.length()) == 0
+	  || strncasecmp (name_ptr,CT_DUAL_NAME, 4) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
