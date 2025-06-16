@@ -162,8 +162,12 @@ vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p)
 bool
 vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p)
 {
+#if defined (SERVER_MODE)
   assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_WORKER;
+#else
+  return false;
+#endif
 }
 
 bool

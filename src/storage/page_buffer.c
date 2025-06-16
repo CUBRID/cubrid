@@ -271,10 +271,10 @@ typedef enum
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
-/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+/* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
 #else
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif
 
 #define HASH_SIZE_BITS 20
@@ -6084,7 +6084,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 	    case PGBUF_LRU_1_ZONE:
 	      /* note: this is most often accessed code and must be highly optimized! */
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  /* do nothing */
 		  /* ... except collecting statistics */
@@ -6113,7 +6113,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_2_ZONE:
 	      /* this is the buffer zone between hot and victimized. is less hot than zone one and we allow boosting
 	       * (if bcb's are old enough). */
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  /* do nothing */
 		  /* ... except collecting statistics */
@@ -6148,7 +6148,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      break;
 
 	    case PGBUF_LRU_3_ZONE:
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
@@ -6239,7 +6239,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
       aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bcb->vpid);
     }
 
-  if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+  if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
     {
       /* we are not registering unfix for activity and we are not boosting or moving bcb's */
       if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -6285,7 +6285,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
 
   if (thread_private_lru_index != -1)
     {
-      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
 	{
 	  /* add to top of current private list */
 	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
@@ -6316,7 +6316,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
   /* add to middle of shared list. */
   pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, pgbuf_get_shared_lru_index_for_add ());
   perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+  if (!PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
     {
       pgbuf_bcb_register_hit_for_lru (bcb);
     }
@@ -8268,7 +8268,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
 	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim.
 	   * note: except vacuum threads who ignore unfixes and have no quota. */
-	  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	  if (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
 	    {
 	      /* still, offer a chance to those that are just slightly over quota. this actually targets new
 	       * transactions that do not have a quota yet... let them get a few bcb's first until their activity
