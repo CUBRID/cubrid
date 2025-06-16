@@ -1401,7 +1401,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /*
    * Timestamp already updated in au_change_sp_owner_with_transfer_privileges() and alter_stored_procedure_code()
    */
-  if (sp_owner == NULL && (sp_recompile && lang != SP_LANG_PLCSQL))
+  if (sp_owner == NULL && (!sp_recompile || lang != SP_LANG_PLCSQL))
     {
       err = db_update_obj_timestamp (sp_mop);
       if (err != NO_ERROR)

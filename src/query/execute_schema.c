@@ -2403,18 +2403,10 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
 /*
- * Update user timestamp only for password or comment changes.
- * Skip for add/drop member (member_name != NULL); the member's timestamp will be updated instead.
+ * Timestamp already updated during add/drop members (member_name != NULL)
+ * in db_add_member() or db_drop_member(); update only for password or comment changes.
  */
   if (statement->info.alter_user.members == NULL)
-    {
-      error = au_update_user_timestamp (user);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-  else if (statement->info.alter_user.comment != NULL)
     {
       error = au_update_user_timestamp (user);
       if (error != NO_ERROR)
