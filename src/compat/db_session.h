@@ -17,11 +17,11 @@
  */
 
 /*
- * api_compat.h -
+ * db_session.h -
  */
 
-#ifndef _API_COMPAT_H_
-#define _API_COMPAT_H_
+#ifndef _DB_SESSION_H_
+#define _DB_SESSION_H_
 
 struct db_session
 {
@@ -42,4 +42,4 @@ struct db_session
   DB_SESSION *next;		/* subsessions for prepared statements */
 };
 
-#endif /* _API_COMPAT_H_ */
+#endif /* _DB_SESSION_H_ */

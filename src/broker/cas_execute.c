@@ -78,7 +78,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)

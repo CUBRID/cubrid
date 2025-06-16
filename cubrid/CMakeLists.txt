@@ -173,7 +173,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
-  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -686,7 +685,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
-  # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
+  ${COMPAT_DIR}/dbtran_def.h
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.h
@@ -695,6 +694,7 @@ install(FILES
   ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+
 install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
@@ -703,6 +703,7 @@ install(FILES
   ${API_DIR}/cubrid_log.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
