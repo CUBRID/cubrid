@@ -16,8 +16,6 @@
  *
  */
 
-#include <strings.h>
-
 #include "schema_system_catalog.hpp"
 
 #include "db.h"
@@ -29,8 +27,6 @@
 #include "memory_wrapper.hpp"
 
 using namespace cubbase;
-
-static bool is_reserved_catalog_name (const char *name_ptr);
 
 namespace cubschema
 {
@@ -126,12 +122,28 @@ bool sm_check_system_class_by_name (const std::string_view name)
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = {'\0'};
   const char *name_ptr = name.data();  // 'name' is a null-terminated string, so it's safe to use string_view::data()
 
-  if (!is_reserved_catalog_name (name_ptr))
+  assert (name_ptr != NULL);
+  if (name.length() < 4)
     {
       return false;
     }
 
-  intl_identifier_lower (name_ptr, downcase_name);
+  if (*name_ptr == '_')
+    {
+      name_ptr++;
+    }
+
+  if (name_ptr[0] != 'd' && name_ptr[0] != 'D')
+    {
+      return false;
+    }
+
+  if (name_ptr[2] != '_' && strcasecmp (name_ptr, CT_DUAL_NAME) != 0)
+    {
+      return false;
+    }
+
+  intl_identifier_lower (name.data(), downcase_name);
 
   return (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
 }
@@ -144,30 +156,4 @@ bool sm_is_system_class (const std::string_view name)
 bool sm_is_system_vclass (const std::string_view name)
 {
   return cubschema::sm_catalog_vclass_names.is_exists (name);
-}
-
-static bool is_reserved_catalog_name (const char *name_ptr)
-{
-  if (name_ptr == NULL || *name_ptr == '\0')
-    {
-      return false;
-    }
-
-  if (*name_ptr == '_')
-    {
-      if (strncasecmp (name_ptr, SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) == 0)
-	{
-	  return true;
-	}
-    }
-  else if (tolower (*name_ptr) == 'd')
-    {
-      if (strncasecmp (name_ptr, SYSTEM_VCLASS_PREFIX.c_str(), SYSTEM_VCLASS_PREFIX.length()) == 0
-	  || strncasecmp (name_ptr,CT_DUAL_NAME, 4) == 0)
-	{
-	  return true;
-	}
-    }
-
-  return false;
 }
