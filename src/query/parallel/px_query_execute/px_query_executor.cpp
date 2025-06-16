@@ -28,8 +28,6 @@
 
 namespace parallel_query_execute
 {
-
-  // XASL 타입을 문자열로 변환하는 함수
   static const char *get_xasl_type_string (PROC_TYPE type)
   {
     switch (type)
@@ -77,7 +75,6 @@ namespace parallel_query_execute
     std::string result;
     std::string indent;
 
-    // 들여쓰기와 트리 구조 구성
     for (int i = 0; i < depth; i++)
       {
 	if (i == depth - 1)
@@ -104,13 +101,11 @@ namespace parallel_query_execute
 	  }
       }
 
-    // 현재 XASL 노드 정보 구성
     char node_info[1024];
     int offset = 0;
     offset += snprintf (node_info + offset, sizeof (node_info) - offset, "XASL[%p] Type: %s %s", xasl,
 			get_xasl_type_string (xasl->type), xasl->option == Q_DISTINCT ? "DISTINCT" : "");
 
-    // 플래그 정보 구성
     if (xasl->flag & XASL_LINK_TO_REGU_VARIABLE)
       {
 	offset += snprintf (node_info + offset, sizeof (node_info) - offset, " LINK_TO_REGU");
@@ -142,7 +137,6 @@ namespace parallel_query_execute
 
     result = indent + node_info + "\n";
 
-    // uncorrelated subquery와 CTE 처리
     for (XASL_NODE *xptr = xasl; xptr != nullptr; xptr = xptr->scan_ptr)
       {
 	for (XASL_NODE *aptr = xptr->aptr_list; aptr != nullptr; aptr = aptr->next)
@@ -160,7 +154,6 @@ namespace parallel_query_execute
 	  }
       }
 
-    // CTE non_recursive_part 처리
     if (xasl->type == CTE_PROC && xasl->proc.cte.non_recursive_part)
       {
 	bool has_more = (xasl->next != NULL);
@@ -175,7 +168,6 @@ namespace parallel_query_execute
 	delete[] new_parent_has_more;
       }
 
-    // 다음 XASL 노드 처리
     if (xasl->next)
       {
 	bool has_more = (xasl->next->next != NULL);
@@ -419,11 +411,11 @@ namespace parallel_query_execute
 	return;
       }
 
-    /*if (xasl->scan_op_type != S_SELECT)
+    if (xasl->scan_op_type != S_SELECT)
       {
-    m_is_parallel_executable = false;
-    return;
-      }*/
+	m_is_parallel_executable = false;
+	return;
+      }
 
     if (!XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
       {
@@ -478,6 +470,21 @@ namespace parallel_query_execute
       }
     for (XASL_NODE *scan_ptr = xasl->scan_ptr; scan_ptr != nullptr; scan_ptr = scan_ptr->scan_ptr)
       {
+	if (scan_ptr ->outptr_list)
+	  {
+	    for (REGU_VARIABLE_LIST outptr = scan_ptr ->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
+	      {
+		REGU_VARIABLE *regu_var = &outptr->value;
+		if (regu_var->type == TYPE_SP)
+		  {
+		    m_is_parallel_executable = false;
+		  }
+	      }
+	  }
+	if (scan_ptr ->spec_list && scan_ptr ->spec_list->type == TARGET_LIST)
+	  {
+	    m_list_scan_map.insert (std::make_pair (xasl, scan_ptr->spec_list->s.list_node.xasl_node));
+	  }
 	for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
 	  {
 	    m_xasl_map.insert (std::make_pair (xasl, aptr));

@@ -99,14 +99,14 @@ namespace parallel_query_execute
 
     if (is_list_id_kept)
       {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true); //+1
-	qfile_clear_list_id (&list_id); //-1
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_clear_list_id (&list_id);
       }
-
+#if !NDEBUG
     pthread_mutex_lock (m_mutex_p);
     (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
     pthread_mutex_unlock (m_mutex_p);
-
+#endif
     if (m_orig_thread_p->index != thread_ref.index)
       {
 #if WITH_PARALLEL_DETAIL_INFO
@@ -175,10 +175,11 @@ namespace parallel_query_execute
 	qfile_clear_list_id (&list_id);
       }
 
+#if !NDEBUG
     pthread_mutex_lock (m_mutex_p);
     (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
     pthread_mutex_unlock (m_mutex_p);
-
+#endif
     if (m_orig_thread_p->index != thread_ref.index)
       {
 #if WITH_PARALLEL_DETAIL_INFO
@@ -457,6 +458,7 @@ namespace parallel_query_execute
 	thread_sleep (1);
       }
     while (not_ended);
+#if !NDEBUG
     XASL_NODE *base;
     for (auto &[xasl, index] : m_xasl_thread_executed_map)
       {
@@ -580,6 +582,7 @@ namespace parallel_query_execute
 	    break;
 	  }
       }
+#endif
     m_xasl_thread_executed_map.clear();
   }
 

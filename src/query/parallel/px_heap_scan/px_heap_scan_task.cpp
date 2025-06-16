@@ -260,7 +260,13 @@ namespace parallel_heap_scan
 		  }
 		else
 		  {
-		    writer.write (thread_p, scan_id, data);
+		    writer_error_code = writer.write (thread_p, scan_id, data);
+		    if (writer_error_code != NO_ERROR)
+		      {
+			m_context->set_has_error();
+			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
+			break;
+		      }
 		  }
 		if (on_trace)
 		  {

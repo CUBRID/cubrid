@@ -1846,13 +1846,6 @@ qexec_clear_access_spec_list_except_trace (THREAD_ENTRY * thread_p, XASL_NODE * 
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
-      if (p->parts != NULL)
-	{
-	  db_private_free (thread_p, p->parts);
-	  p->parts = NULL;
-	  p->curent = NULL;
-	  p->pruned = false;
-	}
 
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
@@ -2129,7 +2122,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 
       if (p->parts != NULL)
 	{
-	  db_private_free (thread_p, p->parts);
+	  free (p->parts);
 	  p->parts = NULL;
 	  p->curent = NULL;
 	  p->pruned = false;
@@ -7692,7 +7685,7 @@ exit_on_error:
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->parts != NULL)
     {
       /* reset pruning info */
-      db_private_free (thread_p, curr_spec->parts);
+      free (curr_spec->parts);
       curr_spec->parts = NULL;
       curr_spec->curent = NULL;
       curr_spec->pruned = false;
@@ -15084,7 +15077,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  for (xptr2 = xptr->aptr_list; xptr2; xptr2 = xptr2->next)
 	    {
-	      if (merge_infop)
+	      if (merge_infop && !xasl->px_executor)
 		{
 		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_LEFT)
 		    {
