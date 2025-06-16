@@ -8382,11 +8382,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
-				  /* only one row is need for exists OP */
-				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-				    {
-				      return S_SUCCESS;
-				    }
 				}
 			    }
 			}
@@ -8452,11 +8447,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
-					}
-				      /* only one row is need for exists OP */
-				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-					{
-					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }
