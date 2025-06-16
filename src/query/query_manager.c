@@ -3118,15 +3118,12 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, 
     }
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-  pthread_mutex_lock (&tran_entry_p->mutex);
 
   rc = NO_ERROR;
   if (query_p->temp_vfid != NULL)
     {
       rc = qmgr_free_query_temp_file_helper (thread_p, query_p);
     }
-
-  pthread_mutex_unlock (&tran_entry_p->mutex);
 
   return rc;
 }

@@ -15143,9 +15143,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			  else
 			    {
-			      parallel_query::worker_manager_with_dedicated_pool * px_worker_manager_p =
-				&parallel_query::worker_manager_with_dedicated_pool::get_manager ();
-			      if (parallel_query_execute::query_executor::make_parallel_query_executor_recursively
+			      using dpool = parallel_query::worker_manager_with_dedicated_pool;
+			      using pexec = parallel_query_execute::query_executor;
+			      dpool *px_worker_manager_p = &dpool::get_manager ();
+			      if (pexec::make_parallel_query_executor_recursively
 				  (thread_p, xasl, px_worker_manager_p, nullptr, n_workers_to_reserve) != true)
 				{
 				  xasl->executed_parallelism = 0;
