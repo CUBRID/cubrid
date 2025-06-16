@@ -4214,7 +4214,7 @@ alter_stmt
                         PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
 			if (node)
 			  {
-                                char *str;  
+                                const char *str;  
                                 bool is_not_allowed = false;  
                                 int  item_bits = (int)TO_NUMBER(CONTAINER_AT_9($4));
                                 PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
@@ -4251,7 +4251,7 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_HOST))
                                 {
                                     server->xbits.bit_host = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
+                                    str = (const char *) PT_VALUE_GET_BYTES (server->host);                                                                       
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_PORT))
