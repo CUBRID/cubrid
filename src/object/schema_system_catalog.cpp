@@ -117,22 +117,35 @@ namespace cubschema
   static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
 }
 
-// 'name' is a null-terminated string, so it's safe to use string_view::data()
 bool sm_check_system_class_by_name (const std::string_view name)
 {
-  // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = {'\0'};
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = {'\0'};
+  const char *name_ptr = name.data();  // 'name' is a null-terminated string, so it's safe to use string_view::data()
 
-  // The user-specified name is not a system class name.
-  if (strchr (name.data(), '.') != NULL)
+  assert (name_ptr != NULL);
+  if (name.length() < 4)
+    {
+      return false;
+    }
+
+  if (*name_ptr == '_')
+    {
+      name_ptr++;
+    }
+
+  if (name_ptr[0] != 'd' && name_ptr[0] != 'D')
+    {
+      return false;
+    }
+
+  if (name_ptr[2] != '_' && strcasecmp (name_ptr, CT_DUAL_NAME) != 0)
     {
       return false;
     }
 
   intl_identifier_lower (name.data(), downcase_name);
 
-  return identifier_store::check_identifier_is_valid (downcase_name, false)
-	 && (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
+  return (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
 }
 
 bool sm_is_system_class (const std::string_view name)
