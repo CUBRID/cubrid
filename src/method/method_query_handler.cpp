@@ -19,7 +19,7 @@
 #include "method_query_handler.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
 #include "authenticate.h"
 #include "db.h"
 #include "dbi.h"

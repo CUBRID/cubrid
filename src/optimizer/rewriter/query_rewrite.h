@@ -120,6 +120,7 @@ typedef enum dnf_merge_range_result DNF_MERGE_RANGE_RESULT;
 /* optimize subqueries */
 PT_NODE *qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 PT_NODE *qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * parent_node);
+void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* optimize terms */
 void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms);
