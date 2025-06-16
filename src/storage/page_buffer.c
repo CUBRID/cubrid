@@ -6292,7 +6292,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
 
   if (thread_private_lru_index != -1)
     {
-      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bcb))
+      if (PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
 	{
 	  /* add to top of current private list */
 	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
