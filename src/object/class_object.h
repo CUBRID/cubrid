@@ -1138,4 +1138,5 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
+extern int classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint);
 #endif /* _CLASS_OBJECT_H_ */

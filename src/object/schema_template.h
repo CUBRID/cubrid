@@ -121,6 +121,8 @@ extern int smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *i
 /* Change index status function */
 extern int smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status);
 
+extern int smt_update_constraint_updated_time (SM_TEMPLATE * ctemplate, const char *index_name);
+
 /* Deletion functions */
 extern int smt_delete_any (SM_TEMPLATE * template_, const char *name, SM_NAME_SPACE name_space);
 #if defined(ENABLE_UNUSED_FUNCTION)

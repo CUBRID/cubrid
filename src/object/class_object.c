@@ -1964,7 +1964,7 @@ end:
 int
 classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
 {
-  DB_VALUE prop_val, cnstr_val, curr_comment, new_comment, updated_time;
+  DB_VALUE prop_val, cnstr_val, curr_comment, new_comment;
   DB_SEQ *prop_seq, *idx_seq;
   const char *property_type;
   int found = 0;
@@ -1977,7 +1977,6 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
   db_make_null (&cnstr_val);
   db_make_null (&curr_comment);
   db_make_null (&new_comment);
-  db_make_null (&updated_time);
 
   property_type = classobj_map_constraint_to_property (cons->type);
 
@@ -2018,13 +2017,6 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
-  if (db_sys_datetime (&updated_time) != NO_ERROR || set_put_element (idx_seq, len - 1, &updated_time) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
   db_make_sequence (&cnstr_val, idx_seq);
   found = classobj_put_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
@@ -2048,7 +2040,72 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_comment);
   pr_clear_value (&new_comment);
-  pr_clear_value (&updated_time);
+
+  return error;
+}
+
+int
+classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint)
+{
+  const char *property_type;
+  DB_VALUE property_val, constraint_val, updated_time_val;
+  DB_SEQ *property_seq, *index_seq;
+  int error = NO_ERROR;
+  int seq_len = 0;
+
+  assert (properties != NULL && constraint != NULL);
+
+  db_make_null (&property_val);
+  db_make_null (&constraint_val);
+
+  property_type = classobj_map_constraint_to_property (constraint->type);
+
+  if (classobj_get_prop (properties, property_type, &property_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  property_seq = db_get_set (&property_val);
+  if (classobj_get_prop (property_seq, constraint->name, &constraint_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  index_seq = db_get_set (&constraint_val);
+  seq_len = set_size (index_seq);
+
+  if (db_sys_datetime (&updated_time_val) != NO_ERROR ||
+      set_put_element (index_seq, seq_len - 1, &updated_time_val) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_sequence (&constraint_val, index_seq);
+  if (classobj_put_prop (property_seq, constraint->name, &constraint_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_sequence (&property_val, property_seq);
+  if (classobj_put_prop (properties, property_type, &property_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+end:
+  pr_clear_value (&property_val);
+  pr_clear_value (&constraint_val);
+  pr_clear_value (&updated_time_val);
 
   return error;
 }

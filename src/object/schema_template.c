@@ -3076,6 +3076,12 @@ change_constraints_comment_partitioned_class (MOP obj, const char *index_name, c
 	  goto error_exit;
 	}
 
+      error = classobj_update_constraint_updated_time (ctemplate->properties, cons);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       /* classobj_free_template() is included in sm_update_class() */
       error = sm_update_class (ctemplate, NULL);
       if (error != NO_ERROR)
@@ -3127,21 +3133,40 @@ smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, 
   error = change_constraints_comment_partitioned_class (ctemplate->op, index_name, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
   error = classobj_change_constraint_comment (ctemplate->properties, cons, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
-end:
-  return error;
+  return NO_ERROR;
+}
 
-  /* in order to show explicitly the error */
-error_exit:
-  goto end;
+int
+smt_update_constraint_updated_time (SM_TEMPLATE * ctemplate, const char *index_name)
+{
+  SM_CLASS_CONSTRAINT *constraint = NULL;
+  int error = NO_ERROR;
+
+  assert (ctemplate != NULL && ctemplate->op != NULL);
+
+  constraint = smt_find_constraint (ctemplate, index_name);
+  if (constraint == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = classobj_update_constraint_updated_time (ctemplate->properties, constraint);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
 }
 
 /* TEMPLATE DELETION FUNCTIONS */

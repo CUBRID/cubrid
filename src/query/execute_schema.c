@@ -3811,6 +3811,12 @@ do_alter_index_comment (PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto error_exit;
     }
 
+  error = smt_update_constraint_updated_time (ctemplate, index_name);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   /* classobj_free_template() is included in sm_update_class() */
   error = sm_update_class (ctemplate, NULL);
   if (error != NO_ERROR)
@@ -15780,6 +15786,12 @@ do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error = smt_change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = smt_update_constraint_updated_time (ctemplate, index_name);
   if (error != NO_ERROR)
     {
       goto error_exit;
