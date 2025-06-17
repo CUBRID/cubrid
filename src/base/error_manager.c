@@ -3341,10 +3341,10 @@ er_print_crash_callstack (int sig)
   gettimeofday (&tv, NULL);
   tm_info = localtime (&tv.tv_sec);
 
-  sprintf (filename, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
-	   tm_info->tm_year + 1900,
-	   tm_info->tm_mon + 1,
-	   tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000);
+  snprintf (filename, sizeof (filename), "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
+	    tm_info->tm_year + 1900,
+	    tm_info->tm_mon + 1,
+	    tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000);
 
   /* print process information and callstack into coredump file */
   fp = fopen (filename, "w+");

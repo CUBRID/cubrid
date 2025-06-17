@@ -517,7 +517,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       leading_char = section[0];
       if (leading_char == '@' || leading_char == '%')
 	{
-	  sprintf (section, "%c%s", leading_char, ini_str_trim (section + 1));
+	  snprintf (section, INI_BUFSIZ + 1, "%c%s", leading_char, ini_str_trim (section + 1));
 	}
 
       if (leading_char != '@')

@@ -195,7 +195,7 @@ event_file_backup (FILE * fp, const char *path)
   assert (path != NULL);
 
   fclose (fp);
-  sprintf (backup_file, "%s.bak", path);
+  snprintf (backup_file, sizeof (backup_file), "%s.bak", path);
   (void) unlink (backup_file);
   (void) rename (path, backup_file);
 
