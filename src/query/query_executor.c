@@ -15211,7 +15211,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  if (xasl->px_executor->get_recursion_level () == 0 && xasl->px_executor->is_error_occurred ())
 		    {
-		      xasl->px_executor->get_error_from_childs (xasl_state->query_id);
+		      xasl->px_executor->get_error_from_childs ();
 		    }
 		  if (tplrec.tpl)
 		    {
@@ -15223,7 +15223,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 	      if (xasl->px_executor->get_recursion_level () == 0 && xasl->px_executor->is_error_occurred ())
 		{
-		  xasl->px_executor->get_error_from_childs (xasl_state->query_id);
+		  xasl->px_executor->get_error_from_childs ();
 		  if (tplrec.tpl)
 		    {
 		      db_private_free_and_init (thread_p, tplrec.tpl);
