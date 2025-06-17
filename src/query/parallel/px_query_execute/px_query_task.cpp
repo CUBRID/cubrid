@@ -392,7 +392,7 @@ namespace parallel_query_execute
     join();
     if (m_error_messages_p->size() > 0)
       {
-	err = m_error_messages_p->at (0).first;
+	err = ER_FAILED;
       }
     return err;
   }
