@@ -269,6 +269,9 @@ typedef void (*PTR_FNERLOG) (int err_id);
 #define ASSERT_NO_ERROR() \
   assert (er_errid () == NO_ERROR);
 
+#define ASSERT_NO_ERROR_OR_INTERRUPTED() \
+  assert (er_errid () == NO_ERROR || er_errid () == ER_INTERRUPTED);
+
 #ifdef __cplusplus
 extern "C"
 {

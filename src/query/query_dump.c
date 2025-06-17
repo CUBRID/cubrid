@@ -1307,7 +1307,9 @@ qdump_print_value (REGU_VARIABLE * value_p)
 	{
 	  return false;
 	}
-
+#if !defined (NDEBUG)
+      qdump_print_db_value (value_p->vfetch_to);
+#endif
       return true;
 
     case TYPE_POS_VALUE:

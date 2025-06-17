@@ -697,7 +697,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
   return xasl;
@@ -1874,7 +1874,7 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
 	}
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
   return xasl;
 
@@ -2664,7 +2664,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   qo_clear_projection_info (env, &projection_info);
@@ -5649,7 +5649,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
   final_info->name_count = pt_length_of_list (final_info->name_list);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
 cleanup:
@@ -6022,7 +6022,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	}
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
 cleanup:

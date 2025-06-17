@@ -22,6 +22,7 @@
 
 #include "query_hash_join.h"
 
+#include "error_context.hpp"	/* cuberr::context */
 #include "dbtype.h"		/* db_make_null */
 #include "fetch.h"		/* fetch_val_list */
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
@@ -165,8 +166,6 @@ typedef struct hashjoin_manager
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
   parallel_query::worker_manager_with_dedicated_pool * px_workpool;
-  std::atomic_bool px_has_error;
-  int px_error_code;
   /* *INDENT-ON* */
 #endif				/* defined (SERVER_MODE) */
   bool on_trace;
@@ -185,20 +184,29 @@ class hashjoin_parallel_partition_task: public cubthread::entry_task
     HASHJOIN_PARTITION_INPUT_INFO *m_part_info;
     HASHJOIN_FETCH_INFO *m_fetch_info;
     bool m_is_null_allowed;
+    std::atomic_bool &m_has_error;
+    cuberr::er_message &m_error_message;
 
   public:
     hashjoin_parallel_partition_task () = delete;
     hashjoin_parallel_partition_task (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_PARTITION_INPUT_INFO * part_info,
-				      HASHJOIN_FETCH_INFO * fetch_info, bool is_null_allowed)
+				      HASHJOIN_FETCH_INFO * fetch_info, bool is_null_allowed, std::atomic_bool &has_error, cuberr::er_message &error_message)
     : m_thread_p (thread_p)
     , m_manager (manager)
     , m_part_info (part_info)
     , m_fetch_info (fetch_info)
     , m_is_null_allowed (is_null_allowed)
+    , m_has_error (has_error)
+    , m_error_message (error_message)
       {
 	//
       }
-    ~hashjoin_parallel_partition_task () = default;
+    ~hashjoin_parallel_partition_task ()
+      {
+#if defined (SERVER_MODE)
+	m_manager->px_workpool->pop_task();
+#endif
+      }
 
     void execute (cubthread::entry &thread_ref) override;
 };
@@ -211,19 +219,28 @@ class hashjoin_parallel_task: public cubthread::entry_task
     HASHJOIN_MANAGER *m_manager;
     HASHJOIN_CONTEXT *m_context;
     QFILE_LIST_ID **m_part_list_id;
+    std::atomic_bool &m_has_error;
+    cuberr::er_message &m_error_message;
 
   public:
     hashjoin_parallel_task () = delete;
     hashjoin_parallel_task (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			    QFILE_LIST_ID **part_list_id)
+			    QFILE_LIST_ID **part_list_id, std::atomic_bool &has_error, cuberr::er_message &error_message)
     : m_thread_p (thread_p)
     , m_manager (manager)
     , m_context (context)
     , m_part_list_id (part_list_id)
+    , m_has_error (has_error)
+    , m_error_message (error_message)
       {
 	//
       }
-    ~hashjoin_parallel_task () = default;
+    ~hashjoin_parallel_task ()
+      {
+#if defined (SERVER_MODE)
+	m_manager->px_workpool->pop_task();
+#endif
+      }
 
     void execute (cubthread::entry &thread_ref) override;
 };
@@ -372,32 +389,33 @@ HASHJOIN_PARALLEL_PARTITION_TASK::execute (cubthread::entry &thread_ref)
 
   thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
   thread_ref.conn_entry = m_thread_p->conn_entry;
+  thread_ref.emulate_tid = m_thread_p->get_id ();
 
-  if (m_manager->px_has_error)
+  if (m_has_error.load ())
     {
       return;
     }
 
-  if (logtb_get_check_interrupt (&thread_ref) == true && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index) == true)
+  if (logtb_get_check_interrupt (&thread_ref) && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
     {
-      if (!m_manager->px_has_error.exchange (true))
+      if (!m_has_error.exchange (true))
 	{
-	  m_manager->px_error_code = ER_INTERRUPTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  m_error_message.swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	}
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
       return;
     }
 
   error = hjoin_make_partition_input (&thread_ref, m_manager, m_part_info, m_fetch_info, m_is_null_allowed, NULL);
   if (error != NO_ERROR)
     {
-      if (!m_manager->px_has_error.exchange (true))
+      if (!m_has_error.exchange (true))
 	{
-	  m_manager->px_error_code = error;
+	  m_error_message.swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	}
-      return;
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
     }
-
-  m_manager->px_workpool->pop_task ();
 }
 
 void
@@ -408,18 +426,21 @@ HASHJOIN_PARALLEL_TASK::execute (cubthread::entry &thread_ref)
 
   thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread_p);
   thread_ref.conn_entry = m_thread_p->conn_entry;
+  thread_ref.emulate_tid = m_thread_p->get_id ();
 
-  if (m_manager->px_has_error)
+  if (m_has_error.load ())
     {
       return;
     }
 
-  if (logtb_get_check_interrupt (&thread_ref) == true && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index) == true)
+  if (logtb_get_check_interrupt (&thread_ref) && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
     {
-      if (!m_manager->px_has_error.exchange (true))
+      if (!m_has_error.exchange (true))
 	{
-	  m_manager->px_error_code = ER_INTERRUPTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  m_error_message.swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	}
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
       return;
     }
 
@@ -429,18 +450,14 @@ HASHJOIN_PARALLEL_TASK::execute (cubthread::entry &thread_ref)
       error = er_errid ();
       if (error != NO_ERROR)
 	{
-	  if (!m_manager->px_has_error.exchange (true))
+	  if (!m_has_error.exchange (true))
 	    {
-	      m_manager->px_error_code = error;
+	      m_error_message.swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	    }
 	}
-      return;
+
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
     }
-
-  qfile_update_qlist_count (&thread_ref, *m_part_list_id, 1);
-  qfile_update_qlist_count (m_thread_p, *m_part_list_id, -1);
-
-  m_manager->px_workpool->pop_task ();
 }
 /* *INDENT-ON* */
 #endif /* defined (SERVER_MODE) */
@@ -542,7 +559,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
     }
   else if (status == HASHJOIN_STATUS_END)
     {
-      ASSERT_NO_ERROR ();
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
   else
     {
@@ -579,6 +596,9 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   HASHJOIN_CONTEXT *current_context;
   QFILE_LIST_ID *context_list_id = NULL;
   int context_cnt, context_index;
+
+  std::atomic_bool has_error;
+  cuberr::er_message error_message (false);
 
   int error = NO_ERROR;
 
@@ -666,7 +686,7 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 #else /* defined (SERVER_MODE) */
       /* *INDENT-OFF* */
-      parallel_task = new HASHJOIN_PARALLEL_TASK (thread_p, manager, current_context, &part_list_id[context_index]);
+      parallel_task = new HASHJOIN_PARALLEL_TASK (thread_p, manager, current_context, &part_list_id[context_index], has_error, error_message);
       parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (parallel_task);
       /* *INDENT-ON* */
     }
@@ -674,6 +694,13 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   /* *INDENT-OFF* */
   parallel_query::worker_manager_with_dedicated_pool::get_manager().join();
   /* *INDENT-ON* */
+
+  if (has_error.load ())
+    {
+      cuberr::context::get_thread_local_error ().swap (error_message);
+      error = er_errid ();
+      goto error_exit;
+    }
 
   for (context_index = 0; context_index < context_cnt; context_index++)
     {
@@ -713,6 +740,7 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 	  qfile_destroy_list (thread_p, context_list_id);
 	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+	  part_list_id[context_index] = NULL;
 
 	  list_id = t_list_id;
 	  t_list_id = NULL;
@@ -725,6 +753,7 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 	  qfile_destroy_list (thread_p, context_list_id);
 	  QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
+	  part_list_id[context_index] = NULL;
 #else
 	  error = qfile_connect_list (thread_p, list_id, context_list_id);
 	  if (error != NO_ERROR)
@@ -744,7 +773,23 @@ hjoin_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   free_and_init (part_list_id);
 #endif /* defined (SERVER_MODE) */
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+
+cleanup:
+#if defined (SERVER_MODE)
+  if (part_list_id != NULL)
+    {
+      for (context_index = 0; context_index < context_cnt; context_index++)
+	{
+	  if (part_list_id[context_index] != NULL)
+	    {
+	      qfile_close_list (thread_p, part_list_id[context_index]);
+	      qfile_destroy_list (thread_p, part_list_id[context_index]);
+	      QFILE_FREE_AND_INIT_LIST_ID (part_list_id[context_index]);
+	    }
+	}
+    }
+#endif /* !defined (SERVER_MODE) */
 
   assert (list_id == NULL || list_id->last_pgptr == NULL);
 
@@ -756,12 +801,14 @@ error_exit:
       assert_release (false);
     }
 
+#if !defined (SERVER_MODE)
   if (context_list_id != NULL)
     {
       qfile_close_list (thread_p, context_list_id);
       qfile_destroy_list (thread_p, context_list_id);
       QFILE_FREE_AND_INIT_LIST_ID (context_list_id);
     }
+#endif /* !defined (SERVER_MODE) */
 
   if (list_id != NULL)
     {
@@ -770,7 +817,7 @@ error_exit:
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 
-  return NULL;
+  goto cleanup;
 }
 
 /*
@@ -940,7 +987,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
   qfile_close_list (thread_p, list_id);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (overflow_record.tpl != NULL)
@@ -1057,7 +1104,7 @@ hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CO
 
   qfile_close_list (thread_p, list_id);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   qfile_close_scan (thread_p, &build_list_scan_id);
@@ -1234,8 +1281,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
     }
 
   manager->px_workpool = &parallel_query::worker_manager_with_dedicated_pool::get_manager();
-  manager->px_has_error = false;
-  manager->px_error_code = NO_ERROR;
   /* *INDENT-ON* */
 #endif /* defined (SERVER_MODE) */
 
@@ -1255,7 +1300,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
       assert (context->stats == NULL);
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
 
@@ -1307,7 +1352,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 }
 
 /*
- * hjoin_clear_manager() -
+ * hjoin_init_domain_info() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
@@ -1492,7 +1537,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
    * no coercion is needed. Otherwise, values are coerced to the common domain. */
   domain_info->need_coerce_domains = need_coerce_domains;
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
 
@@ -1673,7 +1718,7 @@ hjoin_init_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJ
       assert (manager->stats_group == NULL);
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -1779,7 +1824,7 @@ hjoin_make_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJ
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (part_key != NULL)
@@ -1814,6 +1859,9 @@ hjoin_make_partition_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
   HASHJOIN_PARALLEL_PARTITION_TASK *task = NULL;
   UINT64 tasks_started = 0;
 
+  std::atomic_bool has_error;
+  cuberr::er_message error_message (false);
+
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
@@ -1828,16 +1876,23 @@ hjoin_make_partition_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
   is_outer_join = IS_OUTER_JOIN_TYPE (single_context->join_type);
 
   /* *INDENT-OFF* */
-  task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, manager, &part_info->outer, &single_context->outer_fetch_info, is_outer_join);
+  task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, manager, &part_info->outer, &single_context->outer_fetch_info, is_outer_join, has_error, error_message);
   parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (task);
 
-  task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, manager, &part_info->inner, &single_context->inner_fetch_info, is_outer_join);
+  task = new HASHJOIN_PARALLEL_PARTITION_TASK (thread_p, manager, &part_info->inner, &single_context->inner_fetch_info, is_outer_join, has_error, error_message);
   parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (task);
 
   parallel_query::worker_manager_with_dedicated_pool::get_manager().join();
   /* *INDENT-ON* */
 
-  ASSERT_NO_ERROR ();
+  if (has_error.load ())
+    {
+      cuberr::context::get_thread_local_error ().swap (error_message);
+      error = er_errid ();
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -1925,7 +1980,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   status = HASHJOIN_STATUS_PARTITION;
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (manager->on_trace)
@@ -2096,7 +2151,7 @@ hjoin_make_partition_input (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (need_clear_key)
@@ -2104,7 +2159,7 @@ cleanup:
       qdata_free_hscan_key (thread_p, key, manager->merge_info->ls_column_cnt);
     }
 
-  return NO_ERROR;
+  return error;
 
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
@@ -2197,7 +2252,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       context->stats->is_build_outer = context->is_build_outer;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -2344,7 +2399,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
   hash_scan->curr_hash_key = 0;
   hash_scan->need_coerce_type = false;
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -2597,13 +2652,13 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
       tuple_value += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 skip_next:
   *need_skip_next = true;
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -2747,7 +2802,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
   HJOIN_DUMP_HASH_TABLE (thread_p, hash_scan, &list_scan_id->list_id);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -2852,7 +2907,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       return er_errid ();
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
 
@@ -3037,7 +3092,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (overflow_record.tpl != NULL)
@@ -3331,7 +3386,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (overflow_record.tpl != NULL)
@@ -3492,7 +3547,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       return er_errid ();
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
 
@@ -3555,7 +3610,7 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
@@ -3669,7 +3724,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 
   QFILE_PUT_TUPLE_LENGTH (overflow_record->tpl, offset);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
 
