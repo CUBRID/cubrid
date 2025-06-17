@@ -17093,7 +17093,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		{
 		  if (xasl->px_executor->get_recursion_level () == 0)
 		    {
-		      xasl->px_executor->get_error_from_childs (xasl_state->query_id);
+		      xasl->px_executor->get_error_from_childs ();
 		    }
 		  delete xasl->px_executor;
 		  xasl->px_executor = nullptr;
