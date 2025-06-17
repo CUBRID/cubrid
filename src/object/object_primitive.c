@@ -15483,7 +15483,6 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
       src_bit_length = db_get_string_length (value);	/* size in bits */
-      assert (buf->ptr + src_bit_length <= buf->endptr);	/* safety check in heap_file.c */
 
       if (align == INT_ALIGNMENT)
 	{
@@ -15495,6 +15494,7 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	}
     }
 
+  assert (buf->ptr <= buf->endptr);	/* safety check in heap_file.c */
   return rc;
 }
 
@@ -16879,7 +16879,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 
 #if !defined(NDEBUG)
   int estimated_length = mr_data_lengthval_json (value, true);
-  if ((ptrdiff_t) estimated_length > ((ptrdiff_t) (buf->endptr - buf->ptr)))
+  if (buf->ptr + estimated_length > buf->endptr)
     {
       assert (false);
     }
