@@ -326,7 +326,7 @@ namespace parallel_query_execute
   {
     if (m_error_messages_p->size() > 0)
       {
-	cuberr::context::get_thread_local_context ().get_current_error_level ().swap (*m_error_messages_p->at (0).second);
+	cuberr::context::get_thread_local_error().swap (*m_error_messages_p->at (0).second);
       }
   }
 

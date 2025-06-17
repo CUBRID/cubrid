@@ -84,7 +84,6 @@ namespace parallel_query_execute
 	pthread_mutex_lock (m_mutex_p);
 	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
 	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
 	pthread_mutex_unlock (m_mutex_p);
       }
 
@@ -158,7 +157,6 @@ namespace parallel_query_execute
 	pthread_mutex_lock (m_mutex_p);
 	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
 	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
 	pthread_mutex_unlock (m_mutex_p);
       }
 
@@ -333,7 +331,7 @@ namespace parallel_query_execute
     int err = NO_ERROR;
     task *cur_task_p, *first_task_p;
     task_state *cur_task_state_p, *first_task_state_p;
-    bool all_ended = false;
+    bool all_ended = false, error_occurred = false;
     if (m_tasks.empty())
       {
 	return err;
@@ -390,7 +388,10 @@ namespace parallel_query_execute
 	  }
       }
     join();
-    if (m_error_messages_p->size() > 0)
+    pthread_mutex_lock (m_mutex_p);
+    error_occurred = m_error_messages_p->size() > 0;
+    pthread_mutex_unlock (m_mutex_p);
+    if (error_occurred)
       {
 	err = ER_FAILED;
       }

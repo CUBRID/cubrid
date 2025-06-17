@@ -54,6 +54,14 @@ namespace parallel_query_execute
 	return m_recursion_level;
       }
       void get_error_from_childs ();
+      inline bool is_error_occurred () const
+      {
+	bool is_error_occurred = false;
+	pthread_mutex_lock (m_mutex_p);
+	is_error_occurred = m_error_messages_p->size() > 0;
+	pthread_mutex_unlock (m_mutex_p);
+	return is_error_occurred;
+      }
 
     private:
       THREAD_ENTRY *m_thread_p;
