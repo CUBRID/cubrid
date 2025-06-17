@@ -25,7 +25,6 @@
 #include "schema_system_catalog_constants.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "storage_common.h"
 
 using namespace cubbase;
 
