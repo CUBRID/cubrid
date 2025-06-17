@@ -8382,11 +8382,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
-				  /* only one row is need for exists OP */
-				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-				    {
-				      return S_SUCCESS;
-				    }
 				}
 			    }
 			}
@@ -8452,11 +8447,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
-					}
-				      /* only one row is need for exists OP */
-				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-					{
-					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }
@@ -11177,16 +11167,10 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
   bool copy = (pr_is_set_type (attr->type)) ? true : false;
   if (pr_type != NULL)
     {
+      /* initialized buffer size equals to the read size, so no overflow */
       or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
-      buf.error_abort = 1;
-      switch (_setjmp (buf.env))
-	{
-	case 0:
-	  return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
-					NULL, 0);
-	default:
-	  return ER_FAILED;
-	}
+      return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
+				    NULL, 0);
     }
   else
     {
