@@ -147,6 +147,7 @@ data_item_type_to_string (int data_item_type)
       return "TIMER";
     default:
       assert (0);
+      return "";
     }
 }
 
