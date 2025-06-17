@@ -895,7 +895,6 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
-#define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"

@@ -6048,7 +6048,7 @@ log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv
   if (rcv_buf->ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf->endptr)
     {
       assert_release (false);
-      return or_overflow (rcv_buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   /* Get offset_to_data. */
