@@ -21994,24 +21994,27 @@ primitive_type
 			      scale ? scale->info.value.data_value.i : 0;
 
                             if(is_in_sp_func_type && prec)
-                            {                                
+                              {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
-                            }
+                              }
                             else
-                            {
+                              {
                                 if (scale && prec)
-                                {
-                                //     if (scale->info.value.data_value.i > prec->info.value.data_value.i)
-                                //       {
-                                //         PT_ERRORmf2 (this_parser, dt,
-                                //                 MSGCAT_SET_PARSER_SEMANTIC,
-                                //                 MSGCAT_SEMANTIC_INV_PREC_SCALE,
-                                //                 prec->info.value.data_value.i,
-                                //                 scale->info.value.data_value.i);
-                                //       }
-                                    }
+                                  {
+                                    if (scale->info.value.data_value.i > DB_MAX_NUMERIC_SCALE || scale->info.value.data_value.i < DB_MIN_NUMERIC_SCALE)
+                                      {
+                                        // 향후 나중에 에러메세지 수정 필요
+					// ex) ORA-01728: 수치의 스케일 범위(-84 에서 127)를 초과했습니다.
+					// ex) ORA-01728: numeric scale specifier is out of range -84 to 127
+					PT_ERRORmf2 (this_parser, dt,
+                                                MSGCAT_SET_PARSER_SEMANTIC,
+                                                MSGCAT_SEMANTIC_INV_PREC_SCALE,
+                                                prec->info.value.data_value.i,
+                                                scale->info.value.data_value.i);
+                                      }
+                                  }
                                 if (prec)
-                                {
+                                  {
                                     if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
                                       {
                                         PT_ERRORmf2 (this_parser, dt,
@@ -22020,8 +22023,8 @@ primitive_type
                                                 prec->info.value.data_value.i,
                                                 DB_MAX_NUMERIC_PRECISION);
                                       }
-                                }
-                            }
+                                  }
+                              }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);

@@ -542,6 +542,12 @@ extern "C"
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
+/* The maximum scale that can be specified for a numeric domain. */
+#define DB_MAX_NUMERIC_SCALE 127
+
+/* The minimum scale that can be specified for a numeric domain. */
+#define DB_MIN_NUMERIC_SCALE -84
+
 /* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38
 

@@ -915,9 +915,15 @@ numeric_to_string (DB_VALUE * value, bool commas)
    */
   prec = DB_VALUE_PRECISION (value);
   scale = DB_VALUE_SCALE (value);
+  // 아래 조건들은 if (strlen (str_buf) > max_length - 1) 조건으로 인해 일단 임시로 수정
+  // 안그러면 NUM OVERFLOW 출력됨, 추후 확인하여 수정 필요
   if (scale < 0)
     {
       prec += scale * -1;
+    }
+  else if (scale > prec)
+    {
+      prec += scale;
     }
   comma_length = COMMAS_OFFSET (commas, prec);
   max_length = prec + comma_length + 3;
