@@ -84,6 +84,7 @@ namespace parallel_query_execute
 	pthread_mutex_lock (m_mutex_p);
 	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
 	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
 	pthread_mutex_unlock (m_mutex_p);
       }
 
@@ -157,6 +158,7 @@ namespace parallel_query_execute
 	pthread_mutex_lock (m_mutex_p);
 	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
 	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
 	pthread_mutex_unlock (m_mutex_p);
       }
 
