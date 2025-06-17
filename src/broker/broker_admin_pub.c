@@ -133,7 +133,7 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p, const char *p
 					    int proxy_id, int shard_id, int as_number);
 static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info, T_SHM_PROXY * proxy_p);
 static void get_shard_db_password (T_BROKER_INFO * br_info_p);
-static void get_upper_str (char *upper_str, int size, char *value);
+static void get_upper_str (char *upper_str, int size, const char *value);
 
 static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
 
@@ -4178,11 +4178,11 @@ get_shard_db_password (T_BROKER_INFO * br_info_p)
 }
 
 static void
-get_upper_str (char *upper_str, int size, char *value)
+get_upper_str (char *upper_str, int size, const char *value)
 {
   int i = 0;
 
-  for (i = 0; value[i] && --size > 0; i++)
+  for (i = 0; value[i] && (i < (size - 1)); i++)
     {
       upper_str[i] = (char) toupper (value[i]);
     }
