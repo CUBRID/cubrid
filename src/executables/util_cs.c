@@ -2248,8 +2248,10 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   bool both_flag = false;
-  bool ha_flag = false;
+  bool ha_only_flag = false;
+  bool exclude_ha_flag = false;
   FILE *outfp = NULL;
+  unsigned int added_include_filter, exclude_filter;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2264,7 +2266,13 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   output_file = utility_get_option_string_value (arg_map, PARAMDUMP_OUTPUT_FILE_S, 0);
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
-  ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_S);
+  ha_only_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_ONLY_S);
+  exclude_ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_EXCLUDE_HA_S);
+
+  if (ha_only_flag && exclude_ha_flag)
+    {
+      goto print_dumpparam_usage;
+    }
 
   if (output_file == NULL)
     {
@@ -2290,6 +2298,22 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  if (ha_only_flag)
+    {
+      added_include_filter = PRM_FOR_HA;
+      exclude_filter = PRM_EMPTY_FLAG;
+    }
+  else if (exclude_ha_flag)
+    {
+      added_include_filter = PRM_EMPTY_FLAG;
+      exclude_filter = PRM_FOR_HA;
+    }
+  else 
+    {
+      added_include_filter = PRM_EMPTY_FLAG;
+      exclude_filter = PRM_EMPTY_FLAG;
+    }
+
 #if defined (CS_MODE)
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
@@ -2301,40 +2325,24 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
+#else
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+#endif
 
-  if (ha_flag)
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
-      sysprm_dump_parameters (outfp, PRM_FOR_CLIENT | PRM_FOR_HA);
-      fprintf (outfp, "\n");
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
-	       database_name);
-      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | PRM_FOR_HA);
-    }
-  else
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
-      sysprm_dump_parameters (outfp, PRM_FOR_CLIENT);
-      fprintf (outfp, "\n");
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
-	       database_name);
-      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER);
-    }
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
+  sysprm_dump_parameters (outfp, PRM_FOR_CLIENT | added_include_filter, PRM_AND_CONDITION, exclude_filter);
+  fprintf (outfp, "\n");
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
+           database_name);
+  sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | added_include_filter, PRM_AND_CONDITION, exclude_filter);
+
+#if defined (CS_MODE)
   db_shutdown ();
-#else /* CS_MODE */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
-  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
-    {
-      if (ha_flag)
-	{
-	  sysprm_dump_parameters (outfp, PRM_FOR_HA);
-	}
-      else
-	{
-	  sysprm_dump_parameters (outfp, PRM_FOR_CLIENT | PRM_FOR_SERVER);
-	}
-    }
-#endif /* !CS_MODE */
+#endif
 
   if (outfp != stdout)
     {

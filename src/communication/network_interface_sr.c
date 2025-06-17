@@ -7921,14 +7921,16 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   int file_size;
   char *buffer;
   int buffer_size;
-  int filter;
+  int include_filter, condition, exclude_filter;
   int send_size;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_int (request, &buffer_size);
-  ptr = or_unpack_int (ptr, &filter);
+  ptr = or_unpack_int (ptr, &include_filter);
+  ptr = or_unpack_int (ptr, &condition);
+  ptr = or_unpack_int (ptr, &exclude_filter);
 
   buffer = (char *) db_private_alloc (thread_p, buffer_size);
   if (buffer == NULL)
@@ -7948,7 +7950,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 
   filesys::auto_delete_file file_del (filename.c_str ());
 
-  xsysprm_dump_server_parameters (outfp, (unsigned int) filter);
+  xsysprm_dump_server_parameters (outfp, (unsigned int) include_filter, (SYSPRM_DUMP_CONDITION) condition, (unsigned int) exclude_filter);
   file_size = ftell (outfp);
 
   /*

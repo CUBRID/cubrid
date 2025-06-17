@@ -1547,8 +1547,10 @@ typedef struct _ha_config
 #define PARAMDUMP_SA_MODE_L                     "SA-mode"
 #define PARAMDUMP_CS_MODE_S                     'C'
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
-#define PARAMDUMP_HA_S				12200
-#define PARAMDUMP_HA_L				"ha"
+#define PARAMDUMP_HA_ONLY_S			12200
+#define PARAMDUMP_HA_ONLY_L			"ha-only"
+#define PARAMDUMP_EXCLUDE_HA_S			12201
+#define PARAMDUMP_EXCLUDE_HA_L			"exclude-ha"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'

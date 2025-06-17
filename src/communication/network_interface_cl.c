@@ -9079,12 +9079,12 @@ error:
  * return:
  */
 void
-sysprm_dump_server_parameters (FILE * outfp, unsigned int filter)
+sysprm_dump_server_parameters (FILE * outfp, unsigned int include_filter, SYSPRM_DUMP_CONDITION condition, unsigned int exclude_filter)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_request;
+  char *ptr, *request;
 
   if (outfp == NULL)
     {
@@ -9092,7 +9092,9 @@ sysprm_dump_server_parameters (FILE * outfp, unsigned int filter)
     }
 
   request = OR_ALIGNED_BUF_START (a_request);
-  (void) or_pack_int (request, filter);
+  ptr = or_pack_int (request, include_filter);
+  ptr = or_pack_int (ptr, condition);
+  ptr = or_pack_int (ptr, exclude_filter);
 
   req_error =
     net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0,
@@ -9100,7 +9102,7 @@ sysprm_dump_server_parameters (FILE * outfp, unsigned int filter)
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xsysprm_dump_server_parameters (outfp, filter);
+  xsysprm_dump_server_parameters (outfp, include_filter, condition, exclude_filter);
 
   exit_server (*thread_p);
 #endif /* !CS_MODE */
