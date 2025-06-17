@@ -125,7 +125,7 @@ namespace parallel_heap_scan
     fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
     fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
-    fprintf (fp, ", gather: %s)", is_list_merge ? "mergable list" : "row by row");
+    fprintf (fp, ", gather: %s)", is_list_merge ? "mergeable list" : "row by row");
   }
 
   void perf_monitor::print_json (json_t *scan, char *class_name, bool is_list_merge)
@@ -160,7 +160,7 @@ namespace parallel_heap_scan
 				      "time", time_buf,
 				      "readrows", readrows_buf,
 				      "rows", rows_buf,
-				      "gather", is_list_merge ? "mergable list" : "row by row");
+				      "gather", is_list_merge ? "mergeable list" : "row by row");
     json_object_set_new (scan, "parallel heap", parallel_obj);
   }
 
