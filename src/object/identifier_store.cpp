@@ -106,7 +106,7 @@ namespace cubbase
     else
       {
 	// check _db
-	if (str.rfind (SYSTEM_CLASS_PREFIX, 0) != 0)
+	if (strncasecmp (str.data(), SYSTEM_CLASS_PREFIX.c_str(), SYSTEM_CLASS_PREFIX.length()) != 0)
 	  {
 	    int size = str.size ();
 	    for (int i = 0; i < size; i++)
@@ -117,8 +117,6 @@ namespace cubbase
 		  }
 	      }
 	  }
-
-
       }
     return true;
   }
