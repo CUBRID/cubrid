@@ -178,6 +178,7 @@ extern "C"
   extern PT_NODE *pt_get_node_from_list (PT_NODE * list, int index);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern PT_HINT_ENUM pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
 
   extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);

@@ -526,7 +526,6 @@ tf_need_permanent_oid (or_buf * buf, DB_OBJECT * obj)
       if (tf_add_fixup (buf->fixups, obj, buf->ptr) != NO_ERROR)
 	{
 	  // already set error code in tf_add_fixup
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -877,7 +876,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
        * assign permanent OID's and make the necessary adjustments in
        * the packed buffer.
        */
-      if (tf_do_fixup (buf->fixups) != NO_ERROR)
+      if (tf_do_fixup (buf->fixups) != NO_ERROR || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 	{
 	  status = TF_ERROR;
 	}
@@ -929,7 +928,6 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (size_t) (class_->variable_count * sizeof (int)));
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -960,7 +958,6 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	  db_ws_free (vars);
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, class_->object_size);
-      assert (false);
       return NULL;
     }
   else
@@ -1124,7 +1121,6 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
       if (obj == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, class_->object_size);
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -1141,7 +1137,6 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (size_t) (oldrep->variable_count * sizeof (int)));
-		  assert (false);
 		  return NULL;
 		}
 	      else
@@ -1172,7 +1167,6 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		    }
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (size_t) (total * sizeof (SM_ATTRIBUTE *)));
-		  assert (false);
 		  return NULL;
 		}
 	      else
@@ -1201,7 +1195,6 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		      db_ws_free (vars);
 		    }
 
-		  assert (false);
 		  return NULL;
 		}
 
@@ -1261,7 +1254,6 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		      db_ws_free (attmap);
 		      db_ws_free (vars);
 
-		      assert (false);
 		      return NULL;
 		    }
 
@@ -1381,8 +1373,12 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
     {
       WS_CHN (obj) = chn;
     }
-
   *convertp = convert;
+
+  if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      return NULL;
+    }
   return (obj);
 }
 
@@ -1718,7 +1714,6 @@ get_object_set (OR_BUF * buf, int expected)
 	    {
 	      /* memory error */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJLIST));
-	      assert (false);
 	      return NULL;
 	    }
 	}
@@ -1875,7 +1870,11 @@ get_substructure_set (OR_BUF * buf, LREADER reader, int expected)
 	}
       else
 	{
-	  assert (false);
+	  if (er_errid () != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
+	  return NULL;
 	}
     }
   return (list);
@@ -1991,8 +1990,10 @@ get_property_list (OR_BUF * buf, int expected_size)
       properties = db_get_set (&value);
       if (properties == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
+	  if (er_errid () != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
 	  return NULL;
 	}
       else
@@ -2123,8 +2124,10 @@ disk_to_domain2 (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_domain.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
 
@@ -2134,8 +2137,10 @@ disk_to_domain2 (OR_BUF * buf)
   if (domain == NULL)
     {
       free_var_table (vars);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
 
@@ -2163,7 +2168,7 @@ disk_to_domain2 (OR_BUF * buf)
       if (domain->class_mop == NULL)
 	{
 	  free_var_table (vars);
-	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);
 	  /* error set in ws_mop */
 	  return NULL;
 	}
@@ -2176,7 +2181,7 @@ disk_to_domain2 (OR_BUF * buf)
     {
       free_var_table (vars);
       tp_domain_free (domain);
-      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);
       /* error set in get_enumeration */
       return NULL;
     }
@@ -2319,8 +2324,10 @@ disk_to_metharg (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_metharg.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
 
@@ -2328,7 +2335,6 @@ disk_to_metharg (OR_BUF * buf)
   if (arg == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_METHOD_ARGUMENT));
-      assert (false);
       return NULL;
     }
   else
@@ -2446,8 +2452,10 @@ disk_to_methsig (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_methsig.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
   else
@@ -2457,7 +2465,6 @@ disk_to_methsig (OR_BUF * buf)
       if (sig == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_METHOD_SIGNATURE));
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -2477,7 +2484,6 @@ disk_to_methsig (OR_BUF * buf)
 	      if (fix == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (fname) + 1);
-		  assert (false);
 		  return NULL;
 		}
 	      else
@@ -2601,8 +2607,10 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
   vars = read_var_table (buf, tf_Metaclass_method.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return;
     }
   else
@@ -2723,8 +2731,10 @@ disk_to_methfile (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_methfile.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
   else
@@ -2733,7 +2743,6 @@ disk_to_methfile (OR_BUF * buf)
       if (file == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_METHOD_FILE));
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -2832,8 +2841,7 @@ disk_to_query_spec (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_query_spec.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_CONNECT, 0);
       return NULL;
     }
   else
@@ -2842,7 +2850,6 @@ disk_to_query_spec (OR_BUF * buf)
       if (statement == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_QUERY_SPEC));
-	  assert (false);
 	  return NULL;
 	}
       else
@@ -3012,8 +3019,10 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
   vars = read_var_table (buf, tf_Metaclass_attribute.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return;
     }
   else
@@ -3268,8 +3277,10 @@ disk_to_resolution (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_resolution.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
   else
@@ -3289,7 +3300,6 @@ disk_to_resolution (OR_BUF * buf)
 	  if (res == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_RESOLUTION));
-	      assert (false);
 	      return NULL;
 	    }
 	  else
@@ -3386,9 +3396,10 @@ disk_to_repattribute (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_repattribute.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
-      return NULL;
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
     }
 
   id = or_get_int (buf, &rc);
@@ -3398,7 +3409,6 @@ disk_to_repattribute (OR_BUF * buf)
     {
       free_var_table (vars);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_REPR_ATTRIBUTE));
-      assert (false);
       return NULL;
     }
 
@@ -3499,8 +3509,10 @@ disk_to_representation (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_representation.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
 
@@ -3510,7 +3522,6 @@ disk_to_representation (OR_BUF * buf)
     {
       free_var_table (vars);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_REPRESENTATION));
-      assert (false);
       return NULL;
     }
   else
@@ -3783,9 +3794,10 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
    * conversion routines */
   if (!check_class_structure (class_))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
-      return;
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
     }
   else
     {
@@ -3797,7 +3809,6 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
       if (start + offset + OR_NON_MVCC_HEADER_SIZE != buf->ptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_OUT_OF_SYNC, 0);
-	  assert (false);
 	  return;
 	}
     }
@@ -4314,8 +4325,10 @@ disk_to_root (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_root.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
   else
@@ -4949,8 +4962,10 @@ disk_to_partition_info (OR_BUF * buf)
   vars = read_var_table (buf, tf_Metaclass_partition.mc_n_variable);
   if (vars == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-      assert (false);
+      if (er_errid () != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return NULL;
     }
 
@@ -4960,7 +4975,6 @@ disk_to_partition_info (OR_BUF * buf)
   if (partition_info == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_PARTITION));
-      assert (false);
       return NULL;
     }
   else

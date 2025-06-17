@@ -854,6 +854,19 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_INLINE_CTE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+
+	case PT_HINT_MATERIALIZE_CTE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
 	default:
 	  break;
 	}
