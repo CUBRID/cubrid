@@ -120,17 +120,8 @@ namespace cubschema
 bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = {'\0'};
-  const char *name_str = name.data();  // 'name' is a null-terminated string, so it's safe to use string_view::data()
-
-  if (identifier_store::check_identifier_is_valid (name_str, false) != true)
-    {
-      return false;
-    }
-
-  intl_identifier_lower (name_str, downcase_name);
-
-  return (sm_is_system_class (downcase_name) || sm_is_system_vclass (downcase_name));
+  return identifier_store::check_identifier_is_valid (name, false)
+	 && (sm_is_system_class (name) || sm_is_system_vclass (name));
 }
 
 bool sm_is_system_class (const std::string_view name)
