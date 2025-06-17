@@ -3062,10 +3062,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      if (node->info.delete_.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -3086,11 +3084,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
-      if (node->info.insert.spec->info.spec.remote_server_name)
-	{
-	  goto insert_end;
-	}
-
       result = pt_resolve_vclass_args (parser, node);
       if (!result)
 	{
@@ -3110,10 +3103,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
 
-      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* Check for double assignments */
       pt_no_double_insert_assignments (parser, node);

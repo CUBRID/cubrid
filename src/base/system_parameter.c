@@ -1422,6 +1422,7 @@ static unsigned int prm_auto_restart_server_flag = 0;
 
 int PRM_XASL_CACHE_MAX_ENTRIES = 1000;
 static int prm_xasl_cache_max_entries_default = 1000;
+static int prm_xasl_cache_max_entries_upper = 10000;
 static unsigned int prm_xasl_cache_max_entries_flag = 0;
 
 int PRM_XASL_CACHE_MAX_CLONES = 1000;
@@ -3752,8 +3753,8 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_xasl_cache_max_entries_flag,
    (void *) &prm_xasl_cache_max_entries_default,
    (void *) &PRM_XASL_CACHE_MAX_ENTRIES,
-   /* TODO: define a maximum value. We cannot have any size hash table. */
-   (void *) NULL, (void *) NULL,
+   (void *) &prm_xasl_cache_max_entries_upper,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

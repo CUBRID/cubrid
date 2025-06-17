@@ -149,6 +149,7 @@ struct heap_scancache
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
     bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+    bool mvcc_disabled_class;	/* Indicates if the class is MVCC disabled */
     PGBUF_WATCHER page_watcher;
     int num_btids;		/* Total number of indexes defined on the scanning class */
     multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
@@ -157,7 +158,6 @@ struct heap_scancache
     MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
-
 
     void start_area ();
     void end_area ();
