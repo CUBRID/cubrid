@@ -12363,3 +12363,25 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 
   return node;
 }
+
+PT_HINT_ENUM
+pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  assert (query != NULL);
+  assert (pt_is_query (query));
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      return query->info.query.q.select.hint;
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      /* for set operations, get the hint from the query on the left side */
+      return pt_get_hint_from_query (parser, query->info.query.q.union_.arg1);
+
+    default:
+      return PT_HINT_NONE;
+    }
+}

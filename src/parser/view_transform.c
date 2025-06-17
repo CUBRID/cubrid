@@ -411,6 +411,11 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * old_attrs);
 
+static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
  *  returns: boolean
@@ -4979,6 +4984,307 @@ exit_on_error:
 }
 
 /*
+ * mq_rewrite_cte_as_derived () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: This function is used to rewrite CTE as a derived table.
+ */
+static PT_NODE *
+mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **with_clause = NULL;
+  PT_NODE *cte_definition_list, *curr, *next;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.with != NULL)
+	{
+	  with_clause = &node->info.query.with;
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.with != NULL)
+	{
+	  with_clause = &node->info.delete_.with;
+	}
+      break;
+    case PT_UPDATE:
+      if (node->info.update.with != NULL)
+	{
+	  with_clause = &node->info.update.with;
+	}
+      break;
+    default:
+      break;
+    }
+
+  if (with_clause == NULL || *with_clause == NULL)
+    {
+      return node;
+    }
+
+  mq_check_cte_inline_or_materialize (parser, *with_clause);
+
+  /* rewrite the main query considering the reference count. */
+  node = parser_walk_tree (parser, node, mq_inline_cte_pre, NULL, NULL, NULL);
+
+  cte_definition_list = (*with_clause)->info.with_clause.cte_definition_list;
+  curr = cte_definition_list;
+  while (curr)
+    {
+      if (curr->info.cte.recursive_part == NULL && !(curr->info.cte.is_materialized))
+	{
+	  next = curr->next;
+	  cte_definition_list = pt_remove_from_list (parser, curr, cte_definition_list);
+	  curr = next;
+	  continue;
+	}
+      curr = curr->next;
+    }
+
+  if (cte_definition_list != NULL)
+    {
+      (*with_clause)->info.with_clause.cte_definition_list = cte_definition_list;
+    }
+  else
+    {
+      parser_free_tree (parser, *with_clause);
+      *with_clause = NULL;
+    }
+
+  return node;
+}
+
+/*
+ * mq_check_cte_inline_or_materialize () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *
+ */
+static void
+mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cte;
+  PT_HINT_ENUM hint;
+  bool is_inlinable = true;
+
+  assert (node->node_type == PT_WITH_CLAUSE);
+
+  for (cte = node->info.with_clause.cte_definition_list; cte; cte = cte->next)
+    {
+      if (node->info.with_clause.recursive != 0)
+	{
+	  /* if WITH RECURSIVE clause is used, CTE is always materialized */
+	  cte->info.cte.is_materialized = true;
+	  continue;
+	}
+      else if (cte->info.cte.recursive_part != NULL)
+	{
+	  /* recursive CTE is always materialized when referenced at least once */
+	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
+	  continue;
+	}
+
+      is_inlinable = true;
+      /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
+       * since it may change the query results. Handle it same as CTE with materialize hint. */
+      (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
+			       mq_check_inline_cte, &is_inlinable, NULL, NULL);
+
+      /* false subquery cannot be rewritten as inline view */
+      if (is_inlinable && pt_is_query (cte->info.cte.non_recursive_part))
+	{
+	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
+
+	  if (hint &
+	      (PT_HINT_MATERIALIZE_CTE | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_KEY_INFO |
+	       PT_HINT_QUERY_CACHE))
+	    {
+	      /* materialize CTE if it is referenced at least once. */
+	      cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 1);
+	      continue;
+	    }
+	  else if (hint & PT_HINT_INLINE_CTE)
+	    {
+	      cte->info.cte.is_materialized = false;
+	      continue;
+	    }
+
+	  cte->info.cte.is_materialized = (cte->info.cte.referenced_count >= 2);
+	}
+      else
+	{
+	  cte->info.cte.is_materialized = true;
+	}
+    }
+}
+
+/*
+ * mq_count_cte_references () - 
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ */
+static PT_NODE *
+mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *node_pointer, *cte;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_WITH_CLAUSE:
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_SPEC:
+      if (PT_SPEC_IS_CTE (node))
+	{
+	  node_pointer = PT_SPEC_CTE_POINTER (node);
+	  CAST_POINTER_TO_NODE (node_pointer);
+
+	  assert (node_pointer->node_type == PT_CTE);
+
+	  /* count the references of indirectly referenced cte to prevent them from being removed or rewritten as inline views.
+	   * cte with reference count less than 2 are rewritten as inline views or removed, so we need to count indirect references.
+	   * e.g.
+	   * with 
+	   *   cte1 as (select /*+ materialize * / c1, c2 from t1),    : directly = 0, indirectly = 1
+	   *   cte2 as (select c1, c2 from cte1)                       : directly = 1, indirectly = 0
+	   * select /*+ recompile * / c1, c2 from cte2;
+	   */
+	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
+				   pt_continue_walk, NULL);
+
+	  node_pointer->info.cte.referenced_count++;
+	}
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * mq_check_inline_cte () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ */
+static PT_NODE *
+mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *can_inlining = (bool *) arg;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+      /* CTE cannot contain WITH clause inside, so we don't need to handle this case */
+    case PT_EXPR:
+      if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
+	{
+	  *can_inlining = false;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * mq_inline_cte_pre () - This function is used to rewrite the CTE.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ */
+static PT_NODE *
+mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *derived, *tbl_name, *attributes, *spec, *attr, *cte;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SPEC:
+      if (PT_SPEC_IS_CTE (node))
+	{
+	  cte = PT_SPEC_CTE_POINTER (node);
+	  CAST_POINTER_TO_NODE (cte);
+
+	  if (cte->info.cte.is_materialized)
+	    {
+	      return node;
+	    }
+
+	  attributes = parser_copy_tree_list (parser, cte->info.cte.as_attr_list);
+	  derived = parser_copy_tree (parser, cte->info.cte.non_recursive_part);
+
+	  tbl_name = parser_copy_tree (parser, cte->info.cte.name);
+	  tbl_name->info.name.spec_id = node->info.spec.id;
+
+	  for (attr = attributes; attr; attr = attr->next)
+	    {
+	      attr->info.name.meta_class = PT_NORMAL;
+	      attr->info.name.spec_id = node->info.spec.id;
+
+	      /* no need to copy data_type, because it is already created. */
+	    }
+
+	  node->info.spec.derived_table = derived;
+	  node->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	  node->info.spec.as_attr_list = attributes;
+	  node->info.spec.range_var = tbl_name;
+
+	  if (node->info.spec.cte_pointer)
+	    {
+	      parser_free_tree (parser, node->info.spec.cte_pointer);
+	    }
+
+	  if (node->info.spec.cte_name)
+	    {
+	      parser_free_node (parser, node->info.spec.cte_name);
+	    }
+
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
  * mq_rewrite_aggregate_as_derived() -
  *   return: rewritten select statement with derived table
  *           subquery to form accumulation on
@@ -7687,6 +7993,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+      /* count the number of CTE references, except for the with clause. */
+      node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
@@ -7739,6 +8048,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UPDATE:
     case PT_MERGE:
     case PT_DO:
+      node = parser_walk_tree (parser, node, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+      node = parser_walk_tree (parser, node, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
+
       /*
        * The mq_push_paths will convert the expression as CNF. if subquery is
        * in the expression, it may be copied several times. To avoid repeatedly
