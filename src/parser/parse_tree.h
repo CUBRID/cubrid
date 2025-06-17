@@ -1417,6 +1417,8 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
 #define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
 #define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
+#define  PT_HINT_INLINE_CTE  0x40000000000ULL	/* inline CTE */
+#define  PT_HINT_MATERIALIZE_CTE  0x80000000000ULL	/* materialize CTE */
 
 /* Parallel query execution threads limits */
 #define  PT_MAX_PARALLEL_THREADS  64
@@ -2214,6 +2216,8 @@ struct pt_cte_info
   PT_NODE *recursive_part;	/* a recursive subquery */
   PT_MISC_TYPE only_all;	/* Type of UNION between non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */
+  int referenced_count;		/* The number of times the CTE is referenced */
+  bool is_materialized;
 };
 
 /* CREATE SERIAL INFO */
