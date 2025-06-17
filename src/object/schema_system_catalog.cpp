@@ -122,12 +122,12 @@ bool sm_check_system_class_by_name (const std::string_view name)
   char downcase_name[SM_MAX_IDENTIFIER_LENGTH] = {'\0'};
   const char *name_ptr = name.data();  // 'name' is a null-terminated string, so it's safe to use string_view::data()
 
-  assert (name_ptr != NULL);
   if (name.length() < 4)
     {
       return false;
     }
 
+  assert (name_ptr != NULL);
   if (*name_ptr == '_')
     {
       name_ptr++;
@@ -138,7 +138,7 @@ bool sm_check_system_class_by_name (const std::string_view name)
       return false;
     }
 
-  if (name_ptr[2] != '_' && strcasecmp (name_ptr, CT_DUAL_NAME) != 0)
+  if (name_ptr[2] != '_' && (strcasecmp (name.data(), CT_DUAL_NAME) != 0))
     {
       return false;
     }
