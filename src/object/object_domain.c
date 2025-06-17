@@ -3391,10 +3391,10 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
-	  if (domain->scale == -1)
-	    {
-	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
-	    }
+	  //   if (domain->scale == -1)
+	  //     {
+	  //       domain->scale = DB_DEFAULT_NUMERIC_SCALE;
+	  //     }
 
 	  if (dbuf == NULL)
 	    {

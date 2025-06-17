@@ -180,14 +180,15 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.precision = precision;
 	}
-      if (scale == DB_DEFAULT_SCALE)
-	{
-	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
-	}
-      else
-	{
-	  value->domain.numeric_info.scale = scale;
-	}
+      // oracle은 sacel이 -84 ~ 127임
+//       if (scale == DB_DEFAULT_SCALE)
+//      {
+//        value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+//      }
+//       else
+//      {
+      value->domain.numeric_info.scale = scale;
+//      }
       if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;

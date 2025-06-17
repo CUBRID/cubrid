@@ -3254,6 +3254,8 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
     }
 
   /* Check for trivial case */
+  // insert 할 때는 dest 가 도메인 값임
+  // select 할 때는 src가 도메인 값임
   if (src_prec <= dest_prec && src_scale == dest_scale)
     {
       numeric_copy (dest_num, src_num);
@@ -3457,6 +3459,10 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	precision = DB_VALUE_PRECISION (src);
 	scale = DB_VALUE_SCALE (src);
 	numeric_copy (num, db_locate_numeric (src));
+	if (scale < 0)
+	  {
+	    desired_scale = scale;
+	  }
 	break;
       }
 
@@ -3923,6 +3929,30 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 
   /* Null terminate */
   buf[nbuf] = '\0';
+
+  /* 음수 scale 처리: 소수점 오른쪽에 0 추가 */
+  if (scale < 0)
+    {
+      int abs_scale = -scale;	// scale의 절대값
+
+      if (!found_first_non_zero)
+	{
+	  // 숫자가 없으면 0 하나만 출력
+	  buf[0] = '0';
+	  buf[1] = '\0';
+	  nbuf = 1;
+	}
+      else
+	{
+	  // 숫자가 있으면 abs_scale만큼 0 추가
+	  for (i = 0; i < abs_scale; i++)
+	    {
+	      buf[nbuf++] = '0';
+	    }
+	}
+      buf[nbuf] = '\0';
+    }
+
   return buf;
 }
 

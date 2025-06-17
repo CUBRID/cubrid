@@ -905,7 +905,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   char *return_string;
-  int prec;
+  int prec, scale;
   int comma_length;
   int max_length;
 
@@ -914,6 +914,11 @@ numeric_to_string (DB_VALUE * value, bool commas)
    * character for each of the sign, decimal point, and NULL terminator.
    */
   prec = DB_VALUE_PRECISION (value);
+  scale = DB_VALUE_SCALE (value);
+  if (scale < 0)
+    {
+      prec += scale * -1;
+    }
   comma_length = COMMAS_OFFSET (commas, prec);
   max_length = prec + comma_length + 3;
   return_string = (char *) malloc (max_length);

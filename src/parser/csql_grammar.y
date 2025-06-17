@@ -922,6 +922,9 @@ static int g_plcsql_text_pos;
 %type <node> char_string
 %type <node> bit_string_literal
 %type <node> bit_string
+
+%type <node> numeric_scale_integer
+
 %type <node> unsigned_integer
 %type <node> unsigned_int32
 %type <node> unsigned_real
@@ -21998,14 +22001,14 @@ primitive_type
                             {
                                 if (scale && prec)
                                 {
-                                    if (scale->info.value.data_value.i > prec->info.value.data_value.i)
-                                      {
-                                        PT_ERRORmf2 (this_parser, dt,
-                                                MSGCAT_SET_PARSER_SEMANTIC,
-                                                MSGCAT_SEMANTIC_INV_PREC_SCALE,
-                                                prec->info.value.data_value.i,
-                                                scale->info.value.data_value.i);
-                                      }
+                                //     if (scale->info.value.data_value.i > prec->info.value.data_value.i)
+                                //       {
+                                //         PT_ERRORmf2 (this_parser, dt,
+                                //                 MSGCAT_SET_PARSER_SEMANTIC,
+                                //                 MSGCAT_SEMANTIC_INV_PREC_SCALE,
+                                //                 prec->info.value.data_value.i,
+                                //                 scale->info.value.data_value.i);
+                                //       }
                                     }
                                 if (prec)
                                 {
@@ -22274,8 +22277,16 @@ opt_prec_2
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| '(' unsigned_integer ',' unsigned_integer ')'
+	/* | '(' unsigned_integer ',' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ',' unsigned_integer ')' );
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, $4);
+			$$ = ctn;
+
+		DBG_PRINT}} */
+	| '(' unsigned_integer ',' numeric_scale_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ',' numeric_scale_integerma ')' );
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, $4);
@@ -23711,6 +23722,35 @@ bit_string
 			  }
 
 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+numeric_scale_integer
+	: unsigned_integer
+		{{ DBG_TRACE_GRAMMAR(numeric_scale_integer, | unsigned_integer);
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| '-' UNSIGNED_INTEGER
+		{{ DBG_TRACE_GRAMMAR(numeric_scale_integer, | '-' UNSIGNED_INTEGER);
+
+			//$$ = pt_append_string (this_parser, (char *) "-", $2);
+
+		        PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
+			if (val)
+			  {
+			    val->info.value.text = pt_append_string (this_parser, (char *) "-", $2);
+                            
+			    /* Scale은 대략 -84 ~ 127 까지 가능 */
+			    val->info.value.data_value.i = atol (val->info.value.text);
+			    val->type_enum = PT_TYPE_INTEGER;
+			  }
+
+			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}

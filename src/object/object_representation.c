@@ -2621,6 +2621,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    {
 	      precision = DB_MAX_NUMERIC_PRECISION;
 	    }
+	  if (scale < 0)
+	    {
+	      size += OR_INT_SIZE;
+	    }
 	  break;
 
 	case DB_TYPE_NCHAR:
@@ -2789,12 +2793,17 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	  /* safe guard for scale */
 	  scale = d->scale;
-	  if (scale <= DB_DEFAULT_SCALE)
+	  //   if (scale <= DB_DEFAULT_SCALE)
+	  //     {
+	  //       scale = 0;
+	  //     }
+	  if (scale < 0)
 	    {
-	      scale = 0;
+	      // 음수인 경우 extended_scale 사용
+	      carrier |= (OR_DOMAIN_SCALE_MAX - 1) << OR_DOMAIN_SCALE_SHIFT;
+	      extended_scale = (scale * -1);
 	    }
-
-	  if (scale < OR_DOMAIN_SCALE_MAX)
+	  else if (scale < OR_DOMAIN_SCALE_MAX)
 	    {
 	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
 	    }
@@ -3375,7 +3384,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   DB_TYPE type;
   bool more, is_desc;
   unsigned int carrier, index;
-  unsigned int precision, scale, codeset = 0, collation_id;
+  unsigned int precision, codeset = 0, collation_id;
+  int scale;
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
@@ -3471,6 +3481,16 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      if (scale == OR_DOMAIN_SCALE_MAX)
 		{
 		  scale = or_get_int (buf, &rc);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else if (scale == OR_DOMAIN_SCALE_MAX - 1)
+		{
+		  // 음수값 가져오고, 변환
+		  scale = or_get_int (buf, &rc);
+		  scale = scale * -1;
 		  if (rc != NO_ERROR)
 		    {
 		      goto error;
