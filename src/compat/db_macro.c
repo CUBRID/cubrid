@@ -3130,7 +3130,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    /* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 	     * value. */
-	    db_make_numeric (value, new_num, desired_precision, desired_scale);
+	    db_make_numeric (value, new_num, desired_precision, desired_scale, -1);
 	  }
 
 	db_value_clear (&tmp_value);

@@ -90,8 +90,8 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
+				   const int num_length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
@@ -1529,7 +1529,7 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  * scale(in):
  */
 int
-db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int num_length)
 {
   int error = NO_ERROR;
 
@@ -1546,7 +1546,15 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
-      memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+      if (num_length == -1)
+	{
+	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+	}
+      else
+	{
+	  memset (value->data.num.d.buf, 0, sizeof (value->data.num.d.buf));
+	  memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - num_length), num, num_length);
+	}
     }
   else
     {

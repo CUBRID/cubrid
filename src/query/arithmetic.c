@@ -212,19 +212,19 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		  }
 
 		numeric_coerce_dec_str_to_num (num_str_p, num);
-		db_make_numeric (result, num, p, s);
+		db_make_numeric (result, num, p, s, -1);
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
 		numeric_coerce_dec_str_to_num (num_str + 1, num);
-		db_make_numeric (result, num, p, s);
+		db_make_numeric (result, num, p, s, -1);
 	      }
 	  }
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    db_make_numeric (result, db_get_numeric (value), p, 0);
+	    db_make_numeric (result, db_get_numeric (value), p, 0, -1);
 	  }
 
 	break;
@@ -342,7 +342,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
 		    numeric_coerce_dec_str_to_num (num_str + 1, num);
-		    db_make_numeric (result, num, p, s);
+		    db_make_numeric (result, num, p, s, -1);
 		  }
 		else
 		  {
@@ -387,19 +387,19 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		      }
 
 		    numeric_coerce_dec_str_to_num (num_str_p, num);
-		    db_make_numeric (result, num, p, s);
+		    db_make_numeric (result, num, p, s, -1);
 		  }
 	      }
 	    else
 	      {
 		/* the given numeric value is already an integer */
-		db_make_numeric (result, db_locate_numeric (value), p, s);
+		db_make_numeric (result, db_locate_numeric (value), p, s, -1);
 	      }
 	  }
 	else
 	  {
 	    /* the given numeric value has a scale of 0 */
-	    db_make_numeric (result, db_locate_numeric (value), p, 0);
+	    db_make_numeric (result, db_locate_numeric (value), p, 0, -1);
 	  }
 
 	break;
@@ -631,7 +631,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 
 	numeric_db_value_abs (db_locate_numeric (value), num);
-	db_make_numeric (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value));
+	db_make_numeric (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value), -1);
 	break;
       }
     case DB_TYPE_MONETARY:
@@ -1020,7 +1020,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) s1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1169,7 +1169,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) i1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1318,7 +1318,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) bi1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1719,7 +1719,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) s2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_INTEGER:
@@ -1732,7 +1732,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) i2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_BIGINT:
@@ -1745,7 +1745,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) bi2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_FLOAT:
@@ -1799,7 +1799,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = fmod (d1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
 						 &s);
-	  db_make_numeric (result, num, p, s);
+	  db_make_numeric (result, num, p, s, -1);
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -2570,7 +2570,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       numeric_coerce_dec_str_to_num (num_string, num);
-      db_make_numeric (result, num, p, s);
+      db_make_numeric (result, num, p, s, -1);
       break;
     case DB_TYPE_MONETARY:
       d1 = (db_get_monetary (value1))->amount;
@@ -3529,7 +3529,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      }
 	  }
 	numeric_coerce_dec_str_to_num (num_string, num);
-	db_make_numeric (result, num, p, s);
+	db_make_numeric (result, num, p, s, -1);
       }
       break;
     case DB_TYPE_MONETARY:

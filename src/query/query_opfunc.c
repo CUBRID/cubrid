@@ -5975,7 +5975,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_NUMERIC:
-      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
+      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p), -1);
       if (numeric_db_value_negate (result_p) != NO_ERROR)
 	{
 	  return ER_FAILED;

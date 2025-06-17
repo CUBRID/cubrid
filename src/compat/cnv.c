@@ -6351,13 +6351,13 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric)
 	      scale = strlen (fraction_part);
 	      type = cnv_fmt_lex (&token);
 	      numeric_coerce_dec_str_to_num (temp, db_locate_numeric (&local_numeric));
-	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, scale);
+	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, scale, -1);
 	    }
 	  /* No decimal point found.  Compute the integer portion */
 	  else
 	    {
 	      numeric_coerce_dec_str_to_num (temp, db_locate_numeric (&local_numeric));
-	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, 0);
+	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, 0, -1);
 	    }
 	}
 

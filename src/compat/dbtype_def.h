@@ -540,12 +540,15 @@ extern "C"
 #define DB_MAX_BIT_LENGTH 0x3fffffff
 
 /* The maximum precision that can be specified for a numeric domain. */
+//#define DB_MAX_NUMERIC_PRECISION 40
 #define DB_MAX_NUMERIC_PRECISION 38
 
 /* The upper limit for a number that can be represented by a numeric type */
+//#define DB_NUMERIC_OVERFLOW_LIMIT 1e40
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e38
 
 /* The lower limit for a number that can be represented by a numeric type */
+//#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-40
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
 #define DB_MAX_CHAR_PRECISION 2048
@@ -592,6 +595,7 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
+//#define DB_NUMERIC_BUF_SIZE   (2*sizeof(double) + 4)
 #define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
@@ -759,6 +763,7 @@ extern "C"
       unsigned char type;
       unsigned char precision;
       unsigned char scale;
+      int num_length;
     } numeric_info;
     struct char_info
     {

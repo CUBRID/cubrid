@@ -1373,8 +1373,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
   if (scale1 == scale2)
     {
       cprec = MAX (prec1, prec2);
-      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
-      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
+      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1, -1);
+      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2, -1);
     }
 
   /* Otherwise scale and reset the numbers */
@@ -1390,8 +1390,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
 	}
       numeric_scale_dec (db_locate_numeric (dbv1), scale_diff, temp);
       cprec = MAX (prec1, prec2);
-      db_make_numeric (dbv1_common, temp, cprec, scale2);
-      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
+      db_make_numeric (dbv1_common, temp, cprec, scale2, -1);
+      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2, -1);
     }
   else
     {
@@ -1405,8 +1405,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
 	}
       numeric_scale_dec (db_locate_numeric (dbv2), scale_diff, temp);
       cprec = MAX (prec1, prec2);
-      db_make_numeric (dbv2_common, temp, cprec, scale1);
-      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
+      db_make_numeric (dbv2_common, temp, cprec, scale1, -1);
+      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1, -1);
     }
 
   return NO_ERROR;
@@ -1446,14 +1446,14 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
     {
       return ret;
     }
-  db_make_numeric (dbv1_common, temp, prec, scale);
+  db_make_numeric (dbv1_common, temp, prec, scale, -1);
 
   ret = numeric_coerce_num_to_num (num2, prec2, scale2, prec, scale, temp);
   if (ret != NO_ERROR)
     {
       return ret;
     }
-  db_make_numeric (dbv2_common, temp, prec, scale);
+  db_make_numeric (dbv2_common, temp, prec, scale, -1);
 
   return ret;
 }
@@ -1664,7 +1664,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), -1);
 
   return ret;
 
@@ -1764,7 +1764,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), -1);
 
   return ret;
 
@@ -1842,7 +1842,7 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     {
       numeric_negate (result);
     }
-  db_make_numeric (answer, result, prec, scale);
+  db_make_numeric (answer, result, prec, scale, -1);
 
   return ret;
 
@@ -2024,7 +2024,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  db_make_numeric (answer, temp_quo, prec, scale);
+  db_make_numeric (answer, temp_quo, prec, scale, -1);
 
   return ret;
 
@@ -3213,7 +3213,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       numeric_negate (num);
     }
-  db_make_numeric (result, num, prec, scale);
+  db_make_numeric (result, num, prec, scale, -1);
 
   return ret;
 
@@ -3478,7 +3478,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   if (ret == NO_ERROR)
     {
       /* Make the intermediate value */
-      db_make_numeric (dest, num, precision, scale);
+      db_make_numeric (dest, num, precision, scale, -1);
       ret =
 	numeric_coerce_num_to_num (db_locate_numeric (dest), DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
 				   desired_precision, desired_scale, num);
@@ -3487,7 +3487,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  goto exit_on_error;
 	}
 
-      db_make_numeric (dest, num, desired_precision, desired_scale);
+      db_make_numeric (dest, num, desired_precision, desired_scale, -1);
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)

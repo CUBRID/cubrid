@@ -871,6 +871,10 @@ static int mr_index_lengthval_numeric (DB_VALUE * value);
 static int mr_index_writeval_numeric (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				     char *copy_buf, int copy_buf_len);
+static int mr_lengthval_numeric_internal (DB_VALUE * value, int disk, int align);
+static int mr_writeval_numeric_internal (OR_BUF * buf, DB_VALUE * value, int align);
+static int mr_readval_numeric_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+					char *copy_buf, int copy_buf_len, int align);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -1691,7 +1695,7 @@ PR_TYPE tp_Vobj = {
 PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
 PR_TYPE tp_Numeric = {
-  "numeric", DB_TYPE_NUMERIC, 0, 0, 0, 1,
+  "numeric", DB_TYPE_NUMERIC, 1, sizeof (DB_C_NUMERIC), 0, 1,
   mr_initmem_numeric,
   mr_initval_numeric,
   mr_setmem_numeric,
@@ -8407,7 +8411,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
 
   num = (DB_C_NUMERIC) mem;
-  error = db_make_numeric (value, num, domain->precision, domain->scale);
+  error = db_make_numeric (value, num, domain->precision, domain->scale, -1);
   value->need_clear = false;
 
   return error;
@@ -8512,7 +8516,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
 	   */
-	  error = db_make_numeric (dest, src_numeric, src_precision, src_scale);
+	  error = db_make_numeric (dest, src_numeric, src_precision, src_scale, -1);
 	}
     }
   return error;
@@ -8521,69 +8525,151 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_index_lengthval_numeric (DB_VALUE * value)
 {
-  return mr_data_lengthval_numeric (value, 1);
-}
-
-static int
-mr_data_lengthval_numeric (DB_VALUE * value, int disk)
-{
-  int precision, len;
-
-  len = 0;
-  if (value != NULL)
-    {
-      /* better have a non-NULL value by the time writeval is called ! */
-      precision = db_value_precision (value);
-      if (disk)
-	{
-	  len = OR_NUMERIC_SIZE (precision);
-	}
-      else
-	{
-	  len = MR_NUMERIC_SIZE (precision);
-	}
-    }
-  return len;
+  return mr_lengthval_numeric_internal (value, 1, CHAR_ALIGNMENT);
 }
 
 static int
 mr_index_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 {
-  return mr_data_writeval_numeric (buf, value);
-}
-
-static int
-mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
-{
-  DB_C_NUMERIC numeric;
-  int precision, disk_size;
-  int rc = NO_ERROR;
-
-  if (value != NULL)
-    {
-      numeric = db_get_numeric (value);
-      if (numeric != NULL)
-	{
-	  precision = db_value_precision (value);
-	  disk_size = OR_NUMERIC_SIZE (precision);
-	  rc = or_put_data (buf, (char *) numeric, disk_size);
-	}
-    }
-  return rc;
+  return mr_writeval_numeric_internal (buf, value, CHAR_ALIGNMENT);
 }
 
 static int
 mr_index_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
-  return mr_data_readval_numeric (buf, value, domain, size, copy, copy_buf, copy_buf_len);
+  return mr_readval_numeric_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
+}
+
+static int
+mr_data_lengthval_numeric (DB_VALUE * value, int disk)
+{
+  return mr_lengthval_numeric_internal (value, disk, INT_ALIGNMENT);
+}
+
+static int
+mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
+{
+  return mr_writeval_numeric_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
 mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
+  return mr_readval_numeric_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
+}
+
+static int
+mr_lengthval_numeric_internal (DB_VALUE * value, int disk, int align)
+{
+  int len;
+  int header_size = 3;
+  unsigned char *numeric;
+  size_t num_buf = DB_NUMERIC_BUF_SIZE;	// BCD 버퍼(최대 20바이트) 끝에서부터
+  int num_length;
+  size_t leading_zero = 0;
+
+  len = 0;
+  if (value != NULL)
+    {
+      numeric = (unsigned char *) db_get_numeric (value);
+      if (numeric != NULL)
+	{
+	  // 4바이트씩 빠르게 스캔
+	  while (leading_zero + 4 <= num_buf - 1 && *(uint32_t *) (numeric + leading_zero) == 0U)
+	    {
+	      leading_zero += 4;
+	    }
+	  // 남은 바이트 스캔
+	  while (leading_zero < DB_NUMERIC_BUF_SIZE - 1 && numeric[leading_zero] == 0)
+	    {
+	      ++leading_zero;
+	    }
+	}
+
+      num_length = num_buf - leading_zero;
+      // writeval에서 leading_zero를 사용하지 않기 위해 구조체에 저장
+      value->domain.numeric_info.num_length = num_length;
+      len = header_size + num_length;
+
+      if (align == INT_ALIGNMENT)
+	{
+	  //len = or_packed_varchar_length (len);
+	  //len += OR_BYTE_SIZE;
+	  len = DB_ALIGN (len, INT_ALIGNMENT);
+	}
+      else
+	{
+	  //len = or_varchar_length (len);
+	  len = OR_BYTE_SIZE + len;
+	}
+    }
+  return len;
+}
+
+static int
+mr_writeval_numeric_internal (OR_BUF * buf, DB_VALUE * value, int align)
+{
+  size_t num_buf = DB_NUMERIC_BUF_SIZE;
+  size_t leading_zero = 0;
   int rc = NO_ERROR;
+  int precision, scale, num_length;
+
+  if (value != NULL)
+    {
+      unsigned char *numeric = (unsigned char *) db_get_numeric (value);
+      if (numeric != NULL)
+	{
+	  precision = db_value_precision (value);
+	  scale = db_value_scale (value);
+	  num_length = value->domain.numeric_info.num_length;
+	  size_t offset = num_buf - num_length;
+
+	  rc = or_put_byte (buf, precision);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  rc = or_put_byte (buf, scale);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  rc = or_put_byte (buf, num_length);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  rc = or_put_data (buf, (char *) numeric + offset, num_length);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+
+	  if (align == INT_ALIGNMENT)
+	    {
+	      rc = or_put_align32 (buf);	// 4바이트 경계 맞추기
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
+	}
+    }
+  return rc;
+}
+
+
+static int
+mr_readval_numeric_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			     int copy_buf_len, int align)
+{
+  int rc = NO_ERROR;
+  int precision, scale, num_length;
 
   if (domain == NULL)
     {
@@ -8613,13 +8699,45 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
     }
   else
     {
-      /*
-       * the copy and no copy cases are identical because db_make_numeric
-       * will copy the bits into its internal buffer.
-       */
-      (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
+      // 1) 헤더 3바이트 읽기: precision, scale, num_length
+      precision = (int) OR_GET_BYTE (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+
+      scale = (int) OR_GET_BYTE (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+
+      num_length = OR_GET_BYTE (buf->ptr);
+      buf->ptr += OR_BYTE_SIZE;
+
+      // 도메인에 읽은 precision/scale 값을 설정
+      domain->precision = precision;
+      domain->scale = scale;
+
+      // 2) 부호 비트 복원 - CUBRID 내부 BCD에서 최상위 바이트 MSB를 부호 비트로 쓴다면 (나중에 구현)
+      if (((unsigned char *) value->data.num.d.buf)[0] & 0x80)	// 예시: MSB 검사
+	{
+	  // 이미 원본 BCD 복사 시 부호가 들어왔을 것이므로, 보통 따로 건들 필요 없음
+	  // 단, 필요하다면 여기서 numeric[0] |= 0x80; 등으로 부호 복원
+	}
+
+      // 3) DB_VALUE로 변환
+      db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, precision, scale, num_length);
       value->need_clear = false;
-      rc = or_advance (buf, size);
+
+      // 4) 데이터 크기(num_length)만큼 buf->ptr 이동
+      rc = or_advance (buf, num_length);
+
+      // 5) 메모리 정렬(align) 처리: 헤더가 align 대상이면
+      if (align == INT_ALIGNMENT)
+	{
+	  // 헤더 뒤에 쓴 ‘널 바이트’도 같이 읽어야 했다면, 여기서 읽음
+	  // 하지만 이번 예시는 헤더에 널 바이트를 저장하지 않으므로, 주석 처리해도 됩니다.
+	  rc = or_get_align32 (buf);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
     }
 
   return rc;
