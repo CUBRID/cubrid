@@ -21633,9 +21633,13 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
 	}
       else
 	{
-	  snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		    check_time.tv_usec);
+	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+			check_time.tv_usec) >= (int) sizeof (private_key))
+	    {
+	      assert_release (0);
+	      private_key[sizeof (private_key) - 1] = '\0';
+	    }
 	}
     }
 

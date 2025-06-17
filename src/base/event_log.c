@@ -195,7 +195,11 @@ event_file_backup (FILE * fp, const char *path)
   assert (path != NULL);
 
   fclose (fp);
-  snprintf (backup_file, sizeof (backup_file), "%s.bak", path);
+  if (snprintf (backup_file, PATH_MAX, "%s.bak", path) >= PATH_MAX)
+    {
+      assert_release (0);
+      backup_file[PATH_MAX - 1] = '\0';
+    }
   (void) unlink (backup_file);
   (void) rename (path, backup_file);
 

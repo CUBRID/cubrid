@@ -517,7 +517,11 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       leading_char = section[0];
       if (leading_char == '@' || leading_char == '%')
 	{
-	  snprintf (section, INI_BUFSIZ + 1, "%c%s", leading_char, ini_str_trim (section + 1));
+	  if (snprintf (section, INI_BUFSIZ + 1, "%c%s", leading_char, ini_str_trim (section + 1)) > INI_BUFSIZ)
+	    {
+	      assert (0);
+	      section[INI_BUFSIZ] = '\0';
+	    }
 	}
 
       if (leading_char != '@')
@@ -602,10 +606,10 @@ ini_parser_load (const char *ininame)
       return NULL;
     }
 
-  memset (line, 0, INI_BUFSIZ + 1);
-  memset (section, 0, INI_BUFSIZ + 1);
-  memset (key, 0, INI_BUFSIZ + 1);
-  memset (val, 0, INI_BUFSIZ + 1);
+  memset (line, 0, sizeof (line));
+  memset (section, 0, sizeof (section));
+  memset (key, 0, sizeof (key));
+  memset (val, 0, sizeof (val));
   last = 0;
 
   while (fgets (line + last, INI_BUFSIZ - last, in) != NULL)
@@ -661,7 +665,7 @@ ini_parser_load (const char *ininame)
 	default:
 	  break;
 	}
-      memset (line, 0, INI_BUFSIZ);
+      memset (line, 0, sizeof (line));
       last = 0;
       if (errs < 0)
 	{
