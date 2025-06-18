@@ -258,7 +258,6 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
-static bool is_in_create_trigger = false;
 static bool is_in_sp_func_type = false;
 
 
@@ -5793,11 +5792,6 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-		if (is_in_create_trigger)
-		  {
-		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
-		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
-		  }
                 DBG_PRINT}}
         ;
 
@@ -12496,12 +12490,9 @@ trigger_action_in
 	;
 
 trigger_action
-	:
-	  { is_in_create_trigger = true; }
-	  trigger_action_in
-	    {{
-		is_in_create_trigger = false;
-		$$ = $2;
+	: trigger_action_in
+	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
+		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
 	;
@@ -14764,6 +14755,9 @@ opt_from_clause
 			      (node->info.query.q.select.using_index ?
 			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
 
+                            /* Only allow PT_INCR/PT_DECR in a SELECT list when parser_select_level == 1.
+                             * WITH INCREMENT FOR/DECREMENT FOR skips this syntax check.
+                             * pt_fold_const_expr rechecks and a semantic error occurs if usage is invalid. */
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
 
@@ -26765,6 +26759,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
   INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
+  INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
+  INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 

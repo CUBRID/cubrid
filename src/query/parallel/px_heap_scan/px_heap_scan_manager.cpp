@@ -223,6 +223,7 @@ namespace parallel_heap_scan
 	    return S_ERROR;
 	  }
       }
+    parallel_query::worker_manager::get_manager ().release_workers ();
     /* all scan ended, merge lists */
     if (m_context->has_error())
       {
@@ -375,6 +376,7 @@ namespace parallel_heap_scan
 	list_id_data data;
 	m_list_stream->dequeue_timeout (data, 1);
       }
+    parallel_query::worker_manager::get_manager ().release_workers ();
     m_is_start_once = false;
     timeout_occurred = false;
     m_context->is_scan_external_ended = false;
@@ -466,6 +468,7 @@ extern void
 scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
   HL_HEAPID orig_heap_id;
+  parallel_query::worker_manager::get_manager ().release_workers ();
   if (thread_is_on_trace (thread_p))
     {
       std::size_t parallelism = scan_id->s.phsid.manager->m_parallelism;
@@ -508,10 +511,14 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
 			     num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
-  if (!HFID_IS_NULL (hfid) && file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages) != NO_ERROR)
+  if (!HFID_IS_NULL (hfid))
     {
-      assert (false);
-      return S_ERROR;
+      int ret = file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages);
+      if (ret != NO_ERROR)
+	{
+	  /* maybe query interrupted */
+	  return S_ERROR;
+	}
     }
   if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
     {

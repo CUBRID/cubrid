@@ -65,7 +65,7 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "cas_log.h"
 #include "ddl_log.h"
 #include "network_histogram.hpp"

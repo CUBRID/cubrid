@@ -565,7 +565,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   if (!args.index_file.empty () && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
-      sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
+      sysprm_set_force (PRM_ID_SR_NBUFFERS, LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
 
   /* open loaddb log file */

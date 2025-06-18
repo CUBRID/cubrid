@@ -149,7 +149,6 @@ extern int ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * 
 extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf);
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
 extern void ux_get_default_setting (void);
-extern void ux_get_system_parameter (const char *param, bool * value);
 extern void ux_set_default_setting (void);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

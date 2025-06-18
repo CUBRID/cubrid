@@ -545,18 +545,18 @@ namespace parallel_heap_scan
   memory_mapper::memory_mapper (SCAN_ID *scan_idp, OUTPTR_LIST *outptr_list)
   {
     /* Structure sizes
-     * SCAN_ID : 2176
+     * SCAN_ID : 2184
      * val_descr : 48
      * heap_cache_attrinfo : 56
      * regu_variable_list_node : 120
      * PRED_EXPR : 48
      * when you change the size of the structure, please update the phs modules to scan properly.
      */
-    assert (sizeof (SCAN_ID) == 2176);
-    assert (sizeof (val_descr) == 48);
-    assert (sizeof (heap_cache_attrinfo) == 56);
-    assert (sizeof (regu_variable_list_node) == 120);
-    assert (sizeof (PRED_EXPR) == 48);
+    assert_release (sizeof (SCAN_ID) == 2184);
+    assert_release (sizeof (val_descr) == 48);
+    assert_release (sizeof (heap_cache_attrinfo) == 56);
+    assert_release (sizeof (regu_variable_list_node) == 120);
+    assert_release (sizeof (PRED_EXPR) == 48);
     m_obj_cnt = 0;
     val_descr_ptr = nullptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_idp->s.phsid;
@@ -588,6 +588,8 @@ namespace parallel_heap_scan
 
   memory_mapper::~memory_mapper()
   {
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info();
+    HL_HEAPID orig_heap_id = db_change_private_heap (thread_p, 0);
     if (val_descr_ptr)
       {
 	clear_and_free ((val_descr *) val_descr_ptr);
@@ -642,6 +644,7 @@ namespace parallel_heap_scan
     free (scan_id);
     m_map.clear();
     m_resolved_dbval_map.clear();
+    (void) db_change_private_heap (thread_p, orig_heap_id);
   }
 
   bool memory_mapper::add_resolved_dbval_all()

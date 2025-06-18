@@ -166,7 +166,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
-  ${BASE_DIR}/semaphore.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -248,7 +247,15 @@ set(OPTIMIZER_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_DIR}/plan_generation.c
-  ${OPTIMIZER_DIR}/query_rewrite.c
+  )
+
+set(REWRITER_SOURCES
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${REWRITER_DIR}/query_rewrite.c
   )
 
 set(QUERY_SOURCES
@@ -265,6 +272,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
+  ${QUERY_DIR}/query_hash_join.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -292,6 +300,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
+  ${QUERY_DIR}/query_hash_join.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -640,6 +649,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/scanner_support.c
   ${PARSER_DIR}/view_transform.c
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
@@ -691,6 +701,7 @@ add_library(cubridsa SHARED
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${PARSER_HEADERS}
