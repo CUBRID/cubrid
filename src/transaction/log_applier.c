@@ -8016,10 +8016,10 @@ static int
 check_reinit_copylog (void)
 {
   if (la_fetch_log_hdr (&la_Info.act_log) != NO_ERROR)
-  {
-    return ER_FAILED;
-  }
-  
+    {
+      return ER_FAILED;
+    }
+
   if (la_Info.act_log.log_hdr->mark_will_del)
     {
       la_Info.reinit_copylog = true;
