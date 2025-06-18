@@ -15996,7 +15996,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 #endif /* CUBRID_DEBUG */
 
 #if defined (SERVER_MODE)
-  qlist_enter_count = thread_p->m_qlist_count;
+  qlist_enter_count = thread_p->m_qlist_count.load ();
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
       er_print_callstack (ARG_FILE_LINE, "starting query execution with qlist_count = %d\n", qlist_enter_count);
@@ -16156,17 +16156,18 @@ end:
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
+      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n",
+			  thread_p->m_qlist_count.load ());
     }
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+      assert (thread_p->m_qlist_count.load () == qlist_enter_count + 1);
     }
   else
     {
       // no new list files
-      assert (thread_p->m_qlist_count == qlist_enter_count);
+      assert (thread_p->m_qlist_count.load () == qlist_enter_count);
     }
 #endif // SERVER_MODE
 

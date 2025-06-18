@@ -273,10 +273,10 @@ namespace parallel_query_execute
   query_executor::query_executor (query_executor *executor)
     : m_thread_p (executor->m_thread_p),
       m_worker_manager_p (executor->m_worker_manager_p),
+      m_mutex_p (executor->m_mutex_p),
       m_task_queue (executor->m_thread_p, executor->m_worker_manager_p),
       m_task_queue_global_p (executor->m_task_queue_global_p),
       m_error_messages_p (executor->m_error_messages_p),
-      m_mutex_p (executor->m_mutex_p),
       m_parallelism (executor->m_parallelism),
       m_recursion_level (executor->m_recursion_level+1)
   {
@@ -307,8 +307,7 @@ namespace parallel_query_execute
 
   void query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
   {
-    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p,
-			       &m_task_queue_global_p->m_xasl_thread_executed_map);
+    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p);
     m_task_queue_global_p->add_task (task_tuple_p);
   }
 
@@ -417,10 +416,20 @@ namespace parallel_query_execute
 	return;
       }
 
-    if (!XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+    if (xasl->type == HASHJOIN_PROC || xasl->type == MERGELIST_PROC)
       {
-	m_is_parallel_executable = false;
-	return;
+	for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
+	  {
+	    XASL_SET_FLAG (aptr, XASL_ZERO_CORR_LEVEL);
+	  }
+      }
+    else
+      {
+	if (!XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+	  {
+	    m_is_parallel_executable = false;
+	    return;
+	  }
       }
 
     for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
@@ -429,10 +438,20 @@ namespace parallel_query_execute
 	m_xasl_map.insert (std::make_pair (xasl, aptr));
 	m_aptr_head_set.insert (xasl);
 	m_aptr_set.insert (aptr);
-	if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+	if (aptr->type == HASHJOIN_PROC || aptr->type == MERGELIST_PROC)
 	  {
-	    m_is_parallel_executable = false;
-	    return;
+	    for (XASL_NODE *aptr2 = aptr->aptr_list; aptr2 != nullptr; aptr2 = aptr2->next)
+	      {
+		XASL_SET_FLAG (aptr2, XASL_ZERO_CORR_LEVEL);
+	      }
+	  }
+	else
+	  {
+	    if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+	      {
+		m_is_parallel_executable = false;
+		return;
+	      }
 	  }
 	if (aptr->outptr_list)
 	  {
@@ -490,10 +509,20 @@ namespace parallel_query_execute
 	    m_xasl_map.insert (std::make_pair (xasl, aptr));
 	    m_aptr_head_set.insert (xasl);
 	    m_aptr_set.insert (aptr);
-	    if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+	    if (aptr->type == HASHJOIN_PROC || aptr->type == MERGELIST_PROC)
 	      {
-		m_is_parallel_executable = false;
-		return;
+		for (XASL_NODE *aptr2 = aptr->aptr_list; aptr2 != nullptr; aptr2 = aptr2->next)
+		  {
+		    XASL_SET_FLAG (aptr2, XASL_ZERO_CORR_LEVEL);
+		  }
+	      }
+	    else
+	      {
+		if (!XASL_IS_FLAGED (aptr, XASL_ZERO_CORR_LEVEL))
+		  {
+		    m_is_parallel_executable = false;
+		    return;
+		  }
 	      }
 	    if (aptr->outptr_list)
 	      {

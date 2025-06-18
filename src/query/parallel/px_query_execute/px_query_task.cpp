@@ -35,16 +35,14 @@ namespace parallel_query_execute
   using state_enum = task_state::state;
 
   task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
-	      std::map<XASL_NODE *, int> *xasl_thread_executed_map_p)
+	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p)
     : m_orig_thread_p (thread_p),
       m_xasl (xasl),
       m_xasl_state (xasl_state),
       m_mutex_p (mutex_p),
       m_task_state_p (task_state_p),
       m_worker_manager_p (worker_manager_p),
-      m_error_messages_p (error_messages_p),
-      m_xasl_thread_executed_map_p (xasl_thread_executed_map_p)
+      m_error_messages_p (error_messages_p)
   {}
 
   task::~task()
@@ -77,6 +75,7 @@ namespace parallel_query_execute
     bool is_list_id_kept = false;
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
+    thread_ref.emulate_tid = m_orig_thread_p->get_id();
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
     if (err != NO_ERROR)
@@ -102,11 +101,7 @@ namespace parallel_query_execute
 	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
 	qfile_clear_list_id (&list_id);
       }
-#if !NDEBUG
-    pthread_mutex_lock (m_mutex_p);
-    (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
-    pthread_mutex_unlock (m_mutex_p);
-#endif
+
     if (m_orig_thread_p->index != thread_ref.index)
       {
 #if WITH_PARALLEL_DETAIL_INFO
@@ -150,6 +145,7 @@ namespace parallel_query_execute
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
     thread_ref.on_trace = m_orig_thread_p->on_trace;
+    thread_ref.emulate_tid = m_orig_thread_p->get_id();
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
     if (err != NO_ERROR)
@@ -175,11 +171,6 @@ namespace parallel_query_execute
 	qfile_clear_list_id (&list_id);
       }
 
-#if !NDEBUG
-    pthread_mutex_lock (m_mutex_p);
-    (*m_xasl_thread_executed_map_p)[m_xasl] = thread_ref.index;
-    pthread_mutex_unlock (m_mutex_p);
-#endif
     if (m_orig_thread_p->index != thread_ref.index)
       {
 #if WITH_PARALLEL_DETAIL_INFO
@@ -235,12 +226,10 @@ namespace parallel_query_execute
   }
 
   task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
-				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p,
-				    std::map<XASL_NODE *, int> *xasl_thread_executed_map_p)
+				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p)
   {
     task_state *task_state_p = new task_state();
-    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p,
-			     xasl_thread_executed_map_p);
+    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p);
     task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
     m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
@@ -461,132 +450,6 @@ namespace parallel_query_execute
 	thread_sleep (1);
       }
     while (not_ended);
-#if !NDEBUG
-    XASL_NODE *base;
-    for (auto &[xasl, index] : m_xasl_thread_executed_map)
-      {
-	if (thread_p->index != index)
-	  {
-	    if (xasl->list_id->type_list.type_cnt > 0)
-	      {
-		thread_p->m_qlist_count += 1;
-	      }
-	  }
-	switch (xasl->type)
-	  {
-	  case UNION_PROC:
-	  {
-	    if (xasl->option == Q_DISTINCT)
-	      {
-		/* distinct query doesnt close list_id while execute set query */
-	      }
-	    else
-	      {
-		if (xasl->proc.union_.left->list_id->tuple_cnt==0 && xasl->proc.union_.right->list_id->tuple_cnt==0)
-		  {
-		    /* one side was zero, other side (cleared) check needed */
-		    if (xasl->proc.union_.left->list_id->type_list.type_cnt == 0)
-		      {
-			base = xasl->proc.union_.left;
-		      }
-		    else if (xasl->proc.union_.right->list_id->type_list.type_cnt == 0)
-		      {
-			base = xasl->proc.union_.right;
-		      }
-		    else
-		      {
-			base = nullptr;
-		      }
-		  }
-		else
-		  {
-		    base = xasl->proc.union_.left;
-		  }
-		if (base == nullptr)
-		  {
-		    continue;
-		  }
-		if (thread_p->index != index)
-		  {
-		    thread_p->m_qlist_count -= 1;
-		  }
-
-		auto it = m_xasl_thread_executed_map.find (base);
-		if (it != m_xasl_thread_executed_map.end())
-		  {
-		    if (it->second != thread_p->index)
-		      {
-			thread_p->m_qlist_count += 1;
-		      }
-		  }
-	      }
-	  }
-	  break;
-	  case HASHJOIN_PROC:
-	  {
-
-	    auto it = m_xasl_thread_executed_map.find (xasl->proc.hashjoin.outer.xasl);
-	    if (it != m_xasl_thread_executed_map.end())
-	      {
-		if (it->second != thread_p->index)
-		  {
-		    thread_p->m_qlist_count += 1;
-		  }
-		if (thread_p->index != index)
-		  {
-		    thread_p->m_qlist_count -= 1;
-		  }
-	      }
-	    auto it2 = m_xasl_thread_executed_map.find (xasl->proc.hashjoin.inner.xasl);
-	    if (it2 != m_xasl_thread_executed_map.end())
-	      {
-		if (it2->second != thread_p->index)
-		  {
-		    thread_p->m_qlist_count += 1;
-		  }
-		if (thread_p->index != index)
-		  {
-		    thread_p->m_qlist_count -= 1;
-		  }
-	      }
-	  }
-	  break;
-	  case MERGELIST_PROC:
-	  {
-	    auto it = m_xasl_thread_executed_map.find (xasl->proc.mergelist.outer_xasl);
-	    if (it != m_xasl_thread_executed_map.end())
-	      {
-		if (it->second != thread_p->index)
-		  {
-		    thread_p->m_qlist_count += 1;
-		  }
-		if (thread_p->index != index)
-		  {
-		    thread_p->m_qlist_count -= 1;
-		  }
-	      }
-	    auto it2 = m_xasl_thread_executed_map.find (xasl->proc.mergelist.inner_xasl);
-	    if (it2 != m_xasl_thread_executed_map.end())
-	      {
-		if (it2->second != thread_p->index)
-		  {
-		    thread_p->m_qlist_count += 1;
-		  }
-		if (thread_p->index != index)
-		  {
-		    thread_p->m_qlist_count -= 1;
-		  }
-	      }
-	  }
-	  break;
-	  case DIFFERENCE_PROC:
-	  case INTERSECTION_PROC:
-	  default:
-	    break;
-	  }
-      }
-#endif
-    m_xasl_thread_executed_map.clear();
   }
 
 }

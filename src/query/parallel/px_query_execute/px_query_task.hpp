@@ -74,8 +74,7 @@ namespace parallel_query_execute
       task (task &&) = delete;
       task &operator= (task &&) = delete;
       task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
-	    std::map<XASL_NODE *, int> *xasl_thread_executed_map_p);
+	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p);
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;
       virtual void retire () override;
@@ -91,7 +90,6 @@ namespace parallel_query_execute
       task_state *m_task_state_p;
       pool *m_worker_manager_p;
       std::vector<err_desc_t> *m_error_messages_p;
-      std::map<XASL_NODE *, int> *m_xasl_thread_executed_map_p;
   };
 
   using task_tuple = std::pair<task *, task_state *>;
@@ -101,7 +99,7 @@ namespace parallel_query_execute
       task_queue (THREAD_ENTRY *orig_thread_p, pool *worker_manager_p);
       ~task_queue();
       task_tuple *add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-			    std::vector<err_desc_t> *error_messages_p, std::map<XASL_NODE *, int> *xasl_thread_executed_map_p);
+			    std::vector<err_desc_t> *error_messages_p);
       int execute_tasks (THREAD_ENTRY *exec_thread_p);
       bool get_not_started_task (task **task_p, task_state **task_state_p);
       void join();
@@ -121,7 +119,6 @@ namespace parallel_query_execute
       ~task_queue_global();
       void add_task (task_tuple *task_tuple_p);
       void join();
-      std::map<XASL_NODE *, int> m_xasl_thread_executed_map;
     private:
       std::vector<task_tuple *> m_tasks;
   };
