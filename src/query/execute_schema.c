@@ -2174,6 +2174,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+  // for syncronizing created_time and updated_time
   error = au_set_user_timestamps (user);
   if (error != NO_ERROR)
     {

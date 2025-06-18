@@ -14080,6 +14080,11 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
+      if (sm_update_class_timestamp (class_) != NO_ERROR)
+	{
+	  goto severe_error;
+	}
+
       /* Make sure the class is now marked dirty and flushed so that the catalog is updated.  Also update statistics so
        * that the optimizer will know that the index no longer exists. */
       if (locator_update_class (classop) == NULL)

@@ -434,6 +434,8 @@ au_make_user (const char *name)
 
 		  db_make_null (&value);
 		  obj_set (user, "comment", &value);
+
+		  au_set_user_timestamps (user);
 		}
 	    }
 	  else
@@ -1388,6 +1390,7 @@ au_drop_user (MOP user)
 		    {
 		      db_make_set (&value, new_groups);
 		      obj_set (auser, "groups", &value);
+		      error = au_update_user_timestamp (auser);
 		    }
 
 		  if (new_groups)

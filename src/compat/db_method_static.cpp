@@ -239,15 +239,6 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "");
       db_make_error (returnval, error);
     }
-
-  if (error == NO_ERROR)
-    {
-      error = au_set_user_timestamps (user);
-      if (error != NO_ERROR)
-	{
-	  db_make_error (returnval, error);
-	}
-    }
 }
 
 

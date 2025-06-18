@@ -452,11 +452,6 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-  if (au_set_user_timestamps (dba_user) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   /* establish the DBA as the current user */
   user_cache = caches.find_user_cache_by_mop (dba_user);
   if (user_cache == NULL)
@@ -482,11 +477,6 @@ authenticate_context::install (void)
   /* create the PUBLIC user */
   public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);
   if (public_user == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  if (au_set_user_timestamps (public_user) != NO_ERROR)
     {
       goto exit_on_error;
     }
