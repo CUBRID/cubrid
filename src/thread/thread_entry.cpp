@@ -372,6 +372,7 @@ namespace cubthread
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
     m_qlist_count = 0;
+    emulate_tid = thread_id_t ();
   }
 
   void

@@ -3927,7 +3927,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       hash_method_str[len] = '\0';
 
-      fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, count: %d)\n", indent, ' ',
+      fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, parts: %d)\n", indent, ' ',
 	       TO_MSEC (stats->split.elapsed_time), stats->split.fetches, stats->split.fetch_time, stats->split.ioreads,
 	       part_cnt);
 
@@ -4193,7 +4193,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (partition, "fetch", json_integer (stats->split.fetches));
       json_object_set_new (partition, "fetch_time", json_integer (stats->split.fetch_time));
       json_object_set_new (partition, "ioread", json_integer (stats->split.ioreads));
-      json_object_set_new (partition, "count", json_integer (part_cnt));
+      json_object_set_new (partition, "parts", json_integer (part_cnt));
       json_object_set_new (parent, "split", partition);
 
       build = json_object ();

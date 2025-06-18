@@ -711,7 +711,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
+      assert_release (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1879,10 +1879,7 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
   return xasl;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
-    {
-      assert_release (false);
-    }
+  assert_release (er_errid () != NO_ERROR);
 
   return NULL;
 }
@@ -5666,7 +5663,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
+      assert_release (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -6039,7 +6036,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
+      assert_release (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
