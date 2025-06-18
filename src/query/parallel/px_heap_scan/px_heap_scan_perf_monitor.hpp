@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include "scan_manager.h"
 #include "px_heap_scan_memory_mapper.hpp"
+#include "xasl.h"
 namespace parallel_heap_scan
 {
   class perf_monitor
@@ -39,10 +40,13 @@ namespace parallel_heap_scan
       void add_statistics (SCAN_ID *scan_id, std::size_t parallelism);
       void print_text (FILE *fp, int indent, char *class_name, bool is_list_merge);
       void print_json (json_t *scan, char *class_name, bool is_list_merge);
+      void set_partition_stats (PARTITION_SPEC_TYPE *ended_partition_spec);
+      void add_scan_stats (SCAN_ID *whole_scan_id);
     private:
       std::vector<SCAN_STATS> m_scan_stats;
       std::vector<memory_mapper::px_stats> m_memory_mapper_stats;
       std::size_t m_parallelism;
+      SCAN_STATS m_prev_scan_stats;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

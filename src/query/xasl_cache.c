@@ -537,7 +537,8 @@ xcache_entry_uninit (void *entry)
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       /* Free XASL clones. */
-      assert ((xcache_Max_clones > 0 && xcache_entry->n_cache_clones <= xcache_Max_clones));
+      assert (xcache_entry->n_cache_clones == 0
+	      || (xcache_Max_clones > 0 && xcache_entry->n_cache_clones <= xcache_Max_clones));
       while (xcache_entry->n_cache_clones > 0)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
