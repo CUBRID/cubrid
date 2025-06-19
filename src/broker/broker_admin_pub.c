@@ -4182,9 +4182,10 @@ get_upper_str (char *upper_str, int size, const char *value)
 {
   int i = 0;
 
-  for (i = 0; value[i] && (i < (size - 1)); i++)
+  while (value[i] && (i < (size - 1)))
     {
       upper_str[i] = (char) toupper (value[i]);
+      i++;
     }
 
   upper_str[i] = '\0';
