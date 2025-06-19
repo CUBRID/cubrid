@@ -3613,7 +3613,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY,
    PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
-   (PRM_EMPTY_FLAG),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_compactdb_page_reclaim_only_flag,
    (void *) &prm_compactdb_page_reclaim_only_default,
@@ -3887,7 +3887,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY,
    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY,
-   (PRM_EMPTY_FLAG),
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_KEYWORD,
    &prm_ha_mode_flag,
    (void *) &prm_ha_mode_default,
@@ -7098,19 +7098,19 @@ public:
     for (int i = 0; i < m_used; i++)
       {
 	if (m_loaded[i].conf_path != NULL && strcmp (conf_path, m_loaded[i].conf_path) == 0)
-          {
-            if (db_name)
-              {
-                if (m_loaded[i].db_name != NULL && strcmp (db_name, m_loaded[i].db_name) == 0)
-                  {
-                    return;
-	          }
-              }
-             else if (m_loaded[i].db_name == NULL)
-              {
-                return;
-              }
-          }
+	  {
+	    if (db_name)
+	      {
+		if (m_loaded[i].db_name != NULL && strcmp (db_name, m_loaded[i].db_name) == 0)
+		  {
+		    return;
+		  }
+	      }
+	    else if (m_loaded[i].db_name == NULL)
+	      {
+		return;
+	      }
+	  }
       }
 
     if (m_used < MAX_NUM_OF_PRM_FILES_LOADED)
@@ -7150,27 +7150,21 @@ static struct prm_config_files_loaded prm_file_has_been_loaded;
  * sysprm_dump_parameters - Print out current system parameters
  *   return: none
  *   fp(in): file descriptor to save results
- *   include_filter(in): combination of bit flags you want to dump 
- *   condition(in): dumping condition between bit flags of include filter (OR : 1, AND : 2)
- *   exclude_filter(in): one bit flag that you want to exclude from the dump
+ *   pmarker(in): prefix marker
+ *   in_flags(in): combination of bit flags you want to dump 
+ *   if_cond(in): dumping condition of including flags (OR, AND)
+ *   out_flags(in): combination of bit flags that you want to exclude from the dump
+ *   of_cond(in): dumping condition of excluding flags (OR, AND)
  */
 void
-sysprm_dump_parameters (FILE * fp, unsigned int include_filter, SYSPRM_DUMP_CONDITION condition, unsigned int exclude_filter)
+sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
 {
   char buf[LINE_MAX], tmpbuf[LINE_MAX];
   int i;
   const SYSPRM_PARAM *prm;
-  char prefix_marker, different_marker;
+  char dmarker;
   char *ptr;
-
-  if (include_filter & PRM_FOR_CLIENT)
-    {
-      prefix_marker = 'C';
-    }
-  else
-    {
-      prefix_marker = 'S';
-    }
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
@@ -7181,33 +7175,50 @@ sysprm_dump_parameters (FILE * fp, unsigned int include_filter, SYSPRM_DUMP_COND
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
       prm = GET_PRM (i);
+#if 0
       if (PRM_IS_HIDDEN (prm) || PRM_IS_OBSOLETED (prm))
 	{
 	  continue;
 	}
+#endif
 
-      if (condition == PRM_OR_CONDITION && !(prm->static_flag | include_filter))
+      if (PRM_IS_OBSOLETED (prm))
 	{
 	  continue;
 	}
-      else if (condition == PRM_AND_CONDITION && !(prm->static_flag & include_filter))
+
+      /* skip matched excluding flags */
+      if (of_cond == PRM_OR_CONDITION && (prm->static_flag & out_flags))
 	{
 	  continue;
 	}
-      else if (prm->static_flag & exclude_filter)
-        {
-          continue;
-        }
+      else if (of_cond == PRM_AND_CONDITION && ((prm->static_flag & out_flags) == out_flags))
+	{
+	  continue;
+	}
+
+      /* skip unmatched including flags */
+      if (if_cond == PRM_OR_CONDITION && !(prm->static_flag | in_flags))
+	{
+	  continue;
+	}
+      else if (if_cond == PRM_AND_CONDITION && ((prm->static_flag & in_flags) != in_flags))
+	{
+	  continue;
+	}
+
       prm_print (prm, buf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       prm_print (prm, tmpbuf, LINE_MAX, PRM_PRINT_NONE, PRM_PRINT_DEFAULT_VAL);
-      
-      different_marker = ' ';
+
+      /* check if it is different from the default value */
+      dmarker = ' ';
       ptr = strchr (buf, '=');
-      if (ptr != NULL && strcmp (ptr+1, tmpbuf) != 0)
-        {
-          different_marker = '*';
-        }
-      fprintf (fp, "[%c%c] %s (%s)\n", prefix_marker, different_marker, buf, tmpbuf);
+      if (ptr != NULL && strcmp (ptr + 1, tmpbuf) != 0)
+	{
+	  dmarker = '*';
+	}
+
+      fprintf (fp, "[%c%c] %s (%s)\n", pmarker, dmarker, buf, tmpbuf);
     }
 }
 
@@ -7461,7 +7472,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout, PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG);
+      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION);
     }
 #endif
 
@@ -8845,7 +8856,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
     {
       prm_value = prm->default_value;
     }
-  else 
+  else
     {
       prm_value = prm->value;
     }
@@ -9479,9 +9490,10 @@ cleanup:
  *   fp(in):
  */
 void
-xsysprm_dump_server_parameters (FILE * outfp, unsigned int include_filter, SYSPRM_DUMP_CONDITION condition, unsigned int exclude_filter)
+xsysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
 {
-  sysprm_dump_parameters (outfp, include_filter, condition, exclude_filter);
+  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond);
 }
 
 /*
