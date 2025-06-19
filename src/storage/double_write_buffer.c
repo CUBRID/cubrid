@@ -2284,7 +2284,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
 		{
 		  (void) fileio_synchronize (thread_p,
 					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL,
-					     FILEIO_SYNC_ONLY);
+					     FILEIO_SYNC_VOLUME_ONLY);
 
 		  dwb_log ("dwb_flush_block: Synchronized volume %d\n",
 			   dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes);
@@ -2327,7 +2327,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
   /* Increment statistics after writing in double write volume. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
-  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name, FILEIO_SYNC_ONLY) != dwb_Global.vdes)
+  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name, FILEIO_SYNC_VOLUME_ONLY) != dwb_Global.vdes)
     {
       assert (false);
       /* Something wrong happened. */
@@ -2385,7 +2385,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
       num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
       assert (num_pages != 0);
 
-      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY);
+      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_VOLUME_ONLY);
 
       dwb_log ("dwb_flush_block: Synchronized volume %d\n", block->flush_volumes_info[i].vdes);
     }
@@ -3257,7 +3257,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 		{
 		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
-					  FILEIO_SYNC_ONLY) == NULL_VOLDES)
+					  FILEIO_SYNC_VOLUME_ONLY) == NULL_VOLDES)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -3771,7 +3771,7 @@ dwb_file_sync_helper (THREAD_ENTRY * thread_p)
 	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
 	   * and then resume the current one.
 	   */
-	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
+	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_VOLUME_ONLY);
 
 	  dwb_log ("dwb_file_sync_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
 	}

@@ -158,9 +158,15 @@ typedef enum
 
 typedef enum
 {
-  FILEIO_SYNC_ONLY,
-  FILEIO_SYNC_ALSO_FLUSH_DWB
-} FILEIO_SYNC_OPTION;
+  FILEIO_SYNC_VOLUME_ONLY,
+  FILEIO_SYNC_VOLUME_AND_FLUSH_DWB
+} FILEIO_SYNC_TARGET;
+
+typedef enum
+{
+  FILEIO_SYNC_ALL,   /* sync both data and metadata (fsync) */
+  FILEIO_SYNC_DATA   /* sync data only, skip metadata (fdatasync) */
+} FILEIO_SYNC_SCOPE;
 
 typedef enum
 {
@@ -496,7 +502,7 @@ extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_p
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
 extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel,
-			       FILEIO_SYNC_OPTION check_sync_dwb);
+			       FILEIO_SYNC_TARGET sync_target, FILEIO_SYNC_SCOPE sync_scope = FILEIO_SYNC_DATA);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,

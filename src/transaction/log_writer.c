@@ -1108,7 +1108,7 @@ logwr_flush_all_append_pages (void)
    * future log writes. That is, the pages should be stored on physical disk.
    */
   if (need_sync == true
-      && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_VOLUME_ONLY) == NULL_VOLDES)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -1118,7 +1118,7 @@ logwr_flush_all_append_pages (void)
   if (need_sync == true && prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
       if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes, logwr_Gl.bg_archive_name,
-			      FILEIO_SYNC_ONLY) == NULL_VOLDES)
+			      FILEIO_SYNC_VOLUME_ONLY) == NULL_VOLDES)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1179,7 +1179,7 @@ logwr_flush_bgarv_header_page (void)
 
   if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE,
 		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
-      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name, FILEIO_SYNC_VOLUME_ONLY) == NULL_VOLDES)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	{
@@ -1232,7 +1232,7 @@ logwr_flush_header_page (void)
   /* logwr_Gl.append_vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
   if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE,
 		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
-      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_VOLUME_ONLY) == NULL_VOLDES)
     {
 
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
