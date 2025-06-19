@@ -2826,7 +2826,8 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
-  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, FILEIO_SYNC_VOLUME_AND_FLUSH_DWB, FILEIO_SYNC_ALL) != to_vol_desc)
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, FILEIO_SYNC_VOLUME_AND_FLUSH_DWB, FILEIO_SYNC_ALL) !=
+      to_vol_desc)
     {
       goto error;
     }
@@ -3302,7 +3303,8 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
-      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_VOLUME_AND_FLUSH_DWB, FILEIO_SYNC_ALL);
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_VOLUME_AND_FLUSH_DWB,
+				 FILEIO_SYNC_ALL);
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3344,7 +3346,8 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
       if (sys_vol_info_p->vdes != NULL_VOLDES)
 	{
 	  /* System volume. No need to sync DWB. */
-	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_VOLUME_ONLY, FILEIO_SYNC_ALL);
+	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_VOLUME_ONLY,
+				     FILEIO_SYNC_ALL);
 
 #if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -4390,7 +4393,8 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
  *   sync_scope(in): sync scope
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_TARGET sync_target, FILEIO_SYNC_SCOPE sync_scope)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_TARGET sync_target,
+		    FILEIO_SYNC_SCOPE sync_scope)
 {
   int ret = NO_ERROR;
   bool all_sync = false;
@@ -4528,7 +4532,8 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INF
 
 
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_VOLUME_ONLY, FILEIO_SYNC_ALL);
+      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_VOLUME_ONLY,
+			  FILEIO_SYNC_ALL);
     }
 
   return found;

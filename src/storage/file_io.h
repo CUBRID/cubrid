@@ -164,8 +164,8 @@ typedef enum
 
 typedef enum
 {
-  FILEIO_SYNC_ALL,   /* sync both data and metadata (fsync) */
-  FILEIO_SYNC_DATA   /* sync data only, skip metadata (fdatasync) */
+  FILEIO_SYNC_ALL,		/* sync both data and metadata (fsync) */
+  FILEIO_SYNC_DATA		/* sync data only, skip metadata (fdatasync) */
 } FILEIO_SYNC_SCOPE;
 
 typedef enum
