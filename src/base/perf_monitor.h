@@ -1413,6 +1413,9 @@ perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeva
 STATIC_INLINE void
 perfmon_update_min_timeval (struct timeval *min, struct timeval *tv)
 {
+  assert (min != NULL);
+  assert (tv != NULL);
+
   if (tv->tv_sec < min->tv_sec || (tv->tv_sec == min->tv_sec && tv->tv_usec < min->tv_usec))
     {
       *min = *tv;
@@ -1422,6 +1425,9 @@ perfmon_update_min_timeval (struct timeval *min, struct timeval *tv)
 STATIC_INLINE void
 perfmon_update_max_timeval (struct timeval *max, struct timeval *tv)
 {
+  assert (max != NULL);
+  assert (tv != NULL);
+
   if (tv->tv_sec > max->tv_sec || (tv->tv_sec == max->tv_sec && tv->tv_usec > max->tv_usec))
     {
       *max = *tv;

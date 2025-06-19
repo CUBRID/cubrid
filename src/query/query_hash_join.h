@@ -45,13 +45,6 @@
 #define HASHJOIN_DUMP_PROBE 0
 
 /*
- * 0: qfile_combine_two_list
- * 1: qfile_append_list
- * 2: qfile_connect_list
- */
-#define HASHJOIN_TEST_MERGE_LIST 1
-
-/*
  * Forward Declarations
  */
 
@@ -60,6 +53,17 @@ typedef struct xasl_node XASL_NODE;
 
 struct tp_domain;
 typedef struct tp_domain TP_DOMAIN;
+
+/*
+ * Enum & Typedef Definitions
+ */
+
+typedef enum hashjoin_merge_method
+{
+  HASHJOIN_MERGE_COMBINE = 0,
+  HASHJOIN_MERGE_APPEND,
+  HASHJOIN_MERGE_CONNECT
+} HASHJOIN_MERGE_METHOD;
 
 /*
  * Struct & Typedef Definitions
@@ -215,6 +219,9 @@ typedef struct hashjoin_manager
   QUERY_ID query_id;
   VAL_DESCR *vd;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+
+  HASHJOIN_MERGE_METHOD merge_method;
+  int qlist_flag;
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */

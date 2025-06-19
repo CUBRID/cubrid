@@ -1198,10 +1198,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_MERGE_CONNECT))
-    {
-      list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
-    }
   else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
@@ -2909,13 +2905,14 @@ error:
 int
 qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id)
 {
-  PAGE_PTR old_page = NULL, new_page = NULL, prev_page = NULL;
-  PAGE_PTR old_overflow_page = NULL, new_overflow_page = NULL, prev_overflow_page = NULL;
   VPID old_vpid, new_vpid, prev_vpid;
   VPID old_overflow_vpid, new_overflow_vpid;
+  PAGE_PTR old_page = NULL, new_page = NULL, prev_page = NULL;
+  PAGE_PTR old_overflow_page = NULL, new_overflow_page = NULL, prev_overflow_page = NULL;
 
   assert (base_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&base_list_id->last_vpid));
+
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
 
@@ -2953,7 +2950,9 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 
       QFILE_PUT_NEXT_VPID (prev_page, &new_vpid);
       qfile_set_dirty_page (thread_p, prev_page, FREE, base_list_id->tfile_vfid);
+
       base_list_id->last_vpid = new_vpid;
+
       prev_page = new_page;
       prev_overflow_page = new_page;
 
@@ -3010,10 +3009,7 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   return NO_ERROR;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
-    {
-      assert_release (false);
-    }
+  assert_release (er_errid () != NO_ERROR);
 
   if (prev_page != NULL && prev_page != new_page)
     {
@@ -3050,6 +3046,7 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
 
   assert (base_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&base_list_id->last_vpid));
+
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
 
@@ -3080,10 +3077,7 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   return NO_ERROR;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
-    {
-      assert_release (false);
-    }
+  assert_release (er_errid () != NO_ERROR);
 
   if (base_last_page != NULL)
     {
@@ -6836,7 +6830,8 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, target_thread_p->m_qlist_count.load ());
+      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
+			  target_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }

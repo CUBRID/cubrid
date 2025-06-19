@@ -23,47 +23,91 @@
 #ifndef _PX_HASH_JOIN_H_
 #define _PX_HASH_JOIN_H_
 
-#include "query_hash_join.h"
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
-#include "thread_entry.hpp"	/* THREAD_ENTRY */
+#include "error_context.hpp"		/* cuberr::context */
+#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
+#include "query_hash_join.h"
+#include "thread_entry.hpp"		/* cubthread::entry */
+#include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
 namespace parallel_hash_join
 {
-  class partition_task: public cubthread::entry_task
+  /* Forward Declarations */
+  class task_manager;
+
+  class base_task: public cubthread::entry_task
+  {
+    protected:
+      cubthread::entry &m_main_thread_ref;
+      HASHJOIN_MANAGER *m_manager;
+      task_manager &m_task_manager;
+
+      void emulate_main_thread (cubthread::entry &thread_ref);
+
+    public:
+      base_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, task_manager &task_manager);
+      virtual ~base_task () = default;
+
+      void retire () override;
+  };
+
+  class task_manager
   {
     private:
-      THREAD_ENTRY *m_thread_p;
-      HASHJOIN_MANAGER *m_manager;
+      parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
+      int m_active_tasks;
+      std::mutex m_mutex;
+      std::condition_variable m_cv;
+      cuberr::context &m_main_error_context;
+      std::atomic<bool> m_has_error;
+
+    public:
+      task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager, cuberr::context &main_error_context);
+      ~task_manager () = default;
+
+      void push_task (base_task *task);
+      void task_done ();
+      void join ();
+
+      bool has_error ();
+      bool check_interrupt (cubthread::entry &thread_ref);
+      void handle_error (cubthread::entry &thread_ref);
+  };
+
+  class partition_task: public base_task
+  {
+    private:
       HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
-      std::atomic<bool> &m_has_error;
-      cuberr::er_message &m_error_message;
 
     public:
-      partition_task () = delete;
-      partition_task (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-		      std::atomic<bool> &has_error, cuberr::er_message &error_message);
-      ~partition_task ();
+      partition_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
+		      task_manager &task_manager);
+      ~partition_task () = default;
 
-      void execute (THREAD_ENTRY &thread_ref) override;
+      void execute (cubthread::entry &thread_ref) override;
   };
 
-  class join_task: public cubthread::entry_task
+  class join_task: public base_task
   {
     private:
-      THREAD_ENTRY *m_thread_p;
-      HASHJOIN_MANAGER *m_manager;
       HASHJOIN_CONTEXT *m_context;
-      std::atomic<bool> &m_has_error;
-      cuberr::er_message &m_error_message;
 
     public:
-      join_task () = delete;
-      join_task (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context, std::atomic<bool> &has_error,
-		 cuberr::er_message &error_message);
-      ~join_task ();
+      join_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+		 task_manager &task_manager);
+      ~join_task () = default;
 
-      void execute (THREAD_ENTRY &thread_ref) override;
+      void execute (cubthread::entry &thread_ref) override;
   };
+
+  int
+  build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
+
+  int
+  execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
 } /* namespace parallel_hash_join */
 
 #endif /* _PX_HASH_JOIN_H_ */

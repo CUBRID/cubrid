@@ -22,7 +22,6 @@
 
 #include "query_hash_join.h"
 
-#include "error_context.hpp"	/* cuberr::context */
 #include "dbtype.h"		/* db_make_null */
 #include "fetch.h"		/* fetch_val_list */
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
@@ -84,6 +83,10 @@ typedef enum hashjoin_print_step
   HASHJOIN_PRINT_FILL_EMPTY_KEY
 } HASHJOIN_PRINT_STEP;
 
+/*
+ * Struct & Typedef Definitions
+ */
+
 typedef struct hashjoin_start_stats
 {
   TSC_TICKS tick;
@@ -134,13 +137,11 @@ typedef struct hashjoin_start_stats
 
 /* Hash Join Execution */
 static int hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-#if defined (SERVER_MODE)
-static int hjoin_execute_partitions_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-#endif /* defined (SERVER_MODE) */
+static int hjoin_merge_partitions_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 static int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 static int hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 					 HASHJOIN_CONTEXT * context);
-static int hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+static int hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 
 /* Hash Join Manager */
 static int hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NODE * xasl,
@@ -158,10 +159,6 @@ static int hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 				    HASHJOIN_SPLIT_INFO * split_info);
 static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				   HASHJOIN_SPLIT_INFO * split_info);
-#if defined (SERVER_MODE)
-static int hjoin_build_partitions_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-					    HASHJOIN_SPLIT_INFO * split_info);
-#endif /* defined (SERVER_MODE) */
 
 /* Hash Join Context */
 static int hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -275,7 +272,17 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  break;
 
 	case HASHJOIN_STATUS_PARTITION:
+#if defined (SERVER_MODE)
+	  error = parallel_hash_join::execute_partitions (*thread_p, &manager);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  error = hjoin_merge_partitions_qlist (thread_p, &manager);
+#else
 	  error = hjoin_execute_partitions (thread_p, &manager);
+#endif /* defined (SERVER_MODE) */
 	  break;
 
 	case HASHJOIN_STATUS_END:
@@ -416,21 +423,17 @@ error_exit:
   return error;
 }
 
-#if defined (SERVER_MODE)
 /*
- * hjoin_execute_partitions_parallel() -
+ * hjoin_merge_partitions_qlist() -
  *   return: List identifier containing the join result; NULL if no result or on error.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  */
 static int
-hjoin_execute_partitions_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+hjoin_merge_partitions_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_CONTEXT *current_context;
   int context_index;
-
-  std::atomic_bool has_error;
-  cuberr::er_message error_message (false);
 
   int error = NO_ERROR;
 
@@ -438,31 +441,6 @@ hjoin_execute_partitions_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
   assert (manager != NULL);
 
   HASHJOIN_STATS *total_stats = &manager->stats_group->stats;
-
-  /* *INDENT-OFF* */
-  parallel_hash_join::join_task *task = NULL;
-  /* *INDENT-ON* */
-
-  for (context_index = 0; context_index < manager->context_cnt; context_index++)
-    {
-      current_context = &manager->contexts[context_index];
-
-      /* *INDENT-OFF* */
-      task = new parallel_hash_join::join_task (thread_p, manager, current_context, has_error, error_message);
-      parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (task);
-      /* *INDENT-ON* */
-    }
-
-  /* *INDENT-OFF* */
-  parallel_query::worker_manager_with_dedicated_pool::get_manager().join();
-  /* *INDENT-ON* */
-
-  if (has_error.load ())
-    {
-      cuberr::context::get_thread_local_error ().swap (error_message);
-      error = er_errid ();
-      goto error_exit;
-    }
 
   for (context_index = 0; context_index < manager->context_cnt; context_index++)
     {
@@ -506,11 +484,12 @@ error_exit:
 
   return error;
 }
-#endif	/* defined (SERVER_MODE) */'
 
 static int
 hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
+  QFILE_LIST_ID *new_list_id = NULL;
+
   HASHJOIN_CONTEXT *single_context;
 
   int error = NO_ERROR;
@@ -536,42 +515,62 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   /* Check if qfile_close_list was called */
   assert (single_context->list_id->last_pgptr == NULL);
 
-#if !HASHJOIN_TEST_MERGE_LIST
-  QFILE_LIST_ID *list_id = NULL;
-
-  list_id =
-    qfile_combine_two_list (thread_p, single_context->list_id, context->list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
-  if (list_id == NULL)
+  switch (manager->merge_method)
     {
+    case HASHJOIN_MERGE_COMBINE:
+      {
+	new_list_id =
+	  qfile_combine_two_list (thread_p, single_context->list_id, context->list_id,
+				  QFILE_FLAG_ALL | QFILE_FLAG_UNION);
+	if (new_list_id == NULL)
+	  {
+	    goto error_exit;
+	  }
+
+	qfile_destroy_list (thread_p, single_context->list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
+
+	qfile_destroy_list (thread_p, context->list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+
+	single_context->list_id = new_list_id;
+	new_list_id = NULL;
+
+	break;
+      }
+
+    case HASHJOIN_MERGE_APPEND:
+      {
+	error = qfile_append_list (thread_p, single_context->list_id, context->list_id);
+	if (error != NO_ERROR)
+	  {
+	    goto error_exit;
+	  }
+
+	qfile_destroy_list (thread_p, context->list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+
+	break;
+      }
+
+    case HASHJOIN_MERGE_CONNECT:
+      {
+	error = qfile_connect_list (thread_p, single_context->list_id, context->list_id);
+	if (error != NO_ERROR)
+	  {
+	    goto error_exit;
+	  }
+
+	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+
+	break;
+      }
+
+    default:
+      /* impossible case */
+      assert_release (false);
       goto error_exit;
     }
-
-  qfile_destroy_list (thread_p, single_context->list_id);
-  QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
-
-  qfile_destroy_list (thread_p, context->list_id);
-  QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
-
-  single_context->list_id = list_id;
-  list_id = NULL;
-#elif HASHJOIN_TEST_MERGE_LIST == 1
-  error = qfile_append_list (thread_p, single_context->list_id, context->list_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  qfile_destroy_list (thread_p, context->list_id);
-  QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
-#else
-  error = qfile_connect_list (thread_p, single_context->list_id, context->list_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
-#endif
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -613,7 +612,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
       break;
 
     case HASHJOIN_STATUS_TRY:
-      error = hjoin_internal (thread_p, manager, context);
+      error = hjoin_execute_internal (thread_p, manager, context);
       break;
 
     case HASHJOIN_STATUS_END:
@@ -686,13 +685,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       goto error_exit;
     }
 
-#if HASHJOIN_TEST_MERGE_LIST == 2
-  list_id =
-    qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL | QFILE_FLAG_MERGE_CONNECT,
-		     NULL);
-#else
-  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
-#endif
+  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
   if (list_id == NULL)
     {
       goto error_exit;
@@ -779,14 +772,14 @@ error_exit:
 }
 
 /*
- * hjoin_internal() -
+ * hjoin_execute_internal() -
  *   return: List identifier containing the join result; NULL if no result or on error.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
  */
 static int
-hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
+hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   QFILE_LIST_ID *list_id = NULL;
   QFILE_LIST_ID *build_list_id = NULL, *probe_list_id = NULL;
@@ -803,13 +796,7 @@ hjoin_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CO
   build_list_scan_id.status = S_CLOSED;
   probe_list_scan_id.status = S_CLOSED;
 
-#if HASHJOIN_TEST_MERGE_LIST == 2
-  list_id =
-    qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL | QFILE_FLAG_MERGE_CONNECT,
-		     NULL);
-#else
-  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, QFILE_FLAG_ALL, NULL);
-#endif
+  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
   if (list_id == NULL)
     {
       goto error_exit;
@@ -1002,6 +989,10 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   /* query_id, vd */
   manager->query_id = query_id;
   manager->vd = vd;
+
+  manager->merge_method = HASHJOIN_MERGE_APPEND;
+  manager->qlist_flag =
+    (manager->merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
 
   /* type_list */
   type_list = &manager->type_list;
@@ -1589,66 +1580,6 @@ error_exit:
   goto cleanup;
 }
 
-#if defined (SERVER_MODE)
-static int
-hjoin_build_partitions_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
-{
-  QFILE_LIST_MERGE_INFO *merge_info;
-
-  HASHJOIN_CONTEXT *single_context;
-
-  HASH_SCAN_KEY *outer_part_key = NULL, *inner_part_key = NULL;
-
-  /* *INDENT-OFF* */
-  parallel_hash_join::partition_task *task = NULL;
-  /* *INDENT-ON* */
-  UINT64 tasks_started = 0;
-
-  std::atomic_bool has_error;
-  cuberr::er_message error_message (false);
-
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (manager != NULL);
-  assert (split_info != NULL);
-
-  /* Do not perform NULL checks; 
-   * validation is expected to be handled by the caller */
-  merge_info = manager->merge_info;
-  single_context = &manager->single_context;
-
-  /* *INDENT-OFF* */
-  task = new parallel_hash_join::partition_task (thread_p, manager, &split_info->outer, has_error, error_message);
-  parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (task);
-
-  task = new parallel_hash_join::partition_task (thread_p, manager, &split_info->inner, has_error, error_message);
-  parallel_query::worker_manager_with_dedicated_pool::get_manager().push_task (task);
-
-  parallel_query::worker_manager_with_dedicated_pool::get_manager().join();
-  /* *INDENT-ON* */
-
-  if (has_error.load ())
-    {
-      cuberr::context::get_thread_local_error ().swap (error_message);
-      error = er_errid ();
-      goto error_exit;
-    }
-
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
-  return NO_ERROR;
-
-error_exit:
-  if (error == NO_ERROR || er_errid () == NO_ERROR)
-    {
-      assert_release (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-
-  return error;
-}
-#endif /* defined (SERVER_MODE) */
-
 /*
  * hjoin_try_partition() -
  *   return: One of the following HASHJOIN_STATUS values:
@@ -1703,7 +1634,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
 #if defined (SERVER_MODE)
-  error = hjoin_build_partitions_parallel (thread_p, manager, &part_info);
+  error = parallel_hash_join::build_partitions (*thread_p, manager, &part_info);
 #else /* defined (SERVER_MODE) */
   error = hjoin_build_partitions (thread_p, manager, &part_info);
 #endif /* defined (SERVER_MODE) */
@@ -2336,6 +2267,12 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
   for (value_index = 0; tuple_value < tuple_record_end; value_index++)
     {
+      /* Skip the tuple if any value is NULL */
+      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
+	{
+	  goto skip_next;
+	}
+
       for (key_index = 0; key_index < key->val_count; key_index++)
 	{
 	  /*
@@ -2349,12 +2286,6 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	  if (value_indexes[key_index] != value_index)
 	    {
 	      continue;
-	    }
-
-	  /* Skip the tuple if any value is NULL */
-	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
-	    {
-	      goto skip_next;
 	    }
 
 	  value_size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);

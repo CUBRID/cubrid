@@ -712,7 +712,6 @@ error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
       assert_release (er_errid () != NO_ERROR);
-      error = er_errid ();
     }
 
   return NULL;
@@ -2669,10 +2668,7 @@ cleanup:
   return xasl;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
-    {
-      assert_release (false);
-    }
+  assert_release (er_errid () != NO_ERROR);
 
   xasl = NULL;
 

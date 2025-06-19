@@ -3771,8 +3771,6 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   int part_cnt, part_index;
 
-  HASH_METHOD hash_method = HASH_METH_NOT_USE;
-
   HASHJOIN_INPUT_STATS min_build_stats, max_build_stats;
   HASHJOIN_INPUT_STATS min_probe_stats, max_probe_stats;
   char hash_method_str[32];
