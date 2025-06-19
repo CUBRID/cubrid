@@ -558,7 +558,15 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    err = db_set_otmpl_timestamps (obt_p);
+    db_make_datetime (&value, &info.created_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_CREATED_TIME, &value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_datetime (&value, &info.updated_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_UPDATED_TIME, &value);
     if (err != NO_ERROR)
       {
 	goto error;

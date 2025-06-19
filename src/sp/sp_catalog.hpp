@@ -160,6 +160,8 @@ struct sp_info
   SP_DIRECTIVE_ENUM directive;
   MOP owner;
   std::string comment;
+  DB_DATETIME created_time;
+  DB_DATETIME updated_time;
 
   sp_info () 
   : unique_name {}
@@ -175,6 +177,8 @@ struct sp_info
   , directive {SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER}
   , owner {nullptr}
   , comment {}
+  , created_time {0, 0}
+  , updated_time {0, 0}
   {}
 };
 typedef sp_info SP_INFO;

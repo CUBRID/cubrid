@@ -1004,6 +1004,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   SP_INFO sp_info;
   char *temp;
+  DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1166,10 +1167,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  if (err != NO_ERROR)
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
       goto error_exit;
     }
+  sp_info.created_time = *db_get_datetime (&current_datetime);
+  sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
   if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
