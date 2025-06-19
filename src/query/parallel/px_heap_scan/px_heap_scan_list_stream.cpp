@@ -264,11 +264,6 @@ namespace parallel_heap_scan
     close_list_scan();
     if (m_list_id != nullptr)
       {
-	if (m_main_thread_p != m_task_thread_p)
-	  {
-	    qfile_update_qlist_count (m_main_thread_p, m_list_id, 1);
-	    qfile_update_qlist_count (m_task_thread_p, m_list_id, -1);
-	  }
 	qfile_destroy_list (m_main_thread_p, m_list_id);
 	/* Because tran_id and query_id is same, and task thread is exited. */
       }

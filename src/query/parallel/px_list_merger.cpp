@@ -48,8 +48,10 @@ namespace parallel_query
       }
     if (list_id->tuple_cnt <= 0)
       {
-	qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
-	qfile_destroy_list (m_thread_p, list_id);
+	if (list_id->type_list.type_cnt != 0)
+	  {
+	    qfile_destroy_list (m_thread_p, list_id);
+	  }
 	return;
       }
     assert (!list_id->sort_list);
@@ -98,7 +100,6 @@ namespace parallel_query
     assert (m_head_list_id->query_id == list_id->query_id);
     /* clear list_id, but not free tfile,
      * it will be free in qmgr_free_query_temp_file_helper()*/
-    qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
     qfile_clear_list_id (list_id);
   }
 

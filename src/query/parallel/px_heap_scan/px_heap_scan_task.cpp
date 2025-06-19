@@ -121,6 +121,15 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
+    if (m_context->m_orig_thread_p->emulate_tid != thread_id_t())
+      {
+	thread_p->emulate_tid = m_context->m_orig_thread_p->emulate_tid;
+      }
+    else
+      {
+	thread_p->emulate_tid = m_context->m_orig_thread_p->get_id();
+      }
+
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
