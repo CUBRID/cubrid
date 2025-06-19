@@ -2209,15 +2209,15 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
       if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
-       {
-         return NULL;
-       }
+	{
+	  return NULL;
+	}
 
       pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (pgptr == NULL)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
       CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
     }
   else
@@ -3502,7 +3502,7 @@ repeat:
 	  continue;
 	}
 
-      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->fcnt != 0)
+      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || pgbuf_is_bcb_fixed_by_any (bufptr, false))
 	{
 	  /* page was fixed or became hot after selected as victim. do not flush it. */
 	  PGBUF_BCB_UNLOCK (bufptr);
