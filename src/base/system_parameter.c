@@ -7165,6 +7165,12 @@ sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_D
   const SYSPRM_PARAM *prm;
   char dmarker;
   char *ptr;
+  bool old_style = false;
+
+  if (envvar_get ("FOR_QA"))
+    {
+      old_style = true;
+    }
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
@@ -7212,7 +7218,14 @@ sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_D
 	  dmarker = '*';
 	}
 
-      fprintf (fp, "[%c%c] %s (%s)\n", pmarker, dmarker, buf, tmpbuf);
+      if (old_style)
+	{
+	  fprintf (fp, "%s\n", buf);
+	}
+      else
+	{
+	  fprintf (fp, "[%c%c] %s (%s)\n", pmarker, dmarker, buf, tmpbuf);
+	}
     }
 }
 
