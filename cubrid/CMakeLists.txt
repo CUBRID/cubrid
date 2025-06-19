@@ -692,6 +692,10 @@ install(FILES
   ${API_DIR}/cubrid_log.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+install(FILES
+  ${CM_COMMON_DIR}/cm_stat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 
 # install pdb files for debugging on windows
 if(WIN32)

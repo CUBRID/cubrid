@@ -3409,10 +3409,18 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    }
 		}
 	    }
-
+#if !WINDOWS
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+	    {
+	      if (spec->s_id.s.phsid.perf_monitor && spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+		{
+		  spec->s_id.s.phsid.perf_monitor->add_scan_stats (&spec->s_id);
+		}
+	    }
+#endif
 	  scan_print_stats_text (fp, &spec->s_id);
 #if !WINDOWS
-	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	    {
 	      if (spec->s_id.s.phsid.perf_monitor)
 		{
