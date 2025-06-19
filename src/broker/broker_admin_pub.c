@@ -133,7 +133,7 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p, const char *p
 					    int proxy_id, int shard_id, int as_number);
 static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info, T_SHM_PROXY * proxy_p);
 static void get_shard_db_password (T_BROKER_INFO * br_info_p);
-static void get_upper_str (char *upper_str, int len, char *value);
+static void get_upper_str (char *upper_str, int size, const char *value);
 
 static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
 
@@ -1415,7 +1415,8 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
       switch (optchar)
 	{
 	case 'b':
-	  strncpy (broker_name, optarg, NAME_MAX);
+	  strncpy (broker_name, optarg, BROKER_NAME_LEN);
+	  broker_name[BROKER_NAME_LEN - 1] = '\0';
 	  break;
 	case 'f':
 	  full_info_flag = true;
@@ -4177,15 +4178,15 @@ get_shard_db_password (T_BROKER_INFO * br_info_p)
 }
 
 static void
-get_upper_str (char *upper_str, int len, char *value)
+get_upper_str (char *upper_str, int size, const char *value)
 {
-  int i;
+  int i = 0;
 
-  for (i = 0; i < len - 1; i++)
+  while (value[i] && (i < (size - 1)))
     {
       upper_str[i] = (char) toupper (value[i]);
+      i++;
     }
-  upper_str[i] = '\0';
 
-  return;
+  upper_str[i] = '\0';
 }
