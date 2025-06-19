@@ -611,13 +611,11 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 	  goto end;
 	}
     }
-  else
+
+  error = db_update_obj_timestamp (sp);
+  if (error != NO_ERROR)
     {
-      error = db_update_obj_timestamp (sp);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
+      goto end;
     }
 
 end:
