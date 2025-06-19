@@ -14755,6 +14755,9 @@ opt_from_clause
 			      (node->info.query.q.select.using_index ?
 			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
 
+                            /* Only allow PT_INCR/PT_DECR in a SELECT list when parser_select_level == 1.
+                             * WITH INCREMENT FOR/DECREMENT FOR skips this syntax check.
+                             * pt_fold_const_expr rechecks and a semantic error occurs if usage is invalid. */
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
 
@@ -26756,6 +26759,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
   INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
+  INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
+  INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
