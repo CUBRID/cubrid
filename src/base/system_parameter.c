@@ -7175,12 +7175,6 @@ sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_D
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
       prm = GET_PRM (i);
-#if 0
-      if (PRM_IS_HIDDEN (prm) || PRM_IS_OBSOLETED (prm))
-	{
-	  continue;
-	}
-#endif
 
       if (PRM_IS_OBSOLETED (prm))
 	{
