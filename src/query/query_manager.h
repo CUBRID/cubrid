@@ -154,6 +154,8 @@ extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
+extern PAGE_PTR qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
+extern void qmgr_free_old_page_read_only (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page, LOG_DATA_ADDR * addrp,
 				 QMGR_TEMP_FILE * tfile_vfidp);
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);

@@ -231,6 +231,8 @@ typedef enum
 #define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x04000000)
 /* flag for asynchronous flush request */
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
+/* flag for simple fix */
+#define PGBUF_BCB_SIMPLE_FIX           ((int) 0x01000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK \
@@ -2177,6 +2179,89 @@ try_again:
 }
 
 /*
+ * pgbuf_simple_fix () - Copy a portion of a page to the given area
+ *   return: area or NULL
+ *   vpid(in): Complete Page identifier
+ *
+ * Note:
+ *       WARNING:
+ *       This is only for reading temporary file.
+ *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
+ *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ */
+PAGE_PTR
+pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
+
+  assert (pgbuf_is_temporary_volume (vpid.volid));
+
+  /* Is this a resident page ? */
+  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
+  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
+
+  if (bufptr == NULL)
+    {
+      /* the caller is holding only hash_anchor->hash_mutex. */
+      /* release hash mutex */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
+       {
+         return NULL;
+       }
+
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+        {
+          return NULL;
+        }
+      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+    }
+  else
+    {
+      /* the caller is holding only bufptr->mutex. */
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+      bufptr->fcnt++;
+      bufptr->flags |= PGBUF_BCB_SIMPLE_FIX;
+      /* release mutex */
+      PGBUF_BCB_UNLOCK (bufptr);
+    }
+
+  return pgptr;
+}
+
+/*
+ * pgbuf_simple_unfix () - Free the buffer where the page associated with pgptr resides
+ *
+ * Note:
+ *       WARNING:
+ *       This is only for reading temporary file.
+ *       only fcnt--. it is latchless and LRU mutexless.
+ *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ */
+void
+pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr;
+
+  assert (pgbuf_is_temporary_volume (vpid.volid));
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  /* only decrease fcnt and reset PGBUF_BCB_SIMPLE_FIX */
+  PGBUF_BCB_LOCK (bufptr);
+  bufptr->fcnt--;
+  bufptr->flags &= ~PGBUF_BCB_SIMPLE_FIX;
+  PGBUF_BCB_UNLOCK (bufptr);
+
+  assert (fugptr->fcnt == 0);
+}
+
+/*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
  *   return: error code or NO_ERROR
  *   pgptr(in/out): page pointer
@@ -2446,6 +2531,17 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
   bool is_perf_tracking;
 
+  /* Get the address of the buffer from the page and free the buffer */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+
+  /* simple unfix, only fcnt-- */
+  if ((bufptr->flags & PGBUF_BCB_SIMPLE_FIX) != 0)
+    {
+      pgbuf_simple_unfix (thread_p, pgptr);
+      return;
+    }
+
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;
 #endif /* CUBRID_DEBUG */
@@ -2477,10 +2573,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       return;
     }
 #endif /* !NDEBUG */
-
-  /* Get the address of the buffer from the page and free the buffer */
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (!VPID_ISNULL (&bufptr->vpid));
 
 #if defined(CUBRID_DEBUG)
   /*
@@ -3410,7 +3502,7 @@ repeat:
 	  continue;
 	}
 
-      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->latch_mode != PGBUF_NO_LATCH)
+      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->fcnt != 0)
 	{
 	  /* page was fixed or became hot after selected as victim. do not flush it. */
 	  PGBUF_BCB_UNLOCK (bufptr);
