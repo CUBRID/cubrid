@@ -92,6 +92,8 @@
 
 #include "authenticate_context.hpp"
 
+#include <signal.h>
+
 #if defined(CS_MODE)
 #include "network.h"
 #include "connection_cl.h"

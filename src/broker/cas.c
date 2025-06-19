@@ -2402,7 +2402,8 @@ cas_init ()
       return -1;
     }
 
-  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
+  assert (sizeof (broker_name) == sizeof (shm_appl->broker_name));
+  strcpy (broker_name, shm_appl->broker_name);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
