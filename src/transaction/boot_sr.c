@@ -6041,7 +6041,6 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
 
-      /* todo: is flush needed? */
       VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
       log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
 			     &vpid_boot_bp_parm);
