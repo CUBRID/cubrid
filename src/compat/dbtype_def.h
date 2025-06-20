@@ -541,6 +541,7 @@ extern "C"
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
+#define DB_INTERNAL_NUMERIC_PRECISION_LIMIT 127
 
 /* The maximum scale that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_SCALE 127
@@ -549,10 +550,10 @@ extern "C"
 #define DB_MIN_NUMERIC_SCALE -84
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e128
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-128
 
 #define DB_MAX_CHAR_PRECISION 2048
 
@@ -598,7 +599,7 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
+#define DB_NUMERIC_BUF_SIZE	(7*sizeof(double))	// base-256의 buf, 56b = 135자리
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */

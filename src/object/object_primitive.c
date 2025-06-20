@@ -8493,7 +8493,9 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
     {
-      db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      // 원래는 DB_DEFAULT_SCALE 이었음, 그런데 scale에 음수가 가능하므로 0으로 수정
+      //db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
     }
   else
     {

@@ -378,9 +378,10 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
       cinfo->scale = MAX (att1_info->scale, att2_info->scale);
       cinfo->prec = MAX ((att1_info->prec - att1_info->scale), (att2_info->prec - att2_info->scale)) + cinfo->scale;
 
+      // 향후, 고민 필요 table 자체는 1~38 까지만 가능하나, 내부적으로는 127 까지 허용.
       if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
 	{			/* overflow */
-	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
+	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_SCALE);
 	  if (cinfo->scale < 0)
 	    {
 	      cinfo->scale = 0;
@@ -2245,10 +2246,11 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
 	  data_type->info.data_type.dec_precision = MAX (ci1.scale, ci2.scale);
 
+	  // 향후, 고민 필요 table 자체는 1~38 까지만 가능하나, 내부적으로는 127 까지 허용.
 	  if (data_type->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
 	    {
 	      data_type->info.data_type.dec_precision =
-		(DB_MAX_NUMERIC_PRECISION - data_type->info.data_type.dec_precision);
+		(DB_MAX_NUMERIC_SCALE - data_type->info.data_type.dec_precision);
 	      if (data_type->info.data_type.dec_precision < 0)
 		{
 		  data_type->info.data_type.dec_precision = 0;

@@ -7172,7 +7172,8 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
       return NULL;
     }
 
-  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
+  //if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
+  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE || prec < 0 || scale < DB_MIN_NUMERIC_SCALE)
     {
       parser_free_tree (parser, dt);
       dt = NULL;

@@ -11747,9 +11747,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 		      scale_delta = (DB_DEFAULT_NUMERIC_DIVISION_SCALE - org_scale);
 		      new_scale = org_scale + scale_delta;
 		      new_prec = org_prec + scale_delta;
+		      // 향후, 고민 필요 table 자체는 1~38 까지만 가능하나, 내부적으로는 127 까지 허용.
+		      //if (new_prec > DB_MAX_NUMERIC_PRECISION)
 		      if (new_prec > DB_MAX_NUMERIC_PRECISION)
 			{
-			  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
+			  //new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
+			  new_scale -= (new_prec - DB_MAX_NUMERIC_SCALE);
 			  new_prec = DB_MAX_NUMERIC_PRECISION;
 			}
 
@@ -12171,10 +12174,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
+	  // 향후, 고민 필요 table 자체는 1~38 까지만 가능하나, 내부적으로는 127 까지 허용.
 	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_PRECISION)
 	    {
+	      //dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
+	      //                                      - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION));
 	      dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
-						  - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION));
+						  - (dt->info.data_type.precision - DB_MAX_NUMERIC_SCALE));
 	    }
 
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)

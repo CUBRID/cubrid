@@ -21,6 +21,7 @@
  *
  */
 
+#include "dbtype_def.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -190,20 +191,23 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 //      value->domain.numeric_info.scale = scale;
 //      }
       value->domain.numeric_info.scale = scale;
-      if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
+      if (IS_INVALID_PRECISION (precision, DB_INTERNAL_NUMERIC_PRECISION_LIMIT) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  //er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0,
+		  DB_INTERNAL_NUMERIC_PRECISION_LIMIT);
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      else if (scale > DB_MAX_NUMERIC_SCALE || scale < DB_MIN_NUMERIC_SCALE)
+      else if (scale < DB_MIN_NUMERIC_SCALE)
 	{
 	  // 향후 나중에 에러메세지 수정 필요
 	  // ex) ORA-01728: 수치의 스케일 범위(-84 에서 127)를 초과했습니다.
 	  // ex) ORA-01728: numeric scale specifier is out of range -84 to 127
 	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  //er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_SCALE);
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
@@ -410,7 +414,8 @@ void
 db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type)
 {
   // default initialization should not fail
-  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  // 원래는 DB_DEFAULT_SCALE 이었음, 그런데 scale에 음수가 가능하므로 0으로 수정
+  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, 0);
 }
 
 /*
@@ -5125,7 +5130,7 @@ db_value_is_corrupted (const DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
-      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
+      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_INTERNAL_NUMERIC_PRECISION_LIMIT))
 	{
 	  return true;
 	}

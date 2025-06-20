@@ -60,7 +60,11 @@
 #define CARRYOVER(arg)		((arg) >> 8)
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
-#define TWICE_NUM_MAX_PREC	(2*DB_MAX_NUMERIC_PRECISION)
+//#define TWICE_NUM_MAX_PREC    (2*DB_MAX_NUMERIC_PRECISION)
+// TWICE_NUM_MAX_PREC 해당 부분을 130으로 하고 print 해주는 부분은 127 + 10 으로 해줘야 정상적으로 결과가 출력됨
+// 이유는 모르겠음...
+#define TWICE_NUM_MAX_PREC	(DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)	// 127 + 3(+-, ., \0)
+
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
 
 #define ROUND(x)                  ((x) > 0 ? ((x) + .5) : ((x) - .5))
@@ -68,7 +72,7 @@
 typedef struct dec_string DEC_STRING;
 struct dec_string
 {
-  char digits[TWICE_NUM_MAX_PREC];
+  char digits[TWICE_NUM_MAX_PREC + 1];
 };
 
 static const char fast_mod[20] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
@@ -1382,7 +1386,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale2 - scale1;
       prec1 = scale_diff + prec1;
-      if (prec1 > DB_MAX_NUMERIC_PRECISION)
+      //if (prec1 > DB_MAX_NUMERIC_PRECISION)
+      if (prec1 > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1397,7 +1402,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale1 - scale2;
       prec2 = scale_diff + prec2;
-      if (prec2 > DB_MAX_NUMERIC_PRECISION)
+      //if (prec2 > DB_MAX_NUMERIC_PRECISION)
+      if (prec2 > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1530,7 +1536,8 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   char dec_digits[TWICE_NUM_MAX_PREC + 2];
 
   /* If src precision fits without truncation, merely set dest to the lower half of the source buffer and return */
-  if (src_prec <= DB_MAX_NUMERIC_PRECISION)
+  //if (src_prec <= DB_MAX_NUMERIC_PRECISION)
+  if (src_prec <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
     {
       numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
       *dest_prec = src_prec;
@@ -1540,7 +1547,8 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   /* The remaining cases are for when the precision of the source overflows. */
 
   /* Case 1: The scale of the source does *not* overflow */
-  else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
+  //else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
+  else if (src_scale <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
     {
       /* If upper half of *src is zero, merely copy, reset precision, and return */
       if (numeric_is_zero (src) && src[DB_NUMERIC_BUF_SIZE] <= 0x7F)
@@ -1620,7 +1628,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
       return NO_ERROR;
     }
 
@@ -1652,7 +1661,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      //if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  prec++;
 	}
@@ -1670,7 +1680,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1720,7 +1731,8 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
       return NO_ERROR;
     }
 
@@ -1752,7 +1764,8 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      //if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  prec++;
 	}
@@ -1770,7 +1783,8 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1822,7 +1836,8 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
       return NO_ERROR;
     }
 
@@ -1848,7 +1863,8 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1906,7 +1922,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
       return NO_ERROR;
     }
 
@@ -1932,7 +1949,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
    */
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
-  if (prec > DB_MAX_NUMERIC_PRECISION)
+  //if (prec > DB_MAX_NUMERIC_PRECISION)
+  if (prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
     {
       prec = DB_MAX_NUMERIC_PRECISION;
     }
@@ -1944,7 +1962,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
       new_scale = scale + scale_delta;
       new_prec = prec + scale_delta;
-      if (new_prec > DB_MAX_NUMERIC_PRECISION)
+      //if (new_prec > DB_MAX_NUMERIC_PRECISION)
+      if (new_prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
 	  new_prec = DB_MAX_NUMERIC_PRECISION;
@@ -2011,7 +2030,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   if (numeric_overflow (temp_quo, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      //if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 	{
 	  prec++;
 	}
@@ -2030,7 +2050,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  //db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, 0);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -2664,8 +2685,10 @@ static void
 numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale, const int dst_prec,
 			   DB_C_NUMERIC dest)
 {
-  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
-  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
+  //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT * 4];
+  char new_dec_num[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];
   int i = 0;
 
   /* the number of digits of the result */
@@ -2675,7 +2698,8 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  //memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  memset (new_dec_num, 0, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2716,15 +2740,18 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
 static void
 numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_scale, DB_C_NUMERIC dest)
 {
-  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
-  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
+  //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT * 4];
+  char new_dec_num[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];
   int i = 0;
 
   assert (src_scale <= dst_scale);
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  //memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  memset (new_dec_num, 0, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2762,7 +2789,8 @@ static bool
 numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
 {
   int i, len = 0;
-  char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  //char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  char dec_str[(2 * DB_INTERNAL_NUMERIC_PRECISION_LIMIT) + 4];
   numeric_coerce_num_to_dec_str (num, dec_str);
   len = strlen (dec_str);
   for (i = 0; i < scale; i++)
@@ -2867,7 +2895,8 @@ get_fp_value_type (double d)
 int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float)
 {
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
+  //char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10)];	// 127 + 4(+-, ., \0)
   int i = 0;
 
   switch (get_fp_value_type (adouble))
@@ -2968,7 +2997,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
 
-		  if (decpt > DB_MAX_NUMERIC_PRECISION)
+		  //if (decpt > DB_MAX_NUMERIC_PRECISION)
+		  if (decpt > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 		    {
 		      /* should not happen since overflow has been checked for previously */
 		      return ER_IT_DATA_OVERFLOW;
@@ -3000,7 +3030,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		}
 
 	      /* append zeroes until dst_scale is reached */
-	      while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
+	      //while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
+	      while (*prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT && *scale < dst_scale)
 		{
 		  numeric_str[1 + *prec] = '0';
 		  (*prec)++;
@@ -3072,6 +3103,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   int i;
   int prec = 0;
   int scale = 0;
+  int non_zero_prec = 0;
   bool leading_zeroes = true;
   bool sign_found = false;
   bool negate_value = false;
@@ -3100,7 +3132,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    {
 	      leading_zeroes = false;
 	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      //if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      if (++prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 		{
 		  break;
 		}
@@ -3168,7 +3201,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	  else if (astring[i] >= '0' && astring[i] <= '9')
 	    {
 	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      //if (++prec > DB_MAX_NUMERIC_PRECISION)
+	      if (++prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 		{
 		  break;
 		}
@@ -3186,14 +3220,30 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
+  /*
+   * numeric(38,127) 에서, 0.000..999 처럼 소수 총 자리 165, 0은 127, 9는 38 자리 값이 들어올 때,
+   * 현재 우리는 127 까지만 읽고 바로 에러를 처리하기 때문에 반올림을 하지 않고 에러가 출력됨
+   * 향후 수정이 필요함!
+   */
+
   /* If there is no overflow, try to parse the decimal string */
-  if (prec > DB_MAX_NUMERIC_PRECISION)
+  if (prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)	// 127
     {
+      // 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
       ret = ER_IT_DATA_OVERFLOW;
       goto exit_on_error;
     }
+
+//   if (scale > DB_MAX_NUMERIC_SCALE)
+//     {
+//       // 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
+//       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+//       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+//       ret = ER_IT_DATA_OVERFLOW;
+//       goto exit_on_error;
+//     }
 
   if (prec == 0 && pad_character_zero)
     {
@@ -3219,7 +3269,11 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
 exit_on_error:
 
+  // ER_IT_DATA_OVERFLOW 일 때 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
+  //if (er_errid () != ER_IT_DATA_OVERFLOW)
+  //{
   db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+  //}
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -3241,7 +3295,8 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
 			   DB_C_NUMERIC dest_num)
 {
   int ret = NO_ERROR;
-  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
+  //char num_string[DB_MAX_NUMERIC_PRECISION * 4];
+  char num_string[TWICE_NUM_MAX_PREC + 1];
   int scale_diff;
   int orig_length;
   int i, len;
@@ -3278,25 +3333,61 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
   /* Convert the src_num into a decimal string */
   numeric_coerce_num_to_dec_str (dest_num, num_string);
   /* Scale the number */
+//   if (src_scale < dest_scale)
+//     {                                /* add trailing zeroes */
+//       // (확인필요) 여기는 아래와 같은 조치가 필요 없을까?
+//       scale_diff = dest_scale - src_scale;
+//       orig_length = strlen (num_string);
+//       for (i = 0; i < scale_diff; i++)
+//      {
+//        num_string[orig_length + i] = '0';
+//      }
+//       num_string[orig_length + scale_diff] = '\0';
+//     }
   if (src_scale < dest_scale)
-    {				/* add trailing zeroes */
+    {
+      /* scale 값 만큼 값을 보정하는 곳임 
+       * 수정한 방법 :  
+       * 1. 임시 배열을 만들어서 scale_diff만큼 값을 복사
+       * 2. 원래 배열을 scale_diff만큼 이동
+       * 3. 임시 배열을 원래 배열의 뒷부분에 복사
+       * 
+       * 원래 방법 :
+       * 1. 원래 배열을 scale_diff만큼 이동
+       * 2. 원래 배열의 뒷부분에 scale_diff만큼 0을 채움
+       * 3. 마지막 배열에 \0을 추가
+       */
       scale_diff = dest_scale - src_scale;
       orig_length = strlen (num_string);
-      for (i = 0; i < scale_diff; i++)
-	{
-	  num_string[orig_length + i] = '0';
-	}
-      num_string[orig_length + scale_diff] = '\0';
+
+      // 한 번에 scale_diff만큼 이동
+      char temp[scale_diff];
+      memcpy (temp, num_string, scale_diff);
+      memmove (num_string, num_string + scale_diff, orig_length - scale_diff);
+      memcpy (num_string + (orig_length - scale_diff), temp, scale_diff);
     }
   else if (dest_scale < src_scale)
     {				/* Truncate and prepare for rounding */
+      // numeric(2,-84), INSERT INTO t1 values(99000); 값을 처리할 때,
+      // orig_length = 76, scale_diff = 84, scale_length = -8 이렇게 계산이됨
+      // -8 번째 배열은 없으므로 양수로 다시 처리해야됨.
+      // 그런데, num_string 배열이 [DB_MAX_NUMERIC_PRECISION * 4]로 처리돼서 문제가 된느 것 같은데...
+      // 늘리면 또 달라질 수 있음.  그러면 다시 롤백!!!
+      int scale_length = 0;
       scale_diff = src_scale - dest_scale;
       orig_length = strlen (num_string);
-      if (num_string[orig_length - scale_diff] >= '5' && num_string[orig_length - scale_diff] <= '9')
+
+      scale_length = orig_length - scale_diff;
+      if (dest_scale < 0 && scale_length < 0)
+	{
+	  scale_length *= -1;
+	}
+
+      if (num_string[scale_length] >= '5' && num_string[scale_length] <= '9')
 	{
 	  round_up = true;
 	}
-      num_string[orig_length - scale_diff] = '\0';
+      num_string[scale_length] = '\0';
     }
 
   /*
@@ -3853,7 +3944,10 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 char *
 numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
-  char temp[80];
+  //char temp[80];
+  // TWICE_NUM_MAX_PREC 해당 부분을 130으로 하고 print 해주는 부분은 127 + 10 으로 해줘야 정상적으로 결과가 출력됨
+  // 이유는 모르겠음...
+  char temp[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 56byte : 137 buf
   int nbuf;
   int temp_size;
   int i;
