@@ -40,12 +40,12 @@
 
 int parser_yyinput_single_mode = 0;
 
+static void init_plcsql_lexing(void);
 static int parser_yyinput (char *buff, int max_size);
 static char *parser_c_hint (void);
 static char *parser_line_hint (void);
 static void begin_token (char *token);
 
-static void init_plcsql_lexing();
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
 static int from_plcsql_text;
@@ -2002,7 +2002,7 @@ yywrap ()
 
 
 static void
-init_plcsql_lexing()
+init_plcsql_lexing(void)
 {
   plcsql_begin_end_balance = 0;
   plcsql_nest_level = 0;
