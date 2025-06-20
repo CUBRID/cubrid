@@ -2759,16 +2759,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   os_set_signal_handler (SIGBUS, crash_handler);
   os_set_signal_handler (SIGSEGV, crash_handler);
   os_set_signal_handler (SIGSYS, crash_handler);
-#endif
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
-  if (db_login ("DBA", NULL) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-#if !defined(WINDOWS)
   /* save executable path */
   binary_name = basename (arg->argv0);
   (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
@@ -2808,6 +2799,14 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 #endif
 
 retry:
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_LOG_COPIER);
+  if (db_login ("DBA", NULL) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
     {
@@ -2969,17 +2968,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   os_set_signal_handler (SIGBUS, crash_handler);
   os_set_signal_handler (SIGSEGV, crash_handler);
   os_set_signal_handler (SIGSYS, crash_handler);
-#endif
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
-  if (db_login ("DBA", NULL) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-#if !defined(WINDOWS)
   /* save executable path */
   binary_name = basename (arg->argv0);
   (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
@@ -3029,6 +3018,14 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 #endif
 
 retry:
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_LOG_APPLIER);
+  if (db_login ("DBA", NULL) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
     {
@@ -3287,9 +3284,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
   /* error message log file */
   sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
@@ -3316,6 +3310,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_applied_info_end;
 	    }
+
+	  AU_DISABLE_PASSWORDS ();
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
 	  error = db_login ("DBA", NULL);
 	  if (error != NO_ERROR)
@@ -3384,6 +3381,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	    {
 	      goto check_master_info_end;
 	    }
+
+	  AU_DISABLE_PASSWORDS ();
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
 	  if (db_login ("DBA", NULL) != NO_ERROR)
 	    {
