@@ -2324,7 +2324,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_BIGINT bi1, bi2, bi_tmp;
   double dtmp;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-  char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  //char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  char num_string[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 127 + 10
   char *ptr, *end;
   int need_round = 0;
   int p, s;
@@ -3499,7 +3500,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NUMERIC:
       {
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
-	char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+	//char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+	char num_string[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 127 + 10
 	char *ptr, *end;
 	int p, s;
 
