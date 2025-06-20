@@ -2423,7 +2423,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
    */
   info_len = set_size (constraint_seq);
   /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
-   * Each attribute consists of 2 parts: att_name and asc_dsc.
+   * Each attribute consists of 2 parts: att_name and asc_desc.
    * optional_info (if present) is a single field and does not affect att_cnt calculation.
    */
   att_cnt = (info_len - 5) / 2;
@@ -3302,7 +3302,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	      info_len = set_size (info);
 
 	      /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
-	       * Each attribute consists of 2 parts: att_name and asc_dsc.
+	       * Each attribute consists of 2 parts: att_name and asc_desc.
 	       * optional_info (if present) is a single field and does not affect att_cnt calculation.
 	       */
 	      att_cnt = (info_len - 5) / 2;

@@ -2326,7 +2326,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       key_size = set_size (key_seq_p);
       /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time); 
-       * each attribute has 2 parts: att_name and asc_dsc */
+       * each attribute has 2 parts: att_name and asc_desc */
       att_cnt = (key_size - 5) / 2;
 
       /* updated_time */

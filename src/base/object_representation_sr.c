@@ -1893,7 +1893,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index = &(rep->indexes[rep->n_indexes]);
 
   /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
-   * Each attribute consists of 2 parts: att_name and asc_dsc.
+   * Each attribute consists of 2 parts: att_name and asc_desc.
    * optional_info (if present) is a single field and does not affect att_cnt calculation.
    */
   att_cnt = (seq_size - 5) / 2;
