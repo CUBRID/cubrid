@@ -4795,6 +4795,12 @@ change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM
 	  goto error_exit;
 	}
 
+      error = classobj_update_constraint_updated_time (ctemplate->properties, cons);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       /* classobj_free_template() is included in sm_update_class() */
       error = sm_update_class (ctemplate, NULL);
       if (error != NO_ERROR)

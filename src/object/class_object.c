@@ -8913,13 +8913,6 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
       goto end;
     }
 
-  if (db_sys_datetime (&updated_time) != NO_ERROR || set_put_element (idx_seq, len - 1, &updated_time) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
   db_make_sequence (&cnstr_val, idx_seq);
   found = classobj_put_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
