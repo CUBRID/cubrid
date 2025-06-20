@@ -74,6 +74,7 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_ARGUMENT_ZERO = -21128;
 
     private static final HashMap<Integer, String> messageString = new HashMap<Integer, String>();
+
     static {
         messageString.put(ER_UNKNOWN, "Error");
         messageString.put(ER_NO_ERROR, "No Error");
@@ -138,12 +139,11 @@ public class CUBRIDServerSideJDBCErrorCode {
             // default error message
             String ret = messageString.get(index);
             if (ret == null) {
-                assert false: String.format("unknown error code %d", index);
+                assert false : String.format("unknown error code %d", index);
                 return String.format("unknown error code %d", index);
             } else {
                 return ret;
             }
         }
     }
-
 }
