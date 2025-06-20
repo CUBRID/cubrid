@@ -25409,8 +25409,6 @@ pop_msg ()
   msg_ptr--;
 }
 
-
-extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
 
