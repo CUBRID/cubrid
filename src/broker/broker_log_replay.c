@@ -624,7 +624,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log, T_SQL_IN
 static int
 get_cci_type (char *p)
 {
-  int type;
+  int type = -1;
 
   assert (p);
   switch (*p)
@@ -784,7 +784,7 @@ get_cci_type (char *p)
       break;
 
     default:
-      type = -1;
+      break;
     }
 
   return type;
@@ -882,7 +882,11 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result,
     }
   else
     {
-      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
+      res = cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
+    }
+  if (res != CCI_ER_NO_ERROR)
+    {
+      return ER_FAILED;
     }
 
   if (remain_bind_buf <= 0)

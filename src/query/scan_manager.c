@@ -5148,6 +5148,9 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_PARALLEL_HEAP_SCAN:
 #if SERVER_MODE && !WINDOWS
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
+#else
+      assert_release (0);
+      status = S_ERROR;
 #endif /* SERVER_MODE && !WINDOWS */
       break;
 

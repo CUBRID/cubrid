@@ -17351,7 +17351,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat = NULL, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op, insert_only = false;
 
@@ -17790,7 +17790,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   INT64 result = 0;
   int error = NO_ERROR;
-  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;

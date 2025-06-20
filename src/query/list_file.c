@@ -5614,10 +5614,11 @@ QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
-  QFILE_LIST_CACHE_ENTRY *lent;
-  int tran_index;
+  QFILE_LIST_CACHE_ENTRY *lent = NULL;
 #if defined(SERVER_MODE)
+  int tran_index;
   TRAN_ISOLATION tran_isolation;
+  bool new_tran = true;
 #if defined(WINDOWS)
   unsigned int num_elements;
 #else
@@ -5628,7 +5629,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
   size_t i_idx, num_active_users;
 #endif
 
-  bool new_tran = true;
+
 
   *result_cached = false;
 
@@ -5655,7 +5656,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 	}
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+#if defined(SERVER_MODE)
+  tran_index =
+#endif
+    LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
   lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);

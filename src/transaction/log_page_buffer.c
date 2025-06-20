@@ -5993,7 +5993,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 {
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
-  int min_arv_required_for_vacuum;
+  int min_arv_required_for_vacuum = 0;
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;

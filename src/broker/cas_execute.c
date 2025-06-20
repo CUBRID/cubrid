@@ -2597,7 +2597,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 {
   DB_VALUE *value_list = NULL;
   int err_code;
-  int i, num_bind_params, num_bind = 0;
+  int i, num_bind_params = 0, num_bind = 0;
   int num_markers;
   int stmt_id = -1;
   int first_value;

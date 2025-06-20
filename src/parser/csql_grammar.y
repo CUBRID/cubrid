@@ -22034,7 +22034,7 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | FLOAT_ opt_prec_1);
 
 			container_2 ctn;
-			PT_TYPE_ENUM typ;
+			PT_TYPE_ENUM typ = PT_TYPE_FLOAT;
 			PT_NODE *prec, *dt = NULL;
 			prec = $2;
 
