@@ -4976,10 +4976,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND && checksum[0] != '\0')
     {
-      AU_DISABLE_PASSWORDS ();
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-      db_login ("DBA", NULL);
-
       if (db_name != NULL)
 	{
 	  dir = (DB_INFO *) calloc (1, sizeof (DB_INFO));
@@ -5007,6 +5003,10 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
       for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
+	  AU_DISABLE_PASSWORDS ();
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	  db_login ("DBA", NULL);
+
 	  if (db_restart (arg->command_name, TRUE, db_info_p->name) != NO_ERROR)
 	    {
 	      need_db_shutdown = true;
