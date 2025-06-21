@@ -126,15 +126,6 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 {
   char filepath[PATH_MAX];
 
-  if (!hnsw_index_directory_created)
-    {
-      if (create_hnsw_index_directory () != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "Failed to create HNSW Index directory");
-	  return ER_FAILED;
-	}
-    }
-
   if (!btid)
     {
       assert (false);
@@ -224,6 +215,28 @@ void dump_all_hnsw_indices_to_files ()
 	  assert (false);
 	  _er_log_debug (ARG_FILE_LINE, "Failed to dump HNSW Index with ID %d", hnsw_id);
 	}
+    }
+}
+
+void init_hnsw_index_path ()
+{
+  char db_path[PATH_MAX];
+  fileio_get_directory_path (db_path, boot_db_full_name());
+  int written = snprintf (hnsw_index_directory, PATH_MAX, "%s%cvindex", db_path, PATH_SEPARATOR);
+  if (written < 0 || written >= PATH_MAX)
+    {
+      assert (false);
+      _er_log_debug (ARG_FILE_LINE, "Failed to create path for HNSW Index directory since path is too long");
+      return;
+    }
+
+  if (std::filesystem::exists (hnsw_index_directory))
+    {
+      hnsw_index_directory_created = true;
+    }
+  else
+    {
+      hnsw_index_directory_created = false;
     }
 }
 
