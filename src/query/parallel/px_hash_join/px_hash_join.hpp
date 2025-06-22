@@ -20,8 +20,7 @@
  * px_hash_join.hpp
  */
 
-#ifndef _PX_HASH_JOIN_H_
-#define _PX_HASH_JOIN_H_
+#pragma once
 
 #include <atomic>
 #include <condition_variable>
@@ -45,7 +44,7 @@ namespace parallel_hash_join
       HASHJOIN_MANAGER *m_manager;
       task_manager &m_task_manager;
 
-      void emulate_main_thread (cubthread::entry &thread_ref);
+      void emulate_thread (cubthread::entry &thread_ref);
 
     public:
       base_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, task_manager &task_manager);
@@ -103,11 +102,15 @@ namespace parallel_hash_join
       void execute (cubthread::entry &thread_ref) override;
   };
 
+  void
+  try_reserve_workers (HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count);
+
+  void
+  release_workers (HASHJOIN_MANAGER *manager);
+
   int
   build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
 
   int
   execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
 } /* namespace parallel_hash_join */
-
-#endif /* _PX_HASH_JOIN_H_ */

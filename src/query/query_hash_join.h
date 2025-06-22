@@ -110,21 +110,14 @@ typedef struct hashjoin_fetch_info
 } HASHJOIN_FETCH_INFO;
 #define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, NULL }
 
-typedef struct hashjoin_input_info
-{
-  QFILE_LIST_ID *list_id;
-  HASHJOIN_FETCH_INFO fetch_info;
-} HASHJOIN_INPUT_INFO;
-#define HASHJOIN_INPUT_INFO_INITIALIZER { NULL, NULL }
-
 typedef struct hashjoin_input_split_info
 {
-  HASHJOIN_INPUT_INFO *input;
-
+  QFILE_LIST_ID *list_id;
+  HASHJOIN_FETCH_INFO *fetch_info;
   QFILE_LIST_ID **part_list_id;
   int part_cnt;
 } HASHJOIN_INPUT_SPLIT_INFO;
-#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, 0 }
+#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, NULL, 0 }
 
 typedef struct hashjoin_split_info
 {
@@ -194,13 +187,19 @@ typedef struct hashjoin_context
 {
   QFILE_LIST_ID *list_id;
 
-  HASHJOIN_INPUT_INFO outer;
-  HASHJOIN_INPUT_INFO inner;
+  QFILE_LIST_ID *outer_list_id;
+  QFILE_LIST_ID *inner_list_id;
 
+  HASHJOIN_FETCH_INFO outer_fetch_info;
+  HASHJOIN_FETCH_INFO inner_fetch_info;
+  int key_cnt;
+
+  JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
 
   HASH_LIST_SCAN hash_scan;
   bool is_build_outer;
+  bool is_last_context;
 
   HASHJOIN_STATS *stats;
 } HASHJOIN_CONTEXT;
@@ -242,6 +241,8 @@ int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_i
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_INPUT_SPLIT_INFO * part_info,
 		       HASH_SCAN_KEY * key);
+int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

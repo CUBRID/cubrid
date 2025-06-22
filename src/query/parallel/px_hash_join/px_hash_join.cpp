@@ -40,7 +40,7 @@ namespace parallel_hash_join
   }
 
   void
-  base_task::emulate_main_thread (cubthread::entry &thread_ref)
+  base_task::emulate_thread (cubthread::entry &thread_ref)
   {
     thread_ref.emulate_tid = m_main_thread_ref.get_id ();
     thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
@@ -134,7 +134,7 @@ namespace parallel_hash_join
 	return;
       }
 
-    emulate_main_thread (thread_ref);
+    emulate_thread (thread_ref);
 
     if (hjoin_split_qlist (&thread_ref, m_manager, m_split_info, NULL) != NO_ERROR)
       {
@@ -142,6 +142,8 @@ namespace parallel_hash_join
       }
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
+
+    m_task_manager.task_done ();
   }
 
   /* join_task */
@@ -162,9 +164,7 @@ namespace parallel_hash_join
 	return;
       }
 
-    m_task_manager.push_task (this);
-
-    emulate_main_thread (thread_ref);
+    emulate_thread (thread_ref);
 
     if (hjoin_execute (&thread_ref, m_manager, m_context) != NO_ERROR)
       {
@@ -172,6 +172,32 @@ namespace parallel_hash_join
       }
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
+
+    m_task_manager.task_done ();
+  }
+
+  void
+  try_reserve_workers (HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count)
+  {
+    assert (manager != NULL);
+
+    if (parallel_query::worker_manager_with_dedicated_pool::get_manager().try_reserve_workers (pool_size, task_max_count))
+      {
+	manager->px_workpool = &parallel_query::worker_manager_with_dedicated_pool::get_manager();
+      }
+    else
+      {
+	manager->px_workpool = NULL;
+      }
+  }
+
+  void
+  release_workers (HASHJOIN_MANAGER *manager)
+  {
+    assert (manager != NULL);
+
+    parallel_query::worker_manager_with_dedicated_pool::get_manager().release_workers ();
+    manager->px_workpool = NULL;
   }
 
   int
@@ -212,6 +238,8 @@ namespace parallel_hash_join
 
     assert (manager != NULL);
 
+    HASHJOIN_STATS *total_stats = &manager->stats_group->stats;
+
     task_manager task_manager (parallel_query::worker_manager_with_dedicated_pool::get_manager (),
 			       cuberr::context::get_thread_local_context ());
     join_task *task = NULL;
@@ -232,8 +260,39 @@ namespace parallel_hash_join
 	return er_errid ();
       }
 
+    for (context_index = 0; context_index < manager->context_cnt; context_index++)
+      {
+	current_context = &manager->contexts[context_index];
+
+	if (thread_is_on_trace (&thread_ref))
+	  {
+	    hjoin_trace_merge_stats (total_stats, current_context->stats);
+	  }
+
+	if (current_context->list_id == NULL)
+	  {
+	    error = er_errid ();
+	    if (error != NO_ERROR)
+	      {
+		assert (er_errid () != NO_ERROR);
+		return er_errid ();
+	      }
+	    else
+	      {
+		/* list_id can be NULL when the join result is empty. In this case, it is NO_ERROR. */
+		continue;
+	      }
+	  }
+
+	error = hjoin_merge_qlist (&thread_ref, manager, current_context);
+	if (error != NO_ERROR)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    return er_errid ();
+	  }
+      }
+
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
     return NO_ERROR;
   }
-
 } /* namespace parallel_hash_join */
