@@ -4250,7 +4250,6 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
   void *log_info;
-  VPID prev_vpid;
   bool first = true;
   int copyed_len;
   int area_len;
@@ -4259,8 +4258,6 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   int length = 0;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
-  prev_vpid.pageid = ((LOG_REC_UNDOREDO *) logs)->data.pageid;
-  prev_vpid.volid = ((LOG_REC_UNDOREDO *) logs)->data.volid;
 
   while (!LSA_ISNULL (&current_lsa))
     {
