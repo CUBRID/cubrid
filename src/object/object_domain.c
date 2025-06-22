@@ -11534,6 +11534,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 	      break;
 	    case DB_TYPE_SHORT:
 	      bigint = db_get_short (src);
+	      break;
 	    default:
 	      /* never here */
 	      assert (0);
