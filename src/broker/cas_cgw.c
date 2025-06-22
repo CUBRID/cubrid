@@ -115,8 +115,6 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
-static void cgw_free_string_array (char **array);
-static char **cgw_split_string (const char *str, const char *delim, int *num);
 static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
 static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
@@ -799,7 +797,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 static char
 cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 {
-  char code_set = INTL_CODESET_NONE;
+  char code_set = (char) INTL_CODESET_NONE;
 
   switch (odbc_type)
     {
@@ -812,11 +810,11 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_FLOAT:
       code_set = INTL_CODESET_ASCII;
@@ -866,7 +864,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_BIGINT:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
