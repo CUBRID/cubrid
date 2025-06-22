@@ -5160,14 +5160,14 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  assert (node_pointer->node_type == PT_CTE);
 
-	  /* count the references of indirectly referenced cte to prevent them from being removed or rewritten as inline views.
-	   * cte with reference count less than 2 are rewritten as inline views or removed, so we need to count indirect references.
-	   * e.g.
-	   * with 
-	   *   cte1 as (select /*+ materialize * / c1, c2 from t1),    : directly = 0, indirectly = 1
-	   *   cte2 as (select c1, c2 from cte1)                       : directly = 1, indirectly = 0
-	   * select /*+ recompile * / c1, c2 from cte2;
-	   */
+	  // count the references of indirectly referenced cte to prevent them from being removed or rewritten as inline views.
+	  // cte with reference count less than 2 are rewritten as inline views or removed, so we need to count indirect references.
+	  // e.g.
+	  // with 
+	  //   cte1 as (select /*+ materialize */ c1, c2 from t1),    : directly = 0, indirectly = 1
+	  //   cte2 as (select c1, c2 from cte1)                       : directly = 1, indirectly = 0
+	  // select /*+ recompile */ c1, c2 from cte2;
+	  //
 	  (void) parser_walk_tree (parser, node_pointer->info.cte.non_recursive_part, mq_count_cte_references, NULL,
 				   pt_continue_walk, NULL);
 
