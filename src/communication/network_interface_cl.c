@@ -11555,3 +11555,49 @@ mmon_disable_force ()
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
+
+/*
+ * tdes_set_tran_start () - set the start time and sql text of the transaction
+ *   return:  none
+ *   sql_user_text(in): the sql user text
+ */
+void
+tdes_set_tran_start (char *sql_user_text)
+{
+#if defined(CS_MODE)
+  char *request, *ptr;
+  int request_len;
+
+  request_len = or_packed_string_length (sql_user_text, NULL);
+  request = (char *) malloc (request_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_len);
+      return;
+    }
+
+  ptr = request;
+  ptr = or_pack_string (ptr, sql_user_text);
+  assert (ptr <= request + request_len);
+
+  net_client_request_no_reply (NET_SERVER_TDES_SET_TRAN_START, request, request_len);
+
+  free_and_init (request);
+#endif /* !CS_MODE */
+}
+
+/*
+ * tdes_reset_query_time_if_ddl_statement () - reset the query start time if the statement is a DDL statement
+ *   return:  none
+ *   node(in): node to check if the statement is DDL
+ */
+void
+tdes_reset_query_time_if_ddl_statement (PT_NODE * node)
+{
+#if defined(CS_MODE)
+  if (pt_is_ddl_statement (node))
+    {
+      net_client_request_no_reply (NET_SERVER_TDES_RESET_QUERY_TIME, NULL, 0);
+    }
+#endif
+}
