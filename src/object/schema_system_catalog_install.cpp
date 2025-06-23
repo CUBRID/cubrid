@@ -35,13 +35,33 @@
 #include "authenticate.h"
 #include "locator_cl.h"
 
+#define CT_DUAL_DUMMY   "dummy"
+
 using namespace std::literals;
+
+static std::function<int (DB_VALUE *)>
+make_int_value_fn (int num)
+{
+  return [num] (DB_VALUE* val)
+  {
+    return db_make_int (val, num);
+  };
+}
+
+static std::function<int (DB_VALUE *)>
+make_numeric_value_fn (const char *str)
+{
+  return [str] (DB_VALUE *val)
+  {
+    return numeric_coerce_string_to_num (str, 1, LANG_SYS_CODESET, val);
+  };
+}
 
 /* ========================================================================== */
 /* NEW DEFINITION (initializers for CLASS) */
 /* ========================================================================== */
 int
-catcls_add_data_type (struct db_object *class_mop)
+catcls_add_data_type (DB_OBJECT *class_mop)
 {
   DB_OBJECT *obj;
   DB_VALUE val;
@@ -86,7 +106,7 @@ catcls_add_data_type (struct db_object *class_mop)
 }
 
 int
-catcls_add_collations (struct db_object *class_mop)
+catcls_add_collations (DB_OBJECT *class_mop)
 {
   int i;
   int count_collations;
@@ -148,6 +168,32 @@ catcls_add_collations (struct db_object *class_mop)
   assert (found_coll == count_collations);
 
   return NO_ERROR;
+}
+
+static int
+catcls_add_dual (DB_OBJECT *class_mop)
+{
+  DB_VALUE val;
+  int error_code = NO_ERROR;
+  DB_OBJECT *obj = db_create_internal (class_mop);
+  const char *dummy = "X";
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  return error_code;
 }
 
 int
@@ -687,12 +733,7 @@ namespace cubschema
       {"key_attr_name", format_varchar (255)},
       {"key_order", "integer"},
       {"asc_desc", "integer"},
-      {
-	"key_prefix_length", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, -1);
-	}
-      },
+      {"key_prefix_length", "integer", make_int_value_fn (-1)},
       {"func", format_varchar (1023)}
     },
 // constraints
@@ -905,41 +946,17 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {
-	"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	}
-      },
-      {
-	"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	}
-      },
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
       {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
       {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {
-	"cyclic", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
-      {
-	"started", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"cyclic", "integer", make_int_value_fn (0)},
+      {"started", "integer", make_int_value_fn (0)},
       {"class_name", "string"},
       {"attr_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
-      {
-	"cached_num", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"cached_num", "integer",	make_int_value_fn (0)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"}
@@ -1083,7 +1100,6 @@ namespace cubschema
   system_catalog_definition
   system_catalog_initializer::get_dual ()
   {
-#define CT_DUAL_DUMMY   "dummy"
     return system_catalog_definition (
 		   // name
 		   CT_DUAL_NAME,
@@ -1102,30 +1118,7 @@ namespace cubschema
       }
     },
 // initializer
-    [] (MOP class_mop)
-    {
-      DB_VALUE val;
-      int error_code = NO_ERROR;
-      DB_OBJECT *obj = db_create_internal (class_mop);
-      const char *dummy = "X";
-      if (obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-      return error_code;
-    }
+    catcls_add_dual
 	   );
   }
 
@@ -1140,12 +1133,7 @@ namespace cubschema
       {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", AU_USER_CLASS_NAME},
-      {
-	"is_public", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"is_public", "integer", make_int_value_fn (0)},
       {"target_unique_name", format_varchar (255)},
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},

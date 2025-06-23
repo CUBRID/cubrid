@@ -675,13 +675,14 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE value;
+  DB_VALUE value, *start_val;
   DB_OBJECT *serial_class = NULL;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
   int au_save, error = NO_ERROR;
 
   db_make_null (&value);
+  start_val = current_val;
 
   /* temporarily disable authorization to access db_serial class */
   AU_DISABLE (au_save);
@@ -761,6 +762,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   /* max_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* start_val */
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_START_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
