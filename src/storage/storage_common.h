@@ -1030,6 +1030,46 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_FUNCTION_INDEX_ID "*FI*"
 #define SM_PREFIX_INDEX_ID "*PLID*"
 
+typedef enum
+{
+  SM_INDEX_FLAG_NONE = 0,
+  SM_INDEX_FLAG_FILTER = 1,
+  SM_INDEX_FLAG_FUNCTION = 2,
+  SM_INDEX_FLAG_PREFIX = 3
+} SM_INDEX_FLAG;
+
+
+// For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
+typedef enum
+{
+  SM_CLASS_CONSTRAINT_BTID_INDEX = 0,
+  // [att_name|id, asc_desc]...,
+  SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX = -5,
+  SM_CLASS_CONSTRAINT_STATUS_INDEX = -4,
+  SM_CLASS_CONSTRAINT_COMMENT_INDEX = -3,
+  SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX = -2,
+  SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX = -1,
+
+  SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT = 5	// Does not include OPTIONAL_INFO (optional field)
+} SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX;
+
+static inline int
+get_class_constraint_att_count (int size)
+{
+  // Each attribute = 2 fields; optional info (1 field) is ignored
+  // since it doesn't affect integer division by 2.
+  assert (((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2) > 0);
+  return ((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2);
+}
+
+static inline int
+get_class_constraint_index (int size, SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX index)
+{
+  assert (index != SM_CLASS_CONSTRAINT_BTID_INDEX);
+  return size + index;
+}
+
+
 /*
  *    Bit field identifiers for attribute flags.  These could be defined
  *    with individual unsigned bit fields but this makes it easier
