@@ -431,7 +431,8 @@ logddl_set_load_filename (const char *load_filename)
 {
   if (ddl_logging_enabled && load_filename)
     {
-      strncpy (ddl_audit_handle.load_filename, load_filename, PATH_MAX);
+      strncpy (ddl_audit_handle.load_filename, load_filename, sizeof (ddl_audit_handle.load_filename) - 1);
+      ddl_audit_handle.load_filename[sizeof (ddl_audit_handle.load_filename) - 1] = '\0';
     }
 }
 

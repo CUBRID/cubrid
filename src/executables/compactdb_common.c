@@ -248,14 +248,14 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	  goto end;
 	}
 
-      class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
+      class_names[i] = (char *) malloc (len + 1);
       if (class_names[i] == NULL)
 	{
 	  status = ER_FAILED;
 	  goto end;
 	}
 
-      strncpy (class_names[i], buffer, len);
+      memcpy (class_names[i], buffer, len);
       class_names[i][len] = 0;
     }
 

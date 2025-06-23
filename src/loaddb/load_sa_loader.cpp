@@ -1540,7 +1540,8 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (STATIC_CAST (int, strlen (db_get_string (&value))) < buf_size);
-      strncpy (buf, db_get_string (&value), buf_size);
+      strncpy (buf, db_get_string (&value), buf_size -1);
+      buf[buf_size -1] = '\0';
     }
   else
     {
@@ -4998,8 +4999,8 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	      ldr_abort ();
 	      goto error_exit;
 	    }
-	  strncpy (context->class_name, class_name, len);
-	  context->class_name[len] = '\0';
+	  memcpy (context->class_name, class_name, len);
+	  context->class_name[len - 1] = '\0';
 
 	  if (is_internal_class (context->cls))
 	    {

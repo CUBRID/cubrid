@@ -614,7 +614,14 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
   are used in this malloc, so setting them has no effect. But this
   malloc does support the following options.
 */
-
+// *INDENT-OFF*
+#ifdef M_TRIM_THRESHOLD
+#  undef M_TRIM_THRESHOLD
+#endif
+#ifdef M_MMAP_THRESHOLD
+#  undef M_MMAP_THRESHOLD
+#endif
+// *INDENT-ON*
 #define M_TRIM_THRESHOLD     (-1)
 #define M_GRANULARITY        (-2)
 #define M_MMAP_THRESHOLD     (-3)
@@ -1231,48 +1238,48 @@ extern void *sbrk (ptrdiff_t);
 
 #ifndef WIN32
 #ifndef malloc_getpagesize
-#  ifdef _SC_PAGESIZE		/* some SVR4 systems omit an underscore */
-#    ifndef _SC_PAGE_SIZE
-#      define _SC_PAGE_SIZE _SC_PAGESIZE
-#    endif
-#  endif
-#  ifdef _SC_PAGE_SIZE
-#    define malloc_getpagesize sysconf(_SC_PAGE_SIZE)
-#  else
-#    if defined(BSD) || defined(DGUX) || defined(HAVE_GETPAGESIZE)
+#ifdef _SC_PAGESIZE		/* some SVR4 systems omit an underscore */
+#ifndef _SC_PAGE_SIZE
+#define _SC_PAGE_SIZE _SC_PAGESIZE
+#endif
+#endif
+#ifdef _SC_PAGE_SIZE
+#define malloc_getpagesize sysconf(_SC_PAGE_SIZE)
+#else
+#if defined(BSD) || defined(DGUX) || defined(HAVE_GETPAGESIZE)
 extern size_t getpagesize ();
-#      define malloc_getpagesize getpagesize()
-#    else
-#      ifdef WIN32		/* use supplied emulation of getpagesize */
-#        define malloc_getpagesize getpagesize()
-#      else
-#        ifndef LACKS_SYS_PARAM_H
-#          include <sys/param.h>
-#        endif
-#        ifdef EXEC_PAGESIZE
-#          define malloc_getpagesize EXEC_PAGESIZE
-#        else
-#          ifdef NBPG
-#            ifndef CLSIZE
-#              define malloc_getpagesize NBPG
-#            else
-#              define malloc_getpagesize (NBPG * CLSIZE)
-#            endif
-#          else
-#            ifdef NBPC
-#              define malloc_getpagesize NBPC
-#            else
-#              ifdef PAGESIZE
-#                define malloc_getpagesize PAGESIZE
-#              else /* just guess */
-#                define malloc_getpagesize ((size_t)4096U)
-#              endif
-#            endif
-#          endif
-#        endif
-#      endif
-#    endif
-#  endif
+#define malloc_getpagesize getpagesize()
+#else
+#ifdef WIN32			/* use supplied emulation of getpagesize */
+#define malloc_getpagesize getpagesize()
+#else
+#ifndef LACKS_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+#ifdef EXEC_PAGESIZE
+#define malloc_getpagesize EXEC_PAGESIZE
+#else
+#ifdef NBPG
+#ifndef CLSIZE
+#define malloc_getpagesize NBPG
+#else
+#define malloc_getpagesize (NBPG * CLSIZE)
+#endif
+#else
+#ifdef NBPC
+#define malloc_getpagesize NBPC
+#else
+#ifdef PAGESIZE
+#define malloc_getpagesize PAGESIZE
+#else /* just guess */
+#define malloc_getpagesize ((size_t)4096U)
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
 #endif
 #endif
 
