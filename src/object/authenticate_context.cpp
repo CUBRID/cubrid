@@ -366,6 +366,8 @@ authenticate_context::install (void)
   smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
+  smt_add_attribute (def,AU_USER_ATTR_IS_SYSTEM_CREATED, "integer", NULL);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
   smt_add_attribute (def, "created_time", "datetime", NULL);
   smt_add_attribute (def, "updated_time", "datetime", NULL);
@@ -492,6 +494,11 @@ authenticate_context::install (void)
 
   au_add_method_check_authorization ();
 
+  if (set_system_user() != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   AU_ENABLE (save);
 
   return NO_ERROR;
@@ -587,6 +594,13 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	}
       else
 	{
+	  if (is_loginable_user (user) == false)
+	    {
+	      error = ER_AU_LOGIN_DISABLED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      return error;
+	    }
+
 	  if (obj_get (user, "password", &value) != NO_ERROR)
 	    {
 	      error = ER_AU_CORRUPTED;
@@ -927,6 +941,54 @@ authenticate_context::pop_user (void)
     }
 }
 
+int
+authenticate_context::set_system_user (void)
+{
+  DB_VALUE value;
+
+  db_make_int (&value, AU_USER_TRUE);
+
+  if (obj_set (Au_dba_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (obj_set (Au_public_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::disable_login (MOP user)
+{
+  DB_VALUE value;
+
+  db_make_int (&value, AU_USER_FALSE);
+
+  if (obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int authenticate_context::is_loginable_user (MOP user)
+{
+  DB_VALUE value;
+
+  if (obj_get (user, AU_USER_ATTR_IS_LOGINABLE, &value) == NO_ERROR &&
+      db_get_int (&value) == AU_USER_TRUE)
+    {
+      return true;
+    }
+
+  return false;
+}
+
 //
 // STATIC FUNCTIONS
 //
@@ -971,4 +1033,3 @@ exit_on_error:
   AU_ENABLE (save);
   return ER_FAILED;
 }
-
