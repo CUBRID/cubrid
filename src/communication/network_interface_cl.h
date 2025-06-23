@@ -51,7 +51,6 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
-#include "faiss/IndexHNSW.h"
 
 #include "dynamic_array.h"
 #include "flashback_cl.h"
@@ -257,8 +256,7 @@ extern BTREE_SEARCH repl_btree_find_unique (BTID * btid, DB_VALUE * key, OID * c
 extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VALUE * keys,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
-extern int hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
-			   enum faiss::MetricType metric_type);
+extern int hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric);
 extern int hnsw_delete_index (BTID * btid);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);

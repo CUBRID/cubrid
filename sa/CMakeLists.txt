@@ -527,7 +527,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw.cpp
+  ${STORAGE_DIR}/hnsw_usearch.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
@@ -755,6 +755,7 @@ target_external_dependencies(cubridsa
   RAPIDJSON
   RE2
   LIBFAISS
+  USEARCH
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}

@@ -4646,8 +4646,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
 
-  return_btid =
-    xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, (enum faiss::MetricType) metric_type);
+  return_btid = xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
 
   ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_btid (ptr, &btid);

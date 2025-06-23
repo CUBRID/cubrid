@@ -33,17 +33,15 @@
 #include "storage_common.h"
 #include "dbtype_def.h"
 #include "thread_compat.hpp"
-#include "faiss/IndexHNSW.h"
-#include "faiss/IndexIDMap.h"
-#include "faiss/index_io.h"
 
 BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
-		       enum faiss::MetricType metric_type);
+		       int metric);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int hnsw_print_index_info (BTID *btid);
 
 int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances);
 int hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue);
 void dump_all_hnsw_indices_to_files ();
+void init_hnsw_index_path ();
 
 #endif
