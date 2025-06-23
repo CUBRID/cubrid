@@ -529,6 +529,13 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+typedef enum
+{
+  SM_PARTITION_UNKOWN = -1,	// Uninitialized or invalid
+  SM_PARTITION_ROOT = 0,	// Root class
+  SM_PARTITION_PARTITON = 1,	// First-level partition
+} SM_PARTITON_DEPTH;
+
 /* Property list format: { property_name, constraint... }
  * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
  * - constraint: { name, info }
@@ -713,6 +720,7 @@ struct sm_partition
   struct sm_partition *next;	/* currently not used, always NULL */
   const char *pname;		/* partition name */
   int partition_type;		/* partition type (range, list, hash) */
+  SM_PARTITON_DEPTH depth;
   DB_SEQ *values;		/* values for range and list partition types */
   const char *expr;		/* partition expression */
   const char *comment;

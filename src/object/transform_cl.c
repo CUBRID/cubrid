@@ -4907,6 +4907,7 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
 
   /* ATTRIBUTES */
   or_put_int (buf, partition_info->partition_type);
+  or_put_int (buf, partition_info->depth);
 
   put_string (buf, partition_info->pname);
   put_string (buf, partition_info->expr);
@@ -4976,8 +4977,6 @@ disk_to_partition_info (OR_BUF * buf)
       return NULL;
     }
 
-  assert (vars != NULL);
-
   partition_info = classobj_make_partition_info ();
   if (partition_info == NULL)
     {
@@ -4987,6 +4986,14 @@ disk_to_partition_info (OR_BUF * buf)
   else
     {
       partition_info->partition_type = or_get_int (buf, &error);
+      if (error != NO_ERROR)
+	{
+	  free_var_table (vars);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+
+      partition_info->depth = (SM_PARTITON_DEPTH) or_get_int (buf, &error);
       if (error != NO_ERROR)
 	{
 	  free_var_table (vars);

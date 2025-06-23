@@ -15439,10 +15439,12 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
   if (node->node_type == PT_PARTITION)
     {
       partition->partition_type = node->info.partition.type;
+      partition->depth = SM_PARTITION_ROOT;
     }
   else
     {
       partition->partition_type = node->info.parts.type;
+      partition->depth = SM_PARTITION_PARTITON;
     }
 
   if (node->node_type == PT_PARTITION)

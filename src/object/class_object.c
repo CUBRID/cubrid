@@ -8717,6 +8717,7 @@ classobj_make_partition_info (void)
     }
 
   partition_info->partition_type = -1;
+  partition_info->depth = SM_PARTITION_UNKOWN;
   partition_info->values = NULL;
   partition_info->pname = NULL;
   partition_info->comment = NULL;
@@ -8777,6 +8778,8 @@ classobj_copy_partition_info (SM_PARTITION * partition_info)
     }
 
   new_partition_info->partition_type = partition_info->partition_type;
+
+  new_partition_info->depth = partition_info->depth;
 
   if (partition_info->comment != NULL)
     {

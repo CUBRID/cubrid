@@ -5424,7 +5424,7 @@ catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   error = catcls_expand_or_value_by_def (value_p, &ct_Partition);
   if (error != NO_ERROR)
     {
-      goto error;
+      goto end;
     }
 
   attrs = value_p->sub.value;
@@ -5438,43 +5438,39 @@ catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, msize);
-      goto error;
+      goto end;
     }
 
   /* type */
   tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
+  /* depth */
+  tp_Integer.data_readval (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
+
   /* name */
-  attr_val_p = &attrs[2].value;
+  attr_val_p = &attrs[3].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
   /* expr */
-  attr_val_p = &attrs[3].value;
+  attr_val_p = &attrs[4].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_EXPR_INDEX].length, true, NULL, 0);
   assert (DB_IS_NULL (attr_val_p) || db_get_string_length (attr_val_p) <= DB_MAX_PARTITION_EXPR_LENGTH);
 
   /* values */
-  attr_val_p = &attrs[4].value;
+  attr_val_p = &attrs[5].value;
   error = or_get_value (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_VALUES_INDEX].length, true);
   if (error != NO_ERROR)
     {
-      goto error;
+      goto end;
     }
 
   /* comment */
-  attr_val_p = &attrs[5].value;
+  attr_val_p = &attrs[6].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
-  if (vars)
-    {
-      free_and_init (vars);
-    }
-
-  return NO_ERROR;
-
-error:
+end:
 
   if (vars)
     {
