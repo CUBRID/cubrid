@@ -2936,11 +2936,13 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &(qmgr_Query_table.tran_entries_p[tran_index]);
 
-  pthread_mutex_lock (&tran_entry_p->mutex);
+
   /* find the query entry */
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
+      pthread_mutex_lock (&tran_entry_p->mutex);
       query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
+      pthread_mutex_unlock (&tran_entry_p->mutex);
     }
   else
     {
@@ -2950,7 +2952,6 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   if (query_p == NULL)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
       /* query entry is not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
       file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
@@ -2966,7 +2967,6 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
       file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
       free_and_init (tfile_vfid_p);
       return NULL;
@@ -2979,6 +2979,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
   /* chain the tfile_vfid to the query_entry->temp_vfid */
+  pthread_mutex_lock (&tran_entry_p->mutex);
   temp = query_p->temp_vfid;
   query_p->temp_vfid = tfile_vfid_p;
   if (temp != NULL)
@@ -2999,6 +3000,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   /* increment the counter of query entry */
   query_p->num_tmp++;
   pthread_mutex_unlock (&tran_entry_p->mutex);
+
   return tfile_vfid_p;
 }
 
@@ -3147,12 +3149,12 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  pthread_mutex_lock (&tran_entry_p->mutex);
+
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
-
+      pthread_mutex_lock (&tran_entry_p->mutex);
       query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-
+      pthread_mutex_unlock (&tran_entry_p->mutex);
     }
   else
     {
@@ -3162,7 +3164,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 
   if (query_p == NULL)
     {
-      pthread_mutex_unlock (&tran_entry_p->mutex);
       return NO_ERROR;
     }
 
@@ -3186,7 +3187,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	    }
 	  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
 	}
-
+      pthread_mutex_lock (&tran_entry_p->mutex);
       if (query_p->temp_vfid->next == query_p->temp_vfid)
 	{
 	  query_p->temp_vfid = NULL;
@@ -3200,6 +3201,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	      query_p->temp_vfid = tfile_vfid_p->next;
 	    }
 	}
+      pthread_mutex_unlock (&tran_entry_p->mutex);
 
       if (tfile_vfid_p->temp_file_type != FILE_QUERY_AREA)
 	{
@@ -3211,7 +3213,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	  free_and_init (tfile_vfid_p);
 	}
     }
-  pthread_mutex_unlock (&tran_entry_p->mutex);
   return NO_ERROR;
 }
 

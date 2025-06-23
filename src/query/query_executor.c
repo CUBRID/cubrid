@@ -7340,7 +7340,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS))
 		{
-		  curr_spec->num_parallel_threads = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_THREADS);
+		  curr_spec->num_parallel_threads = prm_get_integer_value (PRM_ID_PARALLELISM);
 		}
 	      else
 		{
@@ -15145,8 +15145,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (xasl->parallelism == -1)
 			    {
 			      /* NO PARALLEL() HINT */
-			      n_workers_to_reserve =
-				prm_get_integer_value (PRM_ID_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS) - 1;
+			      n_workers_to_reserve = prm_get_integer_value (PRM_ID_PARALLELISM) - 1;
 			    }
 			  else
 			    {
