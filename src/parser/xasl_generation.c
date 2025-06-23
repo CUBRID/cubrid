@@ -11920,7 +11920,6 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	  {
 	    PT_NODE *arg1 = node->info.expr.arg1;
 	    PT_NODE *arg2 = node->info.expr.arg2;
-	    
 	    assert (arg1->node_type == PT_NAME || arg1->node_type == PT_VALUE);
 	    assert (arg2->node_type == PT_NAME || arg2->node_type == PT_VALUE);
 
