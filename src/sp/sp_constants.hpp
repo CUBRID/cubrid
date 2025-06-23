@@ -37,6 +37,8 @@
 #define SP_ATTR_DIRECTIVE               "directive"
 #define SP_ATTR_OWNER                   "owner"
 #define SP_ATTR_COMMENT                 "comment"
+#define SP_ATTR_CREATED_TIME            "created_time"
+#define SP_ATTR_UPDATED_TIME            "updated_time"
 
 #define SP_ATTR_SP_OF                   "sp_of"
 #define SP_ATTR_ARG_NAME                "arg_name"

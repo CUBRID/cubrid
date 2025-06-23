@@ -367,6 +367,8 @@ authenticate_context::install (void)
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
   /* need signatures for these */
   smt_add_method (def, "set_password", "au_set_password_method");
   smt_add_method (def, "set_password_encoded", "au_set_password_encoded_method");

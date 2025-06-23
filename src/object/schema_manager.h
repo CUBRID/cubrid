@@ -119,7 +119,6 @@ extern int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
-extern void sm_mark_system_classes (void);
 extern int sm_update_all_catalog_statistics (bool with_fullscan);
 extern int sm_update_catalog_statistics (const char *class_name, bool with_fullscan);
 extern int sm_force_write_all_classes (void);
@@ -336,5 +335,7 @@ extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID bti
 SM_DOMAIN *sm_domain_alloc ();
 void sm_domain_free (SM_DOMAIN * ptr);
 SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
+
+int sm_update_class_timestamp (SM_CLASS * class_);
 
 #endif /* _SCHEMA_MANAGER_H_ */

@@ -93,6 +93,8 @@ typedef struct tr_trigger
    */
   int chn;
   const char *comment;
+  DB_DATETIME created_time;
+  DB_DATETIME updated_time;
 } TR_TRIGGER;
 
 
@@ -285,6 +287,7 @@ extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);
 extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_api);
+extern int tr_update_trigger_timestamp (DB_OBJECT * trigger_object);
 
 /* Parameters */
 extern int tr_get_depth (void);

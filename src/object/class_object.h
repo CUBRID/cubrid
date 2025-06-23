@@ -529,6 +529,18 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+/* Property list format: { property_name, constraint... }
+ * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
+ * - constraint: { name, info }
+ *   - name: constraint name
+ *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, comment, created_time, updated_time }
+ *     - BTID: volid|pageid|fileid
+ *     - [att_name|id, asc_desc] can repeat for multiple attributes
+ *     - optional_info appears only when applicable:
+ *       - fk_info: for foreign key constraints
+ *       - pk_info: only if the primary key is referenced by a foreign key
+ *       - prefix_length, filter_predicate, func_index_info: for special index properties
+ */
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
@@ -548,6 +560,8 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
+  DB_DATETIME created_time;
+  DB_DATETIME updated_time;
 };
 
 /*
@@ -771,6 +785,10 @@ struct sm_class
   unsigned int virtual_cache_snapshot_version;
 
   int tde_algorithm;
+
+  DB_DATETIME created_time;
+  DB_DATETIME updated_time;
+  DB_DATETIME checked_time;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */
@@ -1120,4 +1138,5 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
+extern int classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint);
 #endif /* _CLASS_OBJECT_H_ */

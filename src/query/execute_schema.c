@@ -2174,6 +2174,13 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+  // for syncronizing created_time and updated_time
+  error = au_set_user_timestamps (user);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
@@ -2390,6 +2397,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       comment = (char *) PT_VALUE_GET_BYTES (node);
       error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+/*
+ * Timestamp already updated during add/drop members (member_name != NULL)
+ * in db_add_member() or db_drop_member(); update only for password or comment changes.
+ */
+  if (statement->info.alter_user.members == NULL)
+    {
+      error = au_update_user_timestamp (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -3787,6 +3807,12 @@ do_alter_index_comment (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error = smt_change_constraint_comment (ctemplate, index_name, comment);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = smt_update_constraint_updated_time (ctemplate, index_name);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -15761,6 +15787,12 @@ do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   error = smt_change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = smt_update_constraint_updated_time (ctemplate, index_name);
   if (error != NO_ERROR)
     {
       goto error_exit;

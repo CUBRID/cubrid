@@ -829,6 +829,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 	}
     }
 
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   ret_obj = dbt_finish_object (obj_tmpl);
 
   if (ret_obj == NULL)
@@ -952,6 +959,13 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   db_make_string (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
@@ -1187,6 +1201,13 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 
   db_make_int (&started, 0);
   error_code = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &started);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* updated_time */
+  error_code = db_update_otmpl_timestamp (obj_tmpl);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -2902,6 +2923,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   serial_object = dbt_finish_object (obj_tmpl);
@@ -6951,6 +6979,13 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      ASSERT_ERROR ();
 		      break;
 		    }
+		}
+
+	      error = tr_update_trigger_timestamp (t->op);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  break;
 		}
 
 	      error = locator_flush_instance (t->op);
@@ -18453,6 +18488,13 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
@@ -18748,6 +18790,12 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ASSERT_ERROR ();
 	  goto end;
 	}
+    }
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   /* flush template */
@@ -19068,6 +19116,13 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -20726,6 +20781,13 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
       goto end;
     }
 
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   ret_obj = dbt_finish_object (obj_tmpl);
   if (ret_obj == NULL)
     {
@@ -21034,6 +21096,14 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_ENABLE (save);
 
   pr_clear_value (&value);
+
+  if (error == NO_ERROR)
+    {
+      AU_DISABLE (save);
+      error = db_update_obj_timestamp (server_object);
+      AU_ENABLE (save);
+    }
+
   return error;
 }
 
@@ -21284,6 +21354,12 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+  error = db_update_obj_timestamp (server_object);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
 end:

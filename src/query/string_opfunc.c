@@ -11177,6 +11177,27 @@ db_datetime_to_timestamp (const DB_VALUE * src_datetime, DB_VALUE * result_times
   return NO_ERROR;
 }
 
+int
+db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_datetime)
+{
+  time_t sec;
+  struct tm tm_val;
+  DB_DATETIME datetime;
+
+  sec = (time_t) * db_get_timestamp (src_timestamp);
+  if (localtime_r (&sec, &tm_val) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSTEM_DATE, 0);
+      return ER_SYSTEM_DATE;
+    }
+
+  db_datetime_encode (&datetime, tm_val.tm_mon + 1, tm_val.tm_mday, tm_val.tm_year + 1900,
+		      tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, 0);
+  db_make_datetime (result_datetime, &datetime);
+
+  return NO_ERROR;
+}
+
 /*
  * db_get_date_dayofyear () - compute day of year from a date type value
  *

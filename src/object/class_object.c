@@ -931,26 +931,8 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  * classobj_put_index() - This is used to put and update indexes on the property list.
  *    The property list is composed of name/value pairs.  For unique
  *    indexes, this will be SM_PROPERTY_UNIQUE/{uniques} where {uniques}
- *    are another property list of unique instances.  The general form
- *    is;
- *        {"*U",
- *          {
- *           "name",
- *            {
- *               "volid|pageid|fileid",
- *               ["attr", asc_desc]+ {fk_info},
- *               "pred_expression",
- *               "comment"
- *             },
- *           "name",
- *            {
- *               "volid|pageid|fileid",
- *               ["attr", asc_desc]+ {fk_info},
- *               "pred_expression",
- *               "comment"
- *            }
- *          }
- *        }
+ *    are another property list of unique instances.
+ * 
  *    Until we fully support named constraints, use the attribute name as
  *    the constraint name.  Each constraint instance must be uniquely named.
  *    An old value will be overwritten with a new value with the same name.
@@ -967,6 +949,9 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  *   shared_cons_name(in):
  *   func_index_info(in):
  *   comment(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
@@ -1214,6 +1199,14 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
   db_make_string (&value, con->comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
+  /* created_time */
+  db_make_datetime (&value, &con->created_time);
+  classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
+
+  /* updated_time */
+  db_make_datetime (&value, &con->updated_time);
+  classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
+
   /* Append the constraint to the unique property sequence */
   db_make_sequence (&value, constraint);
   constraint = NULL;
@@ -1374,6 +1367,7 @@ int
 classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_info)
 {
   DB_VALUE prop_val, pk_val, fk_container_val, fk_val;
+  DB_VALUE updated_time, created_time, comment, status;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq;
   int size;
   int fk_container_pos, pk_seq_pos;
@@ -1383,6 +1377,10 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   PRIM_SET_NULL (&pk_val);
   PRIM_SET_NULL (&fk_container_val);
   PRIM_SET_NULL (&fk_val);
+  PRIM_SET_NULL (&updated_time);
+  PRIM_SET_NULL (&created_time);
+  PRIM_SET_NULL (&comment);
+  PRIM_SET_NULL (&status);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {
@@ -1400,7 +1398,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   pk_seq = db_get_set (&pk_val);
   size = set_size (pk_seq);
 
-  err = set_get_element (pk_seq, size - 3, &fk_container_val);
+  err = set_get_element (pk_seq, size - 5, &fk_container_val);
   if (err != NO_ERROR)
     {
       goto end;
@@ -1410,7 +1408,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
     {
       fk_container = db_get_set (&fk_container_val);
       fk_container_pos = set_size (fk_container);
-      pk_seq_pos = size - 3;
+      pk_seq_pos = size - 5;
     }
   else
     {
@@ -1421,7 +1419,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	}
       db_make_sequence (&fk_container_val, fk_container);
       fk_container_pos = 0;
-      pk_seq_pos = size - 2;
+      pk_seq_pos = size - 4;
     }
 
   fk_seq = classobj_make_foreign_key_ref_seq (fk_info);
@@ -1437,7 +1435,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
       goto end;
     }
 
-  if (pk_seq_pos == size - 3)
+  if (pk_seq_pos == size - 5)
     {
       err = set_put_element (pk_seq, pk_seq_pos, &fk_container_val);
       if (err != NO_ERROR)
@@ -1447,46 +1445,59 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
     }
   else
     {
-      /* retrieve the last element */
-      DB_VALUE save_last;
-      PRIM_SET_NULL (&save_last);
-      err = set_get_element (pk_seq, size - 1, &save_last);
+      err = set_get_element (pk_seq, size - 1, &updated_time);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&save_last);
 	  goto end;
 	}
 
-      /* Retrieve status. */
-      DB_VALUE save_status;
-      PRIM_SET_NULL (&save_status);
-      err = set_get_element (pk_seq, size - 2, &save_status);
+      err = set_get_element (pk_seq, size - 2, &created_time);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&save_status);
+	  goto end;
+	}
+
+      err = set_get_element (pk_seq, size - 3, &comment);
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      err = set_get_element (pk_seq, size - 4, &status);
+      if (err != NO_ERROR)
+	{
 	  goto end;
 	}
       /* put fk_container */
       err = set_put_element (pk_seq, pk_seq_pos, &fk_container_val);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&save_last);
 	  goto end;
 	}
 
       /* Put the status now. */
-      err = set_put_element (pk_seq, pk_seq_pos + 1, &save_status);
+      err = set_put_element (pk_seq, pk_seq_pos + 1, &status);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&save_last);
 	  goto end;
 	}
 
       /* put the last element to the tail */
-      err = set_put_element (pk_seq, pk_seq_pos + 2, &save_last);
+      err = set_put_element (pk_seq, pk_seq_pos + 2, &comment);
       if (err != NO_ERROR)
 	{
-	  pr_clear_value (&save_last);
+	  goto end;
+	}
+
+      err = set_put_element (pk_seq, pk_seq_pos + 3, &created_time);
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      err = set_put_element (pk_seq, pk_seq_pos + 4, &updated_time);
+      if (err != NO_ERROR)
+	{
 	  goto end;
 	}
     }
@@ -1509,6 +1520,10 @@ end:
   pr_clear_value (&pk_val);
   pr_clear_value (&fk_container_val);
   pr_clear_value (&fk_val);
+  pr_clear_value (&updated_time);
+  pr_clear_value (&created_time);
+  pr_clear_value (&comment);
+  pr_clear_value (&status);
 
   return err;
 }
@@ -1563,7 +1578,7 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const 
   pk_seq = db_get_set (&pk_val);
   size = set_size (pk_seq);
 
-  err = set_get_element (pk_seq, size - 2, &fk_container_val);
+  err = set_get_element (pk_seq, size - 4, &fk_container_val);
   if (err != NO_ERROR)
     {
       goto end;
@@ -1573,7 +1588,7 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const 
     {
       fk_container = db_get_set (&fk_container_val);
       fk_container_len = set_size (fk_container);
-      pk_seq_pos = size - 2;
+      pk_seq_pos = size - 4;
 
       /* find the position of the existing FK ref */
       for (i = 0; i < fk_container_len; i++)
@@ -1729,7 +1744,7 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const ch
     }
 
   pk_seq = db_get_set (&pk_val);
-  fk_container_pos = set_size (pk_seq) - 3;
+  fk_container_pos = set_size (pk_seq) - 5;
 
   err = set_get_element (pk_seq, fk_container_pos, &fk_container_val);
   if (err != NO_ERROR)
@@ -1942,6 +1957,9 @@ end:
  *   properties(in): Class property list
  *   cons(in): constraint
  *   comment(in): new comment of property
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
@@ -1982,8 +2000,8 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
   idx_seq = db_get_set (&cnstr_val);
   len = set_size (idx_seq);
 
-  /* comment stands at the end of the seq */
-  set_get_element (idx_seq, len - 1, &curr_comment);
+  /* comment */
+  set_get_element (idx_seq, len - 3, &curr_comment);
   if (!DB_IS_NULL (&curr_comment) && DB_VALUE_TYPE (&curr_comment) != DB_TYPE_STRING)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -1991,10 +2009,11 @@ classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * c
       goto end;
     }
 
-  db_make_string (&new_comment, comment);
-  error = set_put_element (idx_seq, len - 1, &new_comment);
-  if (error != NO_ERROR)
+  if (db_make_string (&new_comment, comment) != NO_ERROR ||
+      set_put_element (idx_seq, len - 3, &new_comment) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
@@ -2021,6 +2040,73 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_comment);
   pr_clear_value (&new_comment);
+
+  return error;
+}
+
+int
+classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint)
+{
+  const char *property_type;
+  DB_VALUE property_val, constraint_val, updated_time_val;
+  DB_SEQ *property_seq, *index_seq;
+  int error = NO_ERROR;
+  int seq_len = 0;
+
+  assert (properties != NULL && constraint != NULL);
+
+  db_make_null (&property_val);
+  db_make_null (&constraint_val);
+
+  property_type = classobj_map_constraint_to_property (constraint->type);
+
+  if (classobj_get_prop (properties, property_type, &property_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  property_seq = db_get_set (&property_val);
+  if (classobj_get_prop (property_seq, constraint->name, &constraint_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  index_seq = db_get_set (&constraint_val);
+  seq_len = set_size (index_seq);
+
+  if (db_sys_datetime (&updated_time_val) != NO_ERROR ||
+      set_put_element (index_seq, seq_len - 1, &updated_time_val) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_sequence (&constraint_val, index_seq);
+  if (classobj_put_prop (property_seq, constraint->name, &constraint_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_sequence (&property_val, property_seq);
+  if (classobj_put_prop (properties, property_type, &property_val) == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+end:
+  pr_clear_value (&property_val);
+  pr_clear_value (&constraint_val);
+  pr_clear_value (&updated_time_val);
+
   return error;
 }
 
@@ -2310,17 +2396,12 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *                               the associated attributes.
  *   return: true if constraint entry was cached
  *   name(in): Constraint name
- *   constraint_seq(in): Constraint entry.  This is a sequence of the form:
- *      {
- *	    "B-tree ID",
- *	    [ "att_name", "asc_dsc", ]
- *	    [ "att_name", "asc_dsc", ]
- *	    {fk_info | pk_info | prefix_length}
- *          "filter_predicate",
- *          "comment"
- *	}
+ *   constraint_seq(in): constraint entry 
  *   class(in): Class pointer.
  *   constraint_type(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -2341,7 +2422,11 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
    *  encoded B-tree ID
    */
   info_len = set_size (constraint_seq);
-  att_cnt = (info_len - 3) / 2;	/* excludes BTID, status and comment */
+  /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+   * Each attribute consists of 2 parts: att_name and asc_desc.
+   * optional_info (if present) is a single field and does not affect att_cnt calculation.
+   */
+  att_cnt = (info_len - 5) / 2;
   e = 0;
 
   /* get the btid */
@@ -2431,16 +2516,12 @@ finish:
  * classobj_cache_constraint_list() - Cache the constraint list into the appropriate
  *                              attribute caches
  *   return: non-zero if constraint list was cached
- *   seq(in): Unique constraint list.  This is a sequence of constraint
- *        name/ID pairs of the form:
- *	{
- *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
- *	    { "name", "filter_predicate", { btid, att_nam(s)..}, ... },
- *	    {fk_info | pk_info | prefix_length}
- *	    "filter_predicate"
- *	}
+ *   seq(in): Unique constraint list
  *   class(in): Class pointer
  *   constraint_type(in):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -2631,6 +2712,10 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->comment = NULL;
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
   new_->index_status = SM_NO_INDEX;
+  // *INDENT-OFF*
+  new_->created_time = (DB_DATETIME){0, 0};
+  new_->updated_time = (DB_DATETIME){0, 0};
+  // *INDENT-ON*
 
   return new_;
 }
@@ -3123,6 +3208,9 @@ error:
  *   class_props(in): class property list
  *   attributes(in):
  *   con_ptr(out):
+ * 
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 int
@@ -3131,7 +3219,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   SM_ATTRIBUTE *att;
   SM_CLASS_CONSTRAINT *constraints, *last, *new_;
   DB_SET *props, *info, *fk;
-  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue, cvalue, statusval;
+  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue, cvalue, statusval, created_time, updated_time;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
@@ -3149,6 +3237,8 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   db_make_null (&fvalue);
   db_make_null (&cvalue);
   db_make_null (&statusval);
+  db_make_null (&created_time);
+  db_make_null (&updated_time);
 
   constraints = last = NULL;
 
@@ -3167,9 +3257,6 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	  props = db_get_set (&pvalue);
 	  len = set_size (props);
 
-	  /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID,
-	   * [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment }, name, { BTID,
-	   * [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, status, comment }, ... } */
 	  for (i = 0; i < len; i += 2)
 	    {
 
@@ -3214,7 +3301,12 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	      info = db_get_set (&uvalue);
 	      info_len = set_size (info);
 
-	      att_cnt = (info_len - 3) / 2;	/* excludes BTID and comment */
+	      /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+	       * Each attribute consists of 2 parts: att_name and asc_desc.
+	       * optional_info (if present) is a single field and does not affect att_cnt calculation.
+	       */
+	      att_cnt = (info_len - 5) / 2;
+
 	      assert (att_cnt > 0);
 
 	      e = 0;
@@ -3496,10 +3588,10 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 		}
 
 	      /* Get the status. */
-	      set_get_element (info, info_len - 2, &statusval);
+	      set_get_element (info, info_len - 4, &statusval);
 	      new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
 
-	      if (set_get_element (info, info_len - 1, &cvalue))
+	      if (set_get_element (info, info_len - 3, &cvalue))
 		{
 		  /* if not exists, set comment to null */
 		  new_->comment = NULL;
@@ -3512,6 +3604,24 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 	      else
 		{
 		  goto structure_error;
+		}
+
+	      if (set_get_element (info, info_len - 2, &created_time) != NO_ERROR)
+		{
+		  goto structure_error;
+		}
+	      else
+		{
+		  new_->created_time = *db_get_datetime (&created_time);
+		}
+
+	      if (set_get_element (info, info_len - 1, &updated_time) != NO_ERROR)
+		{
+		  goto structure_error;
+		}
+	      else
+		{
+		  new_->updated_time = *db_get_datetime (&updated_time);
 		}
 
 	      /* clear each unique info sequence value */
@@ -3549,6 +3659,8 @@ other_error:
   pr_clear_value (&uvalue);
   pr_clear_value (&pvalue);
   pr_clear_value (&statusval);
+  pr_clear_value (&created_time);
+  pr_clear_value (&updated_time);
 
   classobj_free_class_constraints (constraints);
 
@@ -6859,6 +6971,12 @@ classobj_make_class (const char *name)
 
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
 
+  // *INDENT-OFF*
+  class_->created_time = (DB_DATETIME){0, 0};
+  class_->updated_time = (DB_DATETIME){0, 0};
+  class_->checked_time = (DB_DATETIME){0, 0};
+  // *INDENT-ON*
+
   if (name != NULL)
     {
       class_->header.ch_name = ws_copy_string (name);
@@ -8487,7 +8605,7 @@ classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_fun
   db_make_null (&avalue);
   db_make_null (&fvalue);
 
-  if (set_get_element (constraint_seq, constraint_seq_len - 3, &bvalue) != NO_ERROR)
+  if (set_get_element (constraint_seq, constraint_seq_len - 5, &bvalue) != NO_ERROR)
     {
       goto structure_error;
     }
@@ -8734,10 +8852,14 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   return NO_ERROR;
 }
 
+/*
+ *   Notice: For constraint structure details, 
+ *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ */
 int
 classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, SM_INDEX_STATUS index_status)
 {
-  DB_VALUE prop_val, cnstr_val, curr_status, new_status;
+  DB_VALUE prop_val, cnstr_val, curr_status, new_status, updated_time;
   DB_SEQ *prop_seq, *idx_seq;
   const char *property_type;
   int found = 0;
@@ -8750,6 +8872,7 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
   db_make_null (&cnstr_val);
   db_make_null (&curr_status);
   db_make_null (&new_status);
+  db_make_null (&updated_time);
 
   property_type = classobj_map_constraint_to_property (cons->type);
 
@@ -8773,8 +8896,8 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
   idx_seq = db_get_set (&cnstr_val);
   len = set_size (idx_seq);
 
-  /* status stands at the len - 2 of the seq */
-  set_get_element (idx_seq, len - 2, &curr_status);
+  /* status stands at the len - 4 of the seq */
+  set_get_element (idx_seq, len - 4, &curr_status);
   if (!DB_IS_NULL (&curr_status) && DB_VALUE_TYPE (&curr_status) != DB_TYPE_INTEGER)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -8782,10 +8905,11 @@ classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * co
       goto end;
     }
 
-  db_make_int (&new_status, index_status);
-  error = set_put_element (idx_seq, len - 2, &new_status);
-  if (error != NO_ERROR)
+  if (db_make_int (&new_status, index_status) != NO_ERROR ||
+      set_put_element (idx_seq, len - 4, &new_status) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
@@ -8812,5 +8936,6 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_status);
   pr_clear_value (&new_status);
+  pr_clear_value (&updated_time);
   return error;
 }
