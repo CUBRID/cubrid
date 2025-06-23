@@ -28,6 +28,7 @@
 #include "db.h"
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
+#include "sp_constants.hpp"
 #include "work_space.h"
 #include "schema_manager.h"
 #include "schema_system_catalog_builder.hpp"
@@ -812,6 +813,7 @@ namespace cubschema
       {"target_class", format_varchar (1024)},
       {"target_method", format_varchar (1024)},
       {"owner", AU_USER_CLASS_NAME},
+      {SP_ATTR_SQL_DATA_ACCESS, "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
