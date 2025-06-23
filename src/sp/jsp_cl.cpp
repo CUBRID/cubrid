@@ -1004,6 +1004,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   SP_INFO sp_info;
   char *temp;
+  DB_VALUE current_datetime;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1166,10 +1167,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  if (err != NO_ERROR)
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
       goto error_exit;
     }
+  sp_info.created_time = *db_get_datetime (&current_datetime);
+  sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
   if (jsp_is_exist_stored_procedure (sp_info.unique_name.data ()))
@@ -1392,6 +1395,16 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       db_make_string (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  err = db_update_obj_timestamp (sp_mop);
+  if (err != NO_ERROR)
+    {
+      goto error;
     }
 
 error:
@@ -1862,6 +1875,12 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   db_make_string (&value, sp_info.target_method.data ());
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET_METHOD, &value);
   pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = db_update_otmpl_timestamp (obt_p);
   if (err != NO_ERROR)
     {
       goto error;

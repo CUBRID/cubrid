@@ -1892,7 +1892,11 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 3) / 2;
+  /* Exclude 5 fixed metadata fields: BTID, status, comment, created_time, updated_time.
+   * Each attribute consists of 2 parts: att_name and asc_desc.
+   * optional_info (if present) is a single field and does not affect att_cnt calculation.
+   */
+  att_cnt = (seq_size - 5) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -1965,19 +1969,19 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->btname = strdup (cons_name);
 
   /* Get the index status. */
-  set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
+  set_get_element_nocopy (constraint_seq, seq_size - 4, &stat_val);
   index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
 
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -1987,7 +1991,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 5, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -3506,6 +3510,9 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
  *       It's up to the caller to free the returned pointer.
  *       If the given constraint/index name does not exist for current
  *       representation, NULL is returned.
+ * 
+ * Notice: For constraint structure details, 
+ *         see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 const char *
 or_get_constraint_comment (RECDES * record, const char *constraint_name)
@@ -3561,9 +3568,6 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
-       * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
-       * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
       props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
@@ -3593,7 +3597,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  info = db_get_set (&uvalue);
 	  info_len = set_size (info);
 
-	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
+	  if (set_get_element_nocopy (info, info_len - 3, &cvalue) || DB_IS_NULL (&cvalue))
 	    {
 	      /* if not exists, set comment to null */
 	      comment = NULL;

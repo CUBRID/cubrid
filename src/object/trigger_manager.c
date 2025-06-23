@@ -147,6 +147,8 @@ const char *TR_ATT_ACTION = "action_definition";
 const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
+const char *TR_ATT_CREATED_TIME = "created_time";
+const char *TR_ATT_UPDATED_TIME = "updated_time";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -252,6 +254,7 @@ static int map_flush_helper (const void *key, void *data, void *args);
 static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
+static int tr_set_trigger_timestamps (TR_TRIGGER * trigger);
 
 /* ERROR HANDLING */
 
@@ -413,6 +416,10 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
+  // *INDENT-OFF*
+  trigger->created_time = (DB_DATETIME){0, 0};
+  trigger->updated_time = (DB_DATETIME){0, 0};
+  // *INDENT-ON*
 
   return trigger;
 }
@@ -1134,6 +1141,11 @@ trigger_to_object (TR_TRIGGER * trigger)
   err = dbt_put_internal (obt_p, TR_ATT_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
       goto error;
     }
@@ -1967,6 +1979,10 @@ register_user_trigger (DB_OBJECT * object)
 
       db_make_object (&value, object);
       error = set_insert_element (table, 0, &value);
+      if (error != NO_ERROR)
+	{
+	  error = au_update_user_timestamp (Au_user);
+	}
       /* if an error is set, probably must abort the transaction */
     }
 
@@ -2030,6 +2046,10 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	  db_make_object (&value, trigger->object);
 	  error = set_drop_element (table, &value, false);
 	  set_free (table);
+	}
+      if (error != NO_ERROR)
+	{
+	  error = au_update_user_timestamp (Au_user);
 	}
       /* else, should have "trigger not found" error ? */
     }
@@ -4096,6 +4116,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
 
       has_savepoint = true;
+    }
+
+  if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
+    {
+      goto error;
     }
 
   /* from here down, the unwinding when errors are encountered gets rather complex */
@@ -6939,6 +6964,14 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
+  error = tr_update_trigger_timestamp (trigger_object);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+
   if (!deferred_flush)
     {
       error = locator_flush_instance (trigger_object);
@@ -7476,11 +7509,23 @@ define_trigger_classes (void)
       goto tmp_error;
     }
 
+  if (dbt_add_attribute (tmp, TR_ATT_CREATED_TIME, "datetime", NULL))
+    {
+      goto tmp_error;
+    }
+
+  if (dbt_add_attribute (tmp, TR_ATT_UPDATED_TIME, "datetime", NULL))
+    {
+      goto tmp_error;
+    }
+
   class_mop = dbt_finish_class (tmp);
   if (class_mop == NULL)
     {
       goto tmp_error;
     }
+
+  sm_mark_system_class (class_mop, 1);
 
   if (locator_create_heap_if_needed (class_mop, false) == NULL)
     {
@@ -7641,4 +7686,33 @@ remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
     }
 
   return trigger_stmt_str;
+}
+
+static int
+tr_set_trigger_timestamps (TR_TRIGGER * trigger)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  trigger->created_time = *db_get_datetime (&current_datetime);
+  trigger->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+int
+tr_update_trigger_timestamp (DB_OBJECT * obj)
+{
+  int save;
+  int error = NO_ERROR;
+
+  AU_DISABLE (save);
+  error = db_update_obj_timestamp (obj);
+  AU_ENABLE (save);
+
+  return error;
 }

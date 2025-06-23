@@ -442,6 +442,9 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
+static int sm_set_class_timestamps (SM_CLASS * class_);
+static int sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_);
+
 
 /*
  * sc_set_current_schema()
@@ -2961,6 +2964,12 @@ sm_rename_class (MOP class_mop, const char *new_name)
   need_free_old_name = true;
   need_free_new_name = false;
 
+  error = sm_update_class_timestamp (class_);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   error = sm_flush_objects (class_mop);
   if (error != NO_ERROR)
     {
@@ -3032,43 +3041,6 @@ end:
     }
 
   return error;
-}
-
-/*
- * sm_mark_system_classes() - Hack used to set the "system class" flag for
- *    all currently resident classes.
- *    This is only to make it more convenient to tell the
- *    difference between CUBRID and user defined classes.  This is intended
- *    to be called after the appropriate CUBRID class initialization function.
- *    Note that authorization is disabled here because these are normally
- *    called on the authorization classes.
- */
-
-void
-sm_mark_system_classes (void)
-{
-  LIST_MOPS *lmops;
-  SM_CLASS *class_;
-  int i;
-
-  if (au_check_user () == NO_ERROR)
-    {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
-      if (lmops != NULL)
-	{
-	  for (i = 0; i < lmops->num; i++)
-	    {
-	      if (!WS_IS_DELETED (lmops->mops[i]) && lmops->mops[i] != sm_Root_class_mop)
-		{
-		  if (au_fetch_class_force (lmops->mops[i], &class_, AU_FETCH_UPDATE) == NO_ERROR)
-		    {
-		      class_->flags |= SM_CLASSFLAG_SYSTEM;
-		    }
-		}
-	    }
-	  locator_free_list_mops (lmops);
-	}
-    }
 }
 
 /*
@@ -4277,6 +4249,16 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
+		  error = sm_set_checked_time_from_stats (classop, class_);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -4400,6 +4382,16 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+
+		  error = sm_set_checked_time_from_stats (cl->op, class_);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -13322,6 +13314,21 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
+  /* Align created_time and updated_time for system-defined classes 
+   * to ensure timestamp consistency after immediate internal updates. */
+  if (template_->current == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
+    {
+      error = sm_set_class_timestamps (class_);
+    }
+  else
+    {
+      error = sm_update_class_timestamp (class_);
+    }
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
   /* This used to be done toward the end but since the unique btid has to be inherited, the disk structures have to be
    * created before we update the subclasses. We also have to disable updating statistics for now because we haven't
    * finshed modifying the all the classes yet and the code which updates statistics on partitioned classes does not
@@ -14069,6 +14076,11 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	}
 
       if (!classobj_cache_constraints (class_))
+	{
+	  goto severe_error;
+	}
+
+      if (sm_update_class_timestamp (class_) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -16651,4 +16663,72 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+static int
+sm_set_class_timestamps (SM_CLASS * class_)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  class_->created_time = *db_get_datetime (&current_datetime);
+  class_->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+int
+sm_update_class_timestamp (SM_CLASS * class_)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  class_->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+static int
+sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
+{
+  DB_VALUE timestamp, current_datetime;
+  time_t sec;
+
+  if (au_fetch_class_force (op, &class_, AU_FETCH_UPDATE) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (class_->stats == NULL || class_->stats->time_stamp == 0)
+    {
+      // *INDENT-OFF*
+      class_->checked_time = (DB_DATETIME){0, 0};
+      // *INDENT-ON*
+    }
+  else
+    {
+      sec = (time_t) class_->stats->time_stamp;
+      db_make_timestamp (&timestamp, (DB_TIMESTAMP) sec);
+      if (db_timestamp_to_datetime (&timestamp, &current_datetime) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      class_->checked_time = *db_get_datetime (&current_datetime);
+    }
+
+  if (locator_flush_class (op) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
 }

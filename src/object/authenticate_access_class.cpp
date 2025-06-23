@@ -275,6 +275,13 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
 	}
     }
 
+  /* updated_time */
+  error = sm_update_class_timestamp (class_);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {

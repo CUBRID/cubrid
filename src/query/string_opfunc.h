@@ -284,6 +284,7 @@ extern int db_time_format (const DB_VALUE * src_time, const DB_VALUE * src_forma
 extern int db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VALUE * result_datetime);
 extern int db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp);
 extern int db_datetime_to_timestamp (const DB_VALUE * src_datetime, DB_VALUE * result_timestamp);
+extern int db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_datetime);
 extern int db_months_between (const DB_VALUE * start_mon, const DB_VALUE * end_mon, DB_VALUE * result_mon);
 extern int db_sys_date (DB_VALUE * result_date);
 extern int db_sys_time (DB_VALUE * result_time);

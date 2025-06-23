@@ -673,8 +673,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  sm_mark_system_classes ();
-
   (void) lang_db_put_charset ();
 
   tzd = tz_get_data ();
