@@ -8717,7 +8717,7 @@ classobj_make_partition_info (void)
     }
 
   partition_info->partition_type = -1;
-  partition_info->depth = SM_PARTITION_UNKOWN;
+  partition_info->depth = SM_PARTITION_UNKNOWN;
   partition_info->values = NULL;
   partition_info->pname = NULL;
   partition_info->comment = NULL;

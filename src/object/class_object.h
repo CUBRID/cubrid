@@ -531,7 +531,7 @@ typedef enum
 
 typedef enum
 {
-  SM_PARTITION_UNKOWN = -1,	// Uninitialized or invalid
+  SM_PARTITION_UNKNOWN = -1,	// Uninitialized or invalid
   SM_PARTITION_ROOT = 0,	// Root class
   SM_PARTITION_PARTITON = 1,	// First-level partition
 } SM_PARTITON_DEPTH;
