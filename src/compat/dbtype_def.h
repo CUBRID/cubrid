@@ -599,7 +599,7 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#define DB_NUMERIC_BUF_SIZE	(7*sizeof(double))	// base-256의 buf, 56b = 135자리
+#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))	// base-256의 buf, 16b = 38자리
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */

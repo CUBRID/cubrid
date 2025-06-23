@@ -63,6 +63,7 @@
 //#define TWICE_NUM_MAX_PREC    (2*DB_MAX_NUMERIC_PRECISION)
 // TWICE_NUM_MAX_PREC 해당 부분을 130으로 하고 print 해주는 부분은 127 + 10 으로 해줘야 정상적으로 결과가 출력됨
 // 이유는 모르겠음...
+// *중요* 일단 임시로 10진수 표현 매크로(TWICE_NUM_MAX_PREC)를 최대 130으로 했으나, 나중에 수정 필요함.
 #define TWICE_NUM_MAX_PREC	(DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)	// 127 + 3(+-, ., \0)
 
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
@@ -1386,8 +1387,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale2 - scale1;
       prec1 = scale_diff + prec1;
-      //if (prec1 > DB_MAX_NUMERIC_PRECISION)
-      if (prec1 > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (prec1 > DB_MAX_NUMERIC_PRECISION)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1402,8 +1402,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale1 - scale2;
       prec2 = scale_diff + prec2;
-      //if (prec2 > DB_MAX_NUMERIC_PRECISION)
-      if (prec2 > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (prec2 > DB_MAX_NUMERIC_PRECISION)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -1661,8 +1660,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      //if (prec < DB_MAX_NUMERIC_PRECISION)
-      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (prec < DB_MAX_NUMERIC_PRECISION)
 	{
 	  prec++;
 	}
@@ -1764,8 +1762,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      //if (prec < DB_MAX_NUMERIC_PRECISION)
-      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (prec < DB_MAX_NUMERIC_PRECISION)
 	{
 	  prec++;
 	}
@@ -1949,8 +1946,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
    */
   prec = DB_VALUE_PRECISION (dbv1) + scaleup;
   scale = max_scale;
-  //if (prec > DB_MAX_NUMERIC_PRECISION)
-  if (prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+  if (prec > DB_MAX_NUMERIC_PRECISION)
     {
       prec = DB_MAX_NUMERIC_PRECISION;
     }
@@ -1962,8 +1958,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
       new_scale = scale + scale_delta;
       new_prec = prec + scale_delta;
-      //if (new_prec > DB_MAX_NUMERIC_PRECISION)
-      if (new_prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (new_prec > DB_MAX_NUMERIC_PRECISION)
 	{
 	  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
 	  new_prec = DB_MAX_NUMERIC_PRECISION;
@@ -2030,8 +2025,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   if (numeric_overflow (temp_quo, prec))
     {
-      //if (prec < DB_MAX_NUMERIC_PRECISION)
-      if (prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+      if (prec < DB_MAX_NUMERIC_PRECISION)
 	{
 	  prec++;
 	}
@@ -3103,7 +3097,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   int i;
   int prec = 0;
   int scale = 0;
-  int non_zero_prec = 0;
+  int zero_count = 0;
   bool leading_zeroes = true;
   bool sign_found = false;
   bool negate_value = false;
@@ -3117,6 +3111,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   /* Remove the decimal point, track the prec & scale */
   prec = 0;
   scale = 0;
+  zero_count = 0;
   for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
     {
       skip_size = 1;
@@ -3124,7 +3119,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	{
 	  leading_zeroes = false;
 	  decimal_part = true;
-	  scale = astring_length - (i + 1);
+	  //scale = astring_length - (i + 1);
 	}
       else if (leading_zeroes)
 	{			/* Look for 1st digit between 1 & 9 */
@@ -3132,11 +3127,11 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    {
 	      leading_zeroes = false;
 	      num_string[prec] = astring[i];
+	      ++prec;
 	      //if (++prec > DB_MAX_NUMERIC_PRECISION)
-	      if (++prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
-		{
-		  break;
-		}
+	      //{
+	      //break;
+	      //}
 	    }
 	  else if (astring[i] == '+' || astring[i] == '-')
 	    {			/* sign found */
@@ -3200,11 +3195,68 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 	    }
 	  else if (astring[i] >= '0' && astring[i] <= '9')
 	    {
-	      num_string[prec] = astring[i];
+/*
+	      //num_string[prec] = astring[i];
 	      //if (++prec > DB_MAX_NUMERIC_PRECISION)
-	      if (++prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+		//{
+		  //break;
+		//}
+	      if (prec < DB_MAX_NUMERIC_PRECISION)
+                {
+                  num_string[prec] = astring[i];
+                  prec++;
+                }
+              else
+                {
+                  // prec가 38에 도달했으면 더 이상 증가시키지 않음
+                  if (decimal_part)
+                    {
+                      scale++;  // 소수부: scale 증가
+                    }
+                  else
+                    {
+                      scale--;  // 정수부: scale 감소
+                    }
+                }
+*/
+	      if (decimal_part)
 		{
-		  break;
+		  // 소수부 처리
+		  if (astring[i] == '0' && prec == 0)
+		    {
+		      // 소수부 선행 0: counting 증가
+		      zero_count++;
+		    }
+		  else
+		    {
+		      // 유효 숫자: prec에 저장
+		      num_string[prec] = astring[i];
+		      scale++;
+		      if (++prec > DB_MAX_NUMERIC_PRECISION)
+			{
+			  break;
+			}
+		    }
+		}
+	      else
+		{
+		  // 정수부 처리
+		  if (astring[i] == '0')
+		    {
+		      // 정수부 0: counting 증가
+		      zero_count++;
+		      num_string[prec] = astring[i];
+		      prec++;
+		    }
+		  else
+		    {
+		      zero_count = 0;
+		      num_string[prec] = astring[i];
+		      if (++prec > DB_MAX_NUMERIC_PRECISION)
+			{
+			  break;
+			}
+		    }
 		}
 	    }
 	  else
@@ -3220,6 +3272,27 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
+  // 반복문 종료 후 prec/scale 계산
+  if (decimal_part)
+    {
+      // 소수부: prec이 DB_MAX_NUMERIC_PRECISION 보다 작으면, 기존과 동일하게 처리하고
+      // prec이 DB_MAX_NUMERIC_PRECISION 보다 크면, prec는 그대로 두고 zero_count만큼 scale에 더함
+      if (prec > DB_MAX_NUMERIC_PRECISION)
+	{
+	  scale = zero_count;
+	}
+      else
+	{
+	  scale += zero_count;
+	}
+    }
+  else
+    {
+      // 정수부: 후행 0 개수만큼 prec에서 빼고, scale은 -zero_count
+      prec = prec - zero_count;
+      scale = -zero_count;
+    }
+
   /*
    * numeric(38,127) 에서, 0.000..999 처럼 소수 총 자리 165, 0은 127, 9는 38 자리 값이 들어올 때,
    * 현재 우리는 127 까지만 읽고 바로 에러를 처리하기 때문에 반올림을 하지 않고 에러가 출력됨
@@ -3227,7 +3300,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
    */
 
   /* If there is no overflow, try to parse the decimal string */
-  if (prec > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)	// 127
+  if (prec > DB_MAX_NUMERIC_PRECISION)
     {
       // 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
@@ -3263,7 +3336,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       numeric_negate (num);
     }
-  db_make_numeric (result, num, prec, scale);
+  ret = db_make_numeric (result, num, prec, scale);
 
   return ret;
 
@@ -3308,14 +3381,49 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
       return ER_FAILED;
     }
 
+  /* 기타 메모 :
+   * insert 할 때는 dest 가 도메인 값임
+   * select 할 때는 src가 도메인 값임
+   */
   /* Check for trivial case */
-  // insert 할 때는 dest 가 도메인 값임
-  // select 할 때는 src가 도메인 값임
   if (src_prec <= dest_prec && src_scale == dest_scale)
     {
       numeric_copy (dest_num, src_num);
       return NO_ERROR;
     }
+
+/* 동적 처리 (나중에)  
+  if (src_scale < 0 || dest_scale < 0)
+    {
+      num_string_size = DB_MAX_NUMERIC_PRECISION + (-DB_MIN_NUMERIC_SCALE) + 3;
+      num_string = (char *) db_private_alloc (NULL, num_string_size);
+      if (num_string == NULL)
+        {
+          ret = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto exit_on_error;
+        }
+    }
+  else if (src_scale > src_prec || dest_scale > dest_prec)
+    {
+      num_string_size = TWICE_NUM_MAX_PREC;
+      num_string = (char *) db_private_alloc (NULL, num_string_size);
+      if (num_string == NULL)
+        {
+          ret = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto exit_on_error;
+        }
+    }
+  else 
+    {
+      num_string_size = DB_MAX_NUMERIC_PRECISION * 4;
+      num_string = (char *) db_private_alloc (NULL, num_string_size);
+      if (num_string == NULL)
+        {
+          ret = ER_OUT_OF_VIRTUAL_MEMORY;
+          goto exit_on_error;
+        }
+    }
+*/
 
   /* If src is negative, coerce the positive part now so that rounding is always done in the correct 'direction'. */
   if (numeric_is_negative (src_num))
@@ -3333,29 +3441,27 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
   /* Convert the src_num into a decimal string */
   numeric_coerce_num_to_dec_str (dest_num, num_string);
   /* Scale the number */
-//   if (src_scale < dest_scale)
-//     {                                /* add trailing zeroes */
-//       // (확인필요) 여기는 아래와 같은 조치가 필요 없을까?
-//       scale_diff = dest_scale - src_scale;
-//       orig_length = strlen (num_string);
-//       for (i = 0; i < scale_diff; i++)
-//      {
-//        num_string[orig_length + i] = '0';
-//      }
-//       num_string[orig_length + scale_diff] = '\0';
-//     }
+
+  // 소수부 자리가 더 많은 경우
+  // 입력값(src) < 도메인(dest) == 0.009 
   if (src_scale < dest_scale)
-    {
-      /* scale 값 만큼 값을 보정하는 곳임 
-       * 수정한 방법 :  
+    {				/* add trailing zeroes */
+      /* scale 값 만큼 값을 보정하는 곳임
+       *  
+       * TO-BE (수정한 방법) :  
        * 1. 임시 배열을 만들어서 scale_diff만큼 값을 복사
        * 2. 원래 배열을 scale_diff만큼 이동
        * 3. 임시 배열을 원래 배열의 뒷부분에 복사
        * 
-       * 원래 방법 :
+       * AS-IS (원래 방법) :
        * 1. 원래 배열을 scale_diff만큼 이동
        * 2. 원래 배열의 뒷부분에 scale_diff만큼 0을 채움
        * 3. 마지막 배열에 \0을 추가
+       * 4. 하지만 이 방법은 원래 배열의 크기를 넘어서 처리하는 것이라서 문제가 있음
+       *
+       * TC :
+       * CREATE TABLE t1 (col1 numeric(1,127));
+       * INSERT INTO t1 values(0.0000000000000000000000009);
        */
       scale_diff = dest_scale - src_scale;
       orig_length = strlen (num_string);
@@ -3365,29 +3471,30 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
       memcpy (temp, num_string, scale_diff);
       memmove (num_string, num_string + scale_diff, orig_length - scale_diff);
       memcpy (num_string + (orig_length - scale_diff), temp, scale_diff);
+
+      /* AS-IS (원래 방법)
+       * scale_diff = dest_scale - src_scale;
+       * orig_length = strlen (num_string);
+       * for (i = 0; i < scale_diff; i++)
+       *   {
+       *   num_string[orig_length + i] = '0';
+       * }
+       * num_string[orig_length + scale_diff] = '\0';
+       */
     }
   else if (dest_scale < src_scale)
     {				/* Truncate and prepare for rounding */
-      // numeric(2,-84), INSERT INTO t1 values(99000); 값을 처리할 때,
-      // orig_length = 76, scale_diff = 84, scale_length = -8 이렇게 계산이됨
-      // -8 번째 배열은 없으므로 양수로 다시 처리해야됨.
-      // 그런데, num_string 배열이 [DB_MAX_NUMERIC_PRECISION * 4]로 처리돼서 문제가 된느 것 같은데...
-      // 늘리면 또 달라질 수 있음.  그러면 다시 롤백!!!
-      int scale_length = 0;
+      /* TC :
+       * CREATE TABLE t1 (col1 numeric(2,-84));
+       * INSERT INTO t1 values(99000);
+       */
       scale_diff = src_scale - dest_scale;
       orig_length = strlen (num_string);
-
-      scale_length = orig_length - scale_diff;
-      if (dest_scale < 0 && scale_length < 0)
-	{
-	  scale_length *= -1;
-	}
-
-      if (num_string[scale_length] >= '5' && num_string[scale_length] <= '9')
+      if (num_string[orig_length - scale_diff] >= '5' && num_string[orig_length - scale_diff] <= '9')
 	{
 	  round_up = true;
 	}
-      num_string[scale_length] = '\0';
+      num_string[orig_length - scale_diff] = '\0';
     }
 
   /*
@@ -3437,9 +3544,21 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
       numeric_negate (dest_num);
     }
 
+// 동적 처리 (나중에) 
+//   if (num_string != NULL)
+//     {
+//       db_private_free (NULL, num_string);
+//     }
+
   return ret;
 
 exit_on_error:
+
+// 동적 처리 (나중에)
+//   if (num_string != NULL)
+//     {
+//       db_private_free (NULL, num_string);
+//     }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -3550,10 +3669,6 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	precision = DB_VALUE_PRECISION (src);
 	scale = DB_VALUE_SCALE (src);
 	numeric_copy (num, db_locate_numeric (src));
-	if (scale < 0)
-	  {
-	    desired_scale = scale;
-	  }
 	break;
       }
 

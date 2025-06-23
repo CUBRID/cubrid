@@ -3314,10 +3314,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	{
 	  // ER_IT_DATA_OVERFLOW 일 때 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
 	  //if (er_errid () != ER_IT_DATA_OVERFLOW)
-	  //{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
 		      value->info.value.data_value.str->bytes);
-	  //}
 	  return (DB_VALUE *) NULL;
 	}
       *more_type_info_needed = (value->data_type == NULL);
