@@ -177,7 +177,7 @@ struct sp_info
   , target_method {}
   , directive {SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_OWNER}
   , owner {nullptr}
-  , sql_data_access {SP_SQL_TYPE_NONE}
+  , sql_data_access {SP_SQL_TYPE_UNKNOWN}
   , comment {}
   , created_time {0, 0}
   , updated_time {0, 0}

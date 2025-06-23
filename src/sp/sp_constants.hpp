@@ -81,7 +81,7 @@ typedef enum
 
 typedef enum
 {
-  SP_SQL_TYPE_NONE = -1,
+  SP_SQL_TYPE_UNKNOWN = -1,
   SP_SQL_TYPE_NO_SQL,
   SP_SQL_TYPE_CONTAINS_SQL,
   SP_SQL_TYPE_READS_SQL_DATA,

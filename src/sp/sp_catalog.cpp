@@ -101,7 +101,7 @@ static int sp_builtin_init ()
   v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
   v.owner = Au_public_user;
-  v.sql_data_access = SP_SQL_TYPE_NONE;
+  v.sql_data_access = SP_SQL_TYPE_UNKNOWN;
   v.comment = "";
   v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
   v.created_time = *db_get_datetime (&current_datetime);
