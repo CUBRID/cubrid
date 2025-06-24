@@ -765,7 +765,7 @@ extern "C"
       unsigned char is_null;
       unsigned char type;
       unsigned char precision;
-      char scale;
+      int scale;
     } numeric_info;
     struct char_info
     {

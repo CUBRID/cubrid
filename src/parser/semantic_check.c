@@ -2353,6 +2353,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
   else if (dest_sci->type_enum == PT_TYPE_NUMERIC)
     {
       assert_release (dest_sci->prec != 0);
+      /* 나중에 여기가 엄청 중요함! 여기서, setval로 갈것인지 p/s을 조정할 것인지 결정하는 곳임 */
       if (src->data_type && dest_sci->prec == src->data_type->info.data_type.precision
 	  && dest_sci->scale == src->data_type->info.data_type.dec_precision)
 	{
