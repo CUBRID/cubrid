@@ -53,7 +53,7 @@ make_numeric_value_fn (const char *str)
 {
   return [str] (DB_VALUE *val)
   {
-    return numeric_coerce_string_to_num (str, 1, LANG_SYS_CODESET, val);
+    return numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
   };
 }
 
@@ -183,16 +183,11 @@ catcls_add_dual (DB_OBJECT *class_mop)
       return er_errid ();
     }
   error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error_code != NO_ERROR)
+  if (error_code == NO_ERROR)
     {
-      return error_code;
+      error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
     }
 
-  error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
   return error_code;
 }
 
