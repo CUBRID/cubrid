@@ -476,9 +476,7 @@ extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npag
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size);
-#if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
-#endif
 extern void fileio_unformat (THREAD_ENTRY * thread_p, const char *vlabel);
 extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vlabel, const char *new_vlabel);
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES npages, const char *to_vlabel,

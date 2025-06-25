@@ -2074,7 +2074,8 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	       bool is_do_lock, bool is_do_sync)
 {
   int tmp_vol_desc = NULL_VOLDES;
-  int vol_fd;
+  int vol_fd, dir_fd;
+  char dir_path[PATH_MAX];
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
 #if defined(WINDOWS)
   int sh_flag;
@@ -2165,6 +2166,24 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	    }
 	}
 #endif /* !WINDOWS */
+
+      /* we must sync the parent directory to ensure the link to the new file is written to disk. */
+      if (cub_dirname_r (vol_label_p, dir_path, PATH_MAX) < 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
+	}
+      /* get the fd for the parent directory */
+      dir_fd = fileio_open (dir_path, O_RDONLY, FILEIO_DISK_PROTECTION_MODE);
+      if (dir_fd == NULL_VOLDES)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
+	}
+      /* use fsync */
+      if (fileio_synchronize (thread_p, dir_fd, dir_path, FILEIO_SYNC_VOLUME_ONLY, FILEIO_SYNC_ALL) != dir_fd)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
+	}
+      fileio_close (dir_fd);
 
 #if !defined(CS_MODE)
       if (fileio_cache (vol_id, vol_label_p, vol_fd, lockf_type) != vol_fd)
@@ -2588,6 +2607,10 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
   last_pageid = ((PAGEID) (new_size / IO_PAGESIZE) - 1);
 
+  /* we need to sync every changes including metadata for safety */
+  fileio_truncate (vol_fd, last_pageid);
+  fileio_synchronize (thread_p, vol_fd, vol_label_p, FILEIO_SYNC_VOLUME_ONLY, FILEIO_SYNC_ALL);
+
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
@@ -2614,7 +2637,6 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 }
 #endif /* not CS_MODE */
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * fileio_truncate () -  TRUNCATE A TEMPORARY VOLUME
  *   return: npages
@@ -2663,7 +2685,6 @@ fileio_truncate (VOLID vol_id, DKNPAGES npages_to_resize)
     }
   return npages_to_resize;
 }
-#endif
 
 /*
  * fileio_unformat () - DESTROY A VOLUME
@@ -4467,7 +4488,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-  if (ret != 0)
+  if (ret < 0)
     {
       /* sync error is not alwasy handled and I am not sure a proper safe handling is possible: raise as fatal error */
       er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
