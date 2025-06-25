@@ -3773,3 +3773,12 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 
   return NO_ERROR;
 }
+
+DBLINK_CONN_ENTRY *
+qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  return tran_entry_p->dblink_entry;
+}

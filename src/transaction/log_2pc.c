@@ -29,6 +29,7 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "error_manager.h"
+#include "dblink_2pc.h"
 #include "lock_manager.h"
 #include "log_append.hpp"
 #include "log_comm.h"
@@ -65,15 +66,15 @@
 /* Variables */
 struct log_2pc_global_data
 {
-  int (*get_participants) (int *particp_id_length, void **block_particps_ids);
+  int (*get_participants) (THREAD_ENTRY * thread_p, int *particp_id_length, void **block_particps_ids);
   int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids);
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
-  int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids);
-    bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
-    bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+  int (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
+    bool (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
+    bool (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
 };
-struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+struct log_2pc_global_data log_2pc_Userfun = { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit, dblink_2pc_send_abort};
 
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
@@ -122,8 +123,8 @@ static void log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thre
 static int
 log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
 {
-  void *block;
   int num_particps;
+  THREAD_ENTRY * thread_p = thread_get_thread_entry_info ();
 
   if (log_2pc_Userfun.get_participants == NULL)
     {
@@ -132,21 +133,7 @@ log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
       return 0;
     }
 
-  num_particps = (*log_2pc_Userfun.get_participants) (partid_len, &block);
-  if (num_particps > 0)
-    {
-      *block_particps_ids = malloc (num_particps * *partid_len);
-      if (*block_particps_ids == NULL)
-	{
-	  /* Failure */
-	  return -1;
-	}
-      memcpy (*block_particps_ids, block, num_particps * *partid_len);
-    }
-  else
-    {
-      *block_particps_ids = NULL;
-    }
+  num_particps = (*log_2pc_Userfun.get_participants) (thread_p, partid_len, block_particps_ids);
 
   return num_particps;
 }
@@ -216,12 +203,16 @@ log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids
 bool
 log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
 {
+  THREAD_ENTRY * thread_p;
+
   if (log_2pc_Userfun.send_prepare == NULL)
     {
       return true;
     }
 
-  return (*log_2pc_Userfun.send_prepare) (gtrid, num_particps, block_particps_ids);
+  thread_p = thread_get_thread_entry_info ();
+
+  return (*log_2pc_Userfun.send_prepare) (thread_p, gtrid, num_particps, block_particps_ids);
 }
 
 /*
@@ -257,7 +248,9 @@ log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices
 
   if (log_2pc_Userfun.send_commit != NULL)
     {
-      result = (*log_2pc_Userfun.send_commit) (gtrid, num_particps, particps_indices, block_particps_ids);
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+      result = (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids);
     }
 
   return result;
@@ -301,7 +294,9 @@ log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices,
 
   if (log_2pc_Userfun.send_abort != NULL)
     {
-      result = (*log_2pc_Userfun.send_abort) (gtrid, num_particps, particps_indices, block_particps_ids, collect);
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+      result = (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
     }
 
   return result;

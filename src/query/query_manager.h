@@ -179,5 +179,5 @@ extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool i
 extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password);
 extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
 					char *password);
-
+extern DBLINK_CONN_ENTRY * qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p);
 #endif /* _QUERY_MANAGER_H_ */
