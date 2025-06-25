@@ -69,7 +69,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
       *block_particps_ids = (void *)ids;
     }
 
-  *partid_len = num_ids * 4;
+  *partid_len = num_ids * 12;
 
   return num_ids;
 }
