@@ -231,8 +231,6 @@ typedef enum
 #define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x04000000)
 /* flag for asynchronous flush request */
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
-/* flag for simple fix */
-#define PGBUF_BCB_SIMPLE_FIX           ((int) 0x01000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK \
@@ -2190,13 +2188,13 @@ try_again:
  *       Even if it is a temporary file, it can be a problem if there is a write operation.
  */
 PAGE_PTR
-pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
+pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
 
-  assert (pgbuf_is_temporary_volume (vpid.volid));
+  assert (pgbuf_is_temporary_volume (vpid->volid));
 
   /* Is this a resident page ? */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
@@ -2208,17 +2206,25 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
       /* release hash mutex */
       pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
+      if (!need_fix || er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
 	{
 	  return NULL;
 	}
 
-      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (pgptr == NULL)
 	{
 	  return NULL;
 	}
-      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+      pgbuf_unfix (thread_p, pgptr);
+
+      pgptr = pgbuf_simple_fix (thread_p, vpid, true);
+      if (pgptr == NULL)
+	{
+	  /* impossible case */
+          assert(0);
+          return NULL;
+	}
     }
   else
     {
@@ -2226,7 +2232,6 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
       CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
       bufptr->fcnt++;
-      bufptr->flags |= PGBUF_BCB_SIMPLE_FIX;
       /* release mutex */
       PGBUF_BCB_UNLOCK (bufptr);
     }
@@ -2248,17 +2253,45 @@ pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
   PGBUF_BCB *bufptr;
 
-  assert (pgbuf_is_temporary_volume (vpid.volid));
-
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  /* only decrease fcnt and reset PGBUF_BCB_SIMPLE_FIX */
+  /* only decrease fcnt */
   PGBUF_BCB_LOCK (bufptr);
   bufptr->fcnt--;
-  bufptr->flags &= ~PGBUF_BCB_SIMPLE_FIX;
+  PGBUF_BCB_UNLOCK (bufptr);
+}
+
+/*
+ * pgbuf_invalidate_temp_page () - invalidate page of temporary table
+ *
+ * Note:
+ *       This is only for temporary file.
+ *       init ptype and clear dirty.
+ */
+int
+pgbuf_invalidate_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr;
+
+  /* invalidation task is performed */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  PGBUF_BCB_LOCK (bufptr);
+
+  /* set unknown type */
+  bufptr->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
+  /* clear page flags */
+  bufptr->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
+
+  /* clear dirty */
+  pgbuf_bcb_clear_dirty (thread_p, bufptr);
+
+  /* simple unfix */
+  bufptr->fcnt--;
+  assert (bufptr->fcnt == 0);
+
   PGBUF_BCB_UNLOCK (bufptr);
 
-  assert (fugptr->fcnt == 0);
+  return NO_ERROR;
 }
 
 /*
@@ -2534,13 +2567,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   /* Get the address of the buffer from the page and free the buffer */
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
-
-  /* simple unfix, only fcnt-- */
-  if ((bufptr->flags & PGBUF_BCB_SIMPLE_FIX) != 0)
-    {
-      pgbuf_simple_unfix (thread_p, pgptr);
-      return;
-    }
 
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;

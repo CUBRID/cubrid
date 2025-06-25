@@ -2653,7 +2653,7 @@ qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
   else
     {
       /* latchless read only fix */
-      page_p = pgbuf_simple_fix (thread_p, vpid_p);
+      page_p = pgbuf_simple_fix (thread_p, vpid_p, true);
 
       if (page_p != NULL)
 	{
@@ -2664,6 +2664,48 @@ qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
     }
 
   return page_p;
+}
+
+/*
+ * qmgr_free_old_page_read_only () -
+ *   return:
+ *   page_ptr(in)       :
+ *   tfile_vfidp(in)    :
+ */
+void
+qmgr_free_old_page_read_only (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
+{
+  QMGR_PAGE_TYPE page_type;
+
+  if (page_p == NULL)
+    {
+      assert (0);
+      return;
+    }
+  if (tfile_vfid_p == NULL)
+    {
+      pgbuf_simple_unfix (thread_p, page_p);
+      return;
+    }
+
+  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
+  if (page_type == QMGR_UNKNOWN_PAGE)
+    {
+      assert (false);
+      return;
+    }
+
+  if (page_type == QMGR_TEMP_FILE_PAGE)
+    {
+      /* The list files came from list file cache have no tfile_vfid_p. */
+      pgbuf_simple_unfix (thread_p, page_p);
+    }
+#if defined (SERVER_MODE)
+  else
+    {
+      assert (page_type == QMGR_MEMBUF_PAGE);
+    }
+#endif
 }
 
 /*

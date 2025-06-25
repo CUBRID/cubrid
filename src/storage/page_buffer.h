@@ -266,8 +266,9 @@ extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid
 extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
 
 /* simple fix is used only for reading temporary files */
-PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid);
+PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix);
 void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+int pgbuf_invalidate_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 
 #if !defined(NDEBUG)
 

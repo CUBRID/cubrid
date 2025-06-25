@@ -47,6 +47,14 @@ struct xasl_cache_ent;
     } \
   while (0)
 
+#define qmgr_free_old_page_ro_and_init(thread_p, page_p, tfile_vfidp) \
+  do \
+    { \
+      qmgr_free_old_page_read_only ((thread_p), (page_p), (tfile_vfidp)); \
+      (page_p) = NULL; \
+    } \
+  while (0)
+
 #define NULL_PAGEID_IN_PROGRESS -2
 
 typedef enum
