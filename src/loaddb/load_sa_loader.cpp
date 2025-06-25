@@ -5000,7 +5000,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	      goto error_exit;
 	    }
 	  memcpy (context->class_name, class_name, len);
-	  context->class_name[len - 1] = '\0';
+	  context->class_name[len] = '\0';
 
 	  if (is_internal_class (context->cls))
 	    {
