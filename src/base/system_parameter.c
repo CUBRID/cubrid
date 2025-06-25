@@ -2517,8 +2517,9 @@ static int prm_max_parallel_workers_lower = 0;
 static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
 
-int PRM_VECTOR_INDEX_EF_SEARCH = 40;
-static int prm_vector_index_ef_search_default = 40;
+int PRM_VECTOR_INDEX_EF_SEARCH = 64;
+
+static int prm_vector_index_ef_search_default = 64;
 static int prm_vector_index_ef_search_lower = 1;
 static int prm_vector_index_ef_search_upper = 1000;
 static unsigned int prm_vector_index_ef_search_flag = 0;
@@ -6646,7 +6647,7 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_vector_index_ef_search_flag,
    (void *) &prm_vector_index_ef_search_default,
    (void *) &PRM_VECTOR_INDEX_EF_SEARCH,
-   (void *) NULL, (void *) NULL,
+   (void *) prm_vector_index_ef_search_upper, (void *) prm_vector_index_ef_search_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

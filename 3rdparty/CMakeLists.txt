@@ -702,7 +702,7 @@ if(WITH_USEARCH STREQUAL "EXTERNAL")
   ExternalProject_Add(
         ${USEARCH_TARGET}
         GIT_REPOSITORY ${WITH_USEARCH_URL}
-        GIT_TAG        v2.17.8
+        GIT_TAG        v2.17.12
 
         CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
         -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/usearch
@@ -715,6 +715,7 @@ if(WITH_USEARCH STREQUAL "EXTERNAL")
 
         BUILD_COMMAND ""
         INSTALL_COMMAND ""
+
         "${USEARCH_BYPRODUCTS}"
   )
   set(USEARCH_INCLUDES "${3RDPARTY_LIBS_DIR}/Source/usearch/include")

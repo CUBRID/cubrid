@@ -33,6 +33,10 @@
 #include <fstream>
 #include <filesystem>
 
+/// Include immintrin. Otherwise `simsimd` fails to build: `unknown type name '__bfloat16'`
+#if defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h>
+#endif
 #include "usearch/index.hpp"
 #include "usearch/index_dense.hpp"
 #include "usearch/index_plugins.hpp"
@@ -100,9 +104,8 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   usearch::metric_punned_t metric_punned (static_cast <std::size_t> (dimension), metric_kind,
 					  usearch::scalar_kind_t::f32_k);
 
-  usearch::index_dense_config_t config;
-  config.connectivity = hnsw_M;
-  config.expansion_add = hnsw_efConstruction;
+  unum::usearch::index_dense_config_t config(hnsw_M, hnsw_efConstruction, 64 /* default */);
+  config.enable_key_lookups = false;
 
   auto index_ptr = std::make_unique<usearch::index_dense_t> (
 			   usearch::index_dense_t::make (metric, config)
@@ -457,7 +460,6 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 
   std::unique_ptr<usearch::index_dense_t> &index = it->second;
   index->change_expansion_search (prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH));
-
   auto results = index->search (vf->float_array, k);
   for (std::size_t i = 0; i != results.size(); ++i)
     {
