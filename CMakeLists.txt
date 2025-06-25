@@ -303,6 +303,7 @@ if(UNIX)
 
   elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+    list(APPEND EP_LIBS "openblas")
   else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
