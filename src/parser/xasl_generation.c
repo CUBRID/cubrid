@@ -11892,7 +11892,7 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	col->next = NULL;
 
 	PT_NODE *node = col;
-	if (node->node_type == PT_EXPR)
+	if (node->node_type == PT_EXPR && node->info.expr.op == PT_FUNCTION_HOLDER)
 	  {
 	    // FUNCTION HOLDER
 	    node = node->info.expr.arg1;
@@ -11902,10 +11902,11 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	      }
 	  }
 
-	if (pt_is_vector_function (parser, node))
+	if (pt_is_vector_distance_function (parser, node))
 	  {
 	    arg_list = node->info.function.arg_list;
 
+	    // TODO (CUBVEC): imporve the following logic
 	    if (arg_list->node_type == PT_NAME)
 	      {
 		vector_query = arg_list->next;
@@ -11913,6 +11914,24 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	    else if (arg_list->node_type == PT_VALUE)
 	      {
 		vector_query = arg_list;
+	      }
+	  }
+	else if (pt_is_vector_distance_expr (parser, node))
+	  {
+	    PT_NODE *arg1 = node->info.expr.arg1;
+	    PT_NODE *arg2 = node->info.expr.arg2;
+
+	    assert (arg1->node_type == PT_NAME || arg1->node_type == PT_VALUE);
+	    assert (arg2->node_type == PT_NAME || arg2->node_type == PT_VALUE);
+
+	    // TODO (CUBVEC): imporve the following logic
+	    if (arg1->node_type == PT_NAME)
+	      {
+		vector_query = arg2;
+	      }
+	    else if (arg1->node_type == PT_VALUE)
+	      {
+		vector_query = arg1;
 	      }
 	  }
 
