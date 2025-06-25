@@ -28,7 +28,7 @@
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
 #include "object_representation.h"	/* TP_DOMAIN */
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
-#include "px_hash_join.hpp"	/* parallel_hash_join::partition_task */
+#include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
@@ -160,7 +160,7 @@ static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
 
 /* Hash Join Context */
 static int hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
-static void hjoin_clear_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
+static void hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
 
 /* Hash List Scan */
 static int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
@@ -272,7 +272,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  if (manager.px_workpool != NULL)
 	    {
 	      /* *INDENT-OFF* */
-	      error = parallel_hash_join::execute_partitions (*thread_p, &manager);
+	      error = parallel_query::hash_join::execute_partitions (*thread_p, &manager);
 	      /* *INDENT-ON* */
 	    }
 	  else
@@ -706,11 +706,17 @@ cleanup:
   qfile_close_scan (thread_p, &build_list_scan_id);
   qfile_close_scan (thread_p, &probe_list_scan_id);
 
-  qfile_close_list (thread_p, build_list_id);
-  qfile_destroy_list (thread_p, build_list_id);
+  if (context->outer_list_id != NULL)
+    {
+      qfile_close_list (thread_p, context->outer_list_id);
+      qfile_destroy_list (thread_p, context->outer_list_id);
+    }
 
-  qfile_close_list (thread_p, probe_list_id);
-  qfile_destroy_list (thread_p, probe_list_id);
+  if (context->inner_list_id != NULL)
+    {
+      qfile_close_list (thread_p, context->inner_list_id);
+      qfile_destroy_list (thread_p, context->inner_list_id);
+    }
 
   hjoin_scan_clear (thread_p, &context->hash_scan);
 
@@ -828,10 +834,14 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   context->join_type = merge_info->join_type;
   context->during_join_pred = xasl->during_join_pred;
+  context->vd = vd;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
   assert (context->is_build_outer == false);
   assert (context->is_last_context == false);
+#if defined (SERVER_MODE)
+  assert (context->spawner == NULL);
+#endif /* defined (SERVER_MODE) */
 
   /* contexts */
   assert (manager->contexts == NULL);
@@ -839,7 +849,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   /* query_id, vd */
   manager->query_id = query_id;
-  manager->vd = vd;
 
   manager->merge_method = HASHJOIN_MERGE_APPEND;
   manager->qlist_flag =
@@ -876,10 +885,8 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
-  parallel_hash_join::try_reserve_workers (manager, 4, 4);
+  parallel_query::hash_join::try_reserve_workers (manager, 4, 4);
   /* *INDENT-ON* */
-#else
-  assert (manager->px_workpool == NULL);
 #endif /* defined (SERVER_MODE) */
 
   /* stats_group */
@@ -933,7 +940,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
       for (context_index = 0; context_index < context_cnt; context_index++)
 	{
-	  hjoin_clear_contexts (thread_p, &contexts[context_index]);
+	  hjoin_clear_context (thread_p, &contexts[context_index]);
 	}
 
       db_private_free_and_init (thread_p, contexts);
@@ -955,7 +962,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   if (manager->px_workpool != NULL)
     {
       /* *INDENT-OFF* */
-      parallel_hash_join::release_workers (manager);
+      parallel_query::hash_join::release_workers (manager);
       /* *INDENT-ON* */
     }
 #endif /* defined (SERVER_MODE) */
@@ -1215,7 +1222,8 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
   QFILE_LIST_ID **outer_part_list_id = NULL, **inner_part_list_id = NULL;
 
-  HASHJOIN_CONTEXT *single_context, *contexts = NULL;
+  HASHJOIN_CONTEXT *single_context;
+  HASHJOIN_CONTEXT *contexts = NULL, *current_context;
   HASHJOIN_STATS *context_stats = NULL;
 
   int part_cnt, part_index;
@@ -1264,7 +1272,9 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
-      memcpy (&contexts[part_index], single_context, sizeof (HASHJOIN_CONTEXT));
+      current_context = &contexts[part_index];
+
+      memcpy (current_context, single_context, sizeof (HASHJOIN_CONTEXT));
 
       outer_part_list_id[part_index] =
 	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id, QFILE_FLAG_ALL, NULL);
@@ -1272,7 +1282,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 	{
 	  goto error_exit;
 	}
-      contexts[part_index].outer_list_id = outer_part_list_id[part_index];
+      current_context->outer_list_id = outer_part_list_id[part_index];
 
       inner_part_list_id[part_index] =
 	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id, QFILE_FLAG_ALL, NULL);
@@ -1280,13 +1290,85 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 	{
 	  goto error_exit;
 	}
-      contexts[part_index].inner_list_id = inner_part_list_id[part_index];
+      current_context->inner_list_id = inner_part_list_id[part_index];
 
       if (part_index == part_cnt - 1)
 	{
-	  contexts[part_index].is_last_context = true;
+	  current_context->is_last_context = true;
 	}
     }
+
+#if defined (SERVER_MODE)
+  if (manager->px_workpool != NULL)
+    {
+      for (part_index = 0; part_index < part_cnt; part_index++)
+	{
+	  current_context = &contexts[part_index];
+
+	  current_context->spawner = (cubxasl::spawner *) db_private_alloc (thread_p, sizeof (cubxasl::spawner));
+	  if (current_context->spawner == NULL)
+	    {
+	      assert_release (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+
+#undef new
+	  new (current_context->spawner) cubxasl::spawner (*thread_p);
+#define new new(__FILE__, __LINE__)
+
+	  if (single_context->vd != NULL)
+	    {
+	      current_context->vd = current_context->spawner->spawn (single_context->vd);
+	      if (current_context->vd == NULL)
+		{
+		  assert_release (er_errid () != NO_ERROR);
+		  current_context->spawner->~spawner ();
+		  db_private_free_and_init (thread_p, current_context->spawner);
+		  current_context->spawner = NULL;
+		  return er_errid ();
+		}
+	    }
+
+	  if (single_context->during_join_pred != NULL)
+	    {
+	      current_context->during_join_pred = current_context->spawner->spawn (single_context->during_join_pred);
+	      if (current_context->during_join_pred == NULL)
+		{
+		  assert_release (er_errid () != NO_ERROR);
+		  current_context->spawner->~spawner ();
+		  db_private_free_and_init (thread_p, current_context->spawner);
+		  return er_errid ();
+		}
+	    }
+
+	  if (single_context->outer_fetch_info.regu_list_pred != NULL)
+	    {
+	      current_context->outer_fetch_info.regu_list_pred =
+		current_context->spawner->spawn (single_context->outer_fetch_info.regu_list_pred);
+	      if (current_context->outer_fetch_info.regu_list_pred == NULL)
+		{
+		  assert_release (er_errid () != NO_ERROR);
+		  current_context->spawner->~spawner ();
+		  db_private_free_and_init (thread_p, current_context->spawner);
+		  return er_errid ();
+		}
+	    }
+
+	  if (single_context->inner_fetch_info.regu_list_pred != NULL)
+	    {
+	      current_context->inner_fetch_info.regu_list_pred =
+		current_context->spawner->spawn (single_context->inner_fetch_info.regu_list_pred);
+	      if (current_context->inner_fetch_info.regu_list_pred == NULL)
+		{
+		  assert_release (er_errid () != NO_ERROR);
+		  current_context->spawner->~spawner ();
+		  db_private_free_and_init (thread_p, current_context->spawner);
+		  return er_errid ();
+		}
+	    }
+	}
+    }
+#endif /* defined (SERVER_MODE) */
 
   manager->contexts = contexts;
 
@@ -1498,7 +1580,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   if (manager->px_workpool != NULL)
     {
       /* *INDENT-OFF* */
-      error = parallel_hash_join::build_partitions (*thread_p, manager, &part_info);
+      error = parallel_query::hash_join::build_partitions (*thread_p, manager, &part_info);
       /* *INDENT-ON* */
     }
   else
@@ -1549,7 +1631,7 @@ error_exit:
 
       for (context_index = 0; context_index < manager->context_cnt; context_index++)
 	{
-	  hjoin_clear_contexts (thread_p, &manager->contexts[context_index]);
+	  hjoin_clear_context (thread_p, &manager->contexts[context_index]);
 	}
 
       db_private_free_and_init (thread_p, manager->contexts);
@@ -1684,13 +1766,13 @@ error_exit:
 }
 
 /*
- * hjoin_clear_contexts() -
+ * hjoin_clear_context() -
  *   return: None.
  *   thread_p(in): Thread entry.
  *   context(in): Hash join context to clear.
  */
 static void
-hjoin_clear_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
+hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
 {
   assert (thread_p != NULL);
   assert (context != NULL);
@@ -1716,7 +1798,13 @@ hjoin_clear_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
       QFILE_FREE_AND_INIT_LIST_ID (context->inner_list_id);
     }
 
-  hjoin_scan_clear (thread_p, &context->hash_scan);
+#if defined (SERVER_MODE)
+  if (context->spawner != NULL)
+    {
+      context->spawner->~spawner ();
+      db_private_free_and_init (thread_p, context->spawner);
+    }
+#endif /* defined (SERVER_MODE) */
 }
 
 /*
@@ -2715,7 +2803,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      do
 		{
 		  error =
-		    fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, manager->vd, NULL, NULL,
+		    fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, context->vd, NULL, NULL,
 				    tuple_record.tpl, PEEK);
 		  if (error != NO_ERROR)
 		    {
@@ -2723,14 +2811,14 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		    }
 
 		  error =
-		    fetch_val_list (thread_p, build_fetch_info->regu_list_pred, manager->vd, NULL, NULL,
+		    fetch_val_list (thread_p, build_fetch_info->regu_list_pred, context->vd, NULL, NULL,
 				    found_record.tpl, PEEK);
 		  if (error != NO_ERROR)
 		    {
 		      break;	/* error_exit */
 		    }
 
-		  ev_res = eval_pred (thread_p, context->during_join_pred, manager->vd, NULL);
+		  ev_res = eval_pred (thread_p, context->during_join_pred, context->vd, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;

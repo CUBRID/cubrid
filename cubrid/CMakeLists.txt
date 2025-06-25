@@ -459,6 +459,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
+  ${XASL_DIR}/xasl_spawner.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
   )
 set(XASL_HEADERS
@@ -470,6 +471,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_spawner.hpp
   )
 
 set(LOADDB_SOURCES

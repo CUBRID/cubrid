@@ -26,13 +26,17 @@
 #include "regu_var.hpp"		/* REGU_VARIABLE_LIST */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
 #include "query_hash_scan.h"	/* HASH_METHOD */
 #include "system.h"		/* UINT32, UINT64 */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "tsc_timer.h"		/* TSC_TICKS, TSCTIMEVAL, TSC_ADD_TIMEVAL */
 #include "xasl_predicate.hpp"	/* PRED_EXPR */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE)
+#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
+#include "xasl_spawner.hpp"	/* cubxasl::spawner */
+#endif /* defined (SERVER_MODE) */
 
 /*
  * Debug Macros
@@ -49,9 +53,9 @@
  */
 
 struct xasl_node;
-typedef struct xasl_node XASL_NODE;
-
 struct tp_domain;
+
+typedef struct xasl_node XASL_NODE;
 typedef struct tp_domain TP_DOMAIN;
 
 /*
@@ -196,10 +200,17 @@ typedef struct hashjoin_context
 
   JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
+  VAL_DESCR *vd;
 
   HASH_LIST_SCAN hash_scan;
   bool is_build_outer;
   bool is_last_context;
+
+#if defined (SERVER_MODE)
+  /* *INDENT-OFF* */
+  cubxasl::spawner * spawner;
+  /* *INDENT-ON* */
+#endif				/* defined (SERVER_MODE) */
 
   HASHJOIN_STATS *stats;
 } HASHJOIN_CONTEXT;
@@ -216,7 +227,6 @@ typedef struct hashjoin_manager
   int context_cnt;
 
   QUERY_ID query_id;
-  VAL_DESCR *vd;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 
   HASHJOIN_MERGE_METHOD merge_method;
