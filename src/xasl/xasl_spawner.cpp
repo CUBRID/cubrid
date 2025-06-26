@@ -48,6 +48,7 @@ namespace cubxasl
 	    it.second.deleter (&m_thread_ref, it.second.ptr);
 	  }
       }
+
     m_cached_ptrs.clear();
   }
 
@@ -57,35 +58,28 @@ namespace cubxasl
     PRED_EXPR *dest = get (src);
     if (dest == nullptr )
       {
-	/* may be nullptr */
-	return nullptr ;
+	return nullptr;
       }
 
+    /* union */
     switch (src->type)
       {
       case T_PRED:
 	if (spawner::spawn (&src->pe.m_pred, &dest->pe.m_pred) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr ;
+	    return nullptr;
 	  }
 	break;
 
       case T_EVAL_TERM:
 	if (spawner::spawn (&src->pe.m_eval_term, &dest->pe.m_eval_term) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return nullptr;
 	  }
 	break;
 
       case T_NOT_TERM:
 	dest->pe.m_not_term = spawner::spawn (src->pe.m_not_term);
-	if (dest->pe.m_not_term == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
 	break;
 
       default:
@@ -102,34 +96,32 @@ namespace cubxasl
   int
   spawner::spawn (const PRED *src, PRED *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->lhs = spawner::spawn (src->lhs);
-    if (dest->lhs == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->rhs = spawner::spawn (src->rhs);
-    if (dest->rhs == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->bool_op = src->bool_op;
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   spawner::spawn (const EVAL_TERM *src, EVAL_TERM *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
+    /* union*/
     switch (src->et_type)
       {
       case T_COMP_EVAL_TERM:
 	if (spawner::spawn (&src->et.et_comp, &dest->et.et_comp) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
@@ -137,7 +129,6 @@ namespace cubxasl
       case T_ALSM_EVAL_TERM:
 	if (spawner::spawn (&src->et.et_alsm, &dest->et.et_alsm) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
@@ -145,7 +136,6 @@ namespace cubxasl
       case T_LIKE_EVAL_TERM:
 	if (spawner::spawn (&src->et.et_like, &dest->et.et_like) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
@@ -153,7 +143,6 @@ namespace cubxasl
       case T_RLIKE_EVAL_TERM:
 	if (spawner::spawn (&src->et.et_rlike, &dest->et.et_rlike) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
@@ -166,115 +155,81 @@ namespace cubxasl
 
     dest->et_type = src->et_type;
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   spawner::spawn (const COMP_EVAL_TERM *src, COMP_EVAL_TERM *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->lhs = spawner::spawn (src->lhs);
-    if (dest->lhs == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->rhs = spawner::spawn (src->rhs);
-    if (dest->rhs == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->rel_op = src->rel_op;
     dest->type = src->type;
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   spawner::spawn (const ALSM_EVAL_TERM *src, ALSM_EVAL_TERM *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->elem = spawner::spawn (src->elem);
-    if (dest->elem == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->elemset = spawner::spawn (src->elemset);
-    if (dest->elemset == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   spawner::spawn (const LIKE_EVAL_TERM *src, LIKE_EVAL_TERM *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->src = spawner::spawn (src->src);
-    if (dest->src == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->pattern = spawner::spawn (src->pattern);
-    if (dest->pattern == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->esc_char = spawner::spawn (src->esc_char);
-    if (dest->esc_char == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   int
   spawner::spawn (const RLIKE_EVAL_TERM *src, RLIKE_EVAL_TERM *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->src = spawner::spawn (src->src);
-    if (dest->src == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->pattern = spawner::spawn (src->pattern);
-    if (dest->pattern == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->case_sensitive = spawner::spawn (src->case_sensitive);
-    if (dest->case_sensitive == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
 
-    dest->compiled_regex = nullptr;
-    assert (src->compiled_regex == nullptr);	/* TODO: unsupported */
-    if (er_errid () != NO_ERROR)
-      {
-	return er_errid ();
-      }
+    /* TODO: unsupported */
+    dest->compiled_regex = spawn (src->compiled_regex);
 
-    return NO_ERROR;
+    return er_errid ();
+  }
+
+  cub_compiled_regex *
+  spawner::spawn (const cub_compiled_regex *src)
+  {
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
+    return nullptr;
   }
 
   REGU_VARIABLE *
@@ -283,13 +238,11 @@ namespace cubxasl
     REGU_VARIABLE *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
     if (spawn (src, dest) != NO_ERROR)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
@@ -299,58 +252,37 @@ namespace cubxasl
   int
   spawner::spawn (const REGU_VARIABLE *src, REGU_VARIABLE *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->type = src->type;
     dest->flags = src->flags;
-
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    if (dest->domain == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
-
     dest->original_domain = dest->domain;
+    dest->vfetch_to = spawn (src->vfetch_to);
 
-    if (src->vfetch_to != nullptr)
-      {
-	dest->vfetch_to = spawn (src->vfetch_to);
-      }
-    /* may be nullptr */
+    /* TODO: unsupported */
+    assert_release (src->xasl == nullptr);
+    dest->xasl = nullptr;
 
-    assert_release (src->xasl == nullptr);	/* TODO: unsupported */
-    if (er_errid () != NO_ERROR)
-      {
-	return er_errid ();
-      }
-
+    /* union */
     switch (src->type)
       {
       case TYPE_DBVAL:
-	if (spawn (&src->value.dbval, &dest->value.dbval) != NO_ERROR)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
+	/* always returns NO_ERROR */
+	pr_clone_value (&src->value.dbval, &dest->value.dbval);
 	break;
 
       case TYPE_CONSTANT:
       case TYPE_ORDERBY_NUM:
 	dest->value.dbvalptr = spawn (src->value.dbvalptr);
-	if (dest->value.dbvalptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_INARITH:
       case TYPE_OUTARITH:
 	dest->value.arithptr = spawn (src->value.arithptr);
-	if (dest->value.arithptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_ATTR_ID:
@@ -358,7 +290,6 @@ namespace cubxasl
       case TYPE_SHARED_ATTR_ID:
 	if (spawn (&src->value.attr_descr, &dest->value.attr_descr) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
@@ -366,18 +297,12 @@ namespace cubxasl
       case TYPE_POSITION:
 	if (spawn (&src->value.pos_descr, &dest->value.pos_descr) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
 	break;
 
       case TYPE_LIST_ID:
 	dest->value.srlist_id = spawn (src->value.srlist_id);
-	if (dest->value.srlist_id == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_POS_VALUE:
@@ -386,43 +311,24 @@ namespace cubxasl
 
       case TYPE_OID:
       case TYPE_CLASSOID:
-	assert_release (false);	/* TODO: unsupported */
+	/* TODO: unsupported */
+	assert_release (false);
 	return er_errid ();
 
       case TYPE_FUNC:
 	dest->value.funcp = spawn (dest->value.funcp);
-	if (dest->value.funcp == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_REGUVAL_LIST:
 	dest->value.reguval_list = spawn (src->value.reguval_list);
-	if (dest->value.reguval_list == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_REGU_VAR_LIST:
 	dest->value.regu_var_list = spawn (src->value.regu_var_list);
-	if (dest->value.regu_var_list == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       case TYPE_SP:
 	dest->value.sp_ptr = spawn (src->value.sp_ptr);
-	if (dest->value.sp_ptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return er_errid ();
-	  }
 	break;
 
       default:
@@ -431,22 +337,7 @@ namespace cubxasl
 	return ER_QPROC_INVALID_XASLNODE;
       }
 
-    return NO_ERROR;
-  }
-
-  int
-  spawner::spawn (const DB_VALUE *src, DB_VALUE *dest)
-  {
-    if (src == NULL)
-      {
-	db_make_null (dest);
-	return NO_ERROR;
-      }
-
-    /* always returns NO_ERROR */
-    pr_clone_value (src, dest);
-
-    return NO_ERROR;
+    return er_errid ();
   }
 
   DB_VALUE *
@@ -455,7 +346,6 @@ namespace cubxasl
     DB_VALUE *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
@@ -471,98 +361,49 @@ namespace cubxasl
     ARITH_TYPE *dest =  get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    if (dest->domain == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
     dest->original_domain = dest->domain;
-
-    if (src->value != nullptr)
-      {
-	dest->value = spawn (src->value);
-	if (dest->value == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-      }
-    else
-      {
-	dest->value = nullptr;
-      }
-
-    if (src->leftptr != nullptr)
-      {
-	dest->leftptr = spawn (src->leftptr);
-	if (dest->leftptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-      }
-    else
-      {
-	dest->leftptr = nullptr;
-      }
-
-    if (src->rightptr != nullptr)
-      {
-	dest->rightptr = spawn (src->rightptr);
-	if (dest->rightptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-      }
-    else
-      {
-	dest->rightptr = nullptr;
-      }
-
-    if (src->thirdptr != nullptr)
-      {
-	dest->thirdptr = spawn (src->thirdptr);
-	if (dest->thirdptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-      }
-    else
-      {
-	dest->thirdptr = nullptr;
-      }
-
+    dest->value = spawn (src->value);
+    dest->leftptr = spawn (src->leftptr);
+    dest->rightptr = spawn (src->rightptr);
+    dest->thirdptr = spawn (src->thirdptr);
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
 
-    /* TODO: check T_CASE, T_DECODE, T_PREDICATE, T_IF */
-    if (src->pred != nullptr)
+    /* ref: stx_build_arith_type */
+    switch (src->opcode)
       {
+      case T_IF:
+      case T_CASE:
+      case T_DECODE:
+      case T_PREDICATE:
 	dest->pred = spawn (src->pred);
-	if (dest->pred == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-      }
-    else
-      {
+	break;
+
+      default:
+	assert_release (src->pred == nullptr);
 	dest->pred = nullptr;
+	break;
       }
 
-    dest->rand_seed = nullptr;
-    assert_release (src->rand_seed == nullptr);	/* TODO: unsupported */
-    if (er_errid () != NO_ERROR)
+    dest->rand_seed = spawn (src->rand_seed);
+
+    return dest;
+  }
+
+  struct drand48_data *
+  spawner::spawn (const struct drand48_data *src)
+  {
+    struct drand48_data *dest = get (src);
+    if (dest == nullptr)
       {
 	return nullptr;
       }
+
+    memcpy (dest, src, sizeof (struct drand48_data));
 
     return dest;
   }
@@ -570,65 +411,124 @@ namespace cubxasl
   int
   spawner::spawn (const ATTR_DESCR *src, ATTR_DESCR *dest)
   {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
     dest->id = src->id;
     dest->type = src->type;
 
+    /* TODO: unsupported */
     dest->cache_attrinfo = spawn (src->cache_attrinfo);
-    if (dest->cache_attrinfo == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return er_errid ();
-      }
 
+    /* TODO: unsupported */
+    assert_release (src->cache_dbvalp == nullptr);
     dest->cache_dbvalp = nullptr;
-    assert_release (src->cache_attrinfo == nullptr);	/* TODO: unsupported */
-    if (er_errid () != NO_ERROR)
-      {
-	return er_errid ();
-      }
 
-    return NO_ERROR;
+    return er_errid ();
   }
 
   HEAP_CACHE_ATTRINFO *
   spawner::spawn (const HEAP_CACHE_ATTRINFO *src)
   {
-    assert_release (false);	/* TODO: unsupported */
+    HEAP_CACHE_ATTRINFO *dest = get (src);
+    if (dest == nullptr)
+      {
+	return nullptr;
+      }
+
+    dest->class_oid = src->class_oid;
+    dest->last_cacheindex = src->last_cacheindex;
+    dest->read_cacheindex = src->read_cacheindex;
+
+    /* TODO: unsupported */
+    dest->last_classrepr = spawn (src->last_classrepr);
+    dest->read_classrepr = spawn (src->read_classrepr);
+
+    dest->inst_oid = src->inst_oid;
+    dest->inst_chn = src->inst_chn;
+    dest->num_values = src->num_values;
+
+    dest->values = get (src->values, src->num_values);
+    if (dest->values != nullptr)
+      {
+	for (int i = 0; i < src->num_values; i++)
+	  {
+	    if (spawn (&src->values[i], &dest->values[i]) != NO_ERROR)
+	      {
+		return nullptr;
+	      }
+	  }
+      }
+
+    return dest;
+  }
+
+  OR_CLASSREP *
+  spawner::spawn (const OR_CLASSREP *src)
+  {
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
+    return nullptr;
+  }
+
+  int
+  spawner::spawn (const HEAP_ATTRVALUE *src, HEAP_ATTRVALUE *dest)
+  {
+    if (!is_valid_argument (src, dest))
+      {
+	return er_errid ();
+      }
+
+    dest->attrid = src->attrid;
+    dest->state = src->state;
+    dest->do_increment = src->do_increment;
+    dest->attr_type = src->attr_type;
+
+    /* TODO: unsupported */
+    dest->last_attrepr = spawn (src->last_attrepr);
+    dest->read_attrepr = spawn (src->read_attrepr);
+
+    pr_clone_value (&src->dbvalue, &dest->dbvalue);
+
+    return er_errid ();
+  }
+
+  OR_ATTRIBUTE *
+  spawner::spawn (const OR_ATTRIBUTE *src)
+  {
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
     return nullptr;
   }
 
   int
   spawner::spawn (const QFILE_TUPLE_VALUE_POSITION *src, QFILE_TUPLE_VALUE_POSITION *dest)
   {
-    dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    if (dest->dom == nullptr)
+    if (!is_valid_argument (src, dest))
       {
-	assert_release (er_errid () != NO_ERROR);
 	return er_errid ();
       }
 
+    dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
     dest->original_domain = dest->dom;
     dest->pos_no = src->pos_no;
 
-    return NO_ERROR;
+    return er_errid ();
   }
-
 
   QFILE_SORTED_LIST_ID *
   spawner::spawn (const QFILE_SORTED_LIST_ID *src)
   {
-    QFILE_SORTED_LIST_ID *dest =  get (src);
+    QFILE_SORTED_LIST_ID *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
+
+    /* TODO: unsupported */
     dest->list_id = spawn (src->list_id);
-    if (dest->list_id == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
 
     dest->sorted = src->sorted;
 
@@ -638,7 +538,8 @@ namespace cubxasl
   QFILE_LIST_ID *
   spawner::spawn (const QFILE_LIST_ID *src)
   {
-    assert_release (false);	/* TODO: unsupported */
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
     return nullptr;
   }
 
@@ -648,35 +549,25 @@ namespace cubxasl
     FUNCTION_TYPE *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
     dest->value = spawn (src->value);
-    if (dest->value == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
-    return NO_ERROR;
-
     dest->operand = spawn (src->operand);
-    if (dest->operand == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
-
     dest->ftype = src->ftype;
 
-    dest->tmp_obj = nullptr;
-    assert_release (src->tmp_obj == nullptr);	/* TODO: unsupported */
-    if (er_errid () != NO_ERROR)
-      {
-	return nullptr;
-      }
+    /* TODO: unsupported */
+    dest->tmp_obj = spawn (src->tmp_obj);
 
     return dest;
+  }
+
+  function_tmp_obj *
+  spawner::spawn (const function_tmp_obj *src)
+  {
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
+    return nullptr;
   }
 
   REGU_VALUE_LIST *
@@ -685,27 +576,32 @@ namespace cubxasl
     REGU_VALUE_LIST *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
-    dest->regu_list = nullptr;
-    REGU_VALUE_ITEM **tail = &dest->regu_list;
-
     const REGU_VALUE_ITEM *current = src->regu_list;
+    REGU_VALUE_ITEM **tail = &dest->regu_list;
+    int i = 0;
 
-    while (current != nullptr)
+    while (current != nullptr && i < src->count)
       {
-	REGU_VALUE_ITEM *item = spawn (current);
-	if (item == nullptr)
+	/* ref: stx_build_regu_value_list*/
+	switch (current->value->type)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
+	  case TYPE_DBVAL:
+	  case TYPE_INARITH:
+	  case TYPE_POS_VALUE:
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	    return nullptr;
+
+	  default:
+	    /* fall through */
+	    break;
 	  }
 
-	assert_release (item->value->type == TYPE_DBVAL || item->value->type == TYPE_INARITH
-			|| item->value->type == TYPE_POS_VALUE);	/* TODO: check */
-	if (er_errid () != NO_ERROR)
+	REGU_VALUE_ITEM *item = spawn (current);
+	if (item == nullptr)
 	  {
 	    return nullptr;
 	  }
@@ -714,7 +610,10 @@ namespace cubxasl
 	tail = &item->next;
 
 	current = current->next;
+	i++;
       }
+
+    assert_release (i == src->count);
 
     dest->current_value = dest->regu_list;
     dest->count = src->count;
@@ -728,17 +627,10 @@ namespace cubxasl
     REGU_VALUE_ITEM *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
     dest->value = spawn (src->value);
-    if (dest->value == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
-
     dest->next = nullptr;
 
     return dest;
@@ -747,28 +639,32 @@ namespace cubxasl
   REGU_VARIABLE_LIST
   spawner::spawn (const REGU_VARIABLE_LIST src)
   {
-    if (src == nullptr)
+    REGU_VARIABLE_LIST current = src;
+    int count = 0;
+
+    while (current != nullptr)
+      {
+	count++;
+	current = current->next;
+      }
+    current = src;
+
+    /* ref: stx_restore_regu_variable_list */
+    REGU_VARIABLE_LIST dest = get (src, count);
+    if (dest == nullptr)
       {
 	return nullptr;
       }
 
-    REGU_VARIABLE_LIST dest = nullptr;
     REGU_VARIABLE_LIST *tail = &dest;
+    int i = 0;
 
-    REGU_VARIABLE_LIST current = src;
-
-    while (current != nullptr)
+    while (current != nullptr && i < count)
       {
-	REGU_VARIABLE_LIST item = get (current);
-	if (item == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
+	REGU_VARIABLE_LIST item = &dest[i];
 
 	if (spawn (&current->value, &item->value) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return nullptr;
 	  }
 
@@ -776,7 +672,10 @@ namespace cubxasl
 	tail = &item->next;
 
 	current = current->next;
+	i++;
       }
+
+    assert_release (i == count);
 
     return dest;
   }
@@ -787,30 +686,14 @@ namespace cubxasl
     SP_TYPE *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
+    /* TODO: unsupported */
     dest->sig = spawn (src->sig);
-    if (dest->sig == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
 
     dest->args = spawn (src->args);
-    if (dest->args == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
-
     dest->value = spawn (src->value);
-    if (dest->value == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
 
     return dest;
   }
@@ -818,10 +701,10 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    assert_release (er_errid () != NO_ERROR);	/* TODO: unsupported */
+    /* TODO: unsupported */
+    assert_release (src == nullptr);
     return nullptr;
   }
-
 
   VAL_LIST *
   spawner::spawn (const VAL_LIST *src)
@@ -829,66 +712,56 @@ namespace cubxasl
     VAL_LIST *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
-    QPROC_DB_VALUE_LIST current = src->valp, last = nullptr;
-
-    while (current != nullptr)
+    /* ref: stx_build_val_list */
+    dest->valp = get (src->valp, src->val_cnt);
+    if (dest->valp == nullptr)
       {
-	QPROC_DB_VALUE_LIST item = spawn (current);
-	if (item == nullptr)
+	return nullptr;
+      }
+
+    QPROC_DB_VALUE_LIST current = src->valp;
+    QPROC_DB_VALUE_LIST *tail = &dest->valp;
+    int i = 0;
+
+    while (current != nullptr && i < src->val_cnt)
+      {
+	QPROC_DB_VALUE_LIST item = &dest->valp[i];
+
+	if (spawn (current, item) != NO_ERROR)
 	  {
-	    assert_release (er_errid () != NO_ERROR);
 	    return nullptr;
 	  }
 
-	if (last == nullptr)
-	  {
-	    dest->valp = item;
-	  }
-	else
-	  {
-	    last->next = item;
-	  }
-	last = item;
+	*tail = item;
+	tail = &item->next;
 
 	current = current->next;
+	i++;
       }
+
+    assert_release (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
 
-    return NO_ERROR;
+    return dest;
   }
 
-  QPROC_DB_VALUE_LIST
-  spawner::spawn (const QPROC_DB_VALUE_LIST src)
+  int
+  spawner::spawn (const QPROC_DB_VALUE_LIST src, QPROC_DB_VALUE_LIST dest)
   {
-    QPROC_DB_VALUE_LIST dest = get (src);
-    if (dest == nullptr)
+    if (!is_valid_argument (src, dest))
       {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
+	return er_errid ();
       }
 
     dest->next = nullptr;
-
     dest->val = spawn (src->val);
-    if (dest->val == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
+    dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
 
-    dest->dom = tp_domain_copy (src->dom, true); /* TODO: check freed */
-    if (dest->dom == nullptr)
-      {
-	assert_release (er_errid () != NO_ERROR);
-	return nullptr;
-      }
-
-    return NO_ERROR;
+    return er_errid ();
   }
 
   VAL_DESCR *
@@ -897,42 +770,49 @@ namespace cubxasl
     VAL_DESCR *dest = get (src);
     if (dest == nullptr)
       {
-	assert_release (er_errid () != NO_ERROR);
 	return nullptr;
       }
 
-    if (src->dbval_ptr != nullptr)
+    /* ref: xqmgr_execute_query */
+    dest->dbval_ptr = get (src->dbval_ptr, src->dbval_cnt);
+    if (dest->dbval_ptr != nullptr)
       {
-	dest->dbval_ptr = get (src->dbval_ptr, src->dbval_cnt);
-	if (dest->dbval_ptr == nullptr)
-	  {
-	    assert_release (er_errid () != NO_ERROR);
-	    return nullptr;
-	  }
-
 	for (int i = 0; i < src->dbval_cnt; i++)
 	  {
-	    if (spawn (&src->dbval_ptr[i], &dest->dbval_ptr[i]) != NO_ERROR)
-	      {
-		assert_release (er_errid () != NO_ERROR);
-		return nullptr;
-	      }
+	    /* always returns NO_ERROR */
+	    pr_clone_value (&src->dbval_ptr[i], &dest->dbval_ptr[i]);
 	  }
-
-	dest->dbval_cnt = src->dbval_cnt;
-      }
-    else
-      {
-	dest->dbval_ptr = nullptr;
-	dest->dbval_cnt = 0;
       }
 
+    dest->dbval_cnt = src->dbval_cnt;
     dest->sys_datetime = src->sys_datetime;
     dest->sys_epochtime = src->sys_epochtime;
     dest->lrand = src->lrand;
     dest->drand = src->drand;
-    dest->xasl_state = NULL;	/* TODO: unsupported */
+
+    /* TODO: unsupported */
+#if 0
+    assert_release (src->xasl_state == nullptr);
+#endif
+    dest->xasl_state = NULL;
 
     return dest;
+  }
+
+  bool
+  spawner::is_valid_argument (const void *src, const void *dest)
+  {
+    if (src == nullptr)
+      {
+	return false;
+      }
+
+    if (dest == nullptr)
+      {
+	assert_release (false);
+	return false;
+      }
+
+    return true;
   }
 };
