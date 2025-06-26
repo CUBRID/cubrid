@@ -192,7 +192,7 @@ jobs:
             executors:
               cubrid-default:
                 docker:
-                  - image: cubridci/cubridci:develop_cl7.9
+                  - image: cubridci/cubridci:develop
                 working_directory: /home
 
               cubrid-test-shell:
@@ -212,7 +212,8 @@ jobs:
                   CC: "ccache gcc"
                   CXX: "ccache g++"
                   CCACHE_DIR: /home/.ccache
-                  CCACHE_MAXSIZE: "5G"
+                  CCACHE_COMPILERCHECK: content
+                  CCACHE_HARDLINK: 1
                 steps:
                   - checkout
                   - restore_cache:
@@ -228,6 +229,7 @@ jobs:
                       name: Build
                       command: |
                         mkdir -p \$CCACHE_DIR
+                        ccache --max-size=5G
                         ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s

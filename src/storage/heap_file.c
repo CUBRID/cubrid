@@ -627,7 +627,7 @@ static HEAP_FINDSPACE heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p
 							 int record_length, int needed_space,
 							 HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
 static PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-					   int newrec_size, HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
+					   HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
 static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				      VPID * hdr_vpid, bool scan_all, bool can_cycle);
 
@@ -3482,8 +3482,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
  *   hfid(in): Object heap file identifier
  *   needed_space(in): The minimal space needed
  *   isnew_rec(in): Are we inserting a new record to the heap ?
- *   newrec_size(in): Size of the new record
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
+ *   pg_watcher(out): watcher for a found page.
  *
  * Note: Find a page among the set of best pages of the heap which has
  * the needed space. If we do not find any page, a new page is
@@ -3493,7 +3493,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
  */
 static PAGE_PTR
 heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-			   int newrec_size, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
+			   HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -3508,13 +3508,16 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   int error_code = NO_ERROR;
   PERF_UTIME_TRACKER time_find_best_page = PERF_UTIME_TRACKER_INITIALIZER;
 
+  assert (!heap_is_big_length (needed_space));
+  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
+
   PERF_UTIME_TRACKER_START (thread_p, &time_find_best_page);
+
   /*
    * Try to use the space cache for as much information as possible to avoid
    * fetching and updating the header page a lot.
    */
 
-  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
   PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   /*
@@ -3557,14 +3560,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   if (isnew_rec == true)
     {
       heap_hdr->estimates.num_recs += 1;
-      if (newrec_size > DB_PAGESIZE)
-	{
-	  heap_hdr->estimates.num_pages += CEIL_PTVDIV (newrec_size, DB_PAGESIZE);
-	}
     }
-  heap_hdr->estimates.recs_sumlen += (float) newrec_size;
+  heap_hdr->estimates.recs_sumlen += (float) needed_space;
 
-  assert (!heap_is_big_length (needed_space));
   /* Take into consideration the unfill factor for pages with objects */
   total_space = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
   if (heap_is_big_length (total_space))
@@ -20718,13 +20716,13 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
+  assert (context->recdes_p->type != REC_NEWHOME);
 
   if (home_hint_p == NULL)
     {
       /* find and fix page for insert */
       if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length,
-				     (context->recdes_p->type != REC_NEWHOME), context->recdes_p->length,
-				     context->scan_cache_p, context->home_page_watcher_p) == NULL)
+				     true, context->scan_cache_p, context->home_page_watcher_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -20865,9 +20863,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
     }
 #endif
 
-  if (heap_stats_find_best_page
-      (thread_p, &context->hfid, context->recdes_p->length, false, context->recdes_p->length, context->scan_cache_p,
-       context->home_page_watcher_p) == NULL)
+  if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length, false,
+				 context->scan_cache_p, context->home_page_watcher_p) == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
