@@ -432,10 +432,10 @@ au_make_user (const char *name)
 		  db_make_object (&value, auth);
 		  obj_set (user, "authorization", &value);
 
-		  db_make_int (&value, AU_USER_TRUE);
+		  db_make_int (&value, true);
 		  obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
 
-		  db_make_int (&value, AU_USER_FALSE);
+		  db_make_int (&value, false);
 		  obj_set (user,AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
 
 		  db_make_null (&value);

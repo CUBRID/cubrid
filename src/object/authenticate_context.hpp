@@ -35,9 +35,6 @@
 #define AU_USER_ATTR_IS_LOGINABLE      "is_loginable"
 #define AU_USER_ATTR_IS_SYSTEM_CREATED "is_system_created"
 
-#define AU_USER_FALSE false
-#define AU_USER_TRUE true
-
 class EXPORT_IMPORT authenticate_context
 {
   public:

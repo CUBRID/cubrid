@@ -947,7 +947,7 @@ authenticate_context::set_system_user (void)
   DB_VALUE value;
   int error = NO_ERROR;
 
-  db_make_int (&value, AU_USER_TRUE);
+  db_make_int (&value, true);
 
   error = obj_set (Au_dba_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
   if (error != NO_ERROR)
@@ -970,7 +970,7 @@ authenticate_context::disable_login (MOP user)
   DB_VALUE value;
   int error = NO_ERROR;
 
-  db_make_int (&value, AU_USER_FALSE);
+  db_make_int (&value, false);
 
   error = obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
   if (error != NO_ERROR)
@@ -986,7 +986,7 @@ int authenticate_context::is_loginable_user (MOP user)
   DB_VALUE value;
 
   if (obj_get (user, AU_USER_ATTR_IS_LOGINABLE, &value) == NO_ERROR &&
-      db_get_int (&value) == AU_USER_TRUE)
+      db_get_int (&value) == true)
     {
       return true;
     }
