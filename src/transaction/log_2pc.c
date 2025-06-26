@@ -71,10 +71,14 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
   int (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
-    bool (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices, void *block_particps_ids);
-    bool (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices, void *block_particps_ids, int collect);
+    bool (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+			 void *block_particps_ids);
+    bool (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+			void *block_particps_ids, int collect);
 };
-struct log_2pc_global_data log_2pc_Userfun = { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit, dblink_2pc_send_abort};
+struct log_2pc_global_data log_2pc_Userfun =
+  { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit,
+dblink_2pc_send_abort };
 
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
@@ -124,7 +128,7 @@ static int
 log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
 {
   int num_particps;
-  THREAD_ENTRY * thread_p = thread_get_thread_entry_info ();
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
   if (log_2pc_Userfun.get_participants == NULL)
     {
@@ -203,7 +207,7 @@ log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids
 bool
 log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
 {
-  THREAD_ENTRY * thread_p;
+  THREAD_ENTRY *thread_p;
 
   if (log_2pc_Userfun.send_prepare == NULL)
     {
@@ -296,7 +300,8 @@ log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices,
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      result = (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
+      result =
+	(*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
     }
 
   return result;

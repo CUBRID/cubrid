@@ -53,20 +53,20 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 
   if (num_ids > 0)
     {
-      ids = (char *) malloc(num_ids * 12);
+      ids = (char *) malloc (num_ids * 12);
       if (ids == NULL)
-        {
-          return -1;
-        }
+	{
+	  return -1;
+	}
 
       dbl = dblink;
       for (i = 0; i < num_ids; i++)
-        {
-          snprintf(ids + i*12, 12, "%12d", dbl->conn_handle);
+	{
+	  snprintf (ids + i * 12, 12, "%12d", dbl->conn_handle);
 	  dbl = dbl->next;
-        }
+	}
 
-      *block_particps_ids = (void *)ids;
+      *block_particps_ids = (void *) ids;
     }
 
   *partid_len = num_ids * 12;
@@ -75,7 +75,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 }
 
 int
-dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void * block_particps_ids)
+dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids)
 {
   int i = 0;
   XID xid;
@@ -83,12 +83,12 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
   xid.formatID = 1234;
-  xid.gtrid_length = sizeof(int);
+  xid.gtrid_length = sizeof (int);
   xid.bqual_length = 12;
 
   while (dblink)
     {
-      memcpy(xid.data + xid.gtrid_length, (char *)block_particps_ids + i*12, 12);
+      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       cci_xa_prepare (dblink->conn_handle, &xid, &err_buf);
       dblink = dblink->next;
       i++;
@@ -108,12 +108,12 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, in
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
   xid.formatID = 1234;
-  xid.gtrid_length = sizeof(int);
+  xid.gtrid_length = sizeof (int);
   xid.bqual_length = 12;
 
   while (dblink)
     {
-      memcpy(xid.data + xid.gtrid_length, (char *)block_particps_ids + i*12, 12);
+      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
       dblink = dblink->next;
       i++;
@@ -125,7 +125,8 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, in
 }
 
 bool
-dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particps, void *block_particps_ids, int collect)
+dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particps, void *block_particps_ids,
+		       int collect)
 {
   int i = 0;
   XID xid;
@@ -133,12 +134,12 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
   xid.formatID = 1234;
-  xid.gtrid_length = sizeof(int);
+  xid.gtrid_length = sizeof (int);
   xid.bqual_length = 12;
 
   while (dblink)
     {
-      memcpy(xid.data + xid.gtrid_length, (char *)block_particps_ids + i*12, 12);
+      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
       dblink = dblink->next;
       i++;
