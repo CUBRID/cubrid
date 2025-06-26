@@ -708,6 +708,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 #ifdef __cplusplus
 }
 #endif

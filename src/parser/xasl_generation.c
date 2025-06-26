@@ -16099,7 +16099,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   if (pt_has_aggregate (parser, select_node))
     {
       int *attr_offsets;
-      PT_NODE *group_out_list, *group;
+      PT_NODE *group_out_list, *group, *select_out_list, *node, *new_node;
+      QPROC_DB_VALUE_LIST val_list;
 
       /* set 'etc' field for pseudocolumns nodes */
       pt_set_level_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->level_val);
@@ -16254,7 +16255,41 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       symbols->current_listfile = group_out_list;
       symbols->listfile_value_list = buildlist->g_val_list;
 
-      buildlist->g_outptr_list = pt_to_outlist (parser, select_node->info.query.q.select.list, NULL, unbox);
+      select_out_list = NULL;
+      for (node = select_node->info.query.q.select.list; node; node = node->next)
+	{
+	  new_node = NULL;
+	  for (group = select_node->info.query.q.select.group_by, val_list = buildlist->g_val_list->valp;
+	       val_list && group; val_list = val_list->next, group = group->next)
+	    {
+	      if (group->node_type != PT_SORT_SPEC)
+		{
+		  PT_INTERNAL_ERROR (parser, "expecting a sort spec");
+		  goto exit_on_error;
+		}
+
+	      if (group->info.sort_spec.expr == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "null sort expression");
+		  goto exit_on_error;
+		}
+
+	      if (pt_compare_sort_spec_expr (parser, group->info.sort_spec.expr, node))
+		{
+		  new_node = pt_point_ref (parser, node);
+		  new_node->etc = (void *) val_list->val;
+		  break;
+		}
+	    }
+
+	  if (new_node == NULL)
+	    {
+	      new_node = pt_point (parser, node);
+	    }
+	  select_out_list = parser_append_node (new_node, select_out_list);
+	}
+
+      buildlist->g_outptr_list = pt_to_outlist (parser, select_out_list, NULL, unbox);
 
       if (buildlist->g_outptr_list == NULL)
 	{

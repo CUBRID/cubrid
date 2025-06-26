@@ -249,7 +249,6 @@ static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * q
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
 static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list);
@@ -16023,7 +16022,7 @@ pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE
  *  expr1(in): first expression
  *  expr2(in): second expression
  */
-static bool
+bool
 pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2)
 {
   if (parser == NULL || expr1 == NULL || expr2 == NULL)
