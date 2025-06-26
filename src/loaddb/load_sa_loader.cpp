@@ -6360,7 +6360,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int defaults = 0;
   int fails = 0;
   int64_t lastcommit = 0;
-  bool is_emptyfile = false;
+  volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
 
   std::ifstream object_file (args->object_file);
