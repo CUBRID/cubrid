@@ -3112,9 +3112,9 @@ parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET cod
       current_char = astring[pos];
       skip = 1;
 
-      // 1) 멀티바이트 공백: leading skip, trailing 종료
       if (intl_is_space (astring + pos, NULL, codeset, &skip))
 	{
+	  // 1) 멀티바이트 공백: leading skip, trailing 종료
 	  // 숫자·소수점 전까지는 skip
 	  if (!seen_digit && !seen_dot)
 	    {
@@ -3123,18 +3123,17 @@ parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET cod
 	  // 숫자나 소수점 뒤에 공백이 나오면 “끝”
 	  break;
 	}
-
-      // 2) 부호: 제일 처음만
-      if (!seen_digit && !seen_dot && int_count == 0 && frac_count == 0 && (current_char == '+' || current_char == '-'))
+      else if (!seen_digit && !seen_dot && int_count == 0 && frac_count == 0
+	       && (current_char == '+' || current_char == '-'))
 	{
+	  // 2) 부호: 제일 처음만
 	  *negate_value = (current_char == '-');
 	  seen_digit = true;	// sign 이후부터 trailing-space 로 판단
 	  continue;
 	}
-
-      // 3) decimal point
-      if (current_char == '.')
+      else if (current_char == '.')
 	{
+	  // 3) decimal point
 	  if (seen_dot)
 	    {
 	      return DOMAIN_INCOMPATIBLE;
@@ -3143,16 +3142,14 @@ parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET cod
 	  seen_digit = true;
 	  continue;
 	}
-
-      // 4) 콤마는 numeric literal 에서 에러
-      if (current_char == ',')
+      else if (current_char == ',')
 	{
+	  // 4) 콤마는 numeric literal 에서 에러
 	  return DOMAIN_INCOMPATIBLE;
 	}
-
-      // 5) digit
-      if (current_char >= '0' && current_char <= '9')
+      else if (current_char >= '0' && current_char <= '9')
 	{
+	  // 5) digit
 	  seen_digit = true;
 	  if (!seen_dot)
 	    {
@@ -3208,9 +3205,11 @@ parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET cod
 	    }
 	  continue;
 	}
-
-      // 6) 그 외 문자: 파싱 종료
-      break;
+      else
+	{
+	  /* Stray Non-numeric compatible character */
+	  return DOMAIN_INCOMPATIBLE;
+	}
     }
 
   if (int_count + frac_count == 0)
