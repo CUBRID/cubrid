@@ -2325,7 +2325,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double dtmp;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   //char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
-  char num_string[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 127 + 10
+  char num_string[NUMERIC_MAX_STRING_SIZE + 1];	// 130(127 + sign + dot + \0) + 1 = 131
   char *ptr, *end;
   int need_round = 0;
   int p, s;
@@ -3501,7 +3501,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       {
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 	//char num_string[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
-	char num_string[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 127 + 10
+	char num_string[NUMERIC_MAX_STRING_SIZE + 1];	// 130(127 + sign + dot + \0) + 1 = 131
 	char *ptr, *end;
 	int p, s;
 

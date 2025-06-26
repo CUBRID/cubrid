@@ -61,10 +61,9 @@
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
 //#define TWICE_NUM_MAX_PREC    (2*DB_MAX_NUMERIC_PRECISION)
-// TWICE_NUM_MAX_PREC 해당 부분을 130으로 하고 print 해주는 부분은 127 + 10 으로 해줘야 정상적으로 결과가 출력됨
-// 이유는 모르겠음...
-// *중요* 일단 임시로 10진수 표현 매크로(TWICE_NUM_MAX_PREC)를 최대 130으로 했으나, 나중에 수정 필요함.
-#define TWICE_NUM_MAX_PREC	(DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)	// 127 + 3(+-, ., \0)
+
+/* TWICE_NUM_MAX_PREC : 임시로 문자열로 파싱(165) 이후에 처리된 최대 값 127의 str 버퍼에 담을 수 있는 최대 숫자(정수부＋소수부) 자릿수 (순수 숫자(0~9) 자리 수) */
+#define TWICE_NUM_MAX_PREC	(DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)
 
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
 
@@ -162,11 +161,12 @@ static bool numeric_is_longnum_value (DB_C_NUMERIC arg);
 static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg);
 static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg);
 static int get_significant_digit (DB_BIGINT i);
-static int parse_decimal_string (const char *s, int len, INTL_CODESET codeset, bool * negate_value, char *int_digits,
-				 int *int_len, char *frac_digits, int *frac_len);
-static void compute_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
-				char *num_string, int *prec, int *scale);
-static inline int count_leading_zeros (const char *d, int len);
+static int parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+				  char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
+				  int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
+static void compute_prec_scale2 (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
+				 int int_first_nz, int int_last_nz, int frac_first_nz, int frac_last_nz,
+				 char *num_string, int *prec, int *scale);
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -1540,8 +1540,8 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   char dec_digits[TWICE_NUM_MAX_PREC + 2];
 
   /* If src precision fits without truncation, merely set dest to the lower half of the source buffer and return */
-  //if (src_prec <= DB_MAX_NUMERIC_PRECISION)
-  if (src_prec <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+  if (src_prec <= DB_MAX_NUMERIC_PRECISION)
+    //if (src_prec <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
     {
       numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
       *dest_prec = src_prec;
@@ -1551,8 +1551,8 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   /* The remaining cases are for when the precision of the source overflows. */
 
   /* Case 1: The scale of the source does *not* overflow */
-  //else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
-  else if (src_scale <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+  else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
+    //else if (src_scale <= DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
     {
       /* If upper half of *src is zero, merely copy, reset precision, and return */
       if (numeric_is_zero (src) && src[DB_NUMERIC_BUF_SIZE] <= 0x7F)
@@ -2686,8 +2686,8 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
 {
   //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
   //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
-  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT * 4];
-  char new_dec_num[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];
+  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 1];
+  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
   int i = 0;
 
   /* the number of digits of the result */
@@ -2697,8 +2697,7 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  //memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
-  memset (new_dec_num, 0, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10);
+  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2741,16 +2740,15 @@ numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const 
 {
   //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
   //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
-  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT * 4];
-  char new_dec_num[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];
+  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 1];
+  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
   int i = 0;
 
   assert (src_scale <= dst_scale);
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  //memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
-  memset (new_dec_num, 0, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10);
+  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2789,7 +2787,7 @@ numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
 {
   int i, len = 0;
   //char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
-  char dec_str[(2 * DB_INTERNAL_NUMERIC_PRECISION_LIMIT) + 4];
+  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 1];
   numeric_coerce_num_to_dec_str (num, dec_str);
   len = strlen (dec_str);
   for (i = 0; i < scale; i++)
@@ -2895,7 +2893,7 @@ int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float)
 {
   //char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10)];	// 127 + 4(+-, ., \0)
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10)];
   int i = 0;
 
   switch (get_fp_value_type (adouble))
@@ -2996,8 +2994,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
 
-		  //if (decpt > DB_MAX_NUMERIC_PRECISION)
-		  if (decpt > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
+		  if (decpt > DB_MAX_NUMERIC_PRECISION)
+		    //if (decpt > DB_INTERNAL_NUMERIC_PRECISION_LIMIT)
 		    {
 		      /* should not happen since overflow has been checked for previously */
 		      return ER_IT_DATA_OVERFLOW;
@@ -3029,8 +3027,8 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 		}
 
 	      /* append zeroes until dst_scale is reached */
-	      //while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
-	      while (*prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT && *scale < dst_scale)
+	      while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
+		//while (*prec < DB_INTERNAL_NUMERIC_PRECISION_LIMIT && *scale < dst_scale)
 		{
 		  numeric_str[1 + *prec] = '0';
 		  (*prec)++;
@@ -3082,221 +3080,311 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-/* 1. 문자열 파싱: 부호·콤마·공백 걸러내고 digit만 int_digits/frac_digits에 담음 */
+/*
+ * 1. parse and compute prec/scale: 문자열 파싱: 부호·콤마·공백 걸러내고 digit를 int_digits/frac_digits에 담고 prec/scale 계산
+ *    - skip leading spaces, handle sign
+ *    - skip commas
+ *    - split digits into int_digits and frac_digits
+ *    - count prec and scale
+ */
 static int
-parse_decimal_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
-		      char *int_digits, int *int_len, char *frac_digits, int *frac_len)
+parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
+		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
 {
-  bool seen_dot = false, sign_found = false;
-  int i, int_idx = 0, frac_idx = 0, skip;
+  bool seen_dot = false;	// 소수점(.)을 이미 만났는지
+  bool seen_digit = false;	// 부호 이후 trailing-space 판단용
+  int int_count = 0;		// 정수부 전체 자릿수
+  int frac_count = 0;		// 소수부 전체 자릿수
+  int pos = 0;			// 현재 파싱 위치 (index)
+  int skip = 1;			// 공백 건너뛰기용
+  char current_char = '\0';
+  int buf_idx = 0;
+  int int_parse_limit = DB_MAX_NUMERIC_PRECISION + (-(DB_MIN_NUMERIC_SCALE));	// 38 + -(-84) = 122
+  int frac_parse_limit = DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE;	// 38 + 127 = 165
+
+  *int_first_nz = *int_last_nz = -1;
+  *frac_first_nz = *frac_last_nz = -1;
   *negate_value = false;
 
-  for (i = 0; i < astring_length; i += skip)
+  for (; pos < astring_length; pos += skip)
     {
+      current_char = astring[pos];
       skip = 1;
-      if (!sign_found && (astring[i] == '+' || astring[i] == '-'))
+
+      // 1) 멀티바이트 공백: leading skip, trailing 종료
+      if (intl_is_space (astring + pos, NULL, codeset, &skip))
 	{
-	  sign_found = true;
-	  if (astring[i] == '-')
+	  // 숫자·소수점 전까지는 skip
+	  if (!seen_digit && !seen_dot)
 	    {
-	      *negate_value = true;
+	      continue;
 	    }
+	  // 숫자나 소수점 뒤에 공백이 나오면 “끝”
+	  break;
 	}
-      else if (intl_is_space (astring + i, NULL, codeset, &skip) || astring[i] == ',')
+
+      // 2) 부호: 제일 처음만
+      if (!seen_digit && !seen_dot && int_count == 0 && frac_count == 0 && (current_char == '+' || current_char == '-'))
 	{
-	  /* skip */
+	  *negate_value = (current_char == '-');
+	  seen_digit = true;	// sign 이후부터 trailing-space 로 판단
+	  continue;
 	}
-      else if (astring[i] == '.')
+
+      // 3) decimal point
+      if (current_char == '.')
 	{
 	  if (seen_dot)
 	    {
 	      return DOMAIN_INCOMPATIBLE;
 	    }
 	  seen_dot = true;
+	  seen_digit = true;
+	  continue;
 	}
-      else if (astring[i] >= '0' && astring[i] <= '9')
-	{
-	  if (!seen_dot)
-	    {
-	      // 정수부에 붙이기 전, 인덱스 오버플로우 검사
-	      if (int_idx >= astring_length)
-		{
-		  return DOMAIN_INCOMPATIBLE;
-		}
-	      int_digits[int_idx++] = astring[i];
-	    }
-	  else
-	    {
-	      // 소수부에 붙이기 전, 인덱스 오버플로우 검사
-	      if (frac_idx >= astring_length)
-		{
-		  return DOMAIN_INCOMPATIBLE;
-		}
-	      frac_digits[frac_idx++] = astring[i];
-	    }
-	}
-      else
+
+      // 4) 콤마는 numeric literal 에서 에러
+      if (current_char == ',')
 	{
 	  return DOMAIN_INCOMPATIBLE;
 	}
+
+      // 5) digit
+      if (current_char >= '0' && current_char <= '9')
+	{
+	  seen_digit = true;
+	  if (!seen_dot)
+	    {
+	      // 정수부
+	      if (current_char == '0' && *int_first_nz < 0)
+		{
+		  // 아직 유효 숫자(1~9) 한 번도 안나왔으면, 그냥 skip
+		}
+	      else
+		{
+		  // 첫 non-zero가 나오거나, 이미 non-zero를 만난 뒤의 0인 경우
+		  if (*int_first_nz < 0 && current_char != '0')
+		    {
+		      *int_first_nz = int_count;
+		    }
+		  if (current_char != '0')
+		    {
+		      *int_last_nz = int_count;
+		    }
+		  // 버퍼에 저장 및 카운트
+		  int_digits[int_count++] = current_char;
+		}
+	      // overflow 체크
+	      if (int_count > int_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  else
+	    {
+	      // 소수부
+	      // 버퍼에 일단 저장 (overflow 체크 뒤)
+	      if (frac_count < frac_parse_limit)
+		{
+		  frac_digits[frac_count] = current_char;
+		}
+	      // non-zero 인덱스 추적
+	      if (current_char != '0')
+		{
+		  if (*frac_first_nz < 0)
+		    {
+		      *frac_first_nz = frac_count;
+		    }
+		  *frac_last_nz = frac_count;
+		}
+
+	      frac_count++;
+	      // overflow 체크
+	      if (frac_count > frac_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  continue;
+	}
+
+      // 6) 그 외 문자: 파싱 종료
+      break;
     }
 
-  int_digits[int_idx] = '\0';	// 정수부 끝에 널 문자 추가
-  frac_digits[frac_idx] = '\0';	// 소수부 끝에 널 문자 추가
-  *int_len = int_idx;
-  *frac_len = frac_idx;
+  if (int_count + frac_count == 0)
+    {
+      // special-case: 숫자 하나도 없으면 "0"
+      int_digits[0] = '0';
+      int_digits[1] = '\0';
+      frac_digits[0] = '\0';
+      *int_first_nz = 0;
+      *int_last_nz = 0;
+      *frac_first_nz = -1;
+      *frac_last_nz = -1;
+      *int_len = 0;
+      *frac_len = 0;
+    }
+  else
+    {
+      // 정상 케이스: 채운 길이만큼 널 종결
+      int_digits[int_count] = '\0';
+      frac_digits[frac_count] = '\0';
+      *int_len = int_count;
+      *frac_len = frac_count;
+    }
 
   return NO_ERROR;
 }
 
 /* 2. prec/scale 계산 */
 static void
-compute_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len, char *num_string,
-		    int *prec, int *scale)
+compute_prec_scale2 (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int int_first_nz,
+		     int int_last_nz, int frac_first_nz, int frac_last_nz, char *num_string, int *prec, int *scale)
 {
-  const int MAXP = DB_MAX_NUMERIC_PRECISION;	// 38
-  /* 도메인을 미리 알 수 없어, 일단 최대자리수 165 까지 읽고 num_to_num 함수에서 overflow 검사 */
+  const int maxp = DB_MAX_NUMERIC_PRECISION;	// 38
+  char *out = num_string;
+  int total = int_len + frac_len;
 
-  // 1) 정수부 앞 0은 한 번만 세서 int_ptr/eff_int 로 캐싱
-  int int_zeroes = count_leading_zeros (int_digits, int_len);
-  int eff_int = (int_len - int_zeroes) < 0 ? 0 : (int_len - int_zeroes);
-  const char *int_ptr = int_digits + int_zeroes;
-
+  /*
+   * ───────────────────────────
+   * 1) 순수 정수-only
+   * ───────────────────────────
+   */
   if (frac_len == 0)
     {
-      /* 정수부 */
-      if (eff_int == 0)
+      if (int_len == 0)
 	{
-	  // 1) 모두 0 이면 "0"
-	  num_string[0] = '0';
+	  // 1-A) int_len == 0: "0"
+	  out[0] = '0';
+	  out[1] = '\0';
 	  *prec = 1;
 	  *scale = 0;
+	  return;
 	}
-      else if (eff_int <= MAXP)
+      else if (int_len <= maxp)
 	{
-	  // 2) sig_len ≤ MAXP: 그대로 precision, scale=0
-	  *prec = eff_int;
+	  // 1-A) int_len <= MAXP: 그대로 복사
+	  memcpy (out, int_digits, int_len);
+	  out[int_len] = '\0';
+	  *prec = int_len;
 	  *scale = 0;
-	  memcpy (num_string, int_ptr, eff_int);
+	  return;
 	}
       else
 	{
-	  // 3) sig_len > MAXP : Oracle 스타일로 트레일링 0을 음수 scale로
-	  int trailing_zeros = 0;
-	  while (trailing_zeros < eff_int && int_ptr[eff_int - 1 - trailing_zeros] == '0')
-	    {
-	      trailing_zeros++;
-	    }
-
-	  int significant_digits = eff_int - trailing_zeros;	// 남는 유효수 길이
-	  if (significant_digits <= 0)
-	    {
-	      // 결국 모두 0
-	      num_string[0] = '0';
-	      *prec = 1;
-	      *scale = 0;
-	    }
-	  else
-	    {
-	      // 남은 유효수로 precision, trailing_zeros 는 -scale
-	      *prec = significant_digits;
-	      *scale = -trailing_zeros;
-	      memcpy (num_string, int_ptr, *prec);
-	    }
+	  // 1-B) int_len > MAXP: 뒤쪽 0 개수만큼 음수 scale
+	  int sig_len = int_last_nz - int_first_nz + 1;
+	  int tz_cnt = int_len - (int_last_nz + 1);
+	  memcpy (out, int_digits + int_first_nz, sig_len);
+	  out[sig_len] = '\0';
+	  *prec = sig_len;
+	  *scale = -tz_cnt;
+	  return;
 	}
+    }
+
+  /*
+   * ───────────────────────────
+   * 2) 순수 소수부-only
+   * ───────────────────────────
+   */
+  if (int_len == 0)
+    {
+      if (frac_first_nz < 0)
+	{
+	  // 2-A) 모두 0인 경우: "0"
+	  out[0] = '0';
+	  out[1] = '\0';
+	  *prec = 1;
+	  *scale = frac_len;
+	  return;
+	}
+      if (frac_len <= maxp)
+	{
+	  // 2-B) frac_len <= maxp: 기존 개념 그대로
+	  memcpy (out, frac_digits, frac_len);
+	  out[frac_len] = '\0';
+	  *prec = frac_len;
+	  *scale = frac_len;
+	  return;
+	}
+      else
+	{
+	  // 2-C) frac_len > MAXP: leading zeros 건너뛰고 최대 MAXP자리만 복사
+	  int zero_cnt = frac_first_nz < 0 ? frac_len : frac_first_nz;
+	  int nz_len = frac_first_nz < 0 ? 0 : (frac_last_nz - frac_first_nz + 1);
+	  int p = nz_len > maxp ? maxp : nz_len;
+	  memcpy (out, frac_digits + zero_cnt, p);
+	  out[p] = '\0';
+	  *prec = p;
+	  *scale = frac_len;
+	  return;
+	}
+    }
+
+  /*
+   * ───────────────────────────
+   * 3) Mixed (int_first_nz >= 0 && frac_len > 0)
+   * ───────────────────────────
+   */
+  if (total <= maxp)
+    {
+      // 3-A) total <= MAXP: 정수+소수 그대로
+      memcpy (out, int_digits, int_len);
+      memcpy (out + int_len, frac_digits, frac_len);
+      out[total] = '\0';
+      *prec = total;
+      *scale = frac_len;
+      return;
+    }
+  else if (frac_len <= maxp)
+    {
+      // 3-B) total > MAXP && frac_len <= MAXP: 앞쪽 자릿수 drop
+      int drop = total - maxp;
+      if (drop <= frac_len)
+	{
+	  // B-1: int 그대로, frac 앞에서 drop 제외
+	  int keep_frac = frac_len - drop;
+	  memcpy (out, int_digits, int_len);
+	  memcpy (out + int_len, frac_digits, keep_frac);
+	  out[int_len + keep_frac] = '\0';
+	  *prec = int_len + keep_frac;
+	  *scale = keep_frac;
+	}
+      else
+	{
+	  // B-2: frac 전부 제외, int 뒤에서만 (drop - frac_len) 제외
+	  int keep_int = int_len - (drop - frac_len);
+	  if (keep_int < 0)
+	    {
+	      keep_int = 0;
+	    }
+	  memcpy (out, int_digits + (int_len - keep_int), keep_int);
+	  out[keep_int] = '\0';
+	  *prec = keep_int;
+	  *scale = frac_len;
+	}
+      return;
     }
   else
     {
-      /* 소수부 */
-      // 1) 정수 + 소수 길이 계산
-      int total = eff_int + frac_len;
-      char *out = num_string;	// 쓰기 포인터
+      // 3-C) total > MAXP && frac_len > MAXP: Oracle-style 소수부 트리밍
+      // 정수부 그대로 복사
+      memcpy (out, int_digits, int_len);
 
-      // 2) 분기 처리
-      if (total <= MAXP)
-	{
-	  // [A] total <= MAXP: 정수부+소수부 모두 보존
-	  // 예) NUMERIC(1,38), 0.00..09 (소수 자리 : 37) = frac_len=37 -> total=38
-	  *prec = total;
-	  *scale = frac_len;
-	  if (eff_int)
-	    {
-	      memcpy (out, int_ptr, eff_int);
-	      out += eff_int;
-	    }
-	  memcpy (out, frac_digits, frac_len);
-	}
-      else if (frac_len <= MAXP)
-	{
-	  // [B] total > MAXP && frac_len <= MAXP: 정수부 앞(drop)만큼 잘라낸 후 보존
-	  int drop = total - MAXP;
+      // 소수부 트리밍
+      int zero_cnt = frac_first_nz < 0 ? frac_len : frac_first_nz;
+      int nz_len = frac_first_nz < 0 ? 0 : (frac_last_nz - frac_first_nz + 1);
+      int p = nz_len > maxp ? maxp : nz_len;
 
-	  if (drop <= frac_len)
-	    {
-	      // B-1) drop이 소수부 길이 이하라면, frac_len에서 drop만큼 떼어내고, 정수부는 eff_int 전부 보존
-	      // 예) NUMERIC(38,10), 1.000000000000 (소수 자리 : 38) = int_len=1, frac_len = 10
-	      int new_frac = frac_len - drop;
-	      *prec = eff_int + new_frac;
-	      *scale = new_frac;
-	      // "1.000...000" 이면 int_ptr="1", frac_digits="000...0"
-	      // drop=1 -> new_frac=37 -> num_string="1" + 37*"0"
-	      memcpy (num_string, int_ptr, eff_int);
-	      memcpy (num_string + eff_int, frac_digits, new_frac);
-	    }
-	  else
-	    {
-	      // B-2) drop이 소수부보다 크면, 소수부 전부 떼어내고 남은 drop만큼 정수부 끝에서 떼어내고, 정수부 남은 길이 new_int
-	      // 예) NUMERIC(38,1), 123456789012345678901234567890123456789.0 (소수 자리 : 1) = int_len=39, frac_len=1
-	      int int_drop = drop - frac_len;
-	      int new_int = (eff_int - int_drop) < 0 ? 0 : (eff_int - int_drop);
-	      *prec = new_int;
-	      *scale = 0;
-	      // num_string은 정수부 앞 new_int자리
-	      memcpy (num_string, int_ptr, new_int);
-	    }
-	}
-      else
-	{
-	  // [C] frac_len > MAXP: Oracle 스타일 소수부 트리밍
-	  // 예) NUMERIC(2,38), 0.00..099 (소수 자리 : 39) → total=40, frac_len=39 (>38)
-	  // C-1) 소수부가 전부 0인지 검사
-	  int frac_zeroes = count_leading_zeros (frac_digits, frac_len);
-	  int valid_len = frac_len - frac_zeroes;
-	  if (valid_len <= 0)
-	    {
-	      // C-2) 전부 0일 때: p = 1, s = frac_len
-	      // 예) NUMERIC(2,38), 0.00..0 (소수 자리 : 39) -> total=40, frac_len=39 (>38)
-	      *prec = 1;
-	      *scale = frac_len;
-	      num_string[0] = '0';
-	    }
-	  else
-	    {
-	      // C-3) 첫 유효숫자부터 최대 MAXP개를 prec로, scale = frac_zeroes + p (최대 DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE)
-	      // valid_len 이 MAXP 보다 크면 prec = MAXP, scale = valid_len 넣은 이유
-	      // 예) NUMERIC(38,38), 0.909999999999999999999999999999999999999(소수 자리 : 39) 를 반올림 처리해주기 위해
-	      int effective_precision = valid_len > MAXP ? MAXP : valid_len;
-	      int effective_scale = valid_len > MAXP ? valid_len : (frac_zeroes + effective_precision);
-
-	      *prec = effective_precision;
-	      *scale = effective_scale;
-	      memcpy (num_string, frac_digits + frac_zeroes, effective_precision);
-	    }
-	}
+      memcpy (out + int_len, frac_digits + zero_cnt, p);
+      out[int_len + p] = '\0';
+      *prec = int_len + p;
+      *scale = frac_len;
+      return;
     }
-
-  num_string[*prec] = '\0';
-}
-
-static inline int
-count_leading_zeros (const char *d, int len)
-{
-  int i = 0;
-  while (i < len && d[i] == '0')
-    {
-      i++;
-    }
-  return i;
 }
 
 /*
@@ -3320,44 +3408,40 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   bool negate_value;
   int prec, scale;
   int int_len, frac_len;
-  //char int_digits[TWICE_NUM_MAX_PREC + 1];
-  //char frac_digits[TWICE_NUM_MAX_PREC + 1];
+  int int_first_nz, int_last_nz, frac_first_nz, frac_last_nz;
   char int_digits[astring_length + 1];	// 정수부 유효 숫자
   char frac_digits[astring_length + 1];	// 소수부 유효 숫자
   int ret = NO_ERROR;
   TP_DOMAIN *domain;
 
-  // 1) 부호, 공백, 콤마 제거 후 정수/소수부 분리
+  // 1) parse and compute prec/scale
   ret =
-    parse_decimal_string (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			  &frac_len);
+    parse_decimal_string2 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
+			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz);
   if (ret != NO_ERROR)
     {
+      if (ret == ER_IT_DATA_OVERFLOW)
+	{
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+	}
       goto exit_on_error;
     }
 
   // 2) prec, scale 계산 및 num_string 생성
-  (void) compute_prec_scale (int_digits, int_len, frac_digits, frac_len, num_string, &prec, &scale);
+  (void) compute_prec_scale2 (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
+			      frac_last_nz, num_string, &prec, &scale);
 
-  // 3) 자리수 초과 검사
-  if (prec > DB_MAX_NUMERIC_PRECISION)
-    {
-      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
-      ret = ER_IT_DATA_OVERFLOW;
-      goto exit_on_error;
-    }
-
-  // 4) 10진 문자열 -> base-256 바이너리
+  // 3) 10진 문자열 -> base-256 바이너리
   numeric_coerce_dec_str_to_num (num_string, num);
 
-  // 5) 부호 반영
+  // 4) 부호 반영
   if (negate_value)
     {
       numeric_negate (num);
     }
 
-  // 6) DB_VALUE 생성
+  // 5) DB_VALUE 생성
   ret = db_make_numeric (result, num, prec, scale);
   return ret;
 
@@ -4261,9 +4345,7 @@ char *
 numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
   //char temp[80];
-  // TWICE_NUM_MAX_PREC 해당 부분을 130으로 하고 print 해주는 부분은 127 + 10 으로 해줘야 정상적으로 결과가 출력됨
-  // 이유는 모르겠음...
-  char temp[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 10];	// 127 + 10 = 137
+  char temp[NUMERIC_MAX_STRING_SIZE + 1];	// 130(127 + sign + dot + \0)
   int nbuf;
   int temp_size;
   int i;

@@ -7173,6 +7173,7 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
     }
 
   //if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
+  // 여기도 임시로 DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION 사용
   if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION || prec < 0
       || scale < DB_MIN_NUMERIC_SCALE)
     {

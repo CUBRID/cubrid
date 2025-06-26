@@ -903,7 +903,7 @@ object_to_string (DB_OBJECT * object, int format)
 static char *
 numeric_to_string (DB_VALUE * value, bool commas)
 {
-  char str_buf[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 11];	// 127 + 11 = 138
+  char str_buf[NUMERIC_MAX_STRING_SIZE + 1];	// 130(127 + sign + dot + \0) + 1 = 131
   char *return_string;
   int prec, scale;
   int comma_length;

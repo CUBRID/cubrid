@@ -40,7 +40,7 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+#define NUMERIC_MAX_STRING_SIZE (DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)	// 127 + sign + dot + \0
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
