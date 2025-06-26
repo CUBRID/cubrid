@@ -238,7 +238,6 @@ struct groupby_state
   AGGREGATE_TYPE *g_output_agg_list;
   REGU_VARIABLE_LIST g_regu_list;
   REGU_VARIABLE_LIST g_hk_regu_list;
-  REGU_VARIABLE_LIST g_scan_regu_list;
   VAL_LIST *g_val_list;
   OUTPTR_LIST *g_outptr_list;
   XASL_NODE *xasl;
@@ -449,10 +448,9 @@ static int qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
 static int qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS option,
 					      XASL_STATE * xasl_state);
 static DB_LOGICAL qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
-static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, REGU_VARIABLE_LIST g_scan_regu_list,
-						      SORT_LIST * groupby_list, PRED_EXPR * having_pred,
-						      PRED_EXPR * grbynum_pred, DB_VALUE * grbynum_val,
-						      int grbynum_flag, XASL_NODE * eptr_list,
+static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_list,
+						      PRED_EXPR * having_pred, PRED_EXPR * grbynum_pred,
+						      DB_VALUE * grbynum_val, int grbynum_flag, XASL_NODE * eptr_list,
 						      AGGREGATE_TYPE * g_agg_list, REGU_VARIABLE_LIST g_regu_list,
 						      VAL_LIST * g_val_list, OUTPTR_LIST * g_outptr_list,
 						      REGU_VARIABLE_LIST g_hk_regu_list, bool with_rollup,
@@ -460,7 +458,6 @@ static GROUPBY_STATE *qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, R
 						      XASL_NODE * xasl, XASL_STATE * xasl_state,
 						      QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 						      QFILE_TUPLE_RECORD * tplrec);
-static bool qexec_dbval_is_referenced (DB_VALUE * dbval, REGU_VARIABLE * regu);
 static void qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate);
 static int qexec_clear_agg_orderby_const_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final);
 static int qexec_gby_init_group_dim (GROUPBY_STATE * gbstate);
@@ -3575,13 +3572,13 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
  *   tplrec(out) 	: Tuple record descriptor to store result tuples
  */
 static GROUPBY_STATE *
-qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, REGU_VARIABLE_LIST g_scan_regu_list, SORT_LIST * groupby_list,
-				PRED_EXPR * having_pred, PRED_EXPR * grbynum_pred, DB_VALUE * grbynum_val,
-				int grbynum_flag, XASL_NODE * eptr_list, AGGREGATE_TYPE * g_agg_list,
-				REGU_VARIABLE_LIST g_regu_list, VAL_LIST * g_val_list, OUTPTR_LIST * g_outptr_list,
-				REGU_VARIABLE_LIST g_hk_regu_list, bool with_rollup, int hash_eligible,
-				AGGREGATE_HASH_CONTEXT * agg_hash_context, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec)
+qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_list, PRED_EXPR * having_pred,
+				PRED_EXPR * grbynum_pred, DB_VALUE * grbynum_val, int grbynum_flag,
+				XASL_NODE * eptr_list, AGGREGATE_TYPE * g_agg_list, REGU_VARIABLE_LIST g_regu_list,
+				VAL_LIST * g_val_list, OUTPTR_LIST * g_outptr_list, REGU_VARIABLE_LIST g_hk_regu_list,
+				bool with_rollup, int hash_eligible, AGGREGATE_HASH_CONTEXT * agg_hash_context,
+				XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				QFILE_TUPLE_RECORD * tplrec)
 {
   assert (groupby_list != NULL);
 
@@ -3605,7 +3602,6 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, REGU_VARIABLE_LIST g_sc
   gbstate->g_outptr_list = g_outptr_list;
   gbstate->xasl = xasl;
   gbstate->xasl_state = xasl_state;
-  gbstate->g_scan_regu_list = g_scan_regu_list;
 
   gbstate->current_key.area_size = 0;
   gbstate->current_key.length = 0;
@@ -4535,12 +4531,13 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qexec_resolve_domains_for_group_by (buildlist, xasl->outptr_list);
     }
 
-  if (qexec_initialize_groupby_state
-      (&gbstate, buildlist->g_scan_regu_list, buildlist->groupby_list, buildlist->g_having_pred,
-       buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag, buildlist->eptr_list,
-       buildlist->g_agg_list, buildlist->g_regu_list, buildlist->g_val_list, buildlist->g_outptr_list,
-       buildlist->g_hk_sort_regu_list, buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
-       buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
+				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
+				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
+				      buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
+				      buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
+				      buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
+				      tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17801,10 +17798,8 @@ exit_on_error:
 static void
 qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N)
 {
-  int i, j;
+  int i;
   QPROC_DB_VALUE_LIST gby_vallist;
-  REGU_VARIABLE_LIST g_outptrlist, g_scan_regulist;
-  int error = NO_ERROR;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -17836,31 +17831,6 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	{
 	  if (i >= N - 1)
 	    {
-	      j = 0;
-	      g_outptrlist = gbstate->g_outptr_list->valptrp;
-
-	      /* when processing rollup, before clearing a g_val_list item,
-	       * we must check if it is referenced by any g_outptr_list item whose index is less than the current dimension level.
-	       * the value should be removed only if it is not referenced. */
-	      while (g_outptrlist)
-		{
-		  if (qexec_dbval_is_referenced (gby_vallist->val, &g_outptrlist->value))
-		    {
-		      switch (g_outptrlist->value.type)
-			{
-			case TYPE_INARITH:
-			case TYPE_OUTARITH:
-			case TYPE_FUNC:
-			case TYPE_SP:
-			  REGU_VARIABLE_SET_FLAG (&g_outptrlist->value, REGU_VARIABLE_FETCH_ALL_CONST);
-			  break;
-			default:
-			  break;
-			}
-		    }
-		  j++;
-		  g_outptrlist = g_outptrlist->next;
-		}
 	      (void) pr_clear_value (gby_vallist->val);
 	      db_make_null (gby_vallist->val);
 	    }
@@ -17868,94 +17838,6 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	  gby_vallist = gby_vallist->next;
 	}
     }
-}
-
-/*
- * qexec_dbval_is_referenced () -
- *   return:
- *   dbval(in):
- *   regu(in):
- */
-static bool
-qexec_dbval_is_referenced (DB_VALUE * dbval, REGU_VARIABLE * regu)
-{
-  REGU_VARIABLE_LIST regu_list = NULL;
-  switch (regu->type)
-    {
-    case TYPE_CONSTANT:
-      if (regu->value.dbvalptr == dbval)
-	{
-	  return true;
-	}
-      break;
-    case TYPE_INARITH:
-      if (regu->vfetch_to != NULL)
-	{
-	  if (regu->vfetch_to != NULL && db_value_equal (regu->vfetch_to, dbval))
-	    {
-	      return true;
-	    }
-	}
-      if (regu->value.arithptr->leftptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->leftptr))
-	    {
-	      return true;
-	    }
-	}
-      if (regu->value.arithptr->rightptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->rightptr))
-	    {
-	      return true;
-	    }
-	}
-      if (regu->value.arithptr->thirdptr != NULL)
-	{
-	  if (qexec_dbval_is_referenced (dbval, regu->value.arithptr->thirdptr))
-	    {
-	      return true;
-	    }
-	}
-      break;
-    case TYPE_SP:
-      {
-	regu_list = regu->value.sp_ptr->args;
-	while (regu_list)
-	  {
-	    if (qexec_dbval_is_referenced (dbval, &regu_list->value))
-	      {
-		return true;
-	      }
-	    regu_list = regu_list->next;
-	  }
-      }
-      break;
-
-    case TYPE_FUNC:
-      {
-	if (regu->vfetch_to != NULL)
-	  {
-	    if (regu->vfetch_to != NULL && db_value_equal (regu->vfetch_to, dbval))
-	      {
-		return true;
-	      }
-	  }
-	regu_list = regu->value.funcp->operand;
-	while (regu_list)
-	  {
-	    if (qexec_dbval_is_referenced (dbval, &regu_list->value))
-	      {
-		return true;
-	      }
-	    regu_list = regu_list->next;
-	  }
-      }
-    default:
-      break;
-    }
-
-  return false;
 }
 
 /*
@@ -18064,7 +17946,6 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
   DB_LOGICAL ev_res;
   XASL_STATE *xasl_state = gbstate->xasl_state;
   int error_code = NO_ERROR;
-  REGU_VARIABLE_LIST regu_list = NULL;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -18216,24 +18097,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
       ASSERT_ERROR_AND_SET (error_code);
       GOTO_EXIT_ON_ERROR;
     }
-  regu_list = gbstate->g_outptr_list->valptrp;
-  while (regu_list)
-    {
-      switch (regu_list->value.type)
-	{
 
-	  // folding 되어있는거 가져와서 비교하면되겠다 -> 결과 값만 같은 경우라면? ->g_scan_regu도 이용해보자
-	case TYPE_INARITH:
-	case TYPE_OUTARITH:
-	case TYPE_FUNC:
-	case TYPE_SP:
-	  REGU_VARIABLE_CLEAR_FLAG (&regu_list->value, REGU_VARIABLE_FETCH_ALL_CONST);
-	  break;
-	default:
-	  break;
-	}
-      regu_list = regu_list->next;
-    }
   switch (tpldescr_status)
     {
     case QPROC_TPLDESCR_SUCCESS:
@@ -19445,11 +19309,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
   assert (buildlist->g_with_rollup == 0);
 
-  if (qexec_initialize_groupby_state
-      (&gbstate, buildlist->g_scan_regu_list, buildlist->groupby_list, buildlist->g_having_pred,
-       buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag, buildlist->eptr_list,
-       buildlist->g_agg_list, buildlist->g_regu_list, buildlist->g_val_list, buildlist->g_outptr_list, NULL,
-       buildlist->g_with_rollup != 0, 0, NULL, xasl, xasl_state, &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
+				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
+				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
+				      buildlist->g_val_list, buildlist->g_outptr_list, NULL,
+				      buildlist->g_with_rollup != 0, 0, NULL, xasl, xasl_state, &list_id->type_list,
+				      tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
