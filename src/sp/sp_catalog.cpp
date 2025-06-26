@@ -92,9 +92,6 @@ static int sp_builtin_init ()
 
   sp_info v;
   sp_arg_info a;
-  DB_VALUE current_datetime;
-
-  db_sys_datetime (&current_datetime);
 
   // common
   v.lang = SP_LANG_PLCSQL;
@@ -104,8 +101,6 @@ static int sp_builtin_init ()
   v.sql_data_access = SP_SQL_TYPE_UNKNOWN;
   v.comment = "";
   v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
-  v.created_time = *db_get_datetime (&current_datetime);
-  v.updated_time = *db_get_datetime (&current_datetime);
 
   a.is_system_generated = true;
 
@@ -568,7 +563,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	db_make_string (&value, info.comment.data ());
       }
     err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
-    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -576,7 +570,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_datetime (&value, &info.created_time);
     err = dbt_put_internal (obt_p, SP_ATTR_CREATED_TIME, &value);
-    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
