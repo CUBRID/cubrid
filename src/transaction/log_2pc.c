@@ -78,7 +78,8 @@ struct log_2pc_global_data
 };
 struct log_2pc_global_data log_2pc_Userfun =
   { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit,
-dblink_2pc_send_abort };
+  dblink_2pc_send_abort
+};
 
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
