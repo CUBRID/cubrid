@@ -8599,7 +8599,6 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
     {
       assert (sizeof (schema_name) >= sizeof (database_user));
       strcpy (schema_name, database_user);
-      //strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
     }
 
   if (schema_name[0] != '\0' && class_name_only != NULL)
