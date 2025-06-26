@@ -2341,8 +2341,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 			      PRM_OR_CONDITION);
     }
   else
-    {
 #endif
+    {
 
       /* dump client's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
@@ -2355,9 +2355,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 	       database_name);
       sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | added_in_flags, PRM_AND_CONDITION, out_flags,
 				     PRM_OR_CONDITION);
-#if defined(SA_MODE)
     }
-#endif
 
   db_shutdown ();
 
