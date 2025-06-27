@@ -2222,8 +2222,8 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
       if (pgptr == NULL)
 	{
 	  /* impossible case */
-          assert(0);
-          return NULL;
+	  assert (0);
+	  return NULL;
 	}
     }
   else
