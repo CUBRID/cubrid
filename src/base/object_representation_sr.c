@@ -2016,7 +2016,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 		      j = 0;
 		      while (true)
 			{
-			  index_flag = SM_INDEX_FLAG_NONE;
+			  index_flag = SM_INDEX_FLAG_UNKNOWN;
 			  if (set_get_element_nocopy (child_seq, 0, &avalue) != NO_ERROR)
 			    {
 			      goto next_child;

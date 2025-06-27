@@ -3489,7 +3489,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			  j = 0;
 			  while (true)
 			    {
-			      index_flag = SM_INDEX_FLAG_NONE;
+			      index_flag = SM_INDEX_FLAG_UNKNOWN;
 			      if (set_get_element (child_seq, 0, &avalue) != NO_ERROR)
 				{
 				  goto structure_error;

@@ -2403,7 +2403,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	      /* have filter or function index */
 	      while (true)
 		{
-		  index_flag = SM_INDEX_FLAG_NONE;
+		  index_flag = SM_INDEX_FLAG_UNKNOWN;
 		  error = set_get_element (child_seq, 0, &avalue);
 		  if (error != NO_ERROR)
 		    {
