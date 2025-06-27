@@ -560,6 +560,12 @@ enum sysprm_load_flag
 };
 typedef enum sysprm_load_flag SYSPRM_LOAD_FLAG;
 
+typedef enum
+{
+  PRM_OR_CONDITION = 1,
+  PRM_AND_CONDITION
+} SYSPRM_DUMP_CONDITION;
+
 #define SYSPRM_LOAD_IS_IGNORE_HA(flags) ((flags) & SYSPRM_IGNORE_HA)
 #define SYSPRM_LOAD_IS_IGNORE_INTL(flags) ((flags) & SYSPRM_IGNORE_INTL_PARAMS)
 
@@ -699,9 +705,11 @@ extern "C"
   extern int sysprm_load_and_init_client (const char *db_name, const char *conf_file);
   extern int sysprm_reload_and_init (const char *db_name, const char *conf_file);
   extern void sysprm_final (void);
-  extern void sysprm_dump_parameters (FILE * fp);
+  extern void sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+				      unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond);
   extern void sysprm_set_er_log_file (const char *base_db_name);
-  extern void sysprm_dump_server_parameters (FILE * fp);
+  extern void sysprm_dump_server_parameters (FILE * fp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+					     unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond);
   extern SYSPRM_ERR sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values);
   extern SYSPRM_ERR sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
   extern SYSPRM_ERR sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr);
@@ -713,7 +721,8 @@ extern "C"
   extern void xsysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
   extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values);
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_force_server_parameters (void);
-  extern void xsysprm_dump_server_parameters (FILE * fp);
+  extern void xsysprm_dump_server_parameters (FILE * fp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+					      unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond);
   extern SYSPRM_ASSIGN_VALUE *xsysprm_get_pl_context_parameters (int flag);
 #endif				/* !CS_MODE */
 

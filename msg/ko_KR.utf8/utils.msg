@@ -942,9 +942,11 @@ paramdump: 시스템 파라미터 설정을 덤프\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -b, --both                   dump both client and server parameters\n\
+  -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --ha-only                HA관련 시스템 파라미터만 출력; --exclude-ha와 함께 사용 불가\n\
+      --exclude-ha             HA관련 시스템 파라미터제외 출력; --ha-only와 함께 사용 불가\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n
