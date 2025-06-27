@@ -2335,18 +2335,47 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  goto error;
 	}
 
+      if (is_foreign_key)
+      {
+        error = set_get_element(
+            key_seq_p,
+            get_class_constraint_index(key_size,
+                                       SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX),
+            &svalue);
+        if (error != NO_ERROR) {
+          goto error;
+        }
+
+        if (DB_VALUE_TYPE(&svalue) != DB_TYPE_SEQUENCE) {
+          error = ER_SM_INVALID_PROPERTY;
+          er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+          goto error;
+        }
+
+        seq = db_get_set(&svalue);
+        error = set_get_element(seq, 4, &val);
+        if (error != NO_ERROR)
+        {
+                goto error;
+        }
+        if (db_value_is_null(&val) == false)
+        {
+          db_make_oid(&attrs[11].value, db_get_oid(&val));
+        }
+      }
+
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_COMMENT_INDEX),
-			 &attrs[11].value);
+			 &attrs[12].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[11].value, DB_MAX_COMMENT_LENGTH);
+      db_string_truncate (&attrs[12].value, DB_MAX_COMMENT_LENGTH);
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX),
-			 &attrs[12].value);
+			 &attrs[13].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2354,11 +2383,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &attrs[13].value);
+			 &attrs[14].value);
       if (error != NO_ERROR)
-	{
-	  goto error;
-	}
+        {
+          goto error;
+        }
 
       if (!is_primary_key && !is_foreign_key)
 	{

@@ -117,6 +117,7 @@ static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *co
 
 static int change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status);
 static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
+static MOP smt_find_index_class(const char *name);
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -1669,6 +1670,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
       OID_SET_NULL (&fk_info->ref_class_oid);
       BTID_SET_NULL (&fk_info->ref_class_pk_btid);
       ref_cls_name = template_->name;
+      fk_info->index_class_of_ref_class = NULL;
     }
   else
     {
@@ -1696,6 +1698,12 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
       ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
+
+      fk_info->index_class_of_ref_class = smt_find_index_class(pk->name);
+      if (fk_info->index_class_of_ref_class == NULL) {
+        ERROR1(error, ER_SM_CONSTRAINT_NOT_FOUND, pk->name);
+        return error;
+      }
     }
 
   /* check pk'size and fk's size */
@@ -4943,4 +4951,20 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
     }
 
   return NO_ERROR;
+}
+
+static MOP
+smt_find_index_class(const char *name)
+{
+  MOP index_class;
+  DB_VALUE value;
+
+  index_class = db_find_class(CT_INDEX_NAME);
+  if (index_class == NULL)
+  {
+    return NULL;
+  } 
+
+  db_make_string (&value, name);
+  return db_find_unique (index_class, "index_name", &value);
 }

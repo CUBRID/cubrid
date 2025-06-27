@@ -488,6 +488,7 @@ struct sm_foreign_key_info
   SM_FOREIGN_KEY_ACTION update_action;
   char *name;
   bool is_dropped;
+  MOP index_class_of_ref_class;
 };
 
 typedef struct sm_predicate_info SM_PREDICATE_INFO;

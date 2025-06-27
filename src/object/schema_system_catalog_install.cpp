@@ -657,6 +657,7 @@ namespace cubschema
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
       {"status", "integer"},
+      {"referential_index", CT_INDEX_NAME},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -664,6 +665,7 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"index_name", nullptr}, false},
     },
 // authorization
     {

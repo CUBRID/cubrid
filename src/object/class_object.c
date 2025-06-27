@@ -666,7 +666,7 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   DB_SEQ *fk_seq;
   char pbuf[128];
 
-  fk_seq = set_create_sequence (4);
+  fk_seq = set_create_sequence (5);
 
   if (fk_seq == NULL)
     {
@@ -688,6 +688,9 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
 
   db_make_int (&value, fk_info->update_action);
   set_put_element (fk_seq, 3, &value);
+
+  db_make_object (&value, fk_info->index_class_of_ref_class);
+  set_put_element (fk_seq, 4, &value);
 
   return fk_seq;
 }
@@ -2870,6 +2873,11 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
     }
   fk_info->update_action = (SM_FOREIGN_KEY_ACTION) db_get_int (&fvalue);
 
+  if (set_get_element (fk_seq, 4, &fvalue))
+    {
+      goto error;
+    }
+  fk_info->index_class_of_ref_class = db_get_object (&fvalue);
 
   fk_info->name = (char *) cons_name;
   fk_info->is_dropped = false;
