@@ -16258,7 +16258,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       select_out_list = NULL;
       for (node = select_node->info.query.q.select.list; node; node = node->next)
 	{
-	  new_node = NULL;
+	  if (node->etc || !(node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
+	    {
+	      select_out_list = parser_append_node (pt_point (parser, node), select_out_list);
+	      continue;
+	    }
+
+	  char *str_select = parser_print_tree (parser, node);
 	  for (group = select_node->info.query.q.select.group_by, val_list = buildlist->g_val_list->valp;
 	       val_list && group; val_list = val_list->next, group = group->next)
 	    {
@@ -16274,19 +16280,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		  goto exit_on_error;
 		}
 
-	      if (pt_compare_sort_spec_expr (parser, group->info.sort_spec.expr, node))
+	      char *str_group = parser_print_tree (parser, group->info.sort_spec.expr);
+
+	      /* brute method, compare printed trees */
+	      if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
 		{
 		  new_node = pt_point_ref (parser, node);
 		  new_node->etc = (void *) val_list->val;
+		  select_out_list = parser_append_node (new_node, select_out_list);
 		  break;
 		}
 	    }
-
-	  if (new_node == NULL)
-	    {
-	      new_node = pt_point (parser, node);
-	    }
-	  select_out_list = parser_append_node (new_node, select_out_list);
 	}
 
       buildlist->g_outptr_list = pt_to_outlist (parser, select_out_list, NULL, unbox);
