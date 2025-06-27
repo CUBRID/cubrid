@@ -8896,7 +8896,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   int nsect_full_new;
   int nsect_empty_new;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
-  bool save_interrupt;
+  bool save_interrupt, is_partial;
   bool found = false;
   int error_code = NO_ERROR;
 
@@ -8936,6 +8936,18 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   if (error_code != NO_ERROR)
     {
       assert_release (false);
+      goto exit;
+    }
+
+  /* dealloc temp page */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+  is_partial = true;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_part_ftab, NULL, NULL, file_sector_map_dealloc_temp, &is_partial, true,
+			      NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto exit;
     }
 
