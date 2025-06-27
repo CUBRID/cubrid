@@ -101,6 +101,16 @@ typedef enum fp_value_type
 }
 FP_VALUE_TYPE;
 
+typedef enum numeric_parse_state
+{
+  STR_START,			// 아직 아무것도 안 본 상태 (leading spaces / sign 대기)
+  STR_SIGNED,			// 부호 한 번 본 상태 (아직 숫자는 안 본)
+  STR_INTEGER,			// 정수부 읽고 있는 중
+  STR_FRACTION,			// 소수점(‘.’) 이후 소수부 읽고 있는 중
+  STR_TRAIL			// 숫자/소수점 뒤에 공백 읽은 중 (trailing spaces)
+}
+NUMERIC_PARSE_STATE;
+
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num);
@@ -162,6 +172,9 @@ static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_a
 static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg);
 static int get_significant_digit (DB_BIGINT i);
 static int parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+				  char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
+				  int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
+static int parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 				  char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 				  int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
 static void compute_prec_scale2 (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
@@ -2220,7 +2233,8 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 	      prec_common = prec1 - scale1;
 	    }
 
-	  // [임시] 일단, 음수를 양수로 변환
+	  // [임시] 일단, 음수를 양수로 변환,
+	  // 음.. 정수로 변환 하지 않고 0으로 변경해보니 비교 결과가 안나옴..
 	  if (scale1 < 0)
 	    {
 	      scale1 *= -1;
@@ -3104,10 +3118,185 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  *    - count prec and scale
  */
 static int
+parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
+		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
+{
+  NUMERIC_PARSE_STATE state = STR_START;
+  int int_count = 0;		// 정수부 전체 자릿수
+  int frac_count = 0;		// 소수부 전체 자릿수
+  int pos = 0;			// 현재 파싱 위치 (index)
+  int skip = 1;			// 공백 건너뛰기용
+  char current_char = '\0';
+  int buf_idx = 0;
+  int int_parse_limit = DB_MAX_NUMERIC_PRECISION + (-(DB_MIN_NUMERIC_SCALE));	// 38 + -(-84) = 122
+  int frac_parse_limit = DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE;	// 38 + 127 = 165
+
+  *int_first_nz = *int_last_nz = -1;
+  *frac_first_nz = *frac_last_nz = -1;
+  *negate_value = false;
+
+  while (pos < astring_length)
+    {
+      current_char = astring[pos];
+      skip = 1;
+
+      if (intl_is_space (astring + pos, NULL, codeset, &skip))
+	{
+	  if (state == STR_START)
+	    {
+	      pos += skip;	// 리딩 공백: 무시
+	      continue;
+	    }
+	  else if (state == STR_INTEGER || state == STR_FRACTION)
+	    {
+	      state = STR_TRAIL;	// 첫 트레일링 공백
+	      pos += skip;
+	      continue;
+	    }
+	  else if (state == STR_TRAIL)
+	    {
+	      pos += skip;	// 계속 트레일링 공백
+	      continue;
+	    }
+	  else
+	    {
+	      // STR_SIGNED에서 공백 나오면 에러
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	}
+
+      // 2) STR_TRAIL에서 비공백 문자가 오면 에러
+      if (state == STR_TRAIL)
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+
+      if (state == STR_START && int_count == 0 && frac_count == 0 && (current_char == '+' || current_char == '-'))
+	{
+	  // 2) 부호: 제일 처음만
+	  *negate_value = (current_char == '-');
+	  state = STR_SIGNED;
+	  pos += skip;
+	  continue;
+	}
+      else if ((state == STR_START || state == STR_SIGNED || state == STR_INTEGER) && current_char == '.')
+	{
+	  // 3) decimal point
+	  if (state == STR_FRACTION)
+	    {
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	  state = STR_FRACTION;
+	  pos += skip;
+	  continue;
+	}
+      else if (current_char == ',')
+	{
+	  // 4) 콤마는 numeric literal 에서 에러
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (current_char >= '0' && current_char <= '9')
+	{
+	  // 5) digit
+	  if (state == STR_START || state == STR_SIGNED)
+	    {
+	      state = STR_INTEGER;
+	    }
+
+	  if (state == STR_INTEGER)
+	    {
+	      // 정수부
+	      if (!(current_char == '0' && *int_first_nz < 0))
+		{
+		  // 첫 non-zero가 나오거나, 이미 non-zero를 만난 뒤의 0인 경우
+		  if (current_char != '0' && *int_first_nz < 0)
+		    {
+		      *int_first_nz = int_count;
+		    }
+		  if (current_char != '0')
+		    {
+		      *int_last_nz = int_count;
+		    }
+		  // 버퍼에 저장 및 카운트
+		  int_digits[int_count++] = current_char;
+		}
+	      // overflow 체크
+	      if (int_count > int_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  else			// state == STR_FRACTION
+	    {
+	      // 소수부
+	      // 버퍼에 일단 저장 (overflow 체크 뒤)
+	      if (frac_count < frac_parse_limit)
+		{
+		  frac_digits[frac_count] = current_char;
+		}
+	      // non-zero 인덱스 추적
+	      if (current_char != '0')
+		{
+		  if (*frac_first_nz < 0)
+		    {
+		      *frac_first_nz = frac_count;
+		    }
+		  *frac_last_nz = frac_count;
+		}
+
+	      frac_count++;
+	      // overflow 체크
+	      if (frac_count > frac_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  pos += skip;
+	  continue;
+	}
+      else
+	{
+	  /* Stray Non-numeric compatible character */
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  if (int_count + frac_count == 0)
+    {
+      // special-case: 숫자 하나도 없으면 "0"
+      int_digits[0] = '0';
+      int_digits[1] = '\0';
+      frac_digits[0] = '\0';
+      *int_first_nz = 0;
+      *int_last_nz = 0;
+      *frac_first_nz = -1;
+      *frac_last_nz = -1;
+      *int_len = 0;
+      *frac_len = 0;
+    }
+  else
+    {
+      // 정상 케이스: 채운 길이만큼 널 종결
+      int_digits[int_count] = '\0';
+      frac_digits[frac_count] = '\0';
+      *int_len = int_count;
+      *frac_len = frac_count;
+    }
+
+  return NO_ERROR;
+}
+
+static int
 parse_decimal_string2 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
 {
+  /* 
+   * ───────────────────────────
+   * 해당 함수는 사용하지 않지만, 참고용으로 잠시 남겨둠 
+   * ───────────────────────────
+   */
   bool seen_dot = false;	// 소수점(.)을 이미 만났는지
   bool seen_digit = false;	// 부호 이후 trailing-space 판단용
   int int_count = 0;		// 정수부 전체 자릿수
@@ -3743,7 +3932,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
   // 1) parse and compute prec/scale
   ret =
-    parse_decimal_string2 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
+    parse_decimal_string3 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
 			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz);
   if (ret != NO_ERROR)
     {

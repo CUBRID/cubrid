@@ -578,7 +578,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   int size;
   DB_OBJECT *mop;
   DB_TYPE db_type;
-  char buf[100];
+  // numeric일 때 numeric_db_value_print 함수로 들어갔는데 버퍼가 너무 작아서 core가 발생하여 증가시킴.
+  char buf[NUMERIC_MAX_STRING_SIZE + 1];
   char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
