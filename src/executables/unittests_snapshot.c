@@ -157,7 +157,13 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  memset (*thread_array, 0, size);
+
+  for (i = 0; i < num_threads; i++)
+    {
+      // placement new
+      new ((*thread_array) + i) THREAD_ENTRY ();
+    }
+
   for (i = 0; i < num_threads; i++)
     {
       thread_p = *thread_array + i;
