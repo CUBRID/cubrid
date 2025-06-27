@@ -6647,7 +6647,7 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_vector_index_ef_search_flag,
    (void *) &prm_vector_index_ef_search_default,
    (void *) &PRM_VECTOR_INDEX_EF_SEARCH,
-   (void *) prm_vector_index_ef_search_upper, (void *) prm_vector_index_ef_search_lower,
+   (void *) &prm_vector_index_ef_search_upper, (void *) &prm_vector_index_ef_search_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
