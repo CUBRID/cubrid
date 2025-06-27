@@ -40,7 +40,7 @@ namespace parallel_query
 
     void base_task::retire ()
     {
-      m_task_manager.task_done ();
+      m_task_manager.end_task ();
       delete this;
     }
 
@@ -52,74 +52,6 @@ namespace parallel_query
       thread_ref.conn_entry = m_main_thread_ref.conn_entry;
       thread_ref.trace_format = m_main_thread_ref.trace_format;
       thread_ref.on_trace = m_main_thread_ref.on_trace;
-    }
-
-    /* task_manager */
-    task_manager::task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager,
-				cuberr::context &main_error_context)
-      : m_worker_manager (worker_manager)
-      , m_active_tasks (0)
-      , m_mutex ()
-      , m_cv ()
-      , m_main_error_context (main_error_context)
-      , m_has_error (false)
-    {
-      /* Nothing to do */
-    }
-
-    void task_manager::push_task (base_task *task)
-    {
-      assert (task != NULL);
-      {
-	std::lock_guard<std::mutex> lock (m_mutex);
-	++m_active_tasks;
-      }
-      m_worker_manager.push_task (task);
-    }
-
-    void task_manager::task_done ()
-    {
-      std::lock_guard<std::mutex> lock (m_mutex);
-      --m_active_tasks;
-      if (m_active_tasks == 0)
-	{
-	  m_cv.notify_all ();
-	}
-      m_worker_manager.pop_task ();
-    }
-
-    void task_manager::join ()
-    {
-      std::unique_lock<std::mutex> lock (m_mutex);
-      m_cv.wait (lock, [this] { return m_active_tasks == 0; });
-    }
-
-    bool task_manager::has_error ()
-    {
-      return m_has_error;
-    }
-
-    bool task_manager::check_interrupt (cubthread::entry &thread_ref)
-    {
-      bool dummy = false;
-      if (logtb_get_check_interrupt (&thread_ref)
-	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
-	{
-	  handle_error (thread_ref);
-	  return true;
-	}
-      return false;
-    }
-
-    void
-    task_manager::handle_error (cubthread::entry &thread_ref)
-    {
-      if (!m_has_error.exchange (true))
-	{
-	  m_main_error_context.push_error_stack ();
-	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	}
-      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
     }
 
     /* partition_task */
@@ -170,12 +102,91 @@ namespace parallel_query
 
       emulate_main_thread (thread_ref);
 
+      m_context->val_descr = get_val_descr (thread_ref, m_manager->val_descr);
+      m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->single_context.during_join_pred);
+      m_context->outer_fetch_info.regu_list_pred = get_outer_regu_list_pred (thread_ref, m_manager->outer->regu_list_pred);
+      m_context->inner_fetch_info.regu_list_pred = get_inner_regu_list_pred (thread_ref, m_manager->inner->regu_list_pred);
+
+      if (er_errid () != NO_ERROR)
+	{
+	  m_task_manager.handle_error (thread_ref);
+	  return;
+	}
+
       if (hjoin_execute (&thread_ref, m_manager, m_context) != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
+    }
+
+    /* task_manager */
+    task_manager::task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager,
+				cuberr::context &main_error_context)
+      : m_worker_manager (worker_manager)
+      , m_active_tasks (0)
+      , m_mutex ()
+      , m_cv ()
+      , m_main_error_context (main_error_context)
+      , m_has_error (false)
+    {
+      /* Nothing to do */
+    }
+
+    void task_manager::push_task (base_task *task)
+    {
+      assert (task != NULL);
+      {
+	std::lock_guard<std::mutex> lock (m_mutex);
+	++m_active_tasks;
+      }
+      m_worker_manager.push_task (task);
+    }
+
+    void task_manager::end_task ()
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      --m_active_tasks;
+      if (m_active_tasks == 0)
+	{
+	  m_cv.notify_all ();
+	}
+      m_worker_manager.pop_task ();
+    }
+
+    void task_manager::join ()
+    {
+      std::unique_lock<std::mutex> lock (m_mutex);
+      m_cv.wait (lock, [this] { return m_active_tasks == 0; });
+    }
+
+    bool task_manager::has_error ()
+    {
+      return m_has_error;
+    }
+
+    bool task_manager::check_interrupt (cubthread::entry &thread_ref)
+    {
+      bool dummy = false;
+      if (logtb_get_check_interrupt (&thread_ref)
+	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
+	{
+	  handle_error (thread_ref);
+	  return true;
+	}
+      return false;
+    }
+
+    void
+    task_manager::handle_error (cubthread::entry &thread_ref)
+    {
+      if (!m_has_error.exchange (true))
+	{
+	  m_main_error_context.push_error_stack ();
+	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	}
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
     }
 
     void
@@ -222,7 +233,7 @@ namespace parallel_query
 
       if (task_manager.has_error ())
 	{
-	  assert (er_errid () != NO_ERROR);
+	  assert_release (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -258,7 +269,7 @@ namespace parallel_query
 
       if (task_manager.has_error ())
 	{
-	  assert (er_errid () != NO_ERROR);
+	  assert_release (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
@@ -276,7 +287,7 @@ namespace parallel_query
 	      error = er_errid ();
 	      if (error != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  assert_release (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 	      else
@@ -289,13 +300,59 @@ namespace parallel_query
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
 	  if (error != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      assert_release (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
+    }
+
+    thread_local std::unique_ptr<cubxasl::spawner> tls_spawner;
+    thread_local VAL_DESCR *tls_val_descr = nullptr;
+    thread_local PRED_EXPR *tls_during_join_pred = nullptr;
+    thread_local REGU_VARIABLE_LIST tls_outer_regu_list_pred = nullptr;
+    thread_local REGU_VARIABLE_LIST tls_inner_regu_list_pred = nullptr;
+
+    cubxasl::spawner *get_spawner (cubthread::entry &thread_ref)
+    {
+      if (tls_spawner == nullptr)
+	{
+	  tls_spawner = std::make_unique<cubxasl::spawner> (thread_ref);
+	  if (tls_spawner == nullptr)
+	    {
+	      assert_release (er_errid () != NO_ERROR);
+	      return nullptr;
+	    }
+	}
+
+      return tls_spawner.get();
+    }
+
+    void clear_spawner ()
+    {
+      tls_spawner.reset ();
+    }
+
+    VAL_DESCR *get_val_descr (cubthread::entry &thread_ref, VAL_DESCR *val_descr)
+    {
+      return get_tls (thread_ref, val_descr, tls_val_descr);
+    }
+
+    PRED_EXPR *get_during_join_pred (cubthread::entry &thread_ref, PRED_EXPR *during_join_pred)
+    {
+      return get_tls (thread_ref, during_join_pred, tls_during_join_pred);
+    }
+
+    REGU_VARIABLE_LIST get_outer_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST outer_regu_list_pred)
+    {
+      return get_tls (thread_ref, outer_regu_list_pred, tls_outer_regu_list_pred);
+    }
+
+    REGU_VARIABLE_LIST get_inner_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST inner_regu_list_pred)
+    {
+      return get_tls (thread_ref, inner_regu_list_pred, tls_inner_regu_list_pred);
     }
   } /* namespace hash_join */
 } /* namespace parallel_query */

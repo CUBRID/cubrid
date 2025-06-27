@@ -15306,7 +15306,8 @@ end:
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
-      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count.load ());
+      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n",
+			  thread_p->m_qlist_count.load ());
     }
   if (list_id && list_id->type_list.type_cnt != 0)
     {

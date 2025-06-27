@@ -753,7 +753,7 @@ error_exit:
  */
 static int
 hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NODE * xasl, QUERY_ID query_id,
-		    VAL_DESCR * vd)
+		    VAL_DESCR * val_descr)
 {
   HASHJOIN_PROC_NODE *proc;
   QFILE_LIST_MERGE_INFO *merge_info;
@@ -834,14 +834,11 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   context->join_type = merge_info->join_type;
   context->during_join_pred = xasl->during_join_pred;
-  context->vd = vd;
+  context->val_descr = val_descr;
 
   assert (context->hash_scan.hash_list_scan_type == HASH_METH_NOT_USE);
   assert (context->is_build_outer == false);
   assert (context->is_last_context == false);
-#if defined (SERVER_MODE)
-  assert (context->spawner == NULL);
-#endif /* defined (SERVER_MODE) */
 
   /* contexts */
   assert (manager->contexts == NULL);
@@ -1276,6 +1273,11 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
       memcpy (current_context, single_context, sizeof (HASHJOIN_CONTEXT));
 
+      current_context->val_descr = NULL;
+      current_context->during_join_pred = NULL;
+      current_context->outer_fetch_info.regu_list_pred = NULL;
+      current_context->inner_fetch_info.regu_list_pred = NULL;
+
       outer_part_list_id[part_index] =
 	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id, QFILE_FLAG_ALL, NULL);
       if (outer_part_list_id[part_index] == NULL)
@@ -1297,78 +1299,6 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 	  current_context->is_last_context = true;
 	}
     }
-
-#if defined (SERVER_MODE)
-  if (manager->px_workpool != NULL)
-    {
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_context = &contexts[part_index];
-
-	  current_context->spawner = (cubxasl::spawner *) db_private_alloc (thread_p, sizeof (cubxasl::spawner));
-	  if (current_context->spawner == NULL)
-	    {
-	      assert_release (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-#undef new
-	  new (current_context->spawner) cubxasl::spawner (*thread_p);
-#define new new(__FILE__, __LINE__)
-
-	  if (single_context->vd != NULL)
-	    {
-	      current_context->vd = current_context->spawner->spawn (single_context->vd);
-	      if (current_context->vd == NULL)
-		{
-		  assert_release (er_errid () != NO_ERROR);
-		  current_context->spawner->~spawner ();
-		  db_private_free_and_init (thread_p, current_context->spawner);
-		  current_context->spawner = NULL;
-		  return er_errid ();
-		}
-	    }
-
-	  if (single_context->during_join_pred != NULL)
-	    {
-	      current_context->during_join_pred = current_context->spawner->spawn (single_context->during_join_pred);
-	      if (current_context->during_join_pred == NULL)
-		{
-		  assert_release (er_errid () != NO_ERROR);
-		  current_context->spawner->~spawner ();
-		  db_private_free_and_init (thread_p, current_context->spawner);
-		  return er_errid ();
-		}
-	    }
-
-	  if (single_context->outer_fetch_info.regu_list_pred != NULL)
-	    {
-	      current_context->outer_fetch_info.regu_list_pred =
-		current_context->spawner->spawn (single_context->outer_fetch_info.regu_list_pred);
-	      if (current_context->outer_fetch_info.regu_list_pred == NULL)
-		{
-		  assert_release (er_errid () != NO_ERROR);
-		  current_context->spawner->~spawner ();
-		  db_private_free_and_init (thread_p, current_context->spawner);
-		  return er_errid ();
-		}
-	    }
-
-	  if (single_context->inner_fetch_info.regu_list_pred != NULL)
-	    {
-	      current_context->inner_fetch_info.regu_list_pred =
-		current_context->spawner->spawn (single_context->inner_fetch_info.regu_list_pred);
-	      if (current_context->inner_fetch_info.regu_list_pred == NULL)
-		{
-		  assert_release (er_errid () != NO_ERROR);
-		  current_context->spawner->~spawner ();
-		  db_private_free_and_init (thread_p, current_context->spawner);
-		  return er_errid ();
-		}
-	    }
-	}
-    }
-#endif /* defined (SERVER_MODE) */
 
   manager->contexts = contexts;
 
@@ -1797,14 +1727,6 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
       qfile_destroy_list (thread_p, context->inner_list_id);
       QFILE_FREE_AND_INIT_LIST_ID (context->inner_list_id);
     }
-
-#if defined (SERVER_MODE)
-  if (context->spawner != NULL)
-    {
-      context->spawner->~spawner ();
-      db_private_free_and_init (thread_p, context->spawner);
-    }
-#endif /* defined (SERVER_MODE) */
 }
 
 /*
@@ -2803,7 +2725,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      do
 		{
 		  error =
-		    fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, context->vd, NULL, NULL,
+		    fetch_val_list (thread_p, probe_fetch_info->regu_list_pred, context->val_descr, NULL, NULL,
 				    tuple_record.tpl, PEEK);
 		  if (error != NO_ERROR)
 		    {
@@ -2811,14 +2733,14 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		    }
 
 		  error =
-		    fetch_val_list (thread_p, build_fetch_info->regu_list_pred, context->vd, NULL, NULL,
+		    fetch_val_list (thread_p, build_fetch_info->regu_list_pred, context->val_descr, NULL, NULL,
 				    found_record.tpl, PEEK);
 		  if (error != NO_ERROR)
 		    {
 		      break;	/* error_exit */
 		    }
 
-		  ev_res = eval_pred (thread_p, context->during_join_pred, context->vd, NULL);
+		  ev_res = eval_pred (thread_p, context->during_join_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;

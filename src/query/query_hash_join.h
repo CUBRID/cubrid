@@ -35,7 +35,6 @@
 
 #if defined (SERVER_MODE)
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
-#include "xasl_spawner.hpp"	/* cubxasl::spawner */
 #endif /* defined (SERVER_MODE) */
 
 /*
@@ -200,33 +199,30 @@ typedef struct hashjoin_context
 
   JOIN_TYPE join_type;
   PRED_EXPR *during_join_pred;
-  VAL_DESCR *vd;
+  VAL_DESCR *val_descr;
 
   HASH_LIST_SCAN hash_scan;
   bool is_build_outer;
   bool is_last_context;
-
-#if defined (SERVER_MODE)
-  /* *INDENT-OFF* */
-  cubxasl::spawner * spawner;
-  /* *INDENT-ON* */
-#endif				/* defined (SERVER_MODE) */
 
   HASHJOIN_STATS *stats;
 } HASHJOIN_CONTEXT;
 
 typedef struct hashjoin_manager
 {
-  /* Pointers to members of HASHJOIN_PROC_NODE. */
+  /* From HASHJOIN_PROC_NODE */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
+
+  /* From XASL_STATE */
+  QUERY_ID query_id;
+  VAL_DESCR *val_descr;
 
   HASHJOIN_CONTEXT single_context;
   HASHJOIN_CONTEXT *contexts;
   int context_cnt;
 
-  QUERY_ID query_id;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
 
   HASHJOIN_MERGE_METHOD merge_method;

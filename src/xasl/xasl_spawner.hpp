@@ -153,15 +153,19 @@ namespace cubxasl
     if (dest == nullptr )
       {
 	ASSERT_ERROR ();
-	return nullptr ;
+	return nullptr;
       }
 
-    std::unique_ptr<T, std::function<void (T *)>> guard (dest, [this] (T *ptr)
-    {
-      cached_entry_deleter<T> (&m_thread_ref, static_cast<void *> (ptr));
-    });
+    try
+      {
+	new (dest) T();
+      }
+    catch (...)
+      {
+	cached_entry_deleter<T> (&m_thread_ref, dest);
 
-    new (dest) T();
+	return nullptr;
+      }
 
     cached_entry entry;
     entry.ptr = dest;
@@ -172,10 +176,8 @@ namespace cubxasl
       {
 	/* impossible case */
 	assert_release (false);
-	return nullptr ;
+	return nullptr;
       }
-
-    guard.release();
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
@@ -201,19 +203,26 @@ namespace cubxasl
     if (dest == nullptr )
       {
 	ASSERT_ERROR ();
-	return nullptr ;
+	return nullptr;
       }
-
-    std::unique_ptr<T, std::function<void (T *)>> guard (dest, [this] (T *ptr)
-    {
-      cached_entry_deleter<T> (&m_thread_ref, static_cast<void *> (ptr));
-    });
 
     for (int i = 0; i < count; i++)
       {
 	T *item = dest + i;
 
-	new (item) T();
+	try
+	  {
+	    new (item) T();
+	  }
+	catch (...)
+	  {
+	    if (i == 0)
+	      {
+		cached_entry_deleter<T> (&m_thread_ref, dest);
+	      }
+
+	    return nullptr;
+	  }
 
 	cached_entry entry;
 	entry.ptr = item;
@@ -227,8 +236,6 @@ namespace cubxasl
 	    return nullptr;
 	  }
       }
-
-    guard.release();
 
     ASSERT_NO_ERROR_OR_INTERRUPTED ();
 

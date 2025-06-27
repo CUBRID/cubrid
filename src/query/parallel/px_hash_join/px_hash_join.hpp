@@ -31,6 +31,7 @@
 #include "query_hash_join.h"
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */
+#include "xasl_spawner.hpp"		/* cubxasl::spawner */
 
 namespace parallel_query
 {
@@ -53,29 +54,6 @@ namespace parallel_query
 	virtual ~base_task () = default;
 
 	void retire () override;
-    };
-
-    class task_manager
-    {
-      private:
-	parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
-	int m_active_tasks;
-	std::mutex m_mutex;
-	std::condition_variable m_cv;
-	cuberr::context &m_main_error_context;
-	std::atomic<bool> m_has_error;
-
-      public:
-	task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager, cuberr::context &main_error_context);
-	~task_manager () = default;
-
-	void push_task (base_task *task);
-	void task_done ();
-	void join ();
-
-	bool has_error ();
-	bool check_interrupt (cubthread::entry &thread_ref);
-	void handle_error (cubthread::entry &thread_ref);
     };
 
     class partition_task: public base_task
@@ -104,16 +82,73 @@ namespace parallel_query
 	void execute (cubthread::entry &thread_ref) override;
     };
 
-    void
-    try_reserve_workers (HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count);
+    class task_manager : public cubthread::entry_manager
+    {
+      private:
+	parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
+	int m_active_tasks;
+	std::mutex m_mutex;
+	std::condition_variable m_cv;
+	cuberr::context &m_main_error_context;
+	std::atomic<bool> m_has_error;
 
-    void
-    release_workers (HASHJOIN_MANAGER *manager);
+      public:
+	task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager, cuberr::context &main_error_context);
+	~task_manager () = default;
 
-    int
-    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
+	void push_task (base_task *task);
+	void end_task ();
+	void join ();
 
-    int
-    execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+	bool has_error ();
+	bool check_interrupt (cubthread::entry &thread_ref);
+	void handle_error (cubthread::entry &thread_ref);
+    };
+
+    void try_reserve_workers (HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count);
+    void release_workers (HASHJOIN_MANAGER *manager);
+    int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
+    int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+
+    cubxasl::spawner *get_spawner (cubthread::entry &thread_ref);
+    void clear_spawner ();
+    VAL_DESCR *get_val_descr (cubthread::entry &thread_ref, VAL_DESCR *val_descr);
+    PRED_EXPR *get_during_join_pred (cubthread::entry &thread_ref, PRED_EXPR *during_join_pred);
+    REGU_VARIABLE_LIST get_outer_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST outer_regu_list_pred);
+    REGU_VARIABLE_LIST get_inner_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST inner_regu_list_pred);
+
+    template <typename T>
+    T *get_tls (cubthread::entry &thread_ref, T *src, T *&dest);
+  } /* namespace hash_join */
+} /* namespace parallel_query */
+
+/*
+ * Function Definitions
+ */
+
+namespace parallel_query
+{
+  namespace hash_join
+  {
+    template <typename T>
+    T *
+    get_tls (cubthread::entry &thread_ref, T *src, T *&dest)
+    {
+      if (dest != nullptr)
+	{
+	  return dest;
+	}
+
+      auto *spawner = get_spawner (thread_ref);
+      if (spawner == nullptr)
+	{
+	  assert_release (er_errid () != NO_ERROR);
+	  return nullptr;
+	}
+
+      dest = spawner->spawn (src);
+
+      return dest;
+    }
   } /* namespace hash_join */
 } /* namespace parallel_query */
