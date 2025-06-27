@@ -882,7 +882,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
-  parallel_query::hash_join::try_reserve_workers (manager, 4, 4);
+  parallel_query::hash_join::try_reserve_workers (*thread_p, manager, 4, 4);
   /* *INDENT-ON* */
 #endif /* defined (SERVER_MODE) */
 
@@ -959,7 +959,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   if (manager->px_workpool != NULL)
     {
       /* *INDENT-OFF* */
-      parallel_query::hash_join::release_workers (manager);
+      parallel_query::hash_join::release_workers (*thread_p, manager);
       /* *INDENT-ON* */
     }
 #endif /* defined (SERVER_MODE) */

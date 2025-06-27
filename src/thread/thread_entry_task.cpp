@@ -27,7 +27,6 @@
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#include "px_hash_join.hpp"
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -59,9 +58,6 @@ namespace cubthread
   entry_manager::retire_context (entry &context)
   {
     on_retire (context);
-#if defined (SERVER_MODE)
-    parallel_query::hash_join::clear_spawner ();
-#endif // SERVER_MODE
 
     // clear error messages
     context.get_error_context ().deregister_thread_local ();

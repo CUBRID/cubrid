@@ -66,7 +66,7 @@ namespace parallel_query
 	return instance;
       }
 
-      bool try_reserve_workers (int parallelism, int task_queue_size);
+      bool try_reserve_workers (int parallelism, int task_queue_size, cubthread::entry_manager *context_manager);
       void release_workers ();
       void push_task (cubthread::entry_task *task);
       void pop_task ()

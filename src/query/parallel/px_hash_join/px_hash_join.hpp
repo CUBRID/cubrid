@@ -82,7 +82,19 @@ namespace parallel_query
 	void execute (cubthread::entry &thread_ref) override;
     };
 
-    class task_manager : public cubthread::entry_manager
+    class entry_manager : public cubthread::entry_manager
+    {
+      protected:
+	void on_retire (cubthread::entry &context) override;
+	void on_recycle (cubthread::entry &context) override;
+	void on_create (cubthread::entry &context) override;
+
+      public:
+	entry_manager() = default;
+	~entry_manager() = default;
+    };
+
+    class task_manager
     {
       private:
 	parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
@@ -105,8 +117,9 @@ namespace parallel_query
 	void handle_error (cubthread::entry &thread_ref);
     };
 
-    void try_reserve_workers (HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count);
-    void release_workers (HASHJOIN_MANAGER *manager);
+    void try_reserve_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, size_t pool_size,
+			      size_t task_max_count);
+    void release_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
     int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
 

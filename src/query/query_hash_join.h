@@ -33,10 +33,6 @@
 #include "xasl_predicate.hpp"	/* PRED_EXPR */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
-#if defined (SERVER_MODE)
-#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
-#endif /* defined (SERVER_MODE) */
-
 /*
  * Debug Macros
  */
@@ -50,6 +46,18 @@
 /*
  * Forward Declarations
  */
+
+#if defined (SERVER_MODE)
+namespace parallel_query
+{
+  class worker_manager_with_dedicated_pool;
+
+  namespace hash_join
+  {
+    class entry_manager;
+  }
+}
+#endif				/* defined (SERVER_MODE) */
 
 struct xasl_node;
 struct tp_domain;
@@ -230,6 +238,7 @@ typedef struct hashjoin_manager
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
+  parallel_query::hash_join::entry_manager * px_entry_manager;
   parallel_query::worker_manager_with_dedicated_pool * px_workpool;
   /* *INDENT-ON* */
 #endif				/* defined (SERVER_MODE) */

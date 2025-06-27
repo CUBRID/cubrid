@@ -88,7 +88,8 @@ namespace parallel_query
     assert (m_worker_pool == nullptr);
   }
 
-  bool worker_manager_with_dedicated_pool::try_reserve_workers (int parallelism, int task_queue_size)
+  bool worker_manager_with_dedicated_pool::try_reserve_workers (int parallelism, int task_queue_size,
+      cubthread::entry_manager *context_manager)
   {
     bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
     if (result)
@@ -96,7 +97,7 @@ namespace parallel_query
 	assert (m_worker_pool == nullptr);
 	m_reserved_workers += parallelism;
 	m_worker_pool = cubthread::get_manager()->create_worker_pool (parallelism, task_queue_size,
-			"parallel_query_worker_pool_with_task_queue", NULL, 1, false);
+			"parallel_query_worker_pool_with_task_queue", context_manager, 1, false);
       }
     return result;
   }
