@@ -658,6 +658,8 @@ namespace cubschema
       {"have_function", "integer"},
       {"status", "integer"},
       {"referential_index", CT_INDEX_NAME},
+      {"update_rule", "integer"},
+      {"delete_rule", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
