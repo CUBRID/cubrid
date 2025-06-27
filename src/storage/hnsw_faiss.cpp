@@ -20,6 +20,7 @@
 // hnsw_faiss.cpp - implementation of HNSW index using FAISS
 //
 
+#include "faiss/MetricType.h"
 #include "hnsw.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -35,6 +36,7 @@
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIDMap.h"
 #include "faiss/index_io.h"
+#include "vector_distance_enum.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -60,6 +62,58 @@ static void get_new_hnsw_index_id ();
 static faiss::idx_t encode_oid (const OID &oid);
 static OID decode_oid (faiss::idx_t encoded_oid);
 
+BTID *
+xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
+		 int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE)
+{
+
+  enum faiss::MetricType metric_type = faiss::METRIC_INNER_PRODUCT;
+
+  switch (metric)
+    {
+    case METRIC_UNKNOWN:
+      ASSERT_CUBVEC (false);
+    case METRIC_COSINE:
+      metric_type = faiss::METRIC_INNER_PRODUCT;
+      break;
+
+    case METRIC_DOT:
+      metric_type = faiss::METRIC_INNER_PRODUCT;
+      break;
+
+    case METRIC_EUCLIDEAN:
+      metric_type = faiss::METRIC_L2;
+      break;
+
+    case METRIC_MANHATTAN:
+      metric_type = faiss::METRIC_L1;
+      break;
+      // unsupported metric
+      ASSERT_CUBVEC (false);
+      break;
+
+    default:
+      ASSERT_CUBVEC (false);
+    }
+  get_new_hnsw_index_id ();
+
+  auto hnsw_index = new faiss::IndexHNSWFlat (dimension, hnsw_M, metric_type);
+  hnsw_index->hnsw.efConstruction = hnsw_efConstruction;
+
+  auto index = std::make_unique<faiss::IndexIDMap> (hnsw_index);
+
+  btid->vfid.volid = -1;
+  btid->vfid.fileid = -1;
+  btid->root_pageid = hnsw_index_id;
+
+  hnsw_index_map[hnsw_index_id] = std::move (index);
+  er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
+  hnsw_print_index_info (btid);
+
+  return btid;
+}
+
+[[deprecated("Use new xhnsw_add_index that uses DB_VECTOR_DISTANCE_METRIC instead.")]]
 BTID *
 xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
 		 enum faiss::MetricType metric_type = faiss::METRIC_L2)
