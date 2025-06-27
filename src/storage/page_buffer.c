@@ -2566,10 +2566,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
   bool is_perf_tracking;
 
-  /* Get the address of the buffer from the page and free the buffer */
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (!VPID_ISNULL (&bufptr->vpid));
-
 #if defined(CUBRID_DEBUG)
   LOG_LSA restart_lsa;
 #endif /* CUBRID_DEBUG */
@@ -2601,6 +2597,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       return;
     }
 #endif /* !NDEBUG */
+
+  /* Get the address of the buffer from the page and free the buffer */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
 
 #if defined(CUBRID_DEBUG)
   /*
