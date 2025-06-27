@@ -669,20 +669,19 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  * Note:
  */
 static int
-do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * current_val, DB_VALUE * inc_val,
+do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * start_val, DB_VALUE * inc_val,
 			   DB_VALUE * min_val, DB_VALUE * max_val, const int cyclic, const int cached_num,
 			   const int started, const char *comment, const char *class_name, const char *att_name)
 {
   DB_OBJECT *ret_obj = NULL;
   DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE value, *start_val;
+  DB_VALUE value;
   DB_OBJECT *serial_class = NULL;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
   int au_save, error = NO_ERROR;
 
   db_make_null (&value);
-  start_val = current_val;
 
   /* temporarily disable authorization to access db_serial class */
   AU_DISABLE (au_save);
@@ -740,7 +739,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* current_val */
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
