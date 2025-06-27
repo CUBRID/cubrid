@@ -8550,23 +8550,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  if (statement->info.update.spec->info.spec.remote_server_name)
-    {
-      pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
-
-      if (pt_has_error (parser))
-	{
-	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-	  return er_errid ();
-	}
-
-      xasl = pt_to_xasl_for_dblink (parser, statement->info.update.spec);
-    }
-  else
-    {
-      xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
-    }
+  xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
 
   if (xasl)
     {
@@ -9708,7 +9692,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -10296,7 +10280,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = statement->info.delete_.spec;
 	  while (node && error == NO_ERROR)
 	    {
-	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	      if (node->info.spec.flat_entity_list && (node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
 		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
@@ -10384,7 +10368,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   spec = statement->info.delete_.spec;
   while (spec)
     {
-      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && !spec->info.spec.remote_server_name)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
@@ -11497,6 +11481,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
+
   xasl = pt_to_insert_xasl (parser, statement);
 
   if (xasl)
@@ -13775,8 +13760,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   row_count_total = 0;
 
-
-
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
   AU_ENABLE (save);
@@ -13820,7 +13803,15 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  error = insert_local (parser, statement);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      error = do_insert_at_server (parser, statement);
+    }
+  else
+    {
+      error = insert_local (parser, statement);
+    }
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);
@@ -17627,7 +17618,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_enter_packing_buf ();
 
 	  /* generate MERGE XASL */
+	  /* Note: Autoparameterization is redundant as the merge XASL generation is already performed. Therefore, this step can be safely omitted. */
+	  bool backup_flag = parser->flag.is_skip_auto_parameterize;
+	  parser->flag.is_skip_auto_parameterize = 1;
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
+	  parser->flag.is_skip_auto_parameterize = backup_flag;
 
 	  stream.buffer = NULL;
 

@@ -210,7 +210,6 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement
 				    PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs);
 extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_stmt);
 extern PT_NODE *pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * name_list);
-extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
 extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
 					 PT_NODE ** default_expr_attrs);
@@ -219,7 +218,4 @@ extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
 /* to generate xasl for dblink */
 extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
-
-/* to check dblink in trigger action */
-extern void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */

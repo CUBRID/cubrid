@@ -125,6 +125,8 @@ struct odbc_bind_info
 {
   char *string_val;
   wchar_t *wchar_val;
+  SQLLEN cbValue;
+
   SQLSMALLINT smallInt_val;
   SQLINTEGER integer_val;
   SQLREAL real_val;

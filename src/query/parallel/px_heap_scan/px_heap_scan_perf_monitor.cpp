@@ -38,10 +38,56 @@ namespace parallel_heap_scan
 	m_scan_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->get_scan_id()->scan_stats;
 	m_memory_mapper_stats[i] = scan_id->s.phsid.manager->m_memory_mappers[i]->stats;
       }
+    m_prev_scan_stats.agl = NULL;
+    m_prev_scan_stats.qualified_rows = 0;
+    m_prev_scan_stats.read_rows = 0;
   }
 
   perf_monitor::~perf_monitor()
   {
+  }
+
+  void perf_monitor::set_partition_stats (PARTITION_SPEC_TYPE *ended_partition_spec)
+  {
+    if (ended_partition_spec == NULL)
+      {
+	return;
+      }
+    UINT64 qualified_rows = 0;
+    UINT64 read_rows = 0;
+
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	qualified_rows += m_scan_stats[i].qualified_rows;
+	read_rows += m_scan_stats[i].read_rows;
+      }
+
+    ended_partition_spec->scan_stats.qualified_rows = qualified_rows - m_prev_scan_stats.qualified_rows;
+    ended_partition_spec->scan_stats.read_rows = read_rows - m_prev_scan_stats.read_rows;
+
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	m_prev_scan_stats.qualified_rows = qualified_rows;
+	m_prev_scan_stats.read_rows = read_rows;
+      }
+  }
+
+  void perf_monitor::add_scan_stats (SCAN_ID *whole_scan_id)
+  {
+    if (whole_scan_id == NULL)
+      {
+	return;
+      }
+    UINT64 qualified_rows = 0;
+    UINT64 read_rows = 0;
+    for (std::size_t i = 0; i < m_parallelism; ++i)
+      {
+	qualified_rows += m_scan_stats[i].qualified_rows;
+	read_rows += m_scan_stats[i].read_rows;
+      }
+
+    whole_scan_id->scan_stats.qualified_rows += qualified_rows;
+    whole_scan_id->scan_stats.read_rows += read_rows;
   }
 
   void perf_monitor::add_statistics (SCAN_ID *scan_id, std::size_t parallelism)
@@ -79,7 +125,7 @@ namespace parallel_heap_scan
     fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
     fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
-    fprintf (fp, ", gather: %s)", is_list_merge ? "mergable list" : "row by row");
+    fprintf (fp, ", gather: %s)", is_list_merge ? "mergeable list" : "row by row");
   }
 
   void perf_monitor::print_json (json_t *scan, char *class_name, bool is_list_merge)
@@ -114,7 +160,7 @@ namespace parallel_heap_scan
 				      "time", time_buf,
 				      "readrows", readrows_buf,
 				      "rows", rows_buf,
-				      "gather", is_list_merge ? "mergable list" : "row by row");
+				      "gather", is_list_merge ? "mergeable list" : "row by row");
     json_object_set_new (scan, "parallel heap", parallel_obj);
   }
 
