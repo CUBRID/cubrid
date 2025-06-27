@@ -2262,14 +2262,14 @@ pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_invalidate_temp_page () - invalidate page of temporary table
+ * pgbuf_dealloc_temp_page () - invalidate page of temporary table
  *
  * Note:
  *       This is only for temporary file.
  *       init ptype and clear dirty.
  */
 int
-pgbuf_invalidate_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free)
 {
   PGBUF_BCB *bufptr;
 
@@ -2286,9 +2286,11 @@ pgbuf_invalidate_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   pgbuf_bcb_clear_dirty (thread_p, bufptr);
 
   /* simple unfix */
-  bufptr->fcnt--;
-  assert (bufptr->fcnt == 0);
-
+  if (need_free)
+    {
+      bufptr->fcnt--;
+      assert (bufptr->fcnt == 0);
+    }
   PGBUF_BCB_UNLOCK (bufptr);
 
   return NO_ERROR;

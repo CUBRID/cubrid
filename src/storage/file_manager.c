@@ -744,7 +744,7 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
-static int file_sector_map_invalidate (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
 static void file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
@@ -4034,7 +4034,7 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
 }
 
 /*
- * file_sector_map_invalidate () - FILE_EXTDATA_ITEM_FUNC to invalidate user pages
+ * file_sector_map_dealloc_temp () - FILE_EXTDATA_ITEM_FUNC to dealloc user pages of temp table
  *
  * return        : error code
  * thread_p (in) : thread entry
@@ -4044,7 +4044,7 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
  * args (in)     : is_partial
  */
 static int
-file_sector_map_invalidate (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
+file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
 {
   bool is_partial = *(bool *) args;
   FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
@@ -4087,7 +4087,7 @@ file_sector_map_invalidate (THREAD_ENTRY * thread_p, const void *data, int index
 	  continue;
 	}
 
-      if (pgbuf_invalidate_temp_page (thread_p, page) != NO_ERROR)
+      if (pgbuf_dealloc_temp_page (thread_p, page, true) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -4247,7 +4247,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   else
     {
       /* invalidate pages in page buffer. actually remove dirty flag. */
-
       ftab_collector.npages = 0;
       ftab_collector.nsects = 0;
       ftab_collector.partsect_ftab =
@@ -4264,7 +4263,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
       is_partial = true;
       error_code =
 	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_invalidate, &is_partial, true, NULL, NULL);
+				  file_sector_map_dealloc_temp, &is_partial, true, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4287,7 +4286,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 		      /* don't care about page which is not on page buffer. */
 		      continue;
 		    }
-		  if (pgbuf_invalidate_temp_page (thread_p, page_ftab) != NO_ERROR)
+		  if (pgbuf_dealloc_temp_page (thread_p, page_ftab, true) != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
 		      goto exit;
@@ -4301,6 +4300,11 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, -fhead->n_page_ftab);
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, -fhead->n_page_user);
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, -fhead->n_page_free);
+      if (pgbuf_dealloc_temp_page (thread_p, page_fhead, false) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -7172,7 +7176,7 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
       /* find in collected sectors */
       for (idx_sect = 0; idx_sect < collect->nsects; idx_sect++)
 	{
-	  if (disk_compare_vsids (&vsid_this, &collect->partsect_ftab->vsid) == 0)
+	  if (disk_compare_vsids (&vsid_this, &collect->partsect_ftab[idx_sect].vsid) == 0)
 	    {
 	      break;
 	    }
