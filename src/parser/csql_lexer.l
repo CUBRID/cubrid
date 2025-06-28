@@ -80,12 +80,12 @@ int expecting_pl_lang_spec = 0;
  * For now, I've set it to ignore warnings in the automatically generated code. 
  * If possible, let's remove warnings normally instead of setting it to ignore. */
 #if defined(__GNUC__) || defined(__clang__)
-  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX \
-    _Pragma("GCC diagnostic push") \
-    _Pragma("GCC diagnostic ignored \"-Wsign-compare\"") \
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX                \
+    _Pragma("GCC diagnostic push")                         \
+    _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")   \
     _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"")
 
-  #define END_SUPPRESS_WARNING_BISON_FLEX \
+  #define END_SUPPRESS_WARNING_BISON_FLEX                  \
     _Pragma("GCC diagnostic pop")
 #else
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX

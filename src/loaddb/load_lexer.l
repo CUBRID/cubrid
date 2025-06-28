@@ -55,11 +55,11 @@ using token = cubload::parser::token;
  * For now, I've set it to ignore warnings in the automatically generated code. 
  * If possible, let's remove warnings normally instead of setting it to ignore. */
 #if defined(__GNUC__) || defined(__clang__)
-  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX \
-    _Pragma("GCC diagnostic push") \
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
+    _Pragma("GCC diagnostic push")                      \
     _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")
 
-  #define END_SUPPRESS_WARNING_BISON_FLEX \
+  #define END_SUPPRESS_WARNING_BISON_FLEX               \
     _Pragma("GCC diagnostic pop")
 #else
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
