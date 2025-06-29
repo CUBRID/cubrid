@@ -2248,7 +2248,11 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   bool both_flag = false;
+  bool ha_only_flag = false;
+  bool exclude_ha_flag = false;
+  const char *hexa_string;
   FILE *outfp = NULL;
+  unsigned int added_in_flags, out_flags, dump_flags;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2263,6 +2267,16 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   output_file = utility_get_option_string_value (arg_map, PARAMDUMP_OUTPUT_FILE_S, 0);
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
+  ha_only_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_ONLY_S);
+  exclude_ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_EXCLUDE_HA_S);
+
+  /* --dump-flag is hidden option intended for developers or technical supoort */
+  hexa_string = utility_get_option_string_value (arg_map, PARAMDUMP_DUMP_FLAG_S, 0);
+
+  if (ha_only_flag && exclude_ha_flag)
+    {
+      goto print_dumpparam_usage;
+    }
 
   if (output_file == NULL)
     {
@@ -2288,7 +2302,25 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-#if defined (CS_MODE)
+  added_in_flags = PRM_EMPTY_FLAG;
+  out_flags = PRM_HIDDEN;
+
+  if (ha_only_flag)
+    {
+      added_in_flags |= PRM_FOR_HA;
+    }
+  else if (exclude_ha_flag)
+    {
+      out_flags |= PRM_FOR_HA;
+    }
+
+  if (hexa_string != NULL)
+    {
+      dump_flags = (unsigned int) strtoul (hexa_string, NULL, 16);
+      added_in_flags |= dump_flags;
+      out_flags &= ~dump_flags;
+    }
+
   /* should have little copyright herald message ? */
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -2300,23 +2332,32 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (both_flag)
+#if defined(SA_MODE)
+  if (envvar_get ("FOR_QA"))
     {
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
+      sysprm_dump_parameters (outfp, ' ', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
+			      PRM_OR_CONDITION);
+    }
+  else
+#endif
+    {
+
+      /* dump client's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
-      sysprm_dump_parameters (outfp);
+      sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | added_in_flags, PRM_AND_CONDITION, out_flags,
+			      PRM_OR_CONDITION);
       fprintf (outfp, "\n");
+
+      /* dump server's parameters */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
+	       database_name);
+      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | added_in_flags, PRM_AND_CONDITION, out_flags,
+				     PRM_OR_CONDITION);
     }
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
-	   database_name);
-  sysprm_dump_server_parameters (outfp);
+
   db_shutdown ();
-#else /* CS_MODE */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
-  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
-    {
-      sysprm_dump_parameters (outfp);
-    }
-#endif /* !CS_MODE */
 
   if (outfp != stdout)
     {
