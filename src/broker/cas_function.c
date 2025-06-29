@@ -59,7 +59,7 @@
 #include "cas_sql_log2.h"
 #include "dbtype.h"
 #include "parse_tree.h"
-#include "api_compat.h"
+#include "db_session.h"
 
 #include "object_primitive.h"
 #include "ddl_log.h"

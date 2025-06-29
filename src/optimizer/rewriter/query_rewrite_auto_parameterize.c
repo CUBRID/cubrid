@@ -136,7 +136,7 @@ qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_skip_auto_parameterize == 1)
     {
       return;
     }

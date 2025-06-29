@@ -27,7 +27,7 @@
 #include "method_schema_info.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
 #include "db.h"
 
 #include "object_primitive.h"

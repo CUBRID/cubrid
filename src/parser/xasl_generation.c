@@ -1666,12 +1666,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	    case PT_EXISTS:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_TABLE);
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
-
-	      /* exists op must fetch one tuple */
-	      if (regu_var1 && regu_var1->xasl)
-		{
-		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
-		}
 	      break;
 
 	    case PT_IS_NULL:
@@ -20358,6 +20352,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (from && from->info.spec.remote_server_name)
     {
+      pt_check_dblink_trigger (parser, statement);
+      pt_rewrite_for_dblink (parser, statement);
+
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+	  return NULL;
+	}
+
       return pt_to_xasl_for_dblink (parser, from);
     }
 

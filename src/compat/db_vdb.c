@@ -49,7 +49,7 @@
 #include "execute_statement.h"
 #include "locator_cl.h"
 #include "server_interface.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"

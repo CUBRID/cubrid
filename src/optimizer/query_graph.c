@@ -2621,12 +2621,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
 
-      /* always true transitive equi-join term is not suitable as m-join edge. */
-      if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
-	{
-	  merge_applies = false;
-	}
-
       if (merge_applies)
 	{
 	  QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);

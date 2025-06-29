@@ -178,6 +178,7 @@ extern "C"
   extern PT_NODE *pt_get_node_from_list (PT_NODE * list, int index);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern PT_HINT_ENUM pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
 
   extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
@@ -475,6 +476,8 @@ extern "C"
   extern PT_NODE *pt_check_orderbynum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						  int *continue_walk);
   extern void pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater, bool * has_lesser);
   extern PT_NODE *pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -599,6 +602,7 @@ extern "C"
   extern int pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list, PT_NODE * arg_array[],
 				    const int array_size, int *num_args);
   extern int pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern int pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
 
   extern PT_NODE *pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like_where_syntax,

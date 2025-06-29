@@ -85,6 +85,7 @@
 
 #if SERVER_MODE && !WINDOWS
 #include "px_heap_scan_manager.hpp"
+#include "px_heap_scan_perf_monitor.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 
 #include <vector>
@@ -6629,6 +6630,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
 		    }
 		}
+	      else
+		{
+		  curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		}
 	    }
 #endif /* SERVER_MODE && !WINDOWS */
 	}
@@ -7812,6 +7817,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   OID class_oid;
   HFID class_hfid;
   BTID btid;
+  PARTITION_SPEC_TYPE *prev_partition_spec = spec->curent;
 
   if (spec->type != TARGET_CLASS && spec->type != TARGET_CLASS_ATTR)
     {
@@ -7864,6 +7870,16 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   /* close current scan and open a new one on the next partition */
   scan_end_scan (thread_p, &spec->s_id);
   scan_close_scan (thread_p, &spec->s_id);
+
+#if SERVER_MODE && !WINDOWS
+  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+    {
+      if (spec->s_id.s.phsid.perf_monitor)
+	{
+	  spec->s_id.s.phsid.perf_monitor->set_partition_stats (prev_partition_spec);
+	}
+    }
+#endif
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
@@ -8382,11 +8398,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
-				  /* only one row is need for exists OP */
-				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-				    {
-				      return S_SUCCESS;
-				    }
 				}
 			    }
 			}
@@ -8452,11 +8463,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
-					}
-				      /* only one row is need for exists OP */
-				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-					{
-					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }
@@ -11177,16 +11183,10 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
   bool copy = (pr_is_set_type (attr->type)) ? true : false;
   if (pr_type != NULL)
     {
+      /* initialized buffer size equals to the read size, so no overflow */
       or_init (&buf, (char *) attr->current_default_value.value, attr->current_default_value.val_length);
-      buf.error_abort = 1;
-      switch (_setjmp (buf.env))
-	{
-	case 0:
-	  return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
-					NULL, 0);
-	default:
-	  return ER_FAILED;
-	}
+      return pr_type->data_readval (&buf, default_val, attr->domain, attr->current_default_value.val_length, copy,
+				    NULL, 0);
     }
   else
     {
