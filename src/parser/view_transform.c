@@ -1493,11 +1493,12 @@ static PT_NODE *
 mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
 				       PT_NODE ** new_spec)
 {
-  PT_NODE *query_spec_columns, *tmp_query, *save_order_by, *save_select_list, *save_order_by_for;
+  PT_NODE *query_spec_columns, *save_order_by, *save_select_list, *save_order_by_for;
   PT_NODE *attributes, *attr, *as_attr_list;
-  PT_NODE *col, *new_select_list, *spec, *pred, *subquery;
+  PT_NODE *col, *new_select_list, *spec, *subquery;
   bool is_unset_hidden_col;
   PT_NODE *derived_table;
+  PT_NODE *tmp_query = NULL;
 
   assert (PT_IS_SELECT (statement));
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
@@ -1601,7 +1602,6 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   subquery->info.query.q.select.list = save_select_list;
   subquery->info.query.orderby_for = save_order_by_for;
 
-  pred = statement->info.query.q.select.where;
   if (subquery->info.query.order_by)
     {
       tmp_query = mq_update_order_by (parser, tmp_query, subquery, NULL, spec, false);
