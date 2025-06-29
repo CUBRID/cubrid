@@ -5863,8 +5863,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		   * for only one the new or the old one.
 		   */
 
-		  // todo - this is completely unsafe.
-		  memcpy (new_tdes, tdes, sizeof (*tdes));
+		  (*tdes).copy_to (*new_tdes);
+
 		  new_tdes->tran_index = new_tran_index;
 		  new_tdes->isloose_end = true;
 		  /* new_tdes does not inherit topops fields */
