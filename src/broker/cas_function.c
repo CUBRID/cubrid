@@ -124,8 +124,14 @@ static const char *type_str_tbl[] = {
   "NULL",			/* CCI_U_TYPE_NULL */
   "CHAR",			/* CCI_U_TYPE_CHAR */
   "VARCHAR",			/* CCI_U_TYPE_STRING */
-  "NCHAR",			/* CCI_U_TYPE_NCHAR */
-  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR */
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  "NCHAR",			/* CCI_U_TYPE_NCHAR_DEPRECATED */
+  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR_DEPRECATED */
+
   "BIT",			/* CCI_U_TYPE_BIT */
   "VARBIT",			/* CCI_U_TYPE_VARBIT */
   "NUMERIC",			/* CCI_U_TYPE_NUMERIC */
@@ -2298,6 +2304,7 @@ bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int 
 
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
 	{
+	  assert (type != CCI_U_TYPE_NCHAR_DEPRECATED && type != CCI_U_TYPE_VARNCHAR_DEPRECATED);
 	  write2_func ("%s ", type_str_tbl[(int) type]);
 	  bind_value_print (type, net_value, slow_log);
 	}
@@ -2339,8 +2346,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_ENUM:
     case CCI_U_TYPE_JSON:
       {

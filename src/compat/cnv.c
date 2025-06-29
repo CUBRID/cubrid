@@ -6665,24 +6665,6 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	    break;
 	  }
 
-	case DB_TYPE_NCHAR:
-	  {
-	    int size;
-	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &size);
-	    db_make_nchar (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	    next = string + strlen (string);
-	    break;
-	  }
-
-	case DB_TYPE_VARNCHAR:
-	  {
-	    int char_count;
-	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &char_count);
-	    db_make_varnchar (value, char_count, string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	    next = string + strlen (string);
-	    break;
-	  }
-
 	case DB_TYPE_TIME:
 	  {
 	    DB_TIME time;
@@ -6895,23 +6877,6 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       else
 	{
 	  strcpy (string, p);
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      p = db_get_nchar (value, &dummy);
-      if (p != NULL)
-	{
-	  if ((int) strlen (p) + 1 > max_size)
-	    {
-	      error = CNV_ERR_STRING_TOO_LONG;
-	      co_signal (error, CNV_ER_FMT_STRING_TOO_LONG, max_size - 1);
-	    }
-	  else
-	    {
-	      strcpy (string, p);
-	    }
 	}
       break;
 
@@ -8651,8 +8616,6 @@ db_validate_format (const char *format, DB_TYPE type)
     case DB_TYPE_NULL:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       break;
 
     case DB_TYPE_VARBIT:

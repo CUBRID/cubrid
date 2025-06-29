@@ -155,14 +155,8 @@ struct json_t;
 #define PT_IS_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_CHAR)     || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_BIT)      || \
 	  ((t) == PT_TYPE_VARBIT))
-
-#define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
-        ( ((t) == PT_TYPE_NCHAR)      || \
-	  ((t) == PT_TYPE_VARNCHAR))
 
 #define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_CHAR)      || \
@@ -170,9 +164,7 @@ struct json_t;
 
 #define PT_IS_CHAR_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_CHAR)      || \
-	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR))
+	  ((t) == PT_TYPE_VARCHAR))
 
 #define PT_IS_BIT_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_BIT)      || \
@@ -183,8 +175,6 @@ struct json_t;
 	  ((t) == PT_TYPE_NUMERIC)   || \
 	  ((t) == PT_TYPE_CHAR)      || \
 	  ((t) == PT_TYPE_VARCHAR)   || \
-	  ((t) == PT_TYPE_NCHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR)  || \
 	  ((t) == PT_TYPE_BIT)       || \
 	  ((t) == PT_TYPE_VARBIT)    || \
 	  ((t) == PT_TYPE_OBJECT)    || \
@@ -237,8 +227,6 @@ struct json_t;
         ( ((t) == PT_TYPE_NUMERIC)  || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
 	  ((t) == PT_TYPE_CHAR)     || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
-	  ((t) == PT_TYPE_NCHAR)    || \
 	  ((t) == PT_TYPE_VARBIT)   || \
 	  ((t) == PT_TYPE_BIT)	    || \
 	  ((t) == PT_TYPE_ENUMERATION))
@@ -250,8 +238,6 @@ struct json_t;
 #define PT_HAS_COLLATION(t) \
         ( ((t) == PT_TYPE_CHAR)     || \
 	  ((t) == PT_TYPE_VARCHAR)  || \
-	  ((t) == PT_TYPE_NCHAR)    || \
-	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_VALUE_GET_BYTES(node) \
@@ -1122,8 +1108,14 @@ enum pt_type_enum
   PT_TYPE_NUMERIC,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  PT_TYPE_NCHAR_DEPRECATED,
+  PT_TYPE_VARNCHAR_DEPRECATED,
+
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
@@ -1264,7 +1256,6 @@ typedef enum
   PT_CURRENT,
 
   PT_CHAR_STRING,		/* denotes the flavor of a literal string */
-  PT_NCHAR_STRING,
   PT_BIT_STRING,
   PT_HEX_STRING,
 
@@ -3301,7 +3292,7 @@ union pt_data_value
   DB_BIGINT bigint;
   float f;
   double d;
-  PARSER_VARCHAR *str;		/* keeps as string different data type: string data types (char, nchar, byte) date and
+  PARSER_VARCHAR *str;		/* keeps as string different data type: string data types (char, byte) date and
 				 * time data types numeric */
   void *p;			/* what is this */
   DB_OBJECT *op;

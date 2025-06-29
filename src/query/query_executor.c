@@ -22666,12 +22666,6 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_SEQUENCE:
       return "SEQUENCE";
 
-    case DB_TYPE_NCHAR:
-      return "NCHAR";
-
-    case DB_TYPE_VARNCHAR:
-      return "NCHAR VARYING";
-
     case DB_TYPE_BIT:
       return "BIT";
 
@@ -22723,8 +22717,6 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       precision = domain->precision;
@@ -23230,8 +23222,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		{
 		case DB_TYPE_VARCHAR:
 		case DB_TYPE_CHAR:
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
 		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
 		  break;

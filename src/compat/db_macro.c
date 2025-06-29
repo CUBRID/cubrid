@@ -267,30 +267,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
-    case DB_TYPE_NCHAR:
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-      else
-	{
-	  value->domain.char_info.length = precision;
-	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_NCHAR_PRECISION))
-	{
-	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NCHAR_PRECISION);
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-
-      if (precision == 0)
-	{
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-      value->data.ch.info.codeset = LANG_SYS_CODESET;
-      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
-      break;
-
     case DB_TYPE_VARCHAR:
       if (precision == DB_DEFAULT_PRECISION)
 	{
@@ -310,30 +286,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       if (precision == 0)
 	{
 	  value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
-	}
-      value->data.ch.info.codeset = LANG_SYS_CODESET;
-      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
-	}
-      else
-	{
-	  value->domain.char_info.length = precision;
-	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_VARNCHAR_PRECISION))
-	{
-	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARNCHAR_PRECISION);
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
-	}
-
-      if (precision == 0)
-	{
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
 	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
@@ -540,8 +492,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       /* space is the min value, matching the comparison in qstr_compare */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = false;
@@ -706,8 +656,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       /* Case for the maximum String type. Just set the is_max_string flag to TRUE. */
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
@@ -852,20 +800,6 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.info.is_max_string = false;
       value->data.ch.info.compressed_need_clear = false;
       value->data.ch.medium.size = 0;
-      value->data.ch.medium.length = -1;
-      value->data.ch.medium.buf = (char *) "";
-      value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
-      value->domain.general_info.is_null = 0;
-      value->domain.char_info.collation_id = collation_id;
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = codeset;
-      value->data.ch.info.compressed_need_clear = false;
-      value->data.ch.info.is_max_string = false;
-      value->data.ch.medium.size = 1;
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
@@ -1027,57 +961,6 @@ db_string_truncate (DB_VALUE * value, const int precision)
 
 	  pr_clear_value (value);
 	  tp_Char.setval (value, &src_value, true);
-
-	  pr_clear_value (&src_value);
-
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      val_str = db_get_nchar (value, &length);
-      if (val_str != NULL && length > precision)
-	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
-	    }
-
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_varnchar (&src_value, precision, string, byte_size,
-			    db_get_string_codeset (value), db_get_string_collation (value));
-
-	  pr_clear_value (value);
-	  tp_VarNChar.setval (value, &src_value, true);
-
-	  pr_clear_value (&src_value);
-	}
-      break;
-
-    case DB_TYPE_NCHAR:
-      val_str = db_get_nchar (value, &length);
-      if (val_str != NULL && length > precision)
-	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
-	    }
-
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_nchar (&src_value, precision, string, byte_size,
-			 db_get_string_codeset (value), db_get_string_collation (value));
-
-	  pr_clear_value (value);
-	  tp_NChar.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1285,8 +1168,6 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
     {
     case DB_TYPE_C_CHAR:
     case DB_TYPE_C_VARCHAR:
-    case DB_TYPE_C_NCHAR:
-    case DB_TYPE_C_VARNCHAR:
       status = coerce_char_to_dbvalue (value, (char *) input, input_length);
       break;
     case DB_TYPE_C_INT:
@@ -1741,10 +1622,8 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_BIGINT:
     case DB_TYPE_NUMERIC:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_VARBIT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -1920,7 +1799,7 @@ transfer_string (char *dst, int *xflen, int *outlen, const int dstlen,
        * No truncation; copy the data and blank pad if necessary.
        */
       memcpy (dst, src, srclen);
-      if ((type == DB_TYPE_C_CHAR) || (type == DB_TYPE_C_NCHAR))
+      if (type == DB_TYPE_C_CHAR)
 	{
 	  ptr =
 	    qstr_pad_string ((unsigned char *) &dst[srclen],
@@ -2163,15 +2042,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%d", i);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2223,15 +2093,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%d", s);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2270,15 +2131,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    break;
 	  case DB_TYPE_C_CHAR:
 	  case DB_TYPE_C_VARCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%lld", (long long) bigint);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
 	    {
 	      char tmp[NUM_BUF_SIZE];
 	      sprintf (tmp, "%lld", (long long) bigint);
@@ -2337,15 +2189,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%f", (DB_C_DOUBLE) f);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2390,15 +2233,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    break;
 	  case DB_TYPE_C_CHAR:
 	  case DB_TYPE_C_VARCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%f", (DB_C_DOUBLE) d);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
 	    {
 	      char tmp[NUM_BUF_SIZE];
 	      sprintf (tmp, "%f", (DB_C_DOUBLE) d);
@@ -2469,15 +2303,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      char tmp[NUM_BUF_SIZE];
-	      sprintf (tmp, "%4.2f", (DB_C_DOUBLE) d);
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2486,8 +2311,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
       {
 	const char *s = db_get_string (value);
 	int n = db_get_string_size (value);
@@ -2573,11 +2396,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  case DB_TYPE_C_VARCHAR:
 	    error_code = transfer_string ((char *) buf, xflen, outlen, buflen, s, n, c_type, LANG_SYS_CODESET);
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    error_code = transfer_string ((char *) buf, xflen, outlen, buflen, s, n, c_type, LANG_SYS_CODESET);
-	    break;
-
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2642,20 +2460,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      int n;
-	      char tmp[TIME_BUF_SIZE];
-	      n = db_time_to_string (tmp, sizeof (tmp), db_get_time (value));
-	      if (n < 0)
-		{
-		  goto invalid_args;
-		}
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2685,20 +2489,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	      error_code =
 		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 
-	    }
-	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      int n;
-	      char tmp[TIMESTAMP_BUF_SIZE];
-	      n = db_timestamp_to_string (tmp, sizeof (tmp), db_get_timestamp (value));
-	      if (n < 0)
-		{
-		  goto invalid_args;
-		}
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
 	    }
 	    break;
 	  default:
@@ -2732,20 +2522,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
 	    }
 	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
-	    {
-	      int n;
-	      char tmp[DATETIME_BUF_SIZE];
-	      n = db_datetime_to_string (tmp, sizeof (tmp), db_get_datetime (value));
-	      if (n < 0)
-		{
-		  goto invalid_args;
-		}
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
 	  default:
 	    goto unsupported_conversion;
 	  }
@@ -2764,20 +2540,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    break;
 	  case DB_TYPE_C_CHAR:
 	  case DB_TYPE_C_VARCHAR:
-	    {
-	      int n;
-	      char tmp[DATE_BUF_SIZE];
-	      n = db_date_to_string (tmp, sizeof (tmp), db_get_date (value));
-	      if (n < 0)
-		{
-		  goto invalid_args;
-		}
-	      error_code =
-		transfer_string ((char *) buf, xflen, outlen, buflen, tmp, strlen (tmp), c_type, LANG_SYS_CODESET);
-	    }
-	    break;
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
 	    {
 	      int n;
 	      char tmp[DATE_BUF_SIZE];
@@ -2836,8 +2598,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    break;
 	  case DB_TYPE_C_CHAR:
 	  case DB_TYPE_C_VARCHAR:
-	  case DB_TYPE_C_NCHAR:
-	  case DB_TYPE_C_VARNCHAR:
 	    {
 	      DB_VALUE v;
 	      DB_DATA_STATUS status;
@@ -2868,7 +2628,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    error_code = transfer_bit_string ((char *) buf, xflen, outlen, buflen, value, c_type);
 	    break;
 	  case DB_TYPE_C_CHAR:
-	  case DB_TYPE_C_NCHAR:
 	    {
 	      int truncated;
 	      qstr_bit_to_hex_coerce ((char *) buf, buflen,
@@ -2888,7 +2647,6 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    }
 	    break;
 	  case DB_TYPE_C_VARCHAR:
-	  case DB_TYPE_C_VARNCHAR:
 	    {
 	      int truncated;
 	      qstr_bit_to_hex_coerce ((char *) buf, buflen,
@@ -3013,42 +2771,6 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 		status = C_TO_VALUE_CONVERSION_ERROR;
 	      }
 	    else if (data_status == DATA_STATUS_TRUNCATED)
-	      {
-		status = C_TO_VALUE_TRUNCATION_ERROR;
-	      }
-
-	    (void) db_value_clear (&tmp_value);
-	  }
-      }
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	int char_count;
-	int precision = DB_VALUE_PRECISION (value);
-
-	intl_char_count ((unsigned char *) buf, buflen, LANG_SYS_CODESET, &char_count);
-
-	if (precision == TP_FLOATING_PRECISION_VALUE)
-	  {
-	    precision = char_count;
-	  }
-
-	if ((db_type == DB_TYPE_VARNCHAR && precision >= char_count)
-	    || (db_type == DB_TYPE_NCHAR && precision == char_count))
-	  {
-
-	    qstr_make_typed_string (db_type, value, precision, buf, buflen, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  }
-	else
-	  {
-	    DB_VALUE tmp_value;
-	    DB_DATA_STATUS data_status;
-
-	    qstr_make_typed_string (db_type, &tmp_value, precision, buf, buflen, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-
-	    (void) db_char_string_coerce (&tmp_value, value, &data_status);
-	    if (data_status == DATA_STATUS_TRUNCATED)
 	      {
 		status = C_TO_VALUE_TRUNCATION_ERROR;
 	      }
@@ -3516,43 +3238,6 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  }
       }
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	int error_code;
-	DB_VALUE tmp_value;
-	DB_DATA_STATUS data_status;
-
-	db_make_varnchar (&tmp_value, DB_DEFAULT_PRECISION, buf,
-			  QSTR_NUM_BYTES (buflen), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-
-	/*
-	 *  If the precision is not specified, fix it to
-	 *  the input precision otherwise db_char_string_coerce()
-	 *  will fail.
-	 */
-	if (DB_VALUE_PRECISION (value) == TP_FLOATING_PRECISION_VALUE)
-	  {
-	    db_value_domain_init (value, db_type, QSTR_NUM_BYTES (buflen), 0);
-	  }
-
-	error_code = db_char_string_coerce (&tmp_value, value, &data_status);
-	if (error_code != NO_ERROR)
-	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
-	  }
-	else if (data_status == DATA_STATUS_TRUNCATED)
-	  {
-	    status = C_TO_VALUE_TRUNCATION_ERROR;
-	  }
-
-	error_code = db_value_clear (&tmp_value);
-	if (error_code != NO_ERROR)
-	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
-	  }
-      }
-      break;
     case DB_TYPE_INTEGER:
       db_make_int (value, *(int *) buf);
       break;
@@ -3613,8 +3298,6 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_DATE db_date;
 	char tmp[DATE_BUF_SIZE];
@@ -3694,8 +3377,6 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_TIME db_time;
 	char tmp[TIME_BUF_SIZE];
@@ -3775,8 +3456,6 @@ coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	char tmp[TIME_BUF_SIZE];
 
@@ -3880,8 +3559,6 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	char tmp[DATETIME_BUF_SIZE];
 
@@ -4546,9 +4223,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  src_p = db_get_string (value_p);
 
 	  if (src_p != NULL && db_get_string_size (value_p) == 0)
@@ -5057,8 +4732,6 @@ db_is_json_value_type (DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NULL:
     case DB_TYPE_SHORT:
@@ -5080,8 +4753,6 @@ db_is_json_doc_type (DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_JSON:
       return true;
@@ -5140,22 +4811,8 @@ db_value_is_corrupted (const DB_VALUE * value)
 	}
       break;
 
-    case DB_TYPE_NCHAR:
-      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_NCHAR_PRECISION))
-	{
-	  return true;
-	}
-      break;
-
     case DB_TYPE_VARCHAR:
       if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARCHAR_PRECISION))
-	{
-	  return true;
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARNCHAR_PRECISION))
 	{
 	  return true;
 	}

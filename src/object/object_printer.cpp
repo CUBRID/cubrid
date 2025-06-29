@@ -261,8 +261,6 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	    }
 	/* FALLTHRU */
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	  has_collation = 1;
 	/* FALLTHRU */
 	case DB_TYPE_BIT:
