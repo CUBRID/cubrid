@@ -123,8 +123,7 @@ logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
   /* TODO: this is completely unsafe.
    * Using memset() on LOG_TDES is not appropriate.
    * However, since this is the only place in the entire codebase where memset() is used and it is for testing purposes,
-   * we ensure that no compile warnings are triggered.
-   */   
+   * we ensure that no compile warnings are triggered.   */   
   memset ((void *) tdes, 0, sizeof (LOG_TDES));
 
   tdes->tran_index = tran_index;
