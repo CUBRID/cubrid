@@ -129,8 +129,8 @@ static const char *type_str_tbl[] = {
    * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * However, to maintain compatibility with previous versions, the enum list will be preserved.       
    */
-  "NCHAR",			/* CCI_U_TYPE_NCHAR */
-  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR */
+  "NCHAR",			/* CCI_U_TYPE_NCHAR_DEPRECATED */
+  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR_DEPRECATED */
 
   "BIT",			/* CCI_U_TYPE_BIT */
   "VARBIT",			/* CCI_U_TYPE_VARBIT */
