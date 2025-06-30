@@ -535,6 +535,7 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **a
   fk_info.delete_action = (SM_FOREIGN_KEY_ACTION) del_action;
   fk_info.update_action = (SM_FOREIGN_KEY_ACTION) upd_action;
   fk_info.is_dropped = false;
+  fk_info.ref_match_option = (SM_FOREIGN_KEY_REFERENTIAL_MATCH_OPTION) SM_FOREIGN_KEY_REFERENTIAL_MATCH_NONE;
 
   if (name == NULL)
     {

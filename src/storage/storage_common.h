@@ -1103,6 +1103,13 @@ typedef enum
   SM_FOREIGN_KEY_SET_NULL
 } SM_FOREIGN_KEY_ACTION;
 
+typedef enum
+{
+  SM_FOREIGN_KEY_REFERENTIAL_MATCH_NONE,    // no match check if any FK column is NULL
+  SM_FOREIGN_KEY_REFERENTIAL_MATCH_PARTIAL, // check non-NULL FK columns
+  SM_FOREIGN_KEY_REFERENTIAL_MATCH_FULL,    // all FK columns must be NULL or all valid
+} SM_FOREIGN_KEY_REFERENTIAL_MATCH_OPTION;
+
 /*
  *    These identify "namespaces" for class components like attributes
  *    and methods.  A name_space identifier is frequently used
