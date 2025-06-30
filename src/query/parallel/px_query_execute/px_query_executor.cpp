@@ -63,7 +63,6 @@ namespace parallel_query_execute
       }
   }
 
-  // XASL 트리를 문자열로 변환하는 함수
   static std::string dump_xasl_tree_to_string (XASL_NODE *xasl, int depth = 0, bool is_last = true,
       bool *parent_has_more = nullptr)
   {
