@@ -583,8 +583,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
 
   size = ((size_t) log_Pb.num_buffers * (LOG_PAGESIZE));
-  log_Pb.pages_area = (LOG_PAGE *) malloc (size);
-  if (log_Pb.pages_area == NULL)
+  if (posix_memalign ((void **) &log_Pb.pages_area, 4096, size) != 0)
     {
       free_and_init (log_Pb.buffers);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
@@ -600,8 +599,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
 
   size = LOG_PAGESIZE;
-  log_Pb.header_page = (LOG_PAGE *) malloc (size);
-  if (log_Pb.header_page == NULL)
+  if (posix_memalign ((void **) &log_Pb.header_page, 4096, size) != 0)
     {
       free_and_init (log_Pb.buffers);
       free_and_init (log_Pb.pages_area);
@@ -1533,7 +1531,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
       goto error;
     }
 
-  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
       error_code = ER_FAILED;
@@ -5244,7 +5242,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
       error_code = ER_FAILED;
       if (logpb_is_archive_available (thread_p, *ret_arv_num) == true && fileio_is_volume_exist (arv_name) == true)
 	{
-	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false, true);
 	  if (vdes != NULL_VOLDES)
 	    {
 	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
@@ -5484,7 +5482,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  while (retry != 0 && retry != 1
 		 && (vdes =
 		     fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false,
-				   false)) == NULL_VOLDES)
+				   false, true)) == NULL_VOLDES)
 	    {
 	      char line_buf[PATH_MAX * 2];
 	      bool is_in_crash_recovery;
@@ -5814,7 +5812,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, 0, false);
+      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, 0, false, true);
       if (vdes == NULL_VOLDES)
 	{
 	  goto error;
@@ -8485,7 +8483,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
    */
   if (fileio_is_volume_exist (log_Name_active))
     {
-      lgat_vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+      lgat_vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
       if (lgat_vdes == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
@@ -8915,7 +8913,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       prev_volname = volnames.second.c_str();
 
       prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-      prev_vdes = fileio_mount (thread_p, NULL, prev_volname, prev_volid, false, false);
+      prev_vdes = fileio_mount (thread_p, NULL, prev_volname, prev_volid, false, false, true);
       if (prev_vdes == NULL_VOLDES)
 	{
 	  goto error;
@@ -9711,7 +9709,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	   */
 	  volid = (VOLID) fromfile_volid;
 
-	  to_vdes = fileio_mount (thread_p, log_Db_fullname, to_volname, LOG_DBCOPY_VOLID, false, false);
+	  to_vdes = fileio_mount (thread_p, log_Db_fullname, to_volname, LOG_DBCOPY_VOLID, false, false, true);
 	  if (to_vdes == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
@@ -9991,12 +9989,13 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
       if (fileio_rename (LOG_DBLOG_ACTIVE_VOLID, log_Name_active, to_volname) != NULL)
 	{
-	  log_Gl.append.vdes = fileio_mount (thread_p, to_db_fullname, to_volname, LOG_DBLOG_ACTIVE_VOLID, true, false);
+	  log_Gl.append.vdes =
+	    fileio_mount (thread_p, to_db_fullname, to_volname, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
 	}
       else
 	{
 	  log_Gl.append.vdes =
-	    fileio_mount (thread_p, log_Db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+	    fileio_mount (thread_p, log_Db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
 	  error_code = ER_FAILED;
 	  goto error;
 	}
@@ -10162,11 +10161,11 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	  fileio_dismount (thread_p, fileio_get_volume_descriptor (volid));
 	  if (fileio_rename (volid, from_volname, to_volname) != NULL)
 	    {
-	      (void) fileio_mount (thread_p, to_db_fullname, to_volname, volid, false, false);
+	      (void) fileio_mount (thread_p, to_db_fullname, to_volname, volid, false, false, true);
 	    }
 	  else
 	    {
-	      (void) fileio_mount (thread_p, log_Db_fullname, from_volname, volid, false, false);
+	      (void) fileio_mount (thread_p, log_Db_fullname, from_volname, volid, false, false, true);
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
@@ -10289,7 +10288,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
       if (fileio_is_volume_exist (log_Name_active) == false
 	  || (log_Gl.append.vdes =
 	      fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true,
-			    false)) == NULL_VOLDES)
+			    false, true)) == NULL_VOLDES)
 	{
 	  /* Unable to mount the active log */
 	  if (er_errid () == ER_IO_MOUNT_LOCKED)
@@ -11309,7 +11308,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 
   fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
 
-  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false, true);
   if (vdes != NULL_VOLDES)
     {
       if (fileio_read (thread_p, vdes, arv_hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
@@ -11414,7 +11413,8 @@ logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
 
   if (fileio_is_volume_exist (log_Name_active)
       && (log_Gl.append.vdes =
-	  fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false)) != NULL_VOLDES)
+	  fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false,
+			true)) != NULL_VOLDES)
     {
       char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
       LOG_PAGE *log_pgptr;

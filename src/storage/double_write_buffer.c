@@ -1044,8 +1044,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
   block_buffer_size = num_block_pages * IO_PAGESIZE;
   for (i = 0; i < num_blocks; i++)
     {
-      blocks_write_buffer[i] = (char *) malloc (block_buffer_size * sizeof (char));
-      if (blocks_write_buffer[i] == NULL)
+      if (posix_memalign ((void **) &blocks_write_buffer[i], 4096, block_buffer_size) != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, block_buffer_size * sizeof (char));
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -3125,7 +3124,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   if (fileio_is_volume_exist (dwb_Volume_name))
     {
       /* Open DWB volume first */
-      read_fd = fileio_mount (thread_p, boot_db_full_name (), dwb_Volume_name, LOG_DBDWB_VOLID, false, false);
+      read_fd = fileio_mount (thread_p, boot_db_full_name (), dwb_Volume_name, LOG_DBDWB_VOLID, false, false, true);
       if (read_fd == NULL_VOLDES)
 	{
 	  return ER_IO_MOUNT_FAIL;
