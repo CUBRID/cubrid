@@ -42,71 +42,56 @@ namespace parallel_query
 
     class base_task: public cubthread::entry_task
     {
+      public:
+	base_task (HASHJOIN_MANAGER *manager, task_manager &task_manager);
+	void retire () override;
+
       protected:
-	cubthread::entry &m_main_thread_ref;
 	HASHJOIN_MANAGER *m_manager;
 	task_manager &m_task_manager;
-
-	void emulate_main_thread (cubthread::entry &thread_ref);
-
-      public:
-	base_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, task_manager &task_manager);
-	virtual ~base_task () = default;
-
-	void retire () override;
     };
 
     class partition_task: public base_task
     {
+      public:
+	partition_task (HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info, task_manager &task_manager);
+	void execute (cubthread::entry &thread_ref) override;
+
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
-
-      public:
-	partition_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			task_manager &task_manager);
-	~partition_task () = default;
-
-	void execute (cubthread::entry &thread_ref) override;
     };
 
     class join_task: public base_task
     {
+      public:
+	join_task (HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context, task_manager &task_manager);
+	void execute (cubthread::entry &thread_ref) override;
+
       private:
 	HASHJOIN_CONTEXT *m_context;
-
-      public:
-	join_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-		   task_manager &task_manager);
-	~join_task () = default;
-
-	void execute (cubthread::entry &thread_ref) override;
     };
 
     class entry_manager : public cubthread::entry_manager
     {
+      public:
+	entry_manager (cubthread::entry &main_thread_ref);
+	~entry_manager() = default;
+
       protected:
+	void on_create (cubthread::entry &context) override;
 	void on_retire (cubthread::entry &context) override;
 	void on_recycle (cubthread::entry &context) override;
-	void on_create (cubthread::entry &context) override;
 
-      public:
-	entry_manager() = default;
-	~entry_manager() = default;
+      private:
+	cubthread::entry &m_main_thread_ref;
+
+	void emulate_main_thread (cubthread::entry &thread_ref);
     };
 
-    class task_manager
+    class task_manager : public cubthread::entry_manager
     {
-      private:
-	parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
-	int m_active_tasks;
-	std::mutex m_mutex;
-	std::condition_variable m_cv;
-	cuberr::context &m_main_error_context;
-	std::atomic<bool> m_has_error;
-
       public:
 	task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager, cuberr::context &main_error_context);
-	~task_manager () = default;
 
 	void push_task (base_task *task);
 	void end_task ();
@@ -115,11 +100,22 @@ namespace parallel_query
 	bool has_error ();
 	bool check_interrupt (cubthread::entry &thread_ref);
 	void handle_error (cubthread::entry &thread_ref);
+
+      private:
+	parallel_query::worker_manager_with_dedicated_pool &m_worker_manager;
+	int m_active_tasks;
+
+	std::mutex m_mutex;
+	std::condition_variable m_cv;
+
+	std::atomic<bool> m_has_error;
+	cuberr::context &m_main_error_context;
     };
 
     void try_reserve_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, size_t pool_size,
 			      size_t task_max_count);
     void release_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+
     int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
 

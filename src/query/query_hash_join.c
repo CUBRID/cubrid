@@ -1273,10 +1273,12 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
       memcpy (current_context, single_context, sizeof (HASHJOIN_CONTEXT));
 
+#if defined (SERVER_MODE)
       current_context->val_descr = NULL;
       current_context->during_join_pred = NULL;
       current_context->outer_fetch_info.regu_list_pred = NULL;
       current_context->inner_fetch_info.regu_list_pred = NULL;
+#endif /* defined (SERVER_MODE) */
 
       outer_part_list_id[part_index] =
 	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id, QFILE_FLAG_ALL, NULL);

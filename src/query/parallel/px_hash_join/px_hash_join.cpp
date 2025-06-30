@@ -30,9 +30,8 @@ namespace parallel_query
   namespace hash_join
   {
     /* base_task */
-    base_task::base_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, task_manager &task_manager)
-      : m_main_thread_ref (main_thread_ref)
-      , m_manager (manager)
+    base_task::base_task (HASHJOIN_MANAGER *manager, task_manager &task_manager)
+      : m_manager (manager)
       , m_task_manager (task_manager)
     {
       assert (manager != NULL);
@@ -44,20 +43,10 @@ namespace parallel_query
       delete this;
     }
 
-    void
-    base_task::emulate_main_thread (cubthread::entry &thread_ref)
-    {
-      thread_ref.emulate_tid = m_main_thread_ref.get_id ();
-      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
-      thread_ref.conn_entry = m_main_thread_ref.conn_entry;
-      thread_ref.trace_format = m_main_thread_ref.trace_format;
-      thread_ref.on_trace = m_main_thread_ref.on_trace;
-    }
-
     /* partition_task */
-    partition_task::partition_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager,
-				    HASHJOIN_INPUT_SPLIT_INFO *split_info, task_manager &task_manager)
-      : base_task (main_thread_ref, manager, task_manager)
+    partition_task::partition_task (HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
+				    task_manager &task_manager)
+      : base_task (manager, task_manager)
       , m_split_info (split_info)
     {
       assert (manager != NULL);
@@ -72,8 +61,6 @@ namespace parallel_query
 	  return;
 	}
 
-      emulate_main_thread (thread_ref);
-
       if (hjoin_split_qlist (&thread_ref, m_manager, m_split_info, NULL) != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
@@ -83,9 +70,8 @@ namespace parallel_query
     }
 
     /* join_task */
-    join_task::join_task (cubthread::entry &main_thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-			  task_manager &task_manager)
-      : base_task (main_thread_ref, manager, task_manager)
+    join_task::join_task (HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context, task_manager &task_manager)
+      : base_task (manager, task_manager)
       , m_context (context)
     {
       assert (manager != NULL);
@@ -99,8 +85,6 @@ namespace parallel_query
 	{
 	  return;
 	}
-
-      emulate_main_thread (thread_ref);
 
       m_context->val_descr = get_val_descr (thread_ref, m_manager->val_descr);
       m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->single_context.during_join_pred);
@@ -121,10 +105,25 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
 
+    entry_manager::entry_manager (cubthread::entry &main_thread_ref)
+      : m_main_thread_ref (main_thread_ref)
+    {
+      /* Nothing to do */
+    }
+
     void
     entry_manager::on_create (cubthread::entry &context)
     {
       cubthread::entry_manager::on_create (context);
+      emulate_main_thread (context);
+
+      /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
+       * function in net_server_request. Since parallel threads are not called through net_server_request,
+       * they need to set push_resource_tracks when executing the first task.
+       *
+       * For parallel threads, end_resource_tracks is expected to be called in retire_context,
+       * after all tasks have been completed. */
+      context.push_resource_tracks ();
     }
 
     void
@@ -138,6 +137,17 @@ namespace parallel_query
     entry_manager::on_recycle (cubthread::entry &context)
     {
       cubthread::entry_manager::on_recycle (context);
+      emulate_main_thread (context);
+    }
+
+    void
+    entry_manager::emulate_main_thread (cubthread::entry &thread_ref)
+    {
+      thread_ref.emulate_tid = m_main_thread_ref.get_id ();
+      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
+      thread_ref.conn_entry = m_main_thread_ref.conn_entry;
+      thread_ref.trace_format = m_main_thread_ref.trace_format;
+      thread_ref.on_trace = m_main_thread_ref.on_trace;
     }
 
     /* task_manager */
@@ -227,7 +237,7 @@ namespace parallel_query
 	}
 
 #undef new
-      new (manager->px_entry_manager) entry_manager();
+      new (manager->px_entry_manager) entry_manager (thread_ref);
 #define new new(__FILE__, __LINE__)
 
       if (parallel_query::worker_manager_with_dedicated_pool::get_manager().try_reserve_workers (pool_size, task_max_count,
@@ -266,10 +276,10 @@ namespace parallel_query
 				 cuberr::context::get_thread_local_context ());
       partition_task *task = NULL;
 
-      task = new partition_task (thread_ref, manager, &split_info->outer, task_manager);
+      task = new partition_task (manager, &split_info->outer, task_manager);
       task_manager.push_task (task);
 
-      task = new partition_task (thread_ref, manager, &split_info->inner, task_manager);
+      task = new partition_task (manager, &split_info->inner, task_manager);
       task_manager.push_task (task);
 
       task_manager.join ();
@@ -304,7 +314,7 @@ namespace parallel_query
 	{
 	  current_context = &manager->contexts[context_index];
 
-	  task = new join_task (thread_ref, manager, current_context, task_manager);
+	  task = new join_task (manager, current_context, task_manager);
 	  task_manager.push_task (task);
 	}
 
