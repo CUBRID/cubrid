@@ -75,7 +75,6 @@ namespace parallel_query
     {
       public:
 	entry_manager (cubthread::entry &main_thread_ref);
-	~entry_manager() = default;
 
       protected:
 	void on_create (cubthread::entry &context) override;

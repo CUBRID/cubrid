@@ -2010,12 +2010,6 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 
   for (value_index = 0; tuple_value < tuple_record_end; value_index++)
     {
-      /* Skip the tuple if any value is NULL */
-      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
-	{
-	  goto skip_next;
-	}
-
       for (key_index = 0; key_index < key->val_count; key_index++)
 	{
 	  /*
@@ -2029,6 +2023,12 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	  if (value_indexes[key_index] != value_index)
 	    {
 	      continue;
+	    }
+
+	  /* Skip the tuple if any value is NULL */
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_value) == V_UNBOUND)
+	    {
+	      goto skip_next;
 	    }
 
 	  value_size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
