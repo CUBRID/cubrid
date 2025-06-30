@@ -1670,7 +1670,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
       OID_SET_NULL (&fk_info->ref_class_oid);
       BTID_SET_NULL (&fk_info->ref_class_pk_btid);
       ref_cls_name = template_->name;
-      fk_info->index_class_of_ref_class = NULL;
     }
   else
     {

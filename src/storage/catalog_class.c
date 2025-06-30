@@ -2368,19 +2368,13 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  if (db_value_is_null (&val) == false)
-	    {
             db_make_int(&attrs[12].value, db_get_int(&val));
-            }
 
             error = set_get_element(seq, 3, &val);
             if (error != NO_ERROR) {
 	      goto error;
 	    }
-	  if (db_value_is_null (&val) == false)
-	    {
             db_make_int(&attrs[13].value, db_get_int(&val));
-            }
 
             seq = db_get_set(&svalue);
             error = set_get_element(seq, 5, &val);
