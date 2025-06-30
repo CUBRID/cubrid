@@ -302,6 +302,8 @@ namespace cubthread
 
       cubload::driver *m_loaddb_driver;
 
+      UINT64 *m_parallel_stats;
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();

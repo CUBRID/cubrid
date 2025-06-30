@@ -3584,19 +3584,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      if (xasl_p->executed_parallelism > 1)
-	{
-	  fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, parallel workers: %d)\n",
-		   qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
-		   (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
-		   (long long int) xasl_p->xasl_stats.ioreads, xasl_p->executed_parallelism);
-	}
-      else
-	{
-	  fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
-		   TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-		   (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
-	}
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
+	       (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
+
       indent += 2;
       if (xasl_p->func_stats.calls > 0)
 	{
@@ -3748,7 +3739,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     {
       if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
 	{
-	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+	  if (xasl_p->executed_parallelism > 1)
+	    {
+	      fprintf (fp, "%*cSUBQUERY (uncorrelated, parallel workers: %d)\n", indent, ' ',
+		       xasl_p->executed_parallelism);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+	    }
 	}
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)

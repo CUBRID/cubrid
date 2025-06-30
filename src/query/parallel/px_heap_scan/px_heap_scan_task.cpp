@@ -133,6 +133,10 @@ namespace parallel_heap_scan
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
+	if (m_context->m_orig_thread_p->m_parallel_stats != NULL)
+	  {
+	    thread_p->m_parallel_stats = m_context->m_orig_thread_p->m_parallel_stats;
+	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
@@ -311,6 +315,7 @@ namespace parallel_heap_scan
     db_change_private_heap (thread_p, orig_heap_id);
     thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
+    thread_p->m_parallel_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif

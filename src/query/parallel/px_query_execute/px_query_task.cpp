@@ -26,6 +26,7 @@
 #include "object_representation.h"
 #include "px_query_executor.hpp"
 #include "list_file.h"
+#include "perf_monitor.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -35,14 +36,16 @@ namespace parallel_query_execute
   using state_enum = task_state::state;
 
   task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p)
+	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
+	      worker_stats *worker_stats_p)
     : m_orig_thread_p (thread_p),
       m_xasl (xasl),
       m_xasl_state (xasl_state),
       m_mutex_p (mutex_p),
       m_task_state_p (task_state_p),
       m_worker_manager_p (worker_manager_p),
-      m_error_messages_p (error_messages_p)
+      m_error_messages_p (error_messages_p),
+      m_worker_stats_p (worker_stats_p)
   {}
 
   task::~task()
@@ -73,10 +76,18 @@ namespace parallel_query_execute
     int enter_qlist_count = thread_ref.m_qlist_count;
     QFILE_LIST_ID list_id;
     bool is_list_id_kept = false;
-    thread_ref.tran_index = m_orig_thread_p->tran_index;
-    thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-    thread_ref.emulate_tid = m_orig_thread_p->get_id();
-
+    bool orig_on_trace = thread_ref.on_trace;
+    bool is_on_parallel_worker = (thread_ref.get_id() != m_orig_thread_p->get_id());
+    if (is_on_parallel_worker)
+      {
+	thread_ref.tran_index = m_orig_thread_p->tran_index;
+	thread_ref.conn_entry = m_orig_thread_p->conn_entry;
+	thread_ref.emulate_tid = m_orig_thread_p->get_id();
+	if (m_orig_thread_p->on_trace)
+	  {
+	    thread_ref.on_trace = true;
+	  }
+      }
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
     if (err != NO_ERROR)
       {
@@ -117,8 +128,13 @@ namespace parallel_query_execute
 #endif
       }
 
-    thread_ref.tran_index = temp_tran_index;
-    thread_ref.conn_entry = temp_conn_entry;
+
+    if (is_on_parallel_worker)
+      {
+	thread_ref.tran_index = temp_tran_index;
+	thread_ref.conn_entry = temp_conn_entry;
+	thread_ref.on_trace = orig_on_trace;
+      }
   }
 
   void task::execute (cubthread::entry &thread_ref)
@@ -146,6 +162,11 @@ namespace parallel_query_execute
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
     thread_ref.on_trace = m_orig_thread_p->on_trace;
     thread_ref.emulate_tid = m_orig_thread_p->get_id();
+
+    if (m_orig_thread_p->on_trace)
+      {
+	perfmon_initialize_parallel_stats (&thread_ref, m_orig_thread_p);
+      }
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
     if (err != NO_ERROR)
@@ -189,6 +210,15 @@ namespace parallel_query_execute
     thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
     thread_ref.on_trace = temp_on_trace;
+
+    if (m_orig_thread_p->on_trace)
+      {
+	m_worker_stats_p->m_fetches.fetch_add (m_xasl->xasl_stats.fetches);
+	m_worker_stats_p->m_ioreads.fetch_add (m_xasl->xasl_stats.ioreads);
+	m_worker_stats_p->m_fetch_time.fetch_add (m_xasl->xasl_stats.fetch_time);
+	perfmon_destroy_parallel_stats (&thread_ref);
+      }
+
   }
 
 
@@ -216,7 +246,14 @@ namespace parallel_query_execute
       m_worker_manager_p (worker_manager_p),
       m_mutex_p (nullptr),
       m_error_messages_p (nullptr)
-  {}
+  {
+    if (thread_p->on_trace)
+      {
+	m_worker_stats.m_fetches = 0;
+	m_worker_stats.m_ioreads = 0;
+	m_worker_stats.m_fetch_time = 0;
+      }
+  }
   task_queue::~task_queue()
   {
 #if WITH_PARALLEL_DETAIL_INFO
@@ -229,7 +266,8 @@ namespace parallel_query_execute
 				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p)
   {
     task_state *task_state_p = new task_state();
-    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p);
+    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p,
+			     &m_worker_stats);
     task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
     m_tasks.emplace_back (task_tuple_p);
     if (m_mutex_p == nullptr)
@@ -380,6 +418,17 @@ namespace parallel_query_execute
     pthread_mutex_lock (m_mutex_p);
     error_occurred = m_error_messages_p->size() > 0;
     pthread_mutex_unlock (m_mutex_p);
+
+    if (thread_p->on_trace)
+      {
+	perfmon_add_stat (thread_p, PSTAT_PB_NUM_FETCHES, m_worker_stats.m_fetches.load());
+	perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOREADS, m_worker_stats.m_ioreads.load());
+	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+					m_worker_stats.m_fetch_time.load()*1000);
+	m_worker_stats.m_fetches.store (0);
+	m_worker_stats.m_ioreads.store (0);
+	m_worker_stats.m_fetch_time.store (0);
+      }
     if (error_occurred)
       {
 	err = ER_FAILED;
@@ -403,6 +452,7 @@ namespace parallel_query_execute
 #endif
 	delete task_tuple_p->first;
 	delete task_tuple_p->second;
+	delete task_tuple_p;
       }
   }
 

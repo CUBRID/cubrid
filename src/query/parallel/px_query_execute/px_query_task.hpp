@@ -37,6 +37,14 @@ namespace parallel_query_execute
 
   using err_desc_t = std::pair<int, cuberr::er_message *>;
 
+  struct WORKER_STATS
+  {
+    std::atomic<UINT64> m_fetches;
+    std::atomic<UINT64> m_ioreads;
+    std::atomic<UINT64> m_fetch_time;
+  };
+
+  using worker_stats = struct WORKER_STATS;
   class task_state
   {
     public:
@@ -74,7 +82,8 @@ namespace parallel_query_execute
       task (task &&) = delete;
       task &operator= (task &&) = delete;
       task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p);
+	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
+	    worker_stats *worker_stats_p);
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;
       virtual void retire () override;
@@ -90,6 +99,7 @@ namespace parallel_query_execute
       task_state *m_task_state_p;
       pool *m_worker_manager_p;
       std::vector<err_desc_t> *m_error_messages_p;
+      worker_stats *m_worker_stats_p;
   };
 
   using task_tuple = std::pair<task *, task_state *>;
@@ -103,6 +113,8 @@ namespace parallel_query_execute
       int execute_tasks (THREAD_ENTRY *exec_thread_p);
       bool get_not_started_task (task **task_p, task_state **task_state_p);
       void join();
+      worker_stats m_worker_stats;
+
     private:
       friend class task_queue_global;
       std::vector<task_tuple *> m_tasks;
