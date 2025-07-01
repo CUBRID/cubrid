@@ -74,7 +74,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
   return num_ids;
 }
 
-int
+bool
 dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids)
 {
   int i = 0;
@@ -89,17 +89,20 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   while (dblink)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
-      cci_xa_prepare (dblink->conn_handle, &xid, &err_buf);
+      if (cci_xa_prepare (dblink->conn_handle, &xid, &err_buf) != NO_ERROR)
+	{
+	  return false;
+	}
       dblink = dblink->next;
       i++;
     }
 
   assert (i <= num_particps);
 
-  return NO_ERROR;
+  return true;
 }
 
-bool
+void
 dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particps, void *block_particps_ids)
 {
   int i = 0;
@@ -114,21 +117,22 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, in
   while (dblink)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
-      cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
+      /* no check for commit if a participant is fail or not */
+      particps[i] = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
       dblink = dblink->next;
       i++;
     }
 
   assert (i <= num_particps);
 
-  return true;
+  return;
 }
 
-bool
+void
 dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particps, void *block_particps_ids,
-		       int collect)
+		       bool collect)
 {
-  int i = 0;
+  int i = 0, ack;
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
@@ -137,15 +141,27 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = 12;
 
+
+  if (collect)
+    {
+      assert (particps != NULL);
+    }
+
   while (dblink)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
-      cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
+      /* for participant, no check for abort if a participant is fail or not */
+      ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
+      if (collect)
+	{
+	  particps[i] = ack;
+	}
+
       dblink = dblink->next;
       i++;
     }
 
   assert (i <= num_particps);
 
-  return true;
+  return;
 }

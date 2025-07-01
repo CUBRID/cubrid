@@ -70,11 +70,11 @@ struct log_2pc_global_data
   int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids);
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
-  int (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
-    bool (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
-			 void *block_particps_ids);
-    bool (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
-			void *block_particps_ids, int collect);
+    bool (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
+  void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+		       void *block_particps_ids);
+  void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+		      void *block_particps_ids, bool collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
   { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit,
@@ -246,19 +246,17 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
  *              the collecting of votes will be done through interrupts, and
  *              so on.
  */
-bool
+void
 log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids)
 {
-  bool result = true;
-
   if (log_2pc_Userfun.send_commit != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      result = (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids);
+      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids);
     }
 
-  return result;
+  return;
 }
 
 /*
@@ -292,20 +290,17 @@ log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices
  *              the collecting of votes will be done through interrupts, and
  *              so on.
  */
-bool
+void
 log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids, bool collect)
 {
-  bool result = true;
-
   if (log_2pc_Userfun.send_abort != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      result =
-	(*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
+      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
     }
 
-  return result;
+  return;
 }
 
 /*
