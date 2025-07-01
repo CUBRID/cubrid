@@ -8680,7 +8680,9 @@ classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_fun
   db_make_null (&avalue);
   db_make_null (&fvalue);
 
-  if (set_get_element (constraint_seq, constraint_seq_len - 5, &bvalue) != NO_ERROR)
+  if (set_get_element
+      (constraint_seq, get_class_constraint_index (constraint_seq_len, SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX),
+       &bvalue) != NO_ERROR)
     {
       goto structure_error;
     }

@@ -1119,9 +1119,9 @@ typedef enum
 
 typedef enum
 {
-  SM_FK_MATCH_NONE,    // no match check if any FK column is NULL
-  SM_FK_MATCH_PARTIAL, // check non-NULL FK columns
-  SM_FK_MATCH_FULL     // all FK columns must be NULL or all valid
+  SM_FK_MATCH_NONE,		// no match check if any FK column is NULL
+  SM_FK_MATCH_PARTIAL,		// check non-NULL FK columns
+  SM_FK_MATCH_FULL		// all FK columns must be NULL or all valid
 } SM_FOREIGN_KEY_MATCH_ACTION;
 
 /*

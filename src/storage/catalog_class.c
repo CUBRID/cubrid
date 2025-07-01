@@ -2369,20 +2369,22 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-            db_make_int(&attrs[12].value, db_get_int(&val));
+	  db_make_int (&attrs[12].value, db_get_int (&val));
 
-            error = set_get_element(seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
-            if (error != NO_ERROR) {
+	  error = set_get_element (seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
 	      goto error;
 	    }
-            db_make_int(&attrs[13].value, db_get_int(&val));
+	  db_make_int (&attrs[13].value, db_get_int (&val));
 
-            seq = db_get_set(&svalue);
-            error = set_get_element(seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
-            if (error != NO_ERROR) {
+	  seq = db_get_set (&svalue);
+	  error = set_get_element (seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
 	      goto error;
 	    }
-	      db_make_int (&attrs[14].value, db_get_int (&val));
+	  db_make_int (&attrs[14].value, db_get_int (&val));
 	}
 
       error =
