@@ -472,17 +472,6 @@ struct sm_attribute
   int storage_order;		/* storage order number */
   const char *comment;
 };
-typedef enum
-{
-  SM_FK_INFO_REF_CLASS_OID_INDEX = 0,
-  SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
-  SM_FK_INFO_DELETE_ACTION_INDEX = 2,
-  SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
-  SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX = 4,
-  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
-
-  SM_FK_INFO_SIZE
-} SM_FOREIGN_KEY_INFO_INDEX;
 
 typedef struct sm_foreign_key_info SM_FOREIGN_KEY_INFO;
 
@@ -542,6 +531,11 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+typedef enum
+{
+  SM_BTREE_TYPE,
+} SM_INDEX_TYPE;
+
 /* Property list format: { property_name, constraint... }
  * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
  * - constraint: { name, info }
@@ -573,6 +567,7 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
+  SM_INDEX_TYPE index_type;
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 };

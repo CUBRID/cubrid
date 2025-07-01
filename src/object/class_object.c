@@ -1201,6 +1201,10 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
   db_make_int (&value, con->index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
+  /* index_type */
+  db_make_int (&value, con->index_type);
+  classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
+
   /* comment */
   db_make_string (&value, con->comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
@@ -1463,6 +1467,12 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	  goto end;
 	}
 
+      err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX), &status);
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
+
       err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CLASS_CONSTRAINT_COMMENT_INDEX), &comment);
       if (err != NO_ERROR)
 	{
@@ -1494,6 +1504,12 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	}
 
       err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CLASS_CONSTRAINT_STATUS_INDEX), &status);
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX), &status);
       if (err != NO_ERROR)
 	{
 	  goto end;
@@ -3250,7 +3266,8 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   SM_ATTRIBUTE *att;
   SM_CLASS_CONSTRAINT *constraints, *last, *new_;
   DB_SET *props, *info, *fk;
-  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue, cvalue, statusval, created_time, updated_time;
+  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue, statusval;
+  DB_VALUE index_type, cvalue, created_time, updated_time;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
@@ -3266,8 +3283,9 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   db_make_null (&bvalue);
   db_make_null (&avalue);
   db_make_null (&fvalue);
-  db_make_null (&cvalue);
   db_make_null (&statusval);
+  db_make_null (&index_type);
+  db_make_null (&cvalue);
   db_make_null (&created_time);
   db_make_null (&updated_time);
 
@@ -3615,6 +3633,10 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			       &statusval);
 	      new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
 
+	      set_get_element (info, get_class_constraint_index (info_len, SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX),
+			       &index_type);
+	      new_->index_type = (SM_INDEX_TYPE) db_get_int (&index_type);
+
 	      if (set_get_element
 		  (info, get_class_constraint_index (info_len, SM_CLASS_CONSTRAINT_COMMENT_INDEX), &cvalue))
 		{
@@ -3688,6 +3710,7 @@ other_error:
   pr_clear_value (&uvalue);
   pr_clear_value (&pvalue);
   pr_clear_value (&statusval);
+  pr_clear_value (&index_type);
   pr_clear_value (&created_time);
   pr_clear_value (&updated_time);
 

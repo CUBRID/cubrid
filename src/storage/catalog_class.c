@@ -2385,13 +2385,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
 
       error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_COMMENT_INDEX),
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX),
 			 &attrs[15].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[15].value, DB_MAX_COMMENT_LENGTH);
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX),
@@ -2402,8 +2401,25 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
 
       error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX),
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_COMMENT_INDEX),
+			 &attrs[16].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+      db_string_truncate (&attrs[16].value, DB_MAX_COMMENT_LENGTH);
+
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX),
 			 &attrs[17].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX),
+			 &attrs[18].value);
       if (error != NO_ERROR)
 	{
 	  goto error;

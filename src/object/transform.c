@@ -405,6 +405,7 @@ static CT_ATTR ct_index_atts[] = {
   {"delete_rule", NULL_ATTRID, DB_TYPE_INTEGER},
   {"update_rule", NULL_ATTRID, DB_TYPE_INTEGER},
   {"referential_match_option", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"index_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"created_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"updated_time", NULL_ATTRID, DB_TYPE_DATETIME},

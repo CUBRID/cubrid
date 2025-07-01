@@ -1582,6 +1582,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.index_btid = BTID_INITIALIZER;
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
+  con.index_type = SM_BTREE_TYPE;
   con.created_time = *db_get_datetime (&current_datetime);
   con.updated_time = *db_get_datetime (&current_datetime);
 

@@ -661,6 +661,7 @@ namespace cubschema
       {"update_rule", "integer"},
       {"delete_rule", "integer"},
       {"referential_match_option", "integer"},
+      {"index_type", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
