@@ -71,6 +71,8 @@ extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT 
 
 extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result);
 extern void numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str);
+extern int numeric_coerce_num_to_dec_str2 (DB_C_NUMERIC num, int prec, int scale, char *dec_str);
+extern void numeric_coerce_num_to_dec_str3 (DB_C_NUMERIC num, char *dec_str);
 
 extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble);
 extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);

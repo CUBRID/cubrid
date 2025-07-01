@@ -766,6 +766,7 @@ extern "C"
       unsigned char type;
       unsigned char precision;
       int scale;
+      bool has_round;
     } numeric_info;
     struct char_info
     {
