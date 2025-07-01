@@ -87,8 +87,7 @@ namespace cubthread
     context.end_resource_tracks ();
     if (context.m_parallel_stats != NULL)
       {
-	free (context.m_parallel_stats);
-	context.m_parallel_stats = NULL;
+	free_and_init (context.m_parallel_stats);
       }
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
