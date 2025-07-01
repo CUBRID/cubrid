@@ -3600,22 +3600,17 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld",
+	       qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
+	       (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
+	       (long long int) xasl_p->xasl_stats.ioreads);
       if (xasl_p->executed_parallelism > 1)
 	{
-	  fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld, parallel workers: %d)\n",
-		   qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
-		   (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
-		   (long long int) xasl_p->xasl_stats.ioreads, xasl_p->executed_parallelism);
+	  fprintf (fp, ", parallel workers: %d)\n", xasl_p->executed_parallelism);
 	}
       else
 	{
-	  fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
-		   TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-		   (long long int) xasl_p->xasl_stats.fetch_time, (long long int) xasl_p->xasl_stats.ioreads);
-	}
-      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
-	{
-	  qdump_print_stats_text (fp, xptr, indent);
+	  fprintf (fp, ")\n");
 	}
       break;
 
