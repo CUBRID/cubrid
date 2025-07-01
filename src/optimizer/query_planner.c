@@ -6260,6 +6260,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 #endif /* TEST_HASH_JOIN_ENABLE */
     }
 
+  /* Check if a click counter is set. */
+  if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
+    {
+      goto exit;		/* give up */
+    }
+
   /* Check if a key limit is set. */
   node_index = QO_NODE_INDEXES (inner_node);
   if (node_index != NULL)

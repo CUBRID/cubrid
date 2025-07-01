@@ -2586,10 +2586,12 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   int error = NO_ERROR;
 
   assert (env != NULL);
-  assert (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN
-	  && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
+  assert (plan != NULL);
+  assert (plan->plan_type == QO_PLANTYPE_JOIN);
+  assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
   assert (pred_set != NULL);
   assert (xasl != NULL);
+  assert (xasl->selected_upd_list == NULL);
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
