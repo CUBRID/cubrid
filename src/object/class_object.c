@@ -2919,7 +2919,7 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
     {
       goto error;
     }
-  fk_info->ref_match_option = (SM_FOREIGN_KEY_MATCH_ACTION) db_get_int (&fvalue);
+  fk_info->ref_match_option = (SM_FOREIGN_KEY_MATCH_OPTION) db_get_int (&fvalue);
 
   fk_info->name = (char *) cons_name;
   fk_info->is_dropped = false;

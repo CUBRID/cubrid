@@ -489,7 +489,7 @@ struct sm_foreign_key_info
   char *name;
   bool is_dropped;
   MOP index_class_of_ref_class;
-  SM_FOREIGN_KEY_MATCH_ACTION ref_match_option;
+  SM_FOREIGN_KEY_MATCH_OPTION ref_match_option;
 };
 
 typedef struct sm_predicate_info SM_PREDICATE_INFO;
