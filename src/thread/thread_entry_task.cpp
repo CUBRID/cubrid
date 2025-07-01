@@ -65,8 +65,7 @@ namespace cubthread
     context.end_resource_tracks ();
     if (context.m_parallel_stats != NULL)
       {
-	free (context.m_parallel_stats);
-	context.m_parallel_stats = NULL;
+	free_and_init (context.m_parallel_stats);
       }
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
