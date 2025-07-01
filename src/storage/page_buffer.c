@@ -137,7 +137,7 @@ static int rv;
 /* macros for casting pointers */
 #define CAST_PGPTR_TO_BFPTR(bufptr, pgptr) \
   do { \
-    (bufptr) = PGBUF_FIND_BCB_PTR ((((FILEIO_PAGE *) ((char *) (pgptr) - offsetof (FILEIO_PAGE, page))) - pgbuf_Pool.iopage_table)); \
+    (bufptr) = PGBUF_FIND_BCB_PTR ((((unsigned long) (pgptr) - offsetof (FILEIO_PAGE, page)) - (unsigned long) pgbuf_Pool.iopage_table) / IO_PAGESIZE) ; \
   } while (0)
 
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
