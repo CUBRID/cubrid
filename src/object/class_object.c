@@ -666,7 +666,7 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   DB_SEQ *fk_seq;
   char pbuf[128];
 
-  fk_seq = set_create_sequence (6);
+  fk_seq = set_create_sequence (SM_FK_INFO_SIZE);
 
   if (fk_seq == NULL)
     {
@@ -676,24 +676,24 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->ref_class_oid.pageid, (int) fk_info->ref_class_oid.slotid,
 	   (int) fk_info->ref_class_oid.volid);
   db_make_string (&value, pbuf);
-  set_put_element (fk_seq, 0, &value);
+  set_put_element (fk_seq, SM_FK_INFO_REF_CLASS_OID_INDEX, &value);
 
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->ref_class_pk_btid.vfid.volid, (int) fk_info->ref_class_pk_btid.vfid.fileid,
 	   (int) fk_info->ref_class_pk_btid.root_pageid);
   db_make_string (&value, pbuf);
-  set_put_element (fk_seq, 1, &value);
+  set_put_element (fk_seq, SM_FK_INFO_REF_CLASS_PK_BTID_INDEX, &value);
 
   db_make_int (&value, fk_info->delete_action);
-  set_put_element (fk_seq, 2, &value);
+  set_put_element (fk_seq, SM_FK_INFO_DELETE_ACTION_INDEX, &value);
 
   db_make_int (&value, fk_info->update_action);
-  set_put_element (fk_seq, 3, &value);
+  set_put_element (fk_seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &value);
 
   db_make_object (&value, fk_info->index_class_of_ref_class);
-  set_put_element (fk_seq, 4, &value);
+  set_put_element (fk_seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &value);
 
   db_make_int (&value, fk_info->ref_match_option);
-  set_put_element (fk_seq, 5, &value);
+  set_put_element (fk_seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &value);
 
   return fk_seq;
 }
@@ -2844,7 +2844,7 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
       return NULL;
     }
 
-  if (set_get_element (fk_seq, 0, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_REF_CLASS_OID_INDEX, &fvalue))
     {
       goto error;
     }
@@ -2854,7 +2854,7 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
     }
   pr_clear_value (&fvalue);
 
-  if (set_get_element (fk_seq, 1, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_REF_CLASS_PK_BTID_INDEX, &fvalue))
     {
       goto error;
     }
@@ -2864,29 +2864,29 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
     }
   pr_clear_value (&fvalue);
 
-  if (set_get_element (fk_seq, 2, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_DELETE_ACTION_INDEX, &fvalue))
     {
       goto error;
     }
   fk_info->delete_action = (SM_FOREIGN_KEY_ACTION) db_get_int (&fvalue);
 
-  if (set_get_element (fk_seq, 3, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &fvalue))
     {
       goto error;
     }
   fk_info->update_action = (SM_FOREIGN_KEY_ACTION) db_get_int (&fvalue);
 
-  if (set_get_element (fk_seq, 4, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &fvalue))
     {
       goto error;
     }
   fk_info->index_class_of_ref_class = db_get_object (&fvalue);
 
-  if (set_get_element (fk_seq, 5, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &fvalue))
     {
       goto error;
     }
-  fk_info->ref_match_option = (SM_FOREIGN_KEY_REFERENTIAL_MATCH_OPTION) db_get_int (&fvalue);
+  fk_info->ref_match_option = (SM_FOREIGN_KEY_MATCH_ACTION) db_get_int (&fvalue);
 
   fk_info->name = (char *) cons_name;
   fk_info->is_dropped = false;

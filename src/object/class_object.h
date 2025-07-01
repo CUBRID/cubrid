@@ -472,6 +472,17 @@ struct sm_attribute
   int storage_order;		/* storage order number */
   const char *comment;
 };
+typedef enum
+{
+  SM_FK_INFO_REF_CLASS_OID_INDEX = 0,
+  SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
+  SM_FK_INFO_DELETE_ACTION_INDEX = 2,
+  SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
+  SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX = 4,
+  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
+
+  SM_FK_INFO_SIZE
+} SM_FOREIGN_KEY_INFO_INDEX;
 
 typedef struct sm_foreign_key_info SM_FOREIGN_KEY_INFO;
 
@@ -489,7 +500,7 @@ struct sm_foreign_key_info
   char *name;
   bool is_dropped;
   MOP index_class_of_ref_class;
-  SM_FOREIGN_KEY_REFERENTIAL_MATCH_OPTION ref_match_option;
+  SM_FOREIGN_KEY_MATCH_ACTION ref_match_option;
 };
 
 typedef struct sm_predicate_info SM_PREDICATE_INFO;

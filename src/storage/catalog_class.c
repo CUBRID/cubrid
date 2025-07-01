@@ -2353,7 +2353,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 
 	  seq = db_get_set (&svalue);
-	  error = set_get_element (seq, 4, &val);
+	  error = set_get_element (seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
@@ -2363,21 +2363,21 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	      db_make_oid (&attrs[11].value, db_get_oid (&val));
 	    }
 
-	  error = set_get_element (seq, 2, &val);
+	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
             db_make_int(&attrs[12].value, db_get_int(&val));
 
-            error = set_get_element(seq, 3, &val);
+            error = set_get_element(seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
             if (error != NO_ERROR) {
 	      goto error;
 	    }
             db_make_int(&attrs[13].value, db_get_int(&val));
 
             seq = db_get_set(&svalue);
-            error = set_get_element(seq, 5, &val);
+            error = set_get_element(seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
             if (error != NO_ERROR) {
 	      goto error;
 	    }
