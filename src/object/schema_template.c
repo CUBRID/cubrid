@@ -1544,7 +1544,8 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
+				SM_FUNCTION_INFO * function_index, int options, const char *comment,
+				SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val, current_datetime;
@@ -1583,6 +1584,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
   con.index_type = SM_BTREE_TYPE;
+  con.options = options;
   con.created_time = *db_get_datetime (&current_datetime);
   con.updated_time = *db_get_datetime (&current_datetime);
 
@@ -2010,6 +2012,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
   int deduplicate_key_col_pos = -1;
+  int options = 0;
+  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2031,6 +2035,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
 	    {
 	      deduplicate_key_col_pos = n_atts;
+	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
+	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
 	    }
 	  n_atts++;
 	}
@@ -2237,7 +2243,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, comment, index_status);
+					      shared_cons_name, filter_index, function_index, options, comment,
+					      index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;

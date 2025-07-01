@@ -45,6 +45,7 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+#include "storage_common.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2393,7 +2394,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
 
       error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX),
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_OPTIONS_INDEX),
 			 &attrs[16].value);
       if (error != NO_ERROR)
 	{
@@ -2402,16 +2403,16 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_COMMENT_INDEX),
-			 &attrs[16].value);
+			 &attrs[17].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[16].value, DB_MAX_COMMENT_LENGTH);
+      db_string_truncate (&attrs[17].value, DB_MAX_COMMENT_LENGTH);
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX),
-			 &attrs[17].value);
+			 &attrs[18].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2419,7 +2420,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &attrs[18].value);
+			 &attrs[19].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
