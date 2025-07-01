@@ -198,6 +198,7 @@ jobs:
               cubrid-test-shell:
                 docker:
                   - image: cubridci/cubridci:test_shell
+                resource_class: cubrid/large
                 working_directory: /home
                 
             # --------------------------------------------------
@@ -313,8 +314,8 @@ jobs:
                       
               test_shell:
                 executor: cubrid-test-shell
-                resource_class: large
-                parallelism: 30
+                # resource_class: large
+                parallelism: 20
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
