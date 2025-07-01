@@ -3133,23 +3133,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
     case CTE_PROC:
       /* not clearing list_id because it will be cleared by mother thread. */
-      /*if (xasl->proc.cte.non_recursive_part)
-         {
-         if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
-         {
-         if (xasl->proc.cte.non_recursive_part->status != XASL_CLEARED)
-         {
-
-         XASL_SET_FLAG (xasl->proc.cte.non_recursive_part, XASL_DECACHE_CLONE);
-         pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-         }
-         }
-         else if (xasl->proc.cte.non_recursive_part->status != XASL_INITIALIZED)
-         {
-
-         pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->proc.cte.non_recursive_part, is_final);
-         }
-         } */
       if (xasl->proc.cte.recursive_part)
 	{
 	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
