@@ -3318,7 +3318,7 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 void
 perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p)
 {
-  thread_p->emulate_tid = orig_thread_p->get_id();
+  thread_p->emulate_tid = orig_thread_p->get_id ();
   thread_p->m_parallel_stats = (UINT64 *) malloc (PERFMON_VALUES_MEMSIZE);
   memset (thread_p->m_parallel_stats, 0, PERFMON_VALUES_MEMSIZE);
 }
