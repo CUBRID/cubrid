@@ -278,7 +278,7 @@ cubrid_log_make_new_tracelog ()
   if (snprintf (g_trace_log_path, sizeof (g_trace_log_path), "%s%c%s_cubridlog_%s.err",
 		g_trace_log_base, PATH_SEPARATOR, g_dbname, curr_time) >= (int) sizeof (g_trace_log_path))
     {
-      assert_release (0);
+      assert_release (false);
       g_trace_log_path[sizeof (g_trace_log_path) - 1] = '\0';
     }
 

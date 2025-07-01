@@ -182,7 +182,7 @@ sl_init (const char *db_name, const char *repl_log_path)
   if (snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path)) >=
       PATH_MAX)
     {
-      assert_release (0);
+      assert_release (false);
       sql_log_base_path[PATH_MAX - 1] = '\0';
     }
 
@@ -658,7 +658,7 @@ sl_delete_oldest_file_if_needed (void)
 
   if (snprintf (oldest_file_path, PATH_MAX, "%s.%u", sql_log_base_path, oldest_file_id) >= PATH_MAX)
     {
-      assert_release (0);
+      assert_release (false);
       oldest_file_path[PATH_MAX - 1] = '\0';
     }
 

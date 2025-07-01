@@ -26,6 +26,7 @@
 #include "porting.h"
 #include "ini_parser.h"
 #include "chartype.h"
+#include "error_manager.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -519,7 +520,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
 	{
 	  if (snprintf (section, INI_BUFSIZ + 1, "%c%s", leading_char, ini_str_trim (section + 1)) > INI_BUFSIZ)
 	    {
-	      assert (0);
+	      assert_release (false);
 	      section[INI_BUFSIZ] = '\0';
 	    }
 	}
