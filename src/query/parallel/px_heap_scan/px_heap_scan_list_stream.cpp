@@ -139,7 +139,7 @@ namespace parallel_heap_scan
     else
       {
 	/* Maybe interrupted */
-	return NO_ERROR;
+	return ER_FAILED;
       }
   }
 
