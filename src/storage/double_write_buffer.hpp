@@ -57,4 +57,4 @@ extern void dwb_daemons_init ();
 extern void dwb_daemons_destroy ();
 #endif /* SERVER_MODE */
 
-#endif /* _DOUBLE_WRITE_BUFFER_H_ */
+#endif /* _DOUBLE_WRITE_BUFFER_HPP_ */
