@@ -129,7 +129,7 @@ static int rv;
   ((PGBUF_BCB *) ((char *) &(pgbuf_Pool.BCB_table[0]) + (PGBUF_BCB_SIZEOF * (i))))
 
 #define PGBUF_FIND_IOPAGE_PTR(i) \
-  ((FILEIO_PAGE *) ((char *) &(pgbuf_Pool.iopage_table[0]) + (IO_PAGESIZE * (i))))
+  ((FILEIO_PAGE *) ((char *) &(pgbuf_Pool.iopage_table[0]) + ((size_t) IO_PAGESIZE * ((size_t) i))))
 
 #define PGBUF_FIND_BUFFER_GUARD(bufptr) \
   (&bufptr->iopage->page[DB_PAGESIZE])
@@ -137,7 +137,7 @@ static int rv;
 /* macros for casting pointers */
 #define CAST_PGPTR_TO_BFPTR(bufptr, pgptr) \
   do { \
-    (bufptr) = PGBUF_FIND_BCB_PTR ((((unsigned long) (pgptr) - offsetof (FILEIO_PAGE, page)) - (unsigned long) pgbuf_Pool.iopage_table) / IO_PAGESIZE) ; \
+    (bufptr) = PGBUF_FIND_BCB_PTR ((((unsigned long long) (pgptr) - offsetof (FILEIO_PAGE, page)) - (unsigned long long) pgbuf_Pool.iopage_table) / IO_PAGESIZE) ; \
   } while (0)
 
 #define CAST_PGPTR_TO_IOPGPTR(io_pgptr, pgptr) \
@@ -9820,7 +9820,7 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
 STATIC_INLINE int
 pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
 {
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char page_buf[IO_MAX_PAGE_SIZE + 4096];
   FILEIO_PAGE *iopage = NULL;
   PAGE_PTR pgptr = NULL;
   LOG_LSA oldest_unflush_lsa;
@@ -9892,7 +9892,8 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   uses_dwb = dwb_is_created () && !is_temp;
 
 start_copy_page:
-  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, 4096);
+
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
   tde_algo = pgbuf_get_tde_algorithm (pgptr);
   if (tde_algo != TDE_ALGORITHM_NONE)

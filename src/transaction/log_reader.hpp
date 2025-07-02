@@ -137,7 +137,7 @@ class log_reader final
                                                         * so m_cs_access has a fixed value. However, since this class may be widely
                                                         * re-used in the future, we are keeping this variable and not removing it.*/
     log_page *m_page = nullptr;
-    char m_area_buffer[IO_MAX_PAGE_SIZE + DOUBLE_ALIGNMENT];
+    char m_area_buffer[IO_MAX_PAGE_SIZE + 4096];
 };
 
 inline void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr,
@@ -156,7 +156,7 @@ inline void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t len
 log_reader::log_reader (LOG_CS_ACCESS_MODE cs_access)
   : m_cs_access (cs_access)
 {
-  m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, MAX_ALIGNMENT));
+  m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, 4096));
 }
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)

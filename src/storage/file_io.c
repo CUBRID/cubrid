@@ -2577,8 +2577,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
     }
 
   /* init page */
-  io_page_p = (FILEIO_PAGE *) db_private_alloc (thread_p, IO_PAGESIZE);
-  if (io_page_p == NULL)
+  if (posix_memalign ((void **) &io_page_p, 4096, IO_PAGESIZE) != 0)
     {
       /* TBD: remove memory allocation manual checks. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) IO_PAGESIZE);
@@ -2611,7 +2610,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 	}
     }
 
-  db_private_free (thread_p, io_page_p);
+  free (io_page_p);
 
   return error_code;
 }
