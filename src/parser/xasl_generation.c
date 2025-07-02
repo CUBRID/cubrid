@@ -16308,6 +16308,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  goto exit_on_error;
 	}
 
+      if (select_out_list)
+	{
+	  parser_free_tree (parser, select_out_list);
+	}
+
       /* pred should never user the current instance for fetches either, so we turn off the current_class, if there is
        * one. */
       saved_current_class = parser->symbols->current_class;
