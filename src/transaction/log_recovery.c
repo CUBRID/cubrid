@@ -3709,7 +3709,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			 * already been received. we need to continue reading the log */
 
 			if ((tdes->coord->ack_received =
-			     (int *) malloc (sizeof (int) * tdes->coord->num_particps)) == NULL)
+			     (bool *) malloc (sizeof (bool) * tdes->coord->num_particps)) == NULL)
 			  {
 			    /* Out of memory */
 			    LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);

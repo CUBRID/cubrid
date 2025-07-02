@@ -71,9 +71,9 @@ struct log_2pc_global_data
   char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
     bool (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
-  void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+  void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 		       void *block_particps_ids);
-  void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, int *particp_indices,
+  void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 		      void *block_particps_ids, bool collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
@@ -247,13 +247,13 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
  *              so on.
  */
 void
-log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids)
+log_2pc_send_commit_decision (int gtrid, int num_particps, bool * particps_ack, void *block_particps_ids)
 {
   if (log_2pc_Userfun.send_commit != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids);
+      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_ack, block_particps_ids);
     }
 
   return;
@@ -291,13 +291,13 @@ log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices
  *              so on.
  */
 void
-log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids, bool collect)
+log_2pc_send_abort_decision (int gtrid, int num_particps, bool * particps_ack, void *block_particps_ids, bool collect)
 {
   if (log_2pc_Userfun.send_abort != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_indices, block_particps_ids, collect);
+      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_ack, block_particps_ids, collect);
     }
 
   return;
@@ -505,9 +505,9 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	}
 
       /* Initialize the Acknowledgement vector to 0 */
-      i = sizeof (int) * tdes->coord->num_particps;
+      i = sizeof (bool) * tdes->coord->num_particps;
 
-      tdes->coord->ack_received = (int *) malloc (i);
+      tdes->coord->ack_received = (bool *) malloc (i);
       if (tdes->coord->ack_received == NULL)
 	{
 	  /* Out of memory */
@@ -1797,8 +1797,8 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   /* Initialize the Acknowledgement vector to false since we do not know what acknowledgments have already been
    * received. we need to continue reading the log */
 
-  i = sizeof (int) * tdes->coord->num_particps;
-  tdes->coord->ack_received = (int *) malloc (i);
+  i = sizeof (bool) * tdes->coord->num_particps;
+  tdes->coord->ack_received = (bool *) malloc (i);
   if (tdes->coord->ack_received == NULL)
     {
       log_2pc_free_coord_info (tdes);
