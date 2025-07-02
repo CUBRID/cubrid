@@ -540,7 +540,7 @@ typedef enum
  * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
  * - constraint: { name, info }
  *   - name: constraint name
- *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, comment, created_time, updated_time }
+ *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, index_type, options, comment, created_time, updated_time }
  *     - BTID: volid|pageid|fileid
  *     - [att_name|id, asc_desc] can repeat for multiple attributes
  *     - optional_info appears only when applicable:
