@@ -16215,8 +16215,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       buildlist->g_regu_list =
 	pt_to_position_regu_variable_list (parser, group_out_list, buildlist->g_val_list, attr_offsets);
 
-      pt_fix_pseudocolumns_pos_regu_list (parser, group_out_list, buildlist->g_regu_list);
-
       free_and_init (attr_offsets);
 
       /* set 'etc' field for pseudocolumns nodes */
@@ -16259,25 +16257,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       for (node = select_node->info.query.q.select.list; node; node = node->next)
 	{
 	  new_node = NULL;
-	  if (node->etc == NULL && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
+	  if (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL)
 	    {
 	      char *str_select = parser_print_tree (parser, node);
 
 	      for (group = select_node->info.query.q.select.group_by, val_list = buildlist->g_val_list->valp;
 		   val_list && group; val_list = val_list->next, group = group->next)
 		{
-		  if (group->node_type != PT_SORT_SPEC)
-		    {
-		      PT_INTERNAL_ERROR (parser, "expecting a sort spec");
-		      goto exit_on_error;
-		    }
-
-		  if (group->info.sort_spec.expr == NULL)
-		    {
-		      PT_INTERNAL_ERROR (parser, "null sort expression");
-		      goto exit_on_error;
-		    }
-
 		  char *str_group = parser_print_tree (parser, group->info.sort_spec.expr);
 
 		  /* brute method, compare printed trees */
