@@ -3621,6 +3621,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ")\n");
 	}
+      for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
+	{
+	  qdump_print_stats_text (fp, xptr, indent);
+	}
       break;
 
     case MERGELIST_PROC:
