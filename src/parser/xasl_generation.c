@@ -16106,12 +16106,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       pt_set_level_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->level_val);
       pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->isleaf_val);
       pt_set_iscycle_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->iscycle_val);
-      pt_set_connect_by_operator_node_etc (parser, select_node->info.query.q.select.group_by, xasl);
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.group_by, xasl);
       pt_set_level_node_etc (parser, select_node->info.query.q.select.having, &xasl->level_val);
       pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.having, &xasl->isleaf_val);
       pt_set_iscycle_node_etc (parser, select_node->info.query.q.select.having, &xasl->iscycle_val);
-      pt_set_connect_by_operator_node_etc (parser, select_node->info.query.q.select.having, xasl);
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
       group_out_list = NULL;
