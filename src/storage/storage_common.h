@@ -1098,6 +1098,7 @@ typedef enum
 #define SERIAL_ATTR_INCREMENT_VAL   "increment_val"
 #define SERIAL_ATTR_MAX_VAL         "max_val"
 #define SERIAL_ATTR_MIN_VAL         "min_val"
+#define SERIAL_ATTR_START_VAL       "start_val"
 #define SERIAL_ATTR_CYCLIC          "cyclic"
 #define SERIAL_ATTR_STARTED         "started"
 #define SERIAL_ATTR_CLASS_NAME      "class_name"

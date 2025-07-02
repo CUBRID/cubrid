@@ -669,7 +669,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  * Note:
  */
 static int
-do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * current_val, DB_VALUE * inc_val,
+do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * start_val, DB_VALUE * inc_val,
 			   DB_VALUE * min_val, DB_VALUE * max_val, const int cyclic, const int cached_num,
 			   const int started, const char *comment, const char *class_name, const char *att_name)
 {
@@ -739,7 +739,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* current_val */
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
@@ -761,6 +761,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   /* max_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* start_val */
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_START_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
