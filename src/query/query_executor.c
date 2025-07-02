@@ -1852,7 +1852,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	{
 	  if (p->s_id.scan_stats.agl)
 	    {
-	      SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;;
+	      SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;
 
 	      while (agl)
 		{
@@ -2724,10 +2724,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   int pg_cnt;
   int query_save_state;
   unsigned int decache_clone_flag = 0;
-  VAL_LIST *single_tuple;
-  QPROC_DB_VALUE_LIST value_list;
   XASL_STATUS status;
-  int i;
   pg_cnt = 0;
   if (xasl == NULL)
     {
