@@ -104,7 +104,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "page_buffer.h"
 #include "xserver_interface.h"
 #endif /* !defined (CS_MODE) */
