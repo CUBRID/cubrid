@@ -1866,10 +1866,7 @@ err:
  *       structures which are in place that provide a list of B-tree IDs
  *       associated with an attribute in each attribute structure
  *       (OR_ATTRIBUTE).
- *       { [attrID, asc_desc]+,
- *         {fk_info} or {key prefix length} or {function index} or {filter index}+,
- *         comment
- *       }
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 static void
 or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, int seq_size, BTREE_TYPE type,
@@ -2207,9 +2204,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
  *   cons_name(in):
  *
  * Note: The constraint may be associated with multiple attributes.
- *       The form of the constraint is:
- *
- *       {btid, [attribute_ID, asc_desc]+ {fk_info}, comment}
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 static void
 or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_TYPE type, const char *cons_name)
@@ -2220,8 +2215,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   BTID id;
   DB_VALUE id_val, att_val;
 
-  /* Extract the first element of the sequence which is the encoded B-tree ID */
-  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
   seq_size = set_size (constraint_seq);
 
   if (set_get_element_nocopy (constraint_seq, 0, &id_val) != NO_ERROR)
@@ -2260,14 +2253,15 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	{
           // *INDENT-OFF* 
 	  /* To reach this point, the inside of the set must have at least the following structure.
-	   *     0         1                    2      [  3        4  ] *x           5 + x          6 + x   7 + x
-	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, status, comment}
-	   * That is, the size of this constraint_seq set must be 8 or more, and the 3rd position will be attrID.
+	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
+	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
+           * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
+	   * That is, the size of this constraint_seq set must be 12 or more, and the 3rd position will be attrID.
 	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
 	   * the position 3 value must be read to obtain actual column information.           
 	   */
           // *INDENT-ON*
-	  assert (seq_size >= 8);
+	  assert (seq_size >= 12);
 	  i = 3;		// index of attrID (for first real column)
 	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
 	    {
@@ -3512,9 +3506,7 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
  *       It's up to the caller to free the returned pointer.
  *       If the given constraint/index name does not exist for current
  *       representation, NULL is returned.
- * 
- * Notice: For constraint structure details, 
- *         see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *       For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 const char *
 or_get_constraint_comment (RECDES * record, const char *constraint_name)

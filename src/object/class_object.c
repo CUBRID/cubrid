@@ -956,8 +956,7 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const 
  *   func_index_info(in):
  *   comment(in):
  * 
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
@@ -2014,8 +2013,7 @@ end:
  *   cons(in): constraint
  *   comment(in): new comment of property
  * 
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
@@ -2457,8 +2455,7 @@ classobj_constraint_size (SM_CONSTRAINT * constraint)
  *   class(in): Class pointer.
  *   constraint_type(in):
  * 
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -2573,8 +2570,7 @@ finish:
  *   class(in): Class pointer
  *   constraint_type(in):
  * 
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 static bool
@@ -3273,8 +3269,7 @@ error:
  *   attributes(in):
  *   con_ptr(out):
  * 
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 
 int
@@ -8930,8 +8925,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 /*
- *   Notice: For constraint structure details, 
- *           see comment on SM_CLASS_CONSTRAINT in class_object.h.
+ *   Note: For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
  */
 int
 classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, SM_INDEX_STATUS index_status)
