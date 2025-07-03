@@ -568,7 +568,7 @@ struct sm_class_constraint
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
   SM_INDEX_TYPE index_type;
-  int options;			/* bites 0-3: deduplicate level (0-14), rest reserved */
+  int options;			/* bits 0-3: deduplicate level (0-14), rest reserved */
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 };
