@@ -28,6 +28,7 @@
 #include "file_io.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "db_vector.hpp"
 #include "porting.h"
 #include <fstream>
 #include <filesystem>
@@ -402,6 +403,12 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
   try
     {
       std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+      if (index->metric_type == faiss::METRIC_COSINE && db_vector_is_all_zeros (vf))
+	{
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	  return NO_ERROR;
+	}
+
       std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 
       index->add_with_ids (1, vf->float_array, &encoded_oid);
@@ -457,6 +464,13 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     }
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
+
+  if (index->metric_type == faiss::METRIC_COSINE && db_vector_is_all_zeros (vf))
+    {
+      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+      return NO_ERROR;
+    }
+
   auto *hnsw_index = static_cast<faiss::IndexHNSWFlat *> (index->index);
   hnsw_index->hnsw.efSearch = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
 
