@@ -396,6 +396,11 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
   try
     {
       std::unique_ptr<usearch::index_dense_t> &index = it->second;
+      if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf))
+	{
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	  return NO_ERROR;
+	}
 
       std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
       if (index->size() >= index->capacity())
@@ -456,6 +461,13 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
     }
 
   std::unique_ptr<usearch::index_dense_t> &index = it->second;
+
+  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf))
+    {
+      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+      return NO_ERROR;
+    }
+
   index->change_expansion_search (prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH));
 
   auto results = index->search (vf->float_array, k);
