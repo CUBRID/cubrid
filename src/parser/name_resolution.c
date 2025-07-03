@@ -11795,8 +11795,6 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
   hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
 
-  // For cursor variable (for example: r.id), use parser_print_tree(name) instead of name.original.
-  // hostvar->info.host_var.label = parser_print_tree (parser, name_node);
   const char *host_expr_str = pt_print_pl_host_expr (parser, name_node);
   if (!host_expr_str)
     {
