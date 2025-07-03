@@ -239,7 +239,7 @@ META_CLASS tf_Metaclass_query_spec = { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SP
 /* PARTITION */
 static META_ATTRIBUTE partition_atts[] = {
   {"ptype", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
-  {"depth", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
+  {"class_partition_type", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"pname", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"pexpr", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"pvalues", DB_TYPE_SEQUENCE, 0, NULL, 0, 0, NULL},
@@ -419,7 +419,7 @@ static CT_ATTR ct_indexkey_atts[] = {
 static CT_ATTR ct_partition_atts[] = {
   {"index_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"ptype", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"depth", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"class_partition_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"pname", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"pexpr", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"pvalues", NULL_ATTRID, DB_TYPE_SEQUENCE},

@@ -752,7 +752,7 @@ namespace cubschema
       {"ptype", "integer"},
       {"pexpr", format_varchar (2048)},
       {"pvalues", format_sequence ("")},
-      {"depth", "integer"},
+      {"class_partition_type", "integer"},
       {"comment", format_varchar (1024)},
     },
 // constraints
