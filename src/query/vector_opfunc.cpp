@@ -182,7 +182,7 @@ int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
     {
       // infinite distance
       // TODO: hmm.. is it correct?
-      db_make_double (result, std::numeric_limits<double>::infinity());
+      db_make_null (result);
       return NO_ERROR;
     }
 
