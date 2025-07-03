@@ -132,12 +132,12 @@ jobs:
                           circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=name | tee tc.list
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rvf
+                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rvf
+                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
                         fi
 
                         echo "[debug] Run the tests"
@@ -198,7 +198,7 @@ jobs:
               cubrid-test-shell:
                 docker:
                   - image: cubridci/cubridci:test_shell
-                resource_class: cubrid/large # 4vcpu / 6GB
+                resource_class: cubrid/large # 4vcpu / 8GB
                 working_directory: /home
                 
             # --------------------------------------------------
@@ -314,7 +314,7 @@ jobs:
                       
               test_shell:
                 executor: cubrid-test-shell
-                parallelism: 15
+                parallelism: 30
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
