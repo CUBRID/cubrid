@@ -200,5 +200,4 @@ typedef enum
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
-
-#endif				/* _MISCTYPE_DEF_H_ */
+#endif /* _MISCTYPE_DEF_H_ */
