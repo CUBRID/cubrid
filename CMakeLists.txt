@@ -267,7 +267,8 @@ if(UNIX)
     set(CMAKE_C_COMMON_FLAGS "-ggdb -fno-omit-frame-pointer")
     # C++ flags for both debug and release build
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17 -fopenmp")
-    list(APPEND EP_LIBS openblas)
+    # CUBVEC: cpu flag openmp and linking openblas required
+    list(APPEND EP_LIBS "openblas")
 
     # C flags for debug build
     set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
@@ -303,6 +304,7 @@ if(UNIX)
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
   elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # CUBVEC: cpu flag openmp and linking openblas required
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
     list(APPEND EP_LIBS openblas)
   else()

@@ -20,6 +20,7 @@
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "dbtype_def.h"
+#include "db_vector.hpp"
 #include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -178,6 +179,14 @@ int vector_negative_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_a
 
 int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
 {
+  if (db_vector_is_all_zeros (db_get_vector_float (args[0])) || db_vector_is_all_zeros (db_get_vector_float (args[1])))
+    {
+      // infinite distance
+      // TODO: hmm.. is it correct?
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
   return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
 }
 
