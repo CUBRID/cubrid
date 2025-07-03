@@ -11762,6 +11762,33 @@ pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, cha
   return NO_ERROR;
 }
 
+static const char *
+pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (PT_IS_NAME_NODE (node))
+    {
+      if (node->info.name.original)
+	{
+	  return node->info.name.original;
+	}
+    }
+  else if (PT_IS_DOT_NODE (node))
+    {
+      PT_NODE *rec = node->info.dot.arg1;
+      PT_NODE *field = node->info.dot.arg2;
+      if (PT_IS_NAME_NODE (rec) && PT_IS_NAME_NODE (field) && rec->info.name.original && field->info.name.original)
+	{
+	  PARSER_VARCHAR *q = NULL;
+	  q = pt_append_nulstring (parser, q, rec->info.name.original);
+	  q = pt_append_nulstring (parser, q, ".");
+	  q = pt_append_nulstring (parser, q, field->info.name.original);
+	  return (const char *) q->bytes;
+	}
+    }
+
+  return NULL;
+}
+
 static PT_NODE *
 pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 {
@@ -11769,7 +11796,18 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
 
   // For cursor variable (for example: r.id), use parser_print_tree(name) instead of name.original.
-  hostvar->info.host_var.label = parser_print_tree (parser, name_node);
+  // hostvar->info.host_var.label = parser_print_tree (parser, name_node);
+  const char *host_expr_str = pt_print_pl_host_expr (parser, name_node);
+  if (!host_expr_str)
+    {
+      unsigned int saved_custom = parser->custom_print;
+      parser->custom_print = PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
+      char *err = parser_print_tree (parser, name_node);
+      parser->custom_print = saved_custom;
+      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_INVALID_HOST_EXPR, err);
+      return NULL;
+    }
+  hostvar->info.host_var.label = host_expr_str;
   hostvar->info.host_var.var_type = PT_HOST_IN;
   hostvar->info.host_var.index = parser->host_var_count;
   hostvar->type_enum = PT_TYPE_NONE;
