@@ -64,9 +64,10 @@
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
+#else
+#include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -20634,30 +20635,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   millisec = seconds = minutes = hours = 0;
   days = weeks = months = quarters = years = 0;
 
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#define PT_MILLISECOND 3087
-#define PT_SECOND (PT_MILLISECOND + 1)
-#define PT_MINUTE (PT_MILLISECOND + 2)
-#define PT_HOUR (PT_MILLISECOND + 3)
-#define PT_DAY (PT_MILLISECOND + 4)
-#define PT_WEEK (PT_MILLISECOND + 5)
-#define PT_MONTH (PT_MILLISECOND + 6)
-#define PT_QUARTER (PT_MILLISECOND + 7)
-#define PT_YEAR (PT_MILLISECOND + 8)
-#define PT_SECOND_MILLISECOND (PT_MILLISECOND + 9)
-#define PT_MINUTE_MILLISECOND (PT_MILLISECOND + 10)
-#define PT_MINUTE_SECOND (PT_MILLISECOND + 11)
-#define PT_HOUR_MILLISECOND (PT_MILLISECOND + 12)
-#define PT_HOUR_SECOND (PT_MILLISECOND + 13)
-#define PT_HOUR_MINUTE (PT_MILLISECOND + 14)
-#define PT_DAY_MILLISECOND (PT_MILLISECOND + 15)
-#define PT_DAY_SECOND (PT_MILLISECOND + 16)
-#define PT_DAY_MINUTE (PT_MILLISECOND + 17)
-#define PT_DAY_HOUR (PT_MILLISECOND + 18)
-#define PT_YEAR_MONTH (PT_MILLISECOND + 19)
-#endif /* SERVER_MODE */
-
   switch (unit)
     {
     case PT_MILLISECOND:
@@ -20893,30 +20870,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
-
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#undef PT_MILLISECOND
-#undef PT_SECOND
-#undef PT_MINUTE
-#undef PT_HOUR
-#undef PT_DAY
-#undef PT_WEEK
-#undef PT_MONTH
-#undef PT_QUARTER
-#undef PT_YEAR
-#undef PT_SECOND_MILLISECOND
-#undef PT_MINUTE_MILLISECOND
-#undef PT_MINUTE_SECOND
-#undef PT_HOUR_MILLISECOND
-#undef PT_HOUR_SECOND
-#undef PT_HOUR_MINUTE
-#undef PT_DAY_MILLISECOND
-#undef PT_DAY_SECOND
-#undef PT_DAY_MINUTE
-#undef PT_DAY_HOUR
-#undef PT_YEAR_MONTH
-#endif /* SERVER_MODE */
 
   /* we have the sign of the amounts, turn them in absolute value */
   years = ABS (years);
