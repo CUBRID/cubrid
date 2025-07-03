@@ -1038,22 +1038,27 @@ typedef enum
   SM_INDEX_FLAG_PREFIX = 3
 } SM_INDEX_FLAG;
 
-
-// For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
+/*
+ * Enum values represent reverse indexes from the end of the constraint sequence:
+ * e.g., UPDATED_TIME_INDEX == seq_len - 1, CREATED_TIME_INDEX == seq_len - 2, ...
+ * See SM_CLASS_CONSTRAINT in class_object.h for structure details.
+*/
 typedef enum
 {
-  SM_CLASS_CONSTRAINT_BTID_INDEX = 0,
-  // [att_name|id, asc_desc]...,
-  SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX = -7,
-  SM_CLASS_CONSTRAINT_STATUS_INDEX = -6,
-  SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX = -5,
-  SM_CLASS_CONSTRAINT_OPTIONS_INDEX = -4,
-  SM_CLASS_CONSTRAINT_COMMENT_INDEX = -3,
-  SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX = -2,
-  SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX = -1,
+  SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX = 1,	// seq_len - 1
+  SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX = 2,	// seq_len - 2
+  SM_CLASS_CONSTRAINT_COMMENT_INDEX = 3,	// seq_len - 3
+  SM_CLASS_CONSTRAINT_OPTIONS_INDEX = 4,	// seq_len - 4
+  SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX = 5,	// seq_len - 5
+  SM_CLASS_CONSTRAINT_STATUS_INDEX = 6,	// seq_len - 6
+  SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX = 7,	// seq_len - 7 (optional)
 
-  SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT = 7	// Does not include OPTIONAL_INFO (optional field)
+  // [att_name|id, asc_desc]... (forward from here)
+  SM_CLASS_CONSTRAINT_BTID_INDEX,
+
+  SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT = 7	// Excludes OPTIONAL_INFO
 } SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX;
+
 
 typedef enum
 {
@@ -1080,7 +1085,7 @@ static inline int
 get_class_constraint_index (int size, SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX index)
 {
   assert (index != SM_CLASS_CONSTRAINT_BTID_INDEX);
-  return size + index;
+  return size - index;
 }
 
 
