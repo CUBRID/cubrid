@@ -105,7 +105,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
   config.expansion_add = hnsw_efConstruction;
 
   auto index_ptr = std::make_unique<usearch::index_dense_t> (
-			   usearch::index_dense_t::make (metric, config)
+			   usearch::index_dense_t::make (metric_punned, config)
 		   );
 
   index_ptr->reserve (10000);
