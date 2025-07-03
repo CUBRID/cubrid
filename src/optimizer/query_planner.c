@@ -10471,11 +10471,11 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
 
     if (arg1->node_type == PT_NAME && PT_IS_CONST (arg2))
       {
-        // ok
+         // ok
       }
     else if (PT_IS_CONST (arg1) && (arg2->node_type == PT_NAME))
       {
-        // ok
+         // ok
       }
     else
       {
