@@ -1359,6 +1359,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
       if (size < 0)
 	{
 	  pinfo->error_code = ER_FAILED;
+	  status = MATCH_NOT_FOUND;
 	  goto cleanup;
 	}
 
@@ -1367,6 +1368,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	  if (db_set_get (values, j, &col) != NO_ERROR)
 	    {
 	      pinfo->error_code = ER_FAILED;
+	      status = MATCH_NOT_FOUND;
 	      goto cleanup;
 	    }
 
