@@ -2354,7 +2354,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 
 	  seq = db_get_set (&svalue);
-	  error = set_get_element (seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &val);
+	  error = set_get_element (seq, SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;

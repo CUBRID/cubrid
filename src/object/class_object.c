@@ -689,8 +689,8 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
   db_make_int (&value, fk_info->update_action);
   set_put_element (fk_seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &value);
 
-  db_make_object (&value, fk_info->index_class_of_ref_class);
-  set_put_element (fk_seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &value);
+  db_make_object (&value, fk_info->index_catalog_of_ref_class);
+  set_put_element (fk_seq, SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX, &value);
 
   db_make_int (&value, fk_info->ref_match_option);
   set_put_element (fk_seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &value);
@@ -2905,11 +2905,11 @@ classobj_make_foreign_key_info (DB_SEQ * fk_seq, const char *cons_name, SM_ATTRI
     }
   fk_info->update_action = (SM_FOREIGN_KEY_ACTION) db_get_int (&fvalue);
 
-  if (set_get_element (fk_seq, SM_FK_INFO_INDEX_CLASS_OF_REF_CLASS_INDEX, &fvalue))
+  if (set_get_element (fk_seq, SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX, &fvalue))
     {
       goto error;
     }
-  fk_info->index_class_of_ref_class = db_get_object (&fvalue);
+  fk_info->index_catalog_of_ref_class = db_get_object (&fvalue);
 
   if (set_get_element (fk_seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &fvalue))
     {

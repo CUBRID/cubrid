@@ -488,7 +488,7 @@ struct sm_foreign_key_info
   SM_FOREIGN_KEY_ACTION update_action;
   char *name;
   bool is_dropped;
-  MOP index_class_of_ref_class;
+  MOP index_catalog_of_ref_class;
   SM_FOREIGN_KEY_MATCH_OPTION ref_match_option;
 };
 
