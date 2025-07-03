@@ -28,6 +28,7 @@
 #include "file_io.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "db_vector.hpp"
 #include "porting.h"
 #include "vector_distance_enum.h"
 #include <fstream>

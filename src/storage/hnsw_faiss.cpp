@@ -28,6 +28,7 @@
 #include "file_io.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "db_vector.hpp"
 #include "porting.h"
 #include <fstream>
 #include <filesystem>

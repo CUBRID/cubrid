@@ -20,6 +20,7 @@
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "dbtype_def.h"
+#include "db_vector.hpp"
 #include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
