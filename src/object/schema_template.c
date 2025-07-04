@@ -4970,6 +4970,7 @@ smt_find_index_class (const char *name)
   index_class = db_find_class (CT_INDEX_NAME);
   if (index_class == NULL)
     {
+      assert (false);
       return NULL;
     }
 
