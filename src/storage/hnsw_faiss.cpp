@@ -457,7 +457,7 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
   try
     {
       std::unique_ptr<faiss::IndexIDMap> &index = it->second;
-      if (index->metric_type == faiss::METRIC_COSINE && db_vector_is_all_zeros (vf))
+      if (index->metric_type == faiss::METRIC_INNER_PRODUCT && db_vector_is_all_zeros (vf))
 	{
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  return NO_ERROR;
@@ -519,7 +519,7 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
 
-  if (index->metric_type == faiss::METRIC_COSINE && db_vector_is_all_zeros (vf))
+  if (index->metric_type == faiss::METRIC_INNER_PRODUCT && db_vector_is_all_zeros (vf))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
