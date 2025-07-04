@@ -905,7 +905,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 	}
     }
 
-  spec = (PARTITION_SPEC_TYPE *) db_private_alloc (pinfo->thread_p, cnt * sizeof (PARTITION_SPEC_TYPE));
+  spec = (PARTITION_SPEC_TYPE *) malloc (cnt * sizeof (PARTITION_SPEC_TYPE));
   if (spec == NULL)
     {
       assert (false);
@@ -955,7 +955,7 @@ cleanup:
     {
       if (spec != NULL)
 	{
-	  db_private_free (pinfo->thread_p, spec);
+	  free (spec);
 	}
       pinfo->spec->parts = NULL;
     }

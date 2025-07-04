@@ -147,7 +147,7 @@ namespace parallel_heap_scan
 	free (m_tpl_buf.tpl);
       }
 
-      void write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data);
+      int write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data);
       void close (list_id_data &data);
 
       bool is_tfile_allocated() const;
