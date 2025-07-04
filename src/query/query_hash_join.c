@@ -1310,7 +1310,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
   if (thread_is_on_trace (thread_p))
     {
-      context_stats = (HASHJOIN_STATS *) db_private_alloc (thread_p, sizeof (HASHJOIN_STATS) * part_cnt);
+      context_stats = (HASHJOIN_STATS *) malloc (sizeof (HASHJOIN_STATS) * part_cnt);
       if (context_stats == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;

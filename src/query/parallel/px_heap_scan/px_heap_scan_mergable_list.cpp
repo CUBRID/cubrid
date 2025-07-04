@@ -49,7 +49,6 @@ namespace parallel_heap_scan
 	  {
 	    if (list_id->type_list.type_cnt != 0)
 	      {
-		qfile_update_qlist_count (thread_get_thread_entry_info (), list_id, 1);
 		qfile_clear_list_id (list_id);
 	      }
 	  }

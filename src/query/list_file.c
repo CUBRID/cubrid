@@ -6826,7 +6826,7 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 	}
     }
 
-  target_thread_p->m_qlist_count += inc;
+  target_thread_p->m_qlist_count.fetch_add (inc);
 
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
     {
