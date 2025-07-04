@@ -844,7 +844,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (manager->contexts == NULL);
   assert (manager->context_cnt == 0);
 
-  /* query_id, vd */
+  /* query_id */
   manager->query_id = query_id;
 
   manager->merge_method = HASHJOIN_MERGE_APPEND;
@@ -879,12 +879,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 	  type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
 	}
     }
-
-#if defined (SERVER_MODE)
-  /* *INDENT-OFF* */
-  parallel_query::hash_join::try_reserve_workers (*thread_p, manager, 4, 4);
-  /* *INDENT-ON* */
-#endif /* defined (SERVER_MODE) */
 
   /* stats_group */
   if (thread_is_on_trace (thread_p))
@@ -1060,7 +1054,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	    }
 	}
 
-      /* outer_precision, outer_scale */
+      /* common_precision, common_scale */
       outer_precision = outer_domains[domain_index]->precision;
       outer_scale = outer_domains[domain_index]->scale;
 
@@ -1509,6 +1503,10 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
 #if defined (SERVER_MODE)
+  /* *INDENT-OFF* */
+  parallel_query::hash_join::try_reserve_workers (*thread_p, manager, 4, 4);
+  /* *INDENT-ON* */
+
   if (manager->px_workpool != NULL)
     {
       /* *INDENT-OFF* */

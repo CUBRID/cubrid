@@ -130,6 +130,7 @@ namespace parallel_query
     entry_manager::on_retire (cubthread::entry &context)
     {
       clear_spawner ();
+      context.emulate_tid = thread_id_t ();
       cubthread::entry_manager::on_retire (context);
     }
 
@@ -146,7 +147,6 @@ namespace parallel_query
       thread_ref.emulate_tid = m_main_thread_ref.get_id ();
       thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
       thread_ref.conn_entry = m_main_thread_ref.conn_entry;
-      thread_ref.trace_format = m_main_thread_ref.trace_format;
       thread_ref.on_trace = m_main_thread_ref.on_trace;
     }
 
