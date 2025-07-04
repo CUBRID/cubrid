@@ -6815,7 +6815,6 @@ la_check_duplicated (const char *logpath, const char *dbname, int *lockf_vdes, i
   if (snprintf (lock_path, sizeof (lock_path), "%s%s%s%s", logpath, FILEIO_PATH_SEPARATOR (logpath), dbname,
 		LA_LOCK_SUFFIX) >= (int) sizeof (lock_path))
     {
-      assert_release (0);
       lock_path[sizeof (lock_path) - 1] = '\0';
     }
 

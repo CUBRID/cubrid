@@ -6213,15 +6213,15 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, isolation);
   REPLACE_COPY_2_DEST (dest, wait_msecs);
 
-  memcpy (&dest.head_lsa, &this->head_lsa, sizeof (LOG_LSA));
-  memcpy (&dest.tail_lsa, &this->tail_lsa, sizeof (LOG_LSA));
-  memcpy (&dest.undo_nxlsa, &this->undo_nxlsa, sizeof (LOG_LSA));
-  memcpy (&dest.posp_nxlsa, &this->posp_nxlsa, sizeof (LOG_LSA));
-  memcpy (&dest.savept_lsa, &this->savept_lsa, sizeof (LOG_LSA));
-  memcpy (&dest.topop_lsa, &this->topop_lsa, sizeof (LOG_LSA));
-  memcpy (&dest.tail_topresult_lsa, &this->tail_topresult_lsa, sizeof (LOG_LSA));
-  memcpy (&dest.commit_abort_lsa, &this->commit_abort_lsa, sizeof (LOG_LSA));
-
+  REPLACE_COPY_2_DEST (dest, head_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_lsa);
+  REPLACE_COPY_2_DEST (dest, undo_nxlsa);
+  REPLACE_COPY_2_DEST (dest, posp_nxlsa);
+  REPLACE_COPY_2_DEST (dest, savept_lsa);
+  REPLACE_COPY_2_DEST (dest, topop_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_topresult_lsa);
+  REPLACE_COPY_2_DEST (dest, commit_abort_lsa);
+  
   REPLACE_COPY_2_DEST (dest, client_id);
   REPLACE_COPY_2_DEST (dest, gtrid);
   REPLACE_COPY_2_DEST (dest, client);	// CLIENTIDS  
