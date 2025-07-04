@@ -62,8 +62,9 @@
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
 //#define TWICE_NUM_MAX_PREC    (2*DB_MAX_NUMERIC_PRECISION)
 
-/* TWICE_NUM_MAX_PREC : 임시로 문자열로 파싱(165) 이후에 처리된 최대 값 127의 str 버퍼에 담을 수 있는 최대 숫자(정수부＋소수부) 자릿수 (순수 숫자(0~9) 자리 수) */
-#define TWICE_NUM_MAX_PREC	(DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)
+/* TWICE_NUM_MAX_PREC : num(base-256) 값을 10진수 문자로 표현하기 위한 크기, 최대 소수 범위(38 + 127) 이내에 일단 최대 정수, 소수 다 표현 가능 */
+// TWICE_NUM_MAX_PREC :  최대 소수 (38 + 127) = 165
+#define TWICE_NUM_MAX_PREC        (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10
 
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
 
@@ -173,11 +174,12 @@ static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC 
 static int get_significant_digit (DB_BIGINT i);
 static int parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 				  char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
-				  int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
+				  int *int_last_nz, int *frac_first_nz, int *frac_last_nz, bool * is_all_space);
 static void compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
 				 int int_first_nz, int int_last_nz, int frac_first_nz, int frac_last_nz,
 				 char *num_string, int *out_prec, int *out_scale, bool * need_round);
-static int round_and_clamp (char *out_str, int out_len, char next_digit, int total_len);
+static void round_and_clamp (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len,
+			     int frac_zero_cnt, char next_digit);
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -1457,7 +1459,7 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
   scale2 = DB_VALUE_SCALE (dbv2);
 
   scale = MAX (scale1, scale2);
-  prec = DB_MAX_NUMERIC_PRECISION;
+  prec = (scale > DB_MAX_NUMERIC_PRECISION || scale < 0) ? MAX (prec1, prec2) : DB_MAX_NUMERIC_PRECISION;
 
   numeric_copy (num1, db_locate_numeric (dbv1));
   numeric_copy (num2, db_locate_numeric (dbv2));
@@ -2911,17 +2913,18 @@ numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const 
 {
   //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
   //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
-  // numeric_coerce_num_to_dec_str 함수에서 TWICE_NUM_MAX_PREC(127+3) 만큼 버퍼를 읽어서 처리함.
-  // 따라서, 여기 버퍼는 그보다 1 더 커야함.
-  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];
-  char new_dec_num[NUMERIC_MAX_STRING_SIZE + 1];
+  // numeric_coerce_num_to_dec_str 함수에서 TWICE_NUM_MAX_PREC(122 + 127) 만큼 버퍼를 읽어서 처리함.
+  // dec_str 버퍼는 정수, 소수 모두 포함하는 버퍼임.
+  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];	// 300, 최대 정수(38 + 84) + 최대 소수 (38 + 127) + 여유 13자리
+  // new_dec_num 버퍼는 소수부 자릿수만큼 필요함.
+  char new_dec_num[(DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 1];
   int i = 0;
 
   assert (src_scale <= dst_scale);
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, NUMERIC_MAX_STRING_SIZE + 1);
+  memset (new_dec_num, 0, (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 1);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -3253,15 +3256,10 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-/*
- * 1. parse and compute prec/scale: 문자열 파싱: 부호·콤마·공백 걸러내고 digit를 int_digits/frac_digits에 담고 prec/scale 계산
- *    - skip leading spaces, handle sign
- *    - skip commas
- *    - split digits into int_digits and frac_digits
- *    - count prec and scale
- */
+
+// 춘택님 아이디어 : 하나의 for문이 아닌 딱 필요한 부분만 반복문으로 처리하도록 분리 필요!
 static int
-parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+parse_decimal_string4 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
 {
@@ -3430,7 +3428,195 @@ parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET cod
   return NO_ERROR;
 }
 
+/*
+ * 1. parse and compute prec/scale: 문자열 파싱: 부호·콤마·공백 걸러내고 digit를 int_digits/frac_digits에 담고 prec/scale 계산
+ *    - skip leading spaces, handle sign
+ *    - skip commas
+ *    - split digits into int_digits and frac_digits
+ *    - count prec and scale
+ */
+static int
+parse_decimal_string3 (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
+		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz, bool * is_all_space)
+{
+  NUMERIC_PARSE_STATE state = STR_START;
+  int int_count = 0;		// 정수부 전체 자릿수
+  int frac_count = 0;		// 소수부 전체 자릿수
+  int pos = 0;			// 현재 파싱 위치 (index)
+  int skip = 1;			// 공백 건너뛰기용
+  char current_char = '\0';
+  int buf_idx = 0;
+  int int_parse_limit = DB_MAX_NUMERIC_PRECISION + (-(DB_MIN_NUMERIC_SCALE));	// 38 + -(-84) = 122
+  int frac_parse_limit = DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE;	// 38 + 127 = 165
+
+  *int_first_nz = *int_last_nz = -1;
+  *frac_first_nz = *frac_last_nz = -1;
+  *negate_value = false;
+  *is_all_space = true;
+
+  while (pos < astring_length)
+    {
+      current_char = astring[pos];
+      skip = 1;
+
+      if (intl_is_space (astring + pos, NULL, codeset, &skip))
+	{
+	  if (state == STR_START)
+	    {
+	      pos += skip;	// 리딩 공백: 무시
+	      continue;
+	    }
+	  else if (state == STR_INTEGER || state == STR_FRACTION)
+	    {
+	      state = STR_TRAIL;	// 첫 트레일링 공백
+	      pos += skip;
+	      continue;
+	    }
+	  else if (state == STR_TRAIL)
+	    {
+	      pos += skip;	// 계속 트레일링 공백
+	      continue;
+	    }
+	  else
+	    {
+	      // STR_SIGNED에서 공백 나오면 에러
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	}
+
+      // 2) STR_TRAIL에서 비공백 문자가 오면 에러
+      if (state == STR_TRAIL)
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+
+      if (state == STR_START && int_count == 0 && frac_count == 0 && (current_char == '+' || current_char == '-'))
+	{
+	  // 2) 부호: 제일 처음만
+	  *negate_value = (current_char == '-');
+	  state = STR_SIGNED;
+	  pos += skip;
+	  continue;
+	}
+      else if ((state == STR_START || state == STR_SIGNED || state == STR_INTEGER) && current_char == '.')
+	{
+	  // 3) decimal point
+	  if (state == STR_FRACTION)
+	    {
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	  state = STR_FRACTION;
+	  pos += skip;
+	  continue;
+	}
+      else if (current_char == ',')
+	{
+	  // 4) 콤마는 numeric literal 에서 에러
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (current_char >= '0' && current_char <= '9')
+	{
+	  *is_all_space = false;
+	  // 5) digit
+	  if (state == STR_START || state == STR_SIGNED)
+	    {
+	      state = STR_INTEGER;
+	    }
+
+	  if (state == STR_INTEGER)
+	    {
+	      // 정수부
+	      if (!(current_char == '0' && *int_first_nz < 0))
+		{
+		  // 첫 non-zero가 나오거나, 이미 non-zero를 만난 뒤의 0인 경우
+		  if (current_char != '0' && *int_first_nz < 0)
+		    {
+		      *int_first_nz = int_count;
+		    }
+		  if (current_char != '0')
+		    {
+		      *int_last_nz = int_count;
+		    }
+		  // 버퍼에 저장 및 카운트
+		  int_digits[int_count++] = current_char;
+		}
+	      // overflow 체크
+	      if (int_count > int_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  else			// state == STR_FRACTION
+	    {
+	      // 소수부
+	      // 버퍼에 일단 저장 (overflow 체크 뒤)
+	      if (frac_count < frac_parse_limit)
+		{
+		  frac_digits[frac_count] = current_char;
+		}
+	      // non-zero 인덱스 추적
+	      if (current_char != '0')
+		{
+		  if (*frac_first_nz < 0)
+		    {
+		      *frac_first_nz = frac_count;
+		    }
+		  *frac_last_nz = frac_count;
+		}
+
+	      frac_count++;
+	      // overflow 체크
+	      if (frac_count > frac_parse_limit)
+		{
+		  return ER_IT_DATA_OVERFLOW;
+		}
+	    }
+	  pos += skip;
+	  continue;
+	}
+      else
+	{
+	  /* Stray Non-numeric compatible character */
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  if (int_count + frac_count == 0)
+    {
+      if (*is_all_space)
+	{
+	  // 공백으로 인해, int와 frac 모두가 0인 경우 NULL
+	  int_digits[0] = '\0';
+	}
+      else
+	{
+	  // special-case: 숫자 하나도 없으면 "0"
+	  int_digits[0] = '0';
+	  int_digits[1] = '\0';
+	}
+      frac_digits[0] = '\0';
+      *int_first_nz = 0;
+      *int_last_nz = 0;
+      *frac_first_nz = -1;
+      *frac_last_nz = -1;
+      *int_len = 0;
+      *frac_len = 0;
+    }
+  else
+    {
+      // 정상 케이스: 채운 길이만큼 널 종결
+      int_digits[int_count] = '\0';
+      frac_digits[frac_count] = '\0';
+      *int_len = int_count;
+      *frac_len = frac_count;
+    }
+
+  return NO_ERROR;
+}
+
 /* 2. 정수부와 소수부를 분석하여 precision과 scale을 계산 */
+// 0인 경우의 처리 리팩토링 필요!, 굳이 밑에 까지 안가고 바로 return 하면 안되나?
 static void
 compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int int_first_nz,
 		     int int_last_nz, int frac_first_nz, int frac_last_nz, char *out_num_string, int *out_prec,
@@ -3443,6 +3629,7 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
   int temp_int_len = 0, temp_frac_len = 0;
   char next_digit = '0';
   int tmp_prec = 0, tmp_scale = 0;
+  int frac_zero_cnt = 0;
 
   if (frac_len == 0)
     {
@@ -3472,6 +3659,27 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
 	  tmp_scale = -tz_cnt;
 	  temp_int_digits = int_digits + int_first_nz;
 	  temp_int_len = sig_len;
+	  // 아래 조건은 향후 F-P NUMERIC을 도입하면서, DB_MAX_NUMERIC_PRECISION 값이 38 -> 40 으로 늘어나면 다시 살리는 용도로 남겨둠
+	  // 만약, 지금 살려두면 precision이 38인 테이블에 39 자리 이상의 값이 들어오면 항상 true라 반올림되어 overflow 에러가 발생하지 않음.
+	  /*
+	     if (sig_len > DB_MAX_NUMERIC_PRECISION)
+	     {
+	     tmp_prec = DB_MAX_NUMERIC_PRECISION;
+	     tmp_scale = -tz_cnt;
+	     temp_int_digits = int_digits + int_first_nz;
+	     temp_int_len = DB_MAX_NUMERIC_PRECISION;
+	     next_digit = temp_int_digits[int_first_nz + DB_MAX_NUMERIC_PRECISION];
+	     *need_round = true;
+	     }
+	     else
+	     {
+	     tmp_prec = sig_len;
+	     tmp_scale = -tz_cnt;
+	     temp_int_digits = int_digits + int_first_nz;
+	     temp_int_len = sig_len;
+	     *need_round = false;
+	     }
+	   */
 	}
     }
   else if (int_len == 0)
@@ -3497,10 +3705,38 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
 	{
 	  /* Case 2-C: Oracle 스타일 - leading zero 건너뛰고 최대 MAX_PRECISION개 사용 */
 	  int nz_len = frac_last_nz - frac_first_nz + 1;
-	  tmp_prec = nz_len > DB_MAX_NUMERIC_PRECISION ? DB_MAX_NUMERIC_PRECISION : nz_len;
-	  tmp_scale = frac_len;
-	  temp_frac_digits = frac_digits + frac_first_nz;
-	  temp_frac_len = tmp_prec;
+	  if (nz_len > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      /*
+	       * 예시 : 0.123456789012345678901234567890123456789
+	       * 결과 : 0.12345678901234567890123456789012345679
+	       * 
+	       * 아래 case는 나중에 prec이 40까지 늘어나면 고민해야할듯?
+	       * scale이 166 이면, 반올림을 하니 frac_len - tmp_prec 를 해야 scale이 깔끔해지지 않을까?
+	       * 예시 : 0.0000000000000000000000...0999..9999 (0: 127개, 9: 39개)
+	       * 결과 : 0.0000000000000000000000...01 (0: 126개, 1: 1개 = 총 127자리)
+	       */
+	      tmp_prec = DB_MAX_NUMERIC_PRECISION;
+	      tmp_scale = frac_len;
+	      temp_frac_digits = frac_digits + frac_first_nz;
+	      temp_frac_len = DB_MAX_NUMERIC_PRECISION;
+	      next_digit = frac_digits[frac_first_nz + DB_MAX_NUMERIC_PRECISION];
+	      *need_round = true;
+
+	      frac_zero_cnt = frac_len - nz_len;	// 순수 0 개수
+	    }
+	  else
+	    {
+	      /*
+	       * 예시 : 0.0000000000000000000000...0999..9999 (0: 127개, 9: 38개)
+	       * 결과 : 0.0000000000000000000000...0999..9999 (0: 127개, 9: 38개)
+	       */
+	      tmp_prec = nz_len;
+	      tmp_scale = frac_len;
+	      temp_frac_digits = frac_digits + frac_first_nz;
+	      temp_frac_len = nz_len;
+	      *need_round = false;
+	    }
 	}
     }
   else
@@ -3615,52 +3851,103 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
   int final_len = temp_int_len + temp_frac_len;
   if (*need_round)
     {
-      final_len = round_and_clamp (out_num_string, final_len, next_digit, total);
+      // 반올림 하는 곳에서는 prec이 늘어나는 경우는 없음, 대부분 sacle 조정만함
+      // 그래서 따로 prec 검사는 skip 함.
+      (void) round_and_clamp (out_num_string, &tmp_prec, &tmp_scale, temp_int_len, temp_frac_len, frac_zero_cnt,
+			      next_digit);
     }
 
-  *out_prec = final_len;
+  *out_prec = tmp_prec;
   *out_scale = tmp_scale;
 }
 
 // 3. prec/scale 계산시, 반올림 및 clamp 할때 사용하는 함수
-static int
-round_and_clamp (char *out_str, int out_len, char next_digit, int total_len)
+/**
+ * out_str: 숫자 문자열
+ * out_prec: precision (총 자릿수)
+ * out_scale: scale (소수부 자릿수)
+ * temp_int_len: 정수부 길이 (0 이면 순수 소수)
+ * temp_frac_len: 소수부 길이
+ * frac_zero_cnt: 소수부 순수 0 개수
+ * next_digit: 잘린 다음 자리(반올림 기준)
+ */
+static void
+round_and_clamp (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len, int frac_zero_cnt,
+		 char next_digit)
 {
-  const int maxp = DB_MAX_NUMERIC_PRECISION;	// 38
+  int prec = *out_prec;
+  int scale = *out_scale;
+  bool all_nine = false;
 
-  // 1) 길이가 MAXP 이하면 그대로
-  if (total_len <= maxp)
-    {
-      out_str[out_len] = '\0';
-      return out_len;
-    }
-
-  // 2) 잘린 첫 자리(인덱스 MAXP) 보고 반올림
+  // 1) 잘린 첫 자리(next_digit) 보고 반올림
   if (next_digit >= '5')
     {
-      int i = maxp - 1;
-      // 9→0 올림 전파
+      int i = DB_MAX_NUMERIC_PRECISION - 1;
       while (i >= 0 && out_str[i] == '9')
 	{
 	  out_str[i] = '0';
 	  i--;
 	}
+
       if (i >= 0)
 	{
+	  // 123.456...
+	  // 0.55555555555555...
 	  out_str[i] += 1;
 	}
       else
 	{
 	  // 모두 9 였다면 "1000…", 맨 앞만 '1'로, 나머지는 '0'
-	  memmove (out_str + 1, out_str, maxp);
-	  out_str[0] = '1';
-	  // 길이는 MAXP+1 되었지만, 클램프 아래에서 자름
+	  all_nine = true;
+	  if (temp_int_len == 0)
+	    {
+	      // 0.9999..
+	      // 0.0000..9999
+	      prec = 1;
+	      out_str[DB_MAX_NUMERIC_PRECISION - 1] = '1';
+	    }
+	  else
+	    {
+	      // 99999.99999..
+	      // 99999.00000..
+	      // 99999.. -- 정수만 있으니, scale은 그대로
+	      memmove (out_str + 1, out_str, DB_MAX_NUMERIC_PRECISION);
+	      out_str[0] = '1';
+	    }
 	}
     }
 
-  // 3) clamp to MAXP
-  out_str[maxp] = '\0';
-  return maxp;
+  // 2) 널종결자 추가
+  out_str[DB_MAX_NUMERIC_PRECISION] = '\0';
+
+  // 3) scale 재계산
+  if (all_nine)
+    {
+      if (temp_int_len == 0)
+	{
+	  // 0.9999..
+	  // 0.0000..9999
+	  scale = frac_zero_cnt == 0 ? 0 : frac_zero_cnt;
+	}
+      else if (temp_frac_len != 0)
+	{
+	  // 99999.99999..
+	  // 99999.00000..
+	  scale--;
+	}
+    }
+  else
+    {
+      // 123.456...
+      if (temp_int_len == 0)
+	{
+	  // 0.55555555555555...
+	  scale = frac_zero_cnt + prec;
+	}
+    }
+
+  *out_prec = prec;
+  *out_scale = scale;
 }
 
 /*
@@ -3681,7 +3968,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   //char num_string[TWICE_NUM_MAX_PREC + 1]; // 130 + 1 = 131
   char num_string[DB_MAX_NUMERIC_PRECISION + 1];	// 최종 저장할 10진수 유효 숫자임으로 38 + 1 = 39
   unsigned char num[DB_NUMERIC_BUF_SIZE];	// 10진수 유효 숫자를 256진수로 변환해서 저장할 버퍼
-  bool negate_value = false, need_round = false;
+  bool negate_value = false, need_round = false, is_all_space = false;
   int prec, scale;
   int int_len, frac_len;
   int int_first_nz, int_last_nz, frac_first_nz, frac_last_nz;
@@ -3693,7 +3980,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   // 1) parse and compute prec/scale
   ret =
     parse_decimal_string3 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz);
+			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz, &is_all_space);
   if (ret != NO_ERROR)
     {
       if (ret == ER_IT_DATA_OVERFLOW)
@@ -3704,9 +3991,28 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  // 2) prec, scale 계산 및 num_string 생성
-  (void) compute_prec_scale3 (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
-			      frac_last_nz, num_string, &prec, &scale, &need_round);
+  if (is_all_space)
+    {
+      prec = 0;
+      scale = 0;
+      num_string[prec] = '\0';
+    }
+  else
+    {
+      // 2) prec, scale 계산 및 num_string 생성
+      (void) compute_prec_scale3 (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
+				  frac_last_nz, num_string, &prec, &scale, &need_round);
+    }
+
+  /* If there is no overflow, try to parse the decimal string */
+  if (prec > DB_MAX_NUMERIC_PRECISION || (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
+      || scale < DB_MIN_NUMERIC_SCALE)
+    {
+      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      ret = ER_IT_DATA_OVERFLOW;
+      goto exit_on_error;
+    }
 
   // 3) 10진 문자열 -> base-256 바이너리
   numeric_coerce_dec_str_to_num (num_string, num);
@@ -3718,7 +4024,9 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     }
 
   // 5) DB_VALUE 생성
-  ret = db_make_numeric (result, num, prec, scale);
+  // 아니... NULL 표현을 위해 여기서 그냥 err를 통과시켜버리네...
+  // ex) select cast(cast('' as char varying(10)) as numeric(38,10));
+  db_make_numeric (result, num, prec, scale);
   result->domain.numeric_info.has_round = need_round;
   return ret;
 
@@ -3728,189 +4036,6 @@ exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
-
-/* 원본 코드
-int
-numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
-{
-  char num_string[TWICE_NUM_MAX_PREC + 1];
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
-  int i;
-  int prec = 0;
-  int scale = 0;
-  bool leading_zeroes = true;
-  bool sign_found = false;
-  bool negate_value = false;
-  bool pad_character_zero = false;
-  bool trailing_spaces = false;
-  bool decimal_part = false;
-  int ret = NO_ERROR;
-  int skip_size = 1;
-  TP_DOMAIN *domain;
-
-  // Remove the decimal point, track the prec & scale //
-  prec = 0;
-  scale = 0;
-  for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
-    {
-      skip_size = 1;
-      if (astring[i] == '.')
-	{
-	  leading_zeroes = false;
-	  decimal_part = true;
-	  scale = astring_length - (i + 1);
-	}
-      else if (leading_zeroes)
-	{			// Look for 1st digit between 1 & 9 //
-	  if (astring[i] >= '1' && astring[i] <= '9')
-	    {
-	      leading_zeroes = false;
-	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
-		{
-		  ret = DOMAIN_INCOMPATIBLE;
-		  break;
-		}
-	    }
-	  else if (astring[i] == '+' || astring[i] == '-')
-	    {			// sign found //
-	      if (!sign_found)
-		{
-		  sign_found = true;
-		  if (astring[i] == '-')
-		    {
-		      negate_value = true;
-		    }
-		}
-	      else
-		{		// Duplicate sign characters //
-		  ret = DOMAIN_INCOMPATIBLE;
-		}
-	    }
-	  else if (astring[i] == '0')
-	    {
-	      // leading pad '0' found //
-	      pad_character_zero = true;
-	    }
-	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      // Just skip this.  OK to have leading spaces //
-	      ;
-	    }
-	  else
-	    {
-	      // Stray Non-numeric compatible character //
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	}
-      else
-	{
-	  /* Only space character should be allowed on trailer. If the first space character is shown after digits, we
-	   * consider it as the beginning of trailer. //
-	  if (trailing_spaces && !intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      if (!trailing_spaces)
-		{
-		  trailing_spaces = true;
-		}
-	      /* Decrease scale if decimal part exists. //
-	      scale -= skip_size;
-	      if (scale < 0)
-		{
-		  scale = 0;
-		}
-	    }
-	  else if (astring[i] == ',')
-	    {
-	      /* Accept ',' character on integer part. //
-	      if (decimal_part)
-		{
-		  ret = DOMAIN_INCOMPATIBLE;
-		}
-	    }
-	  else if (astring[i] >= '0' && astring[i] <= '9')
-	    {
-	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
-		{
-		  break;
-		}
-	    }
-	  else
-	    {
-	      /* Characters excluding digit, space and comma are not acceptable. //
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	}
-    }
-
-  if (ret != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /*
-   * numeric(38,127) 에서, 0.000..999 처럼 소수 총 자리 165, 0은 127, 9는 38 자리 값이 들어올 때,
-   * 현재 우리는 127 까지만 읽고 바로 에러를 처리하기 때문에 반올림을 하지 않고 에러가 출력됨
-   * 향후 수정이 필요함!
-   //
-
-  /* If there is no overflow, try to parse the decimal string //
-  if (prec > DB_MAX_NUMERIC_PRECISION)
-    {
-      // 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
-      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
-      ret = ER_IT_DATA_OVERFLOW;
-      goto exit_on_error;
-    }
-
-//   if (scale > DB_MAX_NUMERIC_SCALE)
-//     {
-//       // 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
-//       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-//       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
-//       ret = ER_IT_DATA_OVERFLOW;
-//       goto exit_on_error;
-//     }
-
-  if (prec == 0 && pad_character_zero)
-    {
-      prec = 1;
-      num_string[0] = '0';
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
-    }
-  else
-    {
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
-    }
-
-  /* Make the return value //
-  if (negate_value)
-    {
-      numeric_negate (num);
-    }
-  ret = db_make_numeric (result, num, prec, scale);
-
-  return ret;
-
-exit_on_error:
-
-  // ER_IT_DATA_OVERFLOW 일 때 에러 코드? 메세지가 이상함, 이 메세지가 맞나? 수정 필요해보이는데?
-  //if (er_errid () != ER_IT_DATA_OVERFLOW)
-  //{
-  db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
-  //}
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-}
-*/
 
 /*
  * numeric_coerce_num_to_num () -
@@ -3930,7 +4055,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
 {
   int ret = NO_ERROR;
   //char num_string[DB_MAX_NUMERIC_PRECISION * 4];
-  char num_string[TWICE_NUM_MAX_PREC + 1];	// 130 + 1 = 131
+  char num_string[NUMERIC_MAX_STRING_SIZE];	// 정수(38+84) + 소수(38+127) + 13 = 300
   int scale_diff;
   int orig_length;
   int i, len;
@@ -4007,51 +4132,20 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
   // 입력값(src) < 도메인(dest) == 0.009 
   if (src_scale < dest_scale)
     {				/* add trailing zeroes */
-      /* scale 값 만큼 값을 보정하는 곳임
-       *  
-       * TO-BE (수정한 방법) 
-       *  *중요* -> 추후 동적으로 변경할 때 memmove 사용하지 말고 버퍼를 계산해서 0을 뒤에 추가하는 방법으로 수정 필요
-       * 1. 임시 배열을 만들어서 scale_diff만큼 값을 복사
-       * 2. 원래 배열을 scale_diff만큼 이동
-       * 3. 임시 배열을 원래 배열의 뒷부분에 복사
-       * 
-       * AS-IS (원래 방법) :
-       * 1. 원래 배열을 scale_diff만큼 이동
-       * 2. 원래 배열의 뒷부분에 scale_diff만큼 0을 채움
-       * 3. 마지막 배열에 \0을 추가
-       * 4. 하지만 이 방법은 원래 배열의 크기를 넘어서 처리하는 것이라서 문제가 있음
+      /* scale 값 만큼 값을 보정하는 곳
+       * num_string 버퍼 크기 늘려서 기존 로직이 동작되게 함.
        *
-       * TC :
        * CREATE TABLE t1 (col1 numeric(1,127));
        * INSERT INTO t1 values(0.0000000000000000000000009);
        */
+
       scale_diff = dest_scale - src_scale;
       orig_length = strlen (num_string);
-
-      // 한 번에 scale_diff만큼 이동
-      char temp[scale_diff];
-      memcpy (temp, num_string, scale_diff);
-      memmove (num_string, num_string + scale_diff, orig_length - scale_diff);
-      memcpy (num_string + (orig_length - scale_diff), temp, scale_diff);
-
-      // 아래 반복문을 memset 으로 한번에 처리   
-//       scale_diff = eff_dest_scale - eff_src_scale;
-//       orig_length = strlen (num_string);
-//       int new_len = orig_length + scale_diff;
-//       // (1) 기존 숫자 그대로 두고
-//       // (2) 부족한 0만 뒤에 채워 넣는다
-//       memset(num_string + orig_length, '0', scale_diff);
-//       num_string[new_len] = '\0';
-
-      /* AS-IS (원래 방법)
-       * scale_diff = dest_scale - src_scale;
-       * orig_length = strlen (num_string);
-       * for (i = 0; i < scale_diff; i++)
-       *   {
-       *   num_string[orig_length + i] = '0';
-       * }
-       * num_string[orig_length + scale_diff] = '\0';
-       */
+      for (i = 0; i < scale_diff; i++)
+	{
+	  num_string[orig_length + i] = '0';
+	}
+      num_string[orig_length + scale_diff] = '\0';
     }
   else if (dest_scale < src_scale)
     {				/* Truncate and prepare for rounding */
@@ -4641,7 +4735,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   //char temp[80];
 //  int ret = NO_ERROR;
 //  char *temp; // 130(127 + sign + dot + \0)
-  char temp[NUMERIC_MAX_STRING_SIZE + 1];	// 165(127 + sign + dot + \0)
+  char temp[NUMERIC_MAX_STRING_SIZE];	// 300, 최대 정수(38 + 84) + 최대 소수 (38 + 127) + 여유 13자리
   int nbuf;
   int temp_size;
   int i;

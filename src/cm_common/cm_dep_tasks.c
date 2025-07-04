@@ -2272,7 +2272,7 @@ static char *
 _op_get_value_string (DB_VALUE * value)
 {
 #if !defined (NUMERIC_MAX_STRING_SIZE)
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+#define NUMERIC_MAX_STRING_SIZE (300 + 1)	// 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
 #endif
   const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;

@@ -40,7 +40,8 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
-#define NUMERIC_MAX_STRING_SIZE (DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 3)	// 127 + sign + dot + \0
+// numeric 출력 문자열 크기 최대 값 : 300 = 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
+#define NUMERIC_MAX_STRING_SIZE (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 13
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */

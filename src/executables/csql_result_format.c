@@ -903,7 +903,7 @@ object_to_string (DB_OBJECT * object, int format)
 static char *
 numeric_to_string (DB_VALUE * value, bool commas)
 {
-  char str_buf[NUMERIC_MAX_STRING_SIZE + 1];	// 130(127 + sign + dot + \0) + 1 = 131
+  char str_buf[NUMERIC_MAX_STRING_SIZE + 1];	// 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
   char *return_string;
   int prec, scale;
   int comma_length;
