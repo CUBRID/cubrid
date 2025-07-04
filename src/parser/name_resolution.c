@@ -531,7 +531,7 @@ pt_resolved (const PT_NODE * expr)
 	case PT_DOT_:
 	  return (pt_resolved (expr->info.dot.arg1) && pt_resolved (expr->info.dot.arg2));
 	case PT_FUNCTION:
-	  // Resolved as a function node.  
+	  // Resolved as a function node.
 	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
 	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
@@ -1165,8 +1165,8 @@ pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
    **   user.tbl           :    NULL
    **   user.tbl, user.tbl :    NULL
    **   tbl,      tbl      :    NULL
-   **   user.tbl, tbl      :   "user" 
-   **   tbl,      user.tbl :   "user"  
+   **   user.tbl, tbl      :   "user"
+   **   tbl,      user.tbl :   "user"
    */
 
   if (dblink_table->owner_list == NULL)
@@ -3330,7 +3330,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * When using a session variable in the first arg_list,
 	       * It is unknown whether the session variable contains a class, object, or constant value.
 	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
-	       * 
+	       *
 	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
 	       *     insert into x values (4, 'string 4');
 	       *     select x into p1 from x where xint = 4;
@@ -3439,7 +3439,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
 	  {
 	    /*
-	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION), 
+	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION),
 	     * pt_bind_name_or_path_in_scope() always returns NULL and sets the value PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
 	     */
 	    pt_reset_error (parser);
@@ -3518,7 +3518,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		{
 		  /*
 		   * when checking for a PROCEDURE in a PT_DOT_ type, if the PROCEDURE does not exist, the check moves on to the PT_FUNCTION.
-		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME, 
+		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME,
 		   * which will always return NULL and set the value of
 		   * PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
 		   */
@@ -8376,7 +8376,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      q : object_name           -> object_name
        *
        *      or
-       * 
+       *
        *      p : object_name           -> object_name
        *      q : user_name.object_name -> object_name
        */
@@ -8388,7 +8388,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      original_q : user_name.object_name -> object_name
        *
        *      or
-       * 
+       *
        *      original_p : user_name.object_name -> object_name
        *      original_q : object_name.          -> NULL
        */
@@ -8406,7 +8406,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      q : user_name.object_name
        *
        *      or
-       * 
+       *
        *      p : object_name
        *      q : object_name
        */
@@ -11634,7 +11634,7 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node, char **s
   error = get_dblink_info_from_dbserver (parser, dblink_table->conn, dblink_table->owner_name, values);
   if (error != NO_ERROR)
     {
-      // TODO: error handling         
+      // TODO: error handling
       if (er_errid_if_has_error () != NO_ERROR)
 	{
 	  PT_ERROR (parser, node, (char *) er_msg ());
@@ -11726,7 +11726,7 @@ pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, cha
   error = get_dblink_owner_name_from_dbserver (parser, node, node->next, &value);
   if (error != NO_ERROR)
     {
-      // TODO: error handling         
+      // TODO: error handling
       if (er_errid_if_has_error () != NO_ERROR)
 	{
 	  PT_ERROR (parser, node, (char *) er_msg ());
@@ -11767,17 +11767,18 @@ pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (PT_IS_NAME_NODE (node))
     {
-      if (node->info.name.original)
-	{
-	  return node->info.name.original;
-	}
+      assert (node->info.name.original);
+      return node->info.name.original;
     }
   else if (PT_IS_DOT_NODE (node))
     {
       PT_NODE *rec = node->info.dot.arg1;
       PT_NODE *field = node->info.dot.arg2;
-      if (PT_IS_NAME_NODE (rec) && PT_IS_NAME_NODE (field) && rec->info.name.original && field->info.name.original)
+      if (PT_IS_NAME_NODE (rec) && PT_IS_NAME_NODE (field))
 	{
+	  assert (rec->info.name.original);
+	  assert (field->info.name.original);
+
 	  PARSER_VARCHAR *q = NULL;
 	  q = pt_append_nulstring (parser, q, rec->info.name.original);
 	  q = pt_append_nulstring (parser, q, ".");
