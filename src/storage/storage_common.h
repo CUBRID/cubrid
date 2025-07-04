@@ -1039,25 +1039,24 @@ typedef enum
 } SM_INDEX_FLAG;
 
 /*
- * Enum values represent reverse indexes from the end of the constraint sequence:
+ * Enum values represent reverse indexes from the end of the constraint sequence to optional info:
  * e.g., UPDATED_TIME_INDEX == seq_len - 1, CREATED_TIME_INDEX == seq_len - 2, ...
  * See SM_CLASS_CONSTRAINT in class_object.h for structure details.
 */
 typedef enum
 {
-  SM_CLASS_CONSTRAINT_UPDATED_TIME_INDEX = 1,	// seq_len - 1
-  SM_CLASS_CONSTRAINT_CREATED_TIME_INDEX = 2,	// seq_len - 2
-  SM_CLASS_CONSTRAINT_COMMENT_INDEX = 3,	// seq_len - 3
-  SM_CLASS_CONSTRAINT_OPTIONS_INDEX = 4,	// seq_len - 4
-  SM_CLASS_CONSTRAINT_INDEX_TYPE_INDEX = 5,	// seq_len - 5
-  SM_CLASS_CONSTRAINT_STATUS_INDEX = 6,	// seq_len - 6
-  SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX = 7,	// seq_len - 7 (optional)
-
+  SM_CONSTRAINT_UPDATED_TIME_INDEX = 1,	// seq_len - 1
+  SM_CONSTRAINT_CREATED_TIME_INDEX = 2,	// seq_len - 2
+  SM_CONSTRAINT_COMMENT_INDEX = 3,	// seq_len - 3
+  SM_CONSTRAINT_OPTIONS_INDEX = 4,	// seq_len - 4
+  SM_CONSTRAINT_INDEX_TYPE_INDEX = 5,	// seq_len - 5
+  SM_CONSTRAINT_STATUS_INDEX = 6,	// seq_len - 6
+  SM_CONSTRAINT_OPTIONAL_INFO_INDEX = 7,	// seq_len - 7 (optional)
   // [att_name|id, asc_desc]... (forward from here)
-  SM_CLASS_CONSTRAINT_BTID_INDEX,
+  // BTID
 
-  SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT = 7	// Excludes OPTIONAL_INFO
-} SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX;
+  SM_CONSTRAINT_FIXED_FIELD_COUNT = SM_CONSTRAINT_OPTIONAL_INFO_INDEX	// Excludes OPTIONAL_INFO
+} SM_CONSTRAINT_FIXED_FIELD_REVERSE_INDEX;
 
 
 typedef enum
@@ -1082,21 +1081,18 @@ typedef enum
 static inline int
 get_class_constraint_att_count (int size)
 {
-  assert (((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2) > 0);
-  return ((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2);
+  assert (((size - SM_CONSTRAINT_FIXED_FIELD_COUNT) / 2) > 0);
+  return ((size - SM_CONSTRAINT_FIXED_FIELD_COUNT) / 2);
 }
 
 /*
  * Given the total size of a class constraint sequence, this function computes
  * the absolute index of a fixed field (e.g., status, index_type, created_time)
  * based on its reverse position from the end of the sequence.
- * BTID (index 0) is already accessed directly in existing code.
- * This function excludes BTID and must not be used to get its index.
 */
 static inline int
-get_class_constraint_index (int size, SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX index)
+get_class_constraint_index (int size, SM_CONSTRAINT_FIXED_FIELD_REVERSE_INDEX index)
 {
-  assert (index != SM_CLASS_CONSTRAINT_BTID_INDEX);
   return size - index;
 }
 

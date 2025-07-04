@@ -1961,14 +1961,13 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   index->btname = strdup (cons_name);
 
-  set_get_element_nocopy (constraint_seq, get_class_constraint_index (seq_size, SM_CLASS_CONSTRAINT_STATUS_INDEX),
-			  &stat_val);
+  set_get_element_nocopy (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_STATUS_INDEX), &stat_val);
   index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
 
   if (type == BTREE_FOREIGN_KEY)
     {
       if (set_get_element_nocopy
-	  (constraint_seq, get_class_constraint_index (seq_size, SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
 	   &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
@@ -1977,7 +1976,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   else if (type == BTREE_PRIMARY_KEY)
     {
       if (set_get_element_nocopy
-	  (constraint_seq, get_class_constraint_index (seq_size, SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
 	   &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
@@ -1989,7 +1988,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   else
     {
       if (set_get_element_nocopy
-	  (constraint_seq, get_class_constraint_index (seq_size, SM_CLASS_CONSTRAINT_OPTIONAL_INFO_INDEX),
+	  (constraint_seq, get_class_constraint_index (seq_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
 	   &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
@@ -3597,7 +3596,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  info_len = set_size (info);
 
 	  if (set_get_element_nocopy
-	      (info, get_class_constraint_index (info_len, SM_CLASS_CONSTRAINT_COMMENT_INDEX), &cvalue)
+	      (info, get_class_constraint_index (info_len, SM_CONSTRAINT_COMMENT_INDEX), &cvalue)
 	      || DB_IS_NULL (&cvalue))
 	    {
 	      /* if not exists, set comment to null */
