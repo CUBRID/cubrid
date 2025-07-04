@@ -1459,7 +1459,7 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
   scale2 = DB_VALUE_SCALE (dbv2);
 
   scale = MAX (scale1, scale2);
-  prec = (scale > DB_MAX_NUMERIC_PRECISION || scale < 0) ? MAX (prec1, prec2) : DB_MAX_NUMERIC_PRECISION;
+  prec = DB_MAX_NUMERIC_PRECISION;
 
   numeric_copy (num1, db_locate_numeric (dbv1));
   numeric_copy (num2, db_locate_numeric (dbv2));
@@ -2231,14 +2231,15 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 
 	  // [임시] 일단, 음수를 양수로 변환,
 	  // 음.. 정수로 변환 하지 않고 0으로 변경해보니 비교 결과가 안나옴..
-	  if (scale1 < 0)
-	    {
-	      scale1 *= -1;
-	    }
-	  else if (scale2 < 0)
-	    {
-	      scale2 *= -1;
-	    }
+	  // 버퍼 크기를 늘려주니, 음수도 잘 처리하네..? 일단 다시 주석처리!
+	  //   if (scale1 < 0)
+	  //     {
+	  //       scale1 *= -1;
+	  //     }
+	  //   else if (scale2 < 0)
+	  //     {
+	  //       scale2 *= -1;
+	  //     }
 
 	  if (scale1 > scale2)
 	    {
@@ -2859,8 +2860,10 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
 {
   //char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
   //char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
-  char dec_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 1];
-  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  // dec_str 버퍼는 정수, 소수 모두 포함하는 버퍼임.
+  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];
+  // new_dec_num 버퍼는 정수부 자릿수만큼 필요함.
+  char new_dec_num[(DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 1];
   int i = 0;
 
   /* the number of digits of the result */
@@ -2870,7 +2873,7 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  memset (new_dec_num, 0, (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 1);
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -3263,137 +3266,64 @@ parse_decimal_string4 (const char *astring, int astring_length, INTL_CODESET cod
 		       char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 		       int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
 {
-  NUMERIC_PARSE_STATE state = STR_START;
   int int_count = 0;		// 정수부 전체 자릿수
   int frac_count = 0;		// 소수부 전체 자릿수
-  int pos = 0;			// 현재 파싱 위치 (index)
+  int parse_pos = 0;		// 현재 파싱 위치 (index)
   int skip = 1;			// 공백 건너뛰기용
   char current_char = '\0';
-  int buf_idx = 0;
-  int int_parse_limit = DB_MAX_NUMERIC_PRECISION + (-(DB_MIN_NUMERIC_SCALE));	// 38 + -(-84) = 122
+  int int_parse_limit = DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE;	// 38 - (-84) = 122
   int frac_parse_limit = DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE;	// 38 + 127 = 165
+  bool has_digit = false;
+  bool pad_character_zero = false;
+  bool sign_found = false;
+  bool trailing_spaces = false;
 
   *int_first_nz = *int_last_nz = -1;
   *frac_first_nz = *frac_last_nz = -1;
   *negate_value = false;
 
-  while (pos < astring_length)
+  // 1) 공백, 부호, 0 처리
+  while (parse_pos < astring_length)
     {
-      current_char = astring[pos];
       skip = 1;
 
-      if (intl_is_space (astring + pos, NULL, codeset, &skip))
+      if (astring[parse_pos] >= '1' && astring[parse_pos] <= '9')
 	{
-	  if (state == STR_START)
+	  has_digit = true;
+	  break;
+	}
+      else if (astring[parse_pos] == '0')
+	{
+	  /* leading pad '0' found */
+	  pad_character_zero = true;
+	  parse_pos++;
+	  continue;
+	}
+      else if (astring[parse_pos] == '.')
+	{
+	  has_digit = true;	// Case : "0.0000"
+	  break;
+	}
+      else if (astring[parse_pos] == '+' || astring[parse_pos] == '-')
+	{
+	  if (!sign_found)
 	    {
-	      pos += skip;	// 리딩 공백: 무시
-	      continue;
-	    }
-	  else if (state == STR_INTEGER || state == STR_FRACTION)
-	    {
-	      state = STR_TRAIL;	// 첫 트레일링 공백
-	      pos += skip;
-	      continue;
-	    }
-	  else if (state == STR_TRAIL)
-	    {
-	      pos += skip;	// 계속 트레일링 공백
-	      continue;
+	      sign_found = true;
+	      if (astring[parse_pos] == '-')
+		{
+		  *negate_value = true;
+		  parse_pos++;
+		  continue;
+		}
 	    }
 	  else
-	    {
-	      // STR_SIGNED에서 공백 나오면 에러
+	    {			/* Duplicate sign characters */
 	      return DOMAIN_INCOMPATIBLE;
 	    }
 	}
-
-      // 2) STR_TRAIL에서 비공백 문자가 오면 에러
-      if (state == STR_TRAIL)
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
 	{
-	  return DOMAIN_INCOMPATIBLE;
-	}
-
-      if (state == STR_START && int_count == 0 && frac_count == 0 && (current_char == '+' || current_char == '-'))
-	{
-	  // 2) 부호: 제일 처음만
-	  *negate_value = (current_char == '-');
-	  state = STR_SIGNED;
-	  pos += skip;
-	  continue;
-	}
-      else if ((state == STR_START || state == STR_SIGNED || state == STR_INTEGER) && current_char == '.')
-	{
-	  // 3) decimal point
-	  if (state == STR_FRACTION)
-	    {
-	      return DOMAIN_INCOMPATIBLE;
-	    }
-	  state = STR_FRACTION;
-	  pos += skip;
-	  continue;
-	}
-      else if (current_char == ',')
-	{
-	  // 4) 콤마는 numeric literal 에서 에러
-	  return DOMAIN_INCOMPATIBLE;
-	}
-      else if (current_char >= '0' && current_char <= '9')
-	{
-	  // 5) digit
-	  if (state == STR_START || state == STR_SIGNED)
-	    {
-	      state = STR_INTEGER;
-	    }
-
-	  if (state == STR_INTEGER)
-	    {
-	      // 정수부
-	      if (!(current_char == '0' && *int_first_nz < 0))
-		{
-		  // 첫 non-zero가 나오거나, 이미 non-zero를 만난 뒤의 0인 경우
-		  if (current_char != '0' && *int_first_nz < 0)
-		    {
-		      *int_first_nz = int_count;
-		    }
-		  if (current_char != '0')
-		    {
-		      *int_last_nz = int_count;
-		    }
-		  // 버퍼에 저장 및 카운트
-		  int_digits[int_count++] = current_char;
-		}
-	      // overflow 체크
-	      if (int_count > int_parse_limit)
-		{
-		  return ER_IT_DATA_OVERFLOW;
-		}
-	    }
-	  else			// state == STR_FRACTION
-	    {
-	      // 소수부
-	      // 버퍼에 일단 저장 (overflow 체크 뒤)
-	      if (frac_count < frac_parse_limit)
-		{
-		  frac_digits[frac_count] = current_char;
-		}
-	      // non-zero 인덱스 추적
-	      if (current_char != '0')
-		{
-		  if (*frac_first_nz < 0)
-		    {
-		      *frac_first_nz = frac_count;
-		    }
-		  *frac_last_nz = frac_count;
-		}
-
-	      frac_count++;
-	      // overflow 체크
-	      if (frac_count > frac_parse_limit)
-		{
-		  return ER_IT_DATA_OVERFLOW;
-		}
-	    }
-	  pos += skip;
+	  parse_pos += skip;	// 공백 건너뛰기
 	  continue;
 	}
       else
@@ -3403,22 +3333,143 @@ parse_decimal_string4 (const char *astring, int astring_length, INTL_CODESET cod
 	}
     }
 
-  if (int_count + frac_count == 0)
+  // 2) 정수부 파싱
+  while (parse_pos < astring_length && has_digit)
     {
-      // special-case: 숫자 하나도 없으면 "0"
-      int_digits[0] = '0';
-      int_digits[1] = '\0';
+      current_char = astring[parse_pos];
+
+      if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
+	{
+	  if (int_count < int_parse_limit)
+	    {
+	      if (current_char != '0' && *int_first_nz < 0)
+		{
+		  *int_first_nz = int_count;
+		  pad_character_zero = false;
+		}
+	      if (current_char != '0')
+		{
+		  *int_last_nz = int_count;
+		}
+	      int_digits[int_count++] = current_char;
+	    }
+	  else
+	    {
+	      return ER_IT_DATA_OVERFLOW;	// 정수부가 overflow 되면 에러
+	    }
+	  parse_pos++;
+	  continue;
+	}
+      else if (current_char == '.')
+	{
+	  has_digit = true;	// Case : "0.0000"
+	  parse_pos++;
+	  break;
+	}
+      else if (trailing_spaces && !intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  if (!trailing_spaces)
+	    {
+	      trailing_spaces = true;
+	    }
+	  parse_pos += skip;	// 공백 건너뛰기
+	  continue;
+	}
+      else if (current_char == ',')
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  // 3) 소수부 파싱
+  while (parse_pos < astring_length && has_digit)
+    {
+      current_char = astring[parse_pos];
+
+      if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
+	{
+	  if (frac_count < frac_parse_limit)
+	    {
+	      frac_digits[frac_count] = current_char;
+	      // non-zero 추적
+	      if (current_char != '0')
+		{
+		  if (*frac_first_nz < 0)
+		    {
+		      *frac_first_nz = frac_count;
+		      pad_character_zero = false;
+		    }
+		  *frac_last_nz = frac_count;
+		}
+	      frac_count++;
+	    }
+	  else
+	    {
+	      return ER_IT_DATA_OVERFLOW;	// 소수부가 overflow 되면 에러
+	    }
+	  parse_pos++;
+	  continue;
+	}
+      else if (trailing_spaces && !intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  if (!trailing_spaces)
+	    {
+	      trailing_spaces = true;
+	    }
+	  parse_pos += skip;	// 공백 건너뛰기
+	  continue;
+	}
+      else if (current_char == ',')
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  if (pad_character_zero)
+    {
+      // 4) 0 처리
+      // 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+      // 00000 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+      // 0.0000 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1 이상)
+      // 0.000001 : pad_character_zero(f), has_digit(t), int_count(0), frac_count(1 이상)
+      // 0009000000 : pad_character_zero(?), has_digit(t), int_count(6), frac_count(0)
+      int_digits[0] = '\0';
       frac_digits[0] = '\0';
-      *int_first_nz = 0;
-      *int_last_nz = 0;
-      *frac_first_nz = -1;
-      *frac_last_nz = -1;
+      *int_first_nz = -1;
+      *int_last_nz = -1;
+      *int_len = 1;
+      *frac_len = 0;
+    }
+  else if (!has_digit && (int_count + frac_count) == 0)
+    {
+      // 5) NULL 처리 (space만 있는 경우)
+      // '' : has_digit(f), int_count(0), frac_count(0)
+      // '   ' : has_digit(f), int_count(0), frac_count(0)
+      // '1  ' : has_digit(t), int_count(1), frac_count(0)
+      int_digits[0] = '\0';
+      frac_digits[0] = '\0';
       *int_len = 0;
       *frac_len = 0;
     }
   else
     {
-      // 정상 케이스: 채운 길이만큼 널 종결
+      // 6) 정상 케이스: 채운 길이만큼 널 종결
       int_digits[int_count] = '\0';
       frac_digits[frac_count] = '\0';
       *int_len = int_count;
@@ -3636,7 +3687,7 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
       /* Case 1: 정수부만 존재 */
       if (int_len == 0)
 	{
-	  /* Case 1-A: 0인 경우 */
+	  /* Case 1-A: 0인 경우 (일단 임시로 살려!) */
 	  tmp_prec = 1;
 	  tmp_scale = 0;
 	  temp_int_digits = "0";
@@ -3687,7 +3738,7 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
       /* Case 2: 소수부만 존재 */
       if (frac_first_nz < 0)
 	{
-	  /* Case 2-A: 0인 경우 */
+	  /* Case 2-A: 0인 경우 (일단 임시로 살려!) */
 	  tmp_prec = 1;
 	  tmp_scale = frac_len;
 	  temp_frac_digits = "0";
@@ -3794,6 +3845,7 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
 		  int keep_int = int_len - drop_int;
 		  if (keep_int <= 0)
 		    {
+		      // 여기 관련 예제 찾아보기!!
 		      tmp_prec = 1;
 		      tmp_scale = 0;
 		      temp_int_digits = "0";
@@ -3979,8 +4031,10 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
   // 1) parse and compute prec/scale
   ret =
-    parse_decimal_string3 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz, &is_all_space);
+    parse_decimal_string4 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
+			   &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz);
+//     parse_decimal_string3 (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
+//                         &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz, &is_all_space);
   if (ret != NO_ERROR)
     {
       if (ret == ER_IT_DATA_OVERFLOW)
@@ -3991,28 +4045,60 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if (is_all_space)
+  if ((int_len + frac_len) == 0)
     {
+      // 5) NULL 처리 (space만 있는 경우)
       prec = 0;
       scale = 0;
-      num_string[prec] = '\0';
+      num_string[0] = '\0';
+    }
+  else if (int_len == 1 && int_first_nz < 0 && int_last_nz < 0)
+    {
+      // 4) 0 처리
+      prec = 1;
+      scale = 0;
+      num_string[0] = '0';
+      num_string[1] = '\0';
     }
   else
     {
-      // 2) prec, scale 계산 및 num_string 생성
       (void) compute_prec_scale3 (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
 				  frac_last_nz, num_string, &prec, &scale, &need_round);
+
+      /* If there is no overflow, try to parse the decimal string */
+      if (prec > DB_MAX_NUMERIC_PRECISION || (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
+	  || scale < DB_MIN_NUMERIC_SCALE)
+	{
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  ret = ER_IT_DATA_OVERFLOW;
+	  goto exit_on_error;
+	}
     }
 
-  /* If there is no overflow, try to parse the decimal string */
-  if (prec > DB_MAX_NUMERIC_PRECISION || (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
-      || scale < DB_MIN_NUMERIC_SCALE)
-    {
-      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
-      ret = ER_IT_DATA_OVERFLOW;
-      goto exit_on_error;
-    }
+  // parse_decimal_string3 처리
+//   if (is_all_space)
+//     {
+//       prec = 0;
+//       scale = 0;
+//       num_string[prec] = '\0';
+//     }
+//   else
+//     {
+//       // 2) prec, scale 계산 및 num_string 생성
+//       (void) compute_prec_scale3 (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
+//                                frac_last_nz, num_string, &prec, &scale, &need_round);
+//     }
+
+//   /* If there is no overflow, try to parse the decimal string */
+//   if (prec > DB_MAX_NUMERIC_PRECISION || (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
+//       || scale < DB_MIN_NUMERIC_SCALE)
+//     {
+//       domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+//       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+//       ret = ER_IT_DATA_OVERFLOW;
+//       goto exit_on_error;
+//     }
 
   // 3) 10진 문자열 -> base-256 바이너리
   numeric_coerce_dec_str_to_num (num_string, num);
