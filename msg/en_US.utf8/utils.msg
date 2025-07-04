@@ -945,9 +945,11 @@ usage: %1$s paramdump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -b, --both                   dump both client and server parameters\n\
+  -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -C, --CS-mode                client-server mode execution\n\
+      --ha-only                dump only HA related parameters; cannot be used with --exclude-ha option\n\
+      --exclude-ha             dump excluding HA related parameters; cannot be used with --ha-only option\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Wrong value \"%1$s\" for the server's HA running mode.\n
