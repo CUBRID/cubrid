@@ -1072,15 +1072,27 @@ typedef enum
   SM_FK_INFO_SIZE
 } SM_FOREIGN_KEY_INFO_INDEX;
 
+/*
+ * All fields except [att_name|id, asc_desc] pairs are fixed in number.
+ * (See SM_CLASS_CONSTRAINT in class_object.h for structure details)
+ * To compute the number of attributes, we subtract the fixed field count
+ * and divide the remaining size by 2 (each attribute is represented by 2 fields).
+ * Optional info (1 field) is ignored, since it doesn't affect integer division by 2.
+*/
 static inline int
 get_class_constraint_att_count (int size)
 {
-  // Each attribute = 2 fields; optional info (1 field) is ignored
-  // since it doesn't affect integer division by 2.
   assert (((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2) > 0);
   return ((size - SM_CLASS_CONSTRAINT_FIXED_FIELD_COUNT) / 2);
 }
 
+/*
+ * Given the total size of a class constraint sequence, this function computes
+ * the absolute index of a fixed field (e.g., status, index_type, created_time)
+ * based on its reverse position from the end of the sequence.
+ * BTID (index 0) is already accessed directly in existing code.
+ * This function excludes BTID and must not be used to get its index.
+*/
 static inline int
 get_class_constraint_index (int size, SM_CLASS_CONSTRAINT_FIXED_FILED_INDEX index)
 {
