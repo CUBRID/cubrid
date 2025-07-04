@@ -3533,11 +3533,11 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			  DB_SET *child_seq = db_get_set (&fvalue);
 			  int seq_size = set_size (seq);
 			  SM_INDEX_FLAG index_flag;
+			  const char *index_flag_str;
 
 			  j = 0;
 			  while (true)
 			    {
-			      index_flag = SM_INDEX_FLAG_UNKNOWN;
 			      if (set_get_element (child_seq, 0, &avalue) != NO_ERROR)
 				{
 				  goto structure_error;
@@ -3548,17 +3548,22 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				  goto structure_error;
 				}
 
-			      if (strcmp (db_get_string (&avalue), SM_FILTER_INDEX_ID) == 0)
+			      index_flag_str = db_get_string (&avalue);
+			      if (strcmp (index_flag_str, SM_FILTER_INDEX_ID) == 0)
 				{
 				  index_flag = SM_INDEX_FLAG_FILTER;
 				}
-			      else if (strcmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			      else if (strcmp (index_flag_str, SM_FUNCTION_INDEX_ID) == 0)
 				{
 				  index_flag = SM_INDEX_FLAG_FUNCTION;
 				}
-			      else if (strcmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			      else if (strcmp (index_flag_str, SM_PREFIX_INDEX_ID) == 0)
 				{
 				  index_flag = SM_INDEX_FLAG_PREFIX;
+				}
+			      else
+				{
+				  index_flag = SM_INDEX_FLAG_NONE;
 				}
 
 			      pr_clear_value (&avalue);

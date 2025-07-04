@@ -2467,11 +2467,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	      int col_id, att_index_start;
 	      char *buffer, *ptr;
 	      TP_DOMAIN *fi_domain = NULL;
+	      const char *index_flag_str;
 
 	      /* have filter or function index */
 	      while (true)
 		{
-		  index_flag = SM_INDEX_FLAG_UNKNOWN;
 		  error = set_get_element (child_seq, 0, &avalue);
 		  if (error != NO_ERROR)
 		    {
@@ -2485,17 +2485,22 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		      goto error;
 		    }
 
-		  if (!intl_identifier_casecmp (db_get_string (&avalue), SM_FILTER_INDEX_ID))
+		  index_flag_str = db_get_string (&avalue);
+		  if (!intl_identifier_casecmp (index_flag_str, SM_FILTER_INDEX_ID))
 		    {
 		      index_flag = SM_INDEX_FLAG_FILTER;
 		    }
-		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID))
+		  else if (!intl_identifier_casecmp (index_flag_str, SM_FUNCTION_INDEX_ID))
 		    {
 		      index_flag = SM_INDEX_FLAG_FUNCTION;
 		    }
-		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID))
+		  else if (!intl_identifier_casecmp (index_flag_str, SM_PREFIX_INDEX_ID))
 		    {
 		      index_flag = SM_INDEX_FLAG_PREFIX;
+		    }
+		  else
+		    {
+		      index_flag = SM_INDEX_FLAG_NONE;
 		    }
 
 		  pr_clear_value (&avalue);

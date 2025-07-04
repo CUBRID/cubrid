@@ -2009,11 +2009,11 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 		      DB_SET *child_seq = db_get_set (&val);
 		      int seq_size = set_size (seq);
 		      SM_INDEX_FLAG index_flag;
+		      const char *index_flag_str;
 
 		      j = 0;
 		      while (true)
 			{
-			  index_flag = SM_INDEX_FLAG_UNKNOWN;
 			  if (set_get_element_nocopy (child_seq, 0, &avalue) != NO_ERROR)
 			    {
 			      goto next_child;
@@ -2024,17 +2024,22 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  if (strcmp (db_get_string (&avalue), SM_FILTER_INDEX_ID) == 0)
+			  index_flag_str = db_get_string (&avalue);
+			  if (strcmp (index_flag_str, SM_FILTER_INDEX_ID) == 0)
 			    {
 			      index_flag = SM_INDEX_FLAG_FILTER;
 			    }
-			  else if (strcmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (index_flag_str, SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      index_flag = SM_INDEX_FLAG_FUNCTION;
 			    }
-			  else if (strcmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (index_flag_str, SM_PREFIX_INDEX_ID) == 0)
 			    {
 			      index_flag = SM_INDEX_FLAG_PREFIX;
+			    }
+			  else
+			    {
+			      index_flag = SM_INDEX_FLAG_NONE;
 			    }
 
 			  if (set_get_element_nocopy (child_seq, 1, &avalue) != NO_ERROR)
