@@ -1027,7 +1027,12 @@ struct access_spec_node
   bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 #endif				/* #if defined (SERVER_MODE) || defined (SA_MODE) */
 };
-
+// *INDENT-OFF*
+namespace parallel_query_execute
+{
+  class query_executor;
+}
+// *INDENT-ON*
 struct xasl_node
 {
   XASL_NODE_HEADER header;	/* XASL header */
@@ -1121,6 +1126,7 @@ struct xasl_node
   bool iscan_oid_order;
 
   SQ_CACHE *sq_cache;
+  int parallelism;		/* parallelism of the query */
 
 #if defined (CS_MODE) || defined (SA_MODE)
   int projected_size;		/* # of bytes per result tuple */
@@ -1142,6 +1148,10 @@ struct xasl_node
   int next_scan_on;		/* next scan is initiated ? */
   int next_scan_block_on;	/* next scan block is initiated ? */
   int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
+  // *INDENT-OFF*
+  parallel_query_execute::query_executor *px_executor;
+  int executed_parallelism;	/* parallelism of the query */
+  // *INDENT-ON*
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

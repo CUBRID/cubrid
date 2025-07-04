@@ -839,6 +839,8 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
+extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p);
+extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -984,7 +986,14 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      pstat_Global.tran_stats[tran_index][offset] += amount;
+      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+	{
+	  thread_p->m_parallel_stats[offset] += amount;
+	}
+      else
+	{
+	  pstat_Global.tran_stats[tran_index][offset] += amount;
+	}
     }
 #endif /* SERVER_MODE || SA_MODE */
 }
@@ -1014,7 +1023,14 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      pstat_Global.tran_stats[tran_index][offset] += amount;
+      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+	{
+	  thread_p->m_parallel_stats[offset] += amount;
+	}
+      else
+	{
+	  pstat_Global.tran_stats[tran_index][offset] += amount;
+	}
     }
 #endif /* SERVER_MODE || SA_MODE */
 }

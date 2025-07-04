@@ -16906,6 +16906,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
+  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
+    }
+  else
+    {
+      xasl->parallelism = -1;
+    }
+
   return xasl;
 
 exit_on_error:
@@ -17114,6 +17123,14 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
+    }
+  else
+    {
+      xasl->parallelism = -1;
+    }
 
   return xasl;
 
@@ -17218,6 +17235,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
+      xasl->parallelism = -1;
     }				/* end xasl */
   else
     {
