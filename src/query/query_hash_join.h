@@ -50,11 +50,9 @@
 #if defined (SERVER_MODE)
 namespace parallel_query
 {
-  class worker_manager_with_dedicated_pool;
-
   namespace hash_join
   {
-    class entry_manager;
+    class worker_pool_manager;
   }
 }
 #endif				/* defined (SERVER_MODE) */
@@ -238,8 +236,7 @@ typedef struct hashjoin_manager
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
-  parallel_query::hash_join::entry_manager * px_entry_manager;
-  parallel_query::worker_manager_with_dedicated_pool * px_workpool;
+  parallel_query::hash_join::worker_pool_manager *px_worker_pool_manager;
   /* *INDENT-ON* */
 #endif				/* defined (SERVER_MODE) */
 

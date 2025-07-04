@@ -29,6 +29,176 @@ namespace parallel_query
 {
   namespace hash_join
   {
+    entry_manager::entry_manager (cubthread::entry &main_thread_ref)
+      : m_main_thread_ref (main_thread_ref)
+    {
+      /* Nothing to do */
+    }
+
+    void
+    entry_manager::on_create (cubthread::entry &context)
+    {
+      cubthread::entry_manager::on_create (context);
+      emulate_main_thread (context);
+
+      /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
+       * function in net_server_request. Since parallel threads are not called through net_server_request,
+       * they need to set push_resource_tracks when executing the first task.
+       *
+       * For parallel threads, end_resource_tracks is expected to be called in retire_context,
+       * after all tasks have been completed. */
+      context.push_resource_tracks ();
+    }
+
+    void
+    entry_manager::on_retire (cubthread::entry &context)
+    {
+      clear_spawner ();
+      context.emulate_tid = thread_id_t ();
+      cubthread::entry_manager::on_retire (context);
+    }
+
+    void
+    entry_manager::on_recycle (cubthread::entry &context)
+    {
+      cubthread::entry_manager::on_recycle (context);
+      emulate_main_thread (context);
+    }
+
+    void
+    entry_manager::emulate_main_thread (cubthread::entry &thread_ref)
+    {
+      thread_ref.emulate_tid = m_main_thread_ref.get_id ();
+      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
+      thread_ref.conn_entry = m_main_thread_ref.conn_entry;
+      thread_ref.on_trace = m_main_thread_ref.on_trace;
+    }
+
+    worker_pool_manager::worker_pool_manager (cubthread::entry &main_thread_ref)
+      : m_entry_manager (main_thread_ref)
+      , m_worker_pool (nullptr)
+    {
+      /* Nothing to do */
+    }
+
+    worker_pool_manager::~worker_pool_manager ()
+    {
+      release_workers ();
+    }
+
+    bool
+    worker_pool_manager::try_reserve_workers (size_t pool_size)
+    {
+      if (pool_size <= 0 || m_worker_pool != nullptr)
+	{
+	  assert (false);
+	  return false;
+	}
+
+      if (!parallel_query::worker_manager_reserver::get_manager().try_reserve_workers (pool_size))
+	{
+	  m_worker_pool = nullptr;
+	  return false;
+	}
+
+      m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, pool_size,
+		      "parallel hash join workers",
+		      &m_entry_manager, 1, false);
+      if (m_worker_pool == nullptr)
+	{
+	  parallel_query::worker_manager_reserver::get_manager().release_workers ();
+	  return false;
+	}
+
+      return true;
+    }
+
+    void
+    worker_pool_manager::release_workers ()
+    {
+      cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
+      m_worker_pool = NULL;
+
+      parallel_query::worker_manager_reserver::get_manager().release_workers ();
+    }
+
+    cubthread::entry_workpool *
+    worker_pool_manager::get_worker_pool () const
+    {
+      return m_worker_pool;
+    }
+
+    /* task_manager */
+    task_manager::task_manager (cubthread::entry_workpool *worker_pool, cuberr::context &main_error_context)
+      : m_worker_pool (worker_pool)
+      , m_active_tasks (0)
+      , m_mutex ()
+      , m_cv ()
+      , m_has_error (false)
+      , m_main_error_context (main_error_context)
+    {
+      /* Nothing to do */
+    }
+
+    void
+    task_manager::push_task (base_task *task)
+    {
+      assert (task != NULL);
+      {
+	std::lock_guard<std::mutex> lock (m_mutex);
+	++m_active_tasks;
+      }
+      cubthread::get_manager()->push_task (m_worker_pool, task);
+    }
+
+    void
+    task_manager::end_task ()
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      --m_active_tasks;
+      if (m_active_tasks == 0)
+	{
+	  m_cv.notify_all ();
+	}
+    }
+
+    void
+    task_manager::join ()
+    {
+      std::unique_lock<std::mutex> lock (m_mutex);
+      m_cv.wait (lock, [this] { return m_active_tasks == 0; });
+    }
+
+    bool
+    task_manager::has_error ()
+    {
+      return m_has_error;
+    }
+
+    bool
+    task_manager::check_interrupt (cubthread::entry &thread_ref)
+    {
+      bool dummy = false;
+      if (logtb_get_check_interrupt (&thread_ref)
+	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
+	{
+	  handle_error (thread_ref);
+	  return true;
+	}
+      return false;
+    }
+
+    void
+    task_manager::handle_error (cubthread::entry &thread_ref)
+    {
+      if (!m_has_error.exchange (true))
+	{
+	  m_main_error_context.push_error_stack ();
+	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	}
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
+    }
+
     /* base_task */
     base_task::base_task (HASHJOIN_MANAGER *manager, task_manager &task_manager)
       : m_manager (manager)
@@ -105,174 +275,13 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
 
-    entry_manager::entry_manager (cubthread::entry &main_thread_ref)
-      : m_main_thread_ref (main_thread_ref)
-    {
-      /* Nothing to do */
-    }
-
-    void
-    entry_manager::on_create (cubthread::entry &context)
-    {
-      cubthread::entry_manager::on_create (context);
-      emulate_main_thread (context);
-
-      /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
-       * function in net_server_request. Since parallel threads are not called through net_server_request,
-       * they need to set push_resource_tracks when executing the first task.
-       *
-       * For parallel threads, end_resource_tracks is expected to be called in retire_context,
-       * after all tasks have been completed. */
-      context.push_resource_tracks ();
-    }
-
-    void
-    entry_manager::on_retire (cubthread::entry &context)
-    {
-      clear_spawner ();
-      context.emulate_tid = thread_id_t ();
-      cubthread::entry_manager::on_retire (context);
-    }
-
-    void
-    entry_manager::on_recycle (cubthread::entry &context)
-    {
-      cubthread::entry_manager::on_recycle (context);
-      emulate_main_thread (context);
-    }
-
-    void
-    entry_manager::emulate_main_thread (cubthread::entry &thread_ref)
-    {
-      thread_ref.emulate_tid = m_main_thread_ref.get_id ();
-      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
-      thread_ref.conn_entry = m_main_thread_ref.conn_entry;
-      thread_ref.on_trace = m_main_thread_ref.on_trace;
-    }
-
-    /* task_manager */
-    task_manager::task_manager (parallel_query::worker_manager_with_dedicated_pool &worker_manager,
-				cuberr::context &main_error_context)
-      : m_worker_manager (worker_manager)
-      , m_active_tasks (0)
-      , m_mutex ()
-      , m_cv ()
-      , m_main_error_context (main_error_context)
-      , m_has_error (false)
-    {
-      /* Nothing to do */
-    }
-
-    void
-    task_manager::push_task (base_task *task)
-    {
-      assert (task != NULL);
-      {
-	std::lock_guard<std::mutex> lock (m_mutex);
-	++m_active_tasks;
-      }
-      m_worker_manager.push_task (task);
-    }
-
-    void
-    task_manager::end_task ()
-    {
-      std::lock_guard<std::mutex> lock (m_mutex);
-      --m_active_tasks;
-      if (m_active_tasks == 0)
-	{
-	  m_cv.notify_all ();
-	}
-      m_worker_manager.pop_task ();
-    }
-
-    void
-    task_manager::join ()
-    {
-      std::unique_lock<std::mutex> lock (m_mutex);
-      m_cv.wait (lock, [this] { return m_active_tasks == 0; });
-    }
-
-    bool
-    task_manager::has_error ()
-    {
-      return m_has_error;
-    }
-
-    bool
-    task_manager::check_interrupt (cubthread::entry &thread_ref)
-    {
-      bool dummy = false;
-      if (logtb_get_check_interrupt (&thread_ref)
-	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
-	{
-	  handle_error (thread_ref);
-	  return true;
-	}
-      return false;
-    }
-
-    void
-    task_manager::handle_error (cubthread::entry &thread_ref)
-    {
-      if (!m_has_error.exchange (true))
-	{
-	  m_main_error_context.push_error_stack ();
-	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	}
-      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
-    }
-
-    void
-    try_reserve_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, size_t pool_size, size_t task_max_count)
-    {
-      assert (manager != NULL);
-
-      manager->px_entry_manager = (entry_manager *) db_private_alloc (&thread_ref, sizeof (entry_manager));
-      if (manager->px_entry_manager == NULL)
-	{
-	  assert_release (er_errid () != NO_ERROR);
-	  manager->px_workpool = NULL;
-	  return;
-	}
-
-#undef new
-      new (manager->px_entry_manager) entry_manager (thread_ref);
-#define new new(__FILE__, __LINE__)
-
-      if (parallel_query::worker_manager_with_dedicated_pool::get_manager().try_reserve_workers (pool_size, task_max_count,
-	  manager->px_entry_manager))
-	{
-	  manager->px_workpool = &parallel_query::worker_manager_with_dedicated_pool::get_manager();
-	}
-      else
-	{
-	  manager->px_entry_manager->~entry_manager();
-	  db_private_free_and_init (&thread_ref, manager->px_entry_manager);
-
-	  manager->px_workpool = NULL;
-	}
-    }
-
-    void
-    release_workers (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
-    {
-      assert (manager != NULL);
-
-      parallel_query::worker_manager_with_dedicated_pool::get_manager().release_workers ();
-      manager->px_workpool = NULL;
-
-      manager->px_entry_manager->~entry_manager();
-      db_private_free_and_init (&thread_ref, manager->px_entry_manager);
-    }
-
     int
     build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
     {
       assert (manager != NULL);
       assert (split_info != NULL);
 
-      task_manager task_manager (parallel_query::worker_manager_with_dedicated_pool::get_manager (),
+      task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
       partition_task *task = NULL;
 
@@ -306,7 +315,7 @@ namespace parallel_query
 
       HASHJOIN_STATS *total_stats = &manager->stats_group->stats;
 
-      task_manager task_manager (parallel_query::worker_manager_with_dedicated_pool::get_manager (),
+      task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
       join_task *task = NULL;
 

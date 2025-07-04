@@ -269,7 +269,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
 	case HASHJOIN_STATUS_PARTITION:
 #if defined (SERVER_MODE)
-	  if (manager.px_workpool != NULL)
+	  if (manager.px_worker_pool_manager != NULL)
 	    {
 	      /* *INDENT-OFF* */
 	      error = parallel_query::hash_join::execute_partitions (*thread_p, &manager);
@@ -950,10 +950,11 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
 #if defined (SERVER_MODE)
-  if (manager->px_workpool != NULL)
+  if (manager->px_worker_pool_manager != NULL)
     {
       /* *INDENT-OFF* */
-      parallel_query::hash_join::release_workers (*thread_p, manager);
+      manager->px_worker_pool_manager->~worker_pool_manager();
+      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
       /* *INDENT-ON* */
     }
 #endif /* defined (SERVER_MODE) */
@@ -1504,10 +1505,30 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 #if defined (SERVER_MODE)
   /* *INDENT-OFF* */
-  parallel_query::hash_join::try_reserve_workers (*thread_p, manager, 4, 4);
+  manager->px_worker_pool_manager = (parallel_query::hash_join::worker_pool_manager *) db_private_alloc (thread_p, sizeof (parallel_query::hash_join::worker_pool_manager));
+  if (manager->px_worker_pool_manager != NULL)
+    {
+      try
+	{
+#undef new
+	  new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p);
+#define new new(__FILE__, __LINE__)
+
+	  if (!manager->px_worker_pool_manager->try_reserve_workers (4))
+	    {
+	      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+	    }
+
+	  assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
+	}
+      catch (...)
+        {
+	  db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+	}
+    }
   /* *INDENT-ON* */
 
-  if (manager->px_workpool != NULL)
+  if (manager->px_worker_pool_manager != NULL)
     {
       /* *INDENT-OFF* */
       error = parallel_query::hash_join::build_partitions (*thread_p, manager, &part_info);
