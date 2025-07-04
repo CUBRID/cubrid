@@ -3210,6 +3210,8 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
 
+  ptr = or_pack_int (ptr, xasl->parallelism);
+
   return ptr;
 }
 
@@ -6104,7 +6106,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE		/* next */
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
-	   + PTR_SIZE);		/* sq_cache */
+	   + PTR_SIZE		/* sq_cache */
+	   + OR_INT_SIZE);	/* parallelism */
 
   return size;
 }

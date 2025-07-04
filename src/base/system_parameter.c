@@ -774,7 +774,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
-#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
+#define PRM_NAME_PARALLELISM "parallelism"
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
@@ -2554,17 +2554,23 @@ static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
-int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
-static int prm_parallel_heap_scan_threads_default = 2;
-static int prm_parallel_heap_scan_threads_lower = 0;
-static int prm_parallel_heap_scan_threads_upper = 32;
-static unsigned int prm_parallel_heap_scan_threads_flag = 0;
+int PRM_PARALLELISM = 0;
+static int prm_parallelism_default = 2;
+static int prm_parallelism_lower = 0;
+static int prm_parallelism_upper = 32;
+static unsigned int prm_parallelism_flag = 0;
 
 int PRM_MAX_PARALLEL_WORKERS = 0;
 static int prm_max_parallel_workers_default = 32;
 static int prm_max_parallel_workers_lower = 0;
 static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
+
+int PRM_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_default = 2;
+static int prm_uncorrelated_subquery_parallel_execution_threads_lower = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_upper = 32;
+static unsigned int prm_uncorrelated_subquery_parallel_execution_threads_flag = 0;
 
 #pragma endregion		//PRM_INITIALIZE_VALUE_DEFINE
 
@@ -4598,7 +4604,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNLOADDB_IGNORE_ERROR,
    PRM_NAME_UNLOADDB_IGNORE_ERROR,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_unloaddb_ignore_error_flag,
    (void *) &prm_unloaddb_ignore_error_default,
@@ -4609,7 +4615,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNLOADDB_LOCK_TIMEOUT,
    PRM_NAME_UNLOADDB_LOCK_TIMEOUT,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_unloaddb_lock_timeout_flag,
    (void *) &prm_unloaddb_lock_timeout_default,
@@ -4620,7 +4626,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOADDB_FLUSH_INTERVAL,
    PRM_NAME_LOADDB_FLUSH_INTERVAL,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_loaddb_flush_interval_flag,
    (void *) &prm_loaddb_flush_interval_default,
@@ -4812,7 +4818,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DB_VOLUME_SIZE,
    PRM_NAME_DB_VOLUME_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_db_volume_size_flag,
    (void *) &prm_db_volume_size_default,
@@ -4824,7 +4830,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_VOLUME_SIZE,
    PRM_NAME_LOG_VOLUME_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_log_volume_size_flag,
    (void *) &prm_log_volume_size_default,
@@ -5938,7 +5944,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEBUG_ES,
    PRM_NAME_DEBUG_ES,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_debug_es_flag,
    (void *) &prm_debug_es_default,
@@ -6247,7 +6253,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG_SIZE,
    PRM_NAME_DDL_AUDIT_LOG_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_ddl_audit_log_size_flag,
    (void *) &prm_ddl_audit_log_size_default,
@@ -6660,15 +6666,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
-   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
+  {PRM_ID_PARALLELISM,
+   PRM_NAME_PARALLELISM,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_parallel_heap_scan_threads_flag,
-   (void *) &prm_parallel_heap_scan_threads_default,
-   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
-   (void *) &prm_parallel_heap_scan_threads_upper,
-   (void *) &prm_parallel_heap_scan_threads_lower,
+   &prm_parallelism_flag,
+   (void *) &prm_parallelism_default,
+   (void *) &PRM_PARALLELISM,
+   (void *) &prm_parallelism_upper,
+   (void *) &prm_parallelism_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
