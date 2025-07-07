@@ -1552,6 +1552,8 @@ typedef struct _ha_config
 #define PARAMDUMP_EXCLUDE_HA_L			"exclude-ha"
 #define PARAMDUMP_DUMP_FLAG_S			12202
 #define PARAMDUMP_DUMP_FLAG_L			"dump-flag"
+#define PARAMDUMP_FOR_CM_S			12203
+#define PARAMDUMP_FOR_CM_L			"for-cm"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'

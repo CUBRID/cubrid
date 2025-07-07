@@ -7158,19 +7158,13 @@ static struct prm_config_files_loaded prm_file_has_been_loaded;
  */
 void
 sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
+			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
   char buf[LINE_MAX], tmpbuf[LINE_MAX];
   int i;
   const SYSPRM_PARAM *prm;
   char dmarker;
   char *ptr;
-  bool old_style = false;
-
-  if (envvar_get ("FOR_QA"))
-    {
-      old_style = true;
-    }
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
@@ -7479,7 +7473,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION);
+      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION, false);
     }
 #endif
 
@@ -9498,9 +9492,9 @@ cleanup:
  */
 void
 xsysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
+				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
-  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond);
+  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond, old_style);
 }
 
 /*
