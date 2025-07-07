@@ -774,7 +774,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
-#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
+#define PRM_NAME_PARALLELISM "parallelism"
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
@@ -2554,17 +2554,23 @@ static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
-int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
-static int prm_parallel_heap_scan_threads_default = 2;
-static int prm_parallel_heap_scan_threads_lower = 0;
-static int prm_parallel_heap_scan_threads_upper = 32;
-static unsigned int prm_parallel_heap_scan_threads_flag = 0;
+int PRM_PARALLELISM = 0;
+static int prm_parallelism_default = 2;
+static int prm_parallelism_lower = 0;
+static int prm_parallelism_upper = 32;
+static unsigned int prm_parallelism_flag = 0;
 
 int PRM_MAX_PARALLEL_WORKERS = 0;
 static int prm_max_parallel_workers_default = 32;
 static int prm_max_parallel_workers_lower = 0;
 static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
+
+int PRM_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_default = 2;
+static int prm_uncorrelated_subquery_parallel_execution_threads_lower = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_upper = 32;
+static unsigned int prm_uncorrelated_subquery_parallel_execution_threads_flag = 0;
 
 #pragma endregion		//PRM_INITIALIZE_VALUE_DEFINE
 
@@ -6660,15 +6666,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
-   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
+  {PRM_ID_PARALLELISM,
+   PRM_NAME_PARALLELISM,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_parallel_heap_scan_threads_flag,
-   (void *) &prm_parallel_heap_scan_threads_default,
-   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
-   (void *) &prm_parallel_heap_scan_threads_upper,
-   (void *) &prm_parallel_heap_scan_threads_lower,
+   &prm_parallelism_flag,
+   (void *) &prm_parallelism_default,
+   (void *) &PRM_PARALLELISM,
+   (void *) &prm_parallelism_upper,
+   (void *) &prm_parallelism_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
