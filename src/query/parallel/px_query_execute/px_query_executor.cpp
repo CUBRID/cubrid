@@ -22,6 +22,7 @@
 #if SERVER_MODE
 #include "px_query_executor.hpp"
 #include <algorithm>
+#include "xasl_cache.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -696,6 +697,10 @@ namespace parallel_query_execute
   {
     try
       {
+	if (!xcache_uses_clones ())
+	  {
+	    return false;
+	  }
 	add_xasl_recursive (xasl);
 	if (!m_is_parallel_executable)
 	  {
