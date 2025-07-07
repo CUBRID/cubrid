@@ -53,10 +53,8 @@ jobs:
             echo "BASELINE: $BASELINE"
                         
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            TC_PRIVATE_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git develop | cut -f1)
             echo "sha value from tc repository.(only from develop branch)"
             echo "TC_SHA: $TC_SHA"
-            echo "TC_PRIVATE_SHA: $TC_PRIVATE_SHA"
 
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
@@ -320,21 +318,7 @@ jobs:
                   TEST_SUITE: "shell"
                   GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - restore_cache:
-                      keys:
-                        - "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
-                        - "cubrid-testcases-private-ex-develop-"
                   - attach-and-run-tests
-                  - run:
-                      name: Clean up tc before save_cache
-                      command: |
-                        cd cubrid-testcases-private-ex
-                        git clean -fd
-                        git reset --hard
-                  - save_cache:
-                      key: "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
-                      paths:
-                        - cubrid-testcases-private-ex
             
             # --------------------------------------------------
             # 4. Conditional workflows
