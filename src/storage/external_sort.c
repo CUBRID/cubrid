@@ -99,7 +99,7 @@
         }                         \
     } while (0)
 
-#define SORT_IS_PARALLEL(t) ((t)->px_max_index > 1)
+#define SORT_IS_PARALLEL(t) ((t)->px_parallelism > 1)
 
 // *INDENT-OFF*
 #define SORT_EXECUTE_PARALLEL(num, px_sort_param, function)  \
@@ -226,7 +226,7 @@ struct sort_param
   unsigned int total_numrecs;
 
   /* support parallelism */
-  int px_max_index;
+  int px_parallelism;
   PX_STATUS px_status;
   int px_result_file_idx;
   int px_tran_index;
@@ -1573,7 +1573,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   if (parallel_num <= 1)
     {
       /* single process */
-      sort_param->px_max_index = 1;
+      sort_param->px_parallelism = 1;
       error = sort_listfile_internal (thread_p, sort_param);
     }
   else
@@ -1604,7 +1604,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
 #else
   /* single process for stand alone mode */
-  sort_param->px_max_index = 1;
+  sort_param->px_parallelism = 1;
   parallel_num = 1;
   error = sort_listfile_internal (thread_p, sort_param);
 #endif
@@ -4475,7 +4475,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
       /* init px variable */
       px_sort_param[i].px_status = PX_PROGRESS;
-      px_sort_param[i].px_max_index = parallel_num;
+      px_sort_param[i].px_parallelism = parallel_num;
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's tran_index. */
       px_sort_param[i].px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -4821,7 +4821,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
   tsc_getticks (&start_tick);
 
   /* Merge the parallel processed results. */
-  sort_param->px_max_index = 2;
+  sort_param->px_parallelism = 2;
   if (sort_param->option == SORT_ELIM_DUP)
     {
       error = sort_exphase_merge_elim_dup (thread_p, sort_param);
