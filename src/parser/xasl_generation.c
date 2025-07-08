@@ -16103,7 +16103,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       int *attr_offsets;
       PT_NODE *group_out_list, *group, *select_out_list, *node, *new_node;
-      QPROC_DB_VALUE_LIST val_list;
 
       /* set 'etc' field for pseudocolumns nodes */
       pt_set_level_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->level_val);
@@ -16262,7 +16261,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  new_node =
 	    pt_make_result_ref (parser, node, select_node->info.query.q.select.group_by, buildlist->g_val_list);
 
-	  if (new_node == NULL && !pt_has_error (parser))
+	  if (pt_has_error (parser))
+	    {
+	      if (group_out_list)
+		{
+		  parser_free_tree (parser, group_out_list);
+		}
+	      if (select_out_list)
+		{
+		  parser_free_tree (parser, select_out_list);
+		}
+
+	      goto exit_on_error;
+	    }
+
+	  if (new_node == NULL)
 	    {
 	      new_node = parser_copy_tree (parser, node);
 	    }
@@ -27944,11 +27957,6 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 	    }
 	}
     }
-
-  // if(new_node == NULL)
-  // {
-  //     new_node = parser_copy_tree(parser, node);
-  // }
 
   return new_node;
 }
