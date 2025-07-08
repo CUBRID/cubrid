@@ -2196,6 +2196,7 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
 
   assert (pgbuf_is_temporary_volume (vpid->volid));
 
+retry:
   /* Is this a resident page ? */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
   bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
@@ -2211,7 +2212,7 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
 	  return NULL;
 	}
 
-      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (pgptr == NULL)
 	{
 	  return NULL;
@@ -2228,6 +2229,33 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
     }
   else
     {
+      if (need_fix)
+	{
+	  /* Cannot be mixed with general FIX(LATCH). Only possible when NO_LATCH. */
+	  if (bufptr->latch_mode != PGBUF_NO_LATCH)
+	    {
+	      /* retry simple_fix until finishing general fix and unfix */
+              PGBUF_BCB_UNLOCK (bufptr);
+	      goto retry;
+	    }
+
+	  /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
+	  if (pgbuf_bcb_is_direct_victim (bufptr))
+	    {
+	      pgbuf_bcb_update_flags (thread_p, bufptr, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG,
+				      PGBUF_BCB_VICTIM_DIRECT_FLAG);
+	    }
+	}
+      else
+	{
+	  if (pgbuf_bcb_is_direct_victim (bufptr))
+	    {
+	      /* This BCB will be soon victimized and removed from the hash table. so it is considered not found. */
+              PGBUF_BCB_UNLOCK (bufptr);
+	      return NULL;
+	    }
+	}
+
       /* the caller is holding only bufptr->mutex. */
       CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
