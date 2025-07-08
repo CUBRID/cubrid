@@ -27,7 +27,7 @@
 #include "method_schema_info.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
 #include "db.h"
 
 #include "object_primitive.h"
@@ -1093,7 +1093,7 @@ exit:
     if (m_query_handlers[id] != nullptr)
       {
 	// clear <query ID -> handler ID>
-	if (m_query_handlers[id]->get_query_id () != -1)
+	if (m_query_handlers[id]->get_query_id () != (uint64_t) (-1))
 	  {
 	    m_qid_handler_map.erase (m_query_handlers[id]->get_query_id ());
 	  }

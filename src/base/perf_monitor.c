@@ -1068,13 +1068,20 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  /* This routine is called from the query execute scan routine in TRACE ON state.
-   * Therefore, there is no need to call perfmon_get_peek_stats,
-   * which retrieves overall statistical information,
-   * because the server's overall statistical information is not needed,
-   * and only I/O fetch and time information are needed.
-   */
-  stats = pstat_Global.tran_stats[tran_index];
+  if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats)
+    {
+      stats = thread_p->m_parallel_stats;
+    }
+  else
+    {
+      /* This routine is called from the query execute scan routine in TRACE ON state.
+       * Therefore, there is no need to call perfmon_get_peek_stats,
+       * which retrieves overall statistical information,
+       * because the server's overall statistical information is not needed,
+       * and only I/O fetch and time information are needed.
+       */
+      stats = pstat_Global.tran_stats[tran_index];
+    }
 
   if (stats != NULL)
     {
@@ -3307,6 +3314,21 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
+
+void
+perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p)
+{
+  thread_p->emulate_tid = orig_thread_p->get_id ();
+  thread_p->m_parallel_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+}
+
+void
+perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  free (thread_p->m_parallel_stats);
+  thread_p->m_parallel_stats = NULL;
+}
+
 #endif /* SERVER_MODE || SA_MODE */
 
 /*

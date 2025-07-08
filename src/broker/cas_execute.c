@@ -78,7 +78,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)
@@ -695,46 +695,12 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
-  cas_default_ansi_quotes = true;
-  ux_get_system_parameter ("ansi_quotes", &cas_default_ansi_quotes);
-
-  cas_default_no_backslash_escapes = true;
-  ux_get_system_parameter ("no_backslash_escapes", &cas_default_no_backslash_escapes);
+  cas_default_ansi_quotes = PRM_GET_BOOL (prm_get_value (PRM_ID_ANSI_QUOTES));
+  cas_default_no_backslash_escapes = PRM_GET_BOOL (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
   return;
 }
 
-void
-ux_get_system_parameter (const char *param, bool * value)
-{
-  int err_code = 0;
-  char buffer[LINE_MAX], *p;
-
-  strncpy (buffer, param, LINE_MAX);
-  buffer[LINE_MAX - 1] = 0;
-  err_code = db_get_system_parameters (buffer, LINE_MAX);
-  if (err_code != NO_ERROR)
-    {
-      return;
-    }
-
-  p = strchr (buffer, '=');
-  if (p == NULL)
-    {
-      return;
-    }
-
-  if (*(p + 1) == 'n')
-    {
-      *value = false;
-    }
-  else
-    {
-      *value = true;
-    }
-
-  return;
-}
 
 void
 ux_set_default_setting ()
@@ -764,7 +730,7 @@ void
 ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
-  if (db_get_connect_status () == 1)	// only if connected to db
+  if (db_get_connect_status () != 0)	// only if connected to db
     {
       if (request_server)
 	{

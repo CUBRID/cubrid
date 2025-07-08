@@ -1216,6 +1216,14 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       return NULL;
     }
 
+  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+    {
+      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
+      list_id_p->tfile_vfid->membuf = NULL;
+      list_id_p->tfile_vfid->membuf_npages = 0;
+      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
+    }
+
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
   list_id_p->type_list.domp = NULL;
 
@@ -6628,13 +6636,32 @@ void
 qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc)
 {
 #if defined (SERVER_MODE)
-  if (list_p != NULL && list_p->type_list.type_cnt != 0)
+  if (list_p == NULL || list_p->type_list.type_cnt == 0)
     {
-      thread_p->m_qlist_count += inc;
-      if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+      return;
+    }
+
+  THREAD_ENTRY *target_thread_p = thread_p;
+
+  if (thread_p->emulate_tid != thread_id_t () && thread_p->emulate_tid != thread_p->get_id ())
+    {
+      THREAD_ENTRY *emulate_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      if (emulate_thread_p != NULL)
 	{
-	  er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, thread_p->m_qlist_count);
+	  target_thread_p = emulate_thread_p;
 	}
+      else
+	{
+	  assert (false);
+	}
+    }
+
+  target_thread_p->m_qlist_count.fetch_add (inc);
+
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
+			  target_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }

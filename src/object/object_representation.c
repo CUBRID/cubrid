@@ -443,19 +443,13 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
-  else
-    {
-      int repid_and_flag_bits = 0;
-      repid_and_flag_bits = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-      *error = NO_ERROR;
-      return repid_and_flag_bits;
-    }
+  int repid_and_flag_bits = 0;
+  assert (buf->ptr + OR_INT_SIZE <= buf->endptr);
+
+  repid_and_flag_bits = OR_GET_INT (buf->ptr);
+  buf->ptr += OR_INT_SIZE;
+  *error = NO_ERROR;
+  return repid_and_flag_bits;
 }
 
 /*
@@ -543,80 +537,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !SERVER_MODE */
 
-/*
- * or_overflow - called by the or_put_ functions when there is not enough
- * room in the buffer to hold a particular value.
- *    return: ER_TF_BUFFER_OVERFLOW or long jump to buf->error_abort
- *    buf(in): translation state structure
- *
- * Note:
- *    Because of the recursive nature of the translation functions, we may
- *    be several levels deep so we can do a longjmp out to the top level
- *    if the user has supplied a jmpbuf.
- *    Because jmpbuf is not a pointer, we have to keep an additional flag
- *    called "error_abort" in the OR_BUF structure to indicate the validity
- *    of the jmpbuf.
- *    This is a fairly common ocurrence because the locator regularly calls
- *    the transformer with a buffer that is too small.  When overflow
- *    is detected, it allocates a larger one and retries the operation.
- *    Because of this, a system error is not signaled here.
- */
-int
-or_overflow (OR_BUF * buf)
-{
-  /*
-   * since this is normal behavior, don't set an error condition, the
-   * main transformer functions will need to test the status value
-   * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
-   */
 
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, ER_TF_BUFFER_OVERFLOW);
-    }
-
-  return ER_TF_BUFFER_OVERFLOW;
-}
-
-/*
- * or_underflow - This is called by the or_get_ functions when there is
- * not enough data in the buffer to extract a particular value.
- *    return: ER_TF_BUFFER_UNDERFLOW or long jump to buf->env
- *    buf(in): translation state structure
- *
- * Note:
- * Unlike or_overflow this is NOT a common ocurrence and indicates a serious
- * memory or disk corruption problem.
- */
-int
-or_underflow (OR_BUF * buf)
-{
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
-
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, ER_TF_BUFFER_UNDERFLOW);
-    }
-  return ER_TF_BUFFER_UNDERFLOW;
-}
-
-/*
- * or_abort - This is called if there was some fundemtal error
- *    return: void
- *    buf(in): translation state structure
- *
- * Note:
- *    An appropriate error message should have already been set.
- */
-void
-or_abort (OR_BUF * buf)
-{
-  /* assume an appropriate error has already been set */
-  if (buf->error_abort)
-    {
-      _longjmp (buf->env, er_errid ());
-    }
-}
 
 /*
  * or_put_monetary - write a DB_MONETARY value to or buffer
@@ -671,15 +592,9 @@ or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
       return error;
     }
 
-  if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_MONETARY (buf->ptr, monetary);
-      buf->ptr += OR_MONETARY_SIZE;
-    }
+  assert (buf->ptr + OR_MONETARY_SIZE <= buf->endptr);
+  OR_PUT_MONETARY (buf->ptr, monetary);
+  buf->ptr += OR_MONETARY_SIZE;
 
   return error;
 }
@@ -695,15 +610,9 @@ or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_MONETARY (buf->ptr, monetary);
-      buf->ptr += OR_MONETARY_SIZE;
-    }
+  assert (buf->ptr + OR_MONETARY_SIZE <= buf->endptr);
+  OR_GET_MONETARY (buf->ptr, monetary);
+  buf->ptr += OR_MONETARY_SIZE;
   return NO_ERROR;
 }
 
@@ -789,7 +698,6 @@ or_get_varbit (OR_BUF * buf, int *length_ptr)
 
   if (new_ == NULL)
     {
-      or_abort (buf);
       return NULL;
     }
   rc = or_get_data (buf, new_, charlen);
@@ -857,7 +765,6 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 
   if (new_ == NULL)
     {
-      or_abort (buf);
       return NULL;
     }
   rc = or_get_data (buf, new_, charlen + 1);
@@ -891,70 +798,33 @@ or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
-  char *start;
-  int status;
-  int valid_buf;
-  jmp_buf save_buf;
 
-  if (buf->error_abort)
+  bytelen = BITS_TO_BYTES (bitlen);
+
+  if (bitlen < 0xFF)
     {
-      memcpy (&save_buf, &buf->env, sizeof (save_buf));
-    }
-
-  valid_buf = buf->error_abort;
-  buf->error_abort = 1;
-  status = _setjmp (buf->env);
-
-  if (status == 0)
-    {
-      start = buf->ptr;
-      bytelen = BITS_TO_BYTES (bitlen);
-
-      /* store the size prefix */
-      if (bitlen < 0xFF)
-	{
-	  or_put_byte (buf, bitlen);
-	}
-      else
-	{
-	  or_put_byte (buf, 0xFF);
-	  OR_PUT_INT (&net_bitlen, bitlen);
-	  or_put_data (buf, (char *) &net_bitlen, OR_INT_SIZE);
-	}
-
-      /* store the string bytes */
-      or_put_data (buf, string, bytelen);
-
-      if (align == INT_ALIGNMENT)
-	{
-	  /* round up to a word boundary */
-	  or_put_align32 (buf);
-	}
+      assert (buf->ptr + OR_BYTE_SIZE <= buf->endptr);
+      or_put_byte (buf, bitlen);
     }
   else
     {
-      if (valid_buf)
-	{
-	  memcpy (&buf->env, &save_buf, sizeof (save_buf));
-	  _longjmp (buf->env, status);
-	}
+      assert (buf->ptr + OR_BYTE_SIZE + OR_INT_SIZE <= buf->endptr);
+      or_put_byte (buf, 0xFF);
+      OR_PUT_INT (&net_bitlen, bitlen);
+      or_put_data (buf, (char *) &net_bitlen, OR_INT_SIZE);
     }
 
-  if (valid_buf)
+  /* store the string bytes */
+  assert (buf->ptr + bytelen <= buf->endptr);
+  or_put_data (buf, string, bytelen);
+
+  if (align == INT_ALIGNMENT)
     {
-      memcpy (&buf->env, &save_buf, sizeof (save_buf));
-    }
-  else
-    {
-      buf->error_abort = 0;
+      /* round up to a word boundary */
+      or_put_align32 (buf);
     }
 
-  if (status == 0)
-    {
-      return NO_ERROR;
-    }
-
-  return status;
+  return NO_ERROR;
 }
 
 static int
@@ -965,11 +835,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   int rc = NO_ERROR;
   bool compressable = false;
   int compressed_length = 0;
-  int error_abort = 0;
-
-  error_abort = buf->error_abort;
-
-  buf->error_abort = 0;
 
   /* store the size prefix */
   if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
@@ -1095,11 +960,10 @@ cleanup:
       free_and_init (compressed_string);
     }
 
-  buf->error_abort = error_abort;
 
-  if (rc == ER_TF_BUFFER_OVERFLOW)
+  if (buf->ptr > buf->endptr)
     {
-      return or_overflow (buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   return rc;
@@ -1314,24 +1178,18 @@ or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), in
     }
 
   length = DB_ALIGN (offset_size * (nvars + 1), INT_ALIGNMENT);
+  assert (buf->ptr + length <= buf->endptr);
 
-  if ((buf->ptr + length) > buf->endptr)
+  vars = (OR_VARINFO *) (*allocator) (sizeof (OR_VARINFO) * nvars);
+  if (vars == NULL && nvars)
     {
-      or_underflow (buf);
+      assert (false);
     }
   else
     {
-      vars = (OR_VARINFO *) (*allocator) (sizeof (OR_VARINFO) * nvars);
-      if (vars == NULL && nvars)
-	{
-	  or_abort (buf);
-	}
-      else
-	{
-	  (void) or_unpack_var_table_internal (buf->ptr, nvars, vars, offset_size);
-	}
-      buf->ptr += length;
+      (void) or_unpack_var_table_internal (buf->ptr, nvars, vars, offset_size);
     }
+  buf->ptr += length;
   return vars;
 }
 
@@ -4556,7 +4414,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
   set = setobj_create (set_type, size);
   if (set == NULL)
     {
-      or_abort (buf);
+      ASSERT_ERROR ();
       return NULL;
     }
 
@@ -5130,7 +4988,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
     {
       /* problems decoding the domain */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      or_abort (buf);
+      ASSERT_ERROR ();
       return ER_FAILED;
     }
   else

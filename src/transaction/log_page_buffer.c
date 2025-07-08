@@ -7080,7 +7080,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
 
       /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+      for (i = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
 	  /*
 	   * Don't checkpoint current system transaction. That is, the one of
@@ -7532,9 +7532,16 @@ cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
 void
 logpb_create_backup_read_worker_pool (size_t thread_count)
 {
+  /* The task of pushing the backup read task is performed by a single thread,
+     so it is fine to have only one core. */
+  size_t core_count = 1;
+  if (thread_count == 0)
+    {
+      thread_count = 1;
+    }
   g_backup_read_worker_pool =
     cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
-						   thread_count / 3, false, true);
+						   core_count, false, true);
 }
 
 void
@@ -7626,6 +7633,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
   size_t read_thread_count = 0;
+  int specified_thread_count = num_threads;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7903,7 +7911,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{
