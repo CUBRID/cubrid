@@ -7479,7 +7479,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION, false);
+      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION,
+			      false);
     }
 #endif
 

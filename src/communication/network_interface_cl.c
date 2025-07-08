@@ -9080,7 +9080,7 @@ error:
  */
 void
 sysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-			       unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, int old_style)
+			       unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
 #if defined(CS_MODE)
   int req_error;
