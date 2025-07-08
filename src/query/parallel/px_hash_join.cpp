@@ -29,6 +29,10 @@ namespace parallel_query
 {
   namespace hash_join
   {
+    /*
+     * entry_manager
+     */
+
     entry_manager::entry_manager (cubthread::entry &main_thread_ref)
       : m_main_thread_ref (main_thread_ref)
     {
@@ -74,6 +78,10 @@ namespace parallel_query
       thread_ref.on_trace = m_main_thread_ref.on_trace;
     }
 
+    /*
+     * worker_pool_manager
+     */
+
     worker_pool_manager::worker_pool_manager (cubthread::entry &main_thread_ref)
       : m_entry_manager (main_thread_ref)
       , m_worker_pool (nullptr)
@@ -87,7 +95,7 @@ namespace parallel_query
     }
 
     bool
-    worker_pool_manager::try_reserve_workers (size_t pool_size)
+    worker_pool_manager::try_reserve_workers (int pool_size)
     {
       if (pool_size <= 0 || m_worker_pool != nullptr)
 	{
@@ -101,7 +109,7 @@ namespace parallel_query
 	  return false;
 	}
 
-      m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, pool_size,
+      m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, pool_size /* meaningless */,
 		      "parallel hash join workers",
 		      &m_entry_manager, 1, false);
       if (m_worker_pool == nullptr)
@@ -139,6 +147,10 @@ namespace parallel_query
     {
       /* Nothing to do */
     }
+
+    /*
+     * task_manager
+     */
 
     void
     task_manager::push_task (base_task *task)
@@ -199,7 +211,10 @@ namespace parallel_query
       logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
     }
 
-    /* base_task */
+    /*
+     * base_task
+     */
+
     base_task::base_task (HASHJOIN_MANAGER *manager, task_manager &task_manager)
       : m_manager (manager)
       , m_task_manager (task_manager)
@@ -213,7 +228,10 @@ namespace parallel_query
       delete this;
     }
 
-    /* partition_task */
+    /*
+     * partition_task
+     */
+
     partition_task::partition_task (HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
 				    task_manager &task_manager)
       : base_task (manager, task_manager)
@@ -239,7 +257,10 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
 
-    /* join_task */
+    /*
+     * join_task
+     */
+
     join_task::join_task (HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context, task_manager &task_manager)
       : base_task (manager, task_manager)
       , m_context (context)
@@ -257,9 +278,9 @@ namespace parallel_query
 	}
 
       m_context->val_descr = get_val_descr (thread_ref, m_manager->val_descr);
-      m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->single_context.during_join_pred);
-      m_context->outer_fetch_info.regu_list_pred = get_outer_regu_list_pred (thread_ref, m_manager->outer->regu_list_pred);
-      m_context->inner_fetch_info.regu_list_pred = get_inner_regu_list_pred (thread_ref, m_manager->inner->regu_list_pred);
+      m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->during_join_pred);
+      m_context->outer.regu_list_pred = get_outer_regu_list_pred (thread_ref, m_manager->outer->regu_list_pred);
+      m_context->inner.regu_list_pred = get_inner_regu_list_pred (thread_ref, m_manager->inner->regu_list_pred);
 
       if (er_errid () != NO_ERROR)
 	{
@@ -370,6 +391,10 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
     }
+
+    /*
+     * tls_spawner
+     */
 
     thread_local std::unique_ptr<cubxasl::spawner> tls_spawner;
     thread_local VAL_DESCR *tls_val_descr = nullptr;

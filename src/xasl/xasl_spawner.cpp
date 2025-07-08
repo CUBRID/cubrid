@@ -45,7 +45,7 @@ namespace cubxasl
       {
 	if (it.second.deleter != nullptr)
 	  {
-	    it.second.deleter (&m_thread_ref, it.second.ptr);
+	    it.second.deleter (&m_thread_ref, it.second.ptr, it.second.count);
 	  }
       }
 
@@ -55,8 +55,16 @@ namespace cubxasl
   PRED_EXPR *
   spawner::spawn (const PRED_EXPR *src)
   {
-    PRED_EXPR *dest = get (src);
-    if (dest == nullptr )
+    PRED_EXPR *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr )
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
+    if (dest == nullptr)
       {
 	return nullptr;
       }
@@ -235,7 +243,15 @@ namespace cubxasl
   REGU_VARIABLE *
   spawner::spawn (const REGU_VARIABLE *src)
   {
-    REGU_VARIABLE *dest = get (src);
+    REGU_VARIABLE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -343,7 +359,15 @@ namespace cubxasl
   DB_VALUE *
   spawner::spawn (const DB_VALUE *src)
   {
-    DB_VALUE *dest = get (src);
+    DB_VALUE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -358,7 +382,15 @@ namespace cubxasl
   ARITH_TYPE *
   spawner::spawn (const ARITH_TYPE *src)
   {
-    ARITH_TYPE *dest =  get (src);
+    ARITH_TYPE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -397,7 +429,15 @@ namespace cubxasl
   struct drand48_data *
   spawner::spawn (const struct drand48_data *src)
   {
-    struct drand48_data *dest = get (src);
+    struct drand48_data *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -432,7 +472,15 @@ namespace cubxasl
   HEAP_CACHE_ATTRINFO *
   spawner::spawn (const HEAP_CACHE_ATTRINFO *src)
   {
-    HEAP_CACHE_ATTRINFO *dest = get (src);
+    HEAP_CACHE_ATTRINFO *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -450,7 +498,8 @@ namespace cubxasl
     dest->inst_chn = src->inst_chn;
     dest->num_values = src->num_values;
 
-    dest->values = get (src->values, src->num_values);
+    assert_release (find (src->values, src->num_values) == nullptr);
+    dest->values = alloc (src->values, src->num_values);
     if (dest->values != nullptr)
       {
 	for (int i = 0; i < src->num_values; i++)
@@ -521,7 +570,15 @@ namespace cubxasl
   QFILE_SORTED_LIST_ID *
   spawner::spawn (const QFILE_SORTED_LIST_ID *src)
   {
-    QFILE_SORTED_LIST_ID *dest = get (src);
+    QFILE_SORTED_LIST_ID *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -546,7 +603,15 @@ namespace cubxasl
   FUNCTION_TYPE *
   spawner::spawn (const FUNCTION_TYPE *src)
   {
-    FUNCTION_TYPE *dest = get (src);
+    FUNCTION_TYPE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -573,7 +638,15 @@ namespace cubxasl
   REGU_VALUE_LIST *
   spawner::spawn (const REGU_VALUE_LIST *src)
   {
-    REGU_VALUE_LIST *dest = get (src);
+    REGU_VALUE_LIST *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -624,7 +697,15 @@ namespace cubxasl
   REGU_VALUE_ITEM *
   spawner::spawn (const REGU_VALUE_ITEM *src)
   {
-    REGU_VALUE_ITEM *dest = get (src);
+    REGU_VALUE_ITEM *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -650,7 +731,15 @@ namespace cubxasl
     current = src;
 
     /* ref: stx_restore_regu_variable_list */
-    REGU_VARIABLE_LIST dest = get (src, count);
+    REGU_VARIABLE_LIST dest = nullptr;
+
+    dest = find (src, count);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src, count);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -683,7 +772,15 @@ namespace cubxasl
   SP_TYPE *
   spawner::spawn (const SP_TYPE *src)
   {
-    SP_TYPE *dest = get (src);
+    SP_TYPE *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
@@ -709,14 +806,23 @@ namespace cubxasl
   VAL_LIST *
   spawner::spawn (const VAL_LIST *src)
   {
-    VAL_LIST *dest = get (src);
+    VAL_LIST *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
       }
 
     /* ref: stx_build_val_list */
-    dest->valp = get (src->valp, src->val_cnt);
+    assert_release (find (src->valp, src->val_cnt) == nullptr);
+    dest->valp = alloc (src->valp, src->val_cnt);
     if (dest->valp == nullptr)
       {
 	return nullptr;
@@ -767,14 +873,23 @@ namespace cubxasl
   VAL_DESCR *
   spawner::spawn (const VAL_DESCR *src)
   {
-    VAL_DESCR *dest = get (src);
+    VAL_DESCR *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
     if (dest == nullptr)
       {
 	return nullptr;
       }
 
     /* ref: xqmgr_execute_query */
-    dest->dbval_ptr = get (src->dbval_ptr, src->dbval_cnt);
+    assert_release (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
+    dest->dbval_ptr = alloc (src->dbval_ptr, src->dbval_cnt);
     if (dest->dbval_ptr != nullptr)
       {
 	for (int i = 0; i < src->dbval_cnt; i++)

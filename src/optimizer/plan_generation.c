@@ -2643,6 +2643,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  hashjoin_xasl->parallelism = xasl->parallelism;
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);

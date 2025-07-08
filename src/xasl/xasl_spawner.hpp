@@ -106,23 +106,32 @@ namespace cubxasl
       VAL_DESCR *spawn (const VAL_DESCR *src);
 
       template <typename T>
-      T *get (const T *src);
+      T *
+      find (const T *src);
 
       template <typename T>
-      T *get (const T *src, int count);
+      T *
+      find (const T *src, int count);
+
+      template <typename T>
+      T *alloc (const T *src);
+
+      template <typename T>
+      T *alloc (const T *src, int count);
 
     private:
       struct cached_entry
       {
 	void *ptr = nullptr;
-	void (*deleter) (cubthread::entry *thread_p, void *ptr) = nullptr;
+	int count = 0;
+	void (*deleter) (cubthread::entry *thread_p, void *ptr, int count) = nullptr;
       };
 
       cubthread::entry &m_thread_ref;
       std::unordered_map<const void *, cached_entry> m_cached_ptrs;
 
       template <typename T>
-      static void cached_entry_deleter (cubthread::entry *thread_p, void *ptr);
+      static void cached_entry_deleter (cubthread::entry *thread_p, void *ptr, int count);
 
       bool is_valid_argument (const void *src, const void *dest);
   };
@@ -136,57 +145,14 @@ namespace cubxasl
 {
   template <typename T>
   T *
-  spawner::get (const T *src)
+  spawner::find (const T *src)
   {
-    if (src == nullptr)
-      {
-	return nullptr;
-      }
-
-    auto old_it = m_cached_ptrs.find (src);
-    if (old_it != m_cached_ptrs.end())
-      {
-	return static_cast<T *> (old_it->second.ptr);
-      }
-
-    T *dest = static_cast<T *> (db_private_alloc (&m_thread_ref, sizeof (T)));
-    if (dest == nullptr )
-      {
-	ASSERT_ERROR ();
-	return nullptr;
-      }
-
-    try
-      {
-	new (dest) T();
-      }
-    catch (...)
-      {
-	cached_entry_deleter<T> (&m_thread_ref, dest);
-
-	return nullptr;
-      }
-
-    cached_entry entry;
-    entry.ptr = dest;
-    entry.deleter = &cached_entry_deleter<T>;
-
-    auto [new_it, inserted] = m_cached_ptrs.try_emplace (src, std::move (entry));
-    if (!inserted)
-      {
-	/* impossible case */
-	assert_release (false);
-	return nullptr;
-      }
-
-    ASSERT_NO_ERROR_OR_INTERRUPTED ();
-
-    return dest;
+    return spawner::find (src, 1);
   }
 
   template <typename T>
   T *
-  spawner::get (const T *src, int count)
+  spawner::find (const T *src, int count)
   {
     if (src == nullptr)
       {
@@ -196,7 +162,27 @@ namespace cubxasl
     auto old_it = m_cached_ptrs.find (src);
     if (old_it != m_cached_ptrs.end())
       {
+	assert_release (old_it->second.count == count);
 	return static_cast<T *> (old_it->second.ptr);
+      }
+
+    return nullptr;
+  }
+
+  template <typename T>
+  T *
+  spawner::alloc (const T *src)
+  {
+    return spawner::alloc (src, 1);
+  }
+
+  template <typename T>
+  T *
+  spawner::alloc (const T *src, int count)
+  {
+    if (src == nullptr)
+      {
+	return nullptr;
       }
 
     T *dest = static_cast<T *> (db_private_alloc (&m_thread_ref, sizeof (T) * count));
@@ -218,7 +204,7 @@ namespace cubxasl
 	  {
 	    if (i == 0)
 	      {
-		cached_entry_deleter<T> (&m_thread_ref, dest);
+		cached_entry_deleter<T> (&m_thread_ref, dest, count);
 	      }
 
 	    return nullptr;
@@ -226,6 +212,7 @@ namespace cubxasl
 
 	cached_entry entry;
 	entry.ptr = item;
+	entry.count = count;
 	entry.deleter = (i == 0) ? &cached_entry_deleter<T> : nullptr;
 
 	auto [new_it, inserted] = m_cached_ptrs.try_emplace (src + i, std::move (entry));
@@ -244,7 +231,7 @@ namespace cubxasl
 
   template <typename T>
   inline void
-  spawner::cached_entry_deleter (cubthread::entry *thread_p, void *ptr)
+  spawner::cached_entry_deleter (cubthread::entry *thread_p, void *ptr, int count)
   {
     if (ptr == nullptr)
       {
@@ -257,12 +244,18 @@ namespace cubxasl
       {
 	if (typed_ptr->type == TYPE_DBVAL)
 	  {
-	    pr_clear_value (&typed_ptr->value.dbval);
+	    for (int i = 0; i < count; i++)
+	      {
+		pr_clear_value (&typed_ptr[i].value.dbval);
+	      }
 	  }
       }
     else if constexpr (std::is_same_v<T, DB_VALUE>)
       {
-	pr_clear_value (typed_ptr);
+	for (int i = 0; i < count; i++)
+	  {
+	    pr_clear_value (&typed_ptr[i]);
+	  }
       }
     else
       {

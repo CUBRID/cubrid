@@ -3823,9 +3823,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   fprintf (fp, "%s (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld", qdump_xasl_type_string (xasl_p),
 	   TO_MSEC (xasl_p->xasl_stats.elapsed_time), xasl_p->xasl_stats.fetches, xasl_p->xasl_stats.fetch_time,
 	   xasl_p->xasl_stats.ioreads);
-  if (xasl_p->executed_parallelism > 1)
+  if (stats->max_parallel_workers > 0)
     {
-      fprintf (fp, ", parallel: %d)\n", xasl_p->executed_parallelism);
+      fprintf (fp, ", parallel: %d)\n", stats->max_parallel_workers);
     }
   else
     {

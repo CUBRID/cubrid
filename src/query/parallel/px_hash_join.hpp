@@ -63,7 +63,7 @@ namespace parallel_query
 	worker_pool_manager (cubthread::entry &main_thread_ref);
 	~worker_pool_manager ();
 
-	bool try_reserve_workers (size_t pool_size);
+	bool try_reserve_workers (int pool_size);
 	void release_workers ();
 
 	cubthread::entry_workpool *get_worker_pool () const;

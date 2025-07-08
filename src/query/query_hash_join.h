@@ -67,6 +67,18 @@ typedef struct tp_domain TP_DOMAIN;
  * Enum & Typedef Definitions
  */
 
+typedef enum hashjoin_status
+{
+  HASHJOIN_STATUS_NONE = 0,
+  HASHJOIN_STATUS_FILL_NULL_VALUES,
+  HASHJOIN_STATUS_TRY,
+  HASHJOIN_STATUS_SINGLE,
+  HASHJOIN_STATUS_PARTITION,
+  HASHJOIN_STATUS_PARALLEL,
+  HASHJOIN_STATUS_END,
+  HASHJOIN_STATUS_ERROR
+} HASHJOIN_STATUS;
+
 typedef enum hashjoin_merge_method
 {
   HASHJOIN_MERGE_COMBINE = 0,
@@ -108,6 +120,11 @@ typedef struct hashjoin_domain_info
 
 typedef struct hashjoin_fetch_info
 {
+  QFILE_LIST_ID *list_id;
+  QFILE_LIST_SCAN_ID list_scan_id;
+  QFILE_TUPLE_RECORD tuple_record;
+  QFILE_TUPLE_RECORD *fill_record;
+
   /* Pointers to members of HASHJOIN_DOMAIN_INFO,
    * which is a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT_DOMAIN_INFO *input;
@@ -121,12 +138,12 @@ typedef struct hashjoin_fetch_info
 
 typedef struct hashjoin_input_split_info
 {
-  QFILE_LIST_ID *list_id;
+  // QFILE_LIST_ID *list_id;
   HASHJOIN_FETCH_INFO *fetch_info;
   QFILE_LIST_ID **part_list_id;
   int part_cnt;
 } HASHJOIN_INPUT_SPLIT_INFO;
-#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, NULL, 0 }
+#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, 0 }
 
 typedef struct hashjoin_split_info
 {
@@ -174,7 +191,7 @@ typedef struct hashjoin_profile_stats
 typedef struct hashjoin_stats
 {
   HASH_METHOD hash_method;
-  bool is_build_outer;
+  int max_parallel_workers;
 
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS build;
@@ -196,32 +213,40 @@ typedef struct hashjoin_context
 {
   QFILE_LIST_ID *list_id;
 
-  QFILE_LIST_ID *outer_list_id;
-  QFILE_LIST_ID *inner_list_id;
+  HASHJOIN_FETCH_INFO outer;
+  HASHJOIN_FETCH_INFO inner;
 
-  HASHJOIN_FETCH_INFO outer_fetch_info;
-  HASHJOIN_FETCH_INFO inner_fetch_info;
-  int key_cnt;
+  /* Set in hjoin_init_context or hjoin_outer_fill_null_values. */
+  HASHJOIN_FETCH_INFO *build;
+  HASHJOIN_FETCH_INFO *probe;
 
-  JOIN_TYPE join_type;
+  HASH_LIST_SCAN hash_scan;
   PRED_EXPR *during_join_pred;
   VAL_DESCR *val_descr;
 
-  HASH_LIST_SCAN hash_scan;
-  bool is_build_outer;
+  HASHJOIN_STATUS status;
   bool is_last_context;
 
+  /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
 } HASHJOIN_CONTEXT;
 
 typedef struct hashjoin_manager
 {
-  /* From HASHJOIN_PROC_NODE */
+  /* Pointer to a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
 
-  /* From XASL_STATE */
+  /* Copy of a member of QFILE_LIST_MERGE_INFO. */
+  JOIN_TYPE join_type;
+  int key_cnt;
+
+  /* Pointer to a member of XASL_NODE. */
+  PRED_EXPR *during_join_pred;
+  int max_parallel_workers;
+
+  /* Pointer to a member of XASL_STATE. */
   QUERY_ID query_id;
   VAL_DESCR *val_descr;
 
@@ -230,8 +255,7 @@ typedef struct hashjoin_manager
   int context_cnt;
 
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
-
-  HASHJOIN_MERGE_METHOD merge_method;
+  HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
 
 #if defined (SERVER_MODE)
@@ -240,7 +264,7 @@ typedef struct hashjoin_manager
   /* *INDENT-ON* */
 #endif				/* defined (SERVER_MODE) */
 
-  /* Pointer to a member of HASHJOIN_PROC_NODE. */
+  /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
 } HASHJOIN_MANAGER;
 
