@@ -334,20 +334,7 @@ namespace parallel_query_execute
   int query_executor::run_tasks (THREAD_ENTRY *thread_p)
   {
     int err;
-    try
-      {
-	err = m_task_queue.execute_tasks (thread_p);
-      }
-    catch (const std::system_error &e)
-      {
-	er_print_callstack (ARG_FILE_LINE, "run_tasks - throws err = %d: %s\n", e.code (), e.what ());
-	return ER_FAILED;
-      }
-    catch (const std::exception &e)
-      {
-	er_print_callstack (ARG_FILE_LINE, "run_tasks - throws err = %s\n", e.what ());
-	return ER_FAILED;
-      }
+    err = m_task_queue.execute_tasks (thread_p);
     if (err != NO_ERROR)
       {
 	return err;
