@@ -632,6 +632,9 @@ int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
+static PT_NODE *pt_set_etc_for_having (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
+				    VAL_LIST * vallist);
 
 static void
 pt_init_xasl_supp_info ()
@@ -16213,6 +16216,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       buildlist->g_regu_list =
 	pt_to_position_regu_variable_list (parser, group_out_list, buildlist->g_val_list, attr_offsets);
 
+      pt_fix_pseudocolumns_pos_regu_list (parser, group_out_list, buildlist->g_regu_list);
+
       free_and_init (attr_offsets);
 
       /* set 'etc' field for pseudocolumns nodes */
@@ -16254,29 +16259,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       select_out_list = NULL;
       for (node = select_node->info.query.q.select.list; node; node = node->next)
 	{
-	  new_node = NULL;
-	  if (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL)
+	  new_node =
+	    pt_make_result_ref (parser, node, select_node->info.query.q.select.group_by, buildlist->g_val_list);
+
+	  if (new_node == NULL && !pt_has_error (parser))
 	    {
-	      char *str_select = parser_print_tree (parser, node);
-
-	      for (group = select_node->info.query.q.select.group_by, val_list = buildlist->g_val_list->valp;
-		   val_list && group; val_list = val_list->next, group = group->next)
-		{
-		  char *str_group = parser_print_tree (parser, group->info.sort_spec.expr);
-
-		  /* brute method, compare printed trees */
-		  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
-		    {
-		      new_node = pt_point_ref (parser, node);
-		      new_node->etc = (void *) val_list->val;
-		      break;
-		    }
-		}
-	    }
-
-	  if (new_node == NULL)
-	    {
-	      new_node = pt_point (parser, node);
+	      new_node = parser_copy_tree (parser, node);
 	    }
 	  select_out_list = parser_append_node (new_node, select_out_list);
 	}
@@ -16302,6 +16290,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       saved_current_class = parser->symbols->current_class;
       parser->symbols->current_class = NULL;
       pt_split_having_grbynum (parser, select_node->info.query.q.select.having, &having_part, &grbynum_part);
+//       (void) parser_walk_tree (parser, having_part, pt_set_etc_for_having, NULL, pt_continue_walk, NULL);
       buildlist->g_having_pred = pt_to_pred_expr (parser, having_part);
       grbynum_flag = 0;
       buildlist->g_grbynum_pred = pt_to_pred_expr_with_arg (parser, grbynum_part, &grbynum_flag);
@@ -27883,4 +27872,65 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	}
     }
   return node;
+}
+
+static PT_NODE *
+pt_set_etc_for_having (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+
+  SYMBOL_INFO *symbol_info = parser->symbols;
+  PT_NODE *new_node;
+
+  new_node = pt_make_result_ref (parser, tree, symbol_info->current_listfile, symbol_info->listfile_value_list);
+  if (new_node)
+    {
+      *continue_walk = PT_LIST_WALK;
+      return new_node;
+    }
+
+  return tree;
+}
+
+static PT_NODE *
+pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list, VAL_LIST * vallist)
+{
+  PT_NODE *new_node = NULL;
+  PT_NODE *groupby = groupby_list;
+  QPROC_DB_VALUE_LIST db_list = vallist->valp;
+
+  int is_pseudocolumn = 0;
+  (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+
+  if (!is_pseudocolumn && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
+    {
+      char *str_select = parser_print_tree (parser, node);
+
+      for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
+	{
+	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	  /* brute method, compare printed trees */
+	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
+	    {
+	      new_node = pt_point_ref (parser, node);
+	      if (new_node == NULL)
+		{
+		  /* allocation failed */
+		  PT_ERROR (parser, node,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+	      new_node->etc = (void *) db_list->val;
+	      break;
+	    }
+	}
+    }
+
+  // if(new_node == NULL)
+  // {
+  //     new_node = parser_copy_tree(parser, node);
+  // }
+
+  return new_node;
 }
