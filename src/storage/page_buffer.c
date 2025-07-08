@@ -2235,7 +2235,7 @@ retry:
 	  if (bufptr->latch_mode != PGBUF_NO_LATCH)
 	    {
 	      /* retry simple_fix until finishing general fix and unfix */
-              PGBUF_BCB_UNLOCK (bufptr);
+	      PGBUF_BCB_UNLOCK (bufptr);
 	      goto retry;
 	    }
 
@@ -2251,7 +2251,7 @@ retry:
 	  if (pgbuf_bcb_is_direct_victim (bufptr))
 	    {
 	      /* This BCB will be soon victimized and removed from the hash table. so it is considered not found. */
-              PGBUF_BCB_UNLOCK (bufptr);
+	      PGBUF_BCB_UNLOCK (bufptr);
 	      return NULL;
 	    }
 	}
