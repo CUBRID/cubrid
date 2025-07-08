@@ -114,28 +114,32 @@ namespace parallel_heap_scan
     return false;
   }
 
-  void list_writer::write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data)
+  int list_writer::write (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, list_id_data &data)
   {
     list_id_wrapper::status status = list_id_wrapper::status::NONE;
     QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p, scan_id);
-
+    if (tplrec == nullptr)
+      {
+	return ER_FAILED;
+      }
     status = m_list_id_wrapper_p->write (thread_p, tplrec);
     data.m_list_id_wrapper_p = m_list_id_wrapper_p;
 
     if (status == list_id_wrapper::status::WRITE_SUCCESS)
       {
-	return;
+	return NO_ERROR;
       }
     else if (status == list_id_wrapper::status::WRITE_CURPAGE_END)
       {
 	VPID_COPY (&data.m_vpid, &m_list_id_wrapper_p->m_write_vpid);
 	m_stream->enqueue (data);
 	VPID_COPY (&m_list_id_wrapper_p->m_write_vpid, &m_list_id_wrapper_p->m_list_id->last_vpid);
+	return NO_ERROR;
       }
     else
       {
 	/* Maybe interrupted */
-	return;
+	return ER_FAILED;
       }
   }
 
@@ -149,10 +153,11 @@ namespace parallel_heap_scan
   QFILE_TUPLE_RECORD *list_writer::make_tuple_record (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
     REGU_VARIABLE_LIST p;
-    int n_preds, n_rests, n_all;
+    size_t n_preds, n_rests, n_all;
     char *tuple_p;
-    int i = 0, tval_size = 0, tlen, tpl_size;
-    int n_size, toffset;
+    size_t i = 0, tlen, tpl_size;
+    size_t toffset;
+    int n_size, tval_size = 0;
     bool clear_compressed_string = true;
     DB_VALUE *dbval_p;
     HEAP_SCAN_ID *hsid = (HEAP_SCAN_ID *) &scan_id->s.hsid;
@@ -210,13 +215,18 @@ namespace parallel_heap_scan
 	dbval_p = reg_var_p->vfetch_to;
 	n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
 	assert (n_size != ER_FAILED);
-	if (tlen + n_size > m_tpl_buf_alloc_size)
+	if (tlen + (size_t)n_size > m_tpl_buf_alloc_size)
 	  {
 	    tpl_size = MAX (tlen, QFILE_TUPLE_LENGTH_SIZE);
 	    tpl_size += MAX (n_size, DB_PAGESIZE);
 	    tpl_size = ((tpl_size + DB_PAGESIZE - 1) / DB_PAGESIZE) * DB_PAGESIZE;
 	    m_tpl_buf.tpl = (char *) realloc ((void *) m_tpl_buf.tpl, tpl_size);
-	    assert_release (m_tpl_buf.tpl != NULL);
+	    if (m_tpl_buf.tpl == nullptr)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			tpl_size);
+		return nullptr;
+	      }
 	    m_tpl_buf_alloc_size = tpl_size;
 	    tuple_p = (char *) (m_tpl_buf.tpl) + toffset;
 	  }
@@ -226,9 +236,9 @@ namespace parallel_heap_scan
 	    assert (false);
 	  }
 
-	tlen += tval_size;
-	tuple_p += tval_size;
-	toffset += tval_size;
+	tlen += (size_t)tval_size;
+	tuple_p += (size_t)tval_size;
+	toffset += (size_t)tval_size;
       }
 
     QFILE_PUT_TUPLE_LENGTH (m_tpl_buf.tpl, tlen);
@@ -254,11 +264,6 @@ namespace parallel_heap_scan
     close_list_scan();
     if (m_list_id != nullptr)
       {
-	if (m_main_thread_p != m_task_thread_p)
-	  {
-	    qfile_update_qlist_count (m_main_thread_p, m_list_id, 1);
-	    qfile_update_qlist_count (m_task_thread_p, m_list_id, -1);
-	  }
 	qfile_destroy_list (m_main_thread_p, m_list_id);
 	/* Because tran_id and query_id is same, and task thread is exited. */
       }
@@ -410,7 +415,7 @@ namespace parallel_heap_scan
       {
 	m_task_thread_p = thread_p;
       }
-    m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF,
+    m_list_id = qfile_open_list (m_task_thread_p, m_type_list, nullptr, m_query_id, QFILE_FLAG_ALL,
 				 nullptr);
     if (m_list_id == nullptr)
       {
