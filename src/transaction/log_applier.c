@@ -8027,7 +8027,7 @@ check_reinit_copylog (void)
 }
 
 static inline void
-set_la_slave_db_name (char *dest, const char *src)
+la_set_slave_db_name (char *dest, const char *src)
 {
   const char *at = strchr (src, '@');
   size_t len;
@@ -8045,7 +8045,7 @@ set_la_slave_db_name (char *dest, const char *src)
 }
 
 static inline void
-set_la_peer_host (char *dest, const char *src)
+la_set_peer_host (char *dest, const char *src)
 {
   const char *host = la_get_hostname_from_log_path ((char *) src);
 
@@ -8115,8 +8115,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
-  set_la_slave_db_name (la_slave_db_name, database_name);
-  set_la_peer_host (la_peer_host, log_path);
+  la_set_slave_db_name (la_slave_db_name, database_name);
+  la_set_peer_host (la_peer_host, log_path);
 
   /* init la_Info */
   la_init (log_path, max_mem_size);
