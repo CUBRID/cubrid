@@ -2086,7 +2086,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		    }
 		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
 		    {
-		      file_temp_retire (thread_p, &sort_param->multipage_file, SORT_IS_PARALLEL (sort_param));
+		      file_temp_retire (thread_p, &sort_param->multipage_file);
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
@@ -4297,14 +4297,14 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	{
 	  if (sort_param->temp[k].volid != NULL_VOLID)
 	    {
-	      (void) file_temp_retire (thread_p, &sort_param->temp[k], false);
+	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	    }
 	}
     }
 
   if (sort_param->multipage_file.volid != NULL_VOLID)
     {
-      (void) file_temp_retire (thread_p, &(sort_param->multipage_file), false);
+      (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
   for (k = 0; k < SORT_MAX_TOT_FILES; k++)
@@ -4390,7 +4390,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
-      file_temp_retire (thread_p, vfid, is_parallel);
+      file_temp_retire (thread_p, vfid);
       VFID_SET_NULL (vfid);
       return ret;
     }
@@ -4408,7 +4408,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, vfid, is_parallel);
+	  file_temp_retire (thread_p, vfid);
 	  VFID_SET_NULL (vfid);
 	  return ret;
 	}
@@ -4847,7 +4847,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
     {
       if (sort_param->temp[i].volid != NULL_VOLID && i != sort_param->px_result_file_idx)
 	{
-	  (void) file_temp_retire (thread_p, &sort_param->temp[i], false);
+	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
 	  VFID_SET_NULL (&sort_param->temp[i]);
 	}
     }
@@ -5373,7 +5373,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, SORT_PARAM * sort
 	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
 	  if (!VFID_ISNULL (&sort_param->temp[i]))
 	    {
-	      error_code = file_temp_retire (thread_p, &sort_param->temp[i], SORT_IS_PARALLEL (sort_param));
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i]);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

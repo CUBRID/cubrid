@@ -771,8 +771,8 @@ static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 STATIC_INLINE int file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
-STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved,
-					     bool with_lock) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+					     __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Temporary cache section                                              */
@@ -4303,9 +4303,9 @@ file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
  * vfid (in)     : file identifier
  */
 int
-file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid, bool with_lock)
+file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  return file_temp_retire_internal (thread_p, vfid, false, with_lock);
+  return file_temp_retire_internal (thread_p, vfid, false);
 }
 
 /*
@@ -4318,7 +4318,7 @@ file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid, bool with_lock)
 int
 file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  return file_temp_retire_internal (thread_p, vfid, true, false);
+  return file_temp_retire_internal (thread_p, vfid, true);
 }
 
 /*
@@ -4331,7 +4331,7 @@ file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
  *                      transaction list.
  */
 STATIC_INLINE int
-file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved, bool with_lock)
+file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
 {
   FILE_TEMPCACHE_ENTRY *entry = NULL;
   int error_code = NO_ERROR;
@@ -9494,10 +9494,8 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 STATIC_INLINE FILE_TEMPCACHE_ENTRY *
 file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p;
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
-
-  tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
 
   for (entry = *tran_files_p; entry != NULL; entry = entry->next)
     {
@@ -9537,9 +9535,8 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 STATIC_INLINE void
 file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p;
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
 
-  tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   entry->next = *tran_files_p;
   *tran_files_p = entry;
 

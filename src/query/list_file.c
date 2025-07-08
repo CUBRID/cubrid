@@ -243,8 +243,8 @@ static void qfile_close_and_free_list_file (THREAD_ENTRY * thread_p, QFILE_LIST_
 static QFILE_LIST_ID *qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1, QFILE_LIST_ID * list_id2,
 					int flag);
 
-static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static SORT_STATUS qfile_get_next_sort_item (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
+static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static SORT_INFO *qfile_initialize_sort_info (SORT_INFO * info, QFILE_LIST_ID * listid, SORT_LIST * sort_list);
 static void qfile_clear_sort_info (SORT_INFO * info);
 static int qfile_copy_list_pages (THREAD_ENTRY * thread_p, VPID * old_first_vpidp, QMGR_TEMP_FILE * old_tfile_vfidp,
@@ -2230,7 +2230,7 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	  /* because qmgr_free_list_temp_file() destroy only FILE_TEMP file */
 	  if (!VFID_ISNULL (&list_id_p->temp_vfid))
 	    {
-	      file_temp_retire (thread_p, &list_id_p->temp_vfid, false);
+	      file_temp_retire (thread_p, &list_id_p->temp_vfid);
 	    }
 	}
 

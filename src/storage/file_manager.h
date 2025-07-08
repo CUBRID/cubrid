@@ -169,7 +169,7 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
-extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid, bool with_lock);
+extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
 extern int file_init_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
