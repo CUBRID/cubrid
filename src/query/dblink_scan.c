@@ -608,7 +608,7 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
   if (!auto_commit)
     {
-      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, true);
     }
 
   if (conn_handle < 0)
@@ -720,7 +720,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   if (!auto_commit)
     {
       scan_info->conn_handle =
-	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, false);
     }
 
   if (scan_info->conn_handle < 0)
