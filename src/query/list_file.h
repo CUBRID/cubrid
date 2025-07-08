@@ -230,5 +230,4 @@ extern int qfile_get_list_cache_number_of_entries (int ht_no);
 extern bool qfile_has_no_cache_entries ();
 
 
-
 #endif /* _LIST_FILE_H_ */
