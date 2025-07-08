@@ -491,7 +491,6 @@ struct file_tempcache
   int ncached_numerable;
 
   pthread_mutex_t mutex;
-  pthread_mutex_t local_mutex;
 #if !defined (NDEBUG)
   int owner_mutex;
 #endif				/* !NDEBUG */
@@ -771,8 +770,7 @@ static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 STATIC_INLINE int file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
-STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
-					     __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved) __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Temporary cache section                                              */
@@ -3190,9 +3188,8 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
       *vfid_out = tempcache_entry->vfid;
     }
 
-  /* save to transaction temporary file list entry */
+  /* save to transaction temporary file list */
   file_tempcache_push_tran_file (thread_p, tempcache_entry);
-
   return NO_ERROR;
 }
 
