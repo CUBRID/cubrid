@@ -2074,7 +2074,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  /* Create the multipage file */
 		  sort_param->multipage_file.volid = sort_param->temp[0].volid;
 
-		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file, SORT_IS_PARALLEL (sort_param));
+		  error = file_create_temp (thread_p, 1, &sort_param->multipage_file);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -4370,7 +4370,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   /* todo: sort file is a case I missed that seems to use file_find_nthpages. I don't know if it can be optimized to
    *       work without numerable files, that remains to be seen. */
 
-  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid, is_parallel);
+  ret = file_create_temp_numerable (thread_p, file_pg_cnt_est, vfid);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();

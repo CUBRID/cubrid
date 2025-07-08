@@ -729,7 +729,7 @@ static int file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, cons
 static int file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensate_or_run_postpone);
 
 STATIC_INLINE int file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable,
-					     VFID * vfid_out, bool with_lock) __attribute__ ((ALWAYS_INLINE));
+					     VFID * vfid_out) __attribute__ ((ALWAYS_INLINE));
 static int file_sector_map_pages (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static DISK_ISVALID file_table_check (THREAD_ENTRY * thread_p, const VFID * vfid, DISK_VOLMAP_CLONE * disk_map_clone);
 
@@ -798,10 +798,6 @@ STATIC_INLINE void file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p
 STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file_with_lock (THREAD_ENTRY * thread_p, const VFID * vfid)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void file_tempcache_push_tran_file_with_lock (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
 
@@ -3158,8 +3154,7 @@ file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, const OID * class_oid
  * vfid_out (out)    : VFID of file (obtained from cache or created).
  */
 STATIC_INLINE int
-file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable, VFID * vfid_out,
-			   bool with_lock)
+file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype, bool is_numerable, VFID * vfid_out)
 {
   FILE_TABLESPACE tablespace;
   FILE_TEMPCACHE_ENTRY *tempcache_entry = NULL;
@@ -3196,14 +3191,7 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
     }
 
   /* save to transaction temporary file list entry */
-  if (with_lock)
-    {
-      file_tempcache_push_tran_file_with_lock (thread_p, tempcache_entry);
-    }
-  else
-    {
-      file_tempcache_push_tran_file (thread_p, tempcache_entry);
-    }
+  file_tempcache_push_tran_file (thread_p, tempcache_entry);
 
   return NO_ERROR;
 }
@@ -3217,9 +3205,9 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
  * vfid (out)	 : File identifier
  */
 int
-file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid, bool with_lock)
+file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid, with_lock);
+  return file_create_temp_internal (thread_p, npages, FILE_TEMP, false, vfid);
 }
 
 /*
@@ -3231,9 +3219,9 @@ file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid, bool with_lo
  * vfid (out)	 : File identifier
  */
 int
-file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid, bool with_lock)
+file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, npages, FILE_TEMP, true, vfid, with_lock);
+  return file_create_temp_internal (thread_p, npages, FILE_TEMP, true, vfid);
 }
 
 /*
@@ -3246,7 +3234,7 @@ file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid, bo
 int
 file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid)
 {
-  return file_create_temp_internal (thread_p, 1, FILE_QUERY_AREA, false, vfid, false);
+  return file_create_temp_internal (thread_p, 1, FILE_QUERY_AREA, false, vfid);
 }
 
 /*
@@ -4369,15 +4357,7 @@ file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_
     }
   else
     {
-      if (with_lock)
-	{
-	  entry = file_tempcache_pop_tran_file_with_lock (thread_p, vfid);
-	}
-      else
-	{
-	  entry = file_tempcache_pop_tran_file (thread_p, vfid);
-	}
-
+      entry = file_tempcache_pop_tran_file (thread_p, vfid);
       assert (entry != NULL);
     }
 
@@ -9548,54 +9528,6 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 }
 
 /*
- * file_tempcache_pop_tran_file_with_lock () - pop entry with the given VFID from transaction list
- *
- * return        : popped entry
- * thread_p (in) : thread entry
- * vfid (in)     : file identifier
- */
-STATIC_INLINE FILE_TEMPCACHE_ENTRY *
-file_tempcache_pop_tran_file_with_lock (THREAD_ENTRY * thread_p, const VFID * vfid)
-{
-  FILE_TEMPCACHE_ENTRY **tran_files_p;
-  FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
-
-  pthread_mutex_lock (&file_Tempcache.local_mutex);
-
-  tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
-
-  for (entry = *tran_files_p; entry != NULL; entry = entry->next)
-    {
-      if (VFID_EQ (&entry->vfid, vfid))
-	{
-	  /* remove entry from transaction list */
-	  if (prev_entry != NULL)
-	    {
-	      prev_entry->next = entry->next;
-	    }
-	  else
-	    {
-	      *tran_files_p = entry->next;
-	    }
-	  entry->next = NULL;
-
-	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
-		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-
-	  pthread_mutex_unlock (&file_Tempcache.local_mutex);
-	  return entry;
-	}
-      prev_entry = entry;
-    }
-
-  pthread_mutex_unlock (&file_Tempcache.local_mutex);
-
-  /* should have found it */
-  assert_release (false);
-  return NULL;
-}
-
-/*
  * file_tempcache_push_tran_file () - push temporary file entry to transaction list
  *
  * return        : void
@@ -9610,30 +9542,6 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
   tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   entry->next = *tran_files_p;
   *tran_files_p = entry;
-
-  file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
-	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-}
-
-/*
- * file_tempcache_push_tran_file_with_lock () - push temporary file entry to transaction list
- *
- * return        : void
- * thread_p (in) : thread entry
- * entry (in)    : temporary cache entry
- */
-STATIC_INLINE void
-file_tempcache_push_tran_file_with_lock (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
-{
-  FILE_TEMPCACHE_ENTRY **tran_files_p;
-
-  pthread_mutex_lock (&file_Tempcache.local_mutex);
-
-  tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
-  entry->next = *tran_files_p;
-  *tran_files_p = entry;
-
-  pthread_mutex_unlock (&file_Tempcache.local_mutex);
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));

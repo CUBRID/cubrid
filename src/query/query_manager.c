@@ -2549,7 +2549,7 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   else
     {
       /* return temp file page */
-      page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      page_p = pgbuf_fix (thread_p, vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 
       if (page_p != NULL)
 	{
@@ -2672,7 +2672,7 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
   if (VFID_ISNULL (&tfile_vfid_p->temp_vfid))
     {
       TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid, false) != NO_ERROR)
+      if (file_create_temp (thread_p, 1, &tfile_vfid_p->temp_vfid) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
