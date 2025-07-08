@@ -629,7 +629,9 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
       if (!auto_commit)
 	{
-	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  ret =
+	    qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password,
+					 true);
 	  if (ret < 0)
 	    {
 	      /* malloc error */
@@ -741,7 +743,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 	{
 	  ret =
 	    qmgr_dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
-					 password);
+					 password, false);
 	  if (ret < 0)
 	    {
 	      return ER_DBLINK;

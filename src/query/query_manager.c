@@ -3747,7 +3747,8 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 }
 
 int
-qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password)
+qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password,
+			     bool is_dml)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
@@ -3766,6 +3767,8 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
   strcpy (dblink_conn_entry->conn_url, conn_url);
   strcpy (dblink_conn_entry->user_name, user_name);
   strcpy (dblink_conn_entry->password, password);
+
+  dblink_conn_entry->is_2pc_participant = is_dml;
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 

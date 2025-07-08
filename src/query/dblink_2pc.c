@@ -43,7 +43,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
   DBLINK_CONN_ENTRY *dbl = dblink;
 
-  while (dbl)
+  while (dbl && dbl->is_2pc_participant)
     {
       dbl = dbl->next;
       num_ids++;
@@ -86,7 +86,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = 12;
 
-  while (dblink)
+  while (dblink && dblink->is_2pc_participant)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       if (cci_xa_prepare (dblink->conn_handle, &xid, &err_buf) != NO_ERROR)
@@ -117,7 +117,7 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
 
   assert (particps_ack != NULL);
 
-  while (dblink)
+  while (dblink && dblink->is_2pc_participant)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       /* no check for commit if a participant is fail or not */
@@ -153,7 +153,7 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
       assert (particps_ack != NULL);
     }
 
-  while (dblink)
+  while (dblink && dblink->is_2pc_participant)
     {
       memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
       /* for participant, no check for abort if a participant is fail or not */
