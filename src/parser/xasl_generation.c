@@ -632,7 +632,6 @@ int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
-static PT_NODE *pt_set_etc_for_having (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
@@ -16108,10 +16107,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       pt_set_level_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->level_val);
       pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->isleaf_val);
       pt_set_iscycle_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->iscycle_val);
+      pt_set_connect_by_operator_node_etc (parser, select_node->info.query.q.select.group_by, xasl);
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.group_by, xasl);
       pt_set_level_node_etc (parser, select_node->info.query.q.select.having, &xasl->level_val);
       pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.having, &xasl->isleaf_val);
       pt_set_iscycle_node_etc (parser, select_node->info.query.q.select.having, &xasl->iscycle_val);
+      pt_set_connect_by_operator_node_etc (parser, select_node->info.query.q.select.having, xasl);
       pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
       group_out_list = NULL;
@@ -16303,7 +16304,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       saved_current_class = parser->symbols->current_class;
       parser->symbols->current_class = NULL;
       pt_split_having_grbynum (parser, select_node->info.query.q.select.having, &having_part, &grbynum_part);
-//       (void) parser_walk_tree (parser, having_part, pt_set_etc_for_having, NULL, pt_continue_walk, NULL);
       buildlist->g_having_pred = pt_to_pred_expr (parser, having_part);
       grbynum_flag = 0;
       buildlist->g_grbynum_pred = pt_to_pred_expr_with_arg (parser, grbynum_part, &grbynum_flag);
@@ -27903,23 +27903,6 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	}
     }
   return node;
-}
-
-static PT_NODE *
-pt_set_etc_for_having (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-
-  SYMBOL_INFO *symbol_info = parser->symbols;
-  PT_NODE *new_node;
-
-  new_node = pt_make_result_ref (parser, tree, symbol_info->current_listfile, symbol_info->listfile_value_list);
-  if (new_node)
-    {
-      *continue_walk = PT_LIST_WALK;
-      return new_node;
-    }
-
-  return tree;
 }
 
 static PT_NODE *
