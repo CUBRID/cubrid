@@ -151,6 +151,7 @@ struct SORT_INFO
   void *extra_arg;		/* extra information supplied by the caller */
   SORT_LIST * sort_list_p;	/* to open output list file in parallel */
   int flag;			/* to open output list file in parallel */
+  int parallelism;
 };
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,

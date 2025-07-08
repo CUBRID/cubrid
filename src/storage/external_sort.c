@@ -1436,7 +1436,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* for parallel sort */
   SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
-  int parallel_num = 1;		/* TO_DO : depending on the number of pages in the temp file */
+  int parallel_num = 1;
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_status mutex */
   pthread_cond_t complete_cond;	/* complete condition */
@@ -4865,12 +4865,21 @@ static int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
-  int parallel_num = prm_get_integer_value (PRM_ID_MAX_PARALLEL_THREAD);
+  int parallel_num = 1;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      if (sort_info_p->parallelism > 0)
+        {
+          parallel_num = sort_info_p->parallelism;
+        }
+      else
+        {
+          parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
+        }
 
       /* Find the number of parallel processes by page_cnt and tuple_cnt */
       if (sort_info_p->input_file->page_cnt > parallel_num && sort_info_p->input_file->tuple_cnt > parallel_num)

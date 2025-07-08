@@ -677,8 +677,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
 
-#define PRM_NAME_MAX_PARALLEL_THREAD "max_parallel_thread"
-
 #define PRM_NAME_DWB_SIZE "double_write_buffer_size"
 #define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
@@ -2233,12 +2231,6 @@ static int prm_cte_max_recursions_default = 2000;
 static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
-
-int PRM_MAX_PARALLEL_THREAD = 1;
-static int prm_max_parallel_thread_default = 1;
-static int prm_max_parallel_thread_upper = 32;
-static int prm_max_parallel_thread_lower = 1;
-static unsigned int prm_max_parallel_thread_flag = 0;
 
 bool PRM_JSON_LOG_ALLOCATIONS = false;
 static bool prm_json_log_allocations_default = false;
@@ -6572,18 +6564,6 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_MAX_SUBQUERY_CACHE_SIZE,
    (void *) &prm_max_subquery_cache_size_upper,
    (void *) &prm_max_subquery_cache_size_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_MAX_PARALLEL_THREAD,
-   PRM_NAME_MAX_PARALLEL_THREAD,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
-   PRM_INTEGER,
-   &prm_max_parallel_thread_flag,
-   (void *) &prm_max_parallel_thread_default,
-   (void *) &PRM_MAX_PARALLEL_THREAD,
-   (void *) &prm_max_parallel_thread_upper,
-   (void *) &prm_max_parallel_thread_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

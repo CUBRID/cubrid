@@ -3978,11 +3978,12 @@ qfile_clear_sort_info (SORT_INFO * sort_info_p)
  *   extra_arg(in):
  *   limit(in):
  *   do_close(in):
+ *   parallelism(in)
  */
 QFILE_LIST_ID *
 qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST * sort_list_p,
 			   QUERY_OPTIONS option, int flag, SORT_GET_FUNC * get_func, SORT_PUT_FUNC * put_func,
-			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close)
+			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close, int parallelism)
 {
   QFILE_LIST_ID *srlist_id;
   QFILE_LIST_SCAN_ID t_scan_id;
@@ -4020,6 +4021,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   info.extra_arg = extra_arg;
   info.sort_list_p = sort_list_p;
   info.flag = flag;
+  info.parallelism = parallelism;
 
   if (get_func == NULL)
     {
@@ -4145,7 +4147,7 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST *
   ls_flag = (option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT : QFILE_FLAG_ALL;
 
   return qfile_sort_list_with_func (thread_p, list_id_p, sort_list_p, option, ls_flag, NULL, NULL, NULL, NULL,
-				    NO_SORT_LIMIT, do_close);
+				    NO_SORT_LIMIT, do_close, 0);
 }
 
 /*
