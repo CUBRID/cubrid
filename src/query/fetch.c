@@ -61,8 +61,7 @@
 #include "memory_wrapper.hpp"
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
-static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
-				 QFILE_TUPLE * next_tpl);
+static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							  val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 							  DB_VALUE ** min, DB_VALUE ** max);
@@ -4517,39 +4516,47 @@ exit_on_error:
  *   next_tpl(out): Set to the next tuple ref
  */
 static int
-fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
-		      QFILE_TUPLE * next_tpl)
+fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 {
-  int length;
   PR_TYPE *pr_type;
-  OR_BUF buf;
-  char *ptr;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;
+  REGU_VARIABLE *regu_var;
+  regu_variable_list_node *regup;
+  int rc;
 
-  /* assume regu_var->type == TYPE_POSITION */
-  pos_descr = &regu_var->value.pos_descr;
-  pr_clear_value (regu_var->vfetch_to);
-  *peek_dbval = regu_var->vfetch_to;
+  OR_BUF iterator, buf;
+  QFILE_TUPLE_VALUE_FLAG flag;
+  int prev_pos = -1;
 
-  /* locate value position in the tuple */
-  if (qfile_locate_tuple_value_r (tpl, pos, &ptr, &length) == V_BOUND)
+  or_init (&iterator, tpl, QFILE_GET_TUPLE_LENGTH (tpl));
+  or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+
+  for (regup = regu_list; regup != NULL; regup = regup->next)
     {
+      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      regu_var = &regup->value;
+      pos_descr = &regu_var->value.pos_descr;
+      assert_release (pos_descr->pos_no > prev_pos);
+      prev_pos = pos_descr->pos_no;
+
+      pr_clear_value (regu_var->vfetch_to);
       pr_type = pos_descr->dom->type;
       if (pr_type == NULL)
 	{
 	  return ER_FAILED;
 	}
 
-      or_init (&buf, ptr, length);
-      /* read value from the tuple */
-      if (pr_type->data_readval (&buf, *peek_dbval, pos_descr->dom, -1, false /* Don't copy */ , NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, regup->value.vfetch_to, regup->value.domain, -1, false /* Don't copy */ , NULL,
+				 0) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
 
-  /* next position pointer */
-  *next_tpl = ptr + length;
 
   return NO_ERROR;
 }
@@ -4743,33 +4750,17 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 		OID * obj_oid, QFILE_TUPLE tpl, int peek)
 {
   regu_variable_list_node *regup;
-  QFILE_TUPLE next_tpl;
-  int rc, pos, next_pos;
+  int rc;
   DB_VALUE *tmp;
 
   if (peek)
     {
-      next_tpl = tpl + QFILE_TUPLE_LENGTH_SIZE;
-      next_pos = 0;
-
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
 	  if (regup->value.type == TYPE_POSITION)
 	    {
-	      pos = regup->value.value.pos_descr.pos_no;
-	      if (pos >= next_pos)
-		{
-		  pos -= next_pos;
-		  next_pos = regup->value.value.pos_descr.pos_no + 1;
-		}
-	      else
-		{
-		  next_tpl = tpl + QFILE_TUPLE_LENGTH_SIZE;
-		  next_pos = 0;
-		}
-
-	      /* at fetch_peek_dbval_pos(), regup->value.vfetch_to is cleared */
-	      rc = fetch_peek_dbval_pos (&regup->value, next_tpl, pos, &tmp, &next_tpl);
+	      rc = fetch_peek_dbval_pos (regu_list, tpl);
+	      return NO_ERROR;
 	    }
 	  else
 	    {

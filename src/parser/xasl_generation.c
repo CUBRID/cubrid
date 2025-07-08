@@ -20,6 +20,7 @@
  * xasl_generation.c - Generate XASL from the parse tree
  */
 
+#include "regu_var.hpp"
 #ident "$Id$"
 
 #include "config.h"
@@ -9716,6 +9717,7 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	}
     }
 
+  pt_sort_pos_regu_list_by_pos_no (&regu_list);
   return regu_list;
 }
 
@@ -22808,7 +22810,43 @@ pt_make_pos_regu_list (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
 	}
     }
 
+  pt_sort_pos_regu_list_by_pos_no (&regu_list);
   return regu_list;
+}
+
+void
+pt_sort_pos_regu_list_by_pos_no (REGU_VARIABLE_LIST * list_ptr)
+{
+  REGU_VARIABLE_LIST current, next;
+  REGU_VARIABLE temp;
+  bool swapped;
+
+  if (list_ptr == NULL || *list_ptr == NULL || (*list_ptr)->next == NULL)
+    {
+      return;
+    }
+
+  do
+    {
+      swapped = false;
+      current = *list_ptr;
+
+      while (current->next != NULL)
+	{
+	  assert (current->value.type == TYPE_POSITION);
+	  next = current->next;
+
+	  if (current->value.value.pos_descr.pos_no > next->value.value.pos_descr.pos_no)
+	    {
+	      temp = current->value;
+	      current->value = next->value;
+	      next->value = temp;
+	      swapped = true;
+	    }
+	  current = current->next;
+	}
+    }
+  while (swapped);
 }
 
 /*
