@@ -21248,7 +21248,8 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (user == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
+	  error = er_errid ();
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
