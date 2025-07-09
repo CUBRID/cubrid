@@ -4761,7 +4761,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 
   if (peek)
     {
-      if (regu_list->value.type == TYPE_POSITION)
+      if (regu_list && regu_list->value.type == TYPE_POSITION)
 	{
 	  rc = fetch_peek_dbval_pos (regu_list, tpl);
 	  return rc;
