@@ -7161,6 +7161,7 @@ static struct prm_config_files_loaded prm_file_has_been_loaded;
  *   if_cond(in): dumping condition of including flags (OR, AND)
  *   out_flags(in): combination of bit flags that you want to exclude from the dump
  *   of_cond(in): dumping condition of excluding flags (OR, AND)
+ *   old_style(in): print in the old sytle
  */
 void
 sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
@@ -9495,7 +9496,6 @@ cleanup:
 /*
  * xsysprm_dump_server_parameters -
  *   return: none
- *   fp(in):
  */
 void
 xsysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,

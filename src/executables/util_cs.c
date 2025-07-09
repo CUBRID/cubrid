@@ -2270,10 +2270,12 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
   ha_only_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_ONLY_S);
   exclude_ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_EXCLUDE_HA_S);
-  for_cm_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_FOR_CM_S);
 
   /* --dump-flag is hidden option intended for developers or technical supoort */
   hexa_string = utility_get_option_string_value (arg_map, PARAMDUMP_DUMP_FLAG_S, 0);
+
+  /* --for-cm is hidden option to maintain compatibility with cubrid manager */
+  for_cm_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_FOR_CM_S);
 
   if (ha_only_flag && exclude_ha_flag)
     {
@@ -2307,27 +2309,24 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   added_in_flags = PRM_EMPTY_FLAG;
   out_flags = PRM_HIDDEN;
 
-  if (ha_only_flag)
+  /* ignore another options and print old style, when using --for-cm (that is, for_cm_flag is true.)  */
+  if (for_cm_flag == false)
     {
-      added_in_flags |= PRM_FOR_HA;
-    }
-  else if (exclude_ha_flag)
-    {
-      out_flags |= PRM_FOR_HA;
-    }
+      if (ha_only_flag)
+	{
+	  added_in_flags |= PRM_FOR_HA;
+	}
+      else if (exclude_ha_flag)
+	{
+	  out_flags |= PRM_FOR_HA;
+	}
 
-  if (hexa_string != NULL)
-    {
-      dump_flags = (unsigned int) strtoul (hexa_string, NULL, 16);
-      added_in_flags |= dump_flags;
-      out_flags &= ~dump_flags;
-    }
-
-  /* ignore another options and print old style, when using --for-cm  */
-  if (for_cm_flag)
-    {
-      added_in_flags = PRM_EMPTY_FLAG;
-      out_flags = PRM_HIDDEN;
+      if (hexa_string != NULL)
+	{
+	  dump_flags = (unsigned int) strtoul (hexa_string, NULL, 16);
+	  added_in_flags |= dump_flags;
+	  out_flags &= ~dump_flags;
+	}
     }
 
   /* should have little copyright herald message ? */
