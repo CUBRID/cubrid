@@ -4543,8 +4543,8 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 	}
       regu_var = &regup->value;
       pos_descr = &regu_var->value.pos_descr;
+      assert_release (pos_descr->pos_no >= prev_pos);
       prev_pos = pos_descr->pos_no;
-
       if (pos_descr->pos_no == i)
 	{
 	  pr_clear_value (regu_var->vfetch_to);
