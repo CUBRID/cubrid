@@ -2689,7 +2689,7 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
   char line_buf[LINE_MAX];
-  char str[32];
+  char str[70];
   int len = 0;
 
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);

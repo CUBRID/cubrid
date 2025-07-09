@@ -288,10 +288,10 @@ namespace parallel_query_execute
 	return false;
       }
     pthread_mutex_lock (m_mutex_p);
-    std::size_t iter = m_tasks.size()-1;
-    for (; iter >= 0; iter--)
+    std::size_t iter = m_tasks.size();
+    for (; iter > 0; iter--)
       {
-	auto it = m_tasks[iter];
+	auto it = m_tasks[iter -1];
 	auto task_p = it->first;
 	auto task_state_p = it->second;
 	if (task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER)
@@ -301,10 +301,6 @@ namespace parallel_query_execute
 	    *task_state_out = task_state_p;
 	    pthread_mutex_unlock (m_mutex_p);
 	    return true;
-	  }
-	if (iter == 0)
-	  {
-	    break;
 	  }
       }
     pthread_mutex_unlock (m_mutex_p);

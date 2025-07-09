@@ -4637,6 +4637,11 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   /* access_spec_type->s_id not sent to server */
   memset (&access_spec->s_id, '\0', sizeof (SCAN_ID));
+  if (access_spec->type == TARGET_METHOD)
+    {
+      access_spec->s_id.s.msid.constructor ();
+    }
+
   access_spec->s_id.status = S_CLOSED;
 
   if (access_spec->type == TARGET_JSON_TABLE)

@@ -6812,7 +6812,11 @@ la_check_duplicated (const char *logpath, const char *dbname, int *lockf_vdes, i
   char lock_path[PATH_MAX];
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
 
-  sprintf (lock_path, "%s%s%s%s", logpath, FILEIO_PATH_SEPARATOR (logpath), dbname, LA_LOCK_SUFFIX);
+  if (snprintf (lock_path, sizeof (lock_path), "%s%s%s%s", logpath, FILEIO_PATH_SEPARATOR (logpath), dbname,
+		LA_LOCK_SUFFIX) >= (int) sizeof (lock_path))
+    {
+      lock_path[sizeof (lock_path) - 1] = '\0';
+    }
 
   *lockf_vdes = fileio_open (lock_path, O_RDWR | O_CREAT, 0644);
   if (*lockf_vdes == NULL_VOLDES)

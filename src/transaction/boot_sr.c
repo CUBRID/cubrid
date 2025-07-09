@@ -1408,7 +1408,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
   int error_code;
-  void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
+  void (*volatile old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
   const char *db_path, *log_path, *lob_path;

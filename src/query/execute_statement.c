@@ -182,7 +182,7 @@ typedef struct reserved_class_info
 {
   OID oid;
   CDC_DDL_OBJECT_TYPE objtype;
-  char name[1024];
+  char name[DB_MAX_IDENTIFIER_LENGTH];
 } RESERVED_CLASS_INFO;
 
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
@@ -15436,6 +15436,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
 
+	  assert ((int) sizeof (cls_info[count]->name) < strlen (classname));
 	  strcpy (cls_info[count]->name, classname);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
@@ -15462,39 +15463,23 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
-  static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
   char *sbr_text = NULL;
   char *stmt_text = NULL;
-
-  int num_class = 0;
-  int num_object = 0;
-
-  int drop_stmt_length = 0, pre_drop_length = 0;
-  int drop_copied_length = 0;
   char *drop_stmt = NULL;
-  const char *drop_prefix = "drop table ";
-  const char *drop_view_prefix = "drop view ";
-  const char *if_exist_statement = "if exists ";
-  const char *cascade_statement = " cascade constraints";
 
   const char *classname = NULL;
   const char *objname = NULL;
 
   CDC_DDL_TYPE ddl_type;
   CDC_DDL_OBJECT_TYPE objtype;
-
-  PT_NODE *entity = NULL;
-  PT_NODE *entity_spec = NULL;
   PT_NODE *target = NULL;
-
   OID *classoid = NULL;
-  OID *classoid_list[1024];
-  OID *oid = NULL;
+  OID oid_tmp = OID_INITIALIZER;
+  OID *oid = &oid_tmp;
   OID null_oid = OID_INITIALIZER;
 
-  int stmt_length = 0;
 
   bool supp_appended = false;
 
@@ -15611,74 +15596,93 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP:
       {
+	int drop_stmt_length = 0, pre_drop_length = 0;
+	int drop_copied_length = 0, name_len = 0;
+	const char *drop_prefix = "drop table ";
+	const char *drop_view_prefix = "drop view ";
+	const char *if_exist_statement = "if exists ";
+	const char *cascade_statement = " cascade constraints";
+	const int drop_prefix_len = strlen (drop_prefix);
+	const int drop_view_prefix_len = strlen (drop_view_prefix);
+	const int if_exist_statement_len = strlen (if_exist_statement);
+	const int cascade_statement_len = strlen (cascade_statement);
+
 	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
 	  {
 	    goto end;
 	  }
 
 	ddl_type = CDC_DROP;
+	pre_drop_length =
+	  MAX (drop_prefix_len, drop_view_prefix_len) + if_exist_statement_len + cascade_statement_len + 2;
 
 	if (cls_info != NULL)
 	  {
-	    while (cls_info[num_class] != NULL)
+	    for (int i = 0; cls_info[i] != NULL; i++)
 	      {
-		num_class++;
+		name_len = strlen (cls_info[i]->name);
+		drop_copied_length = pre_drop_length + name_len;
+
+		if (drop_stmt_length < drop_copied_length)
+		  {
+		    if (drop_stmt)
+		      {
+			free (drop_stmt);
+		      }
+		    else
+		      {
+			drop_copied_length += 32;	// Ensure sufficient size to avoid reallocation of memory.
+		      }
+
+		    drop_stmt_length = drop_copied_length;
+		    drop_stmt = (char *) malloc (drop_stmt_length);
+		    if (drop_stmt == NULL)
+		      {
+			error = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+		  }
+
+		if (cls_info[i]->objtype == CDC_TABLE)
+		  {
+		    memcpy (drop_stmt, drop_prefix, drop_prefix_len);
+		    drop_copied_length = drop_prefix_len;
+		  }
+		else if (cls_info[i]->objtype == CDC_VIEW)
+		  {
+		    memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
+		    drop_copied_length = drop_view_prefix_len;
+		  }
+		else
+		  {
+		    assert (false);
+		    error = ER_FAILED;
+		    goto end;
+		  }
+
+		if (statement->info.drop.if_exists)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
+		    drop_copied_length += if_exist_statement_len;
+		  }
+
+		memcpy (drop_stmt + drop_copied_length, cls_info[i]->name, name_len);
+		drop_copied_length += name_len;
+
+		if (statement->info.drop.is_cascade_constraints)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
+		    drop_copied_length += cascade_statement_len;
+		  }
+
+		drop_stmt[drop_copied_length] = '\0';
+
+		error =
+		  log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
+					    drop_stmt);
+
+		free_and_init (cls_info[i]);
 	      }
-	  }
-
-
-	for (int i = 0; i < num_class; i++)
-	  {
-	    pre_drop_length =
-	      ((cls_info[i]->objtype ==
-		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
-	      strlen (cascade_statement) + 2;
-
-	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
-	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
-	    if (drop_stmt == NULL)
-	      {
-		goto end;
-	      }
-
-	    if (cls_info[i]->objtype == CDC_TABLE)
-	      {
-		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-		drop_copied_length = strlen (drop_prefix);
-	      }
-	    else if (cls_info[i]->objtype == CDC_VIEW)
-	      {
-		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
-		drop_copied_length = strlen (drop_view_prefix);
-	      }
-	    else
-	      {
-		assert (false);
-	      }
-
-	    if (statement->info.drop.if_exists)
-	      {
-		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
-		drop_copied_length += strlen (if_exist_statement);
-	      }
-
-	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
-	    drop_copied_length += strlen (cls_info[i]->name);
-
-	    if (statement->info.drop.is_cascade_constraints)
-	      {
-		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
-		drop_copied_length += strlen (cascade_statement);
-	      }
-
-	    drop_stmt[drop_copied_length] = '\0';
-
-	    error =
-	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					drop_stmt);
-
-	    free_and_init (drop_stmt);
-	    free_and_init (cls_info[i]);
 	  }
 
 	supp_appended = true;
@@ -15689,13 +15693,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       {
 	BTID index;
 	MOP classop;
-
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15716,13 +15713,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15742,13 +15732,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15765,12 +15748,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
@@ -15788,13 +15765,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -15816,7 +15786,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  }
 	else
 	  {
-	    oid = (OID *) malloc (sizeof (OID));
 	    OID_SET_NULL (oid);
 	  }
 
@@ -15913,6 +15882,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	break;
       }
     case PT_REMOVE_TRIGGER:
+      {
+	/* TODO: Further review and action are needed in the future.
+	 *   This function is called from do_statement() and do_execute_statement().
+	 *  In the case of PT_REMOVE_TRIGGER, the initialization of ddl_type and objtype is not performed.
+	 *  As a result, the behavior after exiting the switch statement becomes unclear.
+	 *  As a temporary measure, assert_release(0); is added.
+	 */
+	assert_release (0);
+	error = ER_FAILED;
+	goto end;
+      }
       break;
 
     case PT_ALTER_TRIGGER:
@@ -16061,11 +16041,6 @@ end:
   if (host_val)
     {
       free (host_val);
-    }
-
-  if (oid != NULL)
-    {
-      free_and_init (oid);
     }
 
   if (drop_stmt != NULL)
@@ -17351,7 +17326,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat = NULL, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op, insert_only = false;
 
@@ -17790,7 +17765,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   INT64 result = 0;
   int error = NO_ERROR;
-  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
@@ -21633,9 +21608,13 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
 	}
       else
 	{
-	  sprintf ((char *) private_key, "%04d%02d%02d%02d%02d%02d%06ld",
-		   lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		   check_time.tv_usec);
+	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+			check_time.tv_usec) >= (int) sizeof (private_key))
+	    {
+	      assert_release (0);
+	      private_key[sizeof (private_key) - 1] = '\0';
+	    }
 	}
     }
 
