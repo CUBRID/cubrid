@@ -2128,6 +2128,11 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 
   if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
     {
+      /* if the precision of the partition key is smaller than the precision of the constant value,
+       * or if the partition key expression does not guarantee monotonicity, some partitions may not be selected.
+       * therefore, when the partition key is an expression, add an equality condition to the comparison for pruning. */
+      op = (op == PO_GT) ? PO_GE : (op == PO_LT) ? PO_LE : op;
+
       if (db_value_type_is_collection (&val))
 	{
 	  DB_TYPE domain_type = DB_VALUE_DOMAIN_TYPE (&val);
@@ -2211,19 +2216,6 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      goto cleanup;
 	    }
 
-	  if (tp_get_fixed_precision (TP_DOMAIN_TYPE (left->domain)) >
-	      tp_get_fixed_precision (TP_DOMAIN_TYPE (part_expr->domain)))
-	    {
-	      if (op == PO_GT)
-		{
-		  op = PO_GE;
-		}
-	      else if (op == PO_LT)
-		{
-		  op = PO_LE;
-		}
-	    }
-
 	  status = partition_prune_db_val (pinfo, &new_collection_val, op, pruned);
 	}
       else
@@ -2245,21 +2237,6 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	  else
 	    {
 	      partition_set_cache_dbvalp_for_attribute (part_expr, &val);
-	    }
-
-	  /* When the precision of the partition key is smaller, pruning with the column value in the where clause
-	   * may not perform proper comparison operations. */
-	  if (tp_get_fixed_precision (TP_DOMAIN_TYPE (left->domain)) >
-	      tp_get_fixed_precision (TP_DOMAIN_TYPE (part_expr->domain)))
-	    {
-	      if (op == PO_GT)
-		{
-		  op = PO_GE;
-		}
-	      else if (op == PO_LT)
-		{
-		  op = PO_LE;
-		}
 	    }
 
 	  status = partition_prune (pinfo, part_expr, op, pruned);
