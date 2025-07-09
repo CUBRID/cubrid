@@ -70,6 +70,8 @@ public class CUBRIDServerSideStatement implements Statement {
 
     protected CUBRIDServerSideStatement(
             CUBRIDServerSideConnection con, int type, int concurrency, int holdable) {
+        assert con != null;
+
         this.connection = con;
         this.type = type;
         this.concurrency = concurrency;
@@ -160,9 +162,11 @@ public class CUBRIDServerSideStatement implements Statement {
 
     @Override
     public void close() throws SQLException {
-        if (isClosed() == false) {
+        if (!closed) {
             closed = true;
             completeResultSet();
+            boolean b = connection.removeStatement(this);
+            assert b;
             connection = null; // detach with connection
         }
     }

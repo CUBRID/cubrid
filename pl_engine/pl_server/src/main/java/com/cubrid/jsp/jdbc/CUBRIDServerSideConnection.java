@@ -124,16 +124,8 @@ public class CUBRIDServerSideConnection implements Connection {
         }
     }
 
-    /* To manage List<Statement> statements */
-    public void addStatement(Statement s) {
-        this.statements.add(s);
-    }
-
-    public void removeStatement(Statement s) throws SQLException {
-        int i = statements.indexOf(s);
-        if (i > -1) {
-            statements.remove(i);
-        }
+    boolean removeStatement(Statement s) throws SQLException {
+        return statements.remove(s);
     }
 
     // ==============================================================
@@ -151,7 +143,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public CallableStatement prepareCall(String sql) throws SQLException {
         CallableStatement cstmt = new CUBRIDServerSideCallableStatement(this, sql);
-        addStatement(cstmt);
+        statements.add(cstmt);
         return cstmt;
     }
 
@@ -202,12 +194,10 @@ public class CUBRIDServerSideConnection implements Connection {
          * The connection is not actually terminated or database resources such as query
          * handlers and result sets are removed.
          */
-        if (statements != null) {
-            for (Statement s : statements) {
-                s.close();
-            }
-            statements.clear();
+        for (Statement s : statements) {
+            s.close();
         }
+        assert statements.isEmpty(); // they detach themselves from the connection while closing
     }
 
     public boolean isClosed() throws SQLException {
@@ -270,7 +260,7 @@ public class CUBRIDServerSideConnection implements Connection {
         Statement stmt =
                 new CUBRIDServerSideStatement(
                         this, resultSetType, resultSetConcurrency, holdability);
-        addStatement(stmt);
+        statements.add(stmt);
         return stmt;
     }
 
@@ -327,7 +317,7 @@ public class CUBRIDServerSideConnection implements Connection {
         }
         Statement stmt =
                 new CUBRIDServerSideStatement(this, resultSetType, resultSetConcurrency, holdable);
-        addStatement(stmt);
+        statements.add(stmt);
         return stmt;
     }
 
