@@ -939,6 +939,7 @@ $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 21 System parameters to be used by the client program.\n
 22 System parameters loaded by the server '%1$s'\n
 23 System parameters to be used in standalone mode.\n
+24 ERROR: --ha-only and --exclude-ha cannot be used together.\n
 60 \
 paramdump: Dump system parameter settings.\n\
 usage: %1$s paramdump [OPTION] database-name\n\

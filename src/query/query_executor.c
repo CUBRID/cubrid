@@ -14901,7 +14901,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			}
 		      if (xasl->px_executor)
 			{
-			  xasl->px_executor->add_task (xptr2, xasl_state);
+			  if (!xasl->px_executor->add_task (xptr2, xasl_state))
+			    {
+			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
+				{
+				  if (tplrec.tpl)
+				    {
+				      db_private_free_and_init (thread_p, tplrec.tpl);
+				    }
+				  qexec_failure_line (__LINE__, xasl_state);
+				  GOTO_EXIT_ON_ERROR;
+				}
+			    }
 			}
 		      else
 			{
@@ -16831,8 +16842,15 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 #if SERVER_MODE
 	  if (xasl->px_executor)
 	    {
-	      xasl->px_executor->add_task (non_recursive_part, xasl_state);
-	      if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
+	      if (!xasl->px_executor->add_task (non_recursive_part, xasl_state))
+		{
+		  if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+		    {
+		      qexec_failure_line (__LINE__, xasl_state);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
+	      else if (xasl->px_executor->run_tasks (thread_p) != NO_ERROR)
 		{
 		  if (xasl->px_executor->get_recursion_level () == 0)
 		    {
