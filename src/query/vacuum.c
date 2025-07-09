@@ -245,7 +245,7 @@ struct vacuum_data_page
     } while (0)
 
 /* Set page dirty [and free it]. First and last vacuum data page are not freed. */
-#define vacuum_set_dirty_data_page(thread_p, data_page, free) \
+#define vacuum_set_dirty_data_pagex(thread_p, data_page, free) \
   do \
     { \
       if ((data_page) != vacuum_Data.first_page && (data_page) != vacuum_Data.last_page) \
@@ -436,6 +436,24 @@ struct vacuum_data
 };
 static VACUUM_DATA vacuum_Data;
 // *INDENT-ON*
+
+static void
+vacuum_set_dirty_data_page (cubthread::entry * thread_p, vacuum_data_page * data_page, bool free)
+{
+  if ((data_page) != vacuum_Data.first_page && (data_page) != vacuum_Data.last_page)
+    {
+      pgbuf_set_dirty (thread_p, (PAGE_PTR) (data_page), free);
+    }
+  else
+    {
+      /* Do not unfix first or last page. */
+      pgbuf_set_dirty (thread_p, (PAGE_PTR) (data_page), DONT_FREE);
+    }
+  if ((free) == FREE)
+    {
+      (data_page) = NULL;
+    }
+}
 
 /* vacuum data load */
 typedef struct vacuum_data_load VACUUM_DATA_LOAD;
