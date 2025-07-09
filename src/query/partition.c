@@ -2128,7 +2128,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 
   if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
     {
-      if (pinfo->partition_type == DB_PARTITION_TYPE_RANGE)
+      if (pinfo->partition_type == DB_PARTITION_RANGE)
 	{
 	  /* if the precision of the partition key is smaller than the precision of the constant value,
 	   * or if the partition key expression does not guarantee monotonicity, some partitions may not be selected.
