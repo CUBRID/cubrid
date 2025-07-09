@@ -2279,6 +2279,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   if (ha_only_flag && exclude_ha_flag)
     {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OPTION));
       goto print_dumpparam_usage;
     }
 
