@@ -9717,7 +9717,6 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	}
     }
 
-  pt_sort_pos_regu_list_by_pos_no (&regu_list);
   return regu_list;
 }
 
@@ -22809,8 +22808,6 @@ pt_make_pos_regu_list (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
 	  break;
 	}
     }
-
-  pt_sort_pos_regu_list_by_pos_no (&regu_list);
   return regu_list;
 }
 

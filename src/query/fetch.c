@@ -4527,11 +4527,14 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
   OR_BUF iterator, buf;
   QFILE_TUPLE_VALUE_FLAG flag;
   int prev_pos = -1;
+  int i = 0;
+  DB_VALUE *tmp;
 
   or_init (&iterator, tpl, QFILE_GET_TUPLE_LENGTH (tpl));
   or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
 
-  for (regup = regu_list; regup != NULL; regup = regup->next)
+  regup = regu_list;
+  while (regup != NULL)
     {
       rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
       if (rc != NO_ERROR)
@@ -4540,26 +4543,37 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 	}
       regu_var = &regup->value;
       pos_descr = &regu_var->value.pos_descr;
-      assert_release (pos_descr->pos_no > prev_pos);
       prev_pos = pos_descr->pos_no;
 
-      pr_clear_value (regu_var->vfetch_to);
-      pr_type = pos_descr->dom->type;
-      if (pr_type == NULL)
+      if (pos_descr->pos_no == i)
 	{
-	  return ER_FAILED;
+	  pr_clear_value (regu_var->vfetch_to);
+	  pr_type = pos_descr->dom->type;
+	  if (flag == V_UNBOUND)
+	    {
+	      db_make_null (regu_var->vfetch_to);
+	    }
+	  else if (pr_type->data_readval (&buf, regu_var->vfetch_to, regu_var->domain, -1, false /* Don't copy */ ,
+					  NULL, 0) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+          regup = regup->next;
 	}
-      if (flag == V_UNBOUND)
+      else
 	{
-	  db_make_null (regu_var->vfetch_to);
-	  continue;
+	  pr_type = pos_descr->dom->type;
+	  if (flag == V_UNBOUND)
+	    {
+	      db_make_null (regu_var->vfetch_to);
+	    }
+	  else if (pr_type->data_readval (&buf, tmp, regu_var->domain, -1, false /* Don't copy */ ,
+					  NULL, 0) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
-
-      if (pr_type->data_readval (&buf, regu_var->vfetch_to, regu_var->domain, -1, false /* Don't copy */ ,
-				 NULL, 0) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      i++;
     }
 
 
