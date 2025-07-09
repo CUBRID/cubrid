@@ -121,6 +121,10 @@ public class SUStatement {
         }
     }
 
+    public void takeBindParametersFrom(SUStatement other) {
+        this.bindParameter = other.bindParameter;
+    }
+
     public SUStatement(
             SUConnection conn, GetByOIDInfo info, CUBRIDOID oid, String attributeName[]) {
         suConn = conn;

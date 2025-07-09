@@ -128,6 +128,13 @@ public class CUBRIDServerSideConnection implements Connection {
         return statements.remove(s);
     }
 
+    private void invalidateStatements() throws SQLException {
+
+        for (Statement s : statements) {
+            ((CUBRIDServerSideStatement) s).invalidate();
+        }
+    }
+
     // ==============================================================
     // The following are JDBC Interface Implementations
     // ==============================================================
@@ -163,7 +170,7 @@ public class CUBRIDServerSideConnection implements Connection {
     public void commit() throws SQLException {
         if (context.canTransactionControl()) {
             try {
-                close();
+                invalidateStatements();
                 getSUConnection().endTransaction(true);
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -175,7 +182,7 @@ public class CUBRIDServerSideConnection implements Connection {
     public void rollback() throws SQLException {
         if (context.canTransactionControl()) {
             try {
-                close();
+                invalidateStatements();
                 getSUConnection().endTransaction(false);
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -197,7 +204,7 @@ public class CUBRIDServerSideConnection implements Connection {
         for (Statement s : statements) {
             s.close();
         }
-        assert statements.isEmpty(); // they detach themselves from the connection while closing
+        assert statements.isEmpty();    // they detach themselves from the connection while closing
     }
 
     public boolean isClosed() throws SQLException {
