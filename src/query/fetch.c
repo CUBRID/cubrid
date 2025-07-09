@@ -4518,17 +4518,19 @@ exit_on_error:
 static int
 fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 {
+
   PR_TYPE *pr_type;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;
   REGU_VARIABLE *regu_var;
   regu_variable_list_node *regup;
-  int rc;
-
   OR_BUF iterator, buf;
   QFILE_TUPLE_VALUE_FLAG flag;
+
+  int rc;
   int prev_pos = -1;
   int i = 0;
-  DB_VALUE *tmp;
+
+
 
   or_init (&iterator, tpl, QFILE_GET_TUPLE_LENGTH (tpl));
   or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
@@ -4543,6 +4545,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 	}
       regu_var = &regup->value;
       pos_descr = &regu_var->value.pos_descr;
+      assert_release (regu_var->type == TYPE_POSITION);
       assert_release (pos_descr->pos_no >= prev_pos);
       prev_pos = pos_descr->pos_no;
       if (pos_descr->pos_no == i)
@@ -4758,21 +4761,18 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 
   if (peek)
     {
+      if (regu_list->value.type == TYPE_POSITION)
+	{
+	  rc = fetch_peek_dbval_pos (regu_list, tpl);
+	  return rc;
+	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
-	  if (regup->value.type == TYPE_POSITION)
+	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
 	    {
-	      rc = fetch_peek_dbval_pos (regu_list, tpl);
-	      return NO_ERROR;
+	      pr_clear_value (regup->value.vfetch_to);
 	    }
-	  else
-	    {
-	      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
-		{
-		  pr_clear_value (regup->value.vfetch_to);
-		}
-	      rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
-	    }
+	  rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
 
 	  if (rc != NO_ERROR)
 	    {
@@ -4802,7 +4802,6 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    }
 	}
     }
-
   return NO_ERROR;
 }
 
