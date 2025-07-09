@@ -4560,19 +4560,6 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 	    }
           regup = regup->next;
 	}
-      else
-	{
-	  pr_type = pos_descr->dom->type;
-	  if (flag == V_UNBOUND)
-	    {
-	      db_make_null (regu_var->vfetch_to);
-	    }
-	  else if (pr_type->data_readval (&buf, tmp, regu_var->domain, -1, false /* Don't copy */ ,
-					  NULL, 0) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	}
       i++;
     }
 
