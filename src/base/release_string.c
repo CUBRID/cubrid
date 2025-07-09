@@ -37,6 +37,8 @@
 #include "language_support.h"
 #include "environment_variable.h"
 #include "log_comm.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * COMPATIBILITY_RULE - Structure that encapsulates compatibility rules.
@@ -100,7 +102,7 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 11.2f;
+static float disk_compatibility_level = 11.4f;
 
 /*
  * rel_copy_version_string - version string of the product

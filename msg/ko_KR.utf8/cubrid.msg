@@ -65,6 +65,9 @@ $set 4 MSGCAT_SET_PARAMETER
 22 권장되지 않는 파라미터 입니다.
 23 '%1$s'와 '%2$s' 시스템 설정은 같이 사용할 수 없습니다.\n
 31 파라미터 "%1$s":
+32 '%3$s' 파일 %2$d 줄에 잘못된 IP 또는 호스트이름 '%1$s' 가 있습니다.\n
+33 '%1$s' 파일에 IP 또는 호스트이름이 없습니다.\n
+34 '%1$s' 파일을 찾을 수 없습니다.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 에러 코드 %1$d에 대한 메시지가 없습니다.
@@ -185,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 116 데이터베이스 "%1$s" 이(가) 없거나, 파일 "databases.txt"를 액세스할 수 없습니다.
 117 데이터베이스에 대한 절대 경로가 너무 깁니다. 경로 "%1$s"와 이름 "%2$s"을(를) 합한 길이는 %3$d 으로, 이는 %4$d 보다 작아야 합니다.
 118 현재 작업 디렉터리를 정할 수 없습니다.
-119 /etc/hosts에서 ("%1$s")를 찾을 수 없습니다. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
+119 "%2$s"에서 호스트명 ("%1$s")를 찾을 수 없습니다. 파일의 권한 또는 호스트명이 있는지 확인해주세요.
 120 볼륨의 최대 개수(%1$d)를 초과했습니다.
 121 데이터베이스의 영구 볼륨 "%1$s"을(를) 제거하려고 합니다.
 122 시스템 메시지 카탈로그를 사용할 수 없습니다. 
@@ -212,12 +215,12 @@ $set 5 MSGCAT_SET_ERROR
 143 소유자가 없는 클래스가 발생하였습니다.
 144 사용자 오브젝트를 액세스할 수 없습니다.
 145 자기 자신에 대해 GRANT/REVOKE 명령할 수 없습니다. 
-146 클래스 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
+146 %1$s 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
 147 GRANT 옵션이 없습니다.
 148 권한 부여 오브젝트에 대해 쓰기 락을 얻을 수 없습니다.
 149 권한 부여 오브젝트의 인스턴스를 생성할 수 없습니다.
 150 자기 자신의 권한은 해제할 수 없습니다.
-151 클래스 소유자의 권한은 해제할 수 없습니다.
+151 %1$s 소유자의 권한은 해제할 수 없습니다.
 152 GRANT가 없습니다.
 153 데이터베이스에 대한 권한 부여 권리가 없습니다. 
 154 불완전한 권한 부여 설정 - 데이터베이스에 대한 권한 부여 권리가 없습니다. 
@@ -233,7 +236,7 @@ $set 5 MSGCAT_SET_ERROR
 164 사용자 "%1$s" 이(가) 이미 존재합니다.
 165 사용자 "%1$s" 을(를) 확인하십시오.
 166 유효하지 않은 사용자가 지정되었습니다.
-167 클래스 소유자만이 오퍼레이션을 수행할 수 있습니다.
+167 %1$s 소유자만이 오퍼레이션을 수행할 수 있습니다.
 168 멤버를 찾을 수 없습니다.
 169 데이터베이스에서 사용자를 제거할 수 없습니다.
 170 로그인된 사용자가 없습니다.
@@ -416,7 +419,7 @@ $set 5 MSGCAT_SET_ERROR
 347 master 서버와의 pipe를 생성할 수 없습니다.
 348 service나 포트 번호를 명시해야 합니다.
 349 알 수 없는 TCP 서비스 입니다: %1$s.
-350 /etc/hosts에서 ("%1$s")를 찾을 수 없습니다. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
+350 "%2$s"에서 호스트명 ("%1$s")를 찾을 수 없습니다. 파일의 권한 또는 호스트명이 있는지 확인해주세요.
 351 TCP socket을 생성할 수 없습니다.
 352 tcp_open: 예약된 TCP 포트를 얻을 수 없습니다.
 353 호스트 "%1$s"의 master 서버에 접속할 수 없습니다.
@@ -683,8 +686,8 @@ $ LOADDB
 613 도메인이 다르므로 클래스 "%3$s"의 "%1$s"을(를) 클래스 "%2$s"의 alias substitute로 활용할 수 없습니다. 
 614 보관 로그의 개수가 허용 최대치 %1$d을(를) 초과했습니다.
 615 윈속으로 연결할 수 없습니다. 윈속 에러: %1$d.
-616 윈속을 통해 머신 이름을 알 수 없습니다. 윈속 에러: %1$d.
-617 윈속을 통해 머신 ID를 알 수 없습니다. 호스트 이름 테이블에 이 머신에 대한 엔트리가 있어야 합니다. 윈속 에러: %1$d.
+616 "%2$s"에서 호스트명 ("%1$s")를 찾을 수 없습니다. 파일의 권한 또는 호스트명이 있는지 확인해주세요.
+617 "%2$s"에서 호스트명 ("%1$s")를 찾을 수 없습니다. 파일의 권한 또는 호스트명이 있는지 확인해주세요.
 618 애트리뷰트가 수정될 수 없습니다.
 619 잘못된 코드셋입니다.
 620 변환 대상 코드셋이 잘못되었습니다.
@@ -904,7 +907,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial/server/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체를 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -967,14 +970,14 @@ $ LOADDB
 897 압축 해제 오류입니다.
 898 복제 오류가 발생했습니다: "%1$s"
 899 잘못된 분할 작업 요구입니다.
-900 Java 가상 머신 라이브러리를 찾을 수 없습니다: %1$s.
-901 Java 가상 머신을 시작할 수 없습니다: %1$s.
-902 Java 가상 머신이 실행되지 않았습니다.
-903 Java 가상 머신에 접속할 수 없습니다: %1$s
+900 가상 머신 라이브러리를 찾을 수 없습니다: %1$s.
+901 PL 서버를 시작할 수 없습니다: %1$s.
+902 PL 서버가 실행되지 않았습니다.
+903 PL 서버에 접속할 수 없습니다: %1$s
 904 잘못된 Stored Procedure 이름입니다.
-905 Java 가상 머신과 통신 중 오류가 발생하였습니다: %1$d
+905 PL 서버와 통신 중 오류가 발생하였습니다: %1$d
 906 잘못된 자바 메소드입니다.
-907 소유자나 DBA 그룹의 멤버만이 대상 stored procedure를 삭제(drop)할 수 있습니다.
+907 소유자나 DBA 그룹의 멤버만이 대상 stored procedure를 %1$s할 수 있습니다.
 908 Stored procedure '%1$s'의 매개변수가 너무 많습니다.
 909 카탈로그 클래스/가상 클래스를 찾을 수 없거나, 잘못된 엔트리입니다.
 910 허용되지 않는 분할 접근 입니다.
@@ -1047,7 +1050,7 @@ $ LOADDB
 977 체크포인트가 시작되었습니다. (이전 체크포인트 페이지: %1$lld, 이전 체크포인트 redo 페이지: %2$lld)
 978 체크포인트가 완료되었습니다. (체크포인트 페이지: %1$lld, 체크포인트 redo 페이지: %2$lld, flush된 페이지 개수: %3$d)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
-980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
+980 쓰레드가 %1$s 에서 %2$d msec 이상 대기했습니다(%3$d msec).
 981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
 982 트랜잭션 %1$d에 인터럽트 설정
 983 해당 테이블에 대해 허용되지 않는 작업이 시도되었습니다. REUSE_OID 옵션이 정의된 테이블 내 레코드를 참조할 수 없습니다.
@@ -1313,7 +1316,7 @@ $ LOADDB
 1243 에러로 인해서 인덱스 로딩이 취소되었습니다.
 1244 shared 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
 1245 class 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
-1246 /etc/hosts에서 ("%1$s")의 정보를 확인할 수 없습니다.. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
+1246 "%2$s"에서 호스트명 ("%1$s")의 정보를 확인할 수 없습니다. 파일의 권한 또는 호스트명이 있는지 확인해주세요.
 1247 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. 
 1248 올바른 형식의 키 파일이 아닙니다. : %1$s
 1249 지정된 키를 찾을 수 없습니다 (인덱스: %1$d).
@@ -1437,16 +1440,26 @@ $ LOADDB
 1353 CAS 내부 에러 : %1$d 
 1354 CAS 내부 에러 : %1$d, %2$s
 
-1355 "%4$s"파일 %3$d번째 줄에서 %1$s "%2$s" 은(는) 잘못된 형식입니다.
-1356 "%3$s 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 너무 깁니다, 호스트 명의 길이는 256자 보다 작거나 같아야 합니다.
-1357 "%3$s" 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 이미 있습니다. 하나의 호스트 명은(는) 중복되어 다른 IP 주소를 가질 수 없습니다. 
-1358 "%2$s" 파일 %1$d번째 줄에서 IP 주소와 호스트 명 둘 다 완전하게 작성되어야 합니다.
-1359 cubrid_hosts.conf 파일에서 "%1$s"을(를) 찾을 수 없습니다.
-1360 user defined host를 사용하는 도중에 에러가 발생하였습니다.
 
-1361 파일 "%1$s"을(를) 찾을 수 없습니다.
+1355 파일 "%1$s"을(를) 찾을 수 없습니다.
+1356 DBLink 쿼리에 Hint가 없거나, Statement type 이 잘못되었습니다. : %1$s
+1357 SQL 문자열을 와이드 문자열로 변환 실패.
+1358 영향을 받은 행 수를 알 수 없음.
 
-1362 마지막 에러
+1359 PL 서버에 장애가 발생함. : %1$s
+1360 Stored procedure compile error: %1$s
+
+1361 부질의 캐시가 잘못되었습니다.
+1362 언어 '%1$s'에 대한 로캘은 사용 가능하지 않습니다.
+1363 시스템 생성 stored procedure를 삭제(drop)할 수 없습니다.
+1364 PL/CSQL 저장 프로시저/함수는 호출자 권한을 지원하지 않습니다.
+
+1365 DBA 및 소유자만 %1$s 권한을 부여할 수 있습니다.
+
+1366 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
+
+1367 DBLINK 트랜잭션 취소: %1$s
+1367 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1508,8 +1521,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 잘못된 형식의 create user 구문입니다.\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 잘못된 형식의 create trigger 구문입니다.\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 잘못된 형식의 create procedure 구문입니다.\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 잘못된 형식의 create function 구문입니다.\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 잘못된 형식의 create procedure 구문입니다.\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 잘못된 형식의 create function 구문입니다.\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 잘못된 형식의 groups 구문입니다.\n  groups spec: GROUPS identifier {, identifier}*
 37 잘못된 형식의 members 구문입니다.\n  member spec: MEMBERS identifier {, identifier}*
 38 잘못된 형식의 password 구문입니다.\n  password spec: PASSWORD 'STRING'
@@ -1612,6 +1625,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
 136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
+138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
+139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1930,6 +1945,27 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 동의어 "%1$s"이(가) 존재하지 않습니다.
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
+317 식별자는 LIMIT 절 안에 있을 수 없습니다.
+318 DBA 및 DBA 그룹 구성원만 SERIAL OWNER를 변경할 수 있습니다.
+319 '%1$s'는 Stored Procedure에서 지원하지 않는 인수 타입입니다
+320 '%1$s'는 Stored Procedure에서 지원하지 않는 결과 타입입니다
+321 %TYPE 타입 지정은 PL/CSQL에서만 사용 가능합니다
+322 테이블 컬럼 '%1$s.%2$s'이 정의되지 않았습니다
+323 저장 프로시저/함수 '%1$s' 이(가) OUT 또는 IN OUT 인수를 가지고 있습니다.
+324 '%1$s'은 레코드 변수가 아닙니다.
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
+
+325 언어를 지정하는 인수는 문자열 리터럴이어야 합니다.
+326 저장 프로시저/함수 "%1$s"이(가) 존재하지 않습니다.
+327 Out 매개변수에 DEFAULT를 할당하는 것은 허용되지 않습니다: '%1$s'.
+328 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
+329 %1$s에 대해 GRANT 옵션을 부여할 수 없습니다.
+
+330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
+331 Static SQL에 사용된 호스트 표현식은 변수나 레코드 필드이어야 합니다: '%1$s'.
+
+
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -2113,22 +2149,22 @@ $set 15 MSGCAT_SET_IO
 2 백업 = %1$s 이(가) 필요합니다. \n 계속하려면 마운트/로드되어야 합니다.\n 마운트/로드 이후 계속하려면 1을 입력하세요.\n 종료하려면 0을 입력하세요.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5           Release: %1$s\n\
-     Disk Version: %2$g\n
-6     Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
-7      Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
-8       Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
-9  Database Volume name: %1$s\n\
+5 Release: %1$s\n\
+   Disk Version: %2$g\n
+6 Database Name: %1$s\n\
+   DB Creation Time: %2$s\
+   Pagesize: %3$d\n
+7 Backup Level: %1$d (%2$s)\n\
+   Start_lsa: %3$lld|%4$d\n\
+   Last_lsa: %5$lld|%6$d\n
+8 Backup Time: %1$s\
+   Backup Unit Num: %2$d\n
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10    Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+10 Database Name: %1$s\n\
+   Volume Name: %2$s\n\
+   Unit Num: %3$d\n\
+   Backup Level: %4$d (%5$s)\n\
 다음 옵션 중 하나를 선택하시오:\n
 11 입력\n \
   -  %1$d: 종료\n \
@@ -2144,14 +2180,16 @@ $set 15 MSGCAT_SET_IO
 19 백업 볼륨 %1$s의 timestamp가 올바르지 않습니다.\n   (Timestamp: %2$s, 예상: %3$s).\n\n
 20 백업 볼륨 정보 파일 에러, 라인 %1$d.\n
 21 백업 볼륨 라벨: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22      이전 백업 Level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+22 이전 백업 Level: %1$d\n\
+   Time: %2$s\
+   (start_lsa was %3$lld|%4$d)\n
 23 데이터베이스 복구를 위해서 다음의 백업 볼륨이 필요합니다:\n\n
 24 백업 장치의 여유 공간이 없습니다. 계속 진행하기 위해서 새로운 백업 장치가 필요합니다:\n\n
 25 이전 백업 볼륨 이름: %1$s\n
-26      다음 백업 볼륨 이름: %1$s\n
-27   Backup Pagesize: %1$d\n
-28        Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+26 다음 백업 볼륨 이름: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
+   Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -2212,3 +2250,11 @@ $set 16 MSGCAT_SET_LOG
 28 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. \n
 29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
+
+$set 17 MSGCAT_SET_GLOSSARY
+1 클래스
+2 트리거
+3 시리얼
+4 서버
+5 동의어
+6 프로시저

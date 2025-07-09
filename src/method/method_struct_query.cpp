@@ -15,6 +15,12 @@
  *  limitations under the License.
  *
  */
+#ident "$Id$"
+
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 
 #include "method_struct_query.hpp"
 
@@ -26,6 +32,8 @@
 #if defined (CS_MODE)
 #include "method_schema_info.hpp"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
@@ -493,7 +501,7 @@ namespace cubmethod
     fprintf (stdout, "tuple_count: %d\n", tuple_count);
     fprintf (stdout, "ins_oid (%d, %d, %d)\n", ins_oid.pageid, ins_oid.slotid, ins_oid.volid);
     fprintf (stdout, "include_oid: %d\n", include_oid);
-    fprintf (stdout, "query_id: %lld\n", query_id);
+    fprintf (stdout, "query_id: %" PRIu64 "\n", query_id);
   }
 
   void
@@ -608,6 +616,7 @@ namespace cubmethod
 
   execute_info::execute_info ()
   {
+    handle_id = -1;
     num_affected = 0;
     stmt_type = CUBRID_STMT_NONE;
     num_markers = 0;
@@ -616,12 +625,20 @@ namespace cubmethod
 
   execute_info::~execute_info ()
   {
+#if defined (SERVER_MODE)
+    // call_info is only allocated by unpack() in cub_server
+    if (call_info != nullptr)
+      {
+	delete call_info;
+      }
+#endif
     call_info = nullptr;
   }
 
   void
   execute_info::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (handle_id);
     serializator.pack_int (num_affected);
     qresult_info.pack (serializator);
 
@@ -650,6 +667,7 @@ namespace cubmethod
   void
   execute_info::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (handle_id);
     deserializator.unpack_int (num_affected);
     qresult_info.unpack (deserializator);
 
@@ -673,12 +691,17 @@ namespace cubmethod
       {
 	call_info = new prepare_call_info (); // need to be freed;
       }
+    else
+      {
+	call_info = nullptr;
+      }
   }
 
   size_t
   execute_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (start_offset); // num_affected
+    size_t size = serializator.get_packed_int_size (start_offset); // handle_id
+    size += serializator.get_packed_int_size (size); // num_affected
 
     size += qresult_info.get_packed_size (serializator, size);
 

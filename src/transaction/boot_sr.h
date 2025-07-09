@@ -81,9 +81,29 @@ struct check_args
   bool check_timezone;
 };
 
-#define BO_IS_SERVER_RESTARTED() \
-        (boot_Server_status == BOOT_SERVER_UP \
-         || boot_Server_status == BOOT_SERVER_MAINTENANCE)
+#define BO_IS_SERVER_RESTARTED() (boot_Server_status != BOOT_SERVER_DOWN)
+
+#if defined(SERVER_MODE)
+extern bool boot_Enabled_flush_daemons;
+
+#define BO_IS_FLUSH_DAEMON_AVAILABLE() \
+        (boot_Enabled_flush_daemons == true)
+#define BO_ENABLE_FLUSH_DAEMONS() \
+        do \
+          { \
+            if (!BO_IS_FLUSH_DAEMON_AVAILABLE ()) \
+              { \
+                boot_Enabled_flush_daemons = true; \
+              } \
+          } \
+        while (0)
+#define BO_DISABLE_FLUSH_DAEMONS() \
+        do \
+          { \
+            boot_Enabled_flush_daemons = false; \
+          } \
+        while (0)
+#endif /* SERVER_MODE */
 
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 
@@ -104,6 +124,9 @@ struct bo_restart_arg
   bool is_restore_from_backup;
   INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
+  LOG_LSA restart_committed_lsa;	/* committed_lsa which will be used by applylogdb after restoreslave.
+					 * Replicated logs before the committed_lsa should not be applied by applylogdb,
+					 * because logs before committed_lsa are already applied by recovery process */
   char keys_file_path[PATH_MAX];	/* Master Key File (_keys) path for TDE. If it is not NULL, it is used, not the keys spcified system parameter or from default path */
 };
 

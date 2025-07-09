@@ -71,7 +71,7 @@
 #include "trigger_manager.h"
 #include "utility.h"
 #include "work_space.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 using namespace cubload;
 
@@ -1540,7 +1540,8 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (STATIC_CAST (int, strlen (db_get_string (&value))) < buf_size);
-      strncpy (buf, db_get_string (&value), buf_size);
+      strncpy (buf, db_get_string (&value), buf_size -1);
+      buf[buf_size -1] = '\0';
     }
   else
     {
@@ -4998,7 +4999,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	      ldr_abort ();
 	      goto error_exit;
 	    }
-	  strncpy (context->class_name, class_name, len);
+	  memcpy (context->class_name, class_name, len);
 	  context->class_name[len] = '\0';
 
 	  if (is_internal_class (context->cls))
@@ -6359,6 +6360,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int defaults = 0;
   int fails = 0;
   int64_t lastcommit = 0;
+  volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
 
   std::ifstream object_file (args->object_file);
@@ -6366,7 +6368,10 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   ldr_init_driver ();
 
   locator_Dont_check_foreign_key = true;
-  ldr_init (args);
+  if (ldr_init (args) != NO_ERROR)
+    {
+      goto exit;
+    }
 
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
    * logging is enabled set abort flag. */
@@ -6386,6 +6391,14 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
       ldr_register_post_commit_handler ();
     }
 
+  /* get the size of object file */
+  object_file.seekg (0, std::ios::end);
+  if (object_file.tellg() <= 0)
+    {
+      is_emptyfile = true;
+    }
+  object_file.seekg (0, std::ios::beg);
+
   /* Check if we need to perform syntax checking. */
   if (!args->load_only)
     {
@@ -6395,7 +6408,10 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	{
 	  ldr_init_ret = ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 	}
-      ldr_Driver->parse (object_file);
+      if (!is_emptyfile)
+	{
+	  ldr_Driver->parse (object_file);
+	}
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
     }
   else
@@ -6444,7 +6460,6 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 						 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
 		}
 	      *interrupted = true;
-	      *status = 3;
 	    }
 	  else
 	    {
@@ -6453,7 +6468,10 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		  ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 		}
 
-	      ldr_Driver->parse (object_file);
+	      if (!is_emptyfile)
+		{
+		  ldr_Driver->parse (object_file);
+		}
 	      ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 
 	      if (errors)
@@ -6477,12 +6495,9 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		}
 	      else
 		{
-		  if (objects || fails)
-		    {
-		      print_log_msg (1,
-				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						     LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
-		    }
+		  print_log_msg (1,
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						 LOADDB_MSG_INSERT_AND_FAIL_COUNT), objects, fails);
 
 		  if (defaults)
 		    {
@@ -6522,6 +6537,13 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	    }
 	}
     }
+
+  if (errors > 0 || *interrupted == true)
+    {
+      *status = 3;
+    }
+
+exit:
 
   ldr_final ();
 

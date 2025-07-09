@@ -29,10 +29,12 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 #include <assert.h>
 #include <stdio.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE

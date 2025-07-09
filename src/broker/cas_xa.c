@@ -200,7 +200,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 	  return FN_KEEP_CONN;
 	}
 
-      ux_end_tran (tran_type, true);
+      ux_end_tran (tran_type, true, true);
       set_xa_prepare_flag ();
     }
 

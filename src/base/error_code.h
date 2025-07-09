@@ -1125,14 +1125,14 @@
 
 #define ER_INVALID_PARTITION_REQUEST                -899
 
-#define ER_SP_JVM_LIB_NOT_FOUND                     -900
-#define ER_SP_CANNOT_START_JVM                      -901
-#define ER_SP_NOT_RUNNING_JVM                       -902
-#define ER_SP_CANNOT_CONNECT_JVM                    -903
+#define ER_SP_VM_LIB_NOT_FOUND                      -900
+#define ER_SP_CANNOT_START_PL_SERVER                -901
+#define ER_SP_NOT_RUNNING_PL_SERVER                 -902
+#define ER_SP_CANNOT_CONNECT_PL_SERVER              -903
 #define ER_SP_INVALID_NAME                          -904
 #define ER_SP_NETWORK_ERROR                         -905
 #define ER_SP_INVAILD_JAVA_METHOD                   -906
-#define ER_SP_DROP_NOT_ALLOWED                      -907
+#define ER_SP_DDL_NOT_ALLOWED_PRIVILEGES            -907
 #define ER_SP_TOO_MANY_ARG_COUNT                    -908
 
 #define ER_BO_MISSING_OR_INVALID_CATALOG            -909
@@ -1731,16 +1731,29 @@
 #define ER_SQL_ERROR_LOG_TRACE                      -1353
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1354
 
-#define ER_UHOST_INVALID_FORMAT                     -1355
-#define ER_UHOST_HOST_NAME_TOO_LONG                 -1356
-#define ER_UHOST_HOST_NAME_ALREADY_EXIST            -1357
-#define ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE     -1358
-#define ER_UHOST_CANT_LOOKUP_INFO                   -1359
-#define ER_UHOST_ERROR                              -1360
+#define ER_FILE_NOT_FOUND                           -1355
+#define ER_CGW_INVALID_DBLINT_HINT                  -1356
+#define ER_CGW_SQL_CONV_ERROR                       -1357
+#define ER_CGW_UNKNOWN_AFFECTED_ROWS                -1358
 
-#define ER_FILE_NOT_FOUND                           -1361
+#define ER_SP_PL_SERVER_CRASHED                     -1359
+#define ER_SP_COMPILE_ERROR                         -1360
+#define ER_QPROC_RESULT_CACHE_INVALID		        -1361
 
-#define ER_LAST_ERROR                               -1362
+#define ER_LOCALE_LANG_NOT_AVAILABLE		        -1362
+#define ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED     -1363
+#define ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED         -1364
+
+#define ER_AU_OWNER_ONLY_GRANT_PRIVILEGE            -1365
+
+#define ER_SP_PARAM_DEFAULT_STR_TOO_BIG             -1366
+
+#define ER_DBLINK_TRAN				    -1367
+
+#define ER_LAST_ERROR                               -1368
+
+
+
 
 /*
  * CAUTION!

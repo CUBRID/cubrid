@@ -58,6 +58,8 @@
 
 #include "dbtype.h"
 #include "memory_private_allocator.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1915,6 +1917,8 @@ pr_clear_value (DB_VALUE * value)
   bool need_clear;
   DB_TYPE db_type;
 
+  static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
+
   if (value == NULL)
     {
       return NO_ERROR;		/* do nothing */
@@ -1929,7 +1933,7 @@ pr_clear_value (DB_VALUE * value)
       need_clear = false;
       if (value->need_clear)
 	{
-	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	  if (oracle_style_empty_string)
 	    {			/* need to check */
 	      if ((QSTR_IS_ANY_CHAR_OR_BIT (db_type) && value->data.ch.medium.buf != NULL)
 		  || db_type == DB_TYPE_ENUMERATION)
@@ -5373,7 +5377,6 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 	      db_make_object (value, ws_mop (&oid, NULL));
 	      if (db_get_object (value) == NULL)
 		{
-		  or_abort (buf);
 		  return ER_FAILED;
 		}
 	    }
@@ -5989,7 +5992,8 @@ mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   elo = (DB_ELO *) db_private_alloc (NULL, sizeof (DB_ELO));
   if (elo == NULL)
     {
-      or_abort (buf);
+      ASSERT_ERROR ();
+      return;
     }
   else
     {
@@ -5999,7 +6003,7 @@ mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       if (rc != NO_ERROR)
 	{
 	  db_private_free_and_init (NULL, elo);
-	  or_abort (buf);
+	  return;
 	}
     }
 
@@ -7089,7 +7093,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
 	  /* check for overflow */
 	  if ((((ptrdiff_t) (buf->endptr - buf->ptr)) < (ptrdiff_t) ref->disk_size))
 	    {
-	      return or_overflow (buf);
+	      return ER_TF_BUFFER_OVERFLOW;
 	    }
 	  else
 	    {
@@ -7118,7 +7122,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
 #if !defined (SERVER_MODE)
 		      (void) ws_pin (ref->owner, pin);
 #endif
-		      return or_overflow (buf);
+		      return ER_TF_BUFFER_OVERFLOW;
 		    }
 		  else
 		    {
@@ -7171,7 +7175,9 @@ mr_data_readmem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	    }
 	  else
 	    {
-	      or_abort (buf);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	      assert (false);
+	      return;
 	    }
 	}
     }
@@ -7197,7 +7203,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	    }
 	  else
 	    {
-	      or_abort (buf);
 	      return ER_FAILED;
 	    }
 	}
@@ -7232,7 +7237,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	  set = or_get_set (buf, domain);
 	  if (set == NULL)
 	    {
-	      or_abort (buf);
 	      return ER_FAILED;
 	    }
 	  else
@@ -7240,7 +7244,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	      ref = setobj_get_reference (set);
 	      if (ref == NULL)
 		{
-		  or_abort (buf);
 		  return ER_FAILED;
 		}
 	      else
@@ -7268,7 +7271,6 @@ mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	  ref = set_make_reference ();
 	  if (ref == NULL)
 	    {
-	      or_abort (buf);
 	      return ER_FAILED;
 	    }
 	  else
@@ -7545,7 +7547,7 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (src_idx->size < 0)
     {
-      dst_idx.size = strlen (src_idx->buf);
+      dst_idx.size = mr_index_lengthmem_midxkey (src_idx->buf, src_idx->domain);
     }
   else
     {
@@ -7642,7 +7644,6 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     }
 
   midxkey.size = size;
-  midxkey.ncolumns = 0;
   midxkey.domain = domain;
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
@@ -7674,7 +7675,6 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	{
 	  /* need to be able to return errors ! */
 	  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-	  or_abort (buf);
 	  return ER_FAILED;
 	}
       else
@@ -7757,7 +7757,6 @@ clean_up:
   return c;
 }
 
-
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
@@ -7765,8 +7764,9 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
   TP_DOMAIN *dom1, *dom2;
-  char *bitptr1, *bitptr2;
+  char *nullmap_ptr1, *nullmap_ptr2;
   char *mem1, *mem2;
+  int offset1, offset2;
   int last;
 
   assert (total_order == 1);
@@ -7826,13 +7826,13 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   }
 #endif /* NDEBUG */
 
-  bitptr1 = mul1->buf;
-  bitptr2 = mul2->buf;
+  nullmap_ptr1 = mul1->buf;
+  nullmap_ptr2 = mul2->buf;
 
-  last = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
+  last = or_multi_header_size (mul1->domain->precision);
 
-  mem1 = bitptr1 + last;
-  mem2 = bitptr2 + last;
+  mem1 = mul1->buf + last;
+  mem2 = mul2->buf + last;
 
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
@@ -7840,28 +7840,81 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   last = (num_index_term > 0) ? num_index_term : mul1->ncolumns;
 
   i = 0;
-  if (start_colp)
+  if (start_colp && *start_colp > 0)
     {
-      for ( /* blank */ ; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+      offset1 = or_multi_get_element_offset (nullmap_ptr1, mul1->domain->precision, *start_colp);
+      offset2 = or_multi_get_element_offset (nullmap_ptr2, mul2->domain->precision, *start_colp);
+
+      /* fallthrough: i, dom1, dom2 */
+      if (offset1 > 0)
 	{
-	  if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
+	  if (offset2 > 0)
 	    {
-	      assert (false);
-	      return DB_UNK;
-	    }
+	      mem1 = mul1->buf + offset1;
+	      mem2 = mul2->buf + offset2;
 
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
-	    {
-	      mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+	      for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+		{
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
+		}
 	    }
-
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	  else
 	    {
-	      mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+	      mem1 = mul1->buf + offset1;
+
+	      for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+		{
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
+
+		  if (or_multi_is_not_null (nullmap_ptr2, i))
+		    {
+		      mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+		    }
+		}
+	    }
+	}
+      else if (offset2 > 0)
+	{
+	  mem2 = mul2->buf + offset2;
+
+	  for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	    {
+	      if (or_multi_is_not_null (nullmap_ptr1, i))
+		{
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
+
+		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+		}
+	    }
+	}
+      else
+	{
+	  for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	    {
+	      assert (dom1 != NULL);
+	      assert (dom2 != NULL);
+	      assert (dom1->is_desc == dom2->is_desc);
+
+	      if (or_multi_is_not_null (nullmap_ptr1, i))
+		{
+		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+		}
+
+	      if (or_multi_is_not_null (nullmap_ptr2, i))
+		{
+		  mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+		}
 	    }
 	}
     }
 
+  /* fallthrough: i, dom1, dom2 */
   for (c = DB_EQ; i < last; i++, dom1 = dom1->next, dom2 = dom2->next)
     {
       if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
@@ -7870,9 +7923,9 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	  return DB_UNK;
 	}
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+      if (or_multi_is_not_null (nullmap_ptr1, i))
 	{
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	  if (or_multi_is_not_null (nullmap_ptr2, i))
 	    {
 	      /* check for val1 and val2 same domain */
 	      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
@@ -7909,7 +7962,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		}
 	    }
 	}
-      else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+      else if (or_multi_is_not_null (nullmap_ptr2, i))
 	{
 	  /* val 1 unbound, val 2 bound */
 	  if (mul1->min_max_val.position == i)
@@ -7972,12 +8025,12 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
       if (c != DB_EQ)
 	{
-	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	  if (dom1 != NULL && or_multi_is_not_null (nullmap_ptr1, i))
 	    {
 	      result_size[0] += pr_midxkey_element_disk_size (mem1, dom1);
 	    }
 
-	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	  if (dom2 != NULL && or_multi_is_not_null (nullmap_ptr2, i))
 	    {
 	      result_size[1] += pr_midxkey_element_disk_size (mem2, dom2);
 	    }
@@ -8118,13 +8171,11 @@ mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
 {
-  char *buf, *bitptr;
+  char *nullmap_ptr, *buf_ptr;
   TP_DOMAIN *dom;
-  int idx_ncols = 0, i, adv_size;
+  int idx_ncols = 0, i;
+  int offset, advance_size;
   int len;
-
-  /* There is no difference between the disk & memory sizes. */
-  bitptr = (char *) memptr;
 
   idx_ncols = domain->precision;
   if (idx_ncols <= 0)
@@ -8133,41 +8184,61 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
       goto exit_on_error;	/* give up */
     }
 
+  /* There is no difference between the disk & memory sizes. */
+  nullmap_ptr = (char *) memptr;
+
 #if !defined (NDEBUG)
   {
-    int dom_ncols = 0;
-    for (dom = domain->setdomain; dom; dom = dom->next)
+    buf_ptr = nullmap_ptr + or_multi_header_size (idx_ncols);
+
+    for (i = 0, dom = domain->setdomain; dom; i++, dom = dom->next)
       {
-	dom_ncols++;
+	/* check for val is NULL */
+	if (or_multi_is_null (nullmap_ptr, i))
+	  {
+	    continue;		/* zero size; go ahead */
+	  }
+
+	/* at here, val is non-NULL */
+
+	buf_ptr += pr_midxkey_element_disk_size (buf_ptr, dom);
       }
 
-    if (dom_ncols <= 0)
+    if (i <= 0)
       {
 	assert (false);
 	goto exit_on_error;
       }
-    assert (dom_ncols == idx_ncols);
+    assert (i == idx_ncols);
   }
 #endif /* NDEBUG */
 
-  buf = bitptr + OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  assert (CAST_BUFLEN (buf - bitptr) > 0);
-
-  for (i = 0, dom = domain->setdomain; i < idx_ncols; i++, dom = dom->next)
+  offset = or_multi_get_size_offset (nullmap_ptr, idx_ncols);
+  if (offset > 0)
     {
-      /* check for val is NULL */
-      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+      assert (offset == CAST_BUFLEN (buf_ptr - nullmap_ptr));
+      return offset;
+    }
+  else
+    {
+      buf_ptr = nullmap_ptr + or_multi_header_size (idx_ncols);
+
+      for (i = 0, dom = domain->setdomain; i < idx_ncols; i++, dom = dom->next)
 	{
-	  continue;		/* zero size; go ahead */
+	  /* check for val is NULL */
+	  if (or_multi_is_null (nullmap_ptr, i))
+	    {
+	      continue;		/* zero size; go ahead */
+	    }
+
+	  /* at here, val is non-NULL */
+
+	  buf_ptr += pr_midxkey_element_disk_size (buf_ptr, dom);
 	}
-
-      /* at here, val is non-NULL */
-
-      buf += pr_midxkey_element_disk_size (buf, dom);
     }
 
   /* set buf size */
-  len = CAST_BUFLEN (buf - bitptr);
+  len = CAST_BUFLEN (buf_ptr - nullmap_ptr);
 
 exit_on_end:
 
@@ -8372,7 +8443,8 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       if (size != OR_NUMERIC_SIZE (domain->precision))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
+	  return;
 	}
       else
 	{
@@ -8845,25 +8917,6 @@ pr_value_mem_size (const DB_VALUE * value)
 }
 
 /*
- * pr_midxkey_element_disk_size - returns the number of bytes that will be
- * written by the "index_write" type function for this memory buffer.
- *    return: byte size of disk representation
- *    mem(in): memory buffer
- *    domain(in): type domain
- */
-int
-pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
-{
-  /*
-   * variable types except VARCHAR, VARNCHAR, and VARBIT
-   * cannot be a member of midxkey
-   */
-  assert (!(domain->type->variable_p && !QSTR_IS_VARIABLE_LENGTH (TP_DOMAIN_TYPE (domain))));
-
-  return domain->type->get_index_size_of_mem (mem, domain);
-}
-
-/*
  * pr_midxkey_get_vals_size() -
  *      return: int
  *  domains(in) :
@@ -8891,7 +8944,6 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
   return total;
 }
 
-
 /*
  * pr_midxkey_get_element_offset - Returns element offset of midxkey
  *    return:
@@ -8901,15 +8953,11 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
 int
 pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
 {
-  int idx_ncols = 0, i;
-  int advance_size;
-  int error = NO_ERROR;
-
   TP_DOMAIN *domain;
-
-  OR_BUF buf_space;
-  OR_BUF *buf;
-  char *bitptr;
+  int idx_ncols = 0, i;
+  OR_BUF buf;
+  char *nullmap_ptr;
+  int offset, advance_size;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -8924,38 +8972,44 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
       goto exit_on_error;
     }
 
-  /* get bit-mask */
-  bitptr = midxkey->buf;
   /* get domain list, attr number */
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
-  buf = &buf_space;
-  or_init (buf, midxkey->buf, midxkey->size);
+  or_init (&buf, midxkey->buf, midxkey->size);
 
-  advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  if (or_advance (buf, advance_size) != NO_ERROR)
+  nullmap_ptr = midxkey->buf;
+
+  if (or_advance (&buf, or_multi_header_size (idx_ncols)) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  for (i = 0; i < index; i++, domain = domain->next)
+  offset = or_multi_get_element_offset (nullmap_ptr, idx_ncols, index);
+  if (offset > 0)
     {
-      /* check for element is NULL */
-      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+      return offset;
+    }
+  else
+    {
+      for (i = 0; i < index; i++, domain = domain->next)
 	{
-	  continue;		/* skip and go ahead */
-	}
+	  /* check for element is NULL */
+	  if (or_multi_is_null (nullmap_ptr, i))
+	    {
+	      continue;
+	    }
 
-      advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
-      or_advance (buf, advance_size);
+	  advance_size = pr_midxkey_element_disk_size (buf.ptr, domain);
+	  or_advance (&buf, advance_size);
+	}
     }
 
-  if (error != NO_ERROR)
+  if (er_errid () != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  return CAST_BUFLEN (buf->ptr - buf->buffer);
+  return CAST_BUFLEN (buf.ptr - buf.buffer);
 
 exit_on_error:
 
@@ -8975,9 +9029,10 @@ exit_on_error:
 int
 pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix)
 {
-  int i, offset_postfix, offset_prefix;
-  DB_MIDXKEY *midx_postfix, *midx_prefix;
+  int i, offset, offset_postfix, offset_prefix;
+  DB_MIDXKEY *midx_prefix, *midx_postfix;
   DB_MIDXKEY midx_result;
+  int prefix_size;
 
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
@@ -8990,36 +9045,90 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 
   midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
   midx_result.buf = (char *) db_private_alloc (NULL, midx_result.size);
+  if (midx_result.buf == NULL)
+    {
+      return ER_FAILED;
+    }
   midx_result.domain = midx_postfix->domain;
   midx_result.ncolumns = midx_postfix->ncolumns;
 
   memcpy (midx_result.buf, midx_prefix->buf, offset_prefix);
+  memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
 
 #if !defined(NDEBUG)
   for (i = 0; i < n_prefix; i++)
     {
-      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i));
+      /* Compressed columns must be null. */
+      assert (or_multi_is_null (midx_postfix->buf, i));
     }
 #endif
 
-  for (i = n_prefix; i < midx_result.ncolumns; i++)
+  i = n_prefix;
+  prefix_size = offset_prefix - or_multi_header_size (midx_prefix->domain->precision);
+
+  if (prefix_size < OR_MULTI_MAX_OFFSET)
     {
-      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i))
+      /* fallthrough: i */
+      for (; i < midx_postfix->domain->precision; i++)
 	{
-	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, i);
-	}
-      else
-	{
-	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, i);
+	  /* update nullmap */
+	  if (or_multi_is_not_null (midx_postfix->buf, i))
+	    {
+	      or_multi_set_not_null (midx_result.buf, i);
+	    }
+	  else
+	    {
+	      /* The lower fence key stores from the first column to the columns that begin to differ when compared
+	       * to the upper fence key of the previous page. The number of columns in which the fence key stores
+	       * the value is unrelated to whether or not it is compressed. Therefore, even for columns after prefix,
+	       * it is not guaranteed that the fence key will always store null. */
+	      or_multi_set_null (midx_result.buf, i);
+	    }
+
+	  /* update offset */
+	  offset = or_multi_get_next_element_offset (midx_postfix->buf, midx_postfix->domain->precision, i);
+	  if (offset > 0 && (offset + prefix_size) < OR_MULTI_MAX_OFFSET)
+	    {
+	      or_multi_put_next_element_offset (midx_result.buf, midx_result.domain->precision, offset + prefix_size,
+						i);
+	    }
+	  else
+	    {
+	      break;
+	    }
 	}
     }
 
-  memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
+  assert (prefix_size >= OR_MULTI_MAX_OFFSET || i == midx_postfix->domain->precision || offset <= 0);
+
+  /* fallthrough: i */
+  for (; i < midx_postfix->domain->precision; i++)
+    {
+      /* update nullmap */
+      if (or_multi_is_not_null (midx_postfix->buf, i))
+	{
+	  or_multi_set_not_null (midx_result.buf, i);
+	}
+      else
+	{
+	  /* The lower fence key stores from the first column to the columns that begin to differ when compared
+	   * to the upper fence key of the previous page. The number of columns in which the fence key stores
+	   * the value is unrelated to whether or not it is compressed. Therefore, even for columns after prefix,
+	   * it is not guaranteed that the fence key will always store null. */
+	  or_multi_set_null (midx_result.buf, i);
+	}
+
+      /* update offset */
+      or_multi_put_next_element_offset (midx_result.buf, midx_result.domain->precision, OR_MULTI_MAX_OFFSET, i);
+    }
 
   midx_result.min_max_val.position = -1;
   midx_result.min_max_val.type = MIN_COLUMN;
   db_make_midxkey (result, &midx_result);
   result->need_clear = true;
+
+  assert (midx_result.size == or_multi_get_size_offset (midx_result.buf, midx_result.domain->precision)
+	  || midx_result.size >= OR_MULTI_MAX_OFFSET);
 
   return NO_ERROR;
 }
@@ -9035,7 +9144,10 @@ int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
   DB_MIDXKEY *midx_key;
+  TP_DOMAIN *domain;
+  char *buf_ptr;
   int i, start, offset;
+  int prefix_size, advance_size;
 
   midx_key = db_get_midxkey (key);
 
@@ -9044,12 +9156,75 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 
   memmove (midx_key->buf + start, midx_key->buf + offset, midx_key->size - offset);
 
-  for (i = 0; i < prefix; i++)
+  for (i = 0, domain = midx_key->domain->setdomain; i < prefix; i++, domain = domain->next)
     {
-      OR_MULTI_CLEAR_BOUND_BIT (midx_key->buf, i);
+      or_multi_set_null (midx_key->buf, i);
+      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, start, i);
     }
 
-  midx_key->size = midx_key->size - offset + start;
+  assert (i == prefix);
+  assert (domain != midx_key->domain->setdomain);
+
+  prefix_size = offset - start;
+
+  /* fallthrough: i, domain */
+  for (; i < midx_key->domain->precision; i++, domain = domain->next)
+    {
+      offset = or_multi_get_next_element_offset (midx_key->buf, midx_key->domain->precision, i);
+      if (offset > 0)
+	{
+	  or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset - prefix_size, i);
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  assert (i == midx_key->domain->precision || offset <= 0);
+
+  if (i < midx_key->domain->precision)
+    {
+      /* recalculate offset */
+      offset = or_multi_get_element_offset (midx_key->buf, midx_key->domain->precision, i);
+      assert (offset > 0);
+      assert (offset < OR_MULTI_MAX_OFFSET);
+
+      buf_ptr = midx_key->buf + offset;
+
+      /* fallthrough: i, domain */
+      for (; i < midx_key->domain->precision; i++, domain = domain->next)
+	{
+	  if (or_multi_is_null (midx_key->buf, i))
+	    {
+	      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset, i);
+	      continue;
+	    }
+
+	  advance_size = pr_midxkey_element_disk_size (buf_ptr, domain);
+	  if ((offset + advance_size) < OR_MULTI_MAX_OFFSET)
+	    {
+	      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset + advance_size, i);
+	      offset += advance_size;
+	      buf_ptr += advance_size;
+	    }
+	  else
+	    {
+	      break;
+	    }
+	}
+
+      /* fallthrough: i, domain */
+      for (; i < midx_key->domain->precision; i++, domain = domain->next)
+	{
+	  or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, OR_MULTI_MAX_OFFSET, i);
+	}
+    }
+
+  midx_key->size -= prefix_size;
+
+  assert (midx_key->size == or_multi_get_size_offset (midx_key->buf, midx_key->domain->precision)
+	  || midx_key->size >= OR_MULTI_MAX_OFFSET);
 
   return NO_ERROR;
 }
@@ -9101,15 +9276,13 @@ static int
 pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy, int *prev_indexp,
 				 char **prev_ptrp)
 {
-  int idx_ncols = 0, i;
-  int advance_size;
-  int error = NO_ERROR;
-
   TP_DOMAIN *domain;
-
-  OR_BUF buf_space;
-  OR_BUF *buf;
-  char *bitptr;
+  int idx_ncols;
+  OR_BUF buf;
+  char *nullmap_ptr;
+  int offset, advance_size;
+  int i;
+  int error = NO_ERROR;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -9143,69 +9316,67 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 #endif /* NDEBUG */
 
   /* get bit-mask */
-  bitptr = midxkey->buf;
+  nullmap_ptr = midxkey->buf;
+
   /* get domain list, attr number */
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
-  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, index))
+  if (or_multi_is_null (nullmap_ptr, index))
     {
       db_make_null (value);
     }
   else
     {
-      buf = NULL;		/* init */
-      i = 0;			/* init */
+      i = 0;
 
-      /* 1st phase: check for prev info */
-      if (prev_indexp && prev_ptrp)
+      or_init (&buf, midxkey->buf, midxkey->size);
+      or_advance (&buf, or_multi_header_size (idx_ncols));
+
+      offset = or_multi_get_element_offset (midxkey->buf, idx_ncols, index);
+      if (offset > 0)
 	{
-	  int j, offset;
+	  or_seek (&buf, offset);
 
-	  j = *prev_indexp;
-	  offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
-	  if (j <= 0 || j > index || offset <= 0)
-	    {			/* invalid info */
-	      /* nop */
-	    }
-	  else
+	  for (i = 0; i < index; i++, domain = domain->next)
 	    {
-	      buf = &buf_space;
-	      or_init (buf, *prev_ptrp, midxkey->size - offset);
+	      assert (domain != NULL);
+	    }
+	}
+      else
+	{
+	  if (prev_indexp && prev_ptrp)
+	    {
+	      offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
 
-	      /* consume prev domain */
-	      for (; i < j; i++)
+	      if (*prev_indexp <= 0 || *prev_indexp > index || offset <= 0)
+		{		/* invalid info */
+		  /* nop */
+		}
+	      else
 		{
-		  domain = domain->next;
+		  or_seek (&buf, offset);
+
+		  for (i = 0; i < *prev_indexp; i++, domain = domain->next)
+		    {
+		      assert (domain != NULL);
+		    }
 		}
 	    }
-	}
 
-      /* 2nd phase: need to set buf info */
-      if (buf == NULL)
-	{
-	  buf = &buf_space;
-	  or_init (buf, midxkey->buf, midxkey->size);
-
-	  advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-	  if (or_advance (buf, advance_size) != NO_ERROR)
+	  for (; i < index; i++, domain = domain->next)
 	    {
-	      goto exit_on_error;
+	      /* check for element is NULL */
+	      if (or_multi_is_null (nullmap_ptr, i))
+		{
+		  continue;	/* skip and go ahead */
+		}
+
+	      advance_size = pr_midxkey_element_disk_size (buf.ptr, domain);
+	      or_advance (&buf, advance_size);
 	    }
 	}
 
-      for (; i < index; i++, domain = domain->next)
-	{
-	  /* check for element is NULL */
-	  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
-	    {
-	      continue;		/* skip and go ahead */
-	    }
-
-	  advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
-	  or_advance (buf, advance_size);
-	}
-
-      error = domain->type->index_readval (buf, value, domain, -1, copy, NULL, 0);
+      error = domain->type->index_readval (&buf, value, domain, -1, copy, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -9215,7 +9386,7 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
       if (prev_indexp && prev_ptrp)
 	{
 	  *prev_indexp = index + 1;
-	  *prev_ptrp = buf->ptr;
+	  *prev_ptrp = buf.ptr;
 	}
     }
 
@@ -9248,8 +9419,8 @@ exit_on_error:
 int
 pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midxkey2, DB_VALUE * db_result)
 {
-  int c = DB_UNK;
-  int i;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
+  int i, offset;
   int size_buf[2], diff_column;
   bool dom_is_desc[2];
   int result_size = 0;
@@ -9284,8 +9455,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
     }
 
   if (size_buf[0] == midxkey1->size || size_buf[1] == midxkey2->size
-      || OR_MULTI_ATT_IS_UNBOUND (midxkey1->buf, diff_column + 1)
-      || OR_MULTI_ATT_IS_UNBOUND (midxkey2->buf, diff_column + 1))
+      || or_multi_is_null (midxkey1->buf, diff_column + 1) || or_multi_is_null (midxkey2->buf, diff_column + 1))
     {
       /* not found separator: give up */
       pr_clone_value (db_midxkey2, db_result);
@@ -9314,14 +9484,24 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  return er_errid ();
 	}
 
-      (void) memcpy (result_midxkey.buf, result_buf, result_size);
+      memcpy (result_midxkey.buf, result_buf, result_size);
       result_midxkey.size = result_size;
       result_midxkey.domain = midxkey2->domain;
       result_midxkey.ncolumns = midxkey2->ncolumns;
-      for (i = diff_column + 1; i < result_midxkey.ncolumns; i++)
+
+      offset = or_multi_get_next_element_offset (result_midxkey.buf, result_midxkey.domain->precision, diff_column);
+      if (offset < 0)
 	{
-	  OR_MULTI_CLEAR_BOUND_BIT (result_midxkey.buf, i);
+	  offset = OR_MULTI_MAX_OFFSET;
 	}
+
+      for (i = diff_column + 1; i < result_midxkey.domain->precision; i++)
+	{
+	  or_multi_set_null (result_midxkey.buf, i);
+	  or_multi_put_next_element_offset (result_midxkey.buf, result_midxkey.domain->precision, offset, i);
+	}
+
+      or_multi_put_size_offset (result_midxkey.buf, result_midxkey.domain->precision, result_midxkey.size);
 
       result_midxkey.min_max_val.position = -1;
       result_midxkey.min_max_val.type = MIN_COLUMN;
@@ -9372,44 +9552,14 @@ pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE *
 					  prev_indexp, prev_ptrp);
 }
 
-/*
- * pr_midxkey_init_boundbits() -
- *      return: int
- *  bufptr(in) :
- *  n_atts(in) :
- *
- */
-
-int
-pr_midxkey_init_boundbits (char *bufptr, int n_atts)
-{
-  int nbytes = OR_MULTI_BOUND_BIT_BYTES (n_atts);
-
-  MIDXKEY_BOUNDBITS_INIT (bufptr, nbytes);
-
-  return nbytes;
-}
-
-/*
- * pr_midxkey_add_elements() -
- *      return:
- *  keyval(in) :
- *  dbvals(in) :
- *  num_dbvals(in) :
- *  dbvals_domain_list(in) :
- *  domain(in) :
- */
-
 int
 pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
 {
-  int i;
   TP_DOMAIN *dom;
   DB_MIDXKEY *midxkey;
-  int total_size = 0;
-  int bitmap_size = 0;
+  int i, total_size, header_size;
   char *new_IDXbuf;
-  char *bound_bits;
+  char *nullmap_ptr;
   OR_BUF buf;
 
   /* phase 1: find old */
@@ -9421,14 +9571,14 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
 
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
     {
-      /* bitmap is always fully sized */
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+      assert (midxkey->domain->precision == midxkey->ncolumns + num_dbvals);
+      header_size = or_multi_header_size (midxkey->domain->precision);
       total_size = midxkey->size;
     }
   else
     {
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (num_dbvals);
-      total_size = bitmap_size;
+      header_size = or_multi_header_size (num_dbvals);
+      total_size = header_size;
     }
 
   /* phase 2: calculate how many bytes need */
@@ -9442,7 +9592,8 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
 
   or_init (&buf, new_IDXbuf, -1);
-  bound_bits = buf.ptr;
+
+  nullmap_ptr = new_IDXbuf;
 
   /* phase 4: copy new_IDXbuf from old */
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
@@ -9451,13 +9602,15 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
   else
     {
-      /* bound bits */
-      MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
-      or_advance (&buf, bitmap_size);
+      or_multi_clear_header (nullmap_ptr, num_dbvals);
+      or_advance (&buf, header_size);
     }
 
   for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
     {
+      or_multi_put_element_offset (nullmap_ptr, midxkey->domain->precision, CAST_BUFLEN (buf.ptr - buf.buffer),
+				   midxkey->ncolumns + i);
+
       /* check for added val is NULL */
       if (DB_IS_NULL (&dbvals[i]))
 	{
@@ -9466,10 +9619,12 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
 
       dom->type->index_writeval (&buf, &dbvals[i]);
 
-      OR_ENABLE_BOUND_BIT (bound_bits, midxkey->ncolumns + i);
+      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
 
   assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  or_multi_put_size_offset (nullmap_ptr, midxkey->domain->precision, total_size);
 
   /* phase 5: make new multiIDX */
   if (midxkey->size > 0)
@@ -9478,8 +9633,8 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
       midxkey->buf = NULL;
     }
 
-  midxkey->buf = buf.buffer;
-  midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  midxkey->buf = new_IDXbuf;
+  midxkey->size = total_size;
   midxkey->ncolumns += num_dbvals;
 
   return NO_ERROR;
@@ -9492,6 +9647,78 @@ error:
       midxkey->buf = NULL;
     }
   return ER_FAILED;
+}
+
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+int
+pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
+				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
+{
+  TP_DOMAIN *dom;
+  DB_MIDXKEY *midxkey;
+  int i, total_size, header_size, offset;
+  char *new_IDXbuf;
+  char *nullmap_ptr;
+  OR_BUF buf;
+
+  /* phase 1: find old */
+  midxkey = db_get_midxkey (keyval);
+  if (midxkey == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  assert (midxkey->ncolumns == 0 && midxkey->size == 0);
+
+  header_size = or_multi_header_size (num_dbvals + tail_null_cnt);
+  total_size = header_size;
+
+  /* phase 2: calculate how many bytes need */
+  total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
+
+  /* phase 3: initialize new_IDXbuf */
+  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
+  if (new_IDXbuf == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  or_init (&buf, new_IDXbuf, -1);
+
+  nullmap_ptr = new_IDXbuf;
+  or_multi_clear_header (nullmap_ptr, num_dbvals + tail_null_cnt);
+
+  or_advance (&buf, header_size);
+
+  /* phase 4: copy new_IDXbuf from old */
+  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
+    {
+      /* check for added val is NULL */
+      if (DB_IS_NULL (&dbvals[i]))
+	{
+	  continue;		/* skip and go ahead */
+	}
+
+      dom->type->index_writeval (&buf, &dbvals[i]);
+
+      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
+    }				/* for (i = 0, ...) */
+
+  assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
+    {
+      assert (or_multi_is_null (nullmap_ptr, i));
+      or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
+    }
+
+  or_multi_put_size_offset (nullmap_ptr, midxkey->ncolumns + num_dbvals + tail_null_cnt, total_size);
+
+  midxkey->buf = new_IDXbuf;
+  midxkey->size = total_size;
+  midxkey->ncolumns += (num_dbvals + tail_null_cnt);
+
+  return NO_ERROR;
 }
 
 /*
@@ -10116,7 +10343,6 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &len);
 	  if (rc != NO_ERROR)
 	    {
-	      or_abort (buf);
 	      return;
 	    }
 
@@ -10129,7 +10355,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
-	      or_abort (buf);
+	      return;
 	    }
 	  else
 	    {
@@ -10142,7 +10368,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      if (rc != NO_ERROR)
 		{
 		  db_private_free (NULL, new_);
-		  or_abort (buf);
+		  ASSERT_ERROR ();
 		  return;
 		}
 	      /* align like or_get_varchar */
@@ -10271,6 +10497,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	}
 
+      dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
 
@@ -10530,8 +10757,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 	      if (string == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  expected_decompressed_size * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
@@ -10551,8 +10776,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (compressed_size + 1) * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
@@ -10629,7 +10852,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
 		}
-	      or_abort (buf);
 	      return ER_FAILED;
 	    }
 	  else
@@ -10671,8 +10893,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 		  if (decompressed_string == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) expected_decompressed_size * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
@@ -10691,8 +10911,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 		  if (compressed_string == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) (compressed_size + 1) * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
@@ -10768,6 +10986,168 @@ cleanup:
   return rc;
 }
 
+
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
+/* data_readval_string() was written separately to read varchar columns 
+ * from HEAP records to support unloaddb.
+ * TO-DO: After applying [CBRD-25293], decide whether to consolidate and rewrite the function.
+ */
+int
+data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+		     int copy_buf_len)
+{
+  int precision;
+  int align = INT_ALIGNMENT;
+  int rc = NO_ERROR;
+  int compressed_size = 0, expected_decompressed_size = 0;
+  char *decompressed_string = NULL, *compressed_string = NULL;
+
+  if (value == NULL)
+    {
+      if (size == -1)
+	{
+	  rc = or_skip_varchar (buf, align);
+	}
+      else if (size)
+	{
+	  rc = or_advance (buf, size);
+	}
+
+      return rc;
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_VARCHAR_PRECISION;
+  if (size == 0)
+    {
+      /* its NULL */
+      db_value_domain_init (value, DB_TYPE_VARCHAR, precision, 0);
+      return NO_ERROR;
+    }
+
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+/* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
+       * towards the data stored in the buffer */
+  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (!copy)
+    {
+      if (compressed_size > 0)
+	{
+	  if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	    {
+	      /* read buf image into the copy_buf */
+	      decompressed_string = copy_buf;
+	    }
+	  else
+	    {
+	      /* Allocate storage for the string including the kludge NULL terminator */
+	      decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	      if (decompressed_string == NULL)
+		{
+		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto cleanup;
+		}
+	    }
+
+	  rc =
+	    pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size, expected_decompressed_size);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
+	}
+      else
+	{
+	  assert (compressed_size == 0);
+
+	  db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
+			   TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = false;
+	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+	}
+    }
+  else				/* if (!copy) */
+    {
+      bool compressed_need_clear = false;
+      int decompressed_size = 0;
+
+      if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	{
+	  /* read buf image into the copy_buf */
+	  decompressed_string = copy_buf;
+	}
+      else
+	{
+	  /* Allocate storage for the string including the kludge NULL terminator */
+	  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	  if (decompressed_string == NULL)
+	    {
+	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
+	}
+
+      if (compressed_size > 0)
+	{
+	  rc =
+	    pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size, expected_decompressed_size);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
+	}
+      else
+	{
+	  assert (compressed_size == 0);
+
+	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
+	  decompressed_string[expected_decompressed_size] = '\0';
+
+	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
+			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+	}
+    }
+
+  or_skip_varchar_remainder (buf, (compressed_size > 0) ? compressed_size : expected_decompressed_size, align);
+
+cleanup:
+  if (rc != NO_ERROR)
+    {
+      if (decompressed_string != NULL && decompressed_string != copy_buf)
+	{
+	  db_private_free_and_init (NULL, decompressed_string);
+	}
+      if (compressed_string != NULL)
+	{
+	  db_private_free_and_init (NULL, compressed_string);
+	}
+    }
+
+  return rc;
+}
+#endif // #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
+
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
@@ -10833,7 +11213,6 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
       if (string1 == NULL)
 	{
 	  /* Error report */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
 
@@ -10876,7 +11255,6 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
       if (string2 == NULL)
 	{
 	  /* Error report */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
 
@@ -11285,7 +11663,8 @@ mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       if (size != -1 && mem_length > size)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
+	  return;
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
@@ -11374,6 +11753,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
@@ -11607,8 +11987,6 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -11644,7 +12022,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	   * smaller value.  Still the domain should match at this point.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
 	  return ER_FAILED;
 	}
 
@@ -11687,8 +12065,6 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), domain->precision, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -12145,7 +12521,8 @@ mr_data_readmem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       if (size != -1 && mem_length > size)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
+	  return;
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
@@ -12231,6 +12608,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
   return error;
@@ -12529,8 +12907,6 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -12562,8 +12938,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	   * smaller value.  Still the domain should match at this point.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
-
+	  assert (false);
 	  return ER_FAILED;
 	}
 
@@ -12605,8 +12980,6 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), domain->precision, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -13151,6 +13524,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 
 	  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
@@ -13456,8 +13830,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
 	      if (string == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  expected_decompressed_size * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  return rc;
 		}
@@ -13479,8 +13851,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 	      if (compressed_string == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (compressed_size + 1) * sizeof (char));
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
@@ -13558,7 +13928,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		{
 		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
 		}
-	      or_abort (buf);
 	      return ER_FAILED;
 	    }
 	  else
@@ -13599,8 +13968,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 		  if (decompressed_string == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) expected_decompressed_size * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
@@ -13623,8 +13990,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
 		  if (compressed_string == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) (compressed_size + 1) * sizeof (char));
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
@@ -13782,7 +14147,6 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       if (string1 == NULL)
 	{
 	  /* Error report */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
       alloced_string1 = true;
@@ -13822,7 +14186,6 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
       if (string2 == NULL)
 	{
 	  /* Error report */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
 
@@ -14158,7 +14521,8 @@ mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       if (size != -1 && mem_length > size)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
+	  return;
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
@@ -14471,8 +14835,6 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -14505,7 +14867,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	   * smaller value.  Still the domain should match at this point.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  or_abort (buf);
+	  assert (false);
 
 	  return ER_FAILED;
 	}
@@ -14540,8 +14902,6 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    {
 	      /* need to be able to return errors ! */
 	      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), domain->precision, 0);
-	      or_abort (buf);
-
 	      return ER_FAILED;
 	    }
 	  else
@@ -14950,7 +15310,7 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
 	    {
-	      or_abort (buf);
+	      return;
 	    }
 	  else
 	    {
@@ -15134,6 +15494,7 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	}
     }
 
+  assert (buf->ptr <= buf->endptr);	/* safety check in heap_file.c */
   return rc;
 }
 
@@ -15179,7 +15540,12 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  precision = DB_MAX_VARBIT_PRECISION;
 	}
 
-      if (!copy)
+      if (size == 0)
+	{
+	  /* its NULL */
+	  db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	}
+      else if (!copy)
 	{
 	  str_bit_length = or_get_varbit_length (buf, &rc);
 	  if (rc == NO_ERROR)
@@ -15191,13 +15557,73 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	}
       else
 	{
-	  if (size == 0)
+	  if (size == -1)
 	    {
-	      /* its NULL */
-	      db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	      /* Standard packed varbit with a size prefix */
+	      ;			/* do nothing */
 	    }
 	  else
-	    {			/* size != 0 */
+	    {			/* size != -1 */
+	      /* Standard packed varbit within an area of fixed size, usually this means we're looking at the disk
+	       * representation of an attribute. Just like the -1 case except we advance past the additional
+	       * padding. */
+	      start = buf->ptr;
+	    }			/* size != -1 */
+
+	  str_bit_length = or_get_varbit_length (buf, &rc);
+	  if (rc != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  /* get the string byte length */
+	  str_length = BITS_TO_BYTES (str_bit_length);
+
+	  if (copy_buf && copy_buf_len >= str_length + 1)
+	    {
+	      /* read buf image into the copy_buf */
+	      new_ = copy_buf;
+	    }
+	  else
+	    {
+	      /*
+	       * Allocate storage for the string including the kludge NULL
+	       * terminator
+	       */
+	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
+	    }
+
+	  if (new_ == NULL)
+	    {
+	      /* need to be able to return errors ! */
+	      if (domain)
+		{
+		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
+		}
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      /* do not read the kludge NULL terminator */
+	      rc = or_get_data (buf, new_, str_length);
+	      if (rc == NO_ERROR && align == INT_ALIGNMENT)
+		{
+		  /* round up to a word boundary */
+		  rc = or_get_align32 (buf);
+		}
+
+	      if (rc != NO_ERROR)
+		{
+		  if (new_ != copy_buf)
+		    {
+		      db_private_free_and_init (NULL, new_);
+		    }
+		  return ER_FAILED;
+		}
+
+	      new_[str_length] = '\0';	/* append the kludge NULL terminator */
+	      db_make_varbit (value, precision, new_, str_bit_length);
+	      value->need_clear = (new_ != copy_buf) ? true : false;
+
 	      if (size == -1)
 		{
 		  /* Standard packed varbit with a size prefix */
@@ -15205,85 +15631,16 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      else
 		{		/* size != -1 */
-		  /* Standard packed varbit within an area of fixed size, usually this means we're looking at the disk
-		   * representation of an attribute. Just like the -1 case except we advance past the additional
-		   * padding. */
-		  start = buf->ptr;
+		  /* Standard packed varbit within an area of fixed size, usually this means we're looking at the
+		   * disk representation of an attribute. Just like the -1 case except we advance past the
+		   * additional padding. */
+		  pad = size - (int) (buf->ptr - start);
+		  if (pad > 0)
+		    {
+		      rc = or_advance (buf, pad);
+		    }
 		}		/* size != -1 */
-
-	      str_bit_length = or_get_varbit_length (buf, &rc);
-	      if (rc != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	      /* get the string byte length */
-	      str_length = BITS_TO_BYTES (str_bit_length);
-
-	      if (copy_buf && copy_buf_len >= str_length + 1)
-		{
-		  /* read buf image into the copy_buf */
-		  new_ = copy_buf;
-		}
-	      else
-		{
-		  /*
-		   * Allocate storage for the string including the kludge NULL
-		   * terminator
-		   */
-		  new_ = (char *) db_private_alloc (NULL, str_length + 1);
-		}
-
-	      if (new_ == NULL)
-		{
-		  /* need to be able to return errors ! */
-		  if (domain)
-		    {
-		      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-		    }
-		  or_abort (buf);
-		  return ER_FAILED;
-		}
-	      else
-		{
-		  /* do not read the kludge NULL terminator */
-		  rc = or_get_data (buf, new_, str_length);
-		  if (rc == NO_ERROR && align == INT_ALIGNMENT)
-		    {
-		      /* round up to a word boundary */
-		      rc = or_get_align32 (buf);
-		    }
-
-		  if (rc != NO_ERROR)
-		    {
-		      if (new_ != copy_buf)
-			{
-			  db_private_free_and_init (NULL, new_);
-			}
-		      return ER_FAILED;
-		    }
-
-		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
-		  db_make_varbit (value, precision, new_, str_bit_length);
-		  value->need_clear = (new_ != copy_buf) ? true : false;
-
-		  if (size == -1)
-		    {
-		      /* Standard packed varbit with a size prefix */
-		      ;		/* do nothing */
-		    }
-		  else
-		    {		/* size != -1 */
-		      /* Standard packed varbit within an area of fixed size, usually this means we're looking at the
-		       * disk representation of an attribute. Just like the -1 case except we advance past the
-		       * additional padding. */
-		      pad = size - (int) (buf->ptr - start);
-		      if (pad > 0)
-			{
-			  rc = or_advance (buf, pad);
-			}
-		    }		/* size != -1 */
-		}		/* else */
-	    }			/* size != 0 */
+	    }			/* else */
 	}
 
     }
@@ -15801,14 +16158,10 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
   int rc = NO_ERROR, str_length = 0, length = 0;
   int compression_length = 0, compress_buffer_size;
   bool compressed = false;
-  int save_error_abort = 0;
 
   /* Checks to be sure that we have the correct input */
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
   assert (db_get_string_size (value) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
-
-  save_error_abort = buf->error_abort;
-  buf->error_abort = 0;
 
   string = db_get_string (value);
   str_length = db_get_string_size (value);
@@ -15900,16 +16253,9 @@ after_compression:
 
 cleanup:
 
-  buf->error_abort = save_error_abort;
-
   if (compressed_string != NULL)
     {
       free_and_init (compressed_string);
-    }
-
-  if (rc == ER_TF_BUFFER_OVERFLOW)
-    {
-      return or_overflow (buf);
     }
 
   return rc;
@@ -16198,7 +16544,6 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   compressed_string = (char *) db_private_alloc (NULL, compressed_size);
   if (compressed_string == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, compressed_size);
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
       return rc;
     }
@@ -16532,19 +16877,13 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
       return ER_FAILED;
     }
 
-  if (buf->error_abort)
+#if !defined(NDEBUG)
+  int estimated_length = mr_data_lengthval_json (value, true);
+  if (buf->ptr + estimated_length > buf->endptr)
     {
-      int estimated_length = mr_data_lengthval_json (value, true);
-
-      if ((ptrdiff_t) estimated_length > ((ptrdiff_t) (buf->endptr - buf->ptr)))
-	{
-	  /* this will make string_data_writeval jump because
-	   * of buffer overflow, leaking memory in the process,
-	   * we need to take care of it here
-	   */
-	  (void) or_overflow (buf);
-	}
+      assert (false);
     }
+#endif
 
   JSON_DOC *json_doc = db_get_json_document (value);
   rc = db_json_serialize (*json_doc, *buf);
@@ -16580,7 +16919,6 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
     }
 
   db_make_json (value, doc, true);
-
   return NO_ERROR;
 }
 

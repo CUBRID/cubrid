@@ -91,6 +91,8 @@
 #endif /* !WINDOWS */
 
 #include <mutex>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Definition of error message structure. One structure is defined for each
@@ -1301,7 +1303,6 @@ er_notify_event_on_error (int err_id)
 {
   assert (err_id != NO_ERROR);
 
-  err_id = abs (err_id);
   if (sysprm_find_err_in_integer_list (PRM_ID_EVENT_ACTIVATION, err_id))
     {
       er_event ();
@@ -1348,7 +1349,6 @@ er_call_stack_dump_on_error (int severity, int err_id)
 {
   assert (err_id != NO_ERROR);
 
-  err_id = abs (err_id);
   if (severity == ER_FATAL_ERROR_SEVERITY)
     {
       er_dump_call_stack (er_Msglog_fh);
@@ -1600,7 +1600,6 @@ er_log (int err_id)
   int line_no;
   const char *file_name;
   const char *msg;
-  off_t position;
   time_t er_time;
   struct tm er_tm;
   struct tm *er_tm_p = &er_tm;
@@ -1748,17 +1747,17 @@ er_log (int err_id)
 
   fprintf (*log_fh, er_Cached_msg[ER_LOG_MSG_WRAPPER_D], time_array, ER_SEVERITY_STRING (severity), file_name, line_no,
 	   ER_ERROR_WARNING_STRING (severity), err_id, tran_index, more_info_p, msg);
-  fflush (*log_fh);
 
   /* Flush the message so it is printed immediately */
-  (void) fflush (*log_fh);
-
-  if (*log_fh != stderr || *log_fh != stdout)
+  if (*log_fh != stderr && *log_fh != stdout)
     {
-      position = ftell (*log_fh);
-      (void) fprintf (*log_fh, "%s", er_Cached_msg[ER_LOG_LAST_MSG]);
+      int wsz = fprintf (*log_fh, "%s", er_Cached_msg[ER_LOG_LAST_MSG]);
       (void) fflush (*log_fh);
-      (void) fseek (*log_fh, position, SEEK_SET);
+      (void) fseek (*log_fh, (-wsz), SEEK_CUR);
+    }
+  else
+    {
+      (void) fflush (*log_fh);
     }
 
   /* Do we want to exit ? */
@@ -3258,3 +3257,140 @@ namespace cuberr
   }
 } // namespace cuberr
 /* *INDENT-ON* */
+
+#if !defined(WINDOWS)
+void
+er_print_crash_callstack (int sig)
+{
+  switch (sig)
+    {
+    case SIGABRT:
+    case SIGILL:
+    case SIGFPE:
+    case SIGBUS:
+    case SIGSEGV:
+    case SIGSYS:
+      break;
+    default:
+      return;
+    }
+
+  /* get CUBRID env */
+  char *env = getenv ("CUBRID");
+
+  if (!env)
+    {
+      return;
+    }
+
+  /* get cmdline information (process name, args) */
+  char buffer[513];
+  FILE *fp = fopen ("/proc/self/cmdline", "r");
+  if (!fp)
+    {
+      return;
+    }
+
+  size_t byteRead = fread (buffer, 1, sizeof (buffer) - 1, fp);
+  if (byteRead <= 0)
+    {
+      fclose (fp);
+      return;
+    }
+  buffer[byteRead] = '\0';
+  fclose (fp);
+
+  /* get current direcory, chdir to $CUBRID/log and check and make directory $CUBRID/log/coredump */
+  char cdir[PATH_MAX], logdir[PATH_MAX], *p = logdir;
+
+  getcwd (cdir, sizeof (cdir));
+  if (chdir (env) != 0)
+    {
+      return;
+    }
+  sprintf (logdir, "log/coredump");
+
+  while (p != NULL)
+    {
+      p = strchr (p, '/');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+      if (access (logdir, F_OK) < 0)
+	{
+	  if (mkdir (logdir, 0777) < 0)
+	    {
+	      chdir (cdir);
+	      return;
+	    }
+	}
+      if (p != NULL)
+	{
+	  *p = '/';
+	  p++;
+	}
+    }
+
+  /* make coredump filename : processname_YYYYMMDDHHSSMM.min.coredump */
+  struct timeval tv;
+  struct tm *tm_info;
+  char filename[PATH_MAX];
+  char *args = buffer;
+
+  gettimeofday (&tv, NULL);
+  tm_info = localtime (&tv.tv_sec);
+
+  if (snprintf (filename, PATH_MAX, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
+		tm_info->tm_year + 1900,
+		tm_info->tm_mon + 1,
+		tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000) >= PATH_MAX)
+    {
+      assert_release (0);
+      filename[PATH_MAX - 1] = '\0';
+    }
+
+  /* print process information and callstack into coredump file */
+  fp = fopen (filename, "w+");
+  if (!fp)
+    {
+      chdir (cdir);
+      return;
+    }
+
+  fprintf (fp, "process info : ");
+  while (args < buffer + byteRead)
+    {
+      fprintf (fp, "%s ", args);
+      args += strlen (args) + 1;
+    }
+  fprintf (fp, "\n\n");
+
+  if (!fname_table)
+    {
+      if (er_call_stack_init () == ER_FAILED)
+	{
+	  fclose (fp);
+	  chdir (cdir);
+	  return;
+	}
+      er_dump_call_stack (fp);
+      er_call_stack_final ();
+    }
+  else
+    {
+      er_dump_call_stack (fp);
+    }
+  fclose (fp);
+
+  /* chdir orignal path */
+  chdir (cdir);
+
+  return;
+}
+#else
+void
+er_print_crash_callstack (int sig)
+{
+}
+#endif

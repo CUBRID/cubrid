@@ -56,7 +56,6 @@ struct compile_context;
 struct xasl_cache_ent;
 struct xasl_stream;
 struct xasl_node_header;
-struct method_sig_list;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -99,7 +98,7 @@ extern int xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int cla
 			       int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock,
 			       LC_FETCH_VERSION_TYPE fetch_type, OID * class_oid, int *nobjects, int *nfetched,
-			       OID * last_oid, LC_COPYAREA ** fetch_area);
+			       OID * last_oid, LC_COPYAREA ** fetch_area, int request_pages);
 extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * instance_lock,
 					int *instance_lock_timeout, OID * class_oid, LOCK * class_lock, int *nobjects,
 					int *nfetched, int *nfailed_instance_locks, OID * last_oid,
@@ -169,11 +168,13 @@ extern int xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isola
 extern LOG_LSA *log_get_final_restored_lsa (void);
 extern float log_get_db_compatibility (void);
 extern int log_set_no_logging (void);
+extern bool log_is_no_logging (void);
 extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 
 
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys);
+			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys,
+			       int deduplicate_key_pos);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
@@ -199,8 +200,8 @@ extern int xehash_destroy (THREAD_ENTRY * thread_p, EHID * ehid);
 
 extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id, unsigned int timestamp,
 						int *length);
-extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan);
-extern int xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan);
+extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan,
+				     CLASS_ATTR_NDV * class_attr_ndv);
 
 extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
@@ -228,6 +229,7 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char
 						       QUERY_FLAG * flag, int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
+extern int xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, char *sha1);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
@@ -241,7 +243,7 @@ extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID 
 
 extern int xacl_reload (THREAD_ENTRY * thread_p);
 extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
+extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);
@@ -260,8 +262,9 @@ extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * cla
 
 extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
-extern int xsession_end_session (THREAD_ENTRY * thread, const SESSION_ID id);
+extern int xsession_end_session (THREAD_ENTRY * thread, const SESSION_ID id, bool is_keep_session);
 
+extern int xsession_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session);
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);
@@ -291,11 +294,6 @@ extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
-
-// *INDENT-OFF*
-extern int xmethod_invoke_fold_constants (THREAD_ENTRY * thread_p, const method_sig_list &sig_list, std::vector<std::reference_wrapper<DB_VALUE>> &args, DB_VALUE &result);
-// *INDENT-ON*
-
 extern void xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp);
 
 #endif /* _XSERVER_INTERFACE_H_ */

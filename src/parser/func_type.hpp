@@ -109,12 +109,19 @@ namespace func_type
       bool check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
 			     signature_compatibility &compat, argument_resolve &resolved_type, bool args_to_utf8);
       void invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn);
+      void invalid_arg_param_error (const PT_NODE *arg_node);
       void invalid_coll_error (const func_signature &func_sgn);
       void invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn);
   }; //class Node
 } //namespace func_type
 
+PT_NODE *pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node);
+
 bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
 PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type);
+
+bool pt_is_function_unsupported (FUNC_CODE fcode);
+bool pt_is_function_no_arg (FUNC_CODE fcode);
+bool pt_is_function_new_type_checking (FUNC_CODE fcode);
 
 #endif

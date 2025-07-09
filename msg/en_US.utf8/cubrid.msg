@@ -65,6 +65,9 @@ $set 4 MSGCAT_SET_PARAMETER
 22 Deprecated parameter
 23 The '%1$s' and '%2$s' parameters can not be used together.\n
 31 The '%1$s' parameter:
+32 Invalid IP or Hostname '%1$s' at line %2$d in the '%3$s' file.\n
+33 There is no IP or Hostname in '%1$s' file.\n
+34 File '%1$s' was not found.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
@@ -185,7 +188,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
 117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
-119 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
+119 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
 121 Trying to remove "%1$s" a permanent volume from the database.
 122 Unable to access system message catalog.
@@ -212,12 +215,12 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a class.
+146 Cannot issue GRANT/REVOKE to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.
 150 Cannot revoke privileges from self.
-151 Cannot revoke privileges from owner of a class.
+151 Cannot revoke privileges from owner of a %1$s.
 152 GRANT not found.
 153 No authorization privileges in effect for the database.
 154 Incomplete authorization installation - no authorization privileges in effect for the database.
@@ -233,7 +236,7 @@ $set 5 MSGCAT_SET_ERROR
 164 User "%1$s" already exists.
 165 User "%1$s" is invalid.
 166 Invalid user specified.
-167 DBA, members of DBA group and class owner can perform the operation.
+167 DBA, members of DBA group and %1$s owner can perform the operation.
 168 Member not found.
 169 Cannot remove user %1$s from the database.
 170 No user logged in.
@@ -416,7 +419,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
-350 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
+350 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
 353 Cannot make connection to master server on host "%1$s".
@@ -683,8 +686,8 @@ $ LOADDB
 613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 614 Number of active log archives has been exceeded the max desired number of %1$d.
 615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
+616 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+617 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 618 Attribute is not updatable.
 619 Bad source codeset.
 620 Bad destination codeset.
@@ -904,7 +907,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial/server/synonym etc).
+837 Cannot drop the user who owns database objects.
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -967,14 +970,14 @@ $ LOADDB
 897 Decompression failed.
 898 Replication error: "%1$s"
 899 Invalid partition requests.
-900 Java VM library is not found: %1$s.
-901 Java VM can not be started: %1$s.
-902 Java VM is not running.
-903 Can't connect Java VM: %1$s
+900 VM library is not found: %1$s.
+901 PL server can not be started: %1$s.
+902 PL server is not running.
+903 Can't connect PL server: %1$s
 904 Invalid stored procedure name.
-905 Networking with JVM failed: %1$d
+905 Networking with PL server failed: %1$d
 906 Invalid java method signature.
-907 The owner or a member of DBA group can drop stored procedure.
+907 The owner or a member of DBA group can %1$s stored procedure.
 908 Too many arguments of stored procedure '%1$s'.
 909 Missing or invalid catalog class/vclass is found.
 910 Not allowed access to partition.
@@ -1047,7 +1050,7 @@ $ LOADDB
 977 Checkpoint started (previous checkpoint page id: %1$lld, previous redo page id: %2$lld).
 978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
 979 CONNECT BY loop in user data.
-980 A thread is waiting in %1$s more than %2$d msec.
+980 A thread is waiting in %1$s more than %2$d msec(%3$d msec).
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
@@ -1313,7 +1316,7 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Cannot get address and canonical name for ("%1$s") in /etc/hosts. Please check permission of the file or if there is the hostname.
+1246 Cannot get address and canonical name for hostname ("%1$s") in "%2$s". Please check permission of the file or if there is the hostname.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
 1248 Invalid Key file : %1$s
 1249 Cannot find the key (index: %1$d).
@@ -1434,19 +1437,31 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1352 Invalid number of columns specified.
 
-1353 Internal CAS error : %1$d 
+1353 Internal CAS error : %1$d
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" is invalid format at line %3$d of the file "%4$s".
-1356 Hostname "%1$s" is too long, it should be less than or equal to 256 at line %2$d of the file "%3$s".
-1357 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
-1358 Both, the IP address and hostname, must be written completely at line %1$d of the file "%2$s".
-1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
-1360 An error occured when using user defined host.
 
-1361 File "%1$s" was not found.
+1355 File "%1$s" was not found.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
+1357 Converting SQL string to wide string failed.
+1358 Number of rows affected is unknown.
 
-1362 Last Error
+1359 PL server crashed: %1$s
+1360 Stored procedure compile error: %1$s
+
+1361 Invalid result cache for subquery.
+
+1362 Locale '%1$s' is unavailable.
+1363 Dropping system generated stored procedure is not allowed.
+1364 PL/CSQL Stored procedure/function does not support Invoker's rights.
+
+1365 Only DBA and the owner can grant the %1$s privilege.
+
+1366 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+
+1367 DBLINK Transaction ABORTED: %1$s
+
+1368 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1508,8 +1523,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 invalid create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 invalid create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
 37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
 38 invalid password\n  password spec: PASSWORD 'STRING'
@@ -1612,6 +1627,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
+139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1930,6 +1947,26 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
+318 Only DBA and DBA group members can change the SERIAL OWNER.
+319 Unsupported argument type '%1$s' of the stored procedure
+320 Unsupported return type '%1$s' of the stored procedure
+321 %TYPE type specification is allowed only for PL/CSQL
+322 Table column '%1$s.%2$s' has not been defined
+323 Stored procedure/function '%1$s' has OUT or IN OUT arguments
+324 '%1$s' is not a record variable.
+325 The argument specifying the language must be a string literal.
+
+325 The argument specifying the language must be a string literal.
+326 Stored procedure/function "%1$s" does not exist.
+327 Attempting to assign DEFAULT on an Out parameter is not allowed: '%1$s'.
+328 Only trailing default parameter is allowed: invalid at '%1$s'.
+329 Grant option is not allowed for %1$s.
+
+330 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
+
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -2113,22 +2150,22 @@ $set 15 MSGCAT_SET_IO
 2 Backup = %1$s is needed. \n It must be mounted/loaded to continue.\n Type 1 to continue after the backup is mounted/loaded.\n Type 0 to quit.\n
 3 \n\n*** BACKUP HEADER INFORMATION ***\n\n
 4 Backup magic file identification %1$s,\n
-5          Release: %1$s\n\
-     Disk Version: %2$g\n
-6    Database Name: %1$s\n\
- DB Creation Time: %2$s\
-         Pagesize: %3$d\n
-7     Backup Level: %1$d (%2$s)\n\
-        Start_lsa: %3$lld|%4$d\n\
-         Last_lsa: %5$lld|%6$d\n
-8      Backup Time: %1$s\
-  Backup Unit Num: %2$d\n
-9  Database Volume name: %1$s\n\
+5 Release: %1$s\n\
+   Disk Version: %2$g\n
+6 Database Name: %1$s\n\
+   DB Creation Time: %2$s\
+   Pagesize: %3$d\n
+7 Backup Level: %1$d (%2$s)\n\
+   Start_lsa: %3$lld|%4$d\n\
+   Last_lsa: %5$lld|%6$d\n
+8 Backup Time: %1$s\
+   Backup Unit Num: %2$d\n
+9 Database Volume Name: %1$s\n\
    Volume Identifier: %2$d, Size: %3$lld bytes (%4$d pages)\n
-10   Database Name: %1$s\n\
-     Volume Name: %2$s\n\
-        Unit Num: %3$d\n\
-    Backup Level: %4$d (%5$s)\n\
+10 Database Name: %1$s\n\
+   Volume Name: %2$s\n\
+   Unit Num: %3$d\n\
+   Backup Level: %4$d (%5$s)\n\
 Enter one of the following options:\n
 11 Type\n \
   -  %1$d to quit.\n \
@@ -2144,14 +2181,16 @@ Enter one of the following options:\n
 19 Backup volume %1$s timestamp mismatch\n  (Timestamp: %2$s, expecting %3$s).\n\n
 20 Backup volume information file error, line %1$d.\n
 21 Backup Volume Label: Level: %1$d, Unit: %2$d, Database %3$s, Backup Time: %4$s\n
-22     Previous Backup level: %1$d Time: %2$s (start_lsa was %3$lld|%4$d)\n
+22 Previous Backup Level: %1$d\n\
+   Time: %2$s\
+   (start_lsa was %3$lld|%4$d)\n
 23 The following database backup volume is needed to continue restoring:\n\n
 24 Backup destination is full, a new destination is required to continue:\n\n
 25 Preceding Backup Volume Name: %1$s\n
-26     Next Backup Volume Name: %1$s\n
-27  Backup Pagesize: %1$d\n
-28       Zip Method: %1$d (%2$s)\n\
-        Zip Level: %3$d (%4$s)\n
+26 Next Backup Volume Name: %1$s\n
+27 Backup Pagesize: %1$d\n
+28 Zip Method: %1$d (%2$s)\n\
+   Zip Level: %3$d (%4$s)\n
 29 Include Active Log: %1$s\n
 
 $set 16 MSGCAT_SET_LOG
@@ -2212,3 +2251,11 @@ including those from the current backup level and higher.\n
 28 The time(%1$s) specified must be after the time(%2$s) of the specified backup.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
+
+$set 17 MSGCAT_SET_GLOSSARY
+1 class
+2 trigger
+3 serial
+4 server
+5 synonym
+6 procedure

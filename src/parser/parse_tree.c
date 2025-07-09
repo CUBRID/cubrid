@@ -37,6 +37,7 @@
 #include "parser.h"
 #include "jansson.h"
 #include "memory_alloc.h"
+#include "hide_password.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -119,6 +120,10 @@ PT_RESERVED_NAME pt_Reserved_name_table[] = {
   /* page header info attributes */
   ,
   {"p_class_oid", RESERVED_P_CLASS_OID, DB_TYPE_OBJECT}
+  ,
+  {"p_cur_volumeid", RESERVED_P_CUR_VOLUMEID, DB_TYPE_INTEGER}
+  ,
+  {"p_cur_pageid", RESERVED_P_CUR_PAGEID, DB_TYPE_INTEGER}
   ,
   {"p_prev_pageid", RESERVED_P_PREV_PAGEID, DB_TYPE_INTEGER}
   ,
@@ -1182,6 +1187,8 @@ parser_create_parser (void)
       return NULL;
     }
 
+  INIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
+
 #if !defined (SERVER_MODE)
   parser_init_func_vectors ();
 #endif /* !SERVER_MODE */
@@ -1224,6 +1231,12 @@ parser_create_parser (void)
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
+  parser->flag.is_parsing_static_sql = 0;
+  parser->flag.is_parsing_unload_schema = 0;
+  parser->flag.is_parsing_trigger = 0;
+
+  parser->external_into_label = NULL;
+  parser->external_into_label_cnt = 0;
 
   return parser;
 }
@@ -1243,6 +1256,11 @@ parser_free_parser (PARSER_CONTEXT * parser)
   int i;
 
   assert (parser != NULL);
+
+  QUIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
+
+  /* free remote dblink cols */
+  pt_free_dblink_remote_cols (parser);
 
   /* free string blocks */
   pt_free_string_blocks (parser);

@@ -25,6 +25,7 @@
 
 #include "error_manager.h"
 #include "memory_reference_store.hpp"
+#include "db_function.hpp"
 #include "storage_common.h"
 
 #include <cstdint>
@@ -166,7 +167,7 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 int db_value_to_json_doc (const DB_VALUE &db_val, bool copy_json, JSON_DOC_STORE &json_doc);
 int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc);
 void db_make_json_from_doc_store_and_release (DB_VALUE &value, JSON_DOC_STORE &doc_store);
-int db_value_to_json_path (const DB_VALUE &path_value, FUNC_TYPE fcode, std::string &path_str);
+int db_value_to_json_path (const DB_VALUE &path_value, FUNC_CODE fcode, std::string &path_str);
 int db_value_to_json_key (const DB_VALUE &db_val, std::string &key_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);

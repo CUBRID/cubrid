@@ -43,7 +43,7 @@
 #endif
 
 #if defined (WINDOWS)
-#ifdef _EXPORTING
+#ifdef CUBRID_EXPORTING
 #define EXPORT_IMPORT    __declspec(dllexport)
 #else
 #define EXPORT_IMPORT    __declspec(dllimport)
@@ -155,6 +155,8 @@ extern char *realpath (const char *path, char *resolved_path);
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p
 #define strtof		strtof_win
+#define strndup         strndup_win
+
 #if defined (_WIN32)
 #define mktime         mktime_for_win32
 #endif
@@ -318,8 +320,6 @@ extern int free_space (const char *, int);
 #if !defined (HAVE_DRAND48_R)
 #error "HAVE_DRAND48_R"
 #endif
-
-
 #endif /* WINDOWS */
 
 #define snprintf_dots_truncate(dest, max_len, ...) \
@@ -986,8 +986,6 @@ extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 
 extern void port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc);
 
-extern char *trim (char *str);
-
 extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
 
 extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base);
@@ -999,6 +997,7 @@ extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 
 #if defined (WINDOWS)
 extern float strtof_win (const char *nptr, char **endptr);
+extern char *strndup_win (const char *src, size_t size);
 #endif
 
 #ifndef HAVE_STRLCPY

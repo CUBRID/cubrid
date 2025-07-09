@@ -56,18 +56,20 @@
 /* Statistics activation flags */
 typedef enum
 {
-  PERFMON_ACTIVATION_FLAG_DEFAULT = 0,
-  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE = 1,
-  PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT = 2,
-  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT = 4,
-  PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR = 8,
-  PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION = 16,
-  PERFMON_ACTIVATION_FLAG_THREAD = 32,
-  PERFMON_ACTIVATION_FLAG_DAEMONS = 64,
-  PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES = 128,
+  PERFMON_ACTIVATION_FLAG_DEFAULT = 0x00000000,
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE = 0x00000001,
+  PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT = 0x00000002,
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT = 0x00000004,
+  PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR = 0x00000008,
+  PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION = 0x00000010,
+  PERFMON_ACTIVATION_FLAG_THREAD = 0x00000020,
+  PERFMON_ACTIVATION_FLAG_DAEMONS = 0x00000040,
+  PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES = 0x00000080,
+  PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_MAIN = 0x00000100,
+  PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC = 0x00000200,
 
   /* must update when adding new conditions */
-  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES,
+  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_LOG_RECOVERY_REDO_ASYNC,
 
   PERFMON_ACTIVATION_FLAG_MAX_VALUE = (PERFMON_ACTIVATION_FLAG_LAST << 1) - 1
 } PERFMON_ACTIVATION_FLAG;
@@ -634,6 +636,16 @@ typedef enum
   PSTAT_PB_AVOID_DEALLOC_CNT,
   PSTAT_PB_AVOID_VICTIM_CNT,
 
+  /* Redo recovery statistics */
+  PSTAT_LOG_REDO_ASYNC,
+  PSTAT_LOG_REDO_FUNC_EXEC,
+
+  /* Execution statistics for regu var evaluation */
+  PSTAT_REGU_EVAL_TIME_10USEC,
+  PSTAT_REGU_NUM_FETCHES,
+  PSTAT_REGU_NUM_IOREADS,
+  PSTAT_REGU_NUM_CALL_EVALS,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
@@ -827,6 +839,8 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
+extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p);
+extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -836,6 +850,8 @@ STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid,
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat_to_global (PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
@@ -970,7 +986,51 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      pstat_Global.tran_stats[tran_index][offset] += amount;
+      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+	{
+	  thread_p->m_parallel_stats[offset] += amount;
+	}
+      else
+	{
+	  pstat_Global.tran_stats[tran_index][offset] += amount;
+	}
+    }
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_add_at_offset_to_local () - Add amount to statistic in local at offset.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * offset (in)	 : Offset to statistics value.
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
+{
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  int tran_index;
+#endif /* SERVER_MODE || SA_MODE */
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+	{
+	  thread_p->m_parallel_stats[offset] += amount;
+	}
+      else
+	{
+	  pstat_Global.tran_stats[tran_index][offset] += amount;
+	}
     }
 #endif /* SERVER_MODE || SA_MODE */
 }

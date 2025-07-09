@@ -31,9 +31,23 @@
 #include "schema_manager.h"
 
 #include "language_support.h"
+#include "deduplicate_key.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubmethod
 {
+  schema_info_handler::schema_info_handler (error_context &ctx)
+    : m_error_ctx (ctx)
+  {
+    //
+  }
+
+  schema_info_handler::~schema_info_handler ()
+  {
+    close_and_free_session ();
+  }
+
   schema_info
   schema_info_handler::get_schema_info (int schema_type, std::string &arg1, std::string &arg2, int flag)
   {
@@ -124,6 +138,7 @@ namespace cubmethod
   {
     lang_set_parser_use_client_charset (false);
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {
@@ -947,6 +962,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     int num_fk_info = 0, i = 0;
+    int fk_i;
     DB_OBJECT *fktable_obj = db_find_class (fktable_name.c_str ());
     if (fktable_obj == NULL)
       {
@@ -1033,8 +1049,9 @@ namespace cubmethod
 
 	/* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
 	 * null, it means that they have different number of attributes. */
-	assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-	if (pk_attr[i] != NULL || fk_attr[i] != NULL)
+	fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
+	assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
+	if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
 	  {
 	    m_error_ctx.set_error (ER_FK_NOT_MATCH_KEY_COUNT,
 				   "The number of keys of the foreign key is different from that of the primary key.", __FILE__, __LINE__);

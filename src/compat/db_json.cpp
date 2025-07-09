@@ -71,6 +71,8 @@
 #include <algorithm>
 #include <sstream>
 #include <stack>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true
 
@@ -870,7 +872,23 @@ JSON_VALIDATOR &JSON_VALIDATOR::operator= (const JSON_VALIDATOR &copy)
   if (this != &copy)
     {
       this->~JSON_VALIDATOR ();
-      new (this) JSON_VALIDATOR (copy);
+      if (copy.m_document == NULL)
+	{
+	  /* no schema actually */
+	  assert (copy.m_schema == NULL && copy.m_validator == NULL && copy.m_schema_raw == NULL);
+
+	  m_schema_raw = NULL;
+	}
+      else
+	{
+	  m_schema_raw = strdup (copy.m_schema_raw);
+
+	  /* TODO: is this safe? */
+	  m_document.CopyFrom (copy.m_document, m_document.GetAllocator ());
+	  generate_schema_validator ();
+	}
+
+      m_is_loaded = true;
     }
 
   return *this;
@@ -3160,7 +3178,7 @@ db_json_doc_is_uncomparable (const JSON_DOC *doc)
 // path_str (out)  : path string
 //
 int
-db_value_to_json_path (const DB_VALUE &path_value, FUNC_TYPE fcode, std::string &path_str)
+db_value_to_json_path (const DB_VALUE &path_value, FUNC_CODE fcode, std::string &path_str)
 {
   if (!TP_IS_CHAR_TYPE (db_value_domain_type (&path_value)))
     {
@@ -3967,7 +3985,7 @@ db_json_or_buf_underflow (or_buf *buf, size_t length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {
-      return or_underflow (buf);
+      return ER_TF_BUFFER_UNDERFLOW;
     }
 
   return NO_ERROR;

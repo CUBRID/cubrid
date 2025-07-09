@@ -42,6 +42,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <functional>
+#include <string>
 
 class string_buffer
 {

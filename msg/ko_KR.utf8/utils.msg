@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -130,6 +131,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     vacuumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -155,7 +157,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -192,6 +194,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     checksumdb\n\
     tde\n\
     flashback\n\
+    memmon\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -259,11 +262,9 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 42 인자가 잘못되었습니다.\n
 43 파일(%1$s)을 열지 못했습니다.\n
 44 cubrid 유틸리티, 버전 %1$s\n\
-사용법: %2$s javasp <명령어> [인자]\n\
+사용법: %2$s pl <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       [데이터베이스 이름]\n\
-    stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
 45 cubrid 유틸리티, 버전 %1$s\n\
@@ -543,7 +544,6 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
       --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
       --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
-      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수; 기본값: 0\n\
       --estimated-size=NUMBER 인스턴스의 대략적인 개수; 기본값: 계산됨\n\
       --cached-pages=NUMBER   cached 페이지 개수; 기본값: 계산됨\n\
   -O, --output-path=PATH      출력 디렉터리 경로; 기본값: 현재 작업 디렉터리\n\
@@ -553,12 +553,15 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
       --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
       --latest-image          오브젝트 (객체)를 언로드할 때, 데이터 볼륨의 최신 이미지를 언로드합니다. 이 과정에서 로그 볼륨은 참조되지 않으며, MVCC는 무시됩니다.\n\
                               커밋되지않은 데이터와 제거되었지만 배큠되지 않은 데이터가 포함될 수 있습니다; 기본 값: 사용 안 함\n\
+  -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
+      --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
       --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
       --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
+      --skip-index-detail     인덱스를 생성할 때 지정된 WITH 절 옵션을 인쇄하지 않음; 기본값: 사용 안 함\n\
       --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -641,7 +644,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
   -p, --ping-host                  CUBRID heartbeat를 위한 ping 호스트 정보 조회\n\
-  -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
+  -D, --dereg-process=PID          CUBRID heartbeat에 의해 관리되는 대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %1$s\n
@@ -813,6 +816,7 @@ $set 23 MSGCAT_UTIL_SET_MIGDB
 
 $set 24 MSGCAT_UTIL_SET_DIAGDB
 15 출력 파일 '%1$s'을 열 수 없습니다.\n
+16 알 수 없는 클래스 "%1$s"\n
 60 \
 diagdb: 데이터베이스 정보 덤프\n\
 사용법: %1$s diagdb [옵션] <데이터베이스 이름>\n\
@@ -841,7 +845,8 @@ lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %1$s lockdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -910,7 +915,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 Usage: loadjava [OPTION] database-name java-class-file\n\
 \n\
 valid options:\n\
-  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n\
+  -p, --package                Java 패키지 이름; 지정하지 않으면 빈 문자열\n\
+  -j, --jni                    JNI 사용을 위해 정적 로딩 영역에 클래스 또는 Jar를 추가함\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
@@ -921,7 +928,8 @@ plandump: 쿼리 플랜 표시 및 관리\n\
 \n\
 옵션:\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 출력 파일 '%1$s'을 열 수 없습니다.\n
@@ -934,9 +942,11 @@ paramdump: 시스템 파라미터 설정을 덤프\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -b, --both                   dump both client and server parameters\n\
+  -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --ha-only                HA관련 시스템 파라미터만 출력; --exclude-ha와 함께 사용 불가\n\
+      --exclude-ha             HA관련 시스템 파라미터제외 출력; --ha-only와 함께 사용 불가\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n
@@ -1295,3 +1305,19 @@ flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니�
                                 기본값: 플래시백을 위한 SQL 문만 출력\n\
     --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
                                 기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 'cubrid.conf'에서 시스템 파라미터 'enable_memory_monitoring'을 설정하고 데이터베이스 서버를 재시작하세요.\n
+2 memmon은 독립 모드에서 실행할 수 없습니다.\n
+3 파일 이름이 %1$s인 출력 파일을 열 수 없습니다.\n
+4 서버의 메모리 모니터링이 성공적으로 비활성화되었습니다.\n
+5 disable-force는 다른 옵션과 함께 사용할 수 없습니다.\n
+6 서버의 메모리 모니터링이 비활성화되었습니다. 서버를 재시작한 후 다시 사용할 수 있습니다.\n
+7 이 운영체제에서는 memmon을 지원하지 않습니다.\n
+60 \
+memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니다.\n\
+사용법: %1$s memmon [옵션] 데이터베이스 이름\n\
+\n\
+유효한 옵션:\n\
+    -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
+    --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n

@@ -49,6 +49,7 @@
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"
+#include "schema_system_catalog_constants.h"
 #include "transform.h"
 #include "parser_message.h"
 #include "system_parameter.h"
@@ -99,6 +100,8 @@
 #define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
+
+#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
 /*
  * Function Group:
  * Do create/alter/drop serial statement
@@ -135,14 +138,14 @@ static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NO
 			     PT_NODE ** update, PT_NODE * values);
 
 static int do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-				      const char *comment, const int is_public_synonym);
+				      const char *comment, const int is_public_synonym, bool is_dblinked);
 static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 				       DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-				       const int or_replace);
+				       const int or_replace, bool is_dblinked);
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-
+static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
 
@@ -179,7 +182,7 @@ typedef struct reserved_class_info
 {
   OID oid;
   CDC_DDL_OBJECT_TYPE objtype;
-  char name[1024];
+  char name[DB_MAX_IDENTIFIER_LENGTH];
 } RESERVED_CLASS_INFO;
 
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
@@ -201,7 +204,7 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
-static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name);
+static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
 				      OID * reserved_oid);
@@ -806,7 +809,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   if (att_name)
     {
       db_make_string (&value, att_name);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
 	{
@@ -947,7 +950,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* att name */
   db_make_string (&value, att_name);
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
     {
@@ -2313,7 +2316,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE abs_inc_val, range_val;
   int cached_num;
   int ret_msg_id = 0;
+
+  const char *serial_name = NULL, *serial_owner_name = NULL;
+  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  MOP serial_mop = NULL, owner_mop = NULL;
   const char *comment = NULL;
+
+  const PT_ALTER_CODE alter_serial_code = statement->info.serial.code;
 
   int new_inc_val_flag = 0, new_cyclic;
   bool cur_val_change, inc_val_change, max_val_change, min_val_change, cyclic_change, cached_num_change;
@@ -2757,90 +2766,128 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  /* current_val */
-  if (cur_val_change)
+  switch (alter_serial_code)
     {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
-      if (error < 0)
+    case PT_SERIAL_OPTION:
+      /* current_val */
+      if (cur_val_change)
 	{
-	  goto end;
-	}
-      /* reset started flag because current_val changed */
-      db_make_int (&value, 0);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-    }
-
-  /* increment_val */
-  if (inc_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* max_val */
-  if (max_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* min_val */
-  if (min_val_change)
-    {
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
-      if (error < 0)
-	{
-	  goto end;
-	}
-    }
-
-  /* cyclic */
-  if (cyclic_change)
-    {
-      db_make_int (&value, new_cyclic);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
-      if (error < 0)
-	{
-	  goto end;
-	}
-      pr_clear_value (&value);
-    }
-
-  /* cached num */
-  if (cached_num_change)
-    {
-
-      /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
-       * serial, it is not allowed to change the cached_num for it. */
-      if (!DB_IS_NULL (&class_name_val))
-	{
-
-	  error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
-
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
-
-	  goto end;
-
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, &start_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  /* reset started flag because current_val changed */
+	  db_make_int (&value, 0);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
 	}
 
-      db_make_int (&value, cached_num);
-      error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
-      if (error < 0)
+      /* increment_val */
+      if (inc_val_change)
 	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, &new_inc_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* max_val */
+      if (max_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, &new_max_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* min_val */
+      if (min_val_change)
+	{
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, &new_min_val);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	}
+
+      /* cyclic */
+      if (cyclic_change)
+	{
+	  db_make_int (&value, new_cyclic);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+
+      /* cached num */
+      if (cached_num_change)
+	{
+
+	  /* Here we need class_name and att_name to see if this serial is auto_increment. Cause for an auto_increment
+	   * serial, it is not allowed to change the cached_num for it. */
+	  if (!DB_IS_NULL (&class_name_val))
+	    {
+
+	      error = MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER;
+
+	      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, error, name);
+
+	      goto end;
+
+	    }
+
+	  db_make_int (&value, cached_num);
+	  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
+	  if (error < 0)
+	    {
+	      goto end;
+	    }
+	  pr_clear_value (&value);
+	}
+      break;
+
+    case PT_CHANGE_OWNER:
+      /* owner to */
+      assert (statement->info.serial.owner_name != NULL);
+      serial_name = (char *) PT_NODE_SR_NAME (statement);
+      serial_owner_name = statement->info.serial.owner_name->info.name.original;
+
+      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, user_specified_serial_name);
+      if (serial_mop == NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_QPROC_SERIAL_NOT_FOUND, user_specified_serial_name);
 	  goto end;
 	}
-      pr_clear_value (&value);
+
+      owner_mop = au_find_user (serial_owner_name);
+      if (owner_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      error = au_change_serial_owner (serial_mop, owner_mop, false);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+      break;
+
+    default:
+      assert (false);
+      break;
     }
 
   /* comment */
@@ -3466,6 +3513,176 @@ end:
   return error;
 }
 
+static PT_NODE *
+do_clear_subquery_cache_flag (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY (stmt))
+    {
+      if (stmt->info.query.flag.subquery_cached)
+	{
+	  stmt->info.query.flag.subquery_cached = false;
+	}
+    }
+
+  return stmt;
+}
+
+static PT_NODE *
+do_check_cte_or_system_class_spec (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  PT_NODE *q = (PT_NODE *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (stmt->node_type != PT_SPEC)
+    {
+      return stmt;
+    }
+
+  if (stmt->info.spec.cte_pointer)
+    {
+      if (q->info.query.is_subquery == PT_IS_SUBQUERY || q->info.query.is_subquery == PT_IS_UNION_QUERY
+	  || q->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
+	{
+	  goto stop_walk;
+	}
+    }
+
+  if (stmt->info.spec.entity_name)
+    {
+      const char *class_name = stmt->info.spec.entity_name->info.name.original;
+
+      if (class_name)
+	{
+	  if (sm_check_system_class_by_name (class_name))
+	    {
+	      goto stop_walk;
+	    }
+	}
+    }
+  else if (stmt->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+    {
+      goto stop_walk;
+    }
+
+  return stmt;
+
+stop_walk:
+
+  q->info.query.flag.do_cache = 0;
+  q->info.query.flag.do_not_cache = 1;
+  *continue_walk = PT_STOP_WALK;
+
+  return stmt;
+}
+
+static PT_NODE *
+do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk)
+{
+  int *err = (int *) arg;
+  PT_NODE *saved;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  switch (stmt->node_type)
+    {
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      return stmt;
+
+    case PT_CREATE_TRIGGER:
+    case PT_ALTER:
+      goto stop_walk;
+
+    case PT_CREATE_ENTITY:
+      if (stmt->info.create_entity.entity_type != PT_CLASS)
+	{
+	  goto stop_walk;
+	}
+      return stmt;
+
+    case PT_SELECT:
+      /* 
+       * SYSDATE, SERIAL related functions and other queries that should not be cached
+       * The parser sets the do_not_cache flag for these queries.
+       */
+      if (stmt->info.query.flag.do_not_cache)
+	{
+	  return stmt;
+	}
+
+      if (stmt->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  /* exclude cache from CTE, system class, or dblink referencing */
+	  saved = stmt->next;
+	  stmt->next = NULL;
+	  parser_walk_tree (parser, stmt, do_check_cte_or_system_class_spec, stmt, NULL, NULL);
+	  stmt->next = saved;
+
+	  if (stmt->info.query.flag.do_not_cache)
+	    {
+	      return stmt;
+	    }
+	}
+      break;
+
+    default:
+      return stmt;
+    }
+
+  if ((stmt->info.query.is_subquery == PT_IS_SUBQUERY || stmt->info.query.is_subquery == PT_IS_UNION_QUERY
+       || stmt->info.query.is_subquery == PT_IS_UNION_SUBQUERY
+       || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
+      && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+    {
+      /* 
+       * This condition is identical to the one used in parser_print_tree.
+       * Both functions must maintain the same condition to ensure consistency.
+       * Be careful not to modify only one of them.
+       */
+      *err = do_prepare_subquery (parser, stmt);
+
+      if (*err != NO_ERROR)
+	{
+	  goto stop_walk;
+	}
+      else
+	{
+	  /* no more deep walking tree for excluding nested caching */
+	  *continue_walk = PT_LIST_WALK;
+	}
+    }
+
+  return stmt;
+
+stop_walk:
+  *continue_walk = PT_STOP_WALK;
+  return stmt;
+}
+
+static int
+do_check_subquery_cache (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err = NO_ERROR;
+
+  if (statement->flag.do_not_use_subquery_cache)
+    {
+      (void *) parser_walk_tree (parser, statement, do_clear_subquery_cache_flag, NULL, NULL, NULL);
+      return NO_ERROR;
+    }
+
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  if (pt_is_allowed_result_cache ())
+    {
+      (void *) parser_walk_tree (parser, statement, do_prepare_subquery_pre, &err, NULL, NULL);
+    }
+
+  return err;
+}
+
 /*
  * do_prepare_statement() - Prepare a given statement for execution
  *   return: Error code
@@ -3486,6 +3703,13 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
 
   init_compile_context (parser);
+
+  /* All CTE and sub-queries included in the query must be prepared first. */
+  err = do_check_subquery_cache (parser, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   switch (statement->node_type)
     {
@@ -3515,6 +3739,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+err_exit:
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_prepare_statement() */
 
@@ -4206,7 +4431,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return error;
 	    }
 
-	  error = au_check_authorization (class_mop, AU_ALTER);
+	  error = au_check_class_authorization (class_mop, AU_ALTER);
 	  if (error != NO_ERROR)
 	    {
 	      // set an error since only warning was set.
@@ -4861,6 +5086,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (error == NO_ERROR)
 	    {
+	      prm_set_integer_value (PRM_ID_LOG_ISOLATION_LEVEL, (int) tran_isolation);
 	      error = tran_reset_isolation (tran_isolation, async_ws);
 	    }
 	  break;
@@ -4878,6 +5104,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      wait_secs = db_get_float (&val);
+	      prm_set_integer_value (PRM_ID_LK_TIMEOUT, wait_secs);
 	      if (wait_secs > 0)
 		{
 		  wait_secs *= 1000;
@@ -5010,7 +5237,16 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->info.set_opt_lvl.option)
     {
     case PT_OPT_LVL:
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      {
+	int level = db_get_int (&val1);
+	if (CHECK_INVALID_OPTIMIZATION_LEVEL (level))
+	  {
+	    pr_clear_value (&val1);
+	    er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_OBJ_INVALID_ARGUMENTS, 0);
+	    return ER_OBJ_INVALID_ARGUMENTS;
+	  }
+	qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
+      }
       break;
     case PT_OPT_COST:
       plan = db_get_string (&val1);
@@ -5749,6 +5985,13 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	PT_ASSIGNMENTS_HELPER ea;
 	PT_NODE *assign = NULL;
 	PT_SPEC_FLAG flag;
+
+	/* do not check it in case of dblink */
+	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
+	  {
+	    result = NO_ERROR;
+	    break;
+	  }
 
 	columns = (char **) (malloc (count * sizeof (char *)));
 	if (columns == NULL)
@@ -6584,11 +6827,11 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_TRIGGER_STATUS status;
   PT_NODE *trigger_owner = NULL, *trigger_name = NULL;
   const char *trigger_owner_name = NULL, *trigger_comment = NULL;
-  DB_VALUE returnval, trigger_name_val, user_val;
   bool has_trigger_comment = false;
   TR_TRIGGER *trigger = NULL;
   int count;
   bool has_savepoint = false;
+  MOP trigger_mop = NULL, owner_mop = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -6683,19 +6926,17 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (trigger_name != NULL);
 
-		  db_make_null (&returnval);
-
-		  db_make_string (&trigger_name_val, trigger_name->info.name.original);
-		  db_make_string (&user_val, trigger_owner_name);
-
-		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
-
-		  pr_clear_value (&trigger_name_val);
-		  pr_clear_value (&user_val);
-
-		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
+		  owner_mop = au_find_user (trigger_owner_name);
+		  if (owner_mop == NULL)
 		    {
-		      error = db_get_error (&returnval);
+		      ASSERT_ERROR_AND_SET (error);
+		      break;
+		    }
+
+		  error = au_change_trigger_owner (t->op, owner_mop);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
 		      break;
 		    }
 
@@ -8309,7 +8550,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  xasl = statement_to_update_xasl (parser, statement, non_null_attrs);
+  xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
+
   if (xasl)
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
@@ -8464,6 +8706,13 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 	    }
 
 	  spec = pt_find_spec_in_statement (parser, statement, att);
+	  /* no need to check for dblink spec */
+	  if (spec->info.spec.remote_server_name
+	      && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
+	    {
+	      continue;
+	    }
+
 	  if (spec == NULL || (class_obj = spec->info.spec.flat_entity_list->info.name.db_object) == NULL)
 	    {
 	      error = ER_GENERIC_ERROR;
@@ -8590,7 +8839,14 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       /* Safety check: make sure that we have access to the class. We're only setting a weak lock here which guarantees
        * that the schema for the classes which are updated in this query is not changed. The correct lock for this
        * operation will be set server side when the SELECT part of the operation is being performed. */
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (spec->info.spec.remote_server_name)
+	{
+	  /* always server update for dblink query */
+	  server_allowed = 1;
+	  break;
+	}
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec->info.spec.flat_entity_list)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 	  if (!locator_fetch_class (class_obj, DB_FETCH_READ))
@@ -8601,7 +8857,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       spec = spec->next;
     }
 
-  if (is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
+  if (!server_allowed
+      && is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -9069,7 +9326,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -9435,7 +9692,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -9862,6 +10119,13 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 		  flush_to_server[idx] = 0;
 		}
 	    }
+
+	  // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
+	  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+	    {
+	      er_clear ();
+	    }
+
 	  error = delete_object_tuple (mop);
 	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
 	    {
@@ -10016,7 +10280,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = statement->info.delete_.spec;
 	  while (node && error == NO_ERROR)
 	    {
-	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	      if (node->info.spec.flat_entity_list && (node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
 		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
@@ -10104,7 +10368,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   spec = statement->info.delete_.spec;
   while (spec)
     {
-      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && !spec->info.spec.remote_server_name)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
@@ -10425,7 +10689,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -11072,7 +11336,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.dont_prt_long_string = 1;
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
-  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -11217,6 +11481,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
+
   xasl = pt_to_insert_xasl (parser, statement);
 
   if (xasl)
@@ -11659,9 +11924,9 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
-  int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
+  int buf_size = 0, i, error = NO_ERROR, attr_count = 0;
   unsigned char *bits;
-  char *bound_bits = NULL, *key_ptr = NULL;
+  char *nullmap_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
@@ -11708,8 +11973,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
-  bitmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
-  buf_size += bitmap_size;
+  buf_size += or_multi_header_size (attr_count);
 
   midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
   if (midxkey.buf == NULL)
@@ -11718,11 +11982,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
 
-  bound_bits = midxkey.buf;
-  key_ptr = bound_bits + bitmap_size;
+  or_init (&buf, midxkey.buf, buf_size);
 
-  or_init (&buf, key_ptr, buf_size - bitmap_size);
-  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, attr_count);
+
+  or_advance (&buf, or_multi_header_size (attr_count));
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -11733,16 +11998,20 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	}
       dom = (*attr)->domain;
 
-      if (val != NULL && !DB_IS_NULL (val))
+      or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
+      if (!DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
-	  OR_ENABLE_BOUND_BIT (bound_bits, i);
+	  or_multi_set_not_null (nullmap_ptr, i);
 	}
       else
 	{
-	  OR_CLEAR_BOUND_BIT (bound_bits, i);
+	  assert (or_multi_is_null (nullmap_ptr, i));
 	}
     }
+
+  or_multi_put_size_offset (nullmap_ptr, attr_count, buf_size);
 
   midxkey.size = buf_size;
   midxkey.ncolumns = attr_count;
@@ -13491,8 +13760,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   row_count_total = 0;
 
-
-
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
   AU_ENABLE (save);
@@ -13536,7 +13803,15 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  error = insert_local (parser, statement);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      error = do_insert_at_server (parser, statement);
+    }
+  else
+    {
+      error = insert_local (parser, statement);
+    }
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);
@@ -13677,8 +13952,6 @@ int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   INT64 err;
-  PT_NODE *flat;
-  DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   QUERY_FLAG query_flag;
   QUERY_ID query_id_self = parser->query_id;
@@ -13687,19 +13960,20 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement->xasl_id == NULL)
+  /* for dblink: no need to check xasl_id is NULL */
+  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
     {
-      /* check if it is not necessary to execute this statement */
-      if (qo_need_skip_execution ())
+      if (statement->xasl_id == NULL)
 	{
-	  statement->etc = NULL;
-	  return NO_ERROR;
+	  /* check if it is not necessary to execute this statement */
+	  if (qo_need_skip_execution ())
+	    {
+	      statement->etc = NULL;
+	      return NO_ERROR;
+	    }
+	  return do_insert (parser, statement);
 	}
-      return do_insert (parser, statement);
     }
-
-  flat = statement->info.insert.spec->info.spec.flat_entity_list;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
 
   query_flag = DEFAULT_EXEC_MODE;
 
@@ -13986,85 +14260,6 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * These functions are provided just so we have some builtin gadgets that we can
- * use for quick and dirty method testing.  To get at them, alter your
- * favorite class like this:
- *
- * 	alter class foo
- * 		add method pickaname() string
- * 		function dbmeth_class_name;
- *
- * or
- *
- * 	alter class foo
- * 		add method pickaname(string) string
- * 		function dbmeth_print;
- *
- * After that you should be able to invoke "pickaname" on "foo" instances
- * to your heart's content.  dbmeth_class_name() will retrieve the class
- * name of the target instance and return it as a string; dbmeth_print()
- * will print the supplied value on stdout every time it is invoked.
- */
-
-/*
- * TODO: The following function names need to be fixed.
- * Renaming can affects user interface.
- */
-
-/*
- * dbmeth_class_name() -
- *   return: None
- *   self(in): Class object
- *   result(out): DB_VALUE for a class name
- *
- * Note: Position of function arguments must be kept
- *   for pre-defined function pointers(au_static_links)
- */
-void
-dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result)
-{
-  const char *cname;
-
-  cname = db_get_class_name (self);
-
-  /*
-   * Make a string and clone it so that it won't become invalid if the
-   * underlying class object that gave us the string goes away.  Of
-   * course, this gives the responsibility for freeing the cloned
-   * string to someone else; is anybody accepting it?
-   */
-  db_make_string (result, cname);
-}
-
-/*
- * TODO: The functin name need to be fixed.
- * it is known system method so must fix corresponding qa first
- */
-
-/*
- * dbmeth_print() -
- *   return: None
- *   self(in): Class object
- *   result(out): NULL value
- *   msg(in): DB_VALUE for a message
- *
- * Note: Position of function arguments must be kept
- *   for pre-defined function pointers(au_static_links)
- */
-void
-dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg)
-{
-  db_value_print (msg);
-  printf ("\n");
-  db_make_null (result);
-}
-
-
-
-
-
-
-/*
  * Function Group:
  * Functions for the implementation of virtual queries.
  *
@@ -14279,6 +14474,35 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   return error;
 }
 
+static PT_NODE *
+pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **host_var_p = (PT_NODE **) arg;
+
+
+  if (node->node_type == PT_NAME && node->info.name.constant_value)
+    {
+      PT_NODE *hv = node->info.name.constant_value;
+
+      /* the host var. by lambda node should be excluded from subquery's host variable */
+      if (hv->node_type == PT_HOST_VAR)
+	{
+	  hv->info.host_var.saved = hv->info.host_var.index + 1;
+	}
+    }
+
+  /* the host var. having same index should be linked each other */
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.index >= 0)
+    {
+      node->info.host_var.next = host_var_p[node->info.host_var.index];
+      host_var_p[node->info.host_var.index] = node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  return node;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -14334,8 +14558,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.dont_prt_long_string = 1;
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
+
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
+			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
+
   contextp->sql_hash_text = (char *) statement->alias_print;
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -14386,6 +14612,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
     }
+
   if (stream.xasl_id == NULL && err == NO_ERROR)
     {
       /* cache not found; make XASL from the parse tree including query optimization and plan generation */
@@ -14499,6 +14726,274 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * do_prepare_subquery () - prepare subquery statements for query cache
+ * return : Error code
+ * parser (in)	  : parser context
+ * stmt (in) : subquery statement to prepare
+ */
+int
+do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  int err = NO_ERROR;
+  PARSER_CONTEXT context;
+  int i, sub_idx, var_count;
+  PT_NODE *hv, *save_next = NULL;
+  PT_NODE **host_var_p, *prev;
+  PT_MISC_TYPE save_flag;
+
+  context = *parser;
+
+  var_count = parser->host_var_count + parser->auto_param_count;
+
+  stmt->info.query.flag.subquery_cached = 1;
+
+  context.host_var_count = 0;
+  context.host_variables = NULL;
+  stmt->sub_host_var_index = NULL;
+  stmt->sub_host_var_count = 0;
+
+  if (var_count > 0)
+    {
+      host_var_p = (PT_NODE **) calloc (var_count, sizeof (PT_NODE *));
+      if (host_var_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (PT_NODE *));
+	  goto err_exit;
+	}
+
+      context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+      if (context.host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
+	  goto err_exit;
+	}
+
+      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      if (stmt->sub_host_var_index == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+	  goto err_exit;
+	}
+
+      /* not to traverse next subquery */
+      save_next = stmt->next;
+      stmt->next = NULL;
+
+      parser_walk_tree (&context, stmt, pt_sub_host_vars_index, host_var_p, NULL, NULL);
+
+      /* restore next subquery */
+      stmt->next = save_next;
+    }
+
+  for (i = 0; i < var_count; i++)
+    {
+      if (host_var_p[i])
+	{
+	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
+	    {
+	      /* saved flag indicates whether it can be used as a host variable. */
+	      if (!hv->info.host_var.saved)
+		{
+		  sub_idx = stmt->sub_host_var_count;
+		  stmt->sub_host_var_index[sub_idx] = i;
+		  db_value_clone (&parser->host_variables[i], &context.host_variables[sub_idx]);
+		  stmt->sub_host_var_count++;
+		  break;
+		}
+	    }
+
+	  for (; hv; hv = hv->info.host_var.next)
+	    {
+	      if (!hv->info.host_var.saved)
+		{
+		  /* set the saved flag for host variables */
+		  hv->info.host_var.saved = hv->info.host_var.index + 1;
+		  hv->info.host_var.index = sub_idx;
+		}
+	    }
+	}
+    }
+
+  context.host_var_count = stmt->sub_host_var_count;
+
+  /* save the flag for main query's prepare */
+  save_flag = stmt->info.query.is_subquery;
+
+  err = do_prepare_select (&context, stmt);
+
+  /* restore the flag */
+  stmt->info.query.is_subquery = save_flag;
+
+  /* restore host var index */
+  for (i = 0; i < var_count; i++)
+    {
+      prev = NULL;
+      for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
+	{
+	  if (prev)
+	    {
+	      prev->info.host_var.next = NULL;
+	    }
+	  hv->info.host_var.index = hv->info.host_var.saved - 1;
+	  hv->info.host_var.saved = 0;
+	  prev = hv;
+	}
+    }
+
+  if (var_count > 0)
+    {
+      free (host_var_p);
+
+      /* clear for only cloned */
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  db_value_clear (&context.host_variables[i]);
+	}
+      free (context.host_variables);
+    }
+
+  return err;
+
+err_exit:
+
+  if (host_var_p)
+    {
+      free (host_var_p);
+    }
+
+  if (context.host_variables)
+    {
+      free (context.host_variables);
+    }
+
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
+
+/*
+ * do_execute_prepared_subquery () - execute CTE statements as prepared statement for result-cache
+ * return : Error code
+ * parser (in)	 : parser context
+ * num_query : the number of subqueries
+ * info (in) : prepare info. for subquery 
+ */
+int
+do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
+{
+  int i, q, err = NO_ERROR;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+
+  for (q = 0; q < num_query; q++)
+    {
+      DB_VALUE *host_variables = NULL;
+
+      if (info[q].host_var_count > 0)
+	{
+	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * info[q].host_var_count);
+
+	  if (host_variables == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * info[q].host_var_count);
+	      err = ER_OUT_OF_VIRTUAL_MEMORY;
+	      return err;
+	    }
+
+	  for (i = 0; i < info[q].host_var_count; i++)
+	    {
+	      pr_clone_value (&parser->host_variables[info[q].host_var_index[i]], &host_variables[i]);
+	    }
+	}
+
+      err =
+	execute_query (&info[q].xasl_id, &query_id, info[q].host_var_count, host_variables,
+		       &list_id, RESULT_CACHE_REQUIRED, NULL, NULL);
+
+      if (host_variables)
+	{
+	  for (i = 0; i < info[q].host_var_count; i++)
+	    {
+	      db_value_clear (&host_variables[i]);
+	    }
+	  free (host_variables);
+	}
+
+      if (err != NO_ERROR)
+	{
+	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	    {
+	      /* set the flag to recompile from it's main query */
+	      stmt->info.execute.recompile = 1;
+	      er_clearid ();
+	      err = NO_ERROR;
+	    }
+	  break;
+	}
+    }
+
+  return err;
+}
+
+/*
+ * do_execute_subquery () - execute subquery statements for subquery cache
+ * return : Error code
+ * parser (in)	  : parser context
+ * stmt (in) : statement to execute
+ * query_flag     : query flag for execution
+ */
+int
+do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+  DB_VALUE *host_variables = NULL;
+  CACHE_TIME clt_cache_time;
+  int err, i, flag = RESULT_CACHE_REQUIRED;
+
+  CACHE_TIME_RESET (&clt_cache_time);
+
+  if (stmt->sub_host_var_count > 0)
+    {
+      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->sub_host_var_count);
+      if (host_variables == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_VALUE) * stmt->sub_host_var_count);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  pr_clone_value (&parser->host_variables[stmt->sub_host_var_index[i]], &host_variables[i]);
+	}
+    }
+
+  err =
+    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
+		   &stmt->cache_time);
+
+  if (host_variables)
+    {
+      for (i = 0; i < stmt->sub_host_var_count; i++)
+	{
+	  db_value_clear (&host_variables[i]);
+	}
+      free (host_variables);
+    }
+
+  if (err == ER_QPROC_RESULT_CACHE_INVALID)
+    {
+      /* retry the statement once */
+      if ((err = do_prepare_statement (parser, stmt)) == NO_ERROR)
+	{
+	  err = do_execute_statement (parser, stmt);
+	}
+    }
+
+  return err;
+}
+
+/*
  * do_execute_session_statement () - execute a prepared session statement
  * return :
  * parser (in)	  : parser context
@@ -14545,6 +15040,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
+    }
+
+  if (statement->info.execute.do_cache)
+    {
+      query_flag |= RESULT_CACHE_REQUIRED;
     }
 
   if (query_trace == true)
@@ -14654,7 +15154,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err;
+  int err = NO_ERROR;
   QFILE_LIST_ID *list_id;
   int query_flag, into_cnt, i, au_save;
   PT_NODE *into;
@@ -14936,6 +15436,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
 
+	  assert ((int) sizeof (cls_info[count]->name) < strlen (classname));
 	  strcpy (cls_info[count]->name, classname);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
@@ -14962,39 +15463,23 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
-  static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
   char *sbr_text = NULL;
   char *stmt_text = NULL;
-
-  int num_class = 0;
-  int num_object = 0;
-
-  int drop_stmt_length = 0, pre_drop_length = 0;
-  int drop_copied_length = 0;
   char *drop_stmt = NULL;
-  const char *drop_prefix = "drop table ";
-  const char *drop_view_prefix = "drop view ";
-  const char *if_exist_statement = "if exists ";
-  const char *cascade_statement = " cascade constraints";
 
   const char *classname = NULL;
   const char *objname = NULL;
 
   CDC_DDL_TYPE ddl_type;
   CDC_DDL_OBJECT_TYPE objtype;
-
-  PT_NODE *entity = NULL;
-  PT_NODE *entity_spec = NULL;
   PT_NODE *target = NULL;
-
   OID *classoid = NULL;
-  OID *classoid_list[1024];
-  OID *oid = NULL;
+  OID oid_tmp = OID_INITIALIZER;
+  OID *oid = &oid_tmp;
   OID null_oid = OID_INITIALIZER;
 
-  int stmt_length = 0;
 
   bool supp_appended = false;
 
@@ -15111,74 +15596,93 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP:
       {
+	int drop_stmt_length = 0, pre_drop_length = 0;
+	int drop_copied_length = 0, name_len = 0;
+	const char *drop_prefix = "drop table ";
+	const char *drop_view_prefix = "drop view ";
+	const char *if_exist_statement = "if exists ";
+	const char *cascade_statement = " cascade constraints";
+	const int drop_prefix_len = strlen (drop_prefix);
+	const int drop_view_prefix_len = strlen (drop_view_prefix);
+	const int if_exist_statement_len = strlen (if_exist_statement);
+	const int cascade_statement_len = strlen (cascade_statement);
+
 	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
 	  {
 	    goto end;
 	  }
 
 	ddl_type = CDC_DROP;
+	pre_drop_length =
+	  MAX (drop_prefix_len, drop_view_prefix_len) + if_exist_statement_len + cascade_statement_len + 2;
 
 	if (cls_info != NULL)
 	  {
-	    while (cls_info[num_class] != NULL)
+	    for (int i = 0; cls_info[i] != NULL; i++)
 	      {
-		num_class++;
+		name_len = strlen (cls_info[i]->name);
+		drop_copied_length = pre_drop_length + name_len;
+
+		if (drop_stmt_length < drop_copied_length)
+		  {
+		    if (drop_stmt)
+		      {
+			free (drop_stmt);
+		      }
+		    else
+		      {
+			drop_copied_length += 32;	// Ensure sufficient size to avoid reallocation of memory.
+		      }
+
+		    drop_stmt_length = drop_copied_length;
+		    drop_stmt = (char *) malloc (drop_stmt_length);
+		    if (drop_stmt == NULL)
+		      {
+			error = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+		  }
+
+		if (cls_info[i]->objtype == CDC_TABLE)
+		  {
+		    memcpy (drop_stmt, drop_prefix, drop_prefix_len);
+		    drop_copied_length = drop_prefix_len;
+		  }
+		else if (cls_info[i]->objtype == CDC_VIEW)
+		  {
+		    memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
+		    drop_copied_length = drop_view_prefix_len;
+		  }
+		else
+		  {
+		    assert (false);
+		    error = ER_FAILED;
+		    goto end;
+		  }
+
+		if (statement->info.drop.if_exists)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
+		    drop_copied_length += if_exist_statement_len;
+		  }
+
+		memcpy (drop_stmt + drop_copied_length, cls_info[i]->name, name_len);
+		drop_copied_length += name_len;
+
+		if (statement->info.drop.is_cascade_constraints)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
+		    drop_copied_length += cascade_statement_len;
+		  }
+
+		drop_stmt[drop_copied_length] = '\0';
+
+		error =
+		  log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
+					    drop_stmt);
+
+		free_and_init (cls_info[i]);
 	      }
-	  }
-
-
-	for (int i = 0; i < num_class; i++)
-	  {
-	    pre_drop_length =
-	      ((cls_info[i]->objtype ==
-		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
-	      strlen (cascade_statement) + 2;
-
-	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
-	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
-	    if (drop_stmt == NULL)
-	      {
-		goto end;
-	      }
-
-	    if (cls_info[i]->objtype == CDC_TABLE)
-	      {
-		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-		drop_copied_length = strlen (drop_prefix);
-	      }
-	    else if (cls_info[i]->objtype == CDC_VIEW)
-	      {
-		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
-		drop_copied_length = strlen (drop_view_prefix);
-	      }
-	    else
-	      {
-		assert (false);
-	      }
-
-	    if (statement->info.drop.if_exists)
-	      {
-		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
-		drop_copied_length += strlen (if_exist_statement);
-	      }
-
-	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
-	    drop_copied_length += strlen (cls_info[i]->name);
-
-	    if (statement->info.drop.is_cascade_constraints)
-	      {
-		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
-		drop_copied_length += strlen (cascade_statement);
-	      }
-
-	    drop_stmt[drop_copied_length] = '\0';
-
-	    error =
-	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					drop_stmt);
-
-	    free_and_init (drop_stmt);
-	    free_and_init (cls_info[i]);
 	  }
 
 	supp_appended = true;
@@ -15189,13 +15693,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       {
 	BTID index;
 	MOP classop;
-
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15216,13 +15713,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15242,13 +15732,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15265,12 +15748,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
@@ -15288,13 +15765,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -15316,7 +15786,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  }
 	else
 	  {
-	    oid = (OID *) malloc (sizeof (OID));
 	    OID_SET_NULL (oid);
 	  }
 
@@ -15413,6 +15882,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	break;
       }
     case PT_REMOVE_TRIGGER:
+      {
+	/* TODO: Further review and action are needed in the future.
+	 *   This function is called from do_statement() and do_execute_statement().
+	 *  In the case of PT_REMOVE_TRIGGER, the initialization of ddl_type and objtype is not performed.
+	 *  As a result, the behavior after exiting the switch statement becomes unclear.
+	 *  As a temporary measure, assert_release(0); is added.
+	 */
+	assert_release (0);
+	error = ER_FAILED;
+	goto end;
+      }
       break;
 
     case PT_ALTER_TRIGGER:
@@ -15561,11 +16041,6 @@ end:
   if (host_val)
     {
       free (host_val);
-    }
-
-  if (oid != NULL)
-    {
-      free_and_init (oid);
     }
 
   if (drop_stmt != NULL)
@@ -16851,7 +17326,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat = NULL, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op, insert_only = false;
 
@@ -17063,7 +17538,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->flag.dont_prt_long_string = 1;
       parser->flag.long_string_skipped = 0;
       parser->flag.print_type_ambiguity = 0;
-      PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
+      PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
       contextp->sql_hash_text = (char *) statement->alias_print;
       err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -17118,7 +17593,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_enter_packing_buf ();
 
 	  /* generate MERGE XASL */
+	  /* Note: Autoparameterization is redundant as the merge XASL generation is already performed. Therefore, this step can be safely omitted. */
+	  bool backup_flag = parser->flag.is_skip_auto_parameterize;
+	  parser->flag.is_skip_auto_parameterize = 1;
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
+	  parser->flag.is_skip_auto_parameterize = backup_flag;
 
 	  stream.buffer = NULL;
 
@@ -17286,7 +17765,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   INT64 result = 0;
   int error = NO_ERROR;
-  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
@@ -17775,10 +18254,16 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
-
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
-			      DB_MAX_IDENTIFIER_LENGTH);
-      target_name = target_name_buf;
+      if (PT_SYNONYM_IS_DBLINKED (statement))
+	{
+	  target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
+	}
+      else
+	{
+	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+				  DB_MAX_IDENTIFIER_LENGTH);
+	  target_name = target_name_buf;
+	}
 
       /* target_owner */
       target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
@@ -17796,7 +18281,9 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       comment = (char *) PT_SYNONYM_COMMENT_BYTES (statement);
     }
 
-  error = do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE);
+  error =
+    do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE,
+			       PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17816,7 +18303,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 static int
 do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-			   const char *comment, const int is_public_synonym)
+			   const char *comment, const int is_public_synonym, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -17891,7 +18378,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
 
       /* target_name */
-      db_make_string (&value, sm_remove_qualifier_name (target_name));
+      if (is_dblinked)
+	{
+	  db_make_string (&value, target_name);
+	}
+      else
+	{
+	  db_make_string (&value, sm_remove_qualifier_name (target_name));
+	}
       error = dbt_put_internal (obj_tmpl, "target_name", &value);
       db_value_clear (&value);
       if (error != NO_ERROR)
@@ -17977,7 +18471,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *synonym_owner_obj = NULL;
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *target_name = NULL;
+  char target_name_buf[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *comment = NULL;
   int or_replace = FALSE;
   int error = NO_ERROR;
@@ -18005,7 +18500,16 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   or_replace = PT_SYNONYM_OR_REPLACE (statement);
 
   /* target_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (PT_SYNONYM_IS_DBLINKED (statement))
+    {
+      target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
+    }
+  else
+    {
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+			      DB_MAX_IDENTIFIER_LENGTH);
+      target_name = target_name_buf;
+    }
 
   /* target_owner */
   target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
@@ -18024,7 +18528,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     do_create_synonym_internal (synonym_name, synonym_owner_obj, target_name, target_owner_obj, comment, FALSE,
-				or_replace);
+				or_replace, PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18047,7 +18551,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 static int
 do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 			    DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-			    const int or_replace)
+			    const int or_replace, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -18182,7 +18686,14 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
     }
 
   /* target_name */
-  db_make_string (&value, sm_remove_qualifier_name (target_name));
+  if (is_dblinked)
+    {
+      db_make_string (&value, target_name);
+    }
+  else
+    {
+      db_make_string (&value, sm_remove_qualifier_name (target_name));
+    }
   error = dbt_put_internal (obj_tmpl, "target_name", &value);
   db_value_clear (&value);
   if (error != NO_ERROR)
@@ -19748,6 +20259,98 @@ end:
 #undef QUERY_BUF_SIZE
 }
 
+int
+do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
+{
+#define QUERY_BUF_SIZE 2048
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  const char *query = NULL;
+  char query_buf[QUERY_BUF_SIZE] = { '\0' };
+  const char *current_schema_name = NULL;
+  const char *sp_name = NULL;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  query_error.err_lineno = 0;
+  query_error.err_posno = 0;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      ERROR_SET_WARNING (error, ER_OBJ_INVALID_ARGUMENTS);
+      return error;
+    }
+
+  assert (buf != NULL);
+
+  current_schema_name = sc_current_schema_name ();
+
+  sp_name = sm_remove_qualifier_name (name);
+  query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (query_buf[0] != '\0');
+
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      if (error == DB_CURSOR_END)
+	{
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (!DB_IS_NULL (&value))
+    {
+      assert (strlen (db_get_string (&value)) < buf_size);
+      strcpy (buf, db_get_string (&value));
+    }
+  else
+    {
+      /* unique_name must not be null. */
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_next_tuple (query_result);
+  if (error != DB_CURSOR_END)
+    {
+      /* No result can be returned because unique_name is not unique. */
+      buf[0] = '\0';
+    }
+
+end:
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+#undef QUERY_BUF_SIZE
+}
+
 /*
  * do_set_trace_to_query_flag() -
  *   return: void
@@ -20006,7 +20609,7 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   CHECK_MODIFICATION_ERROR ();
 
   drop_server = &(statement->info.drop_server);
-  server_object = server_find (drop_server->server_name, drop_server->owner_name, false);
+  server_object = server_find (drop_server->server_name, drop_server->owner_name);
   if (server_object == NULL)
     {
       error = er_errid ();
@@ -20166,7 +20769,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   sm_downcase_name ((char *) create_server->server_name->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   attr_val[0] = name_buf;
-  server_object = server_find (create_server->server_name, create_server->owner_name, true);
+  server_object = server_find (create_server->server_name, create_server->owner_name);
   if (server_object != NULL)
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
@@ -20317,7 +20920,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  server_object = server_find (rename_server->old_name, rename_server->owner_name, false);
+  server_object = server_find (rename_server->old_name, rename_server->owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20359,7 +20962,7 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&name_val);
     }
 
-  if (server_find (rename_server->new_name, owner_node, false))
+  if (server_find (rename_server->new_name, owner_node))
     {
       error = ER_DBLINK_SERVER_ALREADY_EXISTS;
     }
@@ -20426,7 +21029,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   alter = &(statement->info.alter_server);
   server_name = alter->server_name->info.name.original;
 
-  server_object = server_find (alter->server_name, alter->current_owner_name, false);
+  server_object = server_find (alter->server_name, alter->current_owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20629,7 +21232,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      if (server_find (alter->server_name, alter->owner_name, false))
+      if (server_find (alter->server_name, alter->owner_name))
 	{
 	  char buf[2048];
 	  sprintf (buf, "[%s].[%s]",
@@ -20677,7 +21280,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, P
   db_make_null (&user_val);
 
   cnt = 0;
-  server_object = server_find (server_name, owner_name, false);
+  server_object = server_find (server_name, owner_name);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20780,12 +21383,12 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 {
   DB_OBJECT *server_object = NULL;
   MOP user_obj = NULL;
-  int au_save, error;
+  int au_save, error = NO_ERROR;
   DB_VALUE user_val;
 
   db_make_null (&user_val);
 
-  server_object = server_find (server_nm, owner_nm, false);
+  server_object = server_find (server_nm, owner_nm);
   if (server_object == NULL)
     {
       return er_errid ();
@@ -20803,7 +21406,6 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 	}
     }
 
-error_end:
   AU_ENABLE (au_save);
   pr_clear_value (&user_val);
 
@@ -21006,9 +21608,13 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
 	}
       else
 	{
-	  sprintf ((char *) private_key, "%04d%02d%02d%02d%02d%02d%06ld",
-		   lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		   check_time.tv_usec);
+	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+			check_time.tv_usec) >= (int) sizeof (private_key))
+	    {
+	      assert_release (0);
+	      private_key[sizeof (private_key) - 1] = '\0';
+	    }
 	}
     }
 
@@ -21090,14 +21696,13 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
  *
  * return		  : Record object or NULL
  * node_server(in)	  : PT_NODE* for server name.
- * node_owner(in)         : PT_NODE* for owner name.
- * force_owner_name(in)   : Set whether to designate as the current user when node_owner is NULL
+ * node_owner(in)         : PT_NODE* for owner name. 
  * 
  * Remark: 
  *      
  */
 static MOP
-server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
+server_find (PT_NODE * node_server, PT_NODE * node_owner)
 {
   int error = NO_ERROR;
   MOP server_obj = NULL;
@@ -21122,25 +21727,19 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
       intl_identifier_upper (owner_name, upper_case_name);
       owner_name = upper_case_name;
     }
-  else if (force_owner_name)
+  else
     {
-      owner_name = (char *) au_user_name ();
+      owner_name = (char *) au_get_current_user_name ();
       if (!owner_name)
 	{
 	  return NULL;
 	}
     }
 
-  if (owner_name)
-    {
-      sprintf (query,
-	       "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
-	       name_buf, owner_name);
-    }
-  else
-    {
-      sprintf (query, "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s'", name_buf);
-    }
+  assert (owner_name);
+  sprintf (query,
+	   "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
+	   name_buf, owner_name);
 
   if (owner_name == upper_case_name)
     {
@@ -21156,6 +21755,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
   DB_VALUE values[2];
   int au_save;
   int rec_cnt = 0;
+  int saved_opt_level;
 
   server_name = (char *) node_server->info.name.original;
   owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
@@ -21171,7 +21771,17 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
 
   AU_DISABLE (au_save);
 
+  /*
+   * backup the optimization level for executing internal query to find server-name,
+   * because it could not be executed depending on the optimization level.
+   */
+  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+
   error = db_compile_and_execute_local (query, &query_result, &query_error);
+
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+
   if (error < 0)
     {
       goto err;
@@ -21255,4 +21865,19 @@ err:
     }
 
   return server_obj;
+}
+
+bool
+pt_is_allowed_result_cache ()
+{
+  int is_list_cache_disabled =
+    ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
+     || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_PAGES) <= 0));
+
+  if (is_list_cache_disabled)
+    {
+      return false;
+    }
+
+  return true;
 }

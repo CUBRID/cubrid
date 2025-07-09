@@ -32,6 +32,8 @@
 
 #include <cstring>
 #include <string>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 bool
 lob_locator_is_valid (const char *locator)

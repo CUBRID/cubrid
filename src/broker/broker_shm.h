@@ -572,6 +572,7 @@ struct t_shm_appl_server
   char cci_default_autocommit;
   char shard_flag;
   bool access_control;
+  bool acl_default_policy;
   int jdbc_cache_life_time;
   int connect_order;
   int replica_only_flag;
@@ -631,6 +632,7 @@ struct t_shm_appl_server
 #if !defined(WINDOWS)
   sem_t acl_sem;
 #endif
+  int net_buf_size;
 
   char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
   char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];
@@ -662,8 +664,10 @@ struct t_shm_broker
   uid_t owner_uid;
 #endif				/* !WINDOWS */
   int num_broker;		/* number of broker */
+  char admin_log_file[SHM_BROKER_PATH_MAX];
   char access_control_file[SHM_BROKER_PATH_MAX];
   bool access_control;
+  bool acl_default_policy;	/* Determines whether to allow or deny access to brokers that are not set in access_control_file. */
   T_BROKER_INFO br_info[1];
 };
 
@@ -694,7 +698,7 @@ int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
 T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag,
-						char *acl_file);
+						char *acl_file, int acl_default_policy, char *admin_log_file);
 T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
 
 #endif /* _BROKER_SHM_H_ */

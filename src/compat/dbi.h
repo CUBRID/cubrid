@@ -56,6 +56,11 @@ extern "C"
   enum
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
+  enum OPEN_BUFFER_FLAGS
+  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+
+  extern int g_open_buffer_control_flags;
+
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);
   extern void db_string_free (char *string);
@@ -72,6 +77,8 @@ extern "C"
   extern char *db_get_server_session_key (void);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
+  extern bool db_get_keep_session (void);
+  extern void db_set_keep_session (const bool keep_session);
   extern int db_end_session (void);
   extern int db_find_or_create_session (const char *db_user, const char *program_name);
   extern int db_get_row_count_cache (void);
@@ -80,6 +87,7 @@ extern "C"
   extern int db_get_last_insert_id (DB_VALUE * value);
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
+  extern void db_shutdown_without_request_to_server (void);
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);
@@ -113,6 +121,9 @@ extern "C"
   extern int db_last_volume (void);
   extern void db_print_stats (void);
 
+  /* called only at initialization time to get the static methods linked */
+  extern void db_install_static_methods ();	/* see db_method_static.cpp */
+
   extern void db_preload_classes (const char *name1, ...);
   extern void db_link_static_methods (DB_METHOD_LINK * methods);
   extern void db_unlink_static_methods (DB_METHOD_LINK * methods);
@@ -145,6 +156,9 @@ extern "C"
   extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
   extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth, int grant_option);
   extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
+  extern int db_grant_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth,
+			      int grant_option);
+  extern int db_revoke_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth);
   extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
   extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
   extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
@@ -408,6 +422,9 @@ extern "C"
   extern int db_trigger_action (DB_OBJECT * trobj, char **action);
   extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
 
+/* Procedure functions */
+  extern DB_OBJECT *db_find_procedure (const char *name);
+
 /* Schema template functions */
   extern DB_CTMPL *dbt_create_class (const char *name);
   extern DB_CTMPL *dbt_create_vclass (const char *name);
@@ -574,6 +591,7 @@ extern "C"
   extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
+  extern void db_init_lexer_lineno ();
 
   extern int db_statement_count (DB_SESSION * session);
 
@@ -733,6 +751,8 @@ extern "C"
 
   extern void db_clear_host_connected (void);
   extern char *db_get_database_version (void);
+
+  extern DB_OBJECT_TYPE db_get_object_type (DB_OBJECT * obj_);
 #ifdef __cplusplus
 }
 #endif

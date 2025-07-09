@@ -112,5 +112,6 @@ extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len);
 extern char *get_cubrid_file_ptr (T_CUBRID_FILE_ID fid);
 extern char *get_cubrid_home (void);
 extern const char *getenv_cubrid_broker (void);
+extern int make_abs_path (char *dst, const char *subdir, const char *path, size_t dest_len);
 
 #endif /* _BROKER_FILENAME_H_ */

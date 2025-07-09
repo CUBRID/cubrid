@@ -1,0 +1,687 @@
+/**
+ * CUBRID PL/CSQL Parser grammar based on and updated from
+ *  Oracle(c) PL/SQL 11g Parser (https://github.com/antlr/grammars-v4/tree/master/sql/plsql)
+ *
+ * Copyright (c) 2009-2011 Alexandre Porcelli <alexandre.porcelli@gmail.com>
+ * Copyright (c) 2015-2019 Ivan Kochurkin (KvanTTT, kvanttt@gmail.com, Positive Technologies).
+ * Copyright (c) 2017 Mark Adams <madams51703@gmail.com>
+ * Copyright (c) 2016 CUBRID Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+parser grammar PlcParser;
+
+@header {
+package com.cubrid.plcsql.compiler.antlrgen;
+}
+
+options {
+    tokenVocab=PlcLexer;
+}
+
+sql_script
+    : create_routine EOF
+    ;
+
+create_routine
+    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
+    ;
+
+routine_definition
+    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
+      (authid_spec? deterministic_spec? | deterministic_spec authid_spec) (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    ;
+
+routine_uniq_name
+    : (owner=identifier '.')? name=identifier
+    | '[' (owner=identifier '.')? name=identifier ']'   /* rewritten query */
+    ;
+
+parameter_list
+    : parameter (',' parameter)*
+    ;
+
+parameter
+    : parameter_name IN? type_spec default_value_part? (COMMENT CHAR_STRING)?                     # parameter_in
+    | parameter_name ( IN? OUT | INOUT ) type_spec (COMMENT CHAR_STRING)?                         # parameter_out
+    ;
+
+authid_spec
+    : AUTHID (DEFINER | OWNER)                          # authid_owner
+    | AUTHID (CALLER | CURRENT_USER)                    # authid_caller
+    ;
+
+deterministic_spec
+    : NOT DETERMINISTIC
+    | DETERMINISTIC
+    ;
+
+default_value_part
+    : (':=' | DEFAULT) expression
+    ;
+
+seq_of_declare_specs
+    : declare_spec+
+    ;
+
+declare_spec
+    : pragma_declaration
+    | constant_declaration
+    | exception_declaration
+    | variable_declaration
+    | cursor_definition
+    | routine_definition
+    ;
+
+variable_declaration
+    : identifier type_spec ((NOT NULL_)? default_value_part)? SEMICOLON
+    ;
+
+constant_declaration
+    : identifier CONSTANT type_spec (NOT NULL_)? default_value_part SEMICOLON
+    ;
+
+cursor_definition
+    : CURSOR identifier ( (LPAREN cursor_parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql SEMICOLON
+    ;
+
+cursor_parameter_list
+    : cursor_parameter (',' cursor_parameter)*
+    ;
+
+/* cursor parameters cannot have COMMENT and OUT/INOUT modifier */
+cursor_parameter
+    : parameter_name IN? type_spec
+    ;
+
+exception_declaration
+    : identifier EXCEPTION SEMICOLON
+    ;
+
+pragma_declaration
+    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
+    ;
+
+seq_of_statements
+    : (statement SEMICOLON)+
+    ;
+
+label_declaration
+    : '<<' label_name '>>'
+    ;
+
+statement
+    : block                                 # stmt_block
+    | sql_statement                         # stmt_sql              // must go before procedure_call
+    | cursor_manipulation_statement         # stmt_cursor_manipulation
+    | raise_application_error_statement     # stmt_raise_app_err    // must go before procedure_call
+    | execute_immediate                     # stmt_exec_imme
+    | assignment_statement                  # stmt_assign
+    | continue_statement                    # stmt_continue
+    | exit_statement                        # stmt_exit
+    | null_statement                        # stmt_null
+    | raise_statement                       # stmt_raise
+    | return_statement                      # stmt_return
+    | procedure_call                        # stmt_proc_call
+    | if_statement                          # stmt_if
+    | loop_statement                        # stmt_loop
+    | case_statement                        # stmt_case
+    ;
+
+execute_immediate
+    : EXECUTE IMMEDIATE dyn_sql (into_clause? restricted_using_clause? | restricted_using_clause into_clause)
+    ;
+
+dyn_sql
+    : expression
+    ;
+
+into_clause
+    : INTO assign_target (',' assign_target)*
+    ;
+
+assignment_statement
+    : assign_target ':=' expression
+    ;
+
+assign_target
+    : identifier
+    | record_field
+    ;
+
+continue_statement
+    : CONTINUE label_name? (WHEN expression)?
+    ;
+
+exit_statement
+    : EXIT label_name? (WHEN expression)?
+    ;
+
+if_statement
+    : IF expression THEN seq_of_statements elsif_part* else_part? END IF
+    ;
+
+elsif_part
+    : ELSIF expression THEN seq_of_statements
+    ;
+
+else_part
+    : ELSE seq_of_statements
+    ;
+
+loop_statement
+    : label_declaration? LOOP seq_of_statements END LOOP label_name?                       # stmt_basic_loop
+    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP label_name?      # stmt_while_loop
+    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
+    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
+    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
+    ;
+
+ // actually far more complicated according to the Spec.
+iterator
+    : index_name IN REVERSE? lower_bound '..' upper_bound (BY step)?
+    ;
+
+for_cursor
+    : record_name IN cursor_exp (LPAREN expressions? RPAREN)?
+    ;
+
+for_static_sql
+    : record_name IN LPAREN static_sql RPAREN
+    ;
+
+lower_bound
+    : concatenation
+    ;
+
+upper_bound
+    : concatenation
+    ;
+
+step
+    : concatenation
+    ;
+
+null_statement
+    : NULL_
+    ;
+
+raise_statement
+    : RAISE exception_name?
+    ;
+
+return_statement
+    : RETURN expression?
+    ;
+
+procedure_call
+    : proc_call_name function_argument?
+    ;
+
+proc_call_name
+    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
+    ;
+
+body
+    : BEGIN seq_of_statements (EXCEPTION exception_handler+)? END label_name?
+    ;
+
+exception_handler
+    : WHEN exception_name (OR exception_name)* THEN seq_of_statements
+    ;
+
+block
+    : (DECLARE seq_of_declare_specs)? body
+    ;
+
+sql_statement
+    : static_sql
+    | transaction_control_statement
+    ;
+
+static_sql
+    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR)+
+    ;
+
+static_sql_begin
+    : WITH
+    | SELECT
+    | INSERT
+    | UPDATE
+    | DELETE
+    | REPLACE
+    | MERGE
+    | TRUNCATE
+    ;
+
+cursor_manipulation_statement
+    : close_statement
+    | open_statement
+    | fetch_statement
+    | open_for_statement
+    ;
+
+close_statement
+    : CLOSE cursor_exp
+    ;
+
+open_statement
+    : OPEN cursor_exp (LPAREN expressions? RPAREN)?
+    ;
+
+fetch_statement
+    : FETCH cursor_exp into_clause
+    ;
+
+open_for_statement
+    : OPEN identifier FOR static_sql
+    ;
+
+transaction_control_statement
+    : commit_statement
+    | rollback_statement
+    ;
+
+commit_statement
+    : COMMIT WORK?
+    ;
+
+rollback_statement
+    : ROLLBACK WORK?
+    ;
+
+expressions
+    : expression (',' expression)*
+    ;
+
+expression
+    : unary_logical_expression      # expression_prime
+    | expression AND expression     # and_exp
+    | expression XOR expression     # xor_exp
+    | expression OR expression      # or_exp
+    ;
+
+unary_logical_expression
+    : relational_expression         # unary_logical_expression_prime
+    | NOT unary_logical_expression  # not_exp
+    ;
+
+relational_expression
+    : between_expression                                                # relational_expression_prime
+    | relational_expression relational_operator relational_expression   # rel_exp
+    ;
+
+between_expression
+    : in_expression                                         # between_expression_prime
+    | between_expression NOT? BETWEEN between_elements      # between_exp
+    ;
+
+in_expression
+    : like_expression                       # in_expression_prime
+    | in_expression NOT? IN in_elements     # in_exp
+    ;
+
+like_expression
+    : is_null_expression                                                                # like_expression_prime
+    | like_expression NOT? LIKE pattern=concatenation (ESCAPE escape=quoted_string)?    # like_exp
+    ;
+
+is_null_expression
+    : concatenation                         # is_null_expression_prime
+    | is_null_expression IS NOT? NULL_      # is_null_exp
+    ;
+
+concatenation
+    : unary_expression                                          # concatenation_prime
+    | concatenation ('*' | '/' | DIV | MOD) concatenation       # mult_exp
+    | concatenation ('+' | '-' ) concatenation                  # add_exp
+    | concatenation '||' concatenation                          # str_concat_exp
+    | concatenation ('<<' | '>>') concatenation                 # bit_shift_exp
+    | concatenation ('&') concatenation                         # bit_and_exp
+    | concatenation ('^') concatenation                         # bit_xor_exp
+    | concatenation ('|') concatenation                         # bit_or_exp
+    ;
+
+unary_expression
+    : atom                                      # unary_expression_prime
+    | ('-' | '+') unary_expression              # sign_exp
+    | '~' unary_expression                      # bit_compli_exp
+    ;
+
+atom
+    : literal                                   # literal_exp
+    | record_field                              # field_exp
+    | syntaxed_call                             # syntaxed_call_exp
+    | function_call                             # call_exp
+    | identifier                                # id_exp
+    | reserved_builtin_func                     # builtin_func
+    | case_expression                           # case_exp
+    | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
+    | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
+    | LPAREN expression RPAREN                  # paren_exp
+    | SQLCODE                                   # sqlcode_exp
+    | SQLERRM                                   # sqlerrm_exp
+    ;
+
+record_field
+    : record=identifier '.' field=identifier
+    ;
+
+function_call
+    : func_call_name function_argument
+    ;
+
+func_call_name
+    : (owner=identifier '.')? name=func_name
+    ;
+
+func_name
+    : identifier
+    | reserved_builtin_func
+    ;
+
+reserved_builtin_func   /* those which cannot be an identifier */
+    : ADDDATE
+    | CAST
+    | CHR
+    | CURRENT_USER
+    | DATE
+    | DATE_ADD
+    | DATE_SUB
+    | DAY
+    | DEFAULT
+    | EXTRACT
+    | HOUR
+    //| IF  do not include IF: it causes confusion with IF statement on syntax error case
+    | INSERT
+    | MINUTE
+    | MOD
+    | MONTH
+    | POSITION
+    | QUARTER
+    | REPLACE
+    | REVERSE
+    | SECOND
+    | SUBDATE
+    | TIME
+    | TIMESTAMP
+    | TRIM
+    | TRUNCATE
+    | WEEK
+    | YEAR
+    ;
+
+syntaxed_call
+    : CAST LPAREN argument AS type_spec RPAREN                                                # syntaxed_call_cast
+    | CHR LPAREN  argument USING ( UTF8 | ISO88591 ) RPAREN                                   # syntaxed_call_chr
+    | (DATE_ADD | ADDDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_adddate
+    | (DATE_SUB | SUBDATE) LPAREN date=argument ',' INTERVAL delta=argument time_unit RPAREN  # syntaxed_call_subdate
+    | EXTRACT LPAREN time_field FROM argument RPAREN                                          # syntaxed_call_extract
+    | POSITION LPAREN sub=argument IN whole=argument RPAREN                                   # syntaxed_call_position
+    | TRIM LPAREN trim_dir? trim_str=argument? FROM str=argument RPAREN                       # syntaxed_call_trim
+    ;
+
+time_unit
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    | SECOND_MILLISECOND
+    | MINUTE_MILLISECOND
+    | MINUTE_SECOND
+    | HOUR_MILLISECOND
+    | HOUR_SECOND
+    | HOUR_MINUTE
+    | DAY_MILLISECOND
+    | DAY_SECOND
+    | DAY_MINUTE
+    | DAY_HOUR
+    | YEAR_MONTH
+    ;
+
+time_field
+    : MILLISECOND
+    | SECOND
+    | MINUTE
+    | HOUR
+    | DAY
+    | WEEK
+    | MONTH
+    | QUARTER
+    | YEAR
+    ;
+
+trim_dir
+    : BOTH
+    | LEADING
+    | TRAILING
+    ;
+
+relational_operator
+    : '='
+    | NULL_SAFE_EQUALS_OP
+    | NOT_EQUAL_OP
+    | '<='
+    | '>='
+    | '<'
+    | '>'
+    ;
+
+in_elements
+    : LPAREN in_expression (',' in_expression)* RPAREN
+    ;
+
+between_elements
+    : between_expression AND between_expression
+    ;
+
+case_expression
+    : searched_case_expression
+    | simple_case_expression
+    ;
+
+simple_case_expression
+    : CASE expression simple_case_expression_when_part+ case_expression_else_part? END
+    ;
+
+simple_case_expression_when_part
+    : WHEN expression THEN expression
+    ;
+
+searched_case_expression
+    : CASE searched_case_expression_when_part+ case_expression_else_part? END
+    ;
+
+searched_case_expression_when_part
+    : WHEN expression THEN expression
+    ;
+
+case_expression_else_part
+    : ELSE expression
+    ;
+
+case_statement
+    : searched_case_statement
+    | simple_case_statement
+    ;
+
+raise_application_error_statement
+    : RAISE_APPLICATION_ERROR LPAREN err_code ',' err_msg RPAREN
+    ;
+
+err_code
+    : concatenation
+    ;
+
+err_msg
+    : concatenation
+    ;
+
+simple_case_statement
+    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE label_name?
+    ;
+
+simple_case_statement_when_part
+    : WHEN expression THEN seq_of_statements
+    ;
+
+searched_case_statement
+    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE label_name?
+    ;
+
+searched_case_statement_when_part
+    : WHEN expression THEN seq_of_statements
+    ;
+
+case_statement_else_part
+    : ELSE seq_of_statements
+    ;
+
+restricted_using_clause
+    : USING restricted_using_element (',' restricted_using_element)*
+    ;
+
+restricted_using_element
+    : (IN)? expression
+    ;
+
+parameter_name
+    : identifier
+    ;
+
+label_name
+    : identifier
+    ;
+
+exception_name
+    : identifier
+    ;
+
+index_name
+    : identifier
+    ;
+
+cursor_exp
+    : identifier
+    ;
+
+record_name
+    : identifier
+    ;
+
+table_name
+    : (identifier '.')? identifier
+    ;
+
+/* row name: table name or cursor name to which %ROWTYPE can be applied */
+row_name
+    : (user=identifier '.')? name=identifier
+    ;
+
+column_name
+    : identifier
+    ;
+
+function_argument
+    : LPAREN (argument (',' argument)*)? RPAREN
+    ;
+
+argument
+    : expression
+    ;
+
+type_spec
+    : native_datatype
+    | percent_type
+    | percent_rowtype
+    ;
+
+native_datatype
+    : numeric_type
+    | char_type
+    | varchar_type
+    | simple_type
+    ;
+
+percent_type
+    : (table_name '.')? identifier PERCENT_TYPE
+    ;
+
+percent_rowtype
+    : row_name PERCENT_ROWTYPE
+    ;
+
+numeric_type
+    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? RPAREN)?
+    ;
+
+char_type
+    : (CHAR | CHARACTER) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    ;
+
+varchar_type
+    : (VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    | STRING
+    ;
+
+simple_type
+    : BOOLEAN
+    | SHORT | SMALLINT
+    | INT | INTEGER
+    | BIGINT
+    | FLOAT | REAL
+    | DOUBLE PRECISION?
+    | DATE
+    | TIME
+    | TIMESTAMP
+    | DATETIME
+    | SYS_REFCURSOR
+    ;
+
+literal
+    : DATE quoted_string            # date_exp
+    | TIME quoted_string            # time_exp
+    | TIMESTAMP quoted_string       # timestamp_exp
+    | DATETIME quoted_string        # datetime_exp
+    | numeric                       # num_exp
+    | quoted_string                 # str_exp
+    | NULL_                         # null_exp
+    | TRUE                          # true_exp
+    | FALSE                         # false_exp
+    ;
+
+numeric
+    : UNSIGNED_INTEGER      # uint_exp
+    | FLOATING_POINT_NUM    # fp_num_exp
+    ;
+
+numeric_negative
+    : '-' numeric
+    ;
+
+quoted_string
+    : CHAR_STRING
+    ;
+
+identifier
+    : REGULAR_ID
+    | DELIMITED_ID
+    ;
+
+

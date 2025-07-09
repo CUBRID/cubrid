@@ -25,7 +25,6 @@
 #include "printer.hpp"
 
 #if defined(x86_SOLARIS)
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -37,7 +36,37 @@
 #include <sys/elf.h>
 
 #include "stack_dump.h"
+#elif defined(LINUX)
+#if __WORDSIZE == 32
+#include <stdio.h>
+#include <string.h>
 
+#include <ucontext.h>
+#include <dlfcn.h>
+
+#include "error_code.h"
+#include "memory_hash.h"
+#include "stack_dump.h"
+#else // __WORDSIZE == 32
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <execinfo.h>
+
+#include "error_code.h"
+#include "memory_hash.h"
+#include "stack_dump.h"
+#endif // __WORDSIZE == 32
+#else // LINUX
+#include <stdio.h>
+#include "stack_dump.h"
+#endif // x86_SOLARIS, LINUX
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
+#if defined(x86_SOLARIS)
 #define FRAME_PTR_REGISTER      EBP
 #define TR_ARG_MAX              6
 #define PGRAB_RDONLY            0x04
@@ -239,16 +268,6 @@ static int er_resolve_function_name (const void *address, const char *lib_file_n
 
 #if __WORDSIZE == 32
 
-#include <stdio.h>
-#include <string.h>
-
-#include <ucontext.h>
-#include <dlfcn.h>
-
-#include "error_code.h"
-#include "memory_hash.h"
-#include "stack_dump.h"
-
 #define PEEK_DATA(addr)	(*(size_t *)(addr))
 #define MAXARGS		6
 #define BUFFER_SIZE     1024
@@ -348,17 +367,7 @@ er_dump_call_stack_internal (print_output & output)
 
 #else /* __WORDSIZE == 32 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-
-#include "error_code.h"
-#include "memory_hash.h"
-#include "stack_dump.h"
-
-#define MAX_TRACE       32
+#define MAX_TRACE       64
 #define BUFFER_SIZE     1024
 
 /*
@@ -382,7 +391,8 @@ er_dump_call_stack_internal (print_output & output)
     {
       if (dladdr (return_addr[i], &dl_info) == 0)
 	{
-	  break;
+	  output ("[%.02d] %.016p: unknown function at unknown file\n", trace_count - i, return_addr[i]);
+	  continue;
 	}
 
       if (dl_info.dli_fbase >= (const void *) 0x40000000)
@@ -394,23 +404,25 @@ er_dump_call_stack_internal (print_output & output)
 	  func_addr_p = return_addr[i];
 	}
 
-      if (dl_info.dli_sname)
+      if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
 	{
-	  func_name_p = dl_info.dli_sname;
+	  func_name_p = buffer;
 	}
       else
 	{
-	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
-	    {
-	      func_name_p = buffer;
-	    }
-	  else
-	    {
-	      func_name_p = "???";
-	    }
+	  func_name_p = NULL;
 	}
 
-      output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      if (func_name_p && strstr (func_name_p, " at "))
+	{
+	  output ("[%.02d] %s\n", trace_count - i, func_name_p);
+	}
+      else
+	{
+	  output ("[%.02d] %.016p: %s at %s\n", trace_count - i, return_addr[i],
+		  (dl_info.dli_sname == NULL ? "unknown function" : dl_info.dli_sname),
+		  (dl_info.dli_fname == NULL ? "unknown file" : dl_info.dli_fname));
+	}
     }
 
   output.flush ();
@@ -435,7 +447,15 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
       return NO_ERROR;
     }
 
-  snprintf (cmd_line, sizeof (cmd_line), "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
+  if (strchr (lib_file_name_p, '/') == NULL)
+    {
+      snprintf (cmd_line, sizeof (cmd_line), "addr2line -a -f -C -p -e %s/bin/%s %p 2>/dev/null", getenv ("CUBRID"),
+		lib_file_name_p, address);
+    }
+  else
+    {
+      snprintf (cmd_line, sizeof (cmd_line), "addr2line -a -f -C -p -e %s %p 2>/dev/null", lib_file_name_p, address);
+    }
 
   output = popen (cmd_line, "r");
   if (!output)
@@ -480,10 +500,6 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
   return NO_ERROR;
 }
 #else /* LINUX */
-
-#include <stdio.h>
-#include "stack_dump.h"
-
 /*
  * er_dump_call_stack_internal - dump call stack
  *   return:

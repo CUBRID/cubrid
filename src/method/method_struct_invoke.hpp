@@ -21,9 +21,11 @@
 
 #include <string>
 
-#include "method_def.hpp"
+#include "porting.h"
+
 #include "mem_block.hpp"
 #include "packable_object.hpp"
+#include "sp_constants.hpp"
 
 /*
  * method_struct_invoke.hpp
@@ -40,17 +42,19 @@ namespace cubmethod
   /*
    * request data header
    */
-  struct header : public cubpacking::packable_object
+  struct EXPORT_IMPORT header : public cubpacking::packable_object
   {
     header () = delete;
-    header (int command, uint64_t id);
+    explicit header (cubpacking::unpacker &unpacker);
+    header (uint64_t id, int command, int req_id);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    int command;
     uint64_t id;
+    int command;
+    int req_id;
   };
 
   /*
@@ -59,50 +63,17 @@ namespace cubmethod
   struct prepare_args : public cubpacking::packable_object
   {
     prepare_args () = delete;
-    prepare_args (METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
+    prepare_args (uint64_t id, int tran_id, METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
     ~prepare_args () = default;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
+    uint64_t group_id;
+    int tran_id;
     METHOD_TYPE type;
     std::vector<std::reference_wrapper<DB_VALUE>> &args;
-  };
-
-  /*
-   * request data to invoke builtin(C) method
-   */
-  struct invoke_builtin : public cubpacking::packable_object
-  {
-    invoke_builtin () = delete;
-    invoke_builtin (method_sig_node *sig);
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    const method_sig_node *sig;
-  };
-
-  /*
-  * request data to invoke java method
-  */
-  struct invoke_java : public cubpacking::packable_object
-  {
-    invoke_java () = delete;
-    invoke_java (method_sig_node *sig);
-
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
-
-    std::string signature;
-    int num_args;
-    std::vector<int> arg_pos;
-    std::vector<int> arg_mode;
-    std::vector<int> arg_type;
-    int result_type;
   };
 } // namespace cubmethod
 

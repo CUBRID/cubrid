@@ -30,6 +30,7 @@
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -44,6 +45,8 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
@@ -863,10 +866,26 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	{
 	  key_atts = keys[j].sub.value;
 
-	  if (!DB_IS_NULL (&key_atts[1].value))
+	  if (DB_IS_NULL (&key_atts[1].value))
 	    {
-	      id = db_get_int (&key_atts[1].value);
+	      continue;
+	    }
 
+	  id = db_get_int (&key_atts[1].value);
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
+	    {
+	      DB_VALUE tmp_val;
+
+	      db_make_string (&tmp_val, dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
+	      pr_clear_value (&key_atts[1].value);
+	      pr_clone_value (&tmp_val, &key_atts[1].value);
+	      if (tmp_val.need_clear)
+		{
+		  pr_clear_value (&tmp_val);
+		}
+	    }
+	  else
+	    {
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{
 		  id_atts = ids[k].sub.value;
@@ -4602,7 +4621,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
       goto exit;
     }
 
-  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, false, NULL);
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, NULL);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -4656,7 +4675,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (lang_str != NULL);
 		  assert (lang_buf_size > 0);
-		  strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+		  memcpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
 		}
 	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }
@@ -5044,7 +5063,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
       goto exit;
     }
 
-  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, false, NULL);
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, NULL);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -5265,7 +5284,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
       goto exit;
     }
 
-  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, false, NULL);
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, NULL, true, NULL);
   if (error != NO_ERROR)
     {
       goto exit;

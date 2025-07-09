@@ -46,6 +46,8 @@
 #include <netinet/in.h>
 #endif /* !WINDOWS */
 #include "locale_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3842,7 +3844,7 @@ locale_alloc_collation_id (COLL_TAILORING * coll_tail)
 
       if (desc_part != NULL)
 	{
-	  while (desc_part < coll_name + strlen (coll_name))
+	  while (*desc_part)
 	    {
 	      coll_id += *desc_part++;
 	    }

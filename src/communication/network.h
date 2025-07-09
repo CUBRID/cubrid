@@ -114,6 +114,7 @@ enum net_server_request
   NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES,
   NET_SERVER_HEAP_HAS_INSTANCE,
   NET_SERVER_HEAP_RECLAIM_ADDRESSES,
+  NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH,
 
   NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES,
 
@@ -162,6 +163,7 @@ enum net_server_request
   NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE,
   NET_SERVER_QM_QUERY_END,
   NET_SERVER_QM_QUERY_DROP_ALL_PLANS,
+  NET_SERVER_QM_QUERY_DROP_SHA1_PLANS,
   NET_SERVER_QM_QUERY_DUMP_PLANS,
   NET_SERVER_QM_QUERY_DUMP_CACHE,
 
@@ -255,7 +257,7 @@ enum net_server_request
 
   NET_SERVER_VACUUM_DUMP,
 
-  NET_SERVER_METHOD_FOLD_CONSTANTS,
+  NET_SERVER_PL_CALL,
 
   NET_SERVER_SUPPLEMENT_STMT,
 
@@ -269,6 +271,13 @@ enum net_server_request
   /* flashback */
   NET_SERVER_FLASHBACK_GET_SUMMARY,
   NET_SERVER_FLASHBACK_GET_LOGINFO,
+
+  /* plcsql */
+  NET_SERVER_PLCSQL_TRANSFER_FILE,
+
+  /* memmon */
+  NET_SERVER_MMON_GET_SERVER_INFO,
+  NET_SERVER_MMON_DISABLE_FORCE,
 
   /*
    * This is the last entry. It is also used for the end of an
@@ -307,5 +316,20 @@ extern int net_server_start (const char *name);
 /* Misc */
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
+
+typedef enum
+{
+  NET_ENDIAN_UNKNOWN = 0,
+  NET_ENDIAN_LITTLE = 1,
+  NET_ENDIAN_BIG = 2
+} NET_ENDIAN;
+
+__inline NET_ENDIAN
+get_endian_type ()
+{
+  unsigned int e_v = 0x12345678;
+  unsigned char *e_p = (unsigned char *) (&e_v);
+  return ((e_p[0] == 0x78) ? NET_ENDIAN_LITTLE : (e_p[0] == 0x12) ? NET_ENDIAN_BIG : NET_ENDIAN_UNKNOWN);
+}
 
 #endif /* _NETWORK_H_ */

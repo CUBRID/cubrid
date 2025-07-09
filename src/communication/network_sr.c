@@ -60,6 +60,8 @@
 #include "thread_manager.hpp"
 #include "session.h"
 #include "network_request_def.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
@@ -329,6 +331,9 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_heap_reclaim_addresses;
 
+  req_p = &net_Requests[NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH];
+  req_p->processing_function = shf_get_maxslotted_reclength;
+
   /* file */
   req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
@@ -448,10 +453,6 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
-  req_p = &net_Requests[NET_SERVER_QST_UPDATE_ALL_STATISTICS];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
-  req_p->processing_function = sqst_update_all_statistics;
-
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
@@ -471,6 +472,9 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_ALL_PLANS];
   req_p->processing_function = sqmgr_drop_all_query_plans;
+
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
+  req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
@@ -551,7 +555,7 @@ net_server_init (void)
   /* JSP */
   req_p = &net_Requests[NET_SERVER_JSP_GET_SERVER_PORT];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sjsp_get_server_port;
+  req_p->processing_function = spl_get_server_port;
 
   /* replication */
   req_p = &net_Requests[NET_SERVER_REPL_INFO];
@@ -708,9 +712,9 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_VACUUM_DUMP];
   req_p->processing_function = svacuum_dump;
 
-  req_p = &net_Requests[NET_SERVER_METHOD_FOLD_CONSTANTS];
+  req_p = &net_Requests[NET_SERVER_PL_CALL];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = smethod_invoke_fold_constants;
+  req_p->processing_function = spl_call;
 
   req_p = &net_Requests[NET_SERVER_SUPPLEMENT_STMT];
   req_p->processing_function = slog_supplement_statement;
@@ -737,6 +741,17 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
+
+  /* PL/CSQL */
+  req_p = &net_Requests[NET_SERVER_PLCSQL_TRANSFER_FILE];
+  req_p->processing_function = splcsql_transfer_file;
+
+  /* memmon */
+  req_p = &net_Requests[NET_SERVER_MMON_GET_SERVER_INFO];
+  req_p->processing_function = smmon_get_server_info;
+
+  req_p = &net_Requests[NET_SERVER_MMON_DISABLE_FORCE];
+  req_p->processing_function = smmon_disable_force;
 }
 
 /*
@@ -927,7 +942,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (conn_p->session_p);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p, false);
     }
 
 loop:
@@ -1102,7 +1117,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL);
+  sysprm_load_and_init (server_name, NULL, SYSPRM_LOAD_ALL);
   sysprm_set_er_log_file (server_name);
 
   if (sync_initialize_sync_stats () != NO_ERROR)
@@ -1128,6 +1143,15 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+
+#if !defined(WINDOWS)
+  if (mmon_initialize (server_name) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize memory_monitor\n");
+      status = -1;
+      goto end;
+    }
+#endif /* !WINDOWS */
 
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
@@ -1175,6 +1199,9 @@ net_server_start (const char *server_name)
 
   cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
+#if !defined(WINDOWS)
+  mmon_finalize ();
+#endif /* !WINDOWS */
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

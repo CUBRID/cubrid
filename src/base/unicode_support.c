@@ -35,6 +35,8 @@
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "unicode_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #define UNICODEDATA_FILE "unicodedata.txt"

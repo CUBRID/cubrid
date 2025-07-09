@@ -41,6 +41,8 @@
 #include "system_parameter.h"
 
 #include <cassert>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubthread
 {
@@ -84,6 +86,9 @@ namespace cubthread
     assert (false);
     return;
 #else // not SA_MODE = SERVER_MODE
+
+    assert (m_all_entries == nullptr);
+    assert (m_entry_dispatcher == nullptr);
 
     m_available_entries_count = m_max_threads;
 
@@ -417,14 +422,21 @@ namespace cubthread
     std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
     std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
+    std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
+    std::size_t max_backup_read_workers = 0; // one per each backup read task
+
+#if defined (SERVER_MODE)
+    max_backup_read_workers = cubthread::system_core_count ();
+#endif // SERVER_MODE
 
     // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
     //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
     //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
     //       rather unlikely.
 
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons + max_backup_read_workers +
+		    max_parallel_workers * 2;
   }
 
   void

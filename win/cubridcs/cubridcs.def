@@ -6,7 +6,8 @@ EXPORTS
 	basename_r
     cfg_find_db
     cfg_free_directory
-    char_isdigit
+    char_properties_ptr
+    char_lower_mapper_ptr
     css_connect_to_master_for_info
     css_connect_to_master_timeout
     css_does_master_exist
@@ -257,6 +258,7 @@ EXPORTS
     db_need_reconnect
     db_object
     db_objlist_free
+    db_init_lexer_lineno
     db_open_buffer
     db_ping_server
     db_push_values
@@ -297,6 +299,8 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
+    db_set_keep_session
+    db_get_keep_session
     db_find_or_create_session
     db_end_session
     db_set_connect_status
@@ -340,6 +344,7 @@ EXPORTS
     db_set_connect_order
     db_set_client_ip_addr
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_synchronize_cache
     db_time_decode
@@ -425,6 +430,7 @@ EXPORTS
     prm_get_integer_value
     prm_get_bigint_value
     prm_get_string_value
+    prm_get_value
     prm_set_integer_value
     prm_Def
     rel_copy_version_string
@@ -458,7 +464,6 @@ EXPORTS
     util_log_write_errid
     util_log_write_errstr
     util_log_write_command
-    au_get_public_user_name
     au_login
     ml_ext_free
     ml_ext_add
@@ -528,9 +533,7 @@ EXPORTS
     prm_get_commit_on_shutdown
 ;
 ; cubrid_esql reference's functions
-;
-    char_isupper
-    char_tolower
+;    
     envvar_root
     hashpjw
     intl_mbs_casecmp
@@ -979,3 +982,8 @@ EXPORTS
   db_json_val_from_str
   gethostbyname_uhost
   getnameinfo_uhost
+  trim
+  er_has_error
+  prm_get_name
+  windows_socket_startup
+  windows_socket_shutdown

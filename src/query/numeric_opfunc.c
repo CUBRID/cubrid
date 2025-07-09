@@ -47,6 +47,8 @@
 #endif
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3852,7 +3854,8 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   bool found_first_non_zero = false;
   int scale = db_value_scale (val);
 
-  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
+  /* it should not be static because the parameter could be changed without broker restart */
+  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   assert (val != NULL && buf != NULL);
 
@@ -3881,7 +3884,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 	{
 	  int k = temp_size - 1;
 
-	  if (oracle_style_number)
+	  if (oracle_compat_number)
 	    {
 	      /* remove trailing zero */
 	      while (k > i && temp[k] == '0')

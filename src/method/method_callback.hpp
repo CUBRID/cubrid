@@ -29,12 +29,12 @@
 
 #include <unordered_map>
 #include <queue>
+#include <list>
 
-#include "method_connection_cl.hpp"
-#include "method_def.hpp"
 #include "method_error.hpp"
 #include "method_oid_handler.hpp"
 #include "method_query_handler.hpp"
+#include "method_struct_invoke.hpp"
 #include "method_struct_query.hpp"
 
 #include "transaction_cl.h"
@@ -72,16 +72,21 @@ namespace cubmethod
 
       void free_query_handle (int id, bool is_free);
       void free_query_handle_all (bool is_free);
+      void free_deferred_query_handler ();
 
       /* find query handler */
       query_handler *get_query_handler_by_id (const int id);
       query_handler *get_query_handler_by_query_id (const uint64_t qid); /* used for out resultset */
-      query_handler *get_query_handler_by_sql (const std::string &sql); /* used for statement handler cache */
+      query_handler *get_query_handler_by_sql (const std::string &sql,
+	  std::function<bool (query_handler *)> cond); /* used for statement handler cache */
 
       oid_handler *get_oid_handler ();
 
+      std::queue <cubmem::extensible_block> &get_data_queue ();
+
     private:
       /* handle related to query */
+      int end_transaction (packing_unpacker &unpacker);
       int prepare (packing_unpacker &unpacker);
       int execute (packing_unpacker &unpacker);
       int make_out_resultset (packing_unpacker &unpacker);
@@ -93,6 +98,16 @@ namespace cubmethod
       int oid_cmd (packing_unpacker &unpacker);
       int collection_cmd (packing_unpacker &unpacker);
 
+      /* handle related to meda data */
+      // int get_schema_info (packing_unpacker &unpacker);
+
+      /* handle related to compile */
+      int get_sql_semantics (packing_unpacker &unpacker);
+      int get_global_semantics (packing_unpacker &unpacker);
+
+      /* handle auth */
+      int change_rights (packing_unpacker &unpacker);
+
       /* ported from cas_handle */
       query_handler *new_query_handler ();
 
@@ -103,6 +118,10 @@ namespace cubmethod
 
       std::vector<query_handler *> m_query_handlers;
       oid_handler *m_oid_handler;
+
+      std::queue <cubmem::extensible_block> m_data_queue;
+
+      std::list <cubmethod::query_handler *> m_deferred_query_free_handler;
   };
 
   //////////////////////////////////////////////////////////////////////////

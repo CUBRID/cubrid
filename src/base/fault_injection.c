@@ -35,6 +35,8 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(NDEBUG)
 

@@ -42,6 +42,8 @@
 #include "error_manager.h"
 
 #include <assert.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  *  Define the circular shift macro

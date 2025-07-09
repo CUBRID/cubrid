@@ -29,6 +29,8 @@
 #include "thread_manager.hpp"
 
 #include <cassert>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // help debugging oldest active by following all changes
 struct oldest_active_event

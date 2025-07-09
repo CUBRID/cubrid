@@ -540,37 +540,6 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
   res->result = info;
 }
 
-
-char *
-ut_trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
-}
-
 int
 string_tokenize (char *str, char *tok[], int num_tok)
 {
@@ -759,7 +728,7 @@ cm_util_log_write_errstr (const char *format, ...)
 int
 cm_util_log_write_command (int argc, char *argv[])
 {
-  return util_log_write_command (argc, argv);
+  return util_log_write_command (argc, argv, 0);
 }
 
 /*
@@ -768,7 +737,7 @@ cm_util_log_write_command (int argc, char *argv[])
  */
 
 int
-make_temp_filename (char *tempfile, char *prefix, int size)
+make_temp_filename (char *tempfile, const char *prefix, int size)
 {
   struct timeval current_time;
 
@@ -804,7 +773,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, 
       return -1;
     }
 
-  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d_%d", tempdir, prefix ? prefix : "", task_code,
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%d", tempdir, prefix ? prefix : "", task_code,
 	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
 
   return 0;

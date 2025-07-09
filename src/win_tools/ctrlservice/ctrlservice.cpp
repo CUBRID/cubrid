@@ -39,7 +39,7 @@
 #define		CUBRID_UTIL_SHARD			"shard"
 #define		CUBRID_UTIL_MANAGER			"manager"
 #define		CUBRID_UTIL_SERVER			"server"
-#define		CUBRID_UTIL_JAVASP			"javasp"
+#define		CUBRID_UTIL_PL			        "pl"
 
 #define		CUBRID_COMMAND_START			"start"
 #define		CUBRID_COMMAND_STOP			"stop"
@@ -62,8 +62,8 @@
 #define		SERVICE_CONTROL_SERVER_STOP	181
 #define		SERVICE_CONTROL_SERVICE_START	190
 #define		SERVICE_CONTROL_SERVICE_STOP	191
-#define		SERVICE_CONTROL_JAVASP_START	210
-#define		SERVICE_CONTROL_JAVASP_STOP		211
+#define		SERVICE_CONTROL_PL_START	210
+#define		SERVICE_CONTROL_PL_STOP		211
 
 void WriteLog (char *p_logfile, char *p_format, ...);
 void GetCurDateTime (char *p_buf, char *p_form);
@@ -83,6 +83,7 @@ int
 _tmain (int argc, char *argv[])
 {
   bool rc;
+  int broker_start_loop_cnt_max = 50;
 
   // Install a Service if -i switch used
   if (argc == 2)
@@ -257,6 +258,28 @@ _tmain (int argc, char *argv[])
 
 	  // send control code
 	  rc = ControlService (scHandle, service_control_code, &ss);
+
+	  /*
+	   * When starting a broker having large number of CASes,
+	   * it will waits for some time for CAS invocation.
+	   */
+
+	  if (service_control_code == SERVICE_CONTROL_BROKER_START)
+	    {
+	      for (int i = 0; i < broker_start_loop_cnt_max; i++ )
+		{
+		  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
+		    {
+		      Sleep (200);
+		      rc = ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+	    }
+
 	  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
 	    {
 	      if (!ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss))
@@ -272,7 +295,7 @@ _tmain (int argc, char *argv[])
     {
       if (_stricmp (argv[1], CUBRID_UTIL_SERVER) == 0 ||
 	  _stricmp (argv[1], CUBRID_UTIL_BROKER) == 0 ||
-	  _stricmp (argv[1], CUBRID_UTIL_GATEWAY) == 0 || _stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0)
+	  _stricmp (argv[1], CUBRID_UTIL_GATEWAY) == 0 || _stricmp (argv[1], CUBRID_UTIL_PL) == 0)
 	{
 	  SERVICE_STATUS ss;
 	  int service_control_code;
@@ -310,13 +333,13 @@ _tmain (int argc, char *argv[])
 	    {
 	      service_control_code = SERVICE_CONTROL_GATEWAY_OFF;
 	    }
-	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
+	  else if (_stricmp (argv[1], CUBRID_UTIL_PL) == 0 && _stricmp (argv[2], CUBRID_COMMAND_START) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_START;
+	      service_control_code = SERVICE_CONTROL_PL_START;
 	    }
-	  else if (_stricmp (argv[1], CUBRID_UTIL_JAVASP) == 0 && _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
+	  else if (_stricmp (argv[1], CUBRID_UTIL_PL) == 0 && _stricmp (argv[2], CUBRID_COMMAND_STOP) == 0)
 	    {
-	      service_control_code = SERVICE_CONTROL_JAVASP_STOP;
+	      service_control_code = SERVICE_CONTROL_PL_STOP;
 	    }
 	  else
 	    {

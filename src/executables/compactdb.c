@@ -141,13 +141,11 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
-      PRINT_AND_LOG_ERR_MSG ("%s: %s.\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n\n", exec_name, db_error_string (3));
       status = error;
     }
   else
@@ -159,7 +157,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
       if ((error = db_shutdown ()))
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
 	  status = error;
 	}
     }
@@ -425,11 +423,11 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
   OID_SET_NULL (&last_oid);
 
   /* Now start fetching all the instances */
-  desc_obj = make_desc_obj (class_ptr);
+  desc_obj = make_desc_obj (class_ptr, -1);
   while (nobjects != nfetched)
     {
       if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,
-			     &fetch_area) == NO_ERROR)
+			     &fetch_area, 1, -1, -1) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -441,7 +439,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 		  class_objects++;
 		  total_objects++;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj) == NO_ERROR)
+		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj, false) == NO_ERROR)
 		    {
 		      process_object (thread_p, desc_obj, &obj->oid, verbose_flag);
 		    }

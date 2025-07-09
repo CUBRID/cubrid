@@ -86,6 +86,9 @@ regu_xasl_proc_init (xasl_node &node, PROC_TYPE type)
     case MERGELIST_PROC:
       break;
 
+    case HASHJOIN_PROC:
+      break;
+
     case SCAN_PROC:
       break;
 
@@ -191,7 +194,7 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
     case TARGET_METHOD:
       ACCESS_SPEC_METHOD_REGU_LIST (&spec) = NULL;
       ACCESS_SPEC_XASL_NODE (&spec) = NULL;
-      ACCESS_SPEC_METHOD_SIG_LIST (&spec) = NULL;
+      ACCESS_SPEC_METHOD_SIG_ARRAY (&spec) = NULL;
       break;
     case TARGET_JSON_TABLE:
       ACCESS_SPEC_JSON_TABLE_REGU_VAR (&spec) = NULL;
@@ -278,10 +281,42 @@ regu_init (arith_list_node &arith)
 }
 
 void
+regu_init (cubxasl::sp_node &sp)
+{
+  sp.args = NULL;
+  sp.sig = NULL;
+
+  regu_alloc (sp.value);
+
+  regu_alloc (sp.sig);
+  if (sp.sig)
+    {
+      new (sp.sig) cubpl::pl_signature();
+      regu_init (*sp.sig);
+    }
+}
+
+void
+regu_init (cubpl::pl_signature &sig)
+{
+  sig.name = NULL;
+  sig.auth = NULL;
+  sig.type = PL_TYPE_NONE;
+  sig.result_type = 0;
+}
+
+void
+regu_init (cubpl::pl_signature_array &sig_array)
+{
+  sig_array.sigs = NULL;
+  sig_array.num_sigs = 0;
+}
+
+void
 regu_init (function_node &fnode)
 {
   fnode.value = NULL;
-  fnode.ftype = (FUNC_TYPE) 0;
+  fnode.ftype = (FUNC_CODE) 0;
   fnode.operand = NULL;
   fnode.tmp_obj = NULL;
 
@@ -295,7 +330,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.accumulator.value = NULL;
   agg.accumulator.value2 = NULL;
   agg.accumulator.curr_cnt = 0;
-  agg.function = (FUNC_TYPE) 0;
+  agg.function = (FUNC_CODE) 0;
   agg.option = (QUERY_OPTIONS) 0;
   agg.operands = NULL;
   agg.list_id = NULL;
@@ -319,7 +354,7 @@ regu_init (cubxasl::analytic_list_node &ana)
   ana.curr_cnt = 0;
   ana.sort_prefix_size = 0;
   ana.sort_list_size = 0;
-  ana.function = (FUNC_TYPE) 0;
+  ana.function = (FUNC_CODE) 0;
   regu_init (ana.operand);
   ana.opr_dbtype = DB_TYPE_NULL;
   ana.flag = 0;

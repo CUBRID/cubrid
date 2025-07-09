@@ -252,6 +252,8 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
+static bool hb_Is_master_node_isolated = false;
+static char hb_Master_host_name[CUB_MAXHOSTNAMELEN];
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] = {
@@ -328,6 +330,13 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
         "  Error Logging: disabled\n"
 #define HA_ADMIN_INFO_NOLOG_EVENT_FORMAT_STRING  \
         "    %s\n"
+
+#define HA_FAILBACK_DIAG_STRING       "[Failback] [Diagnosis]"
+#define HA_FAILBACK_SUCCESS_STRING    "[Failback] [Success]"
+#define HA_FAILBACK_CANCEL_STRING     "[Failback] [Cancelled]"
+#define HA_FAILOVER_DIAG_STRING       "[Failover] [Diagnosis]"
+#define HA_FAILOVER_SUCCESS_STRING    "[Failover] [Success]"
+#define HA_FAILOVER_CANCEL_STRING     "[Failover] [Cancelled]"
 /*
  * linked list
  */
@@ -836,6 +845,11 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	      clst_arg->ping_check_count = 0;
 	      clst_arg->retries = 0;
 
+	      snprintf (hb_info_str, HB_INFO_STR_MAX,
+			"%s The master node has failed to receive heartbeat messages from all other slave nodes, resulting in a network partition",
+			HA_FAILBACK_DIAG_STRING);
+	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
 	      error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg, HB_JOB_TIMER_IMMEDIATELY);
 	      assert (error == NO_ERROR);
 	    }
@@ -854,8 +868,9 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
       && (hb_Cluster->master && hb_Cluster->myself && hb_Cluster->myself->state == HB_NSTATE_MASTER
 	  && hb_Cluster->master->priority != hb_Cluster->myself->priority))
     {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-		     "More than one master detected and failback will be initiated");
+      snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Multiple master nodes (%s, %s) are detected", HA_FAILBACK_DIAG_STRING,
+		hb_Cluster->myself->host_name, hb_Cluster->master->host_name);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
       hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
@@ -893,6 +908,21 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
     {
       hb_Cluster->state = HB_NSTATE_TO_BE_MASTER;
       hb_cluster_request_heartbeat_to_all ();
+
+      if (hb_Is_master_node_isolated)
+	{
+	  snprintf (hb_info_str, HB_INFO_STR_MAX,
+		    "%s The current node has failed to receive heartbeat messages from the master node (%s)",
+		    HA_FAILOVER_DIAG_STRING, hb_Master_host_name);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+	}
+      else if (hb_Master_host_name[0] != '\0')
+	{
+	  snprintf (hb_info_str, HB_INFO_STR_MAX,
+		    "%s The master node (%s) has lost its role due to server process problem, such as disk failure",
+		    HA_FAILOVER_DIAG_STRING, hb_Master_host_name);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+	}
 
       pthread_mutex_unlock (&hb_Cluster->lock);
 
@@ -968,6 +998,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
   unsigned int failover_wait_time;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
   HB_PING_HOST_ENTRY *ping_host;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   ENTER_FUNC ();
 
@@ -1076,9 +1107,30 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 ping_check_cancel:
 /* if this node is a master, then failback is cancelled */
 
-  if (hb_Cluster->state != HB_NSTATE_MASTER)
+  if (hb_Cluster->state == HB_NSTATE_MASTER)
     {
-      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled by ping check");
+      if (ping_try_count == 0)
+	{
+	  snprintf (hb_info_str, HB_INFO_STR_MAX,
+		    "%s No hosts are registered in ha_ping_hosts, or all registered hosts are invalid, making it impossible to determine the network partition",
+		    HA_FAILBACK_CANCEL_STRING);
+	  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+	}
+      else
+	{
+	  assert (ping_success);
+	  snprintf (hb_info_str, HB_INFO_STR_MAX,
+		    "%s Ping check succeeded for the hosts registered in ha_ping_hosts, determining that it is not a network partition",
+		    HA_FAILBACK_CANCEL_STRING);
+	  MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+	}
+    }
+  else
+    {
+      snprintf (hb_info_str, HB_INFO_STR_MAX,
+		"%s Ping check has been failed to all hosts registered in ha_ping_hosts, indicating a network partition",
+		HA_FAILOVER_CANCEL_STRING);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
   hb_cluster_request_heartbeat_to_all ();
@@ -1122,7 +1174,9 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 
   if (hb_Cluster->master && hb_Cluster->myself && hb_Cluster->master->priority == hb_Cluster->myself->priority)
     {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover completed");
+      snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully promoted to master",
+		HA_FAILOVER_SUCCESS_STRING);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
       hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
 
@@ -1131,7 +1185,10 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
     }
   else
     {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled");
+      snprintf (hb_info_str, HB_INFO_STR_MAX,
+		"%s New master has been found. Failover for current node has been cancelled",
+		HA_FAILOVER_CANCEL_STRING);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
 
@@ -1252,6 +1309,10 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
 
 	  hb_Cluster->hide_to_demote = false;
 
+	  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully demoted to slave",
+		    HA_FAILBACK_SUCCESS_STRING);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
 	  pthread_mutex_unlock (&hb_Cluster->lock);
 
 	  if (arg)
@@ -1305,8 +1366,9 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   hb_cluster_request_heartbeat_to_all ();
 
-  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-		 "This master will become a slave and cub_server will be restarted");
+  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully demoted to slave",
+	    HA_FAILBACK_SUCCESS_STRING);
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
   hb_help_sprint_nodes_info (hb_info_str, HB_INFO_STR_MAX);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
@@ -1498,6 +1560,8 @@ hb_cluster_calc_score (void)
   HB_NODE_ENTRY *node;
   struct timeval now;
 
+  hb_Is_master_node_isolated = false;
+
   if (hb_Cluster == NULL)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_Cluster is null. \n");
@@ -1518,6 +1582,13 @@ hb_cluster_calc_score (void)
 				      node->last_recv_hbtime) >
 	      prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS)))
 	{
+	  if (hb_Cluster->myself != node && node->state == HB_NSTATE_MASTER)
+	    {
+	      // Current master node is isolated. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
+	      hb_Is_master_node_isolated = true;
+	      snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
+	    }
+
 	  node->heartbeat_gap = 0;
 	  node->last_recv_hbtime.tv_sec = 0;
 	  node->last_recv_hbtime.tv_usec = 0;
@@ -1793,7 +1864,9 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	  {
 	    if (node->state == HB_NSTATE_MASTER && node->state != hb_state)
 	      {
+		// Current master node has been demoted. Save master node's host name to hb_Master_host_name. It is used for error message at failover event.
 		is_state_changed = true;
+		snprintf (hb_Master_host_name, strlen (node->host_name) + 1, node->host_name);
 	      }
 
 	    node->state = hb_state;
@@ -1889,7 +1962,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1900,7 +1974,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1910,7 +1985,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1926,7 +2002,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hp->h_addr, hp->h_length);
@@ -2654,13 +2731,14 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 {
   int priority, num_nodes;
   char tmp_string[LINE_MAX];
+  char err_string[LINE_MAX];
   char *p, *savep;
   HB_NODE_ENTRY *node;
 
-  if (ha_node_list == NULL)
+  if (ha_node_list == NULL || ha_node_list[0] == '\0')
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "invalid ha_node_list. (ha_node_list:NULL).\n");
-      return ER_FAILED;
+      snprintf (err_string, LINE_MAX, "%s is empty.", prm_get_name (PRM_ID_HA_NODE_LIST));
+      goto error;
     }
 
   hb_Cluster->myself = NULL;
@@ -2683,7 +2761,16 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	    {
 	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
-		  hb_Cluster->myself = node;
+		  if (hb_Cluster->state == HB_NSTATE_REPLICA)
+		    {
+		      snprintf (err_string, LINE_MAX, "In replica mode, (%s) must not be specified in the %s.",
+				hb_Cluster->host_name, prm_get_name (PRM_ID_HA_NODE_LIST));
+		      goto error;
+		    }
+		  else
+		    {
+		      hb_Cluster->myself = node;
+		    }
 #if defined (HB_VERBOSE_DEBUG)
 		  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "find myself node. (myself:%p, priority:%d). \n",
 				       hb_Cluster->myself, hb_Cluster->myself->priority);
@@ -2693,11 +2780,13 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	}
     }
 
-  if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself != NULL)
+  if (hb_Cluster->state != HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "myself should be in the ha_replica_list. \n");
-      return ER_FAILED;
+      snprintf (err_string, LINE_MAX, "cannot find (%s) in the %s.", hb_Cluster->host_name,
+		prm_get_name (PRM_ID_HA_NODE_LIST));
+      goto error;
     }
+
   num_nodes = priority;
 
   if (ha_replica_list)
@@ -2708,6 +2797,13 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
     {
       tmp_string[0] = '\0';
     }
+
+  if (hb_Cluster->state == HB_NSTATE_REPLICA && tmp_string[0] == '\0')
+    {
+      snprintf (err_string, LINE_MAX, "%s is empty.", prm_get_name (PRM_ID_HA_REPLICA_LIST));
+      goto error;
+    }
+
   for (priority = 0, p = strtok_r (tmp_string, "@", &savep); p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
@@ -2715,8 +2811,9 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	{
 	  if (strcmp (hb_Cluster->group_id, p) != 0)
 	    {
-	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "different group id ('ha_node_list', 'ha_replica_list') \n");
-	      return ER_FAILED;
+	      snprintf (err_string, LINE_MAX, "group id of (%s, %s) is different.", prm_get_name (PRM_ID_HA_NODE_LIST),
+			prm_get_name (PRM_ID_HA_REPLICA_LIST));
+	      goto error;
 	    }
 	}
       else
@@ -2726,20 +2823,34 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	    {
 	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
-		  hb_Cluster->myself = node;
-		  hb_Cluster->state = HB_NSTATE_REPLICA;
+		  if (hb_Cluster->state != HB_NSTATE_REPLICA)
+		    {
+		      snprintf (err_string, LINE_MAX, "In not replica mode, (%s) must not be specified in the %s.",
+				hb_Cluster->host_name, prm_get_name (PRM_ID_HA_REPLICA_LIST));
+		      goto error;
+		    }
+		  else
+		    {
+		      hb_Cluster->myself = node;
+		    }
 		}
 	    }
 	}
     }
 
-  if (hb_Cluster->myself == NULL)
+  if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself == NULL)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "cannot find myself. \n");
-      return ER_FAILED;
+      snprintf (err_string, LINE_MAX, "In replica mode, (%s) must be specified in the %s.", hb_Cluster->host_name,
+		prm_get_name (PRM_ID_HA_REPLICA_LIST));
+      goto error;
     }
 
   return num_nodes + priority;
+
+error:
+
+  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, err_string);
+  return ER_FAILED;
 }
 
 
@@ -3486,6 +3597,9 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
 	    }
 
 	  /* shutdown working server processes to change its role to slave */
+	  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s The master node failed to restart the server process",
+		    HA_FAILBACK_DIAG_STRING);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 	  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
 	  assert (error == NO_ERROR);
 
@@ -3979,6 +4093,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   HB_PROC_ENTRY *proc;
   HB_JOB_ARG *job_arg;
   HB_RESOURCE_JOB_ARG *proc_arg;
+  char hb_info_str[HB_INFO_STR_MAX];
 
   css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
 
@@ -4039,12 +4154,11 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 	  /* demote the current node */
 	  hb_Resource->state = HB_NSTATE_SLAVE;
 
-	  snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
-	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			 "Process failure repeated within a short period of time. " "The current node will be demoted",
-			 error_string);
+	  snprintf (hb_info_str, HB_INFO_STR_MAX,
+		    "%s The master node failed to restart the server process due to repeated failures within a short period of time. The current node will be demoted (args:%s)",
+		    HA_FAILBACK_DIAG_STRING, proc->args);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 
-	  /* shutdown working server processes to change its role to slave */
 	  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
 	  assert (error == NO_ERROR);
 	}
@@ -4703,6 +4817,7 @@ hb_thread_check_disk_failure (void *arg)
   int rv, error;
   int interval;
   INT64 remaining_time_msecs = 0;
+  char hb_info_str[HB_INFO_STR_MAX];
   /* *INDENT-OFF* */
   cuberr::context er_context (true);
   /* *INDENT-ON* */
@@ -4726,6 +4841,15 @@ hb_thread_check_disk_failure (void *arg)
 	    {
 	      if (hb_resource_check_server_log_grow () == false)
 		{
+		  snprintf (hb_info_str, HB_INFO_STR_MAX,
+			    "%s The master node has lost its role due to server process problem, such as disk failure",
+			    HA_FAILBACK_DIAG_STRING);
+		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
+		  snprintf (hb_info_str, HB_INFO_STR_MAX, "%s Current node has been successfully demoted to slave",
+			    HA_FAILBACK_SUCCESS_STRING);
+		  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
+
 		  /* be silent to avoid blocking write operation on disk */
 		  hb_disable_er_log (HB_NOLOG_DEMOTE_ON_DISK_FAIL, NULL);
 		  hb_Resource->state = HB_NSTATE_SLAVE;
@@ -4737,7 +4861,6 @@ hb_thread_check_disk_failure (void *arg)
 
 		  syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d", __func__, __FILE__, __LINE__);
 #endif /* !WINDOWS */
-
 		  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
 		  assert (error == NO_ERROR);
 
@@ -4832,13 +4955,6 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   struct sockaddr_in udp_saddr;
   char host_name[CUB_MAXHOSTNAMELEN];
 
-  if (nodes == NULL)
-    {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
-
-      return ER_PRM_BAD_VALUE;
-    }
-
   if (hb_Cluster == NULL)
     {
       hb_Cluster = (HB_CLUSTER *) malloc (sizeof (HB_CLUSTER));
@@ -4853,7 +4969,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (GETHOSTNAME (host_name, sizeof (host_name)))
     {
-      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host_name);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host_name,
+				  HOSTS_FILE);
       return ER_BO_UNABLE_TO_FIND_HOSTNAME;
     }
 
@@ -4884,11 +5001,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->num_nodes = hb_cluster_load_group_and_node_list ((char *) nodes, (char *) replicas);
   if (hb_Cluster->num_nodes < 1)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_Cluster->num_nodes is smaller than '1'. (num_nodes=%d). \n",
-			   hb_Cluster->num_nodes);
       pthread_mutex_unlock (&hb_Cluster->lock);
 
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
       return ER_PRM_BAD_VALUE;
     }
 
@@ -5531,7 +5645,6 @@ hb_reload_config (void)
   if (hb_Cluster->num_nodes < 1
       || (hb_Cluster->master && hb_return_node_by_name (hb_Cluster->master->host_name) == NULL))
     {
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_HA_NODE_LIST));
       error = ER_PRM_BAD_VALUE;
       goto reconfig_error;
     }

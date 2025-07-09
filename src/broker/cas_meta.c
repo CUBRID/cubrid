@@ -121,6 +121,21 @@ cas_bi_get_cci_pconnect (void)
 }
 
 void
+cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior)
+{
+  assert (oracle_compat_number_behavior == 0 || oracle_compat_number_behavior == 1);
+
+  if (oracle_compat_number_behavior)
+    {
+      SET_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+  else
+    {
+      CLEAR_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+}
+
+void
 cas_bi_set_protocol_version (const char protocol_version)
 {
   broker_info[BROKER_INFO_PROTO_VERSION] = protocol_version;
@@ -211,7 +226,8 @@ cas_di_understand_renewed_error_code (const char *driver_info)
 }
 
 void
-cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect)
+cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
+			 char oracle_compat_number_behavior)
 {
   broker_info[BROKER_INFO_DBMS_TYPE] = dbms_type;
   broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
@@ -227,6 +243,15 @@ cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooli
 
   broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
   broker_info[BROKER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
-  broker_info[BROKER_INFO_RESERVED2] = 0;
+
+  if (oracle_compat_number_behavior)
+    {
+      SET_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+  else
+    {
+      CLEAR_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+
   broker_info[BROKER_INFO_RESERVED3] = 0;
 }

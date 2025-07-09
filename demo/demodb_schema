@@ -17,34 +17,34 @@ create serial stadium_no
 	 nocycle;
 call change_serial_owner ('stadium_no', 'PUBLIC') on class db_serial;
 
-CREATE CLASS stadium dont_reuse_oid;
+CREATE CLASS stadium; 
 call change_owner('stadium', 'PUBLIC') on class db_root;
 
-CREATE CLASS code dont_reuse_oid;
+CREATE CLASS code;
 call change_owner('code', 'PUBLIC') on class db_root;
 
-CREATE CLASS nation dont_reuse_oid;
+CREATE CLASS nation;
 call change_owner('nation', 'PUBLIC') on class db_root;
 
-CREATE CLASS [event] dont_reuse_oid;
+CREATE CLASS [event];
 call change_owner('event', 'PUBLIC') on class db_root;
 
-CREATE CLASS athlete dont_reuse_oid;
+CREATE CLASS athlete;
 call change_owner('athlete', 'PUBLIC') on class db_root;
 
-CREATE CLASS participant dont_reuse_oid;
+CREATE CLASS participant;
 call change_owner('participant', 'PUBLIC') on class db_root;
 
-CREATE CLASS olympic dont_reuse_oid;
+CREATE CLASS olympic;
 call change_owner('olympic', 'PUBLIC') on class db_root;
 
-CREATE CLASS game dont_reuse_oid;
+CREATE CLASS game;
 call change_owner('game', 'PUBLIC') on class db_root;
 
-CREATE CLASS record dont_reuse_oid;
+CREATE CLASS record;
 call change_owner('record', 'PUBLIC') on class db_root;
 
-CREATE CLASS history dont_reuse_oid;
+CREATE CLASS history;
 call change_owner('history', 'PUBLIC') on class db_root;
 
 

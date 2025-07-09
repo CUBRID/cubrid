@@ -83,7 +83,7 @@ namespace cubxasl
     aggregate_list_node *next;		/* next aggregate node */
     tp_domain *domain;		/* domain of the result */
     tp_domain *original_domain;	/* original domain of the result */
-    FUNC_TYPE function;		/* aggregate function name */
+    FUNC_CODE function;		/* aggregate function name */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     DB_TYPE opr_dbtype;		/* Operand values data type */
     DB_TYPE original_opr_dbtype;	/* Original operand values data type */

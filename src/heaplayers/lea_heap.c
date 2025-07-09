@@ -36,6 +36,8 @@
 #include "customheaps.h"
 #include "error_manager.h"
 #include "system_parameter.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* -------------------------------------------------------------------------- */
 /* DL MALLOC ADAPTATION AND MODIFICATION LAYER */

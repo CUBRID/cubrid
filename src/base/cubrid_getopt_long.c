@@ -37,6 +37,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cubrid_getopt.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define REPLACE_GETOPT
 

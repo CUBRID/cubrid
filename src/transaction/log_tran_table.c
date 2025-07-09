@@ -77,7 +77,11 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
-#include "method_runtime_context.hpp"
+#include "session.h"
+#include "pl_session.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -2079,7 +2083,10 @@ logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  tdes->is_user_active = is_user_active;
+  if (tdes)
+    {
+      tdes->is_user_active = is_user_active;
+    }
 }
 
 /*
@@ -2759,6 +2766,19 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      // Only TT_WORKER threads use pl_session
+	      if (thread_p && thread_p->type == TT_WORKER)
+		{
+		  if (session_has_pl_session (thread_p))
+		    {
+		      cubpl::session * session = cubpl::get_session ();
+		      if (session)
+			{
+			  session->set_interrupt (ER_INTERRUPTED);
+			}
+		    }
+		}
 	    }
 
 	  return true;
@@ -2832,10 +2852,13 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-      if (rctx)
+      if (session_has_pl_session (thread_p))
 	{
-	  rctx->set_interrupt (ER_INTERRUPTED);
+	  cubpl::session * session = cubpl::get_session ();
+	  if (session)
+	    {
+	      session->set_interrupt (ER_INTERRUPTED);
+	    }
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -4669,6 +4692,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
   edesc->using_mutex = LF_EM_USING_MUTEX;
+  edesc->max_alloc_cnt = LF_ENTRY_DESCRIPTOR_MAX_ALLOC;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;
@@ -5042,7 +5066,7 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
        stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
     {
       /* reflect only if some changes were logged */
-      if (!LSA_ISNULL (&stats->last_log_lsa))
+      if (log_is_no_logging () || !LSA_ISNULL (&stats->last_log_lsa))
 	{
 	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
 	  if (error != NO_ERROR)
@@ -6070,7 +6094,21 @@ log_tdes::lock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_lock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_lock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6080,7 +6118,21 @@ log_tdes::unlock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_unlock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session 
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_unlock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6145,5 +6197,75 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       log_Gl.mvcc_table.unlock_global_oldest_visible ();
       block_global_oldest_active_until_commit = false;
     }
+}
+
+void
+log_tdes::copy_to (LOG_TDES & dest) const
+{
+#define REPLACE_COPY_2_DEST(d, _name) ((d)._name = this->_name)
+
+  this->mvccinfo.copy_to (dest.mvccinfo);	// MVCC_INFO
+
+  REPLACE_COPY_2_DEST (dest, tran_index);
+  REPLACE_COPY_2_DEST (dest, trid);
+  REPLACE_COPY_2_DEST (dest, isloose_end);
+  REPLACE_COPY_2_DEST (dest, state);
+  REPLACE_COPY_2_DEST (dest, isolation);
+  REPLACE_COPY_2_DEST (dest, wait_msecs);
+
+  REPLACE_COPY_2_DEST (dest, head_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_lsa);
+  REPLACE_COPY_2_DEST (dest, undo_nxlsa);
+  REPLACE_COPY_2_DEST (dest, posp_nxlsa);
+  REPLACE_COPY_2_DEST (dest, savept_lsa);
+  REPLACE_COPY_2_DEST (dest, topop_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_topresult_lsa);
+  REPLACE_COPY_2_DEST (dest, commit_abort_lsa);
+  
+  REPLACE_COPY_2_DEST (dest, client_id);
+  REPLACE_COPY_2_DEST (dest, gtrid);
+  REPLACE_COPY_2_DEST (dest, client);	// CLIENTIDS  
+  REPLACE_COPY_2_DEST (dest, rmutex_topop);	// SYNC_RMUTEX
+  REPLACE_COPY_2_DEST (dest, topops);	// LOG_TOPOPS_STACK
+  REPLACE_COPY_2_DEST (dest, gtrinfo);
+  REPLACE_COPY_2_DEST (dest, coord);
+  REPLACE_COPY_2_DEST (dest, num_unique_btrees);
+  REPLACE_COPY_2_DEST (dest, max_unique_btrees);
+
+  this->m_multiupd_stats.copy_to (dest.m_multiupd_stats);	// multi_index_unique_stats
+  REPLACE_COPY_2_DEST (dest, interrupt);	// sig_atomic_t
+  REPLACE_COPY_2_DEST (dest, m_modified_classes);	// tx_transient_class_registry
+  REPLACE_COPY_2_DEST (dest, num_transient_classnames);
+  REPLACE_COPY_2_DEST (dest, num_repl_records);
+  REPLACE_COPY_2_DEST (dest, cur_repl_record);
+  REPLACE_COPY_2_DEST (dest, append_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, fl_mark_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, repl_records);
+  REPLACE_COPY_2_DEST (dest, repl_insert_lsa);
+  REPLACE_COPY_2_DEST (dest, repl_update_lsa);
+  REPLACE_COPY_2_DEST (dest, first_save_entry);
+  REPLACE_COPY_2_DEST (dest, suppress_replication);
+  REPLACE_COPY_2_DEST (dest, lob_locator_root);
+  REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, query_start_time);
+  REPLACE_COPY_2_DEST (dest, tran_start_time);
+  REPLACE_COPY_2_DEST (dest, xasl_id);
+  REPLACE_COPY_2_DEST (dest, waiting_for_res);
+  REPLACE_COPY_2_DEST (dest, disable_modifications);
+  REPLACE_COPY_2_DEST (dest, tran_abort_reason);
+  REPLACE_COPY_2_DEST (dest, num_exec_queries);
+
+  memcpy (dest.bind_history, this->bind_history, sizeof (dest.bind_history));
+
+  REPLACE_COPY_2_DEST (dest, num_log_records_written);
+  REPLACE_COPY_2_DEST (dest, log_upd_stats);
+  REPLACE_COPY_2_DEST (dest, has_deadlock_priority);
+  REPLACE_COPY_2_DEST (dest, block_global_oldest_active_until_commit);
+  REPLACE_COPY_2_DEST (dest, is_user_active);
+  REPLACE_COPY_2_DEST (dest, rcv);
+
+  this->m_log_postpone_cache.copy_to (dest.m_log_postpone_cache);	// log_postpone_cache
+
+  REPLACE_COPY_2_DEST (dest, has_supplemental_log);
 }
 // *INDENT-ON*

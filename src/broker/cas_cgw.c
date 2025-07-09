@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "cas_cgw.h"
 #include "cas.h"
 #include "cas_util.h"
@@ -38,10 +43,20 @@
 #define CONNECTED_STATE         0
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
-#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = x;\
+#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = (x);\
                                 if (rc != SQL_SUCCESS) \
                                 { \
-                                    cgw_error_msg (h, ht, rc); \
+                                    cgw_error_msg ((h), (ht), rc); \
+                                } \
+                                if (rc <= SQL_ERROR) \
+                                { \
+                                   if (db_error_code () == 0)  \
+                                     {  \
+                                       er_set (ER_ERROR_SEVERITY, \
+					           ARG_FILE_LINE,  \
+					           ER_CGW_NATIVE_ODBC, \
+					           3, cgw_get_dbms_name (cgw_get_dbms_type ()), -1, "Unknown ODBC Driver Error");   \
+				     }  \
                                     goto ODBC_ERROR;  \
                                 } \
                             }
@@ -51,7 +66,7 @@
 #define CONV_STRING_BUF_SIZE    (STRING_MAX_SIZE)
 
 #if defined (WINDOWS)
-#define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_ACP, 0, M, -1, W, LEN)
+#define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_UTF8, 0, M, -1, W, LEN)
 #else
 #define CONV_M_TO_W(M, W, LEN)      mbstowcs(W, M, LEN)
 #endif
@@ -60,17 +75,19 @@
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
-  char *dbms_name;
-  SUPPORTED_DBMS_TYPE dbms_type;
+  const char *dbms_name;
+  T_DBMS_TYPE dbms_type;
 };
 
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
-static char conv_out_string[CONV_STRING_BUF_SIZE + 1];
+static char conv_str_buff[CONV_STRING_BUF_SIZE + 1];
 static T_SUPPORTED_DBMS supported_dbms_list[] =
-  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL}, {"mariadb", SUPPORTED_DBMS_MARIADB} };
+  { {"oracle", CAS_CGW_DBMS_ORACLE}, {"mysql", CAS_CGW_DBMS_MYSQL}, {"mariadb", CAS_CGW_DBMS_MARIADB},
+{"not supported db", CAS_DBMS_NONE}
+};
 
 static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
-static SUPPORTED_DBMS_TYPE curr_dbms_type = NOT_SUPPORTED_DBMS;
+static T_DBMS_TYPE curr_dbms_type = CAS_DBMS_NONE;
 
 T_CGW_HANDLE *local_odbc_handle = NULL;
 
@@ -98,13 +115,12 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
-static void cgw_free_string_array (char **array);
-static char **cgw_split_string (const char *str, const char *delim, int *num);
 static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
+static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
-
+static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
 int
 cgw_init ()
@@ -138,6 +154,16 @@ cgw_cleanup ()
   cgw_cleanup_handle (local_odbc_handle);
 }
 
+void
+cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+{
+  if (srv_handle->cgw_handle->hstmt)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, local_odbc_handle->hstmt);
+      local_odbc_handle->hstmt = NULL;
+    }
+}
+
 int
 cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
 {
@@ -155,8 +181,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
 }
 
 int
-cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user,
-		      char *db_passwd)
+cgw_database_connect (T_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user, char *db_passwd)
 {
   SQLRETURN err_code;
   wchar_t wcs_url[(CGW_LINK_URL_MAX_LEN + 1) * sizeof (wchar_t)] = { 0, };
@@ -179,7 +204,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 	       SQL_HANDLE_ENV,
 	       err_code = SQLAllocHandle (SQL_HANDLE_DBC, local_odbc_handle->henv, &local_odbc_handle->hdbc));
 
-  if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
+  if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
     {
       SQL_CHK_ERR (local_odbc_handle->hdbc,
 		   SQL_HANDLE_ENV,
@@ -196,7 +221,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 	  goto ODBC_ERROR;
 	}
 
-      wconn_url = CONV_WCS_TO_SQLWCS (wcs_url, wcslen (wcs_url));
+      wconn_url = CONV_WCS_TO_SQLWCS (wcs_url, wcslen (wcs_url) + 1);
 
       if (wconn_url == NULL)
 	{
@@ -250,7 +275,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_execute (T_SRV_HANDLE * srv_handle)
+cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
 {
   SQLRETURN err_code;
 
@@ -271,6 +296,14 @@ cgw_execute (T_SRV_HANDLE * srv_handle)
     }
 
   SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
+
+  if (err_code < 0)
+    {
+      cgw_error_msg (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code);
+      goto ODBC_ERROR;
+    }
+
+  SQLRowCount (srv_handle->cgw_handle->hstmt, row_count);
 
   srv_handle->is_cursor_open = true;
 
@@ -422,18 +455,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	    case SQL_INTEGER:
 	      if (this_col_binding->col_unsigned_type)
 		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
+		  net_buf_cp_int (net_buf, NET_SIZE_INT, NULL);
+		  net_buf_cp_int (net_buf, *((unsigned int *) this_col_binding->data_buffer), NULL);
 		}
 	      else
 		{
@@ -444,18 +467,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	    case SQL_SMALLINT:
 	      if (this_col_binding->col_unsigned_type)
 		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned short *) this_col_binding->data_buffer));
 		}
 	      else
 		{
@@ -466,18 +479,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	    case SQL_TINYINT:
 	      if (this_col_binding->col_unsigned_type)
 		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned char *) this_col_binding->data_buffer));
 		}
 	      else
 		{
@@ -495,27 +498,9 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	      net_buf_cp_double (net_buf, *((double *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_BIGINT:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_BIGINT, NULL);
-		  bigint = *((DB_BIGINT *) (this_col_binding->data_buffer));
-		  net_buf_cp_bigint (net_buf, bigint, NULL);
-		}
+	      net_buf_cp_int (net_buf, NET_SIZE_BIGINT, NULL);
+	      bigint = *((DB_BIGINT *) (this_col_binding->data_buffer));
+	      net_buf_cp_bigint (net_buf, bigint, NULL);
 	      break;
 #if (ODBCVER >= 0x0300)
 	    case SQL_DATETIME:
@@ -649,8 +634,9 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
   SQLRETURN err_code;
   SQLSMALLINT col_name_length = 0;
   SQLSMALLINT class_name_length = 0;
-  SQLLEN col_data_type = 0;
+  SQLSMALLINT col_data_type = 0;
   SQLLEN col_unsigned_type = 0;
+  SQLSMALLINT col_decimal_digits = 0;
 
   memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
 
@@ -662,21 +648,16 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_NAME,
-					   col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_CONCISE_TYPE, NULL, 0, NULL, &col_data_type));
+	       err_code = SQLDescribeCol (hstmt,
+					  (SQLSMALLINT) col_num,
+					  (SQLCHAR *) col_info->col_name,
+					  sizeof (col_info->col_name),
+					  &col_name_length, &col_data_type, &col_info->precision, &col_decimal_digits,
+					  &col_info->is_not_null));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_SCALE, NULL, 0, NULL, &col_info->scale));
-
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
@@ -692,12 +673,6 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 	}
       col_info->precision = num;
     }
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_NAME,
-					   col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
@@ -707,9 +682,6 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 					   col_info->class_name, sizeof (col_info->class_name), &class_name_length,
 					   NULL));
 
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_NULLABLE, NULL, 0,	// Note count of bytes!
-								   NULL, &col_info->is_not_null));
-
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt,
@@ -718,6 +690,13 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 
   col_info->data_type = cgw_odbc_type_to_cci_u_type (col_data_type, col_unsigned_type);
   col_info->charset = cgw_odbc_type_to_charset (col_data_type, col_unsigned_type);
+
+  // mariadb has an error in returning the precision value of unsigned bigint (18446744073709551615) as 19.
+  if (cgw_get_dbms_type () == CAS_CGW_DBMS_MARIADB && col_data_type == SQL_BIGINT && col_unsigned_type)
+    {
+      col_info->precision = 20;
+      col_info->scale = 0;
+    }
 
   return err_code;
 
@@ -740,11 +719,13 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_NUMERIC;
       break;
     case SQL_INTEGER:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_INT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_BIGINT : CCI_U_TYPE_INT;
       break;
     case SQL_TINYINT:
+      data_type = CCI_U_TYPE_SHORT;
+      break;
     case SQL_SMALLINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_SHORT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_INT : CCI_U_TYPE_SHORT;
       break;
     case SQL_FLOAT:
     case SQL_REAL:
@@ -793,7 +774,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_DATETIME;
       break;
     case SQL_BIGINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_BIGINT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_NUMERIC : CCI_U_TYPE_BIGINT;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -816,7 +797,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 static char
 cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 {
-  char code_set = INTL_CODESET_NONE;
+  char code_set = (char) INTL_CODESET_NONE;
 
   switch (odbc_type)
     {
@@ -829,11 +810,11 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_FLOAT:
       code_set = INTL_CODESET_ASCII;
@@ -883,7 +864,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_BIGINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -1072,7 +1053,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
       if (col_unsigned_type)
 	{
-	  bind_col_size = col_size + 1;
+	  bind_col_size = col_size + 10;
 	}
       else
 	{
@@ -1083,6 +1064,22 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	{
 	  bind_col_size = bind_col_size * 2;
 
+	  if (col_unsigned_type)
+	    {
+	      if (col_data_type == SQL_SMALLINT)
+		{
+		  col_data_type = SQL_INTEGER;
+		}
+	      else if (col_data_type == SQL_INTEGER)
+		{
+		  col_data_type = SQL_BIGINT;
+		}
+	      else if (col_data_type == SQL_BIGINT)
+		{
+		  col_data_type = SQL_NUMERIC;
+		}
+	    }
+
 	  this_col_binding->col_data_type = col_data_type;
 	  this_col_binding->col_size = bind_col_size;
 	  this_col_binding->next = NULL;
@@ -1092,7 +1089,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  this_col_binding_buff->next = NULL;
 	  this_col_binding_buff->is_exist_col_data = false;
 
-	  this_col_binding->data_buffer = MALLOC (bind_col_size);
+	  this_col_binding->data_buffer = (wchar_t *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
@@ -1150,8 +1147,11 @@ cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode)
   char szMessage[SQL_MAX_MESSAGE_LENGTH + 1];
   char szState[SQL_SQLSTATE_SIZE + 1];
 
+  er_clear ();
+
   if (retcode == SQL_INVALID_HANDLE)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
       return;
     }
 
@@ -1200,6 +1200,7 @@ static int
 cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value, ODBC_BIND_INFO * value_list)
 {
   char type;
+  char src_type = -1;
   int err_code = 0;
   int data_size;
   SQLLEN indPtr = 0;
@@ -1221,10 +1222,12 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
   net_arg_get_char (type, net_type);
   net_arg_get_size (&data_size, net_value);
 
-  if (data_size <= 0)
+  // Oracle ODBC does not support the BIGINT type.
+  // So, change it to Numeric type.
+  if (curr_dbms_type == CAS_CGW_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
     {
-      type = CCI_U_TYPE_NULL;
-      data_size = 0;
+      src_type = type;
+      type = CCI_U_TYPE_NUMERIC;
     }
 
   switch (type)
@@ -1234,13 +1237,31 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       {
 	char *value;
 	int val_size;
+	wchar_t *out_string = NULL;
+	size_t out_length = 0;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_CHAR;
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
 
-	value_list->string_val = value;
+	out_length = (strlen (value) + 1) * sizeof (wchar_t);
+	out_string = (wchar_t *) malloc (out_length);
+	if (out_string == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+	    return ER_INTERFACE_NO_MORE_MEMORY;
+	  }
+
+	err_code = cgw_utf8_to_unicode (value, out_string, out_length);
+
+	if (err_code < 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
+	    goto ODBC_ERROR;
+	  }
+
+	value_list->wchar_val = out_string;
 
 	SQL_CHK_ERR (handle->hstmt,
 		     SQL_HANDLE_STMT,
@@ -1248,7 +1269,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  bind_num,
 						  SQL_PARAM_INPUT,
 						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
+						  sql_bind_type, out_length, 0, (SQLWCHAR *) out_string, 0, NULL));
       }
       break;
       /* Not Support Type */
@@ -1257,12 +1278,52 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       {
 	char *value;
 	int val_size;
+	wchar_t *out_string = NULL;
+	size_t out_length = 0;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_CHAR;
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
 
+	out_length = (strlen (value) + 1) * sizeof (wchar_t);
+	out_string = (wchar_t *) malloc (out_length);
+	if (out_string == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+	    return ER_INTERFACE_NO_MORE_MEMORY;
+	  }
+
+	err_code = cgw_utf8_to_unicode (value, out_string, out_length);
+
+	if (err_code < 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
+	    goto ODBC_ERROR;
+	  }
+
+	value_list->wchar_val = out_string;
+
+	SQL_CHK_ERR (handle->hstmt,
+		     SQL_HANDLE_STMT,
+		     err_code = SQLBindParameter (handle->hstmt,
+						  bind_num,
+						  SQL_PARAM_INPUT,
+						  c_data_type,
+						  sql_bind_type, out_length, 0, (SQLWCHAR *) out_string, 0, NULL));
+      }
+      break;
+    case CCI_U_TYPE_NULL:
+      {
+	char *value;
+	int val_size;
+
+	net_arg_get_str (&value, &val_size, net_value);
+
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
+
+	value_list->cbValue = SQL_NULL_DATA;
 	value_list->string_val = value;
 
 	SQL_CHK_ERR (handle->hstmt,
@@ -1271,107 +1332,144 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  bind_num,
 						  SQL_PARAM_INPUT,
 						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
+						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0,
+						  &value_list->cbValue));
       }
       break;
 
     case CCI_U_TYPE_NUMERIC:
       {
-	char *value, *p;
-	int val_size;
-	size_t precision, scale;
-	char num_str[64];
-	char tmp[64];
-	SQLHDESC hdesc = NULL;
-
-	SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
-
-	memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
-
-	net_arg_get_str (&value, &val_size, net_value);
-	if (value != NULL)
+	if (curr_dbms_type == CAS_CGW_DBMS_MARIADB)
 	  {
-	    strcpy (tmp, value);
-	  }
-	tmp[val_size] = '\0';
-	ut_trim (tmp);
-	precision = strlen (tmp);
-	p = strchr (tmp, '.');
-	if (p == NULL)
-	  {
-	    scale = 0;
+
+	    char *value = NULL;
+	    int val_size = 0;
+
+	    net_arg_get_str (&value, &val_size, net_value);
+
+	    c_data_type = SQL_C_CHAR;
+	    sql_bind_type = SQL_CHAR;
+
+	    value_list->string_val = value;
+
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
 	  }
 	else
 	  {
-	    scale = strlen (p + 1);
-	    precision--;
+	    char *value = NULL, *p = NULL;
+	    int val_size = 0;
+	    size_t precision = 0, scale = 0;
+	    char num_str[64] = { 0, };
+	    char tmp[64] = { 0, };
+	    SQLHDESC hdesc = NULL;
+	    DB_BIGINT bi_val;
+
+	    SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code =
+			 SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
+
+	    memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
+
+	    if (src_type == CCI_U_TYPE_BIGINT)
+	      {
+		net_arg_get_bigint (&bi_val, net_value);
+		snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
+	      }
+	    else
+	      {
+		net_arg_get_str (&value, &val_size, net_value);
+		if (value != NULL)
+		  {
+		    strcpy (tmp, value);
+		  }
+		tmp[val_size] = '\0';
+	      }
+
+	    ut_trim (tmp);
+	    precision = strlen (tmp);
+	    p = strchr (tmp, '.');
+	    if (p == NULL)
+	      {
+		scale = 0;
+	      }
+	    else
+	      {
+		scale = strlen (p + 1);
+		precision--;
+	      }
+
+	    if (tmp[0] == '-')
+	      {
+		precision--;
+		value_list->ns_val.sign = MINUS;
+	      }
+	    else
+	      {
+		value_list->ns_val.sign = PLUS;
+	      }
+
+	    value_list->ns_val.precision = precision;
+	    value_list->ns_val.scale = scale;
+
+	    if (value_list->ns_val.sign == MINUS)
+	      {
+		strcpy (num_str, &tmp[1]);
+	      }
+	    else
+	      {
+		strcpy (num_str, &tmp[0]);
+	      }
+
+	    err_code = numeric_string_adjust (&value_list->ns_val, num_str);
+	    if (err_code < 0)
+	      {
+		goto ODBC_ERROR;
+	      }
+
+
+	    c_data_type = SQL_C_NUMERIC;
+	    sql_bind_type = SQL_DECIMAL;
+
+	    indPtr = sizeof (value_list->ns_val);
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type,
+						      value_list->ns_val.precision,
+						      value_list->ns_val.scale, &value_list->ns_val, 0,
+						      (SQLLEN *) & indPtr));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
+					  (SQLPOINTER) & value_list->ns_val.precision, 0));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) & value_list->ns_val.scale, 0));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
+
+	    SQLFreeHandle (SQL_HANDLE_DESC, hdesc);
 	  }
-
-	if (tmp[0] == '-')
-	  {
-	    precision--;
-	    value_list->ns_val.sign = MINUS;
-	  }
-	else
-	  {
-	    value_list->ns_val.sign = PLUS;
-	  }
-
-	value_list->ns_val.precision = precision;
-	value_list->ns_val.scale = scale;
-
-	if (value_list->ns_val.sign == MINUS)
-	  {
-	    strcpy (num_str, &tmp[1]);
-	  }
-	else
-	  {
-	    strcpy (num_str, &tmp[0]);
-	  }
-
-	err_code = numeric_string_adjust (&value_list->ns_val, num_str);
-	if (err_code < 0)
-	  {
-	    goto ODBC_ERROR;
-	  }
-
-
-	c_data_type = SQL_C_NUMERIC;
-	sql_bind_type = SQL_DECIMAL;
-
-	indPtr = sizeof (value_list->ns_val);
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  value_list->ns_val.precision,
-						  value_list->ns_val.scale, &value_list->ns_val, 0,
-						  (SQLLEN *) & indPtr));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code = SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-				      (SQLPOINTER) value_list->ns_val.precision, 0));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) value_list->ns_val.scale, 0));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
-
-	SQLFreeHandle (SQL_HANDLE_DESC, hdesc);
       }
       break;
     case CCI_U_TYPE_BIGINT:
@@ -1380,7 +1478,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	DB_BIGINT bi_val;
 	net_arg_get_bigint (&bi_val, net_value);
 
-	c_data_type = SQL_C_UBIGINT;
+	c_data_type = SQL_C_SBIGINT;
 	sql_bind_type = SQL_BIGINT;
 
 	value_list->bigint_val = bi_val;
@@ -1571,7 +1669,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    break;
 	  }
 
-	if (curr_dbms_type == SUPPORTED_DBMS_MYSQL || curr_dbms_type == SUPPORTED_DBMS_MARIADB)
+	if (curr_dbms_type == CAS_CGW_DBMS_MYSQL || curr_dbms_type == CAS_CGW_DBMS_MARIADB)
 	  {
 	    c_data_type = SQL_C_CHAR;
 	    sql_bind_type = SQL_TYPE_TIMESTAMP;
@@ -1590,7 +1688,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						      (SQLPOINTER) (&value_list->time_stemp_str_val),
 						      sizeof (value_list->time_stemp_str_val), NULL));
 	  }
-	else if (curr_dbms_type == SUPPORTED_DBMS_ORACLE)
+	else if (curr_dbms_type == CAS_CGW_DBMS_ORACLE)
 	  {
 	    c_data_type = SQL_C_TYPE_TIMESTAMP;
 	    sql_bind_type = SQL_TYPE_TIMESTAMP;
@@ -1623,7 +1721,6 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
       /* Not Support Type  */
-    case CCI_U_TYPE_NULL:
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_MONETARY:
@@ -1661,6 +1758,11 @@ int
 cgw_sql_prepare (SQLCHAR * sql_stmt)
 {
   SQLRETURN err_code;
+  wchar_t *out_string = NULL;
+  char *in_string = NULL;
+  size_t out_length = 0;
+
+  in_string = (char *) sql_stmt;
 
   if (local_odbc_handle->hstmt == NULL)
     {
@@ -1669,12 +1771,32 @@ cgw_sql_prepare (SQLCHAR * sql_stmt)
 		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
     }
 
-  SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
-	       SQLPrepare (local_odbc_handle->hstmt, sql_stmt, SQL_NTS));
+  out_length = (strlen (in_string) + 1) * sizeof (wchar_t);
+  out_string = (wchar_t *) malloc (out_length);
+  if (out_string == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+      return ER_INTERFACE_NO_MORE_MEMORY;
+    }
 
+  memset (out_string, 0x0, out_length);
+
+  err_code = cgw_utf8_to_unicode (in_string, out_string, out_length);
+
+  if (err_code < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
+      goto ODBC_ERROR;
+    }
+
+  SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
+	       SQLPrepareW (local_odbc_handle->hstmt, (SQLWCHAR *) out_string, SQL_NTS));
+
+  FREE_MEM (out_string);
   return (int) err_code;
 
 ODBC_ERROR:
+  FREE_MEM (out_string);
   return ER_FAILED;
 }
 
@@ -1690,6 +1812,12 @@ cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols)
     }
 
   SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
+
+  if (*num_cols == 0)
+    {
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (hstmt));
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
+    }
 
   return (int) err_code;
 
@@ -1725,6 +1853,8 @@ cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv,
       return ER_INTERFACE_NO_MORE_MEMORY;
     }
 
+  memset (bind_value_list, 0, sizeof (ODBC_BIND_INFO) * num_bind);
+
   for (i = 0; i < num_bind; i++)
     {
       type_idx = 2 * i;
@@ -1732,6 +1862,13 @@ cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv,
       err_code = cgw_set_bindparam (handle, i + 1, argv[type_idx], argv[val_idx], &(bind_value_list[i]));
       if (err_code < 0)
 	{
+	  for (int j = 0; j < i; j++)
+	    {
+	      if (bind_value_list[j].wchar_val)
+		{
+		  FREE_MEM (bind_value_list[j].wchar_val);
+		}
+	    }
 	  FREE_MEM (bind_value_list);
 	  return err_code;
 	}
@@ -1772,7 +1909,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
   char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
   char num_val[DECIMAL_DIGIT_MAX_LEN + 1] = { 0 };
   short i;
-  size_t num_add_zero;
+  int num_add_zero;
   UINT64 number = 0;
   char *endptr = NULL;
   int error;
@@ -1814,7 +1951,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
       return ER_CGW_INVALID_NUMERIC_VALUE;
     }
 
-  sprintf (hexstr, "%llX", number);
+  sprintf (hexstr, "%" PRIX64, number);
 
   error = hex_to_numeric_val (numeric, hexstr);
   if (error < 0)
@@ -2120,16 +2257,16 @@ get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type)
       c_type = SQL_C_BIT;
       break;
     case SQL_TINYINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_TINYINT;
+      c_type = (is_unsigned_type) ? SQL_C_UTINYINT : SQL_C_TINYINT;
       break;
     case SQL_SMALLINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_SHORT;
+      c_type = (is_unsigned_type) ? SQL_C_USHORT : SQL_C_SHORT;
       break;
     case SQL_INTEGER:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_LONG;
+      c_type = (is_unsigned_type) ? SQL_C_ULONG : SQL_C_LONG;
       break;
     case SQL_BIGINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_SBIGINT;
+      c_type = (is_unsigned_type) ? SQL_C_UBIGINT : SQL_C_SBIGINT;
       break;
     case SQL_REAL:
     case SQL_FLOAT:
@@ -2321,11 +2458,11 @@ cgw_count_number_of_digits (int num_bits)
   return (num_bits == 0) ? 0 : NUM_OF_DIGITS (pow (2, num_bits) - 1);
 }
 
-SUPPORTED_DBMS_TYPE
+T_DBMS_TYPE
 cgw_is_supported_dbms (char *dbms)
 {
   if (dbms == NULL)
-    return NOT_SUPPORTED_DBMS;
+    return CAS_DBMS_NONE;
 
   ut_tolower (dbms);
 
@@ -2336,7 +2473,7 @@ cgw_is_supported_dbms (char *dbms)
 	  return supported_dbms_list[i].dbms_type;
 	}
     }
-  return NOT_SUPPORTED_DBMS;
+  return CAS_DBMS_NONE;
 }
 
 int
@@ -2357,12 +2494,12 @@ ODBC_ERROR:
 }
 
 void
-cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
+cgw_set_dbms_type (T_DBMS_TYPE dbms_type)
 {
   curr_dbms_type = dbms_type;
 }
 
-int
+T_DBMS_TYPE
 cgw_get_dbms_type ()
 {
   return curr_dbms_type;
@@ -2543,278 +2680,6 @@ cgw_utype_to_string (int type)
     }
 }
 
-int
-cgw_rewrite_query (char *src_query, char **sql)
-{
-  char *source = NULL;
-  char *rewrite_query = NULL;
-  char *select_from = NULL;
-  char *inline_view = NULL;
-  char *new_inline_view = NULL;
-  char *cols_type = NULL;
-  char **cols_list = NULL;
-  char *where = NULL;
-
-  char *start = NULL;
-  char *end = NULL;
-
-  SQLSMALLINT odbc_num_cols = 0;
-  int src_num_cols = 0;
-  int err_code = 0;
-
-  size_t select_from_len = 0;
-  size_t inline_view_len = 0;
-  size_t new_inline_view_len = 0;
-  size_t cols_type_len = 0;
-  size_t where_len = 0;
-
-  char col_name[COL_NAME_LEN + 1];
-  SQLSMALLINT col_name_length = 0;
-  SQLHSTMT hstmt = NULL;
-
-  ALLOC_COPY_STRLEN (source, src_query);
-
-  end = strstr (source, REWRITE_DELIMITER_FROM);
-  if (end == NULL)
-    {
-      err_code = ERR_REWRITE_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  select_from = source;
-  select_from_len = (end + REWRITE_DELIMITER_FROM_LEN) - source;
-  start = end + REWRITE_DELIMITER_FROM_LEN + 1;
-
-
-  end = strstr (source, REWRITE_DELIMITER_CUBLINK);
-  if (end == NULL)
-    {
-      err_code = ERR_REWRITE_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  inline_view = select_from + select_from_len + 1;
-  inline_view_len = (end + 1) - (start);
-  start = end + REWRITE_DELIMITER_CUBLINK_LEN + 3;
-
-  end = strstr (inline_view + inline_view_len, "WHERE");
-  if (end == NULL)
-    {
-      err_code = ERR_REWRITE_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  where = end;
-  where_len = strlen (end);
-
-  cols_type = inline_view + inline_view_len + REWRITE_DELIMITER_CUBLINK_LEN + 2;
-  cols_type_len = (end - 2) - (start);
-  *(cols_type + cols_type_len) = '\0';
-
-  cols_list = cgw_split_string (cols_type, ",", &src_num_cols);
-
-  if (cols_list == NULL || src_num_cols == 0)
-    {
-      err_code = ERR_REWRITE_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (local_odbc_handle->hdbc,
-	       SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &hstmt));
-
-  *(inline_view + inline_view_len) = '\0';
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLPrepare (hstmt, (SQLCHAR *) inline_view, SQL_NTS));
-
-  err_code = cgw_get_num_cols (hstmt, &odbc_num_cols);
-  if (err_code < 0)
-    {
-      err_code = ER_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  if (odbc_num_cols == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_SEMANTIC, 2, "Invalid column name.", "");
-      err_code = ER_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  if (src_num_cols != odbc_num_cols)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_COLUMNS_SPECIFIED, 0);
-      err_code = ER_FAILED;
-      goto ODBC_ERROR;
-    }
-
-  new_inline_view_len += REWRITE_SELECT_LEN;
-  new_inline_view_len += (int) (strlen (" AS ") * odbc_num_cols);
-  new_inline_view_len += inline_view_len;
-  new_inline_view_len += cols_type_len;
-  new_inline_view_len += odbc_num_cols;
-  new_inline_view_len += REWRITE_FROM_LEN;
-
-  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
-    {
-      SQL_CHK_ERR (hstmt,
-		   SQL_HANDLE_STMT,
-		   err_code = SQLColAttribute (hstmt,
-					       col_num,
-					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
-
-      new_inline_view_len += col_name_length;
-    }
-
-  new_inline_view = (char *) MALLOC (new_inline_view_len + 1);
-  strcpy (new_inline_view, "(SELECT ");
-
-  for (int col_num = 1; col_num <= odbc_num_cols; col_num++)
-    {
-      SQL_CHK_ERR (hstmt,
-		   SQL_HANDLE_STMT,
-		   err_code = SQLColAttribute (hstmt,
-					       col_num,
-					       SQL_DESC_NAME, col_name, sizeof (col_name), &col_name_length, NULL));
-
-      if (cols_list[col_num - 1] == NULL || strcmp (cols_list[col_num - 1], "") == 0)
-	{
-	  err_code = ERR_REWRITE_FAILED;
-	  goto ODBC_ERROR;
-	}
-
-      strcat (new_inline_view, col_name);
-      strcat (new_inline_view, " AS ");
-      strcat (new_inline_view, cols_list[col_num - 1]);
-
-      if (col_num <= odbc_num_cols - 1)
-	{
-	  strcat (new_inline_view, ", ");
-	}
-      else
-	{
-	  strcat (new_inline_view, " FROM ");
-	  strcat (new_inline_view, inline_view);
-	  strcat (new_inline_view, ")");
-	}
-    }
-
-  rewrite_query = (char *) MALLOC (REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
-  memset (rewrite_query, 0x0, REWRITE_SELECT_FROM_LEN + new_inline_view_len + where_len + 1);
-
-  strncpy (rewrite_query, select_from, select_from_len);
-  strcat (rewrite_query, " ");
-  strcat (rewrite_query, new_inline_view);
-  strcat (rewrite_query, " ");
-  strcat (rewrite_query, where);
-
-  *sql = rewrite_query;
-
-  if (hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
-    }
-
-  FREE_MEM (source);
-
-  if (cols_list)
-    {
-      cgw_free_string_array (cols_list);
-    }
-
-  if (new_inline_view)
-    {
-      FREE_MEM (new_inline_view);
-    }
-
-  return err_code;
-
-ODBC_ERROR:
-  if (hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
-    }
-
-  FREE_MEM (source);
-
-  if (cols_list)
-    {
-      cgw_free_string_array (cols_list);
-    }
-
-  if (new_inline_view)
-    {
-      FREE_MEM (new_inline_view);
-    }
-
-  FREE_MEM (rewrite_query);
-
-  if (err_code == SQL_INVALID_HANDLE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
-      err_code = ER_FAILED;
-    }
-
-  return err_code;
-}
-
-static void
-cgw_free_string_array (char **array)
-{
-  int i;
-
-  for (i = 0; array[i] != NULL; i++)
-    {
-      FREE_MEM (array[i]);
-    }
-  FREE_MEM (array);
-}
-
-static char **
-cgw_split_string (const char *str, const char *delim, int *num)
-{
-  char *t, *o;
-  char *v;
-  char **r = NULL;
-  int count = 1;
-
-  if (str == NULL)
-    {
-      return NULL;
-    }
-
-  o = strdup (str);
-  if (o == NULL)
-    {
-      return NULL;
-    }
-
-  for (t = o;; t = NULL)
-    {
-      v = strtok (t, delim);
-      if (v == NULL)
-	{
-	  break;
-	}
-      char **const realloc_r = (char **) realloc (r, sizeof (char *) * (count + 1));
-      if (realloc_r == NULL)
-	{
-	  FREE_MEM (o);
-	  return NULL;
-	}
-      else
-	{
-	  r = realloc_r;
-	}
-      r[count - 1] = strdup (v);
-      r[count] = NULL;
-      count++;
-    }
-
-  *num = (count - 1);
-  FREE_MEM (o);
-  return r;
-}
-
 static int
 cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length)
 {
@@ -2827,19 +2692,12 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
       return (-1);
     }
 
-  if (in_size <= 0)
+  if (in_size < 0)
     {
       return (-1);
     }
 
-
-  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, NULL, 0, NULL, NULL);
-  if (length <= 0)
-    {
-      return -1;
-    }
-
-  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, conv_out_string, length, NULL, NULL);
+  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, conv_str_buff, CONV_STRING_BUF_SIZE, NULL, NULL);
   if (length <= 0)
     {
       return -1;
@@ -2847,7 +2705,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   if (out_target)
     {
-      *out_target = conv_out_string;
+      *out_target = conv_str_buff;
     }
 
   if (out_length)
@@ -2861,7 +2719,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   size_t ret = 0;
 
   uint16_t *iconv_in = (uint16_t *) in_src;
-  char *iconv_out = conv_out_string;
+  char *iconv_out = conv_str_buff;
 
   size_t inlen = in_size;
   size_t outlen_org = CONV_STRING_BUF_SIZE;
@@ -2880,7 +2738,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   ret = iconv (cd, (char **) &iconv_in, &inlen, &iconv_out, &outlen);
 
-  if (ret == -1)
+  if (ret == (size_t) (-1))
     {
       iconv_close (cd);
       return (-1);
@@ -2890,8 +2748,8 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   if (out_target)
     {
-      conv_out_string[outlen_org - outlen] = '\0';
-      *out_target = conv_out_string;
+      conv_str_buff[outlen_org - outlen] = '\0';
+      *out_target = conv_str_buff;
     }
 
   if (out_length)
@@ -2900,6 +2758,45 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
     }
 
 #endif
+  return 0;
+}
+
+
+static int
+cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen)
+{
+#if defined(WINDOWS)
+  int result = MultiByteToWideChar (CP_UTF8, 0, in_utf8_str, -1, out_unicode_str, out_unicode_strLen);
+
+  if (result == 0)
+    {
+      return -1;
+    }
+
+#else
+  char *in_buf = (char *) in_utf8_str;
+  char *out_buf = (char *) out_unicode_str;
+
+  size_t in_strlen = strlen (in_utf8_str);
+  size_t out_strlen = out_unicode_strLen;
+
+  iconv_t conv = iconv_open (UNICODE_CODE_PAGE, UTF8_CODE_PAGE);
+  if (conv == (iconv_t) - 1)
+    {
+      return -1;
+    }
+
+  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == (size_t) (-1))
+    {
+      iconv_close (conv);
+      return -1;
+    }
+
+  *((wchar_t *) out_buf) = L'\0';
+
+  iconv_close (conv);
+#endif
+
   return 0;
 }
 
@@ -2965,4 +2862,17 @@ cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
     }
 
   return NULL;
+}
+
+static const char *
+cgw_get_dbms_name (T_DBMS_TYPE db_type)
+{
+  for (int i = 0; i < supported_dbms_max_num; i++)
+    {
+      if (db_type == supported_dbms_list[i].dbms_type)
+	{
+	  return supported_dbms_list[i].dbms_name;
+	}
+    }
+  return "";
 }

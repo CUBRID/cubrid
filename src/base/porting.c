@@ -58,6 +58,8 @@
 #include <sys/types.h>
 #include <string.h>
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined(AIX) && !defined(DONT_HOOK_MALLOC)
 #undef malloc
@@ -1311,7 +1313,6 @@ os_rename_file (const char *src_path, const char *dest_path)
 #endif /* WINDOWS */
 }
 
-#include <signal.h>
 /*
  * os_set_signal_handler() - sets the signal handler
  *   return: Old signal handler which can be used to restore
@@ -1476,6 +1477,11 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 {
   int len = _vscprintf_p (format, argptr) + 1;
 
+  if (count == 0)
+    {
+      return (len - 1);
+    }
+
   if (len > (int) count)
     {
       char *cp = (char *) malloc (len);
@@ -1495,7 +1501,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
       buffer[count - 1] = 0;
 
       free (cp);
-      return (int) count;
+      return (int) len;
     }
 
   return _vsprintf_p (buffer, count, format, argptr);
@@ -2257,36 +2263,6 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
     }
 }
 
-char *
-trim (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    memmove (str, s, strlen (s) + 1);
-
-  return (str);
-}
-
 int
 parse_int (int *ret_p, const char *str_p, int base)
 {
@@ -2573,6 +2549,22 @@ strtof_win (const char *nptr, char **endptr)
   f_val = (float) d_val;
   return f_val;
 }
+
+char *
+strndup_win (const char *src, size_t size)
+{
+  char *dest = (char *) malloc (size + 1);
+  if (dest == NULL)
+    {
+      return NULL;
+    }
+
+  memcpy (dest, src, size);
+  dest[size] = '\0';
+
+  return dest;
+}
+
 #endif
 
 #ifndef HAVE_STRLCPY

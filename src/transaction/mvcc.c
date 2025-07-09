@@ -30,6 +30,18 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "vacuum.h"
+#if 0
+// This file contains `placement new` being used within it, and there are
+// no explicit cases of calling `new`. Since heap memory monitoring does not
+// encounter any holes even without tracking this file, it is considered an
+// exception from the tracked files.
+//
+// To bring this file into the scope of memory monitoring, the usage of
+// `placement new` needs to be removed.
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+#endif
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
   (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_ins_id))
@@ -606,7 +618,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 
 /*
 * mvcc_is_mvcc_disabled_class () - MVCC is disabled for root class and
-*					db_serial, db_partition.
+*					db_serial, db_partition. this is a slow operation so cache this result.
 *
 * return	  : True if MVCC is disabled for class.
 * thread_p (in)  : Thread entry.
@@ -615,6 +627,8 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 bool
 mvcc_is_mvcc_disabled_class (const OID * class_oid)
 {
+  assert (class_oid != NULL);
+
   if (OID_ISNULL (class_oid) || OID_IS_ROOTOID (class_oid))
     {
       /* MVCC is disabled for root class */
@@ -694,5 +708,15 @@ mvcc_info::reset ()
   id = MVCCID_NULL;
   recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
   sub_ids.clear ();
+}
+
+void
+mvcc_info::copy_to (mvcc_info & dest) const
+{
+  this->snapshot.copy_to (dest.snapshot);
+  dest.id = this->id;
+  dest.recent_snapshot_lowest_active_mvccid = this->recent_snapshot_lowest_active_mvccid;
+  dest.sub_ids = this->sub_ids;
+  dest.is_sub_active = this->is_sub_active;
 }
 // *INDENT-ON*

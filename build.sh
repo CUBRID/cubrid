@@ -29,11 +29,15 @@ script_dir=$(dirname $(readlink -f $0))
 # variables for options
 build_target="x86_64"
 build_mode="release"
-build_generator="make"
+build_generator="ninja"
 source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
+compiler=""
+
+# if you turn on the unit test of memory monitor
+# configure_options="-DUNIT_TEST_MEMORY_MONITOR=ON" or "-DUNIT_TESTS=ON"
 # default build_dir = "$source_dir/build_${build_target}_${build_mode}"
 build_dir=""
 prefix_dir=""
@@ -189,6 +193,38 @@ function build_clean ()
 }
 
 
+function set_compiler_env() {
+  # Setup compiler environment variables based on chosen compiler
+  print_check "Setting up compiler environment"
+  if [ -z "$compiler" ] || [ "$compiler" = "gcc" ]; then
+    # Default GCC settings
+    print_info "Using default GCC compiler"
+    export CC="gcc"
+    export CXX="g++"
+    # No special flags needed for gcc
+  elif [[ "$compiler" =~ ^clang[0-9]*$ ]]; then
+    # Extract version if specified (e.g., clang14 -> 14)
+    if [[ "$compiler" =~ ^clang([0-9]+)$ ]]; then
+      clang_version="${BASH_REMATCH[1]}"
+      print_info "Using Clang version $clang_version"
+      export CC="clang-$clang_version"
+      export CXX="clang++-$clang_version"
+    else
+      # Use default clang
+      print_info "Using default Clang compiler"
+      export CC="clang"
+      export CXX="clang++"
+    fi
+    # Add 'Wno' flags, otherwise Modern Clang treats them to be errors
+    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration -w"
+    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs -w"
+  else
+    print_fatal "Unknown compiler for -C option: $compiler"
+  fi
+  print_result "OK"
+}
+
+
 function build_configure ()
 {
   # configure with target and options
@@ -198,9 +234,14 @@ function build_configure ()
   fi
   print_result "OK"
 
+  # Set up compiler environment variables if specified
+  if [ -n "$compiler" ]; then
+    set_compiler_env
+  fi
+
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
-    print_check "CCI source path is not exist. It must be built for dblink"
+    print_check "CCI source path does not exist. It must be built for dblink"
     if [ -d $source_dir/.git/modules/cubrid-cci ]; then
       git submodule deinit -f cubrid-cci
     fi
@@ -212,17 +253,17 @@ function build_configure ()
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
-    print_error "Manager server source path is not exist. It will not be built"
+    print_error "Manager server source path does not exist. It will not be built"
   else
     if [ "$with_cci" = "false" ]; then
-      print_error "Manager server source path is exist, but Manager server requires cci header, It will not be built"
+      print_error "Manager server source path exists, but Manager server requires cci header, It will not be built"
     fi
   fi
 
   print_check "Checking JDBC directory"
   if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
     without_jdbc="true"
-    print_error "JDBC source path is not exist. It will not be built"
+    print_error "JDBC source path does not exist. It will not be built"
   fi
 
   print_check "Setting environment variables"
@@ -244,7 +285,7 @@ function build_configure ()
       configure_options="-DENABLE_32BIT=ON $configure_options" ;;
     x86_64);;
     *)
-      print_fatal "Build target [$build_target] is not valid target" ;;
+      print_fatal "Build target [$build_target] is not a valid target" ;;
   esac
 
   # set up build mode
@@ -258,7 +299,7 @@ function build_configure ()
     profile)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Profile" ;;
     *)
-      print_fatal "Build mode [$build_mode] is not valid build mode" ;;
+      print_fatal "Build mode [$build_mode] is not a valid build mode" ;;
   esac
   print_result "OK"
 
@@ -322,19 +363,19 @@ function build_package ()
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
-    print_error "Manager server source path is not exist. It will not be packaged"
+    print_error "Manager server source path does not exist. It will not be packaged"
   fi
 
   print_check "Checking JDBC directory"
   if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
     without_jdbc="true"
-    print_error "JDBC source path is not exist. It will not be packaged"
+    print_error "JDBC source path does not exist. It will not be packaged"
   fi
   
   print_check "Checking CCI directory"
   if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
     with_cci="false"
-    print_error "CCI source path is not exist. It will not be packaged"
+    print_error "CCI source path does not exist. It will not be packaged"
   else 
     with_cci="true"
   fi
@@ -469,8 +510,9 @@ function show_usage ()
   echo "  -m      Set build mode(release, debug or coverage); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
-  echo "  -g      Specifies the generator for a build (make, ninja); [default: make]"
+  echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
   echo "  -c opts Set configure options; [default: NONE]"
+  echo "  -C opts Specify compiler (available options: gcc, clang). If not specified, it uses system default compiler; [default: none]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
   echo "  -p path Set prefix path; [default: <build_path>/_install/$product_name]"
@@ -499,7 +541,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:g:is:b:p:o:aj:c:z:vh" opt; do
+  while getopts ":t:m:g:is:b:p:o:aj:c:C:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -515,6 +557,7 @@ function get_options ()
 	  configure_options="$configure_options $optval"
 	done
       ;;
+      C ) compiler="$OPTARG" ;;
       z )
 	for optval in "$OPTARG"
 	do
@@ -530,17 +573,17 @@ function get_options ()
   case $build_target in
     i386|x86|32|32bit) build_target="i386";;
     x86_64|x64|64|64bit) build_target="x86_64";;
-    *) show_usage; print_fatal "Target [$build_target] is not valid target" ;;
+    *) show_usage; print_fatal "Target [$build_target] is not a valid target" ;;
   esac
 
   case $build_mode in
-    release|debug|coverage);;
-    *) show_usage; print_fatal "Mode [$build_mode] is not valid mode" ;;
+    release|debug|coverage|profile);;
+    *) show_usage; print_fatal "Mode [$build_mode] is not a valid mode" ;;
   esac
 
   case $build_generator in
     make|ninja);;
-    *) show_usage; print_fatal "Generator [$build_generator] is not valid mode" ;;
+    *) show_usage; print_fatal "Generator [$build_generator] is not a valid mode" ;;
   esac
 
   if [ "x$build_dir" = "x" ]; then
@@ -559,7 +602,7 @@ function get_options ()
 
   source_dir=$(readlink -f $source_dir)
   if [ ! -d "$source_dir" ]; then
-    print_fatal "Source path [$source_dir] is not exist"
+    print_fatal "Source path [$source_dir] does not exist"
   fi
 
   [ "x$packages" = "x" ] && packages=$default_packages

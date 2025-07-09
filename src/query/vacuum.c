@@ -20,6 +20,11 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "system.h"
 #include "vacuum.h"
 
@@ -33,6 +38,7 @@
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_impl.h"
+#include "log_reader.hpp"
 #include "mvcc.h"
 #include "mvcc_table.hpp"
 #include "object_representation.h"
@@ -49,6 +55,7 @@
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
+#include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
 
@@ -58,6 +65,8 @@
 #include <stack>
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -650,6 +659,9 @@ struct vacuum_dropped_files_rcv_data
 };
 
 bool vacuum_Is_booted = false;
+#if defined (SERVER_MODE)
+class ovfp_threshold_mgr g_ovfp_threshold_mgr;
+#endif
 
 /* Logging */
 #define VACUUM_LOG_DATA_ENTRY_MSG(name) \
@@ -1124,7 +1136,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   fprintf (outfp, "\n");
   fprintf (outfp, "*** Vacuum Dump ***\n");
-  fprintf (outfp, "First log page ID referenced = %lld ", min_log_pageid);
+  fprintf (outfp, "First log page ID referenced = %" PRId64 " ", min_log_pageid);
 
   if (logpb_is_page_in_archive (min_log_pageid))
     {
@@ -1145,6 +1157,9 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     {
       fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
     }
+#if defined (SERVER_MODE)
+  g_ovfp_threshold_mgr.dump (thread_p, outfp);
+#endif
 }
 
 /*
@@ -1232,6 +1247,10 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.prefetch_first_pageid = NULL_PAGEID;
   vacuum_Master.prefetch_last_pageid = NULL_PAGEID;
   vacuum_Master.allocated_resources = false;
+  vacuum_Master.idx = -1;
+#if defined (SERVER_MODE)
+  g_ovfp_threshold_mgr.init ();
+#endif
 
   /* Initialize workers */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
@@ -1248,6 +1267,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].allocated_resources = false;
+      vacuum_Workers[i].idx = i;
     }
 
   return NO_ERROR;
@@ -1511,7 +1531,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
-			       page_ptr->oid.volid, page_ptr->oid.pageid);
+			       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
 
 #if defined (NDEBUG)
 	  if (!thread_p->shutdown)
@@ -1996,7 +2016,7 @@ retry_prepare:
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
-	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|d.", VPID_AS_ARGS (&forward_vpid));
+	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
 	  /* Both pages fixed. */
@@ -3379,6 +3399,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 	  assert (!OID_ISNULL (&oid));
 
+	  thread_p->read_ovfl_pages_count = 0;
+
 	  /* Vacuum based on rcvindex. */
 	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
@@ -3445,6 +3467,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      /* Unexpected. */
 	      assert_release (false);
 	    }
+
+#if defined (SERVER_MODE)
+	  if (thread_p->read_ovfl_pages_count >= g_ovfp_threshold_mgr.get_threshold_page_cnt ())
+	    {
+	      g_ovfp_threshold_mgr.add_read_pages_count (thread_p, worker->idx, btid_int.sys_btid,
+							 thread_p->read_ovfl_pages_count);
+	    }
+#endif
+
 	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
 	    {
@@ -6041,6 +6072,11 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
 {
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      return;
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);

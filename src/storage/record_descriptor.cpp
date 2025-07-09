@@ -28,6 +28,8 @@
 #include "slotted_page.h"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 //  record_descriptor extends functionality for recdes:
 //

@@ -199,6 +199,7 @@ struct btree_node_header
   VPID next_vpid;		/* Leaf Page Next Node Pointer */
   short node_level;		/* btree depth; Leaf(= 1), Non_leaf(> 1) */
   short max_key_len;		/* Maximum key length for the subtree */
+  int common_prefix;
 };
 
 /* Root header information */
@@ -206,19 +207,21 @@ typedef struct btree_root_header BTREE_ROOT_HEADER;
 struct btree_root_header
 {
   BTREE_NODE_HEADER node;
-  int num_oids;			/* Number of OIDs stored in the Btree */
-  int num_nulls;		/* Number of NULLs (they aren't stored) */
-  int num_keys;			/* Number of unique keys in the Btree */
+  INT64 num_oids;		/* Number of OIDs stored in the Btree */
+  INT64 num_nulls;		/* Number of NULLs (they aren't stored) */
+  INT64 num_keys;		/* Number of unique keys in the Btree */
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
   int unique_pk;		/* unique or non-unique, is primary key */
+
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   struct
   {
-    int over:2;			/* for checking to over 32 bit */
-    int num_oids:10;		/* extend 10 bit for num_oids */
-    int num_nulls:10;		/* extend 10 bit for num_nulls */
-    int num_keys:10;		/* extend 10 bit for num_keys */
-  } _64;
-  int rev_level;		/* Btree revision level */
+    int rev_level:16;		/* Btree revision level */
+    int deduplicate_key_idx:16;
+#define SET_DECOMPRESS_IDX_HEADER(hdr, idx)  ((hdr)->_32.deduplicate_key_idx = ((idx) + 1))
+#define GET_DECOMPRESS_IDX_HEADER(hdr)       ((hdr)->_32.deduplicate_key_idx - 1)
+  } _32;
+
   VFID ovfid;			/* Overflow file */
   MVCCID creator_mvccid;	/* MVCCID of creator transaction. */
 

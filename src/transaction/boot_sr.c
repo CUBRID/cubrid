@@ -67,7 +67,7 @@
 #include "serial.h"
 #include "server_interface.h"
 #include "jansson.h"
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
@@ -87,6 +87,8 @@
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
+#include "pl_sr.h"
+#include "px_worker_manager_global.hpp"
 #endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -98,6 +100,8 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE  \
   (1250 * (IO_DEFAULT_PAGE_SIZE / IO_PAGESIZE))	/* 5 Mbytes */
@@ -140,11 +144,15 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT **
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
-extern void boot_client_all_finalize (bool is_er_final);
+extern void boot_client_all_finalize (int final_level);
 #endif /* SA_MODE */
 
 
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
+
+#if defined(SERVER_MODE)
+bool boot_Enabled_flush_daemons = false;
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
@@ -174,7 +182,6 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID
 static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 static void boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
@@ -185,9 +192,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-					 int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
-					 bool forward_dir, bool check_before_access);
+static void boot_remove_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -914,7 +919,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, true, true);
+  boot_remove_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -936,22 +941,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
     }
 
   return error_code;
-}
-
-/*
- * boot_xremove_temp_volume () - remove a temporary volume from the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- *   volid(in): Volume identifier to remove
- *   vlabel(in): Volume label
- *
- * Note: Pass control to boot_remove_temp_volume to remove the temporary volume.
- */
-static int
-boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
-{
-  return boot_remove_temp_volume (thread_p, volid, vlabel);
 }
 
 static void
@@ -1151,27 +1140,18 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
- *
- *   volid(in): Volume identifier
- *   fun(in): Function to call on volid, vlabel, and arguments
- *   forward_dir(in): direction of accessing the tempvols (forward/backward)
- *   check_before_access(in): if true, check the existence of volume before access
+ * boot_remove_temp_volumes () - Find temporary volumes and remove them
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-			     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
-			     bool forward_dir, bool check_before_access)
+boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
   const char *temp_path;
   const char *temp_name;
   char *alloc_tempath = NULL;
-  int num_vols;
-  bool go_to_access;
 
   /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
@@ -1190,64 +1170,12 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  if (boot_Db_parm->temp_nvols > 0)
+  for (temp_volid = boot_Db_parm->temp_last_volid; temp_volid <= LOG_MAX_DBVOLID; temp_volid++)
     {
-      /* Cycle over all temporarily volumes, skip the given one */
-      if (forward_dir)
+      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+      if (fileio_is_volume_exist (temp_vol_fullname) == true)
 	{
-	  for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
-	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
-		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
-		    {
-		      go_to_access = true;
-		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
-	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
-		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
-		    {
-		      go_to_access = true;
-		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
-		}
-	    }
+	  (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 	}
     }
 
@@ -1480,7 +1408,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
   int error_code;
-  void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
+  void (*volatile old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
   const char *db_path, *log_path, *lob_path;
@@ -2066,8 +1994,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
   char *mk_path;
-  int jsp_port;
-  bool jsp;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2099,7 +2025,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
       error_code = ER_BO_CANT_LOAD_SYSPRM;
@@ -2183,7 +2109,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
     {
-      strcpy (boot_Host_name, "(unknown)");
+      if (strcmp (boot_Host_name, "") == 0)
+	{
+	  strcpy (boot_Host_name, "(unknown)");
+	}
     }
   boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
@@ -2214,13 +2143,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
    * recovery managers
    */
 #if defined(SERVER_MODE)
-  if (sysprm_load_and_init (boot_Db_full_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
-      error_code = ER_BO_CANT_LOAD_SYSPRM;
-      goto error;
-    }
-
   if (common_ha_mode != prm_get_integer_value (PRM_ID_HA_MODE) && !HA_DISABLED ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf", "common",
@@ -2290,20 +2212,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-
 #if defined (SA_MODE)
-  // Initialize java stored procedure server for standalone mode
-  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
-  if (jsp && !jsp_jvm_is_loaded ())
-    {
-      jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
-      error_code = jsp_start_server (db_name, db->pathname, jsp_port);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
   /* *INDENT-OFF* */
   // thread_manager was not initialized
   assert (thread_p == NULL);
@@ -2316,6 +2225,29 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
+
+  /*
+   * Call pl_server_init() before log_initialize() to avoid potential issues
+   * with large memory allocations impacting fork() system calls.
+   *
+   * Context:
+   * 1. During log_initialize(), large data buffer allocations might cause fork()
+   *    system call failures. To prevent this, pl_server_init() is invoked earlier.
+   *
+   * 2. In cases with large-scale databases such as those used for YCSB testing, 
+   *    the time taken by log_initialize() is nearly identical to the time taken 
+   *    to reach it via boot_start_server(). This suggests that other modules 
+   *    during server startup consume significant system resources, although the 
+   *    specifics are yet to be analyzed.
+   *
+   * 3. To enhance PL server initialization reliability, pl_server_init() is called 
+   *    before other modules’ initialization.
+   */
+  error_code = pl_server_init (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
@@ -2478,6 +2410,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  pgbuf_daemons_init ();
+  dwb_daemons_init ();
+  parallel_query::worker_manager_global::get_manager ().init ();
+#endif /* SERVER_MODE */
+
   /*
    * Now restart the recovery manager and execute any recovery actions
    */
@@ -2492,8 +2430,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
-  pgbuf_daemons_init ();
-  dwb_daemons_init ();
+  BO_ENABLE_FLUSH_DAEMONS ();
+
   cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
@@ -2716,6 +2654,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  error_code = pl_server_wait_for_ready ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
@@ -2756,6 +2700,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
 	       rel_build_type ());
 #endif /* !NDEBUG */
+      fflush (stdout);
     }
 
   if (from_backup == true)
@@ -2802,14 +2747,19 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+
   vacuum_stop_workers (thread_p);
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  pl_server_destroy ();
+
   cdc_daemons_destroy ();
 
+  BO_DISABLE_FLUSH_DAEMONS ();
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
+  parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
 
   log_final (thread_p);
@@ -3096,7 +3046,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-  sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+  sysprm_set_force (PRM_ID_SUPPRESS_FSYNC, "0");
 
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);
@@ -3123,6 +3073,8 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
+  pl_server_destroy ();
+  parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
 
 #if defined (SA_MODE)
@@ -3403,7 +3355,12 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif /* SERVER_MODE */
 
       /* If the transaction is active abort it */
-      if (LOG_ISTRAN_ACTIVE (tdes))	/* logtb_is_current_active (thread_p) */
+      /* FIXME:
+       * Don't abort transactions in LOG_ISTRAN_2PC_PREPARE arbitrarily.
+       * Currently follows a temporary recovery policy (no coordinator).
+       * Must follow proper 2PC rules once coordinator is implemented.
+       */
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
@@ -3879,7 +3836,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_manager_final ();
   boot_server_status (BOOT_SERVER_DOWN);
@@ -3891,6 +3847,8 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   // return lock-free transaction and destroy the system.
   thread_return_lock_free_transaction_entries ();
   lf_destroy_transaction_systems ();
+
+  perfmon_finalize ();
 
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
@@ -5979,6 +5937,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_COMPACTDB_WOS";
     case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
       return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_LOADDB_UTILITY:
+      return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
@@ -6076,10 +6036,27 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
+
+      VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
+			     &vpid_boot_bp_parm);
+
+      error_code = boot_db_parm_update_heap (thread_p);
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+
+      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
+       * during restart. that may not be possible during media crash though. */
+      heap_flush (thread_p, boot_Db_parm_oid);
+      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
     }
   else
     {
@@ -6089,30 +6066,18 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	  /* invalid volid */
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->temp_nvols++;
       boot_Db_parm->temp_last_volid = volid;
     }
 
-  /* todo: is flush needed? */
-  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
-  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
+  return NO_ERROR;
 
-  error_code = boot_db_parm_update_heap (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      *boot_Db_parm = save_boot_db_parm;
-      goto exit;
-    }
+error:
 
-  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
-   * during restart. that may not be possible during media crash though. */
-  heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
+  *boot_Db_parm = save_boot_db_parm;
 
-exit:
   return error_code;
 }
 

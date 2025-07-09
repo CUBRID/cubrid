@@ -236,6 +236,16 @@ extern int tr_Recursion_level_max;
 extern TR_TRIGLIST *tr_Deferred_triggers;
 extern TR_TRIGLIST *tr_Deferred_triggers_tail;
 
+/*
+* EVAL_PREFIX, EVAL_SUFFIX
+*
+* Note:
+*    This is used to replace the condition clause with an evaluate clause when creating or unloading a trigger.
+*/
+
+extern const char *EVAL_PREFIX;
+extern const char *EVAL_SUFFIX;
+
 /* INTERFACE FUNCTIONS */
 
 /* Module control */
@@ -380,5 +390,8 @@ extern const char *tr_get_class_name (void);
 extern int tr_reset_schema_cache (TR_SCHEMA_CACHE * cache);
 extern int tr_downcase_all_trigger_info (void);
 #endif
+
+/* Remove appended trigger evaluate info */
+extern char *remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate);
 
 #endif /* _TRIGGER_MANAGER_H_ */

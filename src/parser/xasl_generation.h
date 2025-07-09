@@ -77,7 +77,11 @@ struct table_info
  * which can be used to resolve attribute names referenced.
  */
 typedef enum
-{ UNBOX_AS_VALUE, UNBOX_AS_TABLE } UNBOX;
+{
+  UNBOX_AS_VALUE,
+  UNBOX_AS_TABLE
+} UNBOX;
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -92,8 +96,6 @@ struct symbol_info
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
 };
-
-
 
 typedef struct aggregate_info AGGREGATE_INFO;
 struct aggregate_info
@@ -122,7 +124,9 @@ struct analytic_info
 };
 
 typedef enum
-{ NOT_COMPATIBLE = 0, ENTITY_COMPATIBLE,
+{
+  NOT_COMPATIBLE = 0,
+  ENTITY_COMPATIBLE,
   NOT_COMPATIBLE_NO_RESET
 } COMPATIBLE_LEVEL;
 
@@ -145,6 +149,8 @@ extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 						     char *password, int host_var_count, int *host_var_index,
 						     char *sql);
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
+extern REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
+							     VAL_LIST * value_list, int *attr_offsets);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
@@ -177,6 +183,7 @@ extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * x
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);
+extern XASL_NODE *pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl);
 extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR id);
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -203,10 +210,12 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement
 				    PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs);
 extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_stmt);
 extern PT_NODE *pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * name_list);
-extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
 extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
+
+/* to generate xasl for dblink */
+extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */

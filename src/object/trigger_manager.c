@@ -125,8 +125,8 @@ static const char *OLD_REFERENCE_NAME = "old";
  * Currently, the evaluate grammar must have parens surrounding the expression.
  */
 
-static const char *EVAL_PREFIX = "EVALUATE ( ";
-static const char *EVAL_SUFFIX = " ) ";
+const char *EVAL_PREFIX = "EVALUATE ( ";
+const char *EVAL_SUFFIX = " ) ";
 
 const char *TR_CLASS_NAME = "db_trigger";
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
@@ -1668,7 +1668,8 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
       class_mop = ((curname == NULL && tempname == NULL) ? NULL : trigger->class_mop);
 
       activity->statement =
-	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname);
+	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname,
+				 &activity->source, with_evaluate);
       if (activity->statement == NULL || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
 	  error = er_errid ();
@@ -3435,11 +3436,11 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
 	  /* must check authorization against the associated class */
 	  if (alter_flag)
 	    {
-	      error = au_check_authorization (trigger->class_mop, AU_ALTER);
+	      error = au_check_class_authorization (trigger->class_mop, AU_ALTER);
 	    }
 	  else
 	    {
-	      error = au_check_authorization (trigger->class_mop, AU_SELECT);
+	      error = au_check_class_authorization (trigger->class_mop, AU_SELECT);
 	    }
 
 	  if (error == NO_ERROR)
@@ -3697,7 +3698,7 @@ check_target (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const char *attribu
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_MISSING_TARGET_CLASS, 0);
 	}
       /* User must have ALTER privilege for the class */
-      else if (au_check_authorization (class_mop, AU_ALTER) == NO_ERROR)
+      else if (au_check_class_authorization (class_mop, AU_ALTER) == NO_ERROR)
 	{
 	  if (attribute == NULL)
 	    {
@@ -5099,7 +5100,7 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
     {
       if (AU_SET_USER (save_user))
 	{
-	  /* what can this mean ? */
+	  // what can this mean ?
 	  rstatus = TR_RETURN_ERROR;
 	}
     }
@@ -6010,9 +6011,8 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target)
 {
   int error = NO_ERROR;
   TR_DEFERRED_CONTEXT *c, *c_next;
-  TR_TRIGLIST *t, *next;
+  TR_TRIGLIST *t, *next, *tail;
   TR_TRIGGER *trigger;
-  TR_STATE *state_p;
   int status;
   bool rejected;
 
@@ -6025,57 +6025,79 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target)
       return NO_ERROR;
     }
 
+  /* 
+   * Before and after triggers resemble a DFS (Depth-First Search) structure,
+   * as they execute immediately and deeply within the transaction, processing related operations
+   * in a depth-first manner.
+   *
+   * In contrast, a deferred trigger resembles a BFS (Breadth-First Search) structure,
+   * as it delays execution until the end of the transaction, processing all triggers layer by layer.
+   */
+
   for (c = tr_Deferred_activities, c_next = NULL; c != NULL && !error; c = c_next)
     {
       c_next = c->next;
+      tr_Current_depth = 1;
 
-      for (t = c->head, next = NULL; t != NULL && !error; t = next)
+      for (t = c->head; t != NULL && !error; t = c->head)
 	{
-	  next = t->next;
-	  trigger = t->trigger;
+	  tr_Current_depth++;
 
-	  if ((trigger_object == NULL || trigger->object == trigger_object) && (target == NULL || t->target == target))
+	  if (compare_recursion_levels (tr_Current_depth, tr_Maximum_depth) > 0)
 	    {
-	      if (its_deleted (t->target))
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_EXCEEDS_MAX_REC_LEVEL, 2, tr_Maximum_depth,
+		      t->trigger->name);
+	      ASSERT_ERROR_AND_SET (error);
+	      break;
+	    }
+
+	  /* range [head, tail] */
+	  for (tail = c->tail; t != NULL && !error; t = next)
+	    {
+	      next = t->next;
+	      trigger = t->trigger;
+
+	      if ((trigger_object == NULL || trigger->object == trigger_object)
+		  && (target == NULL || t->target == target))
 		{
-		  /*
-		   * Somewhere along the line, the target object was deleted, quietly ignore the deferred activity.
-		   * If it turns out that we really want to keep these active, we'll have to contend with
-		   * what pt_exec_trigger_stmt is going to do when we pass it deleted objects.
-		   */
-		  remove_deferred_activity (c, t);
-		}
-	      else
-		{
-		  state_p = NULL;
-		  if (start_state (&state_p, t->trigger->name) == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error);
-		      break;
-		    }
-
-		  status = execute_activity (trigger, TR_TIME_DEFERRED, t->target, NULL, &rejected);
-
-		  tr_finish (state_p);
-
-		  /* execute_activity() maybe include trigger and change the next pointer. we need get it again. */
-		  next = t->next;
-		  if (status == TR_RETURN_TRUE)
-		    {
-		      /* successful processing, remove it from the list */
-		      remove_deferred_activity (c, t);
-
-		      /* reject can't happen here, even if it does, it is unclear what it would mean */
-		    }
-		  else if (status == TR_RETURN_ERROR)
+		  if (its_deleted (t->target))
 		    {
 		      /*
-		       * if an error happens, should we invalidate the transaction ?
+		       * Somewhere along the line, the target object was deleted, quietly ignore the deferred activity.
+		       * If it turns out that we really want to keep these active, we'll have to contend with
+		       * what pt_exec_trigger_stmt is going to do when we pass it deleted objects.
 		       */
-		      ASSERT_ERROR_AND_SET (error);
+		      remove_deferred_activity (c, t);
 		    }
+		  else
+		    {
+		      status = execute_activity (trigger, TR_TIME_DEFERRED, t->target, NULL, &rejected);
 
-		  /* else, thinks the trigger can't be evaluated yet, shouldn't happen */
+		      /* execute_activity() maybe include trigger and change the next pointer. we need get it again. */
+		      assert (next == NULL || next == t->next);
+		      next = t->next;
+		      if (status == TR_RETURN_TRUE)
+			{
+			  /* successful processing, remove it from the list */
+			  remove_deferred_activity (c, t);
+
+			  /* reject can't happen here, even if it does, it is unclear what it would mean */
+			}
+		      else if (status == TR_RETURN_ERROR)
+			{
+			  /*
+			   * if an error happens, should we invalidate the transaction ?
+			   */
+			  ASSERT_ERROR_AND_SET (error);
+			}
+
+		      /* else, thinks the trigger can't be evaluated yet, shouldn't happen */
+		    }
+		}
+
+	      if (t == tail)
+		{
+		  break;
 		}
 	    }
 	}
@@ -6088,6 +6110,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target)
 	  remove_deferred_context (c);
 	}
     }
+  tr_Current_depth = 0;
 
   return error;
 }
@@ -7569,3 +7592,53 @@ tr_downcase_all_trigger_info (void)
   return ((mop == NULL) ? NO_ERROR : ER_FAILED);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * remove_appended_trigger_evaluate () - remove appended trigger evaluate
+ *   trigger_stmt_str(in/out):
+ *   with_evaluate(in):
+ */
+char *
+remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
+{
+  size_t remove_eval_suffix_len;
+  /* while performing the query rewrite, the characters “EVALUATE” are changed to lowercase. */
+  const char *remove_eval_prefix = "evaluate (";
+  char *p = NULL;
+
+  if (trigger_stmt_str == NULL)
+    {
+      assert (trigger_stmt_str != NULL);
+      return NULL;
+    }
+
+  if (with_evaluate)
+    {
+      p = strstr (trigger_stmt_str, remove_eval_prefix);
+      if (p == NULL)
+	{
+	  assert (p != NULL);
+	  return NULL;
+	}
+
+      remove_eval_suffix_len = strlen (p) - strlen (remove_eval_prefix);
+      if (remove_eval_suffix_len > (size_t) strlen (p))
+	{
+	  assert (0);
+	  return NULL;
+	}
+
+      p = (char *) memmove (p, p + strlen (remove_eval_prefix), remove_eval_suffix_len + 1);
+
+      if (p[remove_eval_suffix_len - 1] == ')')
+	{
+	  p[remove_eval_suffix_len - 1] = '\0';
+	}
+      else
+	{
+	  return NULL;
+	}
+    }
+
+  return trigger_stmt_str;
+}

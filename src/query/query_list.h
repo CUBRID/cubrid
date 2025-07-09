@@ -340,11 +340,11 @@ struct qfile_list_merge_info
   int ls_column_cnt;		/* join columns count */
   int ls_pos_cnt;		/* tuple value fetch count */
   int *ls_outer_column;		/* outer list join columns number */
-  int *ls_outer_unique;		/* outer column values unique? */
-  /* currently, not used */
+  int *ls_outer_unique;		/* outer column values unique?
+				 * currently, not used */
   int *ls_inner_column;		/* inner list join columns number */
-  int *ls_inner_unique;		/* inner column values unique? */
-  /* currently, not used */
+  int *ls_inner_unique;		/* inner column values unique?
+				 * currently, not used */
   int *ls_outer_inner_list;	/* outer/inner list indicators */
   int *ls_pos_list;		/* tuple value positions */
 };
@@ -440,6 +440,7 @@ struct qfile_list_id
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
   bool is_domain_resolved;	/* domains for host var is resolved or not */
+  bool is_result_cached;	/* for subquery result cache */
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
@@ -473,6 +474,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.tplrec2 = NULL; \
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
+      (list_id)->is_result_cached = false; \
     } \
   while (0)
 
@@ -516,7 +518,8 @@ enum
   QFILE_FLAG_DIFFERENCE = 0x0040,
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
-  QFILE_FLAG_USE_KEY_BUFFER = 0x0400
+  QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
+  QFILE_NOT_USE_MEMBUF = 0x0800
 };
 
 #define QFILE_SET_FLAG(var, flag)          ((var) |= (flag))

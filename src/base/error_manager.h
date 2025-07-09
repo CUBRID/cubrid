@@ -42,6 +42,7 @@
 #include "error_code.h"
 
 #define ARG_FILE_LINE           __FILE__, __LINE__
+#define ARG_FILE_LINE_FUNC      __FILE__, __LINE__, __func__
 #define NULL_LEVEL              0
 
 /* Shorthand for simple warnings and errors */
@@ -319,6 +320,7 @@ extern "C"
 #if defined (CS_MODE)
   extern void er_set_ignore_uninit (bool ignore);
 #endif
+  extern void er_print_crash_callstack (int sig);
 
 #ifdef __cplusplus
 }

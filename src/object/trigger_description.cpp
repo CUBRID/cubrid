@@ -245,6 +245,9 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *trigger_name = NULL;
   const char *class_name = NULL;
+  PARSER_CONTEXT *parser;
+  PT_NODE **action_node = nullptr, **condition_node = nullptr;
+  char *query_action_result, *query_condition_result;
 
   AU_DISABLE (save);
 
@@ -256,9 +259,27 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
     }
   else if (trigger->status != TR_STATUS_INVALID)
     {
+      if (trigger->class_mop != NULL)
+	{
+	  name = db_get_class_name (trigger->class_mop);
+	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	  class_name = sm_remove_qualifier_name (name);
+	}
+
       /* automatically filter out invalid triggers */
       output_ctx ("CREATE TRIGGER ");
-      output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
+	  output_ctx ("[%s].[%s]\n", owner_name, sm_remove_qualifier_name (trigger->name));
+	}
+      else
+	{
+	  output_ctx ("[%s]\n", sm_remove_qualifier_name (trigger->name));
+	}
       output_ctx ("  STATUS %s\n", tr_status_as_string (trigger->status));
       output_ctx ("  PRIORITY %f\n", trigger->priority);
 
@@ -277,13 +298,6 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 
       if (trigger->class_mop != NULL)
 	{
-	  name = db_get_class_name (trigger->class_mop);
-	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	  class_name = sm_remove_qualifier_name (name);
 	  output_ctx (" ON ");
 	  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	    {
@@ -303,7 +317,57 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 
       if (trigger->condition != NULL)
 	{
-	  output_ctx ("IF %s\n", trigger->condition->source);
+	  char *text;
+	  int length;
+
+	  length = strlen (EVAL_PREFIX) + strlen (trigger->condition->source) + strlen (EVAL_SUFFIX) + 1;
+	  text = (char *) malloc (length);
+	  if (text == NULL)
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+	      return error;
+	    }
+	  strcpy (text, EVAL_PREFIX);
+	  strcat (text, trigger->condition->source);
+	  strcat (text, EVAL_SUFFIX);
+
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+
+	  if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	    {
+	      parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	    }
+
+	  condition_node = parser_parse_string (parser, text);
+	  if (condition_node != NULL)
+	    {
+	      query_condition_result = parser_print_tree_with_quotes (parser, *condition_node);
+
+	      /* remove appended trigger evaluate info */
+	      query_condition_result = remove_appended_trigger_evaluate (query_condition_result, 1);
+	      if (query_condition_result == NULL)
+		{
+		  output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+		  ASSERT_ERROR_AND_SET (error);
+		  return error;
+		}
+
+	      output_ctx ("IF %s\n", query_condition_result);
+	    }
+	  else
+	    {
+	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
+	    }
+	  parser_free_parser (parser);
+	  free_and_init (text);
 	}
 
       if (trigger->action != NULL)
@@ -316,7 +380,30 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  switch (trigger->action->type)
 	    {
 	    case TR_ACT_EXPRESSION:
-	      output_ctx ("%s", trigger->action->source);
+	      parser = parser_create_parser ();
+	      if (parser == NULL)
+		{
+		  output_ctx ("\n/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		  ASSERT_ERROR_AND_SET (error);
+		  return error;
+		}
+
+	      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+		{
+		  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+		}
+
+	      action_node = parser_parse_string (parser, trigger->action->source);
+	      if (action_node != NULL)
+		{
+		  query_action_result = parser_print_tree_with_quotes (parser, *action_node);
+		  output_ctx ("%s", query_action_result);
+		}
+	      else
+		{
+		  output_ctx ("\n/* ERROR : EXECUTE %s */\n", trigger->action->source);
+		}
+	      parser_free_parser (parser);
 	      break;
 	    case TR_ACT_REJECT:
 	      output_ctx ("REJECT");
@@ -339,7 +426,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  help_print_describe_comment (output_ctx, trigger->comment);
 	}
 
-      output_ctx (";\n");
+      output_ctx (";\n\n");
     }
 
   AU_ENABLE (save);
@@ -423,8 +510,6 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
 		      if (trigger->status != TR_STATUS_INVALID)
 			{
 			  tr_dump_trigger (ctxt, output_ctx, trigger_object);
-			  output_ctx ("call [change_trigger_owner]('%s'," " '%s') on class [db_root];\n\n",
-				      sm_remove_qualifier_name (trigger->name), get_user_name (trigger->owner));
 			}
 		    }
 		  else if (is_system_class < 0)

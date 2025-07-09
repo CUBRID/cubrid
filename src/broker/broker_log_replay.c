@@ -40,6 +40,9 @@
 #include "porting.h"
 #include "error_code.h"
 
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
+
 #define STAT_MAX_DIFF_TIME              (60000)	/* 60 * 1000 : 10 min */
 #define SORT_BUF_MAX                    (4096)
 #define BIND_STR_BUF_SIZE               (4096)
@@ -146,6 +149,7 @@ static int break_time = 0;
 static double print_result_diff_time_lower = 0;
 
 static FILE *br_tmpfp = NULL;
+static char br_tmp_filename[PATH_MAX];
 
 static unsigned int num_slower_queries[STAT_MAX_DIFF_TIME] = { 0 };
 static unsigned int num_faster_queries[STAT_MAX_DIFF_TIME] = { 0 };
@@ -620,115 +624,167 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log, T_SQL_IN
 static int
 get_cci_type (char *p)
 {
-  int type;
+  int type = -1;
 
-  if (strcmp (p, "NULL") == 0)
+  assert (p);
+  switch (*p)
     {
-      type = CCI_U_TYPE_NULL;
-    }
-  else if (strcmp (p, "CHAR") == 0)
-    {
-      type = CCI_U_TYPE_CHAR;
-    }
-  else if (strcmp (p, "VARCHAR") == 0)
-    {
-      type = CCI_U_TYPE_STRING;
-    }
-  else if (strcmp (p, "NCHAR") == 0)
-    {
-      type = CCI_U_TYPE_NCHAR;
-    }
-  else if (strcmp (p, "VARNCHAR") == 0)
-    {
-      type = CCI_U_TYPE_VARNCHAR;
-    }
-  else if (strcmp (p, "BIT") == 0)
-    {
-      type = CCI_U_TYPE_BIT;
-    }
-  else if (strcmp (p, "VARBIT") == 0)
-    {
-      type = CCI_U_TYPE_VARBIT;
-    }
-  else if (strcmp (p, "NUMERIC") == 0)
-    {
-      type = CCI_U_TYPE_NUMERIC;
-    }
-  else if (strcmp (p, "UBIGINT") == 0)
-    {
-      type = CCI_U_TYPE_UBIGINT;
-    }
-  else if (strcmp (p, "BIGINT") == 0)
-    {
-      type = CCI_U_TYPE_BIGINT;
-    }
-  else if (strcmp (p, "UINT") == 0)
-    {
-      type = CCI_U_TYPE_UINT;
-    }
-  else if (strcmp (p, "INT") == 0)
-    {
-      type = CCI_U_TYPE_INT;
-    }
-  else if (strcmp (p, "USHORT") == 0)
-    {
-      type = CCI_U_TYPE_USHORT;
-    }
-  else if (strcmp (p, "SHORT") == 0)
-    {
-      type = CCI_U_TYPE_SHORT;
-    }
-  else if (strcmp (p, "MONETARY") == 0)
-    {
-      type = CCI_U_TYPE_MONETARY;
-    }
-  else if (strcmp (p, "FLOAT") == 0)
-    {
-      type = CCI_U_TYPE_FLOAT;
-    }
-  else if (strcmp (p, "DOUBLE") == 0)
-    {
-      type = CCI_U_TYPE_DOUBLE;
-    }
-  else if (strcmp (p, "DATE") == 0)
-    {
-      type = CCI_U_TYPE_DATE;
-    }
-  else if (strcmp (p, "TIME") == 0)
-    {
-      type = CCI_U_TYPE_TIME;
-    }
-  else if (strcmp (p, "TIMESTAMP") == 0)
-    {
-      type = CCI_U_TYPE_TIMESTAMP;
-    }
-  else if (strcmp (p, "DATETIME") == 0)
-    {
-      type = CCI_U_TYPE_DATETIME;
-    }
-  else if (strcmp (p, "OBJECT") == 0)
-    {
-      type = CCI_U_TYPE_OBJECT;
-    }
-  else if (strcmp (p, "BLOB") == 0)
-    {
-      type = CCI_U_TYPE_NULL;
-    }
-  else if (strcmp (p, "CLOB") == 0)
-    {
-      type = CCI_U_TYPE_NULL;
-    }
-  else if (strcmp (p, "ENUM") == 0)
-    {
-      type = CCI_U_TYPE_ENUM;
-    }
-  else if (strcmp (p, "JSON") == 0)
-    {
-      type = CCI_U_TYPE_JSON;
-    }
-  else
-    {
-      type = -1;
+    case 'B':
+      if (memcmp (p, "BIGINT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_BIGINT;
+	}
+      else if (memcmp (p, "BIT", 4) == 0)
+	{
+	  type = CCI_U_TYPE_BIT;
+	}
+      else if (memcmp (p, "BLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
+      break;
+
+    case 'C':
+      if (memcmp (p, "CHAR", 5) == 0)
+	{
+	  type = CCI_U_TYPE_CHAR;
+	}
+      else if (memcmp (p, "CLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
+      break;
+
+    case 'E':
+      if (memcmp (p, "ENUM", 5) == 0)
+	{
+	  type = CCI_U_TYPE_ENUM;
+	}
+      break;
+
+    case 'J':
+      if (memcmp (p, "JSON", 5) == 0)
+	{
+	  type = CCI_U_TYPE_JSON;
+	}
+      break;
+
+    case 'I':
+      if (memcmp (p, "INT", 4) == 0)
+	{
+	  type = CCI_U_TYPE_INT;
+	}
+      break;
+
+    case 'D':
+      if (memcmp (p, "DOUBLE", 7) == 0)
+	{
+	  type = CCI_U_TYPE_DOUBLE;
+	}
+      else if (memcmp (p, "DATE", 5) == 0)
+	{
+	  type = CCI_U_TYPE_DATE;
+	}
+      else if (memcmp (p, "DATETIME", 9) == 0)
+	{
+	  type = CCI_U_TYPE_DATETIME;
+	}
+      else if (memcmp (p, "DATETIMETZ", 11) == 0)
+	{
+	  type = CCI_U_TYPE_DATETIMETZ;
+	}
+      break;
+
+    case 'F':
+      if (memcmp (p, "FLOAT", 6) == 0)
+	{
+	  type = CCI_U_TYPE_FLOAT;
+	}
+      break;
+
+    case 'M':
+      if (memcmp (p, "MONETARY", 9) == 0)
+	{
+	  type = CCI_U_TYPE_MONETARY;
+	}
+      break;
+
+    case 'N':
+      if (memcmp (p, "NUMERIC", 8) == 0)
+	{
+	  type = CCI_U_TYPE_NUMERIC;
+	}
+      else if (memcmp (p, "NULL", 5) == 0)
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
+      else if (memcmp (p, "NCHAR", 6) == 0)
+	{
+	  type = CCI_U_TYPE_NCHAR;
+	}
+      break;
+
+    case 'O':
+      if (memcmp (p, "OBJECT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_OBJECT;
+	}
+      break;
+
+    case 'S':
+      if (memcmp (p, "SHORT", 6) == 0)
+	{
+	  type = CCI_U_TYPE_SHORT;
+	}
+      break;
+
+    case 'T':
+      if (memcmp (p, "TIME", 5) == 0)
+	{
+	  type = CCI_U_TYPE_TIME;
+	}
+      else if (memcmp (p, "TIMESTAMP", 10) == 0)
+	{
+	  type = CCI_U_TYPE_TIMESTAMP;
+	}
+      else if (memcmp (p, "TIMESTAMPTZ", 12) == 0)
+	{
+	  type = CCI_U_TYPE_TIMESTAMPTZ;
+	}
+      break;
+
+    case 'U':
+      if (memcmp (p, "UINT", 5) == 0)
+	{
+	  type = CCI_U_TYPE_UINT;
+	}
+      else if (memcmp (p, "UBIGINT", 8) == 0)
+	{
+	  type = CCI_U_TYPE_UBIGINT;
+	}
+      else if (memcmp (p, "USHORT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_USHORT;
+	}
+      break;
+
+    case 'V':
+      if (memcmp (p, "VARCHAR", 8) == 0)
+	{
+	  type = CCI_U_TYPE_STRING;
+	}
+      else if (memcmp (p, "VARBIT", 7) == 0)
+	{
+	  type = CCI_U_TYPE_VARBIT;
+	}
+      else if (memcmp (p, "VARNCHAR", 9) == 0)
+	{
+	  type = CCI_U_TYPE_VARNCHAR;
+	}
+      break;
+
+    default:
+      break;
     }
 
   return type;
@@ -826,7 +882,11 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result,
     }
   else
     {
-      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
+      res = cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
+    }
+  if (res != CCI_ER_NO_ERROR)
+    {
+      return ER_FAILED;
     }
 
   if (remain_bind_buf <= 0)
@@ -1198,10 +1258,9 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
   int res = 0;
   char *endp;
   char *read_buf;
-  FILE *next_tmp_fp;
   T_SQL_RESULT result;
 
-  next_tmp_fp = tmpfile ();
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1213,6 +1272,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
     {
       fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
+      unlink (filename.c_str ());
       return ER_FAILED;
     }
 
@@ -1240,6 +1300,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
 	{
 	  fprintf (stderr, "memory allocation failed\n");
 	  fclose (next_tmp_fp);
+	  unlink (filename.c_str ());
 	  free_and_init (read_buf);
 	  return ER_FAILED;
 	}
@@ -1251,11 +1312,13 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf
     }
 
   fclose (br_tmpfp);
+  unlink (br_tmp_filename);
 
   fflush (next_tmp_fp);
 
   /* save next temp file pointer in global variable */
   br_tmpfp = next_tmp_fp;
+  strcpy (br_tmp_filename, filename.c_str ());
 
   free_and_init (read_buf);
   return NO_ERROR;
@@ -1277,7 +1340,6 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
   int res = 0;
   char *endp;
   char *read_buf = NULL;
-  FILE *next_tmp_fp;
   T_SQL_RESULT *result;
 
   if (num_query <= 0)
@@ -1285,7 +1347,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
       return NO_ERROR;
     }
 
-  next_tmp_fp = tmpfile ();
+  auto[filename, next_tmp_fp] = filesys::open_temp_file ("br_", "w+b");
   if (next_tmp_fp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
@@ -1297,6 +1359,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
     {
       fprintf (stderr, "memory allocation failed\n");
       fclose (next_tmp_fp);
+      unlink (filename.c_str ());
       return ER_FAILED;
     }
   memset (result, '\0', sizeof (T_SQL_RESULT) * num_query);
@@ -1359,6 +1422,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
   free_and_init (result);
 
   fclose (br_tmpfp);
+  unlink (br_tmp_filename);
 
   fflush (outfp);
   fflush (next_tmp_fp);
@@ -1379,6 +1443,7 @@ error:
       free_and_init (result[i].sql_info);
     }
   fclose (next_tmp_fp);
+  unlink (filename.c_str ());
 
   return ER_FAILED;
 }
@@ -1562,6 +1627,12 @@ date_format_err:
  *   cci_errfp(out):
  *   skip_sqlfp(out):
  */
+
+#define PROC_ERR(code){ \
+        close_file (*infp, *outfp, *cci_errfp, *skip_sqlfp); \
+        return code; \
+}
+
 static int
 open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp)
 {
@@ -1576,35 +1647,36 @@ open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FIL
   if (*outfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", outfilename);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
-  br_tmpfp = tmpfile ();
+  auto[filename, fileptr] = filesys::open_temp_file ("br_", "w+b");
+
+  br_tmpfp = fileptr;
+
   if (br_tmpfp == NULL)
     {
       fprintf (stderr, "cannot open temp file\n");
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
+  strcpy (br_tmp_filename, filename.c_str ());
 
   *cci_errfp = fopen (CCI_ERR_FILE_NAME, "w");
   if (*cci_errfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", CCI_ERR_FILE_NAME);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
   *skip_sqlfp = fopen (PASS_SQL_FILE_NAME, "w");
   if (*skip_sqlfp == NULL)
     {
       fprintf (stderr, "cannot open output file '%s'\n", PASS_SQL_FILE_NAME);
-      goto error;
+      PROC_ERR (ER_FAILED);
     }
 
   return NO_ERROR;
 
-error:
-  close_file (*infp, *outfp, *cci_errfp, *skip_sqlfp);
-  return ER_FAILED;
 }
 
 /*

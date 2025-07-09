@@ -88,7 +88,7 @@
 #define MAX_ACCESS_LOG_MAX_SIZE         2097152	/* 2G */
 #define DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP    -1
 
-#define BROKER_NAME_LEN		64
+#define BROKER_NAME_LEN		64	/* include '\0' character  */
 #define BROKER_LOG_MSG_SIZE	64
 
 #if !defined(BROKER_PATH_MAX)
@@ -110,6 +110,8 @@
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
 #define DEFAULT_SSL_MODE                 "OFF"
+
+#define DEFAULE_NET_BUF_SIZE            "16K"
 
 #define CGW_LINK_SERVER_NAME_LEN	 256
 #define CGW_LINK_SERVER_IP_LEN		 32
@@ -297,6 +299,7 @@ struct t_broker_info
 
   char ignore_shard_hint;
   int proxy_timeout;
+  int net_buf_size;
   /* to here, these are used only in shard */
 
   char use_SSL;
@@ -310,10 +313,12 @@ struct t_broker_info
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 			       char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file,
-			       char *admin_err_msg);
-extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id);
+			       bool * acl_default_policy, char *admin_err_msg);
+extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id,
+				char *admin_log_file);
 
 extern int conf_get_value_table_on_off (const char *value);
+extern int conf_get_value_table_allow_deny (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);
 extern int conf_get_value_keep_con (const char *value);
 extern int conf_get_value_access_mode (const char *value);

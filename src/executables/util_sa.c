@@ -32,6 +32,7 @@
 #include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
+#include <direct.h>
 #endif
 
 #include "porting.h"
@@ -58,7 +59,6 @@
 #include "locale_support.h"
 #include "tz_support.h"
 #include "tz_compile.h"
-#include "boot_cl.h"
 #include "tsc_timer.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -69,6 +69,7 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
+#include "schema_system_catalog.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -111,7 +112,7 @@ static int synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FI
 
 static int delete_all_ha_apply_info (void);
 static int insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid,
-				 int offset);
+				 int offset, INT64 committed_pageid, int committed_offset);
 static int delete_all_slave_ha_apply_info (char *database_name, char *master_host_name);
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
@@ -301,6 +302,40 @@ make_valid_page_size (int *v)
     }
 }
 
+static int
+execute_query (const char *str)
+{
+  DB_SESSION *session = NULL;
+  STATEMENT_ID stmt_id;
+  int error = NO_ERROR;
+
+  session = db_open_buffer (str);
+  if (session == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, NULL);
+
+exit:
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  return error;
+}
+
 /*
  * createdb() - createdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -343,6 +378,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const TZ_DATA *tzd;
 
   char required_size[16];
+  char abs_lob_path[PATH_MAX];
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
@@ -504,12 +540,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_check_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &db_volume_size) != NO_ERROR)
+  if (sysprm_check_range (PRM_ID_DB_VOLUME_SIZE, &db_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64], vol_buf[64];
 
-      if (sysprm_get_range (prm_get_name (PRM_ID_DB_VOLUME_SIZE), &min, &max) != NO_ERROR)
+      if (sysprm_get_range (PRM_ID_DB_VOLUME_SIZE, &min, &max) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -538,12 +574,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
 			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf, max_buf);
       goto error_exit;
     }
-  if (sysprm_check_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &log_volume_size) != NO_ERROR)
+  if (sysprm_check_range (PRM_ID_LOG_VOLUME_SIZE, &log_volume_size) != NO_ERROR)
     {
       UINT64 min, max;
       char min_buf[64], max_buf[64], vol_buf[64];
 
-      if (sysprm_get_range (prm_get_name (PRM_ID_LOG_VOLUME_SIZE), &min, &max) != NO_ERROR)
+      if (sysprm_get_range (PRM_ID_LOG_VOLUME_SIZE, &min, &max) != NO_ERROR)
 	{
 	  goto error_exit;
 	}
@@ -596,13 +632,34 @@ createdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_XASL_CACHE_MAX_ENTRIES), "-1");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-  sysprm_set_force (prm_get_name (PRM_ID_SUPPLEMENTAL_LOG), "0");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
+  sysprm_set_force (PRM_ID_XASL_CACHE_MAX_ENTRIES, "-1");
+  sysprm_set_force (PRM_ID_SUPPLEMENTAL_LOG, "0");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  if (lob_path && (IS_ABS_PATH (lob_path)) == false)
+    {
+      char cwd[PATH_MAX];
+
+      if (getcwd (cwd, PATH_MAX) != NULL)
+	{
+	  if (snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path) >= PATH_MAX)
+	    {
+	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
+	       * Additional review will be required.        
+	       */
+	      goto error_exit;
+	    }
+
+	  lob_path = abs_lob_path;
+	}
+      else
+	{
+	  goto error_exit;
+	}
+    }
 
   db_login ("DBA", NULL);
   status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,
@@ -685,6 +742,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       csql_arg.auto_commit = true;
       csql_arg.db_name = database_name;
       csql_arg.in_file_name = init_file_name;
+      csql_arg.user_name = strdup ("DBA");
       csql (arg->command_name, &csql_arg);
     }
 
@@ -763,8 +821,7 @@ deletedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -993,8 +1050,6 @@ restoredb (UTIL_FUNCTION_ARG * arg)
       return EXIT_SUCCESS;
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -1078,8 +1133,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1192,8 +1246,6 @@ installdb (UTIL_FUNCTION_ARG * arg)
 
   cfg_added = true;
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -1302,8 +1354,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* tuning system parameters */
-  sysprm_set_force (prm_get_name (PRM_ID_PB_NBUFFERS), "1024");
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
+  sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1385,8 +1436,6 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1477,10 +1526,15 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *db_name;
   const char *output_file = NULL;
+  const char *class_name;
+  FILE *infp = NULL;
   FILE *outfp = NULL;
   bool is_emergency = false;
+  bool need_db_shutdown = false;
   DIAGDUMP_TYPE diag;
   THREAD_ENTRY *thread_p;
+  int error_code = NO_ERROR;
+  char *class_list_file;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1491,8 +1545,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   is_emergency = utility_get_option_bool_value (arg_map, DIAG_EMERGENCY_S);
   if (is_emergency)
     {
-      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "yes");
-      sysprm_set_force (prm_get_name (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY), "yes");
+      sysprm_set_force (PRM_ID_DISABLE_VACUUM, "yes");
+      sysprm_set_force (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY, "yes");
     }
 
   output_file = utility_get_option_string_value (arg_map, DIAG_OUTPUT_FILE_S, 0);
@@ -1511,11 +1565,26 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  class_name = utility_get_option_string_value (arg_map, DIAG_CLASS_NAME_S, 0);
+
+  class_list_file = utility_get_option_string_value (arg_map, DIAG_INPUT_FILE_S, 0);
+
   diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
     {
       goto print_diag_usage;
+    }
+
+  if (diag != DIAGDUMP_HEAP && (class_name != NULL || class_list_file != NULL))
+    {
+      goto print_diag_usage;
+    }
+
+  if (class_name && class_list_file)
+    {
+      fprintf (stderr, "The -n and -i options cannot be used together.\n");
+      goto error_exit;
     }
 
   if (check_database_name (db_name))
@@ -1527,8 +1596,6 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -1537,6 +1604,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
+
+  need_db_shutdown = true;
 
   if (diag < DIAGDUMP_ALL || diag >= DIAGDUMP_END_OF_OPTION)
     {
@@ -1662,10 +1731,77 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
     {
       bool dump_records;
-      /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
-      fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+
+      if (class_name != NULL)
+	{
+	  if (!sm_check_system_class_by_name (class_name))
+	    {
+	      if (utility_check_class_name (class_name) != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (error_code == ER_LC_UNKNOWN_CLASSNAME)
+		{
+		  PRINT_AND_LOG_ERR_MSG (msgcat_message
+					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB, DIAGDB_MSG_UNKNOWN_CLASS),
+					 class_name);
+		}
+	      goto error_exit;
+	    }
+	}
+      else if (class_list_file != NULL)
+	{
+	  char input_class[SM_MAX_IDENTIFIER_LENGTH];
+
+	  infp = fopen (class_list_file, "r");
+	  if (infp == NULL)
+	    {
+	      perror (class_list_file);
+	      goto error_exit;
+	    }
+
+	  while (fgets (input_class, SM_MAX_IDENTIFIER_LENGTH, infp) != NULL)
+	    {
+	      trim (input_class);
+
+	      if (strlen (input_class) < 1)
+		{
+		  /* empty string */
+		  continue;
+		}
+
+	      if (!sm_check_system_class_by_name (input_class))
+		{
+		  if (utility_check_class_name (input_class) != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		}
+
+	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
+
+	      if (error_code != NO_ERROR)
+		{
+		  if (error_code == ER_LC_UNKNOWN_CLASSNAME)
+		    {
+		      PRINT_AND_LOG_ERR_MSG (msgcat_message
+					     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DIAGDB,
+					      DIAGDB_MSG_UNKNOWN_CLASS), input_class);
+		    }
+		  goto error_exit;
+		}
+	    }
+	}
+      else
+	{
+	  fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
+	  (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
+	}
     }
 
   db_shutdown ();
@@ -1674,6 +1810,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (infp != NULL)
+    {
+      fclose (infp);
     }
 
   return EXIT_SUCCESS;
@@ -1684,9 +1824,18 @@ print_diag_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  if (need_db_shutdown)
+    {
+      db_shutdown ();
+    }
+
   if (output_file != NULL && outfp != NULL && outfp != stdout)
     {
       fclose (outfp);
+    }
+  if (infp != NULL)
+    {
+      fclose (infp);
     }
 
   return EXIT_FAILURE;
@@ -1758,7 +1907,7 @@ error_exit:
   return EXIT_FAILURE;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION )
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * estimatedb_data() - estimatedb_data main routine
  *   return: EXIT_SUCCES/EXIT_FAILURE
@@ -1767,6 +1916,7 @@ int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
   /* todo: remove me */
+  return -1;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -2655,8 +2805,6 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -4235,7 +4383,7 @@ synccoll_force (void)
       return status;
     }
 
-  if (boot_add_collations (class_mop) != NO_ERROR)
+  if (catcls_add_collations (class_mop) != NO_ERROR)
     {
       status = EXIT_FAILURE;
     }
@@ -4285,7 +4433,8 @@ delete_all_ha_apply_info (void)
  *   return:
  */
 static int
-insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid, int offset)
+insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid, int offset,
+		      INT64 committed_pageid, int committed_offset)
 {
 #define APPLY_INFO_VALUES	15
 #define QUERY_BUF_SIZE		2048
@@ -4382,8 +4531,12 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
   /* 3. copied_log_path */
   db_make_varchar (&in_value[in_value_idx++], 4096, log_path, strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-  /* 4 ~ 15. lsa */
-  for (i = 0; i < 6; i++)
+  /* 4 ~ 5. committed lsa */
+  db_make_bigint (&in_value[in_value_idx++], committed_pageid);
+  db_make_int (&in_value[in_value_idx++], committed_offset);
+
+  /* 6 ~ 15. lsa */
+  for (i = 0; i < 5; i++)
     {
       db_make_bigint (&in_value[in_value_idx++], pageid);
       db_make_int (&in_value[in_value_idx++], offset);
@@ -4634,8 +4787,6 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
       return EXIT_SUCCESS;
     }
 
-  sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
@@ -4680,7 +4831,8 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 
       error_code =
 	insert_ha_apply_info (database_name, master_host_name, restart_arg.db_creation,
-			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset);
+			      restart_arg.restart_repl_lsa.pageid, (int) restart_arg.restart_repl_lsa.offset,
+			      restart_arg.restart_committed_lsa.pageid, (int) restart_arg.restart_committed_lsa.offset);
       if (error_code < 0)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -4824,10 +4976,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND && checksum[0] != '\0')
     {
-      AU_DISABLE_PASSWORDS ();
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-      db_login ("DBA", NULL);
-
       if (db_name != NULL)
 	{
 	  dir = (DB_INFO *) calloc (1, sizeof (DB_INFO));
@@ -4855,6 +5003,10 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 
       for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
+	  AU_DISABLE_PASSWORDS ();
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+	  db_login ("DBA", NULL);
+
 	  if (db_restart (arg->command_name, TRUE, db_info_p->name) != NO_ERROR)
 	    {
 	      need_db_shutdown = true;

@@ -895,7 +895,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
     }
 
   /* select the connection protocol, for PC's this will always be new */
-  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
+  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST_FROM_CLIENT);
 
   if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
       == NULL)
@@ -969,7 +969,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
-      pname = std::filesystem::temp_directory_path ();
+      pname = filesys::temp_directory_path ();
       pname += "/csql_tcp_setup_server" + std::to_string (getpid ());
       (void) unlink (pname.c_str ());	// make sure file is deleted
 

@@ -58,6 +58,9 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 #include "dbtype.h"
+#include "parse_tree.h"
+#include "db_session.h"
+
 #include "object_primitive.h"
 #include "ddl_log.h"
 
@@ -185,7 +188,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false);
+  err_code = ux_end_tran ((char) tran_type, false, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
@@ -277,6 +280,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed() || reset_flag");
+      db_set_keep_session (true);
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;
@@ -370,8 +374,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
-  cas_log_write_query_string (sql_stmt, sql_size - 1);
-
+  cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
 
@@ -407,6 +410,17 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   srv_handle = hm_find_srv_handle (srv_h_id);
+
+  if (srv_handle && srv_handle->session)
+    {
+      assert (((DB_SESSION *) srv_handle->session)->parser);
+      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, &psr->hide_pwd_info);
+    }
+  else
+    {
+      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, NULL);
+    }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
 		 (srv_h_id < 0) ? err_info.err_number : srv_h_id, (srv_handle != NULL
@@ -448,9 +462,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *param_mode = NULL;
   T_SRV_HANDLE *srv_handle;
   const char *exec_func_name;
-#if !defined (CAS_FOR_CGW)
-  bool is_execute_call = false;
-#endif
   int argc_mod_2;
   int (*ux_exec_func) (T_SRV_HANDLE *, char, int, int, int, void **, T_NET_BUF *, T_REQ_INFO *, CACHE_TIME *, int *);
   char fetch_flag = 0;
@@ -621,7 +632,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_call";
       ux_exec_func = ux_execute_call;
-      is_execute_call = true;
 #if !defined(CAS_FOR_MYSQL)
       if (param_mode)
 	{
@@ -633,7 +643,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_all";
       ux_exec_func = ux_execute_all;
-      is_execute_call = false;
     }
   else
 #endif /* !CAS_FOR_CGW */
@@ -644,7 +653,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #else
       exec_func_name = "execute";
       ux_exec_func = ux_execute;
-      is_execute_call = false;
 #endif /* CAS_FOR_CGW */
     }
 
@@ -659,7 +667,22 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      if (srv_handle->session == NULL)
+	{
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), NULL);
+	}
+      else
+	{
+#if defined(CAS_FOR_CGW)
+	  HIDE_PWD_INFO t_pwd_info;
+	  INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
+#else
+	  assert (((DB_SESSION *) srv_handle->session)->parser);
+	  PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &psr->hide_pwd_info);
+#endif
+	}
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -727,14 +750,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #endif
 
-#if !defined (CAS_FOR_CGW)
-  if (!is_execute_call)
-    {
-      logddl_check_have_ddl_stmt (srv_handle);
-    }
-#endif /* CAS_FOR_CGW */
-
-
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   plan = db_get_execution_plan ();
 #endif
@@ -760,7 +775,18 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+#if defined(CAS_FOR_CGW)
+	      HIDE_PWD_INFO t_pwd_info;
+	      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
+#else
+	      assert (srv_handle->session);
+	      assert (((DB_SESSION *) srv_handle->session)->parser);
+	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
+					       &psr->hide_pwd_info);
+#endif
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
@@ -1772,8 +1798,16 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		      (argc - arg_index) / 2);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+      if (srv_handle->session == NULL)
+	{
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), NULL);
+	}
+      else
+	{
+	  assert (((DB_SESSION *) srv_handle->session)->parser);
+	  PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &psr->hide_pwd_info);
+	}
     }
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -1817,7 +1851,12 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
+	      assert (srv_handle->session);
+	      assert (((DB_SESSION *) srv_handle->session)->parser);
+	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
+					       &psr->hide_pwd_info);
 	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
 			      true);
 	    }
@@ -1956,6 +1995,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
+      db_init_lexer_lineno ();
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
@@ -2083,10 +2123,6 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
 
-  if (req_info->driver_info[DRIVER_INFO_CLIENT_TYPE] != CAS_CLIENT_SERVER_SIDE_JDBC)
-    {
-      logddl_free (true);
-    }
   return FN_CLOSE_CONN;
 }
 
@@ -2112,6 +2148,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+      db_set_keep_session (true);
       return FN_KEEP_SESS;
     }
   else
@@ -2304,6 +2341,8 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_STRING:
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
+    case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       {
 #if defined(CAS_FOR_CGW)
 	INTL_CODESET charset = INTL_CODESET_UTF8;
@@ -2326,8 +2365,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_JSON:
       {
 	char *str_val;
 	int val_size;
@@ -2335,8 +2372,12 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	if (type != CCI_U_TYPE_NUMERIC)
 	  {
 	    write2_func ("(%d)", val_size);
+	    fwrite_func (str_val, val_size);
 	  }
-	fwrite_func (str_val, val_size - 1);
+	else
+	  {
+	    fwrite_func (str_val, val_size - 1);
+	  }
       }
       break;
     case CCI_U_TYPE_BIGINT:
@@ -2765,22 +2806,3 @@ update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * e
 	}
     }
 }
-
-#if !defined (CAS_FOR_CGW)
-static void
-logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle)
-{
-  for (int i = 0; i < srv_handle->num_q_result; i++)
-    {
-      if (logddl_is_ddl_type (srv_handle->q_result[i].stmt_type) == true)
-	{
-	  logddl_set_stmt_type (srv_handle->q_result[i].stmt_type);
-	  if (srv_handle->sql_stmt != NULL)
-	    {
-	      logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
-	    }
-	  return;
-	}
-    }
-}
-#endif

@@ -23,6 +23,8 @@
 #include "query_reevaluation.hpp"
 
 #include "scan_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubquery
 {
@@ -69,6 +71,9 @@ namespace cubquery
 	rest_attrs = &sid.s.isid.rest_attrs;
 	rest_regu_list = sid.s.isid.rest_regu_list;
 	qualification = sid.qualification;
+	break;
+      case S_PARALLEL_HEAP_SCAN:
+	assert (0);
 	break;
 
       default:

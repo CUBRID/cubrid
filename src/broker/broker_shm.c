@@ -48,6 +48,8 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "host_lookup.h"
+#include "error_code.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -414,7 +416,8 @@ uw_shm_destroy (int shm_key)
 }
 
 T_SHM_BROKER *
-broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file)
+broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file,
+				  int acl_default_policy, char *admin_log_file)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
@@ -446,6 +449,12 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, in
 
   shm_br->num_broker = br_num;
   shm_br->access_control = acl_flag;
+  shm_br->acl_default_policy = acl_default_policy;
+
+  if (admin_log_file != NULL)
+    {
+      strncpy (shm_br->admin_log_file, admin_log_file, sizeof (shm_br->admin_log_file) - 1);
+    }
 
   if (acl_file != NULL)
     {
@@ -489,6 +498,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
     }
 
   shm_as_p->cci_default_autocommit = br_info_p->cci_default_autocommit;
+  shm_as_p->net_buf_size = br_info_p->net_buf_size;
   shm_as_p->job_queue_size = br_info_p->job_queue_size;
   shm_as_p->job_queue[0].id = 0;	/* initialize max heap */
   shm_as_p->max_prepared_stmt_count = br_info_p->max_prepared_stmt_count;
@@ -597,8 +607,15 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
 	      as_info_p->fixed_shard_user = proxy_info_p->fixed_shard_user;
 	      if (proxy_info_p->fixed_shard_user == true)
 		{
+		  /* TODO:  Currently, we have temporarily disabled the warning using pragma.
+		   *      If we can identify the cause and resolve it clearly, we will remove the pragma. */
+		  assert ((shard_cas_id + shard_info_p->as_info_index_base) < APPL_SERVER_NUM_LIMIT);
+		  assert (shard_id < SHARD_INFO_SIZE_LIMIT);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wrestrict"
 		  strcpy (as_info_p->database_user, shard_conn_info_p->db_user);
 		  strcpy (as_info_p->database_passwd, shard_conn_info_p->db_password);
+#pragma GCC diagnostic pop
 		}
 
 	      if (shard_cas_id < shard_info_p->min_appl_server)
@@ -760,7 +777,7 @@ get_host_ip (unsigned char *ip_addr)
     }
   if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
-      fprintf (stderr, "unknown host : %s\n", hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
       return -1;
     }
   memcpy ((void *) ip_addr, (void *) hp->h_addr_list[0], 4);

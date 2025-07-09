@@ -32,6 +32,8 @@
 #include "porting.h"
 #include "error_code.h"
 #include "environment_variable.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* available root directory symbols; NULL terminated array */
 static const char envvar_Prefix_name[] = "CUBRID";
@@ -397,7 +399,7 @@ envvar_libdir_file (char *path, size_t size, const char *filename)
 }
 
 char *
-envvar_javadir_file (char *path, size_t size, const char *filename)
+envvar_vmdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
@@ -406,9 +408,9 @@ envvar_javadir_file (char *path, size_t size, const char *filename)
     {
       envvar_root ();
     }
-  snprintf (path, size, "%s/java/%s", envvar_Root, filename);
+  snprintf (path, size, "%s/vm/%s", envvar_Root, filename);
 #else
-  snprintf (path, size, "%s/%s", CUBRID_JAVADIR, filename);
+  snprintf (path, size, "%s/%s", CUBRID_VMDIR, filename);
 #endif
 
   path[size - 1] = '\0';

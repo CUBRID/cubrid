@@ -31,6 +31,8 @@
 #include "btree_load.h"
 
 #include "btree.h"
+
+#include "deduplicate_key.h"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "log_append.hpp"
@@ -52,6 +54,11 @@
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
+#ifndef NDEBUG
+#include "db_value_printer.hpp"
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -141,13 +148,9 @@ struct btree_scan_partition_info
 {
   BTREE_SCAN bt_scan;		/* Holds information regarding the scan of the current partition. */
 
-  OID oid;			/* Oid of current partition. */
-
   BTREE_NODE_HEADER *header;	/* Header info for current partition */
 
   int key_cnt;			/* Number of keys in current page in the current partition. */
-
-  PAGE_PTR page;		/* current page in the current partition. */
 
   PRUNING_CONTEXT pcontext;	/* Pruning context for current partition. */
 
@@ -740,7 +743,7 @@ bt_load_heap_scancache_start_for_attrinfo (THREAD_ENTRY * thread_p, SORT_ARGS * 
 
   /* Start scancache */
   if (heap_scancache_start (thread_p, scan_cache, &args->hfids[args->cur_class],
-			    &args->class_ids[args->cur_class], save_cache_last_fix_page, false, NULL) != NO_ERROR)
+			    &args->class_ids[args->cur_class], save_cache_last_fix_page, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -922,6 +925,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
+
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
   /*
@@ -1142,7 +1148,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
-			    sort_args->n_nulls, load_args->n_keys) == NULL)
+			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx) == NULL)
 	{
 	  goto error;
 	}
@@ -1887,11 +1893,6 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   root_header->node.split_info.pivot = 0.0f;
   root_header->node.split_info.index = 0;
 
-  /* the 64 bit extending should be initialized to 0 
-   * because only the 32bit count is used at this point */
-  root_header->_64.over = 0;
-  root_header->_64.num_nulls = root_header->_64.num_oids = root_header->num_keys = 0;
-
   if (load_args->btid->unique_pk)
     {
       root_header->num_nulls = n_nulls;
@@ -1913,7 +1914,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   COPY_OID (&(root_header->topclass_oid), &load_args->btid->topclass_oid);
 
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
-  root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
+
+  root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
+  SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->deduplicate_key_idx);
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -2052,6 +2055,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       VPID_SET_NULL (&header->prev_vpid);
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
+      header->common_prefix = 0;
 
       error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
       if (error_code != NO_ERROR)
@@ -3555,43 +3559,46 @@ compare_driver (const void *first, const void *second, void *arg)
   if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       int i;
-      char *bitptr1, *bitptr2;
-      int bitmap_size;
+      char *nullmap_ptr1, *nullmap_ptr2;
+      int header_size;
       TP_DOMAIN *dom;
 
       /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
 
-      bitptr1 = mem1;
-      bitptr2 = mem2;
+      nullmap_ptr1 = mem1;
+      nullmap_ptr2 = mem2;
 
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (key_type->precision);
+      header_size = or_multi_header_size (key_type->precision);
 
-      mem1 += bitmap_size;
-      mem2 += bitmap_size;
+      mem1 += header_size;
+      mem2 += header_size;
 
 #if !defined(NDEBUG)
       for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
       assert (i == key_type->precision);
-#endif
 
       if (sort_args->func_index_info != NULL)
 	{
-	  assert (sort_args->n_attrs <= key_type->precision);
+	  /* In the following cases, the precision may be smaller than n_attrs.  
+	   * create index idx on tbl(left(s2, v1),v3); 
+	   * So, remove the assert().  */
+	  //assert (sort_args->n_attrs <= key_type->precision);
 	}
       else
 	{
 	  assert (sort_args->n_attrs == key_type->precision);
 	}
       assert (key_type->setdomain != NULL);
+#endif
 
       for (i = 0, dom = key_type->setdomain; i < key_type->precision && dom; i++, dom = dom->next)
 	{
 	  /* val1 or val2 is NULL */
 	  if (has_null)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (bitptr1, i))
+	      if (or_multi_is_null (nullmap_ptr1, i))
 		{		/* element val is null? */
-		  if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+		  if (or_multi_is_null (nullmap_ptr2, i))
 		    {
 		      continue;
 		    }
@@ -3599,7 +3606,7 @@ compare_driver (const void *first, const void *second, void *arg)
 		  c = DB_LT;
 		  break;	/* exit for-loop */
 		}
-	      else if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+	      else if (or_multi_is_null (nullmap_ptr2, i))
 		{
 		  c = DB_GT;
 		  break;	/* exit for-loop */
@@ -3913,13 +3920,29 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   DB_VALUE_COMPARE_RESULT compare_ret;
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1, part_count = -1, pos = -1;
-  bool clear_pcontext = false, has_partitions = false;
+  bool clear_pcontext = false;
   PRUNING_CONTEXT pcontext;
   BTID pk_btid;
   OID pk_clsoid;
   HFID pk_dummy_hfid;
-  BTREE_SCAN_PART partitions[MAX_PARTITIONS];
+  BTREE_SCAN_PART *partitions = NULL;
   bool has_nulls = false;
+
+  bool has_deduplicate_key_col = false;
+  DB_VALUE new_fk_key[2];
+  DB_VALUE *fk_key_ptr = &fk_key;
+
+  db_make_null (&(new_fk_key[0]));
+  db_make_null (&(new_fk_key[1]));
+  if (sort_args->n_attrs > 1)
+    {
+      // We cannot make a PK with a function. Therefore, only the last member is checked.  
+      has_deduplicate_key_col = IS_DEDUPLICATE_KEY_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
+      if (has_deduplicate_key_col)
+	{
+	  fk_key_ptr = &(new_fk_key[0]);
+	}
+    }
 
   btree_init_temp_key_value (&clear_fk_key, &fk_key);
   btree_init_temp_key_value (&clear_pk_key, &pk_key);
@@ -3990,6 +4013,13 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
       assert (part_count <= MAX_PARTITIONS);
 
+      partitions = (BTREE_SCAN_PART *) malloc (part_count * sizeof (BTREE_SCAN_PART));
+      if (partitions == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (ret);
+	  goto end;
+	}
+
       /* Init context of each partition using the root context. */
       for (i = 0; i < part_count; i++)
 	{
@@ -4001,8 +4031,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  partitions[i].header = NULL;
 	  partitions[i].key_cnt = -1;
 	}
-
-      has_partitions = true;
     }
 
   while (true)
@@ -4074,16 +4102,39 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  continue;
 	}
 
+      if (has_deduplicate_key_col)
+	{
+	  assert (!DB_IS_NULL (&fk_key));
+	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
+
+	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
+
+	  pr_clear_value (new_ptr);
+	  ret = btree_remake_reference_key_with_FK (thread_p, pk_bt_scan.btid_int.key_type, &fk_key, new_ptr);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      break;
+	    }
+
+	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
+	    {			/* Remove the added deduplicate_key_attr and it can be the same key. */
+	      continue;
+	    }
+
+	  fk_key_ptr = new_ptr;
+	}
+
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
 
-      if (has_partitions)
+      if (partitions)
 	{
 	  COPY_OID (&pk_clsoid, sort_args->fk_refcls_oid);
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
 
 	  /* Get the correct oid, btid and partition of the key we are looking for. */
-	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_clsoid, &pk_btid, &pos);
+	  ret = partition_prune_partition_index (&pcontext, fk_key_ptr, &pk_clsoid, &pk_btid, &pos);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -4092,7 +4143,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
 	      /* No need to lock individual partitions here, since the partitioned table is already locked */
-	      ret = partition_prune_unique_btid (&pcontext, &fk_key, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
+	      ret = partition_prune_unique_btid (&pcontext, fk_key_ptr, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
 	      if (ret != NO_ERROR)
 		{
 		  break;
@@ -4118,7 +4169,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, fk_key_ptr, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
 				  &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
@@ -4128,7 +4179,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else if (!found)
 	    {
 	      /* Value was not found at all, it means the foreign key is invalid. */
-	      val_print = pr_valstring (&fk_key);
+	      val_print = pr_valstring (fk_key_ptr);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
@@ -4151,7 +4202,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      if (!pk_has_slot_visible)
 		{
 		  /* No visible object in current page, but the key was located here. Should not happen often. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4168,7 +4219,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       else
 	{
 	  /* We try to resume the search in the current leaf. */
-	  while (!found)
+	  while (true)
 	    {
 	      ret = btree_advance_to_next_slot_and_fix_page (thread_p, &pk_bt_scan.btid_int, &pk_bt_scan.C_vpid,
 							     &pk_bt_scan.C_page, &pk_bt_scan.slot_id, &pk_key,
@@ -4183,7 +4234,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		{
 		  /* The primary key has ended, but the value from foreign key was not found. */
 		  /* Foreign key is invalid. Set error. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4192,7 +4243,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 
 	      /* We need to compare the current value with the new value from the primary key. */
-	      compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
+	      compare_ret = btree_compare_key (&pk_key, fk_key_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
 	      if (compare_ret == DB_EQ)
 		{
 		  /* Found value, stop searching in pk. */
@@ -4206,7 +4257,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      else
 		{
 		  /* Fk is invalid. Set error. */
-		  val_print = pr_valstring (&fk_key);
+		  val_print = pr_valstring (fk_key_ptr);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4215,14 +4266,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 	    }
 
-	  if (!found && pk_bt_scan.slot_id > pk_node_key_cnt)
+	  if (pk_bt_scan.slot_id > pk_node_key_cnt)
 	    {
 	      old_page = pk_bt_scan.C_page;
 	      pk_bt_scan.C_page = NULL;
 	    }
 	}
 
-      if (has_partitions)
+      if (partitions)
 	{
 	  /* Update references. */
 	  partitions[pos].key_cnt = pk_node_key_cnt;
@@ -4239,12 +4290,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
 end:
 
-  if (has_partitions)
+  if (partitions)
     {
       for (i = 0; i < part_count; i++)
 	{
 	  pgbuf_unfix_and_init_after_check (thread_p, partitions[i].bt_scan.C_page);
 	}
+
+      free (partitions);
     }
 
   pgbuf_unfix_and_init_after_check (thread_p, old_page);
@@ -4253,6 +4306,9 @@ end:
 
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
+
+  pr_clear_value (&(new_fk_key[0]));
+  pr_clear_value (&(new_fk_key[1]));
 
   if (clear_pcontext == true)
     {
@@ -4378,9 +4434,10 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
     }
 
   /* Advance to next key. */
+  int incr_decr_val = (is_desc ? -1 : 1);
   while (true)
     {
-      *slot_id += (is_desc ? -1 : 1);
+      *slot_id += incr_decr_val;
       assert (0 <= *slot_id);
 
       if (*slot_id == 0 || *slot_id >= *key_cnt + 1)
@@ -4566,6 +4623,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
+  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
   /*
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts

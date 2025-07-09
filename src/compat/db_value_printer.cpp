@@ -35,6 +35,8 @@
 #if !defined(SERVER_MODE)
 #include "virtual_object.h"
 #endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
 
@@ -123,6 +125,145 @@ void db_value_printer::describe_comment_value (const db_value *value)
   m_buf.add_bytes (end - src, src);
 
   m_buf += '\'';
+}
+
+//--------------------------------------------------------------------------------
+void db_value_printer::describe_type (const db_value *value)
+{
+  if (DB_IS_NULL (value))
+    {
+      m_buf ("NULL");
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_TYPE (value);
+      switch (type)
+	{
+	case DB_TYPE_NULL:
+	  m_buf ("NULL");
+	  break;
+	case DB_TYPE_INTEGER:
+	  m_buf ("INTEGER");
+	  break;
+	case DB_TYPE_BIGINT:
+	  m_buf ("BIGINT");
+	  break;
+	case DB_TYPE_FLOAT:
+	  m_buf ("FLOAT");
+	  break;
+	case DB_TYPE_DOUBLE:
+	  m_buf ("DOUBLE");
+	  break;
+	case DB_TYPE_VARCHAR:
+	  m_buf ("VARCHAR");
+	  break;
+	case DB_TYPE_OBJECT:
+	  m_buf ("OBJECT");
+	  break;
+	case DB_TYPE_SET:
+	  m_buf ("SET");
+	  break;
+	case DB_TYPE_MULTISET:
+	  m_buf ("MULTISET");
+	  break;
+	case DB_TYPE_SEQUENCE:
+	  m_buf ("SEQUENCE");
+	  break;
+	case DB_TYPE_BLOB:
+	  m_buf ("BLOB");
+	  break;
+	case DB_TYPE_CLOB:
+	  m_buf ("CLOB");
+	  break;
+	case DB_TYPE_TIME:
+	  m_buf ("TIME");
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  m_buf ("TIMESTAMP");
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  m_buf ("TIMESTAMPTZ");
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  m_buf ("TIMESTAMPLTZ");
+	  break;
+	case DB_TYPE_DATETIME:
+	  m_buf ("DATETIME");
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  m_buf ("DATETIMETZ");
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  m_buf ("DATETIMELTZ");
+	  break;
+	case DB_TYPE_DATE:
+	  m_buf ("DATE");
+	  break;
+	case DB_TYPE_MONETARY:
+	  m_buf ("MONETARY");
+	  break;
+	case DB_TYPE_VARIABLE:
+	  m_buf ("VARIABLE");
+	  break;
+	case DB_TYPE_SUB:
+	  m_buf ("SUB");
+	  break;
+	case DB_TYPE_POINTER:
+	  m_buf ("POINTER");
+	  break;
+	case DB_TYPE_ERROR:
+	  m_buf ("ERROR");
+	  break;
+	case DB_TYPE_SMALLINT:
+	  m_buf ("SMALLINT");
+	  break;
+	case DB_TYPE_VOBJ:
+	  m_buf ("VOBJ");
+	  break;
+	case DB_TYPE_OID:
+	  m_buf ("OID");
+	  break;
+	case DB_TYPE_NUMERIC:
+	  m_buf ("NUMERIC");
+	  break;
+	case DB_TYPE_BIT:
+	  m_buf ("BIT");
+	  break;
+	case DB_TYPE_VARBIT:
+	  m_buf ("VARBIT");
+	  break;
+	case DB_TYPE_CHAR:
+	  m_buf ("CHAR");
+	  break;
+	case DB_TYPE_NCHAR:
+	  m_buf ("NCHAR");
+	  break;
+	case DB_TYPE_VARNCHAR:
+	  m_buf ("VARNCHAR");
+	  break;
+	case DB_TYPE_DB_VALUE:
+	  m_buf ("DB_VALUE");
+	  break;
+	case DB_TYPE_RESULTSET:
+	  m_buf ("DB_RESULTSET");
+	  break;
+	case DB_TYPE_MIDXKEY:
+	  m_buf ("DB_MIDXKEY");
+	  break;
+	case DB_TYPE_TABLE:
+	  m_buf ("DB_TABLE");
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  m_buf ("ENUM");
+	  break;
+	case DB_TYPE_JSON:
+	  m_buf ("JSON");
+	  break;
+	default:
+	  m_buf ("UNKNOWN");
+	  break;
+	}
+    }
 }
 
 //--------------------------------------------------------------------------------
@@ -656,3 +797,30 @@ db_sprint_value (const db_value *value, string_buffer &sb)
   db_value_printer printer (sb);
   printer.describe_value (value);
 }
+
+#ifndef NDEBUG
+void
+db_value_print_console (const db_value *value, bool add_newline, char *fmt, ...)
+{
+  if (fmt && *fmt)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      (void) vfprintf (stdout, fmt, ap);
+      va_end (ap);
+    }
+
+  if (value)
+    {
+      db_fprint_value (stdout, value);
+    }
+
+  if (add_newline)
+    {
+      fprintf (stdout, "\n");
+    }
+
+  fflush (stdout);
+}
+#endif

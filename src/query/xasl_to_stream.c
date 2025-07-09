@@ -78,6 +78,7 @@ static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
 static int xts_save_analytic_type (const ANALYTIC_TYPE * analytic);
 static int xts_save_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic);
+static int xts_save_sp_type (const SP_TYPE * sp);
 static int xts_save_srlist_id (const QFILE_SORTED_LIST_ID * sort_list_id);
 static int xts_save_list_id (const QFILE_LIST_ID * list_id);
 static int xts_save_arith_type (const ARITH_TYPE * arithmetic);
@@ -121,12 +122,11 @@ static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
 static int xts_save_int_array (int *ptr, int size);
 static int xts_save_hfid_array (HFID * ptr, int size);
 static int xts_save_oid_array (OID * ptr, int size);
-static int xts_save_method_sig_list (const METHOD_SIG_LIST * ptr);
-static int xts_save_method_sig (const METHOD_SIG * ptr, int size);
 static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
 static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelements);
 static int xts_save_odku_info (const ODKU_INFO * odku_info);
+static int xts_save_packable_object (const cubpacking::packable_object & po);
 
 static char *xts_process (char *ptr, const json_table_column & json_table_col);
 static char *xts_process (char *ptr, const json_table_node & json_table_node);
@@ -141,6 +141,7 @@ static char *xts_process_fetch_proc (char *ptr, const FETCH_PROC_NODE * obj_set_
 static char *xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_proc);
 static char *xts_process_buildvalue_proc (char *ptr, const BUILDVALUE_PROC_NODE * build_value_proc);
 static char *xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_info);
+static char *xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p);
 static char *xts_process_ls_merge_info (char *ptr, const QFILE_LIST_MERGE_INFO * qfile_list_merge_info);
 static char *xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls);
 static char *xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign);
@@ -182,12 +183,12 @@ static char *xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggre
 static char *xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic);
 static char *xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic);
 static char *xts_process_function_type (char *ptr, const FUNCTION_TYPE * function);
+static char *xts_process_sp_type (char *ptr, const SP_TYPE * sp);
 static char *xts_process_srlist_id (char *ptr, const QFILE_SORTED_LIST_ID * sort_list_id);
 static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
-static char *xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * method_sig_list);
-static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int size);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
+static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -201,6 +202,7 @@ static int xts_sizeof_fetch_proc (const FETCH_PROC_NODE * ptr);
 static int xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * ptr);
 static int xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * ptr);
 static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
+static int xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
 static int xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls);
 static int xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign);
@@ -242,11 +244,10 @@ static int xts_sizeof_analytic_type (const ANALYTIC_TYPE * ptr);
 static int xts_sizeof_analytic_eval_type (const ANALYTIC_EVAL_TYPE * ptr);
 static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
-static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
-static int xts_sizeof_method_sig (const METHOD_SIG * ptr);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list);
 static int xts_sizeof_cte_proc (const CTE_PROC_NODE * ptr);
+static int xts_sizeof_sp_type (const SP_TYPE * sp);
 
 static int xts_mark_ptr_visited (const void *ptr, int offset);
 static int xts_get_offset_visited_ptr (const void *ptr);
@@ -540,6 +541,74 @@ xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate)
     }
 
   buf = xts_process_aggregate_type (buf_p, aggregate);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
+static int
+xts_save_sp_type (const SP_TYPE * sp)
+{
+  int offset;
+  int size;
+  OR_ALIGNED_BUF (sizeof (*sp) * 2) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (sp == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (sp);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = xts_sizeof_sp_type (sp);
+  if (size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (sp, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_sp_type (buf_p, sp);
   if (buf == NULL)
     {
       offset = ER_FAILED;
@@ -1454,6 +1523,90 @@ end:
   return offset;
 }
 
+static char *
+xts_process_sub_xasl_id (char *ptr, const XASL_ID * sub_xasl_id)
+{
+  int i;
+
+  ptr = or_pack_sha1 (ptr, &sub_xasl_id->sha1);
+
+  OR_PUT_INT (ptr, sub_xasl_id->cache_flag);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, sub_xasl_id->time_stored.sec);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, sub_xasl_id->time_stored.usec);
+  ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static int
+xts_save_sub_xasl_id (const XASL_ID * sub_xasl_id)
+{
+  int offset, i;
+  int size;
+  char *ptr;
+
+  OR_ALIGNED_BUF (sizeof (*sub_xasl_id)) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (sub_xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (sub_xasl_id);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = sizeof (XASL_ID);
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (sub_xasl_id, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_sub_xasl_id (buf_p, sub_xasl_id);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
 static int
 xts_save_db_value (const DB_VALUE * value)
 {
@@ -2149,145 +2302,6 @@ end:
 #endif
 
 static int
-xts_save_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*method_sig_list) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (method_sig_list == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (method_sig_list);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_method_sig_list (method_sig_list);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED || xts_mark_ptr_visited (method_sig_list, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  buf = xts_process_method_sig_list (buf_p, method_sig_list);
-  if (buf == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-  assert (buf <= buf_p + size);
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
-xts_save_method_sig (const METHOD_SIG * method_sig, int count)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*method_sig) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (method_sig == NULL)
-    {
-      assert (count == 0);
-      return NO_ERROR;
-    }
-
-  assert (count > 0);
-
-  offset = xts_get_offset_visited_ptr (method_sig);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_method_sig (method_sig);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED || xts_mark_ptr_visited (method_sig, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  buf = xts_process_method_sig (buf_p, method_sig, count);
-  if (buf == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-  assert (buf <= buf_p + size);
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
 xts_save_string (const char *string)
 {
   int offset;
@@ -2740,6 +2754,35 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+static char *
+xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
+{
+  int offset, n_elements;
+
+  if (sq_cache)
+    {
+      n_elements = sq_cache->sq_key_struct->n_elements;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = xts_save_db_value_array (sq_cache->sq_key_struct->dbv_array, n_elements);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      n_elements = 0;
+      ptr = or_pack_int (ptr, n_elements);
+
+      offset = 0;
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  return ptr;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -2764,7 +2807,7 @@ static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
   int offset;
-  int cnt;
+  int cnt, i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
@@ -2919,6 +2962,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_pred_expr (xasl->during_join_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_pred_expr (xasl->after_join_pred);
   if (offset == ER_FAILED)
     {
@@ -3034,6 +3084,27 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
+  if (xasl->sub_xasl_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_sub_xasl_id (xasl->sub_xasl_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  ptr = or_pack_int (ptr, xasl->sub_host_var_count);
+
+  for (i = 0; i < xasl->sub_host_var_count; i++)
+    {
+      ptr = or_pack_int (ptr, xasl->sub_host_var_index[i]);
+    }
+
   /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
@@ -3051,6 +3122,10 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
     case MERGELIST_PROC:
       ptr = xts_process_mergelist_proc (ptr, &xasl->proc.mergelist);
+      break;
+
+    case HASHJOIN_PROC:
+      ptr = xts_process_hashjoin_proc (ptr, &xasl->proc.hashjoin);
       break;
 
     case CONNECTBY_PROC:
@@ -3128,6 +3203,14 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  ptr = xts_process_sq_cache (ptr, xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_pack_int (ptr, xasl->parallelism);
 
   return ptr;
 }
@@ -3506,6 +3589,57 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
   return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
 }
 
+/*
+ * xts_process_hashjoin_proc () -
+ *   return: The buffer pointer after the packed XASL node.
+ *   ptr(in): The buffer pointer where the XASL node should be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
+ */
+static char *
+xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
+{
+  int offset;
+
+  /* outer */
+  offset = xts_save_xasl_node (node_p->outer.xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (node_p->outer.regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* inner */
+  offset = xts_save_xasl_node (node_p->inner.xasl);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (node_p->inner.regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  /* merge_info */
+  ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  return ptr;
+}
+
 static char *
 xts_process_cte_proc (char *ptr, const CTE_PROC_NODE * cte_proc)
 {
@@ -3803,6 +3937,37 @@ end:
     {
       free_and_init (buf);
     }
+
+  return offset;
+}
+
+static int
+xts_save_packable_object (const cubpacking::packable_object & po)
+{
+  int offset, size, packed_length;
+  char *ptr;
+
+  offset = xts_get_offset_visited_ptr (&po);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  packer.set_buffer_and_pack_all (eb, po);
+
+  size = packer.get_current_size () + OR_INT_SIZE;
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (&po, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = &xts_Stream_buffer[offset];
+  ptr = or_pack_int (ptr, size);
+  memcpy (ptr, eb.get_ptr (), size);
 
   return offset;
 }
@@ -4371,7 +4536,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -4466,6 +4632,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, access_spec->flags);
+
+  ptr = or_pack_int (ptr, access_spec->num_parallel_threads);
 
   return ptr;
 }
@@ -4972,7 +5140,7 @@ xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_method_sig_list (method_spec->method_sig_list);
+  offset = xts_save_packable_object (*(method_spec->sig_array));
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -5155,6 +5323,15 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       offset = xts_save_arith_type (regu_var->value.arithptr);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+      break;
+
+    case TYPE_SP:
+      offset = xts_save_sp_type (regu_var->value.sp_ptr);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -5504,6 +5681,35 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
 }
 
 static char *
+xts_process_sp_type (char *ptr, const SP_TYPE * sp)
+{
+  int offset;
+
+  offset = xts_save_db_value (sp->value);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (sp->args);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_packable_object (*sp->sig);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
 xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic_eval)
 {
   int offset;
@@ -5571,97 +5777,6 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
   ptr = or_pack_int (ptr, sort_list->s_nulls);
 
   /* others (not sent to server) */
-
-  return ptr;
-}
-
-/*
- * xts_process_method_sig_list ( ) -
- *
- * Note: do not use or_pack_method_sig_list
- */
-static char *
-xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * method_sig_list)
-{
-  int offset;
-
-#if !defined(NDEBUG)
-  {
-    int i = 0;
-    METHOD_SIG *sig;
-
-    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
-      {
-	i++;
-      }
-    assert (method_sig_list->num_methods == i);
-  }
-#endif
-
-  ptr = or_pack_int (ptr, method_sig_list->num_methods);
-
-  offset = xts_save_method_sig (method_sig_list->method_sig, method_sig_list->num_methods);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  return ptr;
-}
-
-static char *
-xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
-{
-  int offset;
-  int n;
-
-  assert (method_sig->method_name != NULL);
-
-  offset = xts_save_string (method_sig->method_name);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  ptr = or_pack_int (ptr, method_sig->method_type);
-  ptr = or_pack_int (ptr, method_sig->num_method_args);
-
-  for (n = 0; n < method_sig->num_method_args + 1; n++)
-    {
-      ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
-    }
-
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
-    {
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_mode[n]);
-	}
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_type[n]);
-	}
-
-      ptr = or_pack_int (ptr, method_sig->arg_info.result_type);
-    }
-  else
-    {
-      offset = xts_save_string (method_sig->class_name);	/* is can be null */
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
-    }
-
-  offset = xts_save_method_sig (method_sig->next, count - 1);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -5827,6 +5942,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* aptr_list */
 	   + PTR_SIZE		/* bptr_list */
 	   + PTR_SIZE		/* dptr_list */
+	   + PTR_SIZE		/* during_join_pred */
 	   + PTR_SIZE		/* after_join_pred */
 	   + PTR_SIZE		/* if_pred */
 	   + PTR_SIZE		/* instnum_pred */
@@ -5866,6 +5982,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
+  size += PTR_SIZE;		/* for subquery's xasl_id */
+  size += OR_INT_SIZE;		/* for subquery's host variable count */
+  size += (OR_INT_SIZE * xasl->sub_host_var_count);
+
   switch (xasl->type)
     {
     case BUILDLIST_PROC:
@@ -5888,6 +6008,15 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
     case MERGELIST_PROC:
       tmp_size = xts_sizeof_mergelist_proc (&xasl->proc.mergelist);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
+    case HASHJOIN_PROC:
+      tmp_size = xts_sizeof_hashjoin_proc (&xasl->proc.hashjoin);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -5975,7 +6104,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 
   size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
-	   + PTR_SIZE);		/* next */
+	   + PTR_SIZE		/* next */
+	   + OR_INT_SIZE	/* sq_cache_n_elements */
+	   + PTR_SIZE		/* sq_cache */
+	   + OR_INT_SIZE);	/* parallelism */
 
   return size;
 }
@@ -6175,6 +6307,37 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
 }
 
 /*
+ * xts_sizeof_hashjoin_proc () -
+ *   return: The size required for the XASL node to be packed.
+ *   node_p(in): The pointer to the XASL node that should be packed.
+ */
+static int
+xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
+{
+  ACCESS_SPEC_TYPE *spec = NULL;
+  int size = 0;
+  int tmp_size = 0;
+
+  /* outer */
+  size += (PTR_SIZE		/* Offset of outer.xasl. */
+	   + PTR_SIZE);		/* Offset of outer.regu_list_pred */
+
+  /* inner */
+  size += (PTR_SIZE		/* Offset of inner.xasl */
+	   + PTR_SIZE);		/* Offset of inner.regu_list_pred */
+
+  /* merge_info */
+  tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
+
+  return size;
+}
+
+/*
  * xts_sizeof_upddel_class_info () -
  *   return:
  *   ptr(in)    :
@@ -6299,7 +6462,7 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
 	   + OR_INT_SIZE	/* do_replace */
-	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* pruning_type */
 	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
 	   + (insert_info->num_val_lists * PTR_SIZE));	/* valptr_lists */
@@ -6598,6 +6761,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
   size += (OR_INT_SIZE		/* type */
 	   + OR_INT_SIZE	/* access */
 	   + OR_INT_SIZE	/* flags */
+	   + OR_INT_SIZE	/* num_parallel_threads */
 	   + PTR_SIZE		/* index_ptr */
 	   + PTR_SIZE		/* where_key */
 	   + PTR_SIZE		/* where_pred */
@@ -6683,7 +6847,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
 	   + OR_INT_SIZE	/* fixed_scan */
 	   + OR_INT_SIZE	/* qualified_scan */
 	   + OR_INT_SIZE	/* single_fetch */
-	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* pruning_type */
 	   + PTR_SIZE);		/* s_dbval */
 
   return size;
@@ -6851,7 +7015,7 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
 
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
-	   + PTR_SIZE);		/* method_sig_list */
+	   + PTR_SIZE);		/* sig_array */
 
   return size;
 }
@@ -7071,6 +7235,10 @@ xts_get_regu_variable_value_size (const REGU_VARIABLE * regu_var)
       size = PTR_SIZE;		/* arithptr */
       break;
 
+    case TYPE_SP:
+      size = PTR_SIZE;		/* sp_ptr */
+      break;
+
     case TYPE_FUNC:
       size = PTR_SIZE;		/* funcp */
       break;
@@ -7233,6 +7401,23 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
  *   ptr(in)    :
  */
 static int
+xts_sizeof_sp_type (const SP_TYPE * sp)
+{
+  int size = 0;
+
+  size += (PTR_SIZE		/* value */
+	   + PTR_SIZE		/* sig */
+	   + PTR_SIZE);		/* args */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_function_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
 xts_sizeof_function_type (const FUNCTION_TYPE * function)
 {
   int size = 0;
@@ -7354,47 +7539,6 @@ xts_sizeof_sort_list (const SORT_LIST * sort_lis)
   size += (0			/* other (not sent to server) */
 	   + OR_INT_SIZE	/* s_order */
 	   + OR_INT_SIZE);	/* s_nulls */
-
-  return size;
-}
-
-/*
- * xts_sizeof_method_sig_list () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
-{
-  int size = 0;
-
-  size += (OR_INT_SIZE		/* num_methods */
-	   + PTR_SIZE);		/* method_sig */
-
-  return size;
-}
-
-static int
-xts_sizeof_method_sig (const METHOD_SIG * method_sig)
-{
-  int size = 0;
-
-  size += (PTR_SIZE		/* method_name */
-	   + OR_INT_SIZE	/* method_type */
-	   + OR_INT_SIZE	/* num_method_args */
-	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
-	   + PTR_SIZE);		/* next */
-
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
-    {
-      size += ((method_sig->num_method_args * OR_INT_SIZE)	/* arg_mode */
-	       + (method_sig->num_method_args * OR_INT_SIZE)	/* arg_type */
-	       + (OR_INT_SIZE));	/* result type */
-    }
-  else
-    {
-      size += PTR_SIZE;		/* class_name */
-    }
 
   return size;
 }
@@ -7576,12 +7720,7 @@ xts_get_offset_visited_ptr (const void *ptr)
 static void
 xts_free_visited_ptrs (void)
 {
-  size_t i;
-
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
-    {
-      xts_Ptr_lwm[i] = 0;
-    }
+  memset (xts_Ptr_lwm, 0x00, sizeof (xts_Ptr_lwm));
 }
 
 /*

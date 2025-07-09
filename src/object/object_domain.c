@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -48,6 +49,8 @@
 #include "tz_support.h"
 #include "chartype.h"
 #include "db_json.hpp"
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -60,6 +63,8 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -667,6 +672,8 @@ tp_init (void)
     }
 
   tp_Initialized = true;
+
+  dk_deduplicate_key_attribute_initialized ();
 
   return NO_ERROR;
 }
@@ -2239,6 +2246,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2249,6 +2257,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * string without modification.
 	       */
 	      match = ((domain->precision >= transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2263,6 +2272,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * destination domain tolerance.
 	       */
 	      match = ((domain->collation_id == transient->collation_id) && (domain->is_desc == transient->is_desc)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
@@ -2376,6 +2386,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2386,6 +2397,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * in the DB_TYPE_CHAR case above.
 	       */
 	      match = ((domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
 			   || domain->precision >= transient->precision)
 		       && (domain->is_desc == transient->is_desc)
@@ -2416,6 +2428,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2423,6 +2436,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    {
 	      /* see notes above under the DB_TYPE_VARCHAR clause */
 	      match = ((domain->collation_id == transient->collation_id) && (domain->is_desc == transient->is_desc)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
@@ -2678,7 +2692,8 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag)
+	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag
+		       && dom->codeset == codeset)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
@@ -7208,6 +7223,25 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  src = &src_replacement;
 	}
     }
+  else if (original_type == DB_TYPE_MIDXKEY && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR))
+    {
+      string_buffer sb;
+
+      sb.clear ();
+      db_sprint_value (src, sb);
+      db_make_string_copy (&src_replacement, sb.get_buffer ());
+      sb.clear ();
+
+      if (src == dest)
+	{
+	  // if src is equal to dest then JSON_DOC can be deleted after required information was extracted from it
+	  pr_clear_value (dest);
+	}
+
+      original_type = DB_VALUE_TYPE (&src_replacement);
+      src = &src_replacement;
+    }
+
 
   if (desired_type == original_type)
     {
@@ -11449,6 +11483,80 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
     default:
       return false;
     }
+}
+
+/*
+ * tp_value_auto_cast_with_precsion_check
+ *		 Cast a value into one of another domain like tp_value_auto_cast.
+ *      	 It checks the precision in case of casting discrete number type to numeric type
+ *    return: TP_DOMAIN_STATUS
+ *    src(in): src DB_VALUE
+ *    dest(out): dest DB_VALUE
+ *    desired_domain(in): destion domain
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
+{
+  TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+
+  static INT64 max_value[19];	/* max precision of a big integer is 19 */
+  static bool init_bigint_value = false;
+
+  if (!init_bigint_value)
+    {
+      int i;
+
+      max_value[0] = 1;
+      for (i = 1; i < 19; i++)
+	{
+	  max_value[i] = max_value[i - 1] * 10;
+	}
+
+      init_bigint_value = true;
+    }
+
+  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
+    {
+      /* if the numeric's precision is 19 or more, then it can get the bigint enough */
+      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < 19)
+	{
+	  INT64 bigint;
+
+	  assert (desired_domain->precision >= 0);
+
+	  switch (src->domain.general_info.type)
+	    {
+	    case DB_TYPE_BIGINT:
+	      bigint = db_get_bigint (src);
+	      break;
+	    case DB_TYPE_INTEGER:
+	      bigint = db_get_int (src);
+	      break;
+	    case DB_TYPE_SHORT:
+	      bigint = db_get_short (src);
+	      break;
+	    default:
+	      /* never here */
+	      assert (false);
+	      bigint = 0;
+	      break;
+	    }
+
+	  if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
+	      || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+	    {
+	      /* can not coerce for overflow */
+	      dom_status = DOMAIN_OVERFLOW;
+	    }
+	}
+    }
+
+  if (dom_status != DOMAIN_OVERFLOW)
+    {
+      dom_status = tp_value_auto_cast (src, dest, desired_domain);
+    }
+
+  return dom_status;
 }
 
 /*

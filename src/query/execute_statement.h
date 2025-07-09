@@ -138,8 +138,6 @@ extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void do_print_classname_on_method (DB_OBJECT * self, DB_VALUE * result);
 extern void do_print_on_method (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
-extern void dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result);
-extern void dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
 
 extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -149,6 +147,13 @@ extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+/* for subquery result-cache */
+extern int do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query,
+					 DB_PREPARE_SUBQUERY_INFO * info);
+extern bool pt_is_allowed_result_cache (void);
 
 extern int do_update (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -202,6 +207,5 @@ extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
 extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
-
-
+extern int do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size);
 #endif /* _EXECUTE_STATEMENT_H_ */

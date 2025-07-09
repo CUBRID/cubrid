@@ -505,6 +505,12 @@ main (int argc, char *argv[])
 #if !defined(WINDOWS)
   signal (SIGTERM, cas_sig_handler);
   signal (SIGINT, cas_sig_handler);
+  signal (SIGSEGV, cas_sig_handler);
+  signal (SIGABRT, cas_sig_handler);
+  signal (SIGFPE, cas_sig_handler);
+  signal (SIGILL, cas_sig_handler);
+  signal (SIGBUS, cas_sig_handler);
+  signal (SIGSYS, cas_sig_handler);
   signal (SIGUSR1, SIG_IGN);
   signal (SIGPIPE, SIG_IGN);
   signal (SIGXFSZ, SIG_IGN);
@@ -767,7 +773,7 @@ conn_retry:
 
 	if (!is_xa_prepared ())
 	  {
-	    ux_end_tran (CCI_TRAN_ROLLBACK, false);
+	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
@@ -779,7 +785,7 @@ conn_retry:
 
 	if (as_info->reset_flag == TRUE || is_xa_prepared ())
 	  {
-	    ux_database_shutdown ();
+	    ux_database_shutdown (true);
 	    as_info->reset_flag = FALSE;
 	    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	  }
@@ -870,8 +876,10 @@ cas_main (void)
   char tmp_name[SRV_CON_DBNAME_SIZE] = { 0, };
   char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
-  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
+  T_DBMS_TYPE dbms_type = CAS_DBMS_NONE;
   char *find_gateway = NULL;
+  char errplog_path[BROKER_PATH_MAX] = { 0, };
+  char errlog_file[BROKER_PATH_MAX] = { 0, };
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -943,6 +951,12 @@ cas_main (void)
   logddl_init (APP_NAME_CAS);
 
 #if defined(CAS_FOR_CGW)
+  sprintf (errlog_file, "%s%s_%d.err",
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, errplog_path, BROKER_PATH_MAX), shm_appl->broker_name,
+	   shm_as_index + 1);
+
+  er_init (errlog_file, ER_NEVER_EXIT);
+
   if (cgw_init () < 0)
     {
       return -1;
@@ -1261,11 +1275,14 @@ cas_main (void)
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
 	    cgw_set_dbms_type (dbms_type);
 
-	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE);
-	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
-	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
+	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+	    tmp_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
+	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE - 1);
+	    tmp_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBPASSWD_SIZE - 1);
+	    tmp_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
-	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
+	    if (dbms_type == CAS_CGW_DBMS_ORACLE)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1279,7 +1296,7 @@ cas_main (void)
 			  shm_appl->cgw_link_server_port,
 			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
-	    else if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
+	    else if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1362,8 +1379,6 @@ cas_main (void)
 
 	    logddl_check_ddl_audit_param ();
 	    logddl_set_broker_info (shm_as_index, shm_appl->broker_name);
-	    logddl_set_db_name (db_name);
-	    logddl_set_user_name (db_user);
 	    logddl_set_ip (client_ip_str);
 
 	    db_set_client_ip_addr (client_ip_str);
@@ -1398,6 +1413,10 @@ cas_main (void)
 				   cas_default_isolation_level, cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = shm_appl->keep_connection;
+#if defined(CAS_FOR_CGW)
+	    cas_bi_set_dbms_type (dbms_type);
+#endif /* CAS_FOR_MYSQL */
+
 	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
 	    if (shm_appl->statement_pooling)
 	      {
@@ -1408,6 +1427,11 @@ cas_main (void)
 		as_info->cur_statement_pooling = OFF;
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
+
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V12))
+	      {
+		cas_bi_set_oracle_compat_number_behavior (prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR));
+	      }
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
@@ -1459,7 +1483,7 @@ cas_main (void)
 
 	    if (!is_xa_prepared ())
 	      {
-		if (ux_end_tran (CCI_TRAN_ROLLBACK, false) < 0)
+		if (ux_end_tran (CCI_TRAN_ROLLBACK, false, true) < 0)
 		  {
 		    as_info->reset_flag = TRUE;
 		  }
@@ -1475,13 +1499,13 @@ cas_main (void)
 #if !defined(CAS_FOR_CGW)
 	    if (is_xa_prepared ())
 	      {
-		ux_database_shutdown ();
+		ux_database_shutdown (true);
 		ux_database_connect (db_name, db_user, db_passwd, NULL);
 	      }
 
 	    if (as_info->reset_flag == TRUE)
 	      {
-		ux_database_shutdown ();
+		ux_database_shutdown (true);
 		as_info->reset_flag = FALSE;
 		cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	      }
@@ -1637,14 +1661,28 @@ check_server_alive (const char *db_name, const char *db_host)
   return true;
 }
 
-
 static void
 cas_sig_handler (int signo)
 {
+  static int is_doing_signal_handler = 0;
+
+  if (is_doing_signal_handler)
+    {
+      return;
+    }
+  is_doing_signal_handler = 1;
+
   signal (signo, SIG_IGN);
-  cas_free (true);
+
+  er_print_crash_callstack (signo);
+
+  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
+    {
+      cas_free (true);
+    }
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+
 #ifdef _GCOV
   exit (0);
 #else
@@ -1674,22 +1712,11 @@ cas_free (bool from_sighandler)
 
   if (from_sighandler)
     {
-      cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
-
-      as_info->database_name[0] = '\0';
-      as_info->database_host[0] = '\0';
-      as_info->database_user[0] = '\0';
-      as_info->database_passwd[0] = '\0';
-      as_info->last_connect_time = 0;
-
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
     }
   else
     {
-#if defined(CAS_FOR_CGW)
-      cgw_cleanup ();
-#else
-      ux_database_shutdown ();
-#endif /* CAS_FOR_CGW */
+      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
     }
 
   if (as_info->cur_statement_pooling && !from_sighandler)
@@ -1805,6 +1832,20 @@ cas_free (bool from_sighandler)
       close (fd);
     }
 #endif
+
+#if defined(CAS_FOR_CGW)
+  cgw_cleanup ();
+#else
+  if (from_sighandler)
+    {
+      ux_database_shutdown (false);
+    }
+  else
+    {
+      ux_database_shutdown (true);
+    }
+#endif /* CAS_FOR_CGW */
+
 }
 
 static void
@@ -1953,11 +1994,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      cas_log_msg = "RESET";
 	      cas_log_write_and_end (0, true, cas_log_msg);
 	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
 	    }
 	  if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	    {
 	      cas_log_msg = "CHANGE CLIENT";
 	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
 	    }
 
 	  if (cas_log_msg == NULL)
@@ -2221,6 +2264,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  else if (restart_is_needed ())
 	    {
 	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
 	    }
 	  if (shm_appl->sql_log2 != as_info->cur_sql_log2)
 	    {
@@ -2262,14 +2306,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
     }
 
-
-  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
+  if (func_code == CAS_FC_EXECUTE || func_code == CAS_FC_EXECUTE_ARRAY || func_code == CAS_FC_EXECUTE_BATCH
+      || err_info.err_number < 0)
     {
-
-      if (logddl_get_jsp_mode () == false)
-	{
-	  logddl_write_end ();
-	}
+      logddl_write_end ();
     }
 
   if (net_buf->err_code)
@@ -2335,6 +2375,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
+      db_set_keep_session (true);
       goto exit_on_end;
     }
 
@@ -2364,7 +2405,8 @@ cas_init ()
       return -1;
     }
 
-  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
+  assert (sizeof (broker_name) == sizeof (shm_appl->broker_name));
+  strcpy (broker_name, shm_appl->broker_name);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
@@ -2878,7 +2920,7 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
   CloseHandle (FileHandle);
 
-  ux_database_shutdown ();
+  ux_database_shutdown (true);
 
   return EXCEPTION_EXECUTE_HANDLER;
 }

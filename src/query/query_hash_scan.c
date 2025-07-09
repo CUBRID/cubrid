@@ -49,6 +49,8 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 static bool safe_memcpy (void *data, void *source, int size);
@@ -292,8 +294,9 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   /* build hash value */
   for (i = 0; i < ckey->val_count; i++)
     {
+      hash_val = ROTL32 (hash_val, 13);
       tmp_hash_val = mht_get_hash_number (ht_size, ckey->values[i]);
-      hash_val = hash_val ^ tmp_hash_val;
+      hash_val ^= tmp_hash_val;
       if (hash_val == 0)
 	{
 	  hash_val = tmp_hash_val;
@@ -400,7 +403,7 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
 
 /*
  * qdata_print_hash_scan_entry () - Print the entry
- *                              Will be used by mht_dump() function
+ *                              Will be used by mht_dump_hls() function
  *   return:
  *   fp(in)     :
  *   key(in)    :
@@ -408,33 +411,97 @@ qdata_build_hscan_key (THREAD_ENTRY * thread_p, val_descr * vd, REGU_VARIABLE_LI
  *   args(in)   :
  */
 int
-qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args)
+qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list, void *args)
 {
-  HASH_SCAN_VALUE *data2 = (HASH_SCAN_VALUE *) data;
-  HASH_METHOD hash_list_scan_type = args ? *((HASH_METHOD *) args) : HASH_METH_NOT_USE;
+  HASH_SCAN_VALUE *data_p;
+  HASH_METHOD hash_list_scan_type;
+  QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
+  DB_VALUE dbval;
+  PR_TYPE *pr_type_p;
+  int i;
+  char *tuple_p;
+  OR_BUF buf;
 
-  if (data2 == NULL || args == NULL)
+  if (data == NULL || type_list == NULL || args == NULL)
     {
       return false;
     }
+
+  data_p = (HASH_SCAN_VALUE *) data;
+
+  hash_list_scan_type = *((HASH_METHOD *) args);
+  if (hash_list_scan_type == HASH_METH_NOT_USE)
+    {
+      return false;
+    }
+
+  type_list_p = (QFILE_TUPLE_VALUE_TYPE_LIST *) type_list;
+  if (type_list_p->type_cnt <= 0)
+    {
+      return false;
+    }
+
+  db_make_null (&dbval);
+
   if (fp == NULL)
     {
       fp = stdout;
     }
 
-  fprintf (fp, "LIST_CACHE_ENTRY (%p) {\n", data);
+  fprintf (fp, "  LIST_CACHE_ENTRY (%p) - ", data);
+
   if (hash_list_scan_type == HASH_METH_IN_MEM)
     {
-      fprintf (fp, "data_size = [%d]  data = [%.*s]\n", QFILE_GET_TUPLE_LENGTH (data2->tuple),
-	       QFILE_GET_TUPLE_LENGTH (data2->tuple), data2->tuple);
+      fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH (data_p->tuple));
+
+      tuple_p = (char *) data_p->tuple + QFILE_TUPLE_LENGTH_SIZE;
+
+      for (i = 0; i < type_list_p->type_cnt; i++)
+	{
+	  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_BOUND)
+	    {
+	      or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+
+	      pr_type_p = type_list_p->domp[i]->type;
+	      pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
+
+	      db_fprint_value (fp, &dbval);
+
+	      if (db_value_need_clear (&dbval))
+		{
+		  pr_clear_value (&dbval);
+		}
+	    }
+	  else
+	    {
+	      fprintf (fp, "VALUE_UNBOUND");
+	    }
+
+	  if (i != type_list_p->type_cnt - 1)
+	    {
+	      fprintf (stdout, " , ");
+	    }
+
+	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
+	}
+
+      fprintf (fp, " }");
     }
   else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]\n", data2->pos->vpid.pageid,
-	       data2->pos->vpid.volid, data2->pos->offset);
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", data_p->pos->vpid.pageid,
+	       data_p->pos->vpid.volid, data_p->pos->offset);
+    }
+  else if (hash_list_scan_type == HASH_METH_HASH_FILE)
+    {
+      /* nothing to do */
+    }
+  else
+    {
+      /* nothing to do */
     }
 
-  fprintf (fp, "\n}");
+  fprintf (fp, "\n");
 
   return true;
 }
@@ -779,7 +846,7 @@ fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
 
   if (check_pages != num_pages)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, fhsid_p->ehid.vfid.volid,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_ROOT_CORRUPTED, 3, fhsid_p->ehid.vfid.volid,
 	      fhsid_p->ehid.vfid.fileid, fhsid_p->ehid.pageid);
       return;
     }
@@ -1290,9 +1357,9 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if 0				/* for debug */
+#if !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH
   fhs_dump (thread_p, fhsid_p);
-#endif /* for debug */
+#endif /* !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH */
 
   if (file_destroy (thread_p, &(fhsid_p->bucket_file), true) != NO_ERROR)
     {
@@ -1362,7 +1429,7 @@ fhs_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *
        */
       if (success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_FAILED;
 	}
       else
@@ -1430,7 +1497,7 @@ fhs_initialize_dk_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, voi
        */
       if (success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_FAILED;
 	}
       else
@@ -1750,7 +1817,7 @@ fhs_locate_slot (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, void *key_p,
     {
       if (spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK) != S_SUCCESS)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  *out_position_p = 1;
 	  return false;
 	}
@@ -1854,7 +1921,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 
       if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  return false;
 	}
       fhs_read_flag_from_record ((char *) recdes.data, &flag);
@@ -1882,7 +1949,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 
 		  if (spage_get_record (thread_p, bucket_page_p, middle, &recdes, PEEK) != S_SUCCESS)
 		    {
-		      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 		      return false;
 		    }
 
@@ -1909,7 +1976,7 @@ fhs_binary_search_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, PGSLO
 		}
 	      else
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 		  return false;
 		}
 	    }
@@ -2044,7 +2111,7 @@ fhs_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPI
   if (ins_result != FHS_SUCCESSFUL_COMPLETION)
     {
       /* Slotted page module refuses to insert a short size record to an almost empty page. This should never happen. */
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       pgbuf_unfix_and_init (thread_p, bucket_page_p);
       return ER_FAILED;
     }
@@ -2361,7 +2428,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  if (fhs_insert_to_dk_bucket (thread_p, fhsid_p, &dk_bucket_vpid, key_p, value_p) != FHS_SUCCESSFUL_COMPLETION)
 	    {
 	      /* This should never happen. */
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	  return FHS_SUCCESSFUL_COMPLETION;
@@ -2375,19 +2442,19 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 			&dk_bucket_page_p);
 	  if (success != NO_ERROR || dk_bucket_page_p == NULL)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	  /* insert new record into dk_bucket */
 	  if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	  success = spage_insert (thread_p, dk_bucket_page_p, &bucket_recdes, &tmp_slot);
 	  if (success != SP_SUCCESS)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	  fhs_free_recdes (thread_p, &bucket_recdes);
@@ -2396,7 +2463,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  success = spage_insert_at (thread_p, dk_bucket_page_p, tmp_slot, &old_bucket_recdes);
 	  if (success != SP_SUCCESS)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	  (void) spage_delete (thread_p, bucket_page_p, slot_no);
@@ -2406,7 +2473,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	      success = spage_insert_at (thread_p, dk_bucket_page_p, tmp_slot, &old_bucket_recdes);
 	      if (success != SP_SUCCESS)
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  goto error;
 		}
 	      (void) spage_delete (thread_p, bucket_page_p, slot_no);
@@ -2416,7 +2483,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  SET_TFTID (tmp_tftid, dk_bucket_vpid.volid, dk_bucket_vpid.pageid, 0);
 	  if (fhs_compose_record (thread_p, key_p, &tmp_tftid, &bucket_recdes, FHS_FLAG_INDIRECT) != NO_ERROR)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	}
@@ -2425,7 +2492,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	  /* the case of inserting duplicate key record into bucket */
 	  if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, ++flag) != NO_ERROR)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      goto error;
 	    }
 	}
@@ -2435,7 +2502,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
       /* Key does not exist in the bucket */
       if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, 1) != NO_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
     }
@@ -2456,7 +2523,7 @@ fhs_insert_to_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_
 	}
       else
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
     }
@@ -2516,7 +2583,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
   first_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, next_bucket_vpid, PGBUF_LATCH_WRITE);
   if (first_dk_bucket_page_p == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
     }
   (void) spage_get_record (thread_p, first_dk_bucket_page_p, 0, &first_bucket_recdes, PEEK);
@@ -2536,7 +2603,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       last_dk_bucket_page_p = fhs_fix_old_page (thread_p, &fhsid_p->bucket_file, &last_bucket_vpid, PGBUF_LATCH_WRITE);
       if (last_dk_bucket_page_p == NULL)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
       (void) spage_get_record (thread_p, last_dk_bucket_page_p, 0, &last_bucket_recdes, PEEK);
@@ -2546,7 +2613,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
   /* insert new record into dk_bucket */
   if (fhs_compose_record (thread_p, key_p, value_p, &bucket_recdes, FHS_FLAG_DUMMY_NUM) != NO_ERROR)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
     }
   success = spage_insert (thread_p, last_dk_bucket_page_p, &bucket_recdes, &tmp_slot);
@@ -2558,7 +2625,7 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
 		    &new_dk_bucket_page_p);
       if (success != NO_ERROR || new_dk_bucket_page_p == NULL)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
       /* connect with prior page */
@@ -2573,14 +2640,14 @@ fhs_insert_to_dk_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, VPID * next_b
       success = spage_insert (thread_p, new_dk_bucket_page_p, &bucket_recdes, &tmp_slot);
       if (success != SP_SUCCESS)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  goto error;
 	}
       pgbuf_set_dirty (thread_p, new_dk_bucket_page_p, DONT_FREE);
     }
   else if (success != SP_SUCCESS)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
     }
 
@@ -2731,7 +2798,7 @@ fhs_split_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR bucket_page
   /* Retrieve the bucket header and update it */
   if (spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK) != S_SUCCESS)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
       return NULL;
     }
   bucket_header_p = (FHS_BUCKET_HEADER *) recdes.data;
@@ -2993,7 +3060,7 @@ fhs_find_first_bit_position (THREAD_ENTRY * thread_p, FHSID * fhsid_p, PAGE_PTR 
     {
       if (spage_get_record (thread_p, bucket_page_p, slot_id, &recdes, PEEK) != S_SUCCESS)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EH_CORRUPTED, 0);
 	  return ER_EH_CORRUPTED;
 	}
 
@@ -3059,7 +3126,7 @@ fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHSID * fhsid_p
 	  success = spage_insert (thread_p, sibling_page_p, &recdes, &sibling_slot_id);
 	  if (success != SP_SUCCESS)
 	    {
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
 	      return ER_FAILED;
 	    }

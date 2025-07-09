@@ -16,29 +16,6 @@
 # 
 #
 
-set(LIBCUBRIDESQL_SOURCES
-  ${EXECUTABLES_DIR}/esql_gadget.c
-  ${EXECUTABLES_DIR}/esql_cli.c
-  )
-SET_SOURCE_FILES_PROPERTIES(
-  ${LIBCUBRIDESQL_SOURCES}
-  PROPERTIES LANGUAGE CXX
-  )
-add_library(cubridesql SHARED ${LIBCUBRIDESQL_SOURCES})
-set_target_properties(cubridesql PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cubridesql PROPERTIES PUBLIC_HEADER "${EXECUTABLES_DIR}/cubrid_esql.h")
-target_include_directories(cubridesql PRIVATE ${EP_INCLUDES})
-target_compile_definitions(cubridesql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
-if(WIN32)
-  set_target_properties(cubridesql PROPERTIES OUTPUT_NAME libesql)
-  target_compile_definitions(cubridesql PRIVATE YY_CHAR=char)
-  set_target_properties(cubridesql PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libesql/libesql.def\"")
-  target_link_libraries(cubridesql LINK_PRIVATE cubridcs)
-endif(WIN32)
-
-add_dependencies(cubridesql ${EP_TARGETS})
-add_dependencies(cubridesql cubridcs)
-
 set(CSQL_SOURCES
   ${EXECUTABLES_DIR}/csql_launcher.c
   ${EXECUTABLES_DIR}/util_support.c
@@ -58,6 +35,7 @@ target_compile_definitions(csql PRIVATE ${COMMON_DEFS})
 target_include_directories(csql PRIVATE ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(csql LINK_PRIVATE ${CMAKE_DL_LIBS})
+  target_link_libraries(csql LINK_PUBLIC rt)
 else(UNIX)
   target_compile_definitions(csql PRIVATE _CONSOLE)
   target_link_libraries(csql LINK_PRIVATE ws2_32)
@@ -74,6 +52,7 @@ set(CUB_MASTER_SOURCES
   )
 if(UNIX)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
+  list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_server_monitor.cpp)
   SET_SOURCE_FILES_PROPERTIES(
 	${CUB_MASTER_SOURCES}
 	PROPERTIES LANGUAGE CXX
@@ -198,18 +177,26 @@ else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
-set(JAVASP_SERVER_SOURCES 
-  ${EXECUTABLES_DIR}/javasp.cpp
+set(PL_SERVER_SOURCES
+  ${EXECUTABLES_DIR}/pl.cpp
+  ${SP_DIR}/pl_sr_jvm.cpp
 )
 SET_SOURCE_FILES_PROPERTIES(
-  ${JAVASP_SERVER_SOURCES}
+  ${PL_SERVER_SOURCES}
   PROPERTIES LANGUAGE CXX
 )
 if(WIN32)
-  list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+  list(APPEND PL_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
-add_executable(cub_javasp ${JAVASP_SERVER_SOURCES})
-target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
+add_executable(cub_pl ${PL_SERVER_SOURCES})
+target_include_directories(cub_pl PRIVATE ${JAVA_INC} ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
+target_compile_definitions(cub_pl PRIVATE PL_MODE ${COMMON_DEFS})
+if(WIN32)
+target_link_libraries(cub_pl LINK_PRIVATE cubridsa ${JVM_LIBS})
+else(WIN32)
+target_link_libraries(cub_pl LINK_PRIVATE cubridsa)
+endif(WIN32)
+add_dependencies(cub_pl pl_install_jdk)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
@@ -234,47 +221,6 @@ else(UNIX)
 endif(UNIX)
 add_dependencies(cub_admin cubridsa cubridcs)
 
-
-set(CUBRID_ESQL_SOURCES
-  ${BISON_esql_grammar_OUTPUTS}
-  ${FLEX_esql_lexer_OUTPUTS}
-  ${EXECUTABLES_DIR}/esql_symbol_table.c
-  ${EXECUTABLES_DIR}/esql_declare.c
-  ${EXECUTABLES_DIR}/esql_cursor.c
-  ${EXECUTABLES_DIR}/esql_misc.c
-  ${EXECUTABLES_DIR}/esql_whenever.c
-  ${EXECUTABLES_DIR}/esql_hash.c
-  ${EXECUTABLES_DIR}/esql_translate.c
-  ${EXECUTABLES_DIR}/esql_host_variable.c
-  )
-SET_SOURCE_FILES_PROPERTIES(
-  ${EXECUTABLES_DIR}/esql_symbol_table.c
-  ${EXECUTABLES_DIR}/esql_declare.c
-  ${EXECUTABLES_DIR}/esql_cursor.c
-  ${EXECUTABLES_DIR}/esql_misc.c
-  ${EXECUTABLES_DIR}/esql_whenever.c
-  ${EXECUTABLES_DIR}/esql_hash.c
-  ${EXECUTABLES_DIR}/esql_translate.c
-  ${EXECUTABLES_DIR}/esql_host_variable.c
-  PROPERTIES LANGUAGE CXX
-  )  
-if(WIN32)
-  list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-endif(WIN32)
-set_source_files_properties(${BISON_esql_grammar_OUTPUTS} PROPERTIES GENERATED true)
-set_source_files_properties(${FLEX_esql_lexer_OUTPUTS} PROPERTIES GENERATED true)
-
-add_executable(cubrid_esql ${CUBRID_ESQL_SOURCES})
-
-target_include_directories(cubrid_esql PRIVATE ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
-target_compile_definitions(cubrid_esql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
-if(WIN32)
-  target_compile_definitions(cubrid_esql PRIVATE YY_NO_UNISTD_H)
-endif(WIN32)
-target_link_libraries(cubrid_esql LINK_PRIVATE cubridcs)
-
-add_dependencies(cubrid_esql gen_esql_grammar gen_esql_lexer)
-
 set(GENCAT_SOURCES
   ${BASE_DIR}/porting.c
   ${EXECUTABLES_DIR}/gencat.c
@@ -294,6 +240,8 @@ if(UNIX)
   set(UNITTESTS_LF_SOURCES
     ${BASE_DIR}/porting.c
     ${BASE_DIR}/lock_free.c
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_lf.c
     )
   SET_SOURCE_FILES_PROPERTIES(
@@ -303,10 +251,11 @@ if(UNIX)
   add_executable(unittests_lf ${UNITTESTS_LF_SOURCES})
   target_compile_definitions(unittests_lf PRIVATE UNITTEST_LF SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_lf PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_lf LINK_PRIVATE cubridcs)
-
+  target_link_libraries(unittests_lf LINK_PRIVATE cubrid)
 
   set(UNITTESTS_AREA_SOURCES
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_area.c
     )
   SET_SOURCE_FILES_PROPERTIES(
@@ -319,6 +268,8 @@ if(UNIX)
   target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
   set(UNITTESTS_SNAPSHOT_SOURCES
+      ${BASE_DIR}/memory_monitor_api.cpp
+      ${BASE_DIR}/memory_monitor_sr.cpp
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
       
@@ -333,6 +284,8 @@ if(UNIX)
     target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid)
     
   set(UNITTESTS_BIT_SOURCES
+    ${BASE_DIR}/memory_monitor_api.cpp
+    ${BASE_DIR}/memory_monitor_sr.cpp
     ${EXECUTABLES_DIR}/unittests_bit.c
     )
     SET_SOURCE_FILES_PROPERTIES(
@@ -347,7 +300,6 @@ endif(UNIX)
 
 # install
 install(TARGETS
-  cubridesql
   csql
   cub_master
   cub_server
@@ -355,9 +307,8 @@ install(TARGETS
   cub_commdb
   cubrid_rel
   loadjava
-  cub_javasp
+  cub_pl
   cub_admin
-  cubrid_esql
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

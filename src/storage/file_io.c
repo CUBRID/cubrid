@@ -85,6 +85,8 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
+#include "thread_worker_pool.hpp"
+
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
@@ -109,6 +111,7 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
+#include "thread_worker_pool.hpp"	// for system_core_count
 
 #if defined (SERVER_MODE)
 #include "server_support.h"
@@ -119,6 +122,8 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #endif // SERVER_MODE
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
@@ -2733,9 +2738,8 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p, co
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file remove",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_unformat: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -3952,9 +3956,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file read",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_read: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -4155,9 +4158,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file write",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_write: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -4240,9 +4242,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file read",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_read_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -4327,9 +4328,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file write",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-      er_log_debug (ARG_FILE_LINE, "fileio_write_pages: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
     }
 #endif
 
@@ -4463,9 +4463,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 #if defined (EnableThreadMonitoring)
       if (MONITOR_WAITING_THREAD (elapsed_time))
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file sync",
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
-	  er_log_debug (ARG_FILE_LINE, "fileio_synchronize: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
 	}
 #endif
 
@@ -6636,7 +6635,9 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
 
   /* get the number of CPUs */
-  num_cpus = fileio_os_sysconf ();
+  // *INDENT-OFF*
+  num_cpus = cubthread::system_core_count ();
+  // *INDENT-ON*
   /* check for the upper bound of threads */
   if (num_threads == FILEIO_BACKUP_NUM_THREADS_AUTO)
     {
@@ -6644,7 +6645,7 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
     }
   else
     {
-      thread_info_p->num_threads = MIN (num_threads, num_cpus * 2);
+      thread_info_p->num_threads = MIN (num_threads, num_cpus);
     }
   thread_info_p->num_threads = MIN (thread_info_p->num_threads, NUM_NORMAL_TRANS);
 #else /* SERVER_MODE */
@@ -7774,8 +7775,6 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
 
   thread_info_p = &session_p->read_thread_info;
   queue_p = &thread_info_p->io_queue;
-  /* thread service routine has tran_index_lock, and should release before it is working */
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
   thread_p->tran_index = thread_info_p->tran_index;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_read, session = %p\n", session_p);
@@ -8118,7 +8117,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
     {
       // *INDENT-OFF
       auto exec_f = std::bind (fileio_read_backup_volume_execute, std::placeholders::_1, session_p);
-      css_push_external_task (conn_p, new cubthread::entry_callable_task (exec_f));
+      logpb_push_backup_read_task (new cubthread::entry_callable_task (exec_f));
       // *INDENT-ON
     }
 
@@ -10185,7 +10184,8 @@ exit_on_error:
 int
 fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, char *to_vol_label_p,
 		       char *verbose_to_vol_label_p, char *prev_vol_label_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
-		       bool is_remember_pages)
+		       bool is_remember_pages, bool & is_prev_vol_header_restored,
+		       FILEIO_UNLINKED_VOLINFO_MAP & unlinked_volinfo)
 {
   int next_page_id = 0;
   INT64 total_nbytes = 0;
@@ -10371,7 +10371,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	      goto error;
 	    }
 
-	  if (volid != LOG_DBFIRST_VOLID)
+	  if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored)
 	    {
 	      VOLID prev_volid;
 	      int prev_vdes;
@@ -10392,7 +10392,42 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 		}
 
 	      fileio_dismount (thread_p, prev_vdes);
+
+	      if (unlinked_volinfo.count (volid))
+		{
+		  // The volume headers of both previous and current volumes are in the full or big incremental backup volumes.
+		  // Therefore, the link between the two volumes is naturally established during the restoration process.
+		  // So, there is no need to explicitly set it.
+		  unlinked_volinfo.erase (volid);
+
+		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+		}
 	    }
+
+	  if (incremental_includes_volume_header == true)
+	    {
+	      if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored == false)
+		{
+		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [FOUND UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+
+		  if (!unlinked_volinfo.count (volid))
+		    {
+		      unlinked_volinfo[volid] =
+			std::make_pair (std::string (to_vol_label_p), std::string (prev_vol_label_p));
+
+		      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [SAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				     session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+		    }
+		}
+	    }
+
+	  is_prev_vol_header_restored = true;
+	}
+      else
+	{
+	  is_prev_vol_header_restored = false;
 	}
 
       /* save current volname */
@@ -11490,6 +11525,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset, int whence, off_t l
 }
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * fileio_os_sysconf () -
@@ -11519,6 +11555,7 @@ fileio_os_sysconf (void)
   return (nprocs > 1) ? (int) nprocs : 1;
 }
 #endif /* SERVER_MODE */
+#endif
 
 /*
  * fileio_initialize_res () -

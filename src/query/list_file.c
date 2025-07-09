@@ -47,6 +47,8 @@
 #include "thread_manager.hpp"	// for thread_sleep
 #include "xasl.h"
 #include "xasl_cache.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* TODO */
 #if !defined (SERVER_MODE)
@@ -181,6 +183,7 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
   0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex */
   LF_EM_NOT_USING_MUTEX,
+  LF_ENTRY_DESCRIPTOR_MAX_ALLOC,
   qfile_alloc_sort_list,
   qfile_dealloc_sort_list,
   NULL,
@@ -198,9 +201,6 @@ static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
 static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2, TP_DOMAIN * domain, int *cmp);
-#if defined (CUBRID_DEBUG)
-static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
-#endif
 static void qfile_initialize_page_header (PAGE_PTR page_p);
 static void qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p,
 						   int free_page);
@@ -987,7 +987,7 @@ qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALU
   return or_advance (iterator, QFILE_TUPLE_VALUE_HEADER_SIZE + value_size);
 }
 
-#if defined (CUBRID_DEBUG)
+#if !defined(NDEBUG)
 /*
  * qfile_print_tuple () - Prints the tuple content associated with the type list
  *   return: none
@@ -997,7 +997,7 @@ qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALU
  *       Each tuple value header is aligned with MAX_ALIGNMENT,
  *       Each tuple value is aligned with MAX_ALIGNMENT
  */
-static void
+void
 qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 {
   DB_VALUE dbval;
@@ -1022,10 +1022,11 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	{
 	  pr_type_p = type_list_p->domp[i]->type;
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-	  (*(pr_type_p->readval)) (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
+	  pr_type_p->data_readval (&buf, &dbval, type_list_p->domp[i], -1, false /* Don't copy */ , NULL, 0);
 
 	  db_fprint_value (stdout, &dbval);
-	  if (pr_is_set_type (pr_type_p->id))
+
+	  if (db_value_need_clear (&dbval))
 	    {
 	      pr_clear_value (&dbval);
 	    }
@@ -1213,6 +1214,14 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  free_and_init (list_id_p);
 	}
       return NULL;
+    }
+
+  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+    {
+      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
+      list_id_p->tfile_vfid->membuf = NULL;
+      list_id_p->tfile_vfid->membuf_npages = 0;
+      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
@@ -2652,9 +2661,13 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
   act_right_func = NULL;
   act_both_func = NULL;
 
-  if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+  /* result cached list_id cannot be used to append the union of results */
+  if (!lhs_file_p->is_result_cached && !rhs_file_p->is_result_cached)
     {
-      return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+      if (QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL))
+	{
+	  return qfile_union_list (thread_p, lhs_file_p, rhs_file_p, flag);
+	}
     }
 
   if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_DISTINCT))
@@ -2666,7 +2679,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       distinct_or_all = Q_ALL;
     }
 
-  if (lhs_file_p->tuple_cnt > 1)
+  /* for using result-cache */
+  if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && lhs_file_p->tuple_cnt > 1)
     {
       lhs_file_p = qfile_sort_list (thread_p, lhs_file_p, NULL, distinct_or_all, true);
       if (lhs_file_p == NULL)
@@ -2683,7 +2697,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
 
   if (rhs_file_p)
     {
-      if (rhs_file_p->tuple_cnt > 1)
+      /* for using result-cache */
+      if (!QFILE_IS_FLAG_SET_BOTH (flag, QFILE_FLAG_UNION, QFILE_FLAG_ALL) && rhs_file_p->tuple_cnt > 1)
 	{
 	  rhs_file_p = qfile_sort_list (thread_p, rhs_file_p, NULL, distinct_or_all, true);
 	  if (rhs_file_p == NULL)
@@ -3094,7 +3109,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
   return NO_ERROR;
 }
 
-#if defined (CUBRID_DEBUG)
+#if !defined(NDEBUG)
 /*
  * qfile_print_list () - Dump the content of the list file to the standard output
  *   return: none
@@ -3746,7 +3761,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
 {
   int prorated_pages, sort_key_size, sort_key_overhead;
 
-  prorated_pages = (int) list_id_p->page_cnt;
+  prorated_pages = (int) MAX (list_id_p->page_cnt, 1);
   if (key_info_p->use_original == 1)
     {
       /* P_sort_key */
@@ -4044,7 +4059,14 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
       qfile_clear_sort_info (&info);
 #endif /* not SortCache */
       qfile_close_list (thread_p, list_id_p);
-      qfile_destroy_list (thread_p, list_id_p);
+      if (list_id_p->is_result_cached)
+	{
+	  qfile_clear_list_id (list_id_p);
+	}
+      else
+	{
+	  qfile_destroy_list (thread_p, list_id_p);
+	}
       qfile_close_and_free_list_file (thread_p, srlist_id);
       return NULL;
     }
@@ -4061,9 +4083,15 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   qfile_close_scan (thread_p, &t_scan_id);
   qfile_clear_sort_info (&info);
 #endif /* not SortCache */
-
   qfile_close_list (thread_p, list_id_p);
-  qfile_destroy_list (thread_p, list_id_p);
+  if (list_id_p->is_result_cached)
+    {
+      qfile_clear_list_id (list_id_p);
+    }
+  else
+    {
+      qfile_destroy_list (thread_p, list_id_p);
+    }
   qfile_copy_list_id (list_id_p, srlist_id, true);
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
@@ -5586,10 +5614,11 @@ QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
-  QFILE_LIST_CACHE_ENTRY *lent;
-  int tran_index;
+  QFILE_LIST_CACHE_ENTRY *lent = NULL;
 #if defined(SERVER_MODE)
+  int tran_index;
   TRAN_ISOLATION tran_isolation;
+  bool new_tran = true;
 #if defined(WINDOWS)
   unsigned int num_elements;
 #else
@@ -5600,7 +5629,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
   size_t i_idx, num_active_users;
 #endif
 
-  bool new_tran = true;
+
 
   *result_cached = false;
 
@@ -5627,7 +5656,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 	}
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+#if defined(SERVER_MODE)
+  tran_index =
+#endif
+    LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
   lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
@@ -6588,13 +6620,32 @@ void
 qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc)
 {
 #if defined (SERVER_MODE)
-  if (list_p != NULL && list_p->type_list.type_cnt != 0)
+  if (list_p == NULL || list_p->type_list.type_cnt == 0)
     {
-      thread_p->m_qlist_count += inc;
-      if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+      return;
+    }
+
+  THREAD_ENTRY *target_thread_p = thread_p;
+
+  if (thread_p->emulate_tid != thread_id_t () && thread_p->emulate_tid != thread_p->get_id ())
+    {
+      THREAD_ENTRY *emulate_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      if (emulate_thread_p != NULL)
 	{
-	  er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, thread_p->m_qlist_count);
+	  target_thread_p = emulate_thread_p;
 	}
+      else
+	{
+	  assert (false);
+	}
+    }
+
+  target_thread_p->m_qlist_count.fetch_add (inc);
+
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
+			  target_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }

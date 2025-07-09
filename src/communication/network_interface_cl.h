@@ -51,9 +51,12 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
-#include "method_def.hpp"
+
 #include "dynamic_array.h"
 #include "flashback_cl.h"
+#include "pl_struct_compile.hpp"
+#include "pl_signature.hpp"
+#include "memory_monitor_common.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -91,7 +94,7 @@ extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid, L
 			      LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
-			      LC_COPYAREA ** fetch_copyarea);
+			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key);
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
@@ -120,12 +123,17 @@ extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA *
 extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int n_attrs, int *attr_ids,
 				      OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
 extern int locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes);
+
 extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force = false);
+extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
+extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
 extern int heap_reclaim_addresses (const HFID * hfid);
+extern int heap_get_maxslotted_reclength (int &maxslotted_reclength);
+
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
@@ -185,7 +193,7 @@ extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
 extern "C"
 {
 #endif
-  extern void lock_dump (FILE * outfp);
+  extern void lock_dump (FILE * outfp, int is_contention);
   extern void vacuum_dump (FILE * outfp);
 #ifdef __cplusplus
 }
@@ -230,10 +238,11 @@ extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, i
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern int stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr,
 					     char **stats_buffer);
-extern int stats_update_statistics (OID * classoid, int with_fullscan);
+extern int stats_update_statistics (MOP classop, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
-extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk);
+extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
+			    int deduplicate_key_pos);
 extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * class_oids, int n_classes,
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
@@ -258,6 +267,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
+extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -284,16 +294,13 @@ extern void logtb_free_trans_info (TRANS_INFO * info);
 extern TRANS_INFO *logtb_get_trans_info (bool include_query_exec_info);
 extern void logtb_dump_trantable (FILE * outfp);
 
-extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
-
 extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
 extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
-extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
-extern int jsp_get_server_port (void);
+extern int pl_get_server_port (void);
 extern int repl_log_get_append_lsa (LOG_LSA * lsa);
 extern int repl_set_info (REPL_INFO * repl_info);
 
@@ -399,7 +406,7 @@ extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
 					    const char *db_user, const char *host, const char *program_name);
-extern int csession_end_session (SESSION_ID session_id);
+extern int csession_end_session (SESSION_ID session_id, bool is_keep_session);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
 extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id);
@@ -438,10 +445,8 @@ extern int loaddb_load_batch (const cubload::batch &batch, bool use_temp_batch, 
 extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
-extern int loaddb_update_stats ();
+extern int loaddb_update_stats (bool verbose);
 
-extern int method_invoke_fold_constants (const method_sig_list & sig_list,
-					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
 extern int flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time,
 					   time_t end_time, FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list,
 					   char **invalid_class, time_t * invalid_time);
@@ -449,4 +454,14 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
 				  int *invalid_class_idx);
 
+/* PL/CSQL */
+EXPORT_IMPORT extern int plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request,
+					       PLCSQL_COMPILE_RESPONSE & compile_response);
+EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
+				  const std::vector < std::reference_wrapper < DB_VALUE >> &args,
+				  std::vector < DB_VALUE > &out_args, DB_VALUE & result);
+
+/* memmon */
+extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
+extern int mmon_disable_force ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

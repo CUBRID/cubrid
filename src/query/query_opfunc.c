@@ -60,6 +60,8 @@
 
 #include <chrono>
 #include <regex>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
@@ -381,10 +383,10 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
       or_init (&buf, val_p, val_size);
       rc = pr_type->data_writeval (&buf, dbval_p);
 
-      if (rc != NO_ERROR)
+      if (buf.ptr > buf.endptr || rc != NO_ERROR)
 	{
-	  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
-	  assert (rc != ER_TF_BUFFER_OVERFLOW);
+	  /* This should not happen */
+	  assert_release (false);
 	  return ER_FAILED;
 	}
 
@@ -5763,6 +5765,9 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
+  /* it should not be static because the parameter could be changed without broker restart */
+  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return NO_ERROR;
@@ -5792,6 +5797,15 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       /* cast number to DOUBLE */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  else if (oracle_compat_number)
+    {
+      if (TP_IS_DISCRETE_NUMBER_TYPE (type1) && TP_IS_DISCRETE_NUMBER_TYPE (type2))
+	{
+	  /* cast number to NUMERIC */
+	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	}
     }
 
   if (cast_dom2 != NULL)
@@ -6248,6 +6262,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
       if (type_p)
 	{
 	  val_size = type_p->get_disk_size_of_value (dbval_p);
+#if !defined(NDEBUG)
 	  if (type_p->is_size_computed ())
 	    {
 	      if (pr_is_string_type (dbval_type))
@@ -6260,7 +6275,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		      precision = DB_MAX_STRING_LENGTH;
 		    }
 
-		  assert_release (string_length <= precision);
+		  assert (string_length <= precision);
 
 		  if (val_size < 0)
 		    {
@@ -6281,6 +6296,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		    }
 		}
 	    }
+#endif
 
 	  align = DB_ALIGN (val_size, MAX_ALIGNMENT);	/* to align for the next field */
 	  tuple_value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + align;
@@ -7547,9 +7563,16 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  goto error;
 	}
 
-      while ((int) strlen (path_tmp) + 1 > len_result_path)
+      bool is_resize = false;
+      int need_size = (int) strlen (path_tmp) + 1;
+      while (need_size > len_result_path)
 	{
 	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
+	  is_resize = true;
+	}
+
+      if (is_resize)
+	{
 	  db_private_free_and_init (thread_p, result_path);
 	  result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
 	  if (result_path == NULL)
@@ -8769,7 +8792,7 @@ error_return:
  */
 int
 qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
-					     FUNC_TYPE function)
+					     FUNC_CODE function)
 {
   DB_TYPE type;
   double d_result = 0;
@@ -8886,7 +8909,7 @@ end:
  */
 int
 qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d, double f_row_num_d,
-				     double c_row_num_d, tp_domain ** result_dom, DB_VALUE * result, FUNC_TYPE function)
+				     double c_row_num_d, tp_domain ** result_dom, DB_VALUE * result, FUNC_CODE function)
 {
   DB_DATE date;
   DB_DATETIME datetime;
@@ -9190,7 +9213,7 @@ end:
 int
 qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id, tp_domain * domain,
 					 int pos, double row_num_d, double f_row_num_d, double c_row_num_d,
-					 DB_VALUE * result, tp_domain ** result_dom, FUNC_TYPE function)
+					 DB_VALUE * result, tp_domain ** result_dom, FUNC_CODE function)
 {
   int error = NO_ERROR;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };

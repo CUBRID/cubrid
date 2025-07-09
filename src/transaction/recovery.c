@@ -22,22 +22,25 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdio.h>
-
 #include "recovery.h"
-#include "log_manager.h"
-#include "replication.h"
+
+#include "boot_sr.h"
 #include "btree.h"
 #include "btree_load.h"
-#include "system_catalog.h"
+#include "config.h"
 #include "disk_manager.h"
 #include "extendible_hash.h"
 #include "file_manager.h"
-#include "overflow_file.h"
-#include "boot_sr.h"
 #include "locator_sr.h"
+#include "log_manager.h"
+#include "overflow_file.h"
+#include "replication.h"
+#include "system_catalog.h"
+
+#include <stdio.h>
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  *
@@ -45,6 +48,8 @@
  *
  * Note: When adding new entries, be sure to add the an entry to print it as
  * a string in rv_rcvindex_string().
+ *
+ * TODO: the second argument - log rcv structure - should be a pointer to const data
  */
 struct rvfun RV_fun[] = {
   {RVDK_NEWVOL,

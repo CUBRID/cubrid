@@ -3,12 +3,8 @@ EXPORTS
 ;
 ; functions
 ;
-    au_enable
-    au_change_owner
-    au_disable
+    au_change_class_owner_including_partitions
     au_grant
-    au_get_public_user
-    au_get_dba_user
     cfg_free_directory
     cfg_find_db
     cfg_find_db_list
@@ -47,6 +43,8 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
+    db_set_keep_session
+    db_get_keep_session
     db_find_or_create_session
     db_end_session
     db_set_server_session_key
@@ -56,6 +54,7 @@ EXPORTS
     db_set_size
     db_set_page_size
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_trigger_action
     db_trigger_action_time
@@ -81,10 +80,6 @@ EXPORTS
     htonl
     htoni64
     numeric_coerce_int_to_num
-    pgbuf_fix_release
-    pgbuf_fix_debug
-    pgbuf_get_vpid_ptr
-    pgbuf_set_dirty
     prm_get_master_port_id
     prm_get_bool_value
     prm_get_float_value
@@ -93,6 +88,7 @@ EXPORTS
     prm_get_bigint_value
     prm_get_string_value
     prm_get_name
+    prm_get_value
     prm_Def
     rel_copy_version_string
     rel_build_number
@@ -129,7 +125,6 @@ EXPORTS
     util_log_write_errid
     util_log_write_errstr
     util_log_write_command
-    au_get_user_class_name
     tr_get_class_name
     boot_emergency_patch
     boot_set_skip_check_ct_classes
@@ -141,20 +136,18 @@ EXPORTS
     er_init
     er_final
     er_clear
-    jsp_connect_server
-    jsp_disconnect_server
-    jsp_writen
-    jsp_readn
-    jsp_start_server
-    jsp_server_port
-    javasp_get_info_file
-    javasp_get_error_file
-    javasp_open_info_dir
-    javasp_open_info
-    javasp_read_info
-    javasp_reset_info
-    javasp_write_info
-    javasp_unlink_info
+    pl_connect_server
+    pl_disconnect_server
+    pl_writen
+    pl_readn
+    pl_get_info_file
+    pl_get_error_file
+    pl_open_info_dir
+    pl_open_info
+    pl_read_info
+    pl_reset_info
+    pl_write_info
+    pl_unlink_info
 ;
 ; utility functions
 ;
@@ -202,8 +195,6 @@ EXPORTS
 	csql
 	csql_get_message
 	basename
-	au_set_password
-	au_disable_passwords
 	er_has_error
 	er_msg
 	er_set
@@ -590,6 +581,7 @@ EXPORTS
     db_objlist_next
     db_objlist_object
     db_objlist_print
+    db_init_lexer_lineno
     db_open_buffer
     db_open_file
     db_open_file_name
@@ -839,3 +831,7 @@ EXPORTS
     windows_socket_shutdown
     gethostbyname_uhost
     getnameinfo_uhost
+    pl_get_socket_file_path
+    envvar_vmdir_file
+    envvar_logdir_file
+	

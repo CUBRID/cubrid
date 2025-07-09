@@ -21,23 +21,35 @@
 #include "dbtype.h" /* db_value_* */
 #include "list_file.h" /* qfile_ */
 #include "object_representation.h" /* OR_ */
-#include "method_runtime_context.hpp"
+
+#include "pl_session.hpp"
+#include "pl_signature.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubscan
 {
   namespace method
   {
-    scanner::scanner ()
-      : m_thread_p (nullptr)
-      , m_method_group (nullptr)
-      , m_list_id (nullptr)
-      , m_dbval_list (nullptr)
+    /* Notice: If a member included in a union has a constructor, it can lead to undefined behavior.
+     * Therefore, the constructor has been removed.
+     * If necessary, please use constructor() explicitly.    */
+    void
+    scanner::constructor()
     {
-
+      m_thread_p = nullptr;
+      m_method_group = nullptr;
+      m_list_id = nullptr;
+      m_arg_count = 0;
+      m_arg_dom_vector = nullptr;
+      m_arg_vector = nullptr;
+      m_dbval_list = nullptr;
+      memset (&m_scan_id, 0x00, sizeof (m_scan_id));
     }
 
     int
-    scanner::init (cubthread::entry *thread_p, METHOD_SIG_LIST *sig_list, qfile_list_id *list_id)
+    scanner::init (cubthread::entry *thread_p, PL_SIGNATURE_ARRAY_TYPE *sig_array, qfile_list_id *list_id)
     {
       // check initialized
       if (m_thread_p != thread_p)
@@ -47,7 +59,7 @@ namespace cubscan
 
       if (m_method_group == nullptr) // signature is not initialized
 	{
-	  m_method_group = cubmethod::get_rctx (thread_p)->create_invoke_group (thread_p, *sig_list, true);
+	  m_method_group = new cubmethod::method_invoke_group (sig_array);
 	  if (!m_method_group)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -59,13 +71,21 @@ namespace cubscan
       if (m_list_id == nullptr)
 	{
 	  m_list_id = list_id;
-	  int arg_count = m_list_id->type_list.type_cnt;
-	  m_arg_vector.resize (arg_count);
-	  m_arg_use_vector.resize (arg_count, false);
-	  m_arg_dom_vector.resize (arg_count);
+	  int arg_count = m_arg_count = m_list_id->type_list.type_cnt;
+
+	  if (!m_arg_vector)
+	    {
+	      m_arg_vector = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * arg_count);
+	    }
+
+	  if (!m_arg_dom_vector)
+	    {
+	      m_arg_dom_vector = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * arg_count);
+	    }
 
 	  for (int i = 0; i < arg_count; i++)
 	    {
+	      db_make_null (&m_arg_vector [i]);
 	      TP_DOMAIN *domain = list_id->type_list.domp[i];
 	      if (domain == NULL || domain->type == NULL)
 		{
@@ -73,17 +93,6 @@ namespace cubscan
 		}
 	      m_arg_dom_vector[i] = domain;
 	    }
-	}
-
-      method_sig_node *sig = sig_list->method_sig;
-      while (sig)
-	{
-	  for (int i = 0; i < sig->num_method_args; i++)
-	    {
-	      int idx = sig->method_arg_pos [i];
-	      m_arg_use_vector [idx] = true;
-	    }
-	  sig = sig->next;
 	}
 
       if (m_dbval_list == nullptr)
@@ -97,6 +106,7 @@ namespace cubscan
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
+
       return NO_ERROR;
     }
 
@@ -104,17 +114,36 @@ namespace cubscan
     scanner::clear (bool is_final)
     {
       close_value_array ();
-      pr_clear_value_vector (m_arg_vector);
 
-      if (is_final && m_method_group)
+      for (int i = 0; m_arg_vector && i < m_arg_count; i++)
 	{
-	  m_method_group->reset (true);
-	  m_method_group->end ();
+	  db_value_clear (&m_arg_vector[i]);
+	  db_make_null (&m_arg_vector[i]);
+	}
 
-	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
-	  rctx->pop_stack (m_thread_p, m_method_group);
 
-	  m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
+      if (is_final)
+	{
+	  if (m_method_group)
+	    {
+	      m_method_group->reset (true);
+	      m_method_group->end ();
+
+	      delete m_method_group;
+	      m_method_group = nullptr; // will be destroyed by cubmethod::runtime_context
+	    }
+
+	  if (m_arg_vector)
+	    {
+	      db_private_free_and_init (m_thread_p, m_arg_vector);
+	    }
+
+	  if (m_arg_dom_vector)
+	    {
+	      // freeing elements is not required.
+	      // TP_DOMAIN is managed by another module.
+	      db_private_free_and_init (m_thread_p, m_arg_dom_vector);
+	    }
 	}
     }
 
@@ -151,12 +180,7 @@ namespace cubscan
 
       int error = NO_ERROR;
 
-      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector.begin (), m_arg_vector.end ());
-
-      if (scan_code == S_SUCCESS && (error = m_method_group->prepare (arg_wrapper, m_arg_use_vector)) != NO_ERROR)
-	{
-	  scan_code = S_ERROR;
-	}
+      std::vector<std::reference_wrapper<DB_VALUE>> arg_wrapper (m_arg_vector, m_arg_vector + m_arg_count);
 
       if (scan_code == S_SUCCESS && (error = m_method_group->execute (arg_wrapper)) != NO_ERROR)
 	{
@@ -186,22 +210,28 @@ namespace cubscan
 
 	  m_method_group->reset (false);
 	}
+
       if (scan_code == S_ERROR)
 	{
-	  cubmethod::runtime_context *rctx = m_method_group->get_runtime_context ();
-	  if (rctx->is_interrupted ())
-	    {
-	      rctx->set_local_error_for_interrupt ();
-	    }
-	  else if (error !=
-		   ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
+//	  PL_SESSION *session = m_method_group->get_session ();
+//	  if (session->is_interrupted ())
+//	    {
+//	      session->set_local_error_for_interrupt ();
+//	    }
+//	  else
+	  if (error !=
+	      ER_SM_INVALID_METHOD_ENV) /* FIXME: error possibly occured in builtin method, It should be handled at CAS */
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, m_method_group->get_error_msg ().c_str ());
 	    }
 	}
 
       // clear
-      pr_clear_value_vector (m_arg_vector);
+      for (int i = 0; i < m_arg_count; i++)
+	{
+	  db_value_clear (&m_arg_vector[i]);
+	  db_make_null (&m_arg_vector[i]);
+	}
 
       return scan_code;
     }

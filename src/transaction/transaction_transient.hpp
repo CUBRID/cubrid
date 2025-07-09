@@ -26,6 +26,7 @@
 
 #include <forward_list>
 #include <functional>
+#include <string>
 
 // todo - namespace cubtx
 

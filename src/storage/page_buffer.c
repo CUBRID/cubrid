@@ -70,6 +70,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 
@@ -1755,28 +1757,6 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
 }
 
 /*
- * below two functions are dummies for Windows build
- * (which defined at cubridsa.def)
- */
-#if defined(WINDOWS)
-#if !defined(NDEBUG)
-PAGE_PTR
-pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-		   PGBUF_LATCH_MODE request_mode, PGBUF_LATCH_CONDITION condition)
-{
-  return NULL;
-}
-#else
-PAGE_PTR
-pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line)
-{
-  return NULL;
-}
-#endif
-#endif
-
-/*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier
@@ -1787,7 +1767,7 @@ pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fet
 #if !defined(NDEBUG)
 PAGE_PTR
 pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE request_mode,
-		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line)
+		 PGBUF_LATCH_CONDITION condition, const char *caller_file, int caller_line, const char *caller_func)
 #else /* NDEBUG */
 PAGE_PTR
 pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
@@ -1830,11 +1810,11 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
 
-  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH))
+  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
       /* Make sure that the page has been allocated (i.e., is a valid page) */
       /* Suppress errors if fetch mode is OLD_PAGE_IF_IN_BUFFER. */
-      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER, NULL, NULL) != DISK_VALID)
+      if (pgbuf_is_valid_page (thread_p, vpid, fetch_mode == OLD_PAGE_IF_IN_BUFFER) != DISK_VALID)
 	{
 	  return NULL;
 	}
@@ -2174,6 +2154,8 @@ try_again:
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode,
 					perf.perf_cond_type, perf.fix_wait_time);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+					  perf.fix_wait_time);
 	}
     }
 
@@ -2196,7 +2178,7 @@ try_again:
 #if !defined (NDEBUG)
 int
 pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, PGBUF_PROMOTE_CONDITION condition,
-				const char *caller_file, int caller_line)
+				const char *caller_file, int caller_line, const char *caller_func)
 #else /* NDEBUG */
 int
 pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, PGBUF_PROMOTE_CONDITION condition)
@@ -2441,7 +2423,8 @@ end:
  */
 #if !defined (NDEBUG)
 void
-pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line)
+pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line,
+		   const char *caller_func)
 #else /* NDEBUG */
 void
 pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
@@ -4130,7 +4113,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	   */
 	  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
+	      if (pgbuf_is_valid_page (thread_p, vpid, false) != DISK_VALID)
 		{
 		  return NULL;
 		}
@@ -4228,7 +4211,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	  /* Do not cache the page in the page buffer pool. Write the desired portion of the page directly to disk */
 	  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL))
 	    {
-	      if (pgbuf_is_valid_page (thread_p, vpid, false NULL, NULL) != DISK_VALID)
+	      if (pgbuf_is_valid_page (thread_p, vpid, false) != DISK_VALID)
 		{
 		  return NULL;
 		}
@@ -4281,8 +4264,14 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
  *   pgptr(in): Pointer to page
  *   free_page(in): Free the page too ?
  */
+#if !defined(NDEBUG)
+void
+pgbuf_set_dirty_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page, const char *caller_file,
+		       int caller_line, const char *caller_func)
+#else
 void
 pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page)
+#endif
 {
   PGBUF_BCB *bufptr;
 
@@ -4339,25 +4328,6 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 }
 
 /*
- * pgbuf_page_has_changed () - check if page has change based on current LSA and a previous reference LSA
- *   return: page lsa
- *   pgptr(in): Pointer to page
- */
-int
-pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
-{
-  LOG_LSA curr_lsa;
-
-  LSA_COPY (&curr_lsa, pgbuf_get_lsa (pgptr));
-
-  if (!LSA_EQ (ref_lsa, &curr_lsa))
-    {
-      return 1;
-    }
-  return 0;
-}
-
-/*
  * pgbuf_set_lsa () - Set the log sequence address of the page to the given lsa
  *   return: page lsa or NULL
  *   pgptr(in): Pointer to page
@@ -4365,8 +4335,14 @@ pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
  *
  * Note: This function is for the exclusive use of the log and recovery manager.
  */
+#if !defined(NDEBUG)
+const LOG_LSA *
+pgbuf_set_lsa_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr, const char *caller_file,
+		     int caller_line, const char *caller_func)
+#else
 const LOG_LSA *
 pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
+#endif
 {
   PGBUF_BCB *bufptr;
 
@@ -5748,15 +5724,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	    {
 	      /* the caller is the holder of the buffer page */
 	      holder->fix_count++;
+
 	      /* holder->dirty_before_holder not changed */
-	      if (request_mode == PGBUF_LATCH_WRITE)
-		{
-		  holder->perf_stat.hold_has_write_latch = 1;
-		}
-	      else
-		{
-		  holder->perf_stat.hold_has_read_latch = 1;
-		}
+	      holder->perf_stat.hold_has_read_latch = 1;
 	    }
 #if defined(SERVER_MODE)
 	  else
@@ -5773,16 +5743,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
 	      holder->fix_count = 1;
 	      holder->bufptr = bufptr;
-	      if (request_mode == PGBUF_LATCH_WRITE)
-		{
-		  holder->perf_stat.hold_has_write_latch = 1;
-		  holder->perf_stat.hold_has_read_latch = 0;
-		}
-	      else
-		{
-		  holder->perf_stat.hold_has_read_latch = 1;
-		  holder->perf_stat.hold_has_write_latch = 0;
-		}
+
+	      holder->perf_stat.hold_has_read_latch = 1;
+	      holder->perf_stat.hold_has_write_latch = 0;
 	      holder->perf_stat.dirtied_by_holder = 0;
 	      holder->perf_stat.dirty_before_hold = buf_is_dirty;
 	    }
@@ -6905,15 +6868,11 @@ STATIC_INLINE PGBUF_BCB *
 pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
 {
   PGBUF_BCB *bufptr;
-  int mbw_cnt;
 #if defined(SERVER_MODE)
   int rv;
-  int loop_cnt;
 #endif
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-
-  mbw_cnt = 0;
 
 /* one_phase: no hash-chain mutex */
 one_phase:
@@ -6924,9 +6883,6 @@ one_phase:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
@@ -6939,11 +6895,6 @@ one_phase:
 		{
 		  /* give up one_phase */
 		  goto two_phase;
-		}
-
-	      if (loop_cnt++ < mbw_cnt)
-		{
-		  goto mutex_lock;
 		}
 
 	      /* An unconditional request is given for acquiring mutex */
@@ -6998,9 +6949,6 @@ try_again:
       if (VPID_EQ (&(bufptr->vpid), vpid))
 	{
 #if defined(SERVER_MODE)
-	  loop_cnt = 0;
-
-	mutex_lock2:
 
 	  rv = PGBUF_BCB_TRYLOCK (bufptr);
 	  if (rv == 0)
@@ -7014,11 +6962,6 @@ try_again:
 		{
 		  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_TRYLOCK, 0);
 		  return NULL;
-		}
-
-	      if (loop_cnt++ < mbw_cnt)
-		{
-		  goto mutex_lock2;
 		}
 
 	      /* ret == EBUSY : bufptr->mutex is not held */
@@ -10226,9 +10169,6 @@ pgbuf_get_check_page_validation_level (int page_validation_level)
  * pgbuf_is_valid_page () - Verify if given page is a valid one
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   vpid(in): Complete Page identifier
- *   fun(in): A second function to call to verify if the above page is valid
- *            The function is called on vpid, and arguments
- *   args(in): Additional argument for fun
  *
  * Note: Verify that the given page is valid according to functions:
  *         1) disk_isvalid_page
@@ -10237,12 +10177,9 @@ pgbuf_get_check_page_validation_level (int page_validation_level)
  *       capabilities.
  */
 DISK_ISVALID
-pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
-		     DISK_ISVALID (*fun) (const VPID * vpid, void *args), void *args)
+pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error)
 {
   DISK_ISVALID valid;
-
-  /* TODO: fix me */
 
   if (fileio_get_volume_label (vpid->volid, PEEK) == NULL || VPID_ISNULL (vpid))
     {
@@ -10253,15 +10190,12 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error,
 
   /*valid = disk_isvalid_page (thread_p, vpid->volid, vpid->pageid); */
   valid = disk_is_page_sector_reserved_with_debug_crash (thread_p, vpid->volid, vpid->pageid, !no_error);
-  if (valid != DISK_VALID || (fun != NULL && (valid = (*fun) (vpid, args)) != DISK_VALID))
+  if (valid == DISK_INVALID && !no_error)
     {
-      if (valid != DISK_ERROR && !no_error)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
-		  fileio_get_volume_label (vpid->volid, PEEK));
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+	      fileio_get_volume_label (vpid->volid, PEEK));
 
-	  assert (false);
-	}
+      assert (false);
     }
 
   return valid;
@@ -11435,7 +11369,7 @@ pgbuf_compare_hold_vpid_for_sort (const void *p1, const void *p2)
 int
 pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 			 const PGBUF_LATCH_MODE request_mode, PGBUF_WATCHER * req_watcher, const char *caller_file,
-			 int caller_line)
+			 int caller_line, const char *caller_func)
 #else /* NDEBUG */
 int
 pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
@@ -11518,7 +11452,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
     }
 
 #if !defined(NDEBUG)
-  ret_pgptr = pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, latch_condition, caller_file, caller_line);
+  ret_pgptr =
+    pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, latch_condition, caller_file, caller_line,
+		     caller_func);
 #else
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
@@ -11640,7 +11576,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       else if (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))
 	{
 	  /* already have a fix on this page, should not be here */
-	  if (pgbuf_is_valid_page (thread_p, req_vpid, false, NULL, NULL) != DISK_VALID)
+	  if (pgbuf_is_valid_page (thread_p, req_vpid, false) != DISK_VALID)
 	    {
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
@@ -11911,7 +11847,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	}
       pgptr =
 	pgbuf_fix_debug (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_UNCONDITIONAL_LATCH, caller_file,
-			 caller_line);
+			 caller_line, caller_func);
 #else
       pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, PGBUF_UNCONDITIONAL_LATCH);
 #endif
@@ -12007,7 +11943,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 #if !defined(NDEBUG)
       pgptr =
 	pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
-			 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+			 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line, caller_func);
 #else
       pgptr =
 	pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
@@ -12112,7 +12048,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 #if !defined(NDEBUG)
 	      pgptr =
 		pgbuf_fix_debug (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
-				 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line);
+				 PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line, caller_func);
 #else
 	      pgptr =
 		pgbuf_fix_release (thread_p, &(ordered_holders_info[i].vpid), curr_fetch_mode, curr_request_mode,
@@ -12290,7 +12226,7 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
 #if !defined (NDEBUG)
 void
 pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object, const char *caller_file,
-			   int caller_line)
+			   int caller_line, const char *caller_func)
 #else /* NDEBUG */
 void
 pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
@@ -12339,7 +12275,7 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
 
 #if !defined(NDEBUG)
   pgbuf_watcher_init_debug (watcher_object, caller_file, caller_line, false);
-  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line);
+  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
 #else
   pgbuf_unfix (thread_p, pgptr);
 #endif
@@ -14154,8 +14090,11 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  */
 int
 pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
-					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
-					  const char *caller_file, int caller_line)
+					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page
+#if !defined (NDEBUG)
+					  , const char *caller_file, int caller_line, const char *caller_func
+#endif
+  )
 {
   DISK_ISVALID isvalid;
   int error_code = NO_ERROR;
@@ -14186,7 +14125,8 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   *page = pgbuf_fix_release (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition);
 #else /* !NDEBUG */
   *page =
-    pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
+    pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line,
+		     caller_func);
 #endif /* !NDEBUG */
   if (*page == NULL && !log_is_in_crash_recovery_and_not_yet_completes_redo ())
     {
@@ -15790,11 +15730,10 @@ pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & per
 static void
 pgbuf_page_maintenance_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      // wait for boot to finish
-      return;
-    }
+  if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+      {
+        return;
+      }
 
   /* page buffer maintenance thread adjust quota's based on thread activity. */
   pgbuf_adjust_quotas (&thread_ref);
@@ -15823,11 +15762,10 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+      if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+        {
+          return;
+        }
 
       // did not timeout, someone requested flush... run at least once
       bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
@@ -15867,9 +15805,8 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 static void
 pgbuf_page_post_flush_execute (cubthread::entry & thread_ref)
 {
-  if (!BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
     {
-      // wait for boot to finish
       return;
     }
 
@@ -15908,11 +15845,10 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry & thread_ref) override
     {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
+      if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
+        {
+          return;
+        }
 
       if (m_first_run)
 	{

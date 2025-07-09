@@ -18,12 +18,16 @@
 
 #include "method_query_handler.hpp"
 
+#include "parser.h"
+#include "db_session.h"
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
 #include "method_query_util.hpp"
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
+#include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
@@ -33,6 +37,8 @@ namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
+    , m_tid (NULL_TRANID)
+    , m_user ("")
     , m_error_ctx (ctx)
     , m_sql_stmt ()
     , m_stmt_type (CUBRID_STMT_NONE)
@@ -86,6 +92,12 @@ namespace cubmethod
   }
 
   std::string
+  query_handler::get_user_name () const
+  {
+    return m_user;
+  }
+
+  std::string
   query_handler::get_sql_stmt () const
   {
     return m_sql_stmt;
@@ -127,6 +139,18 @@ namespace cubmethod
   void query_handler::set_is_occupied (bool flag)
   {
     m_is_occupied = flag;
+  }
+
+  TRANID
+  query_handler::get_tran_id ()
+  {
+    return m_tid;
+  }
+
+  void
+  query_handler::set_tran_id (TRANID tid)
+  {
+    m_tid = tid;
   }
 
   prepare_info &
@@ -181,6 +205,7 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
+	m_user = au_get_current_user_name ();
 	m_prepare_info.handle_id = get_id ();
 	m_prepare_info.stmt_type = m_query_result.stmt_type;
 	m_prepare_info.num_markers = get_num_markers ();
@@ -205,6 +230,21 @@ namespace cubmethod
 	return prepare (m_sql_stmt, m_prepare_flag);
       }
     return ER_FAILED;
+  }
+
+  int
+  query_handler::prepare_compile (const std::string &sql)
+  {
+    int level;
+    qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
+
+    int error = prepare (sql, PREPARE_STATIC_SQL);
+
+    // restore
+    qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
+
+    return error;
   }
 
   int
@@ -524,6 +564,10 @@ namespace cubmethod
     if (qres && qres->type == T_SELECT)
       {
 	result_info.query_id = qres->res.s.query_id;
+	if (result_info.query_id >= SHRT_MAX) // handle invalid value
+	  {
+	    result_info.query_id = NULL_QUERY_ID; // initialized value
+	  }
       }
     return error;
   }
@@ -632,7 +676,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
-    m_query_id = -1;
+    m_query_id = (uint64_t) (-1);
   }
 
   int
@@ -742,7 +786,15 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
+    if (flag & PREPARE_STATIC_SQL)
+      {
+	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
+      }
+
+    db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
+    g_open_buffer_control_flags = 0;
+
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
@@ -776,10 +828,7 @@ namespace cubmethod
 	  {
 	    close_and_free_session ();
 	  }
-	else
-	  {
-	    m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
-	  }
+	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	m_is_prepared = false;
 	return ER_FAILED;
       }
@@ -790,6 +839,7 @@ namespace cubmethod
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
+    db_session_set_holdable (m_session, false);
 
     /* prepare result set */
     m_num_markers = get_num_markers ();
@@ -820,6 +870,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    db_init_lexer_lineno ();
     m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {
@@ -1011,6 +1062,12 @@ namespace cubmethod
 		      col_name_string, default_value_string,
 		      auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 		      attr_name_string, class_name_string, is_non_null);
+
+    if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE || er_errid () == ER_OBJ_INVALID_ARGUMENTS)
+      {
+	// do not check
+	er_clear ();
+      }
 
     return info;
   }

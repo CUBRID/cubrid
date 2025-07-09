@@ -31,6 +31,8 @@
 #include "intl_support.h"
 #include "uca_support.h"
 #include "unicode_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2618,7 +2620,7 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
   ce_index = 0;
   state = 0;
   error_found = false;
-  while (strlen (str) > 0 && !error_found)
+  while (*str && !error_found)
     {
       int result = 0;
       int val;

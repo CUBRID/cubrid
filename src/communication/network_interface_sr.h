@@ -37,7 +37,6 @@
 #include "thread_compat.hpp"
 
 // forward definitions
-struct method_sig_list;
 struct qfile_list_id;
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
@@ -82,6 +81,7 @@ extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 extern void shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void shf_get_maxslotted_reclength (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stde_is_loaded (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -120,7 +120,6 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -138,6 +137,7 @@ extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *re
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -150,8 +150,7 @@ extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
-					       method_sig_list * methsg_list);
+
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 
@@ -183,7 +182,7 @@ extern void sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned 
 extern void sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sjsp_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void spl_get_server_port (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void srepl_log_get_append_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -241,9 +240,7 @@ extern void sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void ssession_stop_attached_threads (void *session);
-
-extern void smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory);
 
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -256,4 +253,12 @@ extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 /* flashback */
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* PL */
+extern void splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* memmon */
+extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

@@ -27,7 +27,9 @@ extern "C" size_t malloc_usable_size (void *);
 #elif defined(__linux__)
 #include <malloc.h>
 #else
+// *INDENT-OFF*
 extern "C" size_t malloc_usable_size (void *) throw ();
+// *INDENT-ON*
 #endif
 
 /**
@@ -36,37 +38,69 @@ extern "C" size_t malloc_usable_size (void *) throw ();
  */
 
 #include "wrappers/mallocinfo.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
+namespace HL
+{
 
-namespace HL {
-
-  class MallocHeap {
+  class MallocHeap
+  {
   public:
 
-    enum { Alignment = MallocInfo::Alignment };
+    enum
+    { Alignment = MallocInfo::Alignment };
 
-    inline void * malloc (size_t sz) {
-      return ::malloc (sz);
+    inline void *malloc (size_t sz)
+    {
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
+      if (mmon_is_memory_monitor_enabled ())
+	{
+	  void *ptr =::malloc (sz + cubmem::MMON_METAINFO_SIZE);
+	  if (ptr != NULL)
+	    {
+	      mmon_add_stat ((char *) ptr, malloc_usable_size (ptr), __FILE__, __LINE__);
+	    }
+	  return ptr;
+	}
+      else
+	{
+#endif
+	  return::malloc (sz);
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
+	}
+#endif
     }
-  
-    inline void free (void * ptr) {
+
+    inline void free (void *ptr)
+    {
+#if defined(SERVER_MODE) && !defined(_MSC_VER)
+      if (mmon_is_memory_monitor_enabled () && ptr != NULL)
+	{
+	  mmon_sub_stat ((char *) ptr);
+	}
+#endif
       ::free (ptr);
     }
 
 #if defined(_MSC_VER)
-    inline size_t getSize (void * ptr) {
-      return ::_msize (ptr);
+    inline size_t getSize (void *ptr)
+    {
+      return::_msize (ptr);
     }
 #elif defined(__APPLE__)
-    inline size_t getSize (void * ptr) {
-      return ::malloc_size (ptr);
+    inline size_t getSize (void *ptr)
+    {
+      return::malloc_size (ptr);
     }
 #elif defined(__GNUC__) && !defined(__SVR4)
-    inline size_t getSize (void * ptr) {
-      return ::malloc_usable_size (ptr);
+    inline size_t getSize (void *ptr)
+    {
+      return::malloc_usable_size (ptr);
     }
 #endif
-  
+
   };
 
 }

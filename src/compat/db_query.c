@@ -421,6 +421,10 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->oids_included = 0;
   info->into_list = NULL;
   info->into_count = 0;
+
+  /* for subquery result-cache */
+  info->subquery_num = 0;
+  info->subquery_info = NULL;
 }
 
 /*
@@ -468,6 +472,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   packed_size += OR_INT_SIZE;
   /* recompile */
   packed_size += OR_INT_SIZE;
+  /* do_cache */
+  packed_size += OR_INT_SIZE;
   /* oids included */
   packed_size += OR_INT_SIZE;
   /* into list length */
@@ -476,6 +482,21 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   for (i = 0; i < info->into_count; i++)
     {
       packed_size += or_packed_string_length (info->into_list[i], NULL);
+    }
+
+  /* subquery_num */
+  packed_size += OR_INT_SIZE;
+  if (info->subquery_num > 0)
+    {
+      /* subquery's xasl_id */
+      packed_size += OR_XASL_ID_SIZE * info->subquery_num;
+      /* subquery's host_var_count */
+      packed_size += OR_INT_SIZE * info->subquery_num;
+      for (i = 0; i < info->subquery_num; i++)
+	{
+	  /* subquery's host_var_index */
+	  packed_size += OR_INT_SIZE * info->subquery_info[i].host_var_count;
+	}
     }
 
   ptr = (char *) malloc (packed_size);
@@ -497,6 +518,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   ptr = or_pack_int (ptr, info->auto_param_count);
   /* recompile */
   ptr = or_pack_int (ptr, info->recompile);
+  /* do_cache */
+  ptr = or_pack_int (ptr, info->do_cache);
   /* oids included */
   ptr = or_pack_int (ptr, info->oids_included);
   /* into list length */
@@ -524,6 +547,20 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	}
     }
 
+  /* subquery */
+  ptr = or_pack_int (ptr, info->subquery_num);
+  for (i = 0; i < info->subquery_num; i++)
+    {
+      int k;
+
+      OR_PACK_XASL_ID (ptr, &(info->subquery_info[i].xasl_id));
+      ptr = or_pack_int (ptr, info->subquery_info[i].host_var_count);
+      for (k = 0; k < info->subquery_info[i].host_var_count; k++)
+	{
+	  ptr = or_pack_int (ptr, info->subquery_info[i].host_var_index[k]);
+	}
+    }
+
   return packed_size;
 }
 
@@ -536,7 +573,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
-  int i = 0;
+  int i, subquery_num, q = 0;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -552,6 +589,8 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
   ptr = or_unpack_int (ptr, &info->auto_param_count);
   /* unpack recompile */
   ptr = or_unpack_int (ptr, &info->recompile);
+  /* unpack do_cache */
+  ptr = or_unpack_int (ptr, &info->do_cache);
   /* oids included */
   ptr = or_unpack_int (ptr, &info->oids_included);
   /* unpack into list length */
@@ -600,6 +639,42 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
     }
+
+  /* subquery */
+  ptr = or_unpack_int (ptr, &info->subquery_num);
+  subquery_num = info->subquery_num;
+
+  if (subquery_num > 0)
+    {
+      info->subquery_info = (DB_PREPARE_SUBQUERY_INFO *) calloc (subquery_num, sizeof (DB_PREPARE_SUBQUERY_INFO));
+      if (info->subquery_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  subquery_num * sizeof (DB_PREPARE_SUBQUERY_INFO));
+	  goto error;
+	}
+      for (q = 0; q < subquery_num; q++)
+	{
+	  OR_UNPACK_XASL_ID (ptr, &info->subquery_info[q].xasl_id);
+	  ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_count);
+	  if (info->subquery_info[q].host_var_count > 0)
+	    {
+	      info->subquery_info[q].host_var_index =
+		(int *) malloc (info->subquery_info[q].host_var_count * sizeof (int));
+	      if (info->subquery_info[q].host_var_index == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  info->subquery_info[q].host_var_count * sizeof (int));
+		  goto error;
+		}
+	      for (i = 0; i < info->subquery_info[q].host_var_count; i++)
+		{
+		  ptr = or_unpack_int (ptr, &info->subquery_info[q].host_var_index[i]);
+		}
+	    }
+	}
+    }
+
   return NO_ERROR;
 
 error:
@@ -637,6 +712,7 @@ error:
 	  col = next_p;
 	}
     }
+
   if (info->host_variables.vals != NULL)
     {
       db_value_clear_array (&info->host_variables);
@@ -657,6 +733,20 @@ error:
 	}
       free_and_init (info->into_list);
     }
+
+  /* subquery */
+  if (info->subquery_info != NULL)
+    {
+      for (i = 0; i < q; i++)
+	{
+	  if (info->subquery_info[i].host_var_index != NULL)
+	    {
+	      free_and_init (info->subquery_info[i].host_var_index);
+	    }
+	}
+      free_and_init (info->subquery_info);
+    }
+
   return ER_FAILED;
 }
 
@@ -3150,6 +3240,9 @@ db_query_tuple_count (DB_QUERY_RESULT * result)
 int
 db_query_column_count (DB_QUERY_RESULT * result)
 {
+  DB_QUERY_TYPE *t;
+  int num_cols = 0;
+
   CHECK_1ARG_MINUSONE (result);
 
   if (result->status == T_CLOSED)
@@ -3164,7 +3257,12 @@ db_query_column_count (DB_QUERY_RESULT * result)
       return -1;
     }
 
-  return (DB_OID_INCLUDED (result)) ? (result->col_cnt - 1) : result->col_cnt;
+  for (t = result->query_type; t != NULL; t = db_query_format_next (t))
+    {
+      num_cols++;
+    }
+
+  return num_cols;
 }
 
 #if defined(WINDOWS) || defined (ENABLE_UNUSED_FUNCTION)

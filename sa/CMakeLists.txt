@@ -29,6 +29,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   )
@@ -45,11 +46,13 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_function.cpp
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_json_allocator.cpp
   ${COMPAT_DIR}/db_json_path.cpp
   ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
+  ${COMPAT_DIR}/db_method_static.cpp
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
@@ -87,12 +90,15 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/memory_hash.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/hide_password.cpp
   ${BASE_DIR}/get_clock_freq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perf_monitor_trackers.cpp
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/printer.cpp
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -151,14 +157,15 @@ set(BASE_HEADERS
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_monitor.h
+  ${BASE_DIR}/perf_monitor_trackers.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
-  ${BASE_DIR}/semaphore.hpp
-  ${BASE_DIR}/ddl_log.h
+  ${BASE_DIR}/scope_exit.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -177,8 +184,14 @@ set(CONNECTION_SOURCES
   )
 
 set(COMMUNICATION_SOURCES
+  ${COMMUNICATION_DIR}/network_callback_cl.cpp
+  ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  )
+
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
   )
 
 set(MONITOR_SOURCES
@@ -234,7 +247,15 @@ set(OPTIMIZER_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_DIR}/plan_generation.c
-  ${OPTIMIZER_DIR}/query_rewrite.c
+  )
+
+set(REWRITER_SOURCES
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${REWRITER_DIR}/query_rewrite.c
   )
 
 set(QUERY_SOURCES
@@ -251,6 +272,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
+  ${QUERY_DIR}/query_hash_join.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -265,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -277,6 +300,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
+  ${QUERY_DIR}/query_hash_join.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -285,9 +309,20 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
+  ${OBJECT_DIR}/authenticate_access_auth.cpp
+  ${OBJECT_DIR}/authenticate_cache.cpp
+  ${OBJECT_DIR}/authenticate_context.cpp
+  ${OBJECT_DIR}/authenticate_access_class.cpp
+  ${OBJECT_DIR}/authenticate_grant.cpp
+  ${OBJECT_DIR}/authenticate_owner.cpp
+  ${OBJECT_DIR}/authenticate_password.cpp
+  ${OBJECT_DIR}/authenticate_access_user.cpp
+  ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
@@ -301,6 +336,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
+  ${OBJECT_DIR}/schema_system_catalog.cpp
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
@@ -314,33 +354,89 @@ set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_cl.c
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_connection.cpp
+  ${SP_DIR}/pl_compile_handler.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
+  ${SP_DIR}/pl_executor.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_file.c
+  ${SP_DIR}/pl_sr.cpp
+  ${SP_DIR}/sp_catalog.cpp
+  ${SP_DIR}/sp_code.cpp
+  )
+
+set(SP_HEADERS
+  ${SP_DIR}/pl_connection.hpp
+  ${SP_DIR}/pl_execution_stack_context.hpp
+  ${SP_DIR}/pl_signature.hpp
+  ${SP_DIR}/pl_struct_compile.cpp
+)
+
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  )
+
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_SOURCES
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_HEADERS
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
   )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
-  ${METHOD_DIR}/method_connection_cl.cpp
-  ${METHOD_DIR}/method_connection_sr.cpp
-  ${METHOD_DIR}/method_connection_pool.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
-  ${METHOD_DIR}/method_invoke_java.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
   ${METHOD_DIR}/method_struct_query.cpp
   ${METHOD_DIR}/method_struct_oid_info.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_query_handler.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
   ${METHOD_DIR}/query_method.cpp
   )
@@ -380,6 +476,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -402,6 +499,11 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -528,6 +630,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_common.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${COMPAT_SOURCES}
@@ -556,9 +659,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/scanner_support.c
   ${PARSER_DIR}/view_transform.c
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -574,8 +681,6 @@ SET_SOURCE_FILES_PROPERTIES(
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -591,16 +696,25 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
+  ${SP_HEADERS}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_HEADERS}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${PARSER_HEADERS}
@@ -619,7 +733,7 @@ add_library(cubridsa SHARED
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridsa PRIVATE SA_MODE ${COMMON_DEFS})
+target_compile_definitions(cubridsa PRIVATE SA_MODE CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubridsa PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -631,13 +745,11 @@ if(WIN32)
     ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
     ${LOADER_LEXER_OUTPUT}
-    ${ESQL_GRAMMAR_OUTPUT}
-    ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
   target_compile_definitions(cubridsa PRIVATE YY_NO_UNISTD_H)
-  target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
+  target_link_libraries(cubridsa LINK_PRIVATE ws2_32)
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 
@@ -661,16 +773,16 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
-  ${JAVA_INC}
   )
 if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
+  target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 # for dblink
-target_link_libraries(cubridsa cascci)
+target_link_libraries(cubridsa PUBLIC cascci)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})

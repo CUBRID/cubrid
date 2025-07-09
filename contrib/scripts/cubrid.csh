@@ -25,7 +25,19 @@ else
 endif
 
 set path=($CUBRID/bin /usr/sbin $path)
-set curses_lib=
 
-setenv SHLIB_PATH $LD_LIBRARY_PATH
-setenv LIBPATH $LD_LIBRARY_PATH
+#
+#  tuning setting for glib memory library
+#
+#  For more information on environment variables, see https://www.gnu.org/software/libc/manual/html_node/Malloc-Tunable-Parameters.html.
+#  (Notice) To using the environment variables below, you should to remove comment them and add them to the export statement.
+#
+#setenv MALLOC_MMAP_MAX_ 65536           # default : 65536
+#setenv MALLOC_MMAP_THRESHOLD_ 131072    # default : 131072 (128K)
+setenv MALLOC_TRIM_THRESHOLD_ 0         # default : 131072 (128K)
+#setenv MALLOC_ARENA_MAX                 # default : core * 8
+
+#
+# preloading library for another memory library
+#
+#setenv LD_PRELOAD /usr/lib64/jemalloc.so.1

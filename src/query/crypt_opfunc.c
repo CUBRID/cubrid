@@ -55,6 +55,8 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define AES128_BLOCK_LEN (128/8)
 #define AES128_KEY_LEN (128/8)
@@ -337,7 +339,7 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
 		       char **dest_p, int *dest_len_p, CIPHER_ENCRYPTION_TYPE enc_type)
 {
   char *dest = NULL;
-  int dest_len;
+  int dest_len = 0;
   int error_status = NO_ERROR;
   int pad, pad_len;
   int i;

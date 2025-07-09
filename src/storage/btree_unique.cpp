@@ -25,6 +25,18 @@
 #include "string_buffer.hpp"
 
 #include <utility>
+#if 0
+// This file contains `placement new` being used within it, and there are
+// no explicit cases of calling `new`. Since heap memory monitoring does not
+// encounter any holes even without tracking this file, it is considered an
+// exception from the tracked files.
+//
+// To bring this file into the scope of memory monitoring, the usage of
+// `placement new` needs to be removed.
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+#endif
 
 btree_unique_stats::btree_unique_stats (stat_type keys, stat_type nulls /* = 0 */)
   : m_rows (keys + nulls)
@@ -223,4 +235,10 @@ multi_index_unique_stats::operator+= (const multi_index_unique_stats &other)
     {
       m_stats_map[it.first] += it.second;
     }
+}
+
+void
+multi_index_unique_stats::copy_to (multi_index_unique_stats &dest) const
+{
+  dest.m_stats_map = m_stats_map;
 }

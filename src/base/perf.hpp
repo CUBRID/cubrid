@@ -101,7 +101,7 @@
 namespace cubperf
 {
   // stat_definition - defines one statistics entry in a set
-  class stat_definition
+  class stat_definition final
   {
     public:
 
@@ -113,9 +113,8 @@ namespace cubperf
 	COUNTER_AND_TIMER
       };
 
-      // constructor
-      stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name = NULL);
-      // copy constructor
+      inline constexpr stat_definition (const stat_id id, type stat_type,
+					const char *first_name, const char *second_name = nullptr);
       stat_definition (const stat_definition &other);
 
       stat_definition &operator= (const stat_definition &other);
@@ -140,13 +139,22 @@ namespace cubperf
   //
   // see how to use in file description comment
   //
-  class statset_definition
+  class statset_definition final
   {
     public:
-      // no default constructor
+      using init_list_t = std::initializer_list<stat_definition>;
+
+    public:
       statset_definition (void) = delete;
-      statset_definition (std::initializer_list<stat_definition> defs);
+      statset_definition (init_list_t defs);
+
+      statset_definition (const statset_definition &) = delete;
+      statset_definition (statset_definition &&) = delete;
+
       ~statset_definition (void);
+
+      statset_definition &operator = (const statset_definition &) = delete;
+      statset_definition &operator = (statset_definition &&) = delete;
 
       // create (construct) a non-atomic set of values
       statset *create_statset (void) const;
@@ -245,6 +253,15 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
+
+  inline constexpr stat_definition::stat_definition (const stat_id id, type stat_type,
+      const char *first_name, const char *second_name)
+    : m_id (id)
+    , m_type (stat_type)
+    , m_names { first_name, second_name }
+    , m_offset (0)
+  {
+  }
 
   template <bool IsAtomic>
   void
@@ -466,7 +483,7 @@ namespace cubperf
     , m_values (new generic_value<IsAtomic>[m_value_count])
     , m_timept (clock::now ())
   {
-    //
+    std::fill (m_values, m_values + m_value_count, 0LL);
   }
 
   template<bool IsAtomic>

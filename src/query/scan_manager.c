@@ -50,6 +50,10 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "query_hash_scan.h"
+#include "statistics.h"
+#include "px_heap_scan_manager.hpp"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -675,6 +679,9 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
   filter_info_p->num_vstr_ptr = num_vstr_ptr;
   filter_info_p->vstr_ids = vstr_ids;
   filter_info_p->func_idx_col_id = -1;
+
+  filter_info_p->matched_attid_idx_4_keyflt = NULL;
+  filter_info_p->matched_attid_idx_4_readval = NULL;
 }
 
 /*
@@ -1490,18 +1497,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   DB_MIDXKEY midxkey;
 
   int idx_ncols = 0, natts, i, j;
-  int buf_size, nullmap_size;
+  int buf_size;
 
   regu_variable_list_node *operand;
 
   char *nullmap_ptr;		/* ponter to boundbits */
-  char *key_ptr;		/* current position in key */
 
   OR_BUF buf;
 
   bool need_new_setdomain = false;
   TP_DOMAIN *idx_setdomain = NULL, *vals_setdomain = NULL;
   TP_DOMAIN *idx_dom = NULL, *val_dom = NULL, *dom = NULL, *next = NULL;
+  DB_TYPE idx_type_id;
   TP_DOMAIN dom_buf;
   DB_VALUE *coerced_values = NULL;
   bool *has_coerced_values = NULL;
@@ -1556,10 +1563,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
 
-  /* bitmap is always fully sized */
-  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  buf_size = nullmap_size;
-
   /* check to need a new setdomain */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, i = 0; operand != NULL && idx_dom != NULL;
        operand = operand->next, idx_dom = idx_dom->next, i++)
@@ -1584,7 +1587,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
+      idx_type_id = TP_DOMAIN_TYPE (idx_dom);
       val_type_id = DB_VALUE_DOMAIN_TYPE (val);
+
+      if (!tp_valid_indextype (val_type_id))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (idx_type_id),
+		  pr_type_name (val_type_id));
+	  goto err_exit;
+	}
+
       if (TP_IS_STRING_TYPE (val_type_id))
 	{
 	  /* we need to check for maxes */
@@ -1599,7 +1611,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (TP_DOMAIN_TYPE (idx_dom) != val_type_id)
+      if (idx_type_id != val_type_id)
 	{
 	  /* allocate DB_VALUE array to store coerced values. */
 	  if (has_coerced_values == NULL)
@@ -1634,8 +1646,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	      has_coerced_values[i] = true;
 	    }
 	}
-      else if (TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NUMERIC || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_CHAR
-	       || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_BIT || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NCHAR)
+      else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT
+	       || idx_type_id == DB_TYPE_NCHAR)
 	{
 	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARNCHAR, DB_TYPE_VARBIT */
 
@@ -1746,6 +1758,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
     }
 
+  buf_size += or_multi_header_size (idx_ncols);
+
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
     {
@@ -1753,11 +1767,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       goto err_exit;
     }
 
-  nullmap_ptr = midxkey.buf;
-  key_ptr = nullmap_ptr + nullmap_size;
+  or_init (&buf, midxkey.buf, buf_size);
 
-  or_init (&buf, key_ptr, buf_size - nullmap_size);
-  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, idx_ncols);
+
+  or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -1777,12 +1792,14 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
       if (DB_IS_NULL (val))
 	{
 	  if (is_iss && i == 0)
 	    {
 	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-	      OR_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	      assert (or_multi_is_null (nullmap_ptr, i));
 	      continue;
 	    }
 	  else
@@ -1794,10 +1811,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       dom->type->index_writeval (&buf, val);
-      OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
+      or_multi_set_not_null (nullmap_ptr, i);
     }
 
-  assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
+  assert (buf_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  for (i = natts; i < idx_ncols; i++)
+    {
+      assert (or_multi_is_null (nullmap_ptr, i));
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, buf_size, i);
+    }
+
+  or_multi_put_size_offset (nullmap_ptr, idx_ncols, buf_size);
 
   /* Make midxkey DB_VALUE */
   midxkey.size = buf_size;
@@ -2799,13 +2824,13 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     regu_variable_list_node * regu_list_recordinfo)
+		     regu_variable_list_node * regu_list_recordinfo, bool is_partition_table)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is HEAP SCAN or HEAP SCAN RECORD INFO */
-  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO);
+  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_HEAP_SAMPLING_SCAN);
   scan_id->type = scan_type;
 
   /* initialize SCAN_ID structure */
@@ -2843,6 +2868,19 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
+
+  /* for scampling statistics. */
+  if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
+    {
+      int total_pages = 0;
+      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* sampling_weight = total_page / sampling_page */
+      hsidp->sampling.weight = MAX ((total_pages / NUMBER_OF_SAMPLING_PAGES), 1);
+    }
 
   return NO_ERROR;
 }
@@ -3083,7 +3121,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
   if (btree_glean_root_header_info
-      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+      (thread_p, root_header, &BTS->btid_int, (BTS->btid_int.key_type == NULL)) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -3711,6 +3749,20 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
+
+#if HASH_LIST_SCAN_DUMP_HASH_TABLE
+      if (llsidp->hlsid.hash_list_scan_type != HASH_METH_HASH_FILE)
+	{
+	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
+	    {
+	      mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			    (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %ld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
+	}
+#endif
+
       scan_end_scan (thread_p, scan_id);
 
       if (on_trace)
@@ -3971,7 +4023,7 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* */
-		       QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list)
+		       QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE * sig_array)
 {
   /* scan type is METHOD SCAN */
   scan_id->type = S_METHOD_SCAN;
@@ -3980,10 +4032,15 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  int error = scan_id->s.msid.init (thread_p, meth_sig_list, list_id);
+  int error = scan_id->s.msid.init (thread_p, sig_array, list_id);
   if (error == NO_ERROR)
     {
       error = scan_id->s.msid.open ();
+      if (error != NO_ERROR)
+	{
+	  /* it needs to clear the related resources */
+	  scan_id->s.msid.clear (false);
+	}
     }
   return error;
 }
@@ -4015,7 +4072,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (&scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
 }
 
 /*
@@ -4045,6 +4102,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
       UT_CAST_TO_NULL_HEAP_OID (&hsidp->hfid, &hsidp->curr_oid);
       if (!OID_IS_ROOTOID (&hsidp->cls_oid))
@@ -4068,7 +4126,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  /* A new argument(is_indexscan = false) is appended */
 	  ret =
-	    heap_scancache_start (thread_p, &hsidp->scan_cache, &hsidp->hfid, &hsidp->cls_oid, scan_id->fixed, false,
+	    heap_scancache_start (thread_p, &hsidp->scan_cache, &hsidp->hfid, &hsidp->cls_oid, scan_id->fixed,
 				  mvcc_snapshot);
 	  if (ret != NO_ERROR)
 	    {
@@ -4106,7 +4164,11 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->caches_inited = true;
 	}
       break;
-
+    case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_start_parallel_heap_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
     case S_HEAP_PAGE_SCAN:
       VPID_SET_NULL (&scan_id->s.hpsid.curr_vpid);
       break;
@@ -4148,7 +4210,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       /* A new argument(is_indexscan = true) is appended */
       ret =
-	heap_scancache_start (thread_p, &isidp->scan_cache, &isidp->hfid, &isidp->cls_oid, scan_id->fixed, true,
+	heap_scancache_start (thread_p, &isidp->scan_cache, &isidp->hfid, &isidp->cls_oid, scan_id->fixed,
 			      mvcc_snapshot);
       if (ret != NO_ERROR)
 	{
@@ -4351,6 +4413,12 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       break;
 
+    case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
+#endif /* SERVER_MODE && !WINDOWS */
+      break;
+
     case S_INDX_SCAN:
       if (s_id->grouped)
 	{
@@ -4482,6 +4550,8 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
+    case S_PARALLEL_HEAP_SCAN:
       if (s_id->grouped)
 	{
 	  /* grouped, fixed scan */
@@ -4635,6 +4705,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
 
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
@@ -4663,6 +4734,12 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  scan_id->direction = S_FORWARD;
 	}
+      break;
+
+    case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_end_parallel_heap_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
       break;
 
     case S_CLASS_ATTR_SCAN:
@@ -4754,6 +4831,13 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_PAGE_SCAN:
     case S_CLASS_ATTR_SCAN:
     case S_VALUES_SCAN:
+    case S_HEAP_SAMPLING_SCAN:
+      break;
+
+    case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE && !WINDOWS
+      scan_close_parallel_heap_scan (thread_p, scan_id);
+#endif /* SERVER_MODE && !WINDOWS */
       break;
 
     case S_INDX_SCAN:
@@ -4852,6 +4936,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  db_private_free_and_init (thread_p, isidp->multi_range_opt.sort_col_dom);
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
+      btree_range_scan_free_matched_idx (&isidp->bt_scan);
       break;
 
     case S_LIST_SCAN:
@@ -4860,12 +4945,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-#if 0
-	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-			       (void *) &llsidp->hlsid.hash_list_scan_type);
-	  printf ("temp file : tuple count = %d, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		  llsidp->list_id->page_cnt * 16);
+#if HASH_LIST_SCAN_DUMP_HASH_TABLE
+	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
+	    {
+	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+				   (void *) &(llsidp->list_id->type_list),
+				   (void *) &(llsidp->hlsid.hash_list_scan_type));
+	      printf ("temp file : tuple count = %ld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		      llsidp->list_id->page_cnt * 16);
+	    }
 #endif
+
 	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
@@ -5032,6 +5122,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   UINT64 old_fetches = 0, old_ioreads = 0;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
+  SCAN_STATS old_scan_stats;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -5040,13 +5131,27 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+
+      if (scan_id->partition_stats != NULL)
+	{
+	  memcpy (&old_scan_stats, &scan_id->scan_stats, sizeof (SCAN_STATS));
+	}
     }
 
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
+    case S_HEAP_SAMPLING_SCAN:
       status = scan_next_heap_scan (thread_p, scan_id);
+      break;
+    case S_PARALLEL_HEAP_SCAN:
+#if SERVER_MODE && !WINDOWS
+      status = scan_next_parallel_heap_scan (thread_p, scan_id);
+#else
+      assert_release (0);
+      status = S_ERROR;
+#endif /* SERVER_MODE && !WINDOWS */
       break;
 
     case S_HEAP_PAGE_SCAN:
@@ -5117,6 +5222,51 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       scan_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       scan_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+
+      if (scan_id->partition_stats != NULL)
+	{
+	  perfmon_add_timeval (&scan_id->partition_stats->elapsed_scan, &old_scan_stats.elapsed_scan,
+			       &scan_id->scan_stats.elapsed_scan);
+	  scan_id->partition_stats->num_fetches += scan_id->scan_stats.num_fetches - old_scan_stats.num_fetches;
+	  scan_id->partition_stats->num_ioreads += scan_id->scan_stats.num_ioreads - old_scan_stats.num_ioreads;
+
+	  switch (scan_id->type)
+	    {
+	    case S_HEAP_SCAN:
+	    case S_HEAP_SCAN_RECORD_INFO:
+	    case S_HEAP_SAMPLING_SCAN:
+	    case S_LIST_SCAN:
+	      scan_id->partition_stats->read_rows += scan_id->scan_stats.read_rows - old_scan_stats.read_rows;
+	      scan_id->partition_stats->qualified_rows +=
+		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
+	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_hash_build, &old_scan_stats.elapsed_hash_build,
+				   &scan_id->scan_stats.elapsed_hash_build);
+	      break;
+
+	    case S_INDX_SCAN:
+	      scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_scan_stats.read_keys;
+	      scan_id->partition_stats->qualified_keys +=
+		scan_id->scan_stats.qualified_keys - old_scan_stats.qualified_keys;
+	      scan_id->partition_stats->key_qualified_rows +=
+		scan_id->scan_stats.key_qualified_rows - old_scan_stats.key_qualified_rows;
+	      scan_id->partition_stats->data_qualified_rows +=
+		scan_id->scan_stats.data_qualified_rows - old_scan_stats.data_qualified_rows;
+	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_lookup, &old_scan_stats.elapsed_lookup,
+				   &scan_id->scan_stats.elapsed_lookup);
+	      break;
+
+	    default:
+	      /* fall through */
+	      break;
+	    }
+
+	  assert (scan_id->partition_stats->covered_index == scan_id->scan_stats.covered_index);
+	  assert (scan_id->partition_stats->multi_range_opt == scan_id->scan_stats.multi_range_opt);
+	  assert (scan_id->partition_stats->index_skip_scan == scan_id->scan_stats.index_skip_scan);
+	  assert (scan_id->partition_stats->loose_index_scan == scan_id->scan_stats.loose_index_scan);
+	  assert (scan_id->partition_stats->noscan == scan_id->scan_stats.noscan);
+	  assert (scan_id->partition_stats->agl == NULL);
+	}
     }
 
   return status;
@@ -5154,8 +5304,11 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   regu_variable_list_node *p;
 
   hsidp = &scan_id->s.hsid;
+  p_current_oid = &hsidp->curr_oid;
+
   if (scan_id->mvcc_select_lock_needed)
     {
+      COPY_OID (&current_oid, &hsidp->curr_oid);
       p_current_oid = &current_oid;
     }
   else
@@ -5209,6 +5362,12 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
 			       is_peeking);
 		}
+	      else if (scan_id->type == S_HEAP_SAMPLING_SCAN)
+		{
+		  sp_scan =
+		    heap_next_sampling (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+					&hsidp->scan_cache, is_peeking, &hsidp->sampling);
+		}
 	      else
 		{
 		  assert (scan_id->type == S_HEAP_SCAN_RECORD_INFO);
@@ -5257,7 +5416,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-	  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+	  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	{
 	  is_peeking = COPY;
 	  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5337,7 +5496,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (mvcc_is_mvcc_disabled_class (&hsidp->cls_oid))
+      assert (OID_EQ (&hsidp->cls_oid, &hsidp->scan_cache.node.class_oid));
+      if (hsidp->scan_cache.mvcc_disabled_class)
 	{
 	  LOCK lock = NULL_LOCK;
 	  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5433,7 +5593,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK
 		  || (hsidp->scan_cache.page_watcher.pgptr != NULL
-		      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
+		      && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5454,7 +5614,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+	      && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 	    {
 	      is_peeking = COPY;
 	      COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5471,7 +5631,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking != 0 && hsidp->scan_cache.page_watcher.pgptr != NULL
-		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+		  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -5492,7 +5652,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 
 	      if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-		  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+		  && PGBUF_IS_PAGE_CHANGED (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
 		{
 		  is_peeking = COPY;
 		  COPY_OID (&hsidp->curr_oid, &retry_oid);
@@ -6185,8 +6345,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
       return S_ERROR;
     }
-
-  if (!scan_id->mvcc_select_lock_needed && mvcc_is_mvcc_disabled_class (&isidp->cls_oid))
+  assert (OID_EQ (&isidp->cls_oid, &isidp->scan_cache.node.class_oid));
+  if (!scan_id->mvcc_select_lock_needed && isidp->scan_cache.mvcc_disabled_class)
     {
       /* Data filter passed. If object should be locked and is not locked yet, lock it. */
       LOCK lock = NULL_LOCK;
@@ -7673,8 +7833,8 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1);
+  error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
+					iscan_id->rest_attrs.attr_cache, -1, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -7725,14 +7885,48 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
+    case S_PARALLEL_HEAP_SCAN:
       json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
-      if (scan_id->type == S_HEAP_SCAN)
+      if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_PARALLEL_HEAP_SCAN)
 	{
-	  if (scan_id->scan_stats.agg_optimized_scan)
+	  if (scan_id->scan_stats.agl)
 	    {
-	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	      SCAN_AGL *agl;
+	      char *agl_index;
+	      int len = 0;
+
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  len += strlen (agl->agg_index_name) + 2;	/* for ", " */
+		}
+
+	      agl_index = (char *) malloc (len);
+	      if (agl_index == NULL)
+		{
+		  return;
+		}
+
+	      *agl_index = '\0';
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  if (*agl_index)
+		    {
+		      sprintf (agl_index + strlen (agl_index), ", %s", agl->agg_index_name);
+		    }
+		  else
+		    {
+		      sprintf (agl_index, "%s", agl->agg_index_name);
+		    }
+		}
+	      json_object_set_new (scan, "agl", json_string (agl_index));
+	      free (agl_index);
+	    }
+
+	  if (scan_id->scan_stats.noscan)
+	    {
+	      json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
@@ -7821,9 +8015,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      if (scan_id->scan_stats.agg_optimized_scan)
+    case S_HEAP_SAMPLING_SCAN:
+    case S_PARALLEL_HEAP_SCAN:
+      if (scan_id->scan_stats.noscan)
 	{
-	  fprintf (fp, "(aggregate optimized,");
+	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
 	}
       else
 	{
@@ -7886,9 +8082,26 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
+    case S_PARALLEL_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
+    case S_HEAP_SAMPLING_SCAN:
+      fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
+      if (scan_id->scan_stats.agl)
+	{
+	  SCAN_AGL *agl;
+
+	  fprintf (fp, ", agl: ");
+	  for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+	    {
+	      fprintf (fp, "%s", agl->agg_index_name);
+	      if (agl->next)
+		{
+		  fprintf (fp, ", ");
+		}
+	    }
+	}
+      fprintf (fp, ")");
       break;
 
     case S_INDX_SCAN:
@@ -7935,7 +8148,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 }
-#endif
+#endif /* SERVER_MODE */
 
 /*
  * scan_build_hash_list_scan () - build hash table from list
@@ -8139,6 +8352,13 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 	}
+
+      if (llsidp->tplrecp)
+	{
+	  llsidp->tplrecp->size = tplrec.size;
+	  llsidp->tplrecp->tpl = tplrec.tpl;
+	}
+
       return S_SUCCESS;
     }
 
@@ -8146,7 +8366,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
- * scan_next_hash_list_scan () - The scan is moved to the next hash list scan item.
+ * scan_hash_probe_next () - The scan is moved to the next hash list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *

@@ -35,10 +35,13 @@
 #include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
+#include "schema_system_catalog.hpp"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
 #include <cstring>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubload
 {
@@ -118,7 +121,7 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    if (strchr (class_name, '.') || utility_check_system_class_name (class_name))
+    if (strchr (class_name, '.') || sm_check_system_class_by_name (class_name))
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }
@@ -194,7 +197,7 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, false, NULL);
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, NULL);
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();

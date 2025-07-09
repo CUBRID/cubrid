@@ -31,6 +31,7 @@
 #include "system.h"
 #include "dbtype_def.h"
 #include "parse_tree.h"
+#include "deduplicate_key.h"
 
 #if defined (SERVER_MODE)
 #error Does not belong to server module
@@ -177,7 +178,11 @@ extern "C"
   extern PT_NODE *pt_get_node_from_list (PT_NODE * list, int index);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern PT_HINT_ENUM pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
+
+  extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
+
   extern int pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val);
   extern DB_VALUE *pt_find_value_of_label (const char *label);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -188,7 +193,7 @@ extern "C"
   extern bool pt_is_reserved_word (const char *s);
   extern bool pt_is_keyword (const char *s);
   extern bool pt_is_const_expr_node (PT_NODE * node);
-
+  extern bool pt_is_ascii_string_value_node (const PT_NODE * const node);
   extern FUNCTION_MAP *pt_find_function_name (const char *name);
 
   extern PT_NODE *pt_add_row_oid (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -199,7 +204,8 @@ extern "C"
   extern PT_NODE *pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement);
 
   extern PT_NODE *pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op,
-					   const char *name1, const char *name2);
+					   const char *name1, const char *name2, char **new_trigger_stmt,
+					   int with_evaluate);
   extern int pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1,
 				   DB_OBJECT * object2, DB_VALUE * result);
 
@@ -230,9 +236,11 @@ extern "C"
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
+  extern int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+				       PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
   extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
-						DB_DEFAULT_EXPR_TYPE default_expr_type);
+						DB_DEFAULT_EXPR_TYPE default_expr_type, bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,
@@ -266,7 +274,7 @@ extern "C"
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1,
 					DB_VALUE * arg2, DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain,
 					PT_NODE * o1, PT_NODE * o2, PT_NODE * o3, PT_MISC_TYPE qualifier);
-  extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE * args[],
+  extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[],
 					  const int num_args, DB_VALUE * result);
 
   extern int pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res);
@@ -357,7 +365,6 @@ extern "C"
   extern void pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolved (const PT_NODE * expr);
   extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
-  extern PT_NODE *pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
@@ -398,6 +405,8 @@ extern "C"
   extern int pt_user_specified_name_compare (const char *p, const char *q);
 
   extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
+  extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
+
   extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
@@ -467,6 +476,8 @@ extern "C"
   extern PT_NODE *pt_check_orderbynum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						  int *continue_walk);
   extern void pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater, bool * has_lesser);
   extern PT_NODE *pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -565,6 +576,9 @@ extern "C"
   extern void pt_register_orphan_db_value (PARSER_CONTEXT * parser, const DB_VALUE * orphan);
   extern void pt_free_orphans (PARSER_CONTEXT * parser);
 
+  extern void pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like, PT_NODE * const pattern,
+				   PT_NODE * const escape);
+
   extern bool pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list);
   extern bool pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NODE * group_list,
 					  PT_NODE * tree);
@@ -588,7 +602,8 @@ extern "C"
   extern int pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list, PT_NODE * arg_array[],
 				    const int array_size, int *num_args);
   extern int pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
-  extern void qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
+  extern int pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern void qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where);
 
   extern PT_NODE *pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like_where_syntax,
 					    PT_NODE * like_or_where_expr);
@@ -612,6 +627,7 @@ extern "C"
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
+  extern bool pt_is_operator_arith (PT_OP_TYPE op);
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
@@ -650,7 +666,8 @@ extern "C"
 
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-  extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val);
+  extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset);
+  extern DB_BIGINT pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
   extern bool pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query, bool * mro_candidate,
 						      bool * cannot_eval);
 
@@ -672,6 +689,8 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
+						     DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);
@@ -687,6 +706,8 @@ extern "C"
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 
+  extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
+  extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
 #ifdef __cplusplus
 }
 #endif

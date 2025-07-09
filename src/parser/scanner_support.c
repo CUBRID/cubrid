@@ -39,12 +39,9 @@
 #include "memory_alloc.h"
 #include "misc_string.h"
 
-#define IS_WHITE_CHAR(c) \
-                    ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\0')
-#define IS_WHITE_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+#define IS_WHITE_SPACE(c) (char_isspace2((c)))
 
-#define IS_HINT_ON_TABLE(h) \
-  		((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
+#define IS_HINT_ON_TABLE(h)  ((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
 int parser_input_host_index = 0;
 int parser_statement_OK = 0;
@@ -369,6 +366,7 @@ void
 pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 {
   int i;
+  int num_parallel_threads = 0;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   bool first_hit = true;
@@ -399,12 +397,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_NONE:
 	  break;
 	case PT_HINT_ORDERED:	/* force join left-to-right */
-
-/* TEMPORARY COMMENTED CODE: DO NOT REMOVE ME !!! */
-#if 0
-	  node->info.query.q.select.ordered = hint_table[i].arg_list;
-	  hint_table[i].arg_list = NULL;
-#endif /* 0 */
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -418,6 +410,27 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_LEADING:	/* force specific table to join left-to-right */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.leading = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.leading_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.leading_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
+
 	case PT_HINT_NO_INDEX_SS:	/* disable index skip scan */
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -441,10 +454,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		}
 	    }
 	  break;
-#if 0
-	case PT_HINT_Y:	/* not used */
-	  break;
-#endif /* 0 */
 	case PT_HINT_USE_NL:	/* force nl-join */
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -505,10 +514,46 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
-#if 0
-	case PT_HINT_USE_HASH:	/* not used */
+	case PT_HINT_NO_USE_HASH:	/* disable hash-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.no_use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.no_use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.no_use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
 	  break;
-#endif /* 0 */
+	case PT_HINT_USE_HASH:	/* force hash-join */
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	      node->info.query.q.select.use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+	      node->info.delete_.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	      node->info.update.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  break;
 	case PT_HINT_RECOMPILE:	/* recompile */
 	  node->flag.recompile = 1;
 	  break;
@@ -579,6 +624,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		{
 		  node->info.query.flag.do_cache = 1;
 		}
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
 #if 0
@@ -689,6 +735,43 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_NO_SUBQUERY_CACHE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_PARALLEL_HEAP_SCAN:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_PARALLEL:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.query.q.select.hint =
+			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			}
+		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			}
+		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  break;
 	case PT_HINT_NO_ELIMINATE_JOIN:
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -726,6 +809,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  break;
 	case PT_HINT_SELECT_RECORD_INFO:
 	case PT_HINT_SELECT_PAGE_INFO:
+	case PT_HINT_SAMPLING_SCAN:
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -768,6 +852,19 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  else if (node->node_type == PT_UPDATE)
 	    {
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_INLINE_CTE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+
+	case PT_HINT_MATERIALIZE_CTE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
 	default:
@@ -1006,9 +1103,10 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 		}
 	      in++;
 	    }
+
+	  continue;
 	}
 
-      // IS_WHITE_SPACE (*in)
       if (*in == '(')
 	{
 	  /* illegal hint expression */
@@ -1048,9 +1146,11 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
   /* illegal hint expression */
   if (is_first_hit)
     {
-      parser_free_node (this_parser, hint_table[hint_idx].arg_list);
-      hint_table[hint_idx].arg_list = NULL;
-
+      if (hint_table[hint_idx].arg_list != NULL)
+	{
+	  parser_free_node (this_parser, hint_table[hint_idx].arg_list);
+	  hint_table[hint_idx].arg_list = NULL;
+	}
 #if 1
       // This code has been inserted to handle the same as the existing code.
       // It responds to the following types of errors:  INDEX_SS( (idx)

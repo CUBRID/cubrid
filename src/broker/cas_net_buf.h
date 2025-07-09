@@ -69,7 +69,7 @@
 
 #define NET_BUF_KBYTE                   1024
 #define SHARD_NET_BUF_SIZE              (512 * NET_BUF_KBYTE)
-#define NET_BUF_SIZE                    (16 * NET_BUF_KBYTE)
+#define NET_BUF_SIZE                    (get_net_buf_size ())
 #define NET_BUF_EXTRA_SIZE              (64 * NET_BUF_KBYTE)
 #define NET_BUF_ALLOC_SIZE              (NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
 #define SHARD_NET_BUF_ALLOC_SIZE        (SHARD_NET_BUF_SIZE + NET_BUF_EXTRA_SIZE)
@@ -87,6 +87,8 @@
 
 #define NET_BUF_TYPE_SIZE(net_buf) (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL \
 ((net_buf)->client_version, PROTOCOL_V7) ? 2 * NET_SIZE_BYTE : NET_SIZE_BYTE)
+
+#define INT_DEFAULE_NET_BUF_SIZE        (16 * NET_BUF_KBYTE)
 
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
@@ -167,4 +169,7 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);
 extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset);
+extern T_SHM_APPL_SERVER *shm_appl;
+extern int get_net_buf_size (void);
+extern void set_net_buf_size (void);
 #endif /* _CAS_NET_BUF_H_ */

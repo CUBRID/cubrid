@@ -67,7 +67,7 @@ int tm_Tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-bool tm_Tran_check_interrupt = false;
+bool tm_Tran_check_interrupt = true;
 int tm_Tran_ID = -1;
 int tm_Tran_invalidate_snapshot = 1;
 LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
@@ -86,7 +86,7 @@ int tm_Tran_latest_query_status;
  *
  * 0 means "unlimited", and negative value means "do not calculate timeout".
  *
- * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (Java SP)
+ * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (SP)
  */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
@@ -291,8 +291,12 @@ tran_commit (bool retain_lock)
       return error_code;
     }
 
-  assert (!tran_was_latest_query_aborted ());
-  if (tran_was_latest_query_ended ())
+  if (tran_was_latest_query_aborted ())
+    {
+      return tran_abort ();
+    }
+
+  if (tran_was_latest_query_ended () || tran_is_in_libcas ())
     {
       /* Query ended with latest executed query. No need to notify server. */
       query_end_notify_server = false;
@@ -385,7 +389,9 @@ tran_commit (bool retain_lock)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -501,7 +507,9 @@ tran_abort (void)
 
   tran_reset_latest_query_status ();
 
-  tran_reset_libcas_function ();
+  // FIXME: If SP supports TCL, the libcas depth should not be reset. 
+  // A nested SP can perform commit/rollback
+  // tran_reset_libcas_function ();
 
   return error_code;
 }
@@ -1329,6 +1337,7 @@ void
 tran_end_libcas_function (void)
 {
   tm_libcas_depth--;
+
   assert (tm_libcas_depth >= 0);
 }
 

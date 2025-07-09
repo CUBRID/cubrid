@@ -33,6 +33,8 @@
 #ifndef _MEM_BLOCK_HPP_
 #define _MEM_BLOCK_HPP_
 
+#include "porting.h"
+
 #include <memory.h>
 #include <functional>
 
@@ -64,7 +66,11 @@ namespace cubmem
 
       inline block &operator= (block &&b);  //move assign
 
+      inline void copy_to (block &dest) const;
+
       inline bool is_valid () const;
+
+      inline void freemem ();
 
       inline char *move_ptr ();                                    //NOT RECOMMENDED! use move semantics: std::move()
 
@@ -96,7 +102,7 @@ namespace cubmem
   // block_allocator - allocation, deallocation and reallocation of memory blocks. it preserves the contents of the
   //                   block on reallocation
   //
-  struct block_allocator
+  struct EXPORT_IMPORT block_allocator
   {
     public:
       using alloc_func = std::function<void (block &b, size_t size)>;
@@ -110,9 +116,9 @@ namespace cubmem
 
       block_allocator &operator= (const block_allocator &other);
   };
-  extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
-  extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
-  extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
+  EXPORT_IMPORT extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
 
   // single_block_allocator - maintains and allocates a single memory block
   //
@@ -166,6 +172,7 @@ namespace cubmem
 
       inline extensible_block &operator= (extensible_block &&b);                   //move assignment
 
+      inline void copy_to (extensible_block &dest) const;
       inline void extend_by (size_t additional_bytes);
       inline void extend_to (size_t total_bytes);
       inline void freemem ();
@@ -261,10 +268,28 @@ namespace cubmem
     return *this;
   }
 
+  void
+  block::copy_to (block &dest) const
+  {
+    dest.dim = dim;
+    dest.ptr = ptr;
+  }
+
   bool
   block::is_valid () const
   {
     return (dim != 0 && ptr != NULL);
+  }
+
+  void
+  block::freemem ()
+  {
+    if (is_valid ())
+      {
+	delete[] ptr;
+	dim = 0;
+	ptr = NULL;
+      }
   }
 
   char *
@@ -333,6 +358,13 @@ namespace cubmem
   extensible_block::~extensible_block ()
   {
     m_allocator->m_dealloc_f (m_block);
+  }
+
+  void
+  extensible_block::copy_to (extensible_block &dest) const
+  {
+    m_block.copy_to (dest.m_block);
+    dest.m_allocator = m_allocator;
   }
 
   void

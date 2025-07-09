@@ -67,6 +67,7 @@ namespace cubthread
 
       size_t get_size () const;
       size_t get_element_count () const;
+      size_t get_alloc_element_count () const;
 
     private:
       bool is_old_type () const;
@@ -282,6 +283,13 @@ namespace cubthread
   lockfree_hashmap<Key, T>::get_element_count () const
   {
     return is_old_type () ? m_old_hash.get_element_count () : m_new_hash.get_element_count ();
+  }
+
+  template <class Key, class T>
+  size_t
+  lockfree_hashmap<Key, T>::get_alloc_element_count () const
+  {
+    return is_old_type () ? m_old_hash.get_alloc_element_count () : m_new_hash.get_alloc_element_count ();
   }
 
 #undef lockfree_hashmap_forward_func

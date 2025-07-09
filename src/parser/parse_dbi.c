@@ -2577,6 +2577,10 @@ pt_auth_to_db_auth (const PT_NODE * auth)
       db_auth = DB_AUTH_UPDATE;
       break;
 
+    case PT_EXECUTE_PROCEDURE_PRIV:
+      db_auth = DB_AUTH_EXECUTE;
+      break;
+
     default:
       db_auth = DB_AUTH_NONE;
       break;
@@ -2856,6 +2860,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
+    case DB_TYPE_RESULTSET:
       /*
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision

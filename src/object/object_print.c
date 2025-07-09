@@ -622,6 +622,10 @@ help_print_info (const char *command, FILE * fpp)
 	    {
 	      help_print_obj (output_ctx, class_mop);
 	    }
+	  else
+	    {
+	      fprintf (fpp, "\nERROR: %s\n", er_msg ());
+	    }
 	}
     }
   else if (MATCH_TOKEN (buffer, "trigger"))
@@ -666,7 +670,7 @@ help_print_info (const char *command, FILE * fpp)
     }
   else if (MATCH_TOKEN (buffer, "lock"))
     {
-      lock_dump (fpp);
+      lock_dump (fpp, 0);
     }
   else if (MATCH_TOKEN (buffer, "stats"))
     {
@@ -699,6 +703,18 @@ help_print_info (const char *command, FILE * fpp)
   else if (MATCH_TOKEN (buffer, "trantable"))
     {
       logtb_dump_trantable (fpp);
+    }
+  else if (MATCH_TOKEN (buffer, "ndv"))
+    {
+      ptr = obj_print_next_token (ptr, buffer);
+      if (!strlen (buffer))
+	{
+	  fprintf (fpp, "Info ndv class-name\n");
+	}
+      else
+	{
+	  stats_ndv_dump (buffer, fpp);
+	}
     }
 }
 

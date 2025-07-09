@@ -21,6 +21,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_function.cpp
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_json_allocator.cpp
   ${COMPAT_DIR}/db_json_path.cpp
@@ -31,6 +32,7 @@ set(COMPAT_SOURCES
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_function.hpp
   ${COMPAT_DIR}/db_json.hpp
   ${COMPAT_DIR}/db_json_allocator.hpp
   ${COMPAT_DIR}/db_json_path.hpp
@@ -103,6 +105,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_api.cpp
+  ${BASE_DIR}/memory_monitor_sr.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
@@ -114,6 +118,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/perf_monitor_trackers.cpp
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/printer.cpp
   ${BASE_DIR}/process_util.c
@@ -148,6 +153,10 @@ set (BASE_HEADERS
   ${BASE_DIR}/lockfree_transaction_table.hpp
   ${BASE_DIR}/lockfree_transaction_system.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_cwrapper.h
+  ${BASE_DIR}/memory_wrapper.hpp
+  ${BASE_DIR}/memory_monitor_common.hpp
+  ${BASE_DIR}/memory_monitor_sr.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp
@@ -155,13 +164,15 @@ set (BASE_HEADERS
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/perf_monitor.h
+  ${BASE_DIR}/perf_monitor_trackers.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
-  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -184,16 +195,21 @@ set(CONNECTION_SOURCES
 
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
+  ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   )
 
-  
+set(DEBUGGING_HEADERS
+  ${DEBUGGING_DIR}/type_helper.hpp
+  )
+
 set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_collect.cpp
   ${MONITOR_DIR}/monitor_registration.cpp
   ${MONITOR_DIR}/monitor_statistic.cpp
   ${MONITOR_DIR}/monitor_transaction.cpp
+  ${MONITOR_DIR}/monitor_vacuum_ovfp_threshold.cpp
 )
 
 set(MONITOR_HEADERS
@@ -202,6 +218,7 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_registration.hpp
   ${MONITOR_DIR}/monitor_statistic.hpp
   ${MONITOR_DIR}/monitor_transaction.hpp
+  ${MONITOR_DIR}/monitor_vacuum_ovfp_threshold.hpp
 )
 
 set(QUERY_SOURCES
@@ -215,6 +232,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
+  ${QUERY_DIR}/query_hash_join.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
@@ -228,17 +246,19 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
-  ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum.c  
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
+  ${QUERY_DIR}/query_hash_join.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -246,33 +266,89 @@ set(QUERY_HEADERS
   )
 
 set(OBJECT_SOURCES
+  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/schema_system_catalog.cpp
   ${OBJECT_DIR}/transform.c
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
-set(JSP_SOURCES
-  ${JSP_DIR}/jsp_comm.c
-  ${JSP_DIR}/jsp_file.c
-  ${JSP_DIR}/jsp_sr.c
+set(SP_SOURCES
+  ${SP_DIR}/method_invoke_group.cpp
+  ${SP_DIR}/pl_connection.cpp
+  ${SP_DIR}/pl_compile_handler.cpp
+  ${SP_DIR}/pl_execution_stack_context.cpp
+  ${SP_DIR}/pl_executor.cpp
+  ${SP_DIR}/pl_query_cursor.cpp
+  ${SP_DIR}/pl_session.cpp
+  ${SP_DIR}/pl_signature.cpp
+  ${SP_DIR}/pl_comm.c
+  ${SP_DIR}/pl_file.c
+  ${SP_DIR}/pl_sr.cpp
+  ${SP_DIR}/sp_code.cpp
+  )
+
+set(SP_HEADERS
+  ${SP_DIR}/pl_connection.hpp
+  ${SP_DIR}/pl_execution_stack_context.hpp
+  ${SP_DIR}/pl_signature.hpp
+  ${SP_DIR}/pl_struct_compile.cpp
+)
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  )
+
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_SOURCES
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  )
+set(PARALLEL_QUERY_EXECUTE_HEADERS
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
   )
 
 set(METHOD_SOURCES
-  ${METHOD_DIR}/method_connection_sr.cpp
-  ${METHOD_DIR}/method_connection_pool.cpp
-  ${METHOD_DIR}/method_def.cpp
   ${METHOD_DIR}/method_error.cpp
-  ${METHOD_DIR}/method_invoke_builtin.cpp
-  ${METHOD_DIR}/method_invoke_group.cpp
-  ${METHOD_DIR}/method_invoke_java.cpp
-  ${METHOD_DIR}/method_query_cursor.cpp
   ${METHOD_DIR}/method_query_util.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
   ${METHOD_DIR}/method_struct_value.cpp
@@ -281,7 +357,6 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_struct_schema_info.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_scan.cpp
-  ${METHOD_DIR}/method_runtime_context.cpp
   ${METHOD_DIR}/query_method.cpp
   )
 
@@ -302,6 +377,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_recovery_redo.cpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
@@ -323,6 +400,11 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_reader.hpp
+  ${TRANSACTION_DIR}/log_recovery.h
+  ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo.hpp
+  ${TRANSACTION_DIR}/log_recovery_redo_parallel.hpp
   ${TRANSACTION_DIR}/log_record.hpp
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
@@ -365,6 +447,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/vpid.hpp
 )
 
 set(SESSION_SOURCES
@@ -449,7 +532,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -474,7 +557,7 @@ set (CUBRID_LIB_SOURCES
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
-  ${JSP_SOURCES}
+  ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
@@ -486,19 +569,27 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMPAT_HEADERS}
+  ${DEBUGGING_HEADERS}
   ${MONITOR_HEADERS}
   ${OBJECT_HEADERS}
   ${QUERY_HEADERS}
   ${STORAGE_HEADERS}
+  ${SP_HEADERS}
   ${THREAD_HEADERS}
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_HEADERS}
+  ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -511,7 +602,7 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
 endif(WIN32)
 
-target_compile_definitions(cubrid PRIVATE SERVER_MODE ${COMMON_DEFS})
+target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
@@ -522,19 +613,26 @@ if(WIN32)
     ${LOADER_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
-  target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
+  target_link_libraries(cubrid LINK_PRIVATE ws2_32)
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
+
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
+  target_link_libraries(cubrid PUBLIC rt)
+
+  # Add TBB
+  target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
+  target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
+  add_dependencies(cubrid ${TBB_TARGETS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
 # for dblink
-target_link_libraries(cubrid cascci)
+target_link_libraries(cubrid PUBLIC cascci)
 
 add_dependencies(cubrid ${EP_TARGETS} gen_loader_grammar gen_loader_lexer)
 
@@ -550,6 +648,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
 
   target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
+    EnableThreadMonitoring
     ${COMMON_DEFS}
     )
 
@@ -557,12 +656,10 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ws2_32
     cascci
     cubridcs
-    ${JVM_LIBS}
     ${EP_LIBS}
     )
 
   target_include_directories(cubrid-win-lib PRIVATE
-    ${JAVA_INC}
     ${EP_INCLUDES}
     ${FLEX_INCLUDE_DIRS}
     )
@@ -588,7 +685,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
-  # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
+  ${COMPAT_DIR}/dbtran_def.h
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.h
@@ -597,6 +694,7 @@ install(FILES
   ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+
 install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
@@ -605,6 +703,11 @@ install(FILES
   ${API_DIR}/cubrid_log.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+install(FILES
+  ${CM_COMMON_DIR}/cm_stat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
+
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY

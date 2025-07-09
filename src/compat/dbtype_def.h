@@ -484,6 +484,17 @@ extern "C"
     DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS = 'c',
     DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY = 'd',
     DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
+  } DB_INSTANCE_TYPE;
+
+  typedef enum
+  {
+    DB_OBJECT_UNKNOWN = -1,
+    DB_OBJECT_CLASS = 0,	/* TABLE, VIEW (_db_class) */
+    DB_OBJECT_TRIGGER = 1,	/* TRIGGER (_db_trigger) */
+    DB_OBJECT_SERIAL = 2,	/* SERIAL (db_serial) */
+    DB_OBJECT_SERVER = 3,	/* SERVER (db_server) */
+    DB_OBJECT_SYNONYM = 4,	/* SYNONYM (_db_synonym) */
+    DB_OBJECT_PROCEDURE = 5	/* PROCEDURE, FUNCTION  (_db_stored_procedure) */
   } DB_OBJECT_TYPE;
 
   /* session state id */
@@ -537,10 +548,7 @@ extern "C"
 /* The lower limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
-/* The maximum precision of CHAR(n) domain that can be specified for an INTL_UTF8_MAX_CHAR_SIZE.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
+#define DB_MAX_CHAR_PRECISION 2048
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
@@ -569,6 +577,10 @@ extern "C"
 
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -1
+
+/* This constant indecates that SP function's default NUMERIC domain */
+#define DB_NUMERIC_PRECISION_SP 38
+#define DB_NUMERIC_SCALE_SP 15
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION 15
@@ -877,12 +889,6 @@ extern "C"
     MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
   };
 
-  /*
-   * DB_ELO
-   * This is the run-time state structure for an ELO. The ELO is part of the implementation of large object type and not intended
-   * to be used directly by the API.
-   */
-
   typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
   struct vpid
   {
@@ -942,6 +948,12 @@ extern "C"
   };
 #define VSID_INITIALIZER { NULL_SECTID, NULL_VOLID }
 #define VSID_AS_ARGS(vsidp) (vsidp)->volid, (vsidp)->sectid
+
+  /*
+   * DB_ELO
+   * This is the run-time state structure for an ELO. The ELO is part of the implementation of large object type and not intended
+   * to be used directly by the API.
+   */
 
   typedef struct db_elo DB_ELO;
 
@@ -1010,6 +1022,7 @@ extern "C"
       const char *buf;
       int compressed_size;
       char *compressed_buf;
+      int length;		/* Only Use for group_concat() now */
     } medium;
     struct
     {

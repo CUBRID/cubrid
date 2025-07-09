@@ -80,8 +80,11 @@
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
+
 static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* HAVE_GETHOSTBYNAME_R */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define HOST_ID_ARRAY_SIZE 8	/* size of the host_id string */
 #define TCP_MIN_NUM_RETRIES 3
@@ -120,35 +123,18 @@ css_gethostname (char *name, size_t namelen)
     }
 
   size_t namelen_ = (size_t) namelen;
-  addrinfo hints, *result = NULL;
-
-  memset (&hints, 0, sizeof (hints));
-  hints.ai_family = AF_UNSPEC;	// either IPV4 or IPV6
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_CANONNAME;
 
   char hostname[namelen_];
   hostname[namelen_ - 1] = '\0';
-  gethostname (hostname, namelen_);
-
-  int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
-  if (gai_error != 0)
+  if (gethostname (hostname, namelen_) < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
-      return ER_GAI_ERROR;
-    }
-
-  size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator
-  if (canonname_size > namelen_)
-    {
-      freeaddrinfo (result);
       return ER_FAILED;
     }
+  else
+    {
+      strncpy (name, hostname, namelen);
+    }
 
-  memcpy (name, result->ai_canonname, canonname_size);
-  name[canonname_size] = '\0';
-
-  freeaddrinfo (result);
   return NO_ERROR;
 }
 
@@ -196,15 +182,18 @@ static void
 css_sockopt (SOCKET sd)
 {
   int bool_value = 1;
+  int prm_value;
 
-  if (prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE) > 0)
+  prm_value = prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE);
+  if (prm_value > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, (int *) prm_get_value (PRM_ID_TCP_RCVBUF_SIZE), sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, &prm_value, sizeof (int));
     }
 
-  if (prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE) > 0)
+  prm_value = prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE);
+  if (prm_value > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, (int *) prm_get_value (PRM_ID_TCP_SNDBUF_SIZE), sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, &prm_value, sizeof (int));
     }
 
   if (prm_get_bool_value (PRM_ID_TCP_NODELAY))
@@ -249,7 +238,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -260,7 +249,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -270,7 +259,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -285,7 +274,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -337,7 +326,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -348,7 +337,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -358,7 +347,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -374,7 +363,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr, hp->h_length);

@@ -42,6 +42,8 @@
 struct adj_array;
 // from connection_defs.h
 struct css_conn_entry;
+// from connection_defs.h
+struct dblink_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
 // from log_system_tran.hpp
@@ -122,11 +124,14 @@ enum thread_type
 {
   TT_MASTER,
   TT_SERVER,
+  // used to designate generic 'user' operations threads
   TT_WORKER,
+  // used to designate generic system operations
   TT_DAEMON,
   TT_LOADDB,
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
+  TT_RECOVERY,
   TT_NONE
 };
 
@@ -279,14 +284,25 @@ namespace cubthread
       bool trigger_involved;
       bool is_cdc_daemon;
 
+      /* support multi-process unloaddb
+       * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
+       * At this time, _unload_parallel_process_idx can have values ​​between 0 and (_unload_cnt_parallel_process-1).
+       */
+#define  NO_UNLOAD_PARALLEL_PROCESSIING (-1)
+      int _unload_parallel_process_idx;
+      int _unload_cnt_parallel_process;
+
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;
 
       int count_private_allocators;
 #endif
-      int m_qlist_count;
+      std::atomic_int m_qlist_count;
+      int read_ovfl_pages_count; // For Vacuum only.
 
       cubload::driver *m_loaddb_driver;
+
+      UINT64 *m_parallel_stats;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

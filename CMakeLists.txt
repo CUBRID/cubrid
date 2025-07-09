@@ -17,7 +17,7 @@
 #
 message(STATUS "======== CMakeLists.txt")
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.21)
 
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
@@ -100,6 +100,23 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
+# Define a function to read the actual Git directory and HEAD for Git Worktrees
+function(set_git_dir_from_worktree git_dir head_file)
+    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
+    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
+    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
+endfunction()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
+    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
+        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
+        set(HEAD_FILE "${GIT_DIR}/HEAD")
+    else() # Git Worktree
+        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
+    endif()
+endif()
+
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -150,7 +167,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
     # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file(".git/HEAD" ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache COPYONLY)
+    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
@@ -236,7 +253,8 @@ if(UNIX)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
-  else(CMAKE_COMPILER_IS_GNUCC)
+  elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
@@ -286,10 +304,6 @@ set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_grammar.yy)
 set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/load_grammar.cpp)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_lexer.l)
 set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
-set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
-set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # include 3rdparty
 message("Including Third Party Libraries")
@@ -326,36 +340,6 @@ flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
 add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
-
-# ESQL FLEX/BISON targets
-# replace old bison directives with new ones
-# use add_custom_command because we want to regenerate esql_grammar.yy
-# whenever esql_grammar.y is modified
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-)
-
-set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
-
-# because esql_grammar.yy are generated through a custom command
-# whenever esql_grammar.y is modified, bison and flex will be
-# run to create new outputs
-
-bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
-add_flex_bison_dependency(esql_lexer esql_grammar)
-add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
-add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
-
-# For java stored procedure server
-include(FindJNI)
-find_package(JNI 1.5)
-if(JNI_FOUND)
-  set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
-endif(JNI_FOUND)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
@@ -394,9 +378,10 @@ set(CM_COMMON_DIR            ${CMAKE_SOURCE_DIR}/src/cm_common)
 set(COMMUNICATION_DIR        ${CMAKE_SOURCE_DIR}/src/communication)
 set(COMPAT_DIR               ${CMAKE_SOURCE_DIR}/src/compat)
 set(CONNECTION_DIR           ${CMAKE_SOURCE_DIR}/src/connection)
+set(DEBUGGING_DIR            ${CMAKE_SOURCE_DIR}/src/debugging)
 set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
-set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(SP_DIR                   ${CMAKE_SOURCE_DIR}/src/sp)
 set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(METHOD_DIR               ${CMAKE_SOURCE_DIR}/src/method)
 set(MONITOR_DIR              ${CMAKE_SOURCE_DIR}/src/monitor)
@@ -404,6 +389,7 @@ set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
 set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
 set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
+set(REWRITER_DIR             ${CMAKE_SOURCE_DIR}/src/optimizer/rewriter)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
 set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
@@ -414,6 +400,9 @@ set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
+set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
+set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
+set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -424,9 +413,10 @@ include_directories(
   src/communication
   src/compat
   src/connection
+  src/debugging
   src/executables
   src/heaplayers
-  src/jsp
+  src/sp
   src/loaddb
   src/method
   src/monitor
@@ -440,6 +430,9 @@ include_directories(
   src/thread
   src/transaction
   src/xasl
+  src/query/parallel/px_heap_scan
+  src/query/parallel
+  src/query/parallel/px_query_execute
   )
 if(WITH_CCI)
   include_directories(
@@ -622,17 +615,23 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(CMAKE_EXE_LINKER_FLAGS "-Wl,-bbigtoc -Wl,-brtl -Wl,-bnortllib -Wl,-bnosymbolic -Wl,-bnoautoexp -Wl,-bexpall -Wl,-bmaxdata:0x80000000 -Wl,-bnoipath" CACHE INTERNAL "" FORCE)
   endif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996)
+  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996 /wd4251 /wd4275)
   string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  if(MSVC_VERSION GREATER 1400)
-    # experimental option (it can lead the build system to a halt or creating a bad object files)
-    set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
-    if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-      add_definitions(/MP)
-    elseif(PARALLEL_JOBS GREATER 0)
-      add_definitions(/MP${PARALLEL_JOBS})
-    endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-  endif(MSVC_VERSION GREATER 1400)
+  
+  # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
+  # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
+  set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+  if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+    set(PARALLEL_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+  endif()
+
+  message(STATUS "Build in parallel: ${PARALLEL_JOBS}")
+
+  if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
+    add_definitions(/MP)
+  elseif(PARALLEL_JOBS GREATER 0)
+    add_definitions(/MP${PARALLEL_JOBS})
+  endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
 endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
@@ -683,6 +682,7 @@ endif(USE_DUMA)
 if(USE_CUBRID_ENV)
   message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
   set(CUBRID_PREFIXDIR .)
+  set(CUBRID_3RDPARTYDIR 3rdparty)
   set(CUBRID_BINDIR bin)
   set(CUBRID_LIBDIR lib)
   set(CUBRID_SRCDIR src)
@@ -690,7 +690,7 @@ if(USE_CUBRID_ENV)
   set(CUBRID_VARDIR var)
   set(CUBRID_DATADIR share)
   set(CUBRID_CONFDIR conf)
-  set(CUBRID_JAVADIR java)
+  set(CUBRID_VMDIR vm)
   set(CUBRID_LOCALEDIR msg)
   set(CUBRID_LOGDIR log)
   set(CUBRID_TMPDIR tmp)
@@ -707,6 +707,8 @@ else(USE_CUBRID_ENV)
 
   set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
   list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
+  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
+  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
   set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
   if(IS_ABSOLUTE ${CUBRID_BINDIR})
     list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
@@ -743,11 +745,11 @@ else(USE_CUBRID_ENV)
   else()
     list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_PREFIXDIR}/${CUBRID_CONFDIR}")
   endif()
-  set(CUBRID_JAVADIR java CACHE STRING "The directory for JSP file")
-  if(IS_ABSOLUTE ${CUBRID_JAVADIR})
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_JAVADIR}")
+  set(CUBRID_VMDIR vm CACHE STRING "The directory for PL file")
+  if(IS_ABSOLUTE ${CUBRID_VMDIR})
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_VMDIR}")
   else()
-    list(APPEND DIR_DEFS CUBRID_JAVADIR="${CUBRID_PREFIXDIR}/${CUBRID_JAVADIR}")
+    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_PREFIXDIR}/${CUBRID_VMDIR}")
   endif()
   set(CUBRID_LOCALEDIR msg CACHE STRING "The directory for message files")
   if(IS_ABSOLUTE ${CUBRID_LOCALEDIR})
@@ -780,12 +782,6 @@ else(USE_CUBRID_ENV)
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
 
-# For JVM libraries
-if(WIN32)
-    set(JVM_LIBS ${CMAKE_SOURCE_DIR}/win/3rdparty/lib64/jvm.lib)
-  list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
-endif(WIN32)
-
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
 
@@ -802,8 +798,36 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
     FILES_MATCHING PATTERN "*.jar"
+    PATTERN ".github" EXCLUDE
+    PATTERN "cmake" EXCLUDE
+    PATTERN "src" EXCLUDE
+    PATTERN "output" EXCLUDE
   )
 endif()
+
+# include pl subdirectories
+add_subdirectory(pl_engine)
+
+set(JAVA_HOME ${CMAKE_BINARY_DIR}/${CUBRID_VMDIR}/jdk8)
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+set(ENV{PATH} "$ENV{JAVA_HOME}/bin:$ENV{PATH}")
+
+# For PL server
+find_package(Java REQUIRED)
+find_package(JNI REQUIRED)
+
+if(JNI_FOUND)
+   set(JAVA_INC ${JAVA_INCLUDE_PATH} ${JAVA_INCLUDE_PATH2})
+endif(JNI_FOUND)
+
+message(STATUS "Found Java: ${Java_JAVA_EXECUTABLE}")
+message(STATUS "Found JNI: ${JNI_INCLUDE_DIRS}")
+
+# For JVM libraries
+if(WIN32)
+    set(JVM_LIBS ${JAVA_HOME}/lib/jvm.lib)
+    list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
+endif(WIN32)
 
 # include subdirectories
 add_subdirectory(sa)
@@ -821,7 +845,6 @@ add_subdirectory(demo)
 add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
-add_subdirectory(jsp)
 if(AT_LEAST_ONE_UNIT_TEST)
   add_subdirectory(unit_tests)
 endif()
@@ -833,6 +856,7 @@ endif(WIN32)
 # for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   include(ExternalProject)
+  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -880,16 +904,20 @@ if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/serve
 endif(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 # create empty directories
+install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
 if(USE_CUBRID_ENV)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+    DESTINATION ${CUBRID_3RDPARTYDIR}
+    FILES_MATCHING PATTERN "*.txt")
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/README.md
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.
@@ -982,14 +1010,9 @@ if(WIN32)
   else()
     message(WARNING "Cannot generate MSI installer with unsupported compiler version")
   endif()
-  if(CMAKE_VERSION VERSION_GREATER "3.1")
     set_property(INSTALL "${CUBRID_BINDIR}/$<TARGET_FILE_NAME:cubridtray>"
       PROPERTY CPACK_START_MENU_SHORTCUTS "CUBRID Service Tray")
     configure_file(cmake/CPackWixPatch.cmake.in wix_patch.xml @ONLY)
-  else(CMAKE_VERSION VERSION_GREATER "3.1")
-    # TODO: msi package will not working on CMAKE version 3.5 or less
-    set(CPACK_PACKAGE_EXECUTABLES cubridtray "CUBRID Service Tray")
-  endif(CMAKE_VERSION VERSION_GREATER "3.1")
 endif(WIN32)
 
 include(CPack)

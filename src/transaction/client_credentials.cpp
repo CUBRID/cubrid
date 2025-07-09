@@ -21,6 +21,8 @@
 #include "porting.h"
 
 #include <algorithm>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static void
 string_ncopy (std::string &dest, const char *src, size_t max_size)

@@ -57,6 +57,7 @@
 #endif /* LINUX */
 
 #include "porting.h"
+#include "tcp.h"
 #include "cas_common.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
@@ -73,6 +74,8 @@
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
+#include "host_lookup.h"
+#include "system_parameter.h"
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
@@ -130,7 +133,7 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p, const char *p
 					    int proxy_id, int shard_id, int as_number);
 static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info, T_SHM_PROXY * proxy_p);
 static void get_shard_db_password (T_BROKER_INFO * br_info_p);
-static void get_upper_str (char *upper_str, int len, char *value);
+static void get_upper_str (char *upper_str, int size, const char *value);
 
 static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
 
@@ -245,12 +248,13 @@ admin_isstarted_cmd (int master_shm_id)
 
 int
 admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file,
-		 char *admin_log_file)
+		 bool acl_default_policy, char *admin_log_file)
 {
   int i;
   int res = 0;
   char path[BROKER_PATH_MAX];
   char upper_broker_name[BROKER_NAME_LEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
@@ -268,9 +272,6 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, BROKER_PATH_MAX));
-  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, BROKER_PATH_MAX));
 
   if (admin_log_file != NULL)
     {
@@ -292,13 +293,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
 
 #if !defined(WINDOWS)
-  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, BROKER_PATH_MAX));
 #endif /* !WINDOWS */
 
 
   for (i = 0; i < br_num; i++)
     {
+      char dirpath[PATH_MAX];
+
 #if !defined(WINDOWS)
       /* prevent the broker from hanging due to an excessively long path socket path length =
        * sock_path[broker_name].[as_index] */
@@ -310,7 +312,18 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  return -1;
 	}
 #endif /* !WINDOWS */
-      broker_create_dir (br_info[i].log_dir);
+
+#if defined (WINDOWS)
+      snprintf (dirpath, PATH_MAX, "%s", br_info[i].log_dir);
+#else
+      /*
+       * broker_create_dir () creates all intermediate directories indicated in the path,
+       * as well as the leaf directory (.../sql_log, .../sql_log/query).
+       */
+      snprintf (dirpath, PATH_MAX, "%s/query", br_info[i].log_dir);
+#endif
+
+      broker_create_dir (dirpath);
       broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
       broker_create_dir (br_info[i].access_log_dir);
@@ -322,8 +335,24 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
 
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      fprintf (stderr, "gethostname error: cannot get local hostname\n");
+      return -1;
+    }
+  /* cannot execute broker initialize unless success host look-up */
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
+      fprintf (stderr, er_msg ());
+      fflush (stderr);
+      return -1;
+    }
+
   /* create master shared memory */
-  shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file);
+  shm_br =
+    broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file, acl_default_policy,
+				      admin_log_file);
 
   if (shm_br == NULL)
     {
@@ -1282,7 +1311,7 @@ admin_info_cmd (int master_shm_id)
       return -1;
     }
 
-  broker_config_dump (stdout, shm_br->br_info, shm_br->num_broker, master_shm_id);
+  broker_config_dump (stdout, shm_br->br_info, shm_br->num_broker, master_shm_id, shm_br->admin_log_file);
 
   uw_shm_detach (shm_br);
   return 0;
@@ -1386,7 +1415,8 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
       switch (optchar)
 	{
 	case 'b':
-	  strncpy (broker_name, optarg, NAME_MAX);
+	  strncpy (broker_name, optarg, BROKER_NAME_LEN);
+	  broker_name[BROKER_NAME_LEN - 1] = '\0';
 	  break;
 	case 'f':
 	  full_info_flag = true;
@@ -2659,7 +2689,7 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
   char line_buf[LINE_MAX];
-  char str[32];
+  char str[70];
   int len = 0;
 
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
@@ -2694,7 +2724,8 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
     }
 
   fprintf (stdout, "ACCESS_CONTROL=%s\n", (shm_br->access_control) ? "ON" : "OFF");
-  fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n\n", shm_br->access_control_file);
+  fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n", shm_br->access_control_file);
+  fprintf (stdout, "ACCESS_CONTROL_DEFAULT_POLICY=%s\n\n", (shm_br->acl_default_policy) ? "ALLOW" : "DENY");
 
   if (shm_br->access_control == false || shm_br->access_control_file[0] == '\0')
     {
@@ -2720,8 +2751,6 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-
-	  fprintf (stdout, "[%%%s]\n", shm_appl->broker_name);
 
 	  for (j = 0; j < shm_appl->num_access_info; j++)
 	    {
@@ -2918,7 +2947,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
-	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+	  if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	    {
 	      uw_shm_detach (shm_appl);
 	      uw_shm_detach (shm_br);
@@ -2939,7 +2968,7 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	  return -1;
 	}
 
-      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg) != 0)
+      if (access_control_read_config_file (shm_appl, access_file_name, admin_err_msg, shm_br) != 0)
 	{
 	  uw_shm_detach (shm_appl);
 	  uw_shm_detach (shm_br);
@@ -4149,15 +4178,15 @@ get_shard_db_password (T_BROKER_INFO * br_info_p)
 }
 
 static void
-get_upper_str (char *upper_str, int len, char *value)
+get_upper_str (char *upper_str, int size, const char *value)
 {
-  int i;
+  int i = 0;
 
-  for (i = 0; i < len - 1; i++)
+  while (value[i] && (i < (size - 1)))
     {
       upper_str[i] = (char) toupper (value[i]);
+      i++;
     }
-  upper_str[i] = '\0';
 
-  return;
+  upper_str[i] = '\0';
 }

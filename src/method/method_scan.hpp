@@ -29,7 +29,7 @@
 #include <vector>
 
 #include "dbtype_def.h" /* DB_VALUE */
-#include "method_def.hpp" /* method_sig_list */
+
 #include "method_invoke_group.hpp" /* cubmethod::method_invoke_group */
 #include "object_domain.h" /* TP_DOMAIN */
 #include "query_list.h" /* qfile_list_id, qfile_list_scan_id */
@@ -56,9 +56,9 @@ namespace cubscan
     {
       public:
 
-	scanner ();
+	void constructor();
 
-	int init (cubthread::entry *thread_p, method_sig_list *sig_list, qfile_list_id *list_id);
+	int init (cubthread::entry *thread_p, PL_SIGNATURE_ARRAY_TYPE *sig_array, qfile_list_id *list_id);
 	void clear (bool is_final);
 
 //////////////////////////////////////////////////////////////////////////
@@ -93,9 +93,9 @@ namespace cubscan
 	qfile_list_id *m_list_id; 		/* list file from cselect */
 	qfile_list_scan_id m_scan_id;	/* for scanning list file */
 
-	std::vector<TP_DOMAIN *> m_arg_dom_vector; /* arg value's domain */
-	std::vector<DB_VALUE> m_arg_vector;        /* arg value */
-	std::vector<bool> m_arg_use_vector;        /* arg is used for method, should be prepared */
+	int m_arg_count;
+	TP_DOMAIN **m_arg_dom_vector; /* arg value's domain */
+	DB_VALUE *m_arg_vector;        /* arg value */
 
 	qproc_db_value_list *m_dbval_list; /* result */
     };

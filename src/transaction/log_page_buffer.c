@@ -60,6 +60,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_comm.h"
+#include "log_reader.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
@@ -105,6 +106,8 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -744,14 +747,16 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 
   /*
    * Flush any append dirty buffers at this moment.
-   * Then, invalidate any buffer that it is not fixed and dirty
    */
   logpb_flush_pages_direct (thread_p);
 
+  /*
+   * Invalidate all buffers.
+   */
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
-      if (log_bufptr->pageid != NULL_PAGEID && !log_bufptr->dirty == false)
+      if (log_bufptr->pageid != NULL_PAGEID)
 	{
 	  logpb_initialize_log_buffer (log_bufptr, log_bufptr->logpage);
 	}
@@ -1312,17 +1317,21 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (loghdr != NULL);
 
   /* to also initialize padding bytes */
-  memset (loghdr, 0, sizeof (LOG_HEADER));
+  // Use placement new instead of memset to avoid -Wclass-memaccess.
+  // Do not delete loghdr  
+  loghdr = placement_new (loghdr);
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
   if (db_creation != NULL)
     {
       loghdr->db_creation = *db_creation;
+      loghdr->vol_creation = time (NULL);
     }
   else
     {
       loghdr->db_creation = -1;
+      loghdr->vol_creation = -1;
     }
 
   if (strlen (rel_release_string ()) >= REL_MAX_RELEASE_LENGTH)
@@ -1935,6 +1944,19 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       rv = ER_FAILED;
       goto exit;
     }
+
+  // Optimize log page fetching by caching
+  // for now, only used to optimize recovery phase
+  if (log_bufptr->pageid < pageid && !LOG_ISRESTARTED ())
+    {
+      // invalidate previous page
+      log_bufptr->pageid = NULL_PAGEID;
+      // cache new page
+      std::memcpy (log_bufptr->logpage, log_pgptr, LOG_PAGESIZE);
+      log_bufptr->pageid = pageid;
+      log_bufptr->phy_pageid = logpb_to_physical_pageid (pageid);
+    }
+
   stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
   /* Always exit through here */
@@ -3455,13 +3477,16 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  flush_start_time = log_get_clock_msec ();
 
-          // *INDENT-OFF*
-          new (&writer_info->last_writer_client_info) clientids ();
-          // *INDENT-ON*
-
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
 	  writer_info->last_writer_client_info.client_type = DB_CLIENT_TYPE_UNKNOWN;
+	  writer_info->last_writer_client_info.client_info.clear ();
+	  writer_info->last_writer_client_info.db_user.clear ();
+	  writer_info->last_writer_client_info.program_name.clear ();
+	  writer_info->last_writer_client_info.login_name.clear ();
+	  writer_info->last_writer_client_info.host_name.clear ();
+	  writer_info->last_writer_client_info.client_ip_addr.clear ();
+	  writer_info->last_writer_client_info.process_id = 0;
 	}
 
       entry = writer_info->writer_list;
@@ -5680,6 +5705,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = log_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
@@ -5969,7 +5995,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 {
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
-  int min_arv_required_for_vacuum;
+  int min_arv_required_for_vacuum = 0;
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
@@ -7056,7 +7082,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
 
       /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+      for (i = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
 	  /*
 	   * Don't checkpoint current system transaction. That is, the one of
@@ -7501,6 +7527,37 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
   return error_code;
 }
 
+// *INDENT-OFF*
+cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+// *INDENT-ON*
+
+void
+logpb_create_backup_read_worker_pool (size_t thread_count)
+{
+  /* The task of pushing the backup read task is performed by a single thread,
+     so it is fine to have only one core. */
+  size_t core_count = 1;
+  if (thread_count == 0)
+    {
+      thread_count = 1;
+    }
+  g_backup_read_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
+						   core_count, false, true);
+}
+
+void
+logpb_push_backup_read_task (cubthread::entry_task * task)
+{
+  thread_get_manager ()->push_task (g_backup_read_worker_pool, task);
+}
+
+void
+logpb_destroy_backup_read_worker_pool ()
+{
+  thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
+}
+
 /*
  * logpb_backup - Execute a level backup for the given database volume
  *
@@ -7551,8 +7608,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *bk_vol;		/* ptr to old bkup volume name */
   int unit_num;
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
-  int first_arv_needed = -1;	/* for self contained, consistent */
-  int last_arv_needed = -1;	/* backups, some arv are needed */
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   bool bkup_in_progress = false;
@@ -7563,6 +7618,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
 #if defined(SERVER_MODE)
+  int first_arv_needed = -1;	/* for self contained, consistent */
+
   int rv;
   time_t wait_checkpoint_begin_time;
   bool print_backupdb_waiting_reason = false;
@@ -7577,6 +7634,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char time_val[CTIME_MAX];
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  size_t read_thread_count = 0;
+  int specified_thread_count = num_threads;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7622,13 +7681,17 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       goto error;
     }
 
-  /*
-   * Determine the first log archive that will be needed to insure
-   * consistency if we are forced to restore the database with nothing but this backup.
-   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
-   */
-
 #if defined (SERVER_MODE)
+  read_thread_count = session.read_thread_info.num_threads - 1;
+
+  logpb_create_backup_read_worker_pool (read_thread_count);
+  if (g_backup_read_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
@@ -7675,45 +7738,6 @@ loop:
   saved_run_nxchkpt_atpageid = log_Gl.run_nxchkpt_atpageid;
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
-
-  if (log_Gl.hdr.last_arv_num_for_syscrashes > -1)
-    {
-      first_arv_needed = log_Gl.hdr.last_arv_num_for_syscrashes;
-    }
-  else
-    {
-      first_arv_needed = log_Gl.hdr.nxarv_num;
-    }
-
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
-  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
-
-  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
-    {
-      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
-
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
-		     min_arv_required_for_vacuum);
-
-      if (min_arv_required_for_vacuum >= 0)
-	{
-	  if (first_arv_needed >= 0)
-	    {
-	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
-	    }
-	  else
-	    {
-	      first_arv_needed = min_arv_required_for_vacuum;
-	    }
-	}
-      else
-	{
-	  /* Page should be in archive. */
-	  assert (false);
-	}
-
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
-    }
 
   /* Get the current checkpoint address */
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
@@ -7889,7 +7913,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{
@@ -8044,41 +8069,6 @@ loop:
     }
   while (volid != NULL_VOLID);
 
-#if defined(SERVER_MODE)
-  /*
-   * Only when in client/server, we may need to force an archive
-   * of the current log active if there were any active transactions
-   * before or during the backup.
-   * This is to insure we have enough log records to restore consistency
-   * to the database in the event a restore with no other log archives
-   * is needed.
-   */
-  LOG_CS_ENTER (thread_p);
-  if (LSA_LT (&chkpt_lsa, &log_Gl.hdr.append_lsa) || log_Gl.hdr.append_lsa.pageid > LOGPB_NEXT_ARCHIVE_PAGE_ID)
-    {
-      logpb_archive_active_log (thread_p);
-    }
-
-  last_arv_needed = log_Gl.hdr.nxarv_num - 1;
-  LOG_CS_EXIT (thread_p);
-
-  if (last_arv_needed >= first_arv_needed)
-    {
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, last_arv_needed);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-#else /* SERVER_MODE */
-  /*
-   * In stand-alone, there can be no other activity modifying the log
-   * so we do not have to keep any log records to be consistent.
-   */
-  first_arv_needed = -1;
-  last_arv_needed = -1;
-#endif /* SERVER_MODE */
-
   /* at here, diable multi-thread usage for fast Log copy */
   session.read_thread_info.num_threads = 1;
 
@@ -8087,18 +8077,60 @@ loop:
   LOG_CS_ENTER (thread_p);
 
 #if defined(SERVER_MODE)
+  /*
+   * Determine the first log archive that will be needed to insure
+   * consistency if we are forced to restore the database with nothing but this backup.
+   * first_arv_needed may need to be based on what archive chkpt_lsa is in.
+   */
 
-  if (last_arv_needed < log_Gl.hdr.nxarv_num - 1)
+  if (log_Gl.hdr.last_arv_num_for_syscrashes > -1)
     {
-      error_code = logpb_backup_needed_archive_logs (thread_p, &session, last_arv_needed + 1, log_Gl.hdr.nxarv_num - 1);
+      first_arv_needed = log_Gl.hdr.last_arv_num_for_syscrashes;
+    }
+  else
+    {
+      first_arv_needed = log_Gl.hdr.nxarv_num;
+    }
+
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+    {
+      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+		     min_arv_required_for_vacuum);
+
+      if (min_arv_required_for_vacuum >= 0)
+	{
+	  if (first_arv_needed >= 0)
+	    {
+	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	    }
+	  else
+	    {
+	      first_arv_needed = min_arv_required_for_vacuum;
+	    }
+	}
+      else
+	{
+	  /* Page should be in archive. */
+	  assert (false);
+	}
+
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
+    }
+
+  if (first_arv_needed < log_Gl.hdr.nxarv_num)
+    {
+      error_code = logpb_backup_needed_archive_logs (thread_p, &session, first_arv_needed, log_Gl.hdr.nxarv_num - 1);
       if (error_code != NO_ERROR)
 	{
 	  LOG_CS_EXIT (thread_p);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 	  goto error;
 	}
-
-      last_arv_needed = log_Gl.hdr.nxarv_num - 1;
     }
 #endif
 
@@ -8177,6 +8209,10 @@ loop:
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  logpb_destroy_backup_read_worker_pool ();
+#endif
+
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
@@ -8241,6 +8277,13 @@ error:
    * Destroy the backup that has been created.
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
+
+#if defined(SERVER_MODE)
+  if (g_backup_read_worker_pool != NULL)
+    {
+      logpb_destroy_backup_read_worker_pool ();
+    }
+#endif
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
@@ -8339,6 +8382,8 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
   return NO_ERROR;
 }
 
+using namespace std;
+
 /*
  * logpb_restore - Restore volume from its backup
  *
@@ -8412,6 +8457,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   INT64 backup_time;
   REL_COMPATIBILITY compat;
   int dummy;
+
+  bool is_prev_volheader_restored = false;
+  FILEIO_UNLINKED_VOLINFO_MAP unlinked_volinfo;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   start_level = try_level;
@@ -8714,6 +8762,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_ARCHIVE_VOLID:
 		case LOG_DBTDE_KEYS_VOLID:
 
+		  is_prev_volheader_restored = false;
+
 		  /* We can only take the most recent information, and we do not want to overwrite it with out of data
 		   * information from earlier backups.  This is because we are applying the restoration in reverse time
 		   * order. */
@@ -8767,7 +8817,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      success =
 		fileio_restore_volume (thread_p, session, volume_name_p, verbose_to_volname, prev_volname, page_bitmap,
-				       remember_pages);
+				       remember_pages, is_prev_volheader_restored, unlinked_volinfo);
 
 	      if (success != NO_ERROR)
 		{
@@ -8853,6 +8903,38 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
       try_level = (FILEIO_BACKUP_LEVEL) (try_level - 1);
     }
+
+  // Incremental backup volumes often do not include volume header pages.
+  // Accordingly, it is necessary to set unlinked volumes after all volume header pages are restored.
+  // *INDENT-OFF*
+  for (const auto &[volid, volnames] : unlinked_volinfo)
+    {
+      VOLID prev_volid;
+      int prev_vdes;
+      const char *prev_volname, *volname;
+
+      volname = volnames.first.c_str();
+      prev_volname = volnames.second.c_str();
+
+      prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+      prev_vdes = fileio_mount (thread_p, NULL, prev_volname, prev_volid, false, false);
+      if (prev_vdes == NULL_VOLDES)
+	{
+	  goto error;
+	}
+
+      if (disk_set_link (thread_p, prev_volid, volid, volname, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+	{
+	  fileio_dismount (thread_p, prev_vdes);
+	  goto error;
+	}
+
+      fileio_dismount (thread_p, prev_vdes);
+
+      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [FIXED UNLINK] volid=%d, vol=%s, prev_vol=%s", volid, volname,
+		     prev_volname);
+    }
+  // *INDENT-ON*
 
   /* make bkvinf file */
   fileio_make_backup_volume_info_name (from_volbackup, logpath, nopath_name);

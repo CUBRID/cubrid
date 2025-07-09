@@ -89,7 +89,7 @@ extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NE
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
 #endif /* CAS_FOR_CGW */
-extern int ux_end_tran (int tran_type, bool reset_con_status);
+extern int ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
 extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
@@ -113,7 +113,7 @@ extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-extern void ux_database_shutdown (void);
+extern void ux_database_shutdown (bool request_server);
 extern int ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF * net_buf);
@@ -149,7 +149,6 @@ extern int ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * 
 extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf);
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
 extern void ux_get_default_setting (void);
-extern void ux_get_system_parameter (const char *param, bool * value);
 extern void ux_set_default_setting (void);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -235,4 +234,8 @@ extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BU
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
+#if defined(CAS_FOR_CGW)
+extern void ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle);
+#endif
+
 #endif /* _CAS_EXECUTE_H_ */

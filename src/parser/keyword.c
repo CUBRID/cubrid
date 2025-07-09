@@ -63,6 +63,7 @@ static KEYWORD_RECORD keywords[] = {
   {AT, "AT", 0},
   {ATTACH, "ATTACH", 0},
   {ATTRIBUTE, "ATTRIBUTE", 0},
+  {AUTHID, "AUTHID", 1},
   {AUTO_INCREMENT, "AUTO_INCREMENT", 1},
   {AVG, "AVG", 0},
   {BEFORE, "BEFORE", 0},
@@ -82,6 +83,7 @@ static KEYWORD_RECORD keywords[] = {
   {BY, "BY", 0},
   {BUFFER, "BUFFER", 1},
   {CALL, "CALL", 0},
+  {CALLER, "CALLER", 1},
   {CACHE, "CACHE", 1},
   {CAPACITY, "CAPACITY", 1},
   {CASCADE, "CASCADE", 0},
@@ -145,6 +147,7 @@ static KEYWORD_RECORD keywords[] = {
   {DAY_SECOND, "DAY_SECOND", 0},
   {DBLINK, "DBLINK", 0},
   {DEALLOCATE, "DEALLOCATE", 0},
+  {DEFINER, "DEFINER", 1},
   {NUMERIC, "DEC", 0},
   {NUMERIC, "DECIMAL", 0},
   {DECLARE, "DECLARE", 0},
@@ -158,6 +161,7 @@ static KEYWORD_RECORD keywords[] = {
   {DESC, "DESC", 0},
   {DESCRIBE, "DESCRIBE", 0},
   {DESCRIPTOR, "DESCRIPTOR", 0},
+  {DETERMINISTIC, "DETERMINISTIC", 1},
   {DIAGNOSTICS, "DIAGNOSTICS", 0},
   {DIFFERENCE_, "DIFFERENCE", 0},
   {DISCONNECT, "DISCONNECT", 0},
@@ -483,6 +487,7 @@ static KEYWORD_RECORD keywords[] = {
   {TRIGGERS, "TRIGGERS", 1},
   {TRIM, "TRIM", 0},
   {TRUNCATE, "TRUNCATE", 0},
+  {TYPE, "TYPE", 1},
   {True, "TRUE", 0},
   {UCASE, "UCASE", 1},
   {UNDER, "UNDER", 0},
@@ -821,7 +826,7 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 	  assert (strcasecmp (pk->keyword, keywords[i].keyword) == 0);
 	}
 
-      for (i = 0; i < sizeof (functions) / sizeof (functions[0]); i++)
+      for (i = 0; i < DIM (functions); i++)
 	{
 	  pk = pt_find_keyword (functions[i].keyword);
 	  if (pk)
@@ -840,7 +845,7 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 	  assert (strcasecmp (pf->keyword, functions[i].keyword) == 0);
 	}
 
-      for (i = 0; i < sizeof (keywords) / sizeof (keywords[0]); i++)
+      for (i = 0; i < DIM (keywords); i++)
 	{
 	  pf = pt_find_function_name (keywords[i].keyword);
 	  if (pf)

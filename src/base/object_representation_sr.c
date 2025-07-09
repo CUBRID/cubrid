@@ -29,6 +29,7 @@
 #include "btree_load.h"
 #include "config.h"
 #include "dbtype.h"
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -38,6 +39,8 @@
 #include <new>
 #include <stdio.h>
 #include <string.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
@@ -271,6 +274,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       att->type = or_att->type;
       att->id = or_att->id;
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->location = or_att->location;
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
@@ -314,6 +318,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
+	      bt_statsp->dedup_idx = -1;
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -364,6 +369,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
+		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
 		}
 	      else
 		{
@@ -1931,14 +1937,21 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-
-	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	    {
-	      if (att->id == att_id)
+	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_id);
+	      (index->n_atts)++;
+	    }
+	  else
+	    {
+	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
-		  index->atts[index->n_atts] = att;
-		  (index->n_atts)++;
-		  break;
+		  if (att->id == att_id)
+		    {
+		      index->atts[index->n_atts] = att;
+		      (index->n_atts)++;
+		      break;
+		    }
 		}
 	    }
 	}
@@ -2117,9 +2130,11 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
+  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
@@ -2234,6 +2249,27 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
+
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	{
+          // *INDENT-OFF* 
+	  /* To reach this point, the inside of the set must have at least the following structure.
+	   *     0         1                    2      [  3        4  ] *x           5 + x          6 + x   7 + x
+	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, status, comment}
+	   * That is, the size of this constraint_seq set must be 8 or more, and the 3rd position will be attrID.
+	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
+	   * the position 3 value must be read to obtain actual column information.           
+	   */
+          // *INDENT-ON*
+	  assert (seq_size >= 8);
+	  i = 3;		// index of attrID (for first real column)
+	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
+	    {
+	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
+	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
+	    }
+	}
+
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
@@ -2401,38 +2437,35 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   if (rep->n_attributes > 0)
     {
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
   if (rep->n_shared_attrs > 0)
     {
-      rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+      rep->shared_attrs = (OR_ATTRIBUTE *) calloc (rep->n_shared_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->shared_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
   if (rep->n_class_attrs > 0)
     {
-      rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+      rep->class_attrs = (OR_ATTRIBUTE *) calloc (rep->n_class_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->class_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -2483,6 +2516,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2492,9 +2526,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
-      // *INDENT-OFF*
-      new (&att->auto_increment.serial_obj) std::atomic<or_aligned_oid> (oid_Null_oid);
-      // *INDENT-ON*
+      att->auto_increment.serial_obj = oid_Null_oid;
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -2677,6 +2709,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2756,6 +2789,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2972,14 +3006,12 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return rep;
     }
 
-  rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+  rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
   if (rep->attributes == NULL)
     {
       free_and_init (rep);
       return NULL;
     }
-  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
    * OR_VAR_TABLE_ELEMENT_OFFSET. */
@@ -2999,6 +3031,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3169,15 +3202,13 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  continue;
 	}
 
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
        * OR_VAR_TABLE_ELEMENT_OFFSET. */
@@ -3197,6 +3228,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
+	  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
 	  att->default_value.val_length = 0;
@@ -3955,6 +3987,15 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 	}
     }
+  else
+    {
+      *alloced_string = 0;
+      *string = NULL;
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
+	{
+	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
+	}
+    }
 
   return rc;
 }
@@ -4477,13 +4518,9 @@ or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
     {
       return MVCCID_ALL_VISIBLE;
     }
-  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
   else
     {
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
       MVCCID insert_id = 0;
       OR_GET_BIGINT (buf->ptr, &insert_id);
       buf->ptr += OR_MVCCID_SIZE;
@@ -4532,16 +4569,9 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
   if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
       /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
+      OR_GET_BIGINT (buf->ptr, &(delid));
+      buf->ptr += OR_MVCCID_SIZE;
     }
   return delid;
 }
@@ -4565,15 +4595,9 @@ or_mvcc_get_chn (OR_BUF * buf, int *error)
 
   *error = NO_ERROR;
 
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-    }
+  assert (buf->ptr + OR_INT_SIZE <= buf->endptr);
+  chn = OR_GET_INT (buf->ptr);
+  buf->ptr += OR_INT_SIZE;
 
   return chn;
 }
@@ -4632,12 +4656,7 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
     {
       return NO_ERROR;
     }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
@@ -4665,11 +4684,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
       return NO_ERROR;
     }
 
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_underflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
