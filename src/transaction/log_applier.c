@@ -8053,7 +8053,7 @@ la_set_peer_host (char *dest, const char *src)
 }
 
 static inline void
-init_delay_history (int *delay_history)
+la_init_delay_history (int *delay_history)
 {
   for (int i = 0; i < LA_NUM_DELAY_HISTORY; i++)
     {
@@ -8196,7 +8196,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       return error;
     }
 
-  init_delay_history (delay_hist);
+  la_init_delay_history (delay_hist);
 
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
