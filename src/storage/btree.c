@@ -17733,7 +17733,7 @@ int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -23120,7 +23120,7 @@ int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
