@@ -17806,7 +17806,7 @@ pt_is_dblink_related (PT_NODE * p)
 static PT_NODE *
 pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 {
-  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3, result_type;
+  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3 = PT_TYPE_NONE, result_type;
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL, *result = NULL;
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;

@@ -4675,7 +4675,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (lang_str != NULL);
 		  assert (lang_buf_size > 0);
-		  strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+		  memcpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
 		}
 	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }

@@ -67,22 +67,18 @@
 	  }			\
 	} while (0)
 
-#define ALLOC_N_COPY(PTR, STR, SIZE)		\
+#define ALLOC_COPY_STRLEN(PTR, STR)		\
 	do {					\
-	  if (STR == NULL)			\
+          if ((STR) == NULL)			\
 	    PTR = NULL;				\
 	  else {				\
-	    PTR = (char *) MALLOC(SIZE);			\
+            int sz = strlen(STR);               \
+	    PTR = (char *) MALLOC(sz + 1);	\
 	    if (PTR) {				\
-	      strncpy(PTR, STR, SIZE);		\
-	      PTR[SIZE - 1] = '\0';		\
+	      memcpy(PTR, (STR), sz);		\
+	      PTR[sz] = '\0';		        \
 	    }					\
-	  }					\
-	} while (0)
-
-#define ALLOC_COPY_STRLEN(PTR, STR)			\
-	do {					\
-	  ALLOC_N_COPY(PTR, STR, strlen(STR) + 1); \
+           }                                    \
 	} while (0)
 
 #if defined(WINDOWS)

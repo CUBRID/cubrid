@@ -183,7 +183,7 @@ struct mvcc_snapshot
 
   mvcc_snapshot &operator= (const mvcc_snapshot& snapshot) = delete;
 
-  void copy_to (mvcc_snapshot & other) const;
+  void copy_to (mvcc_snapshot & dest) const;
   // *INDENT-ON*
 };
 
@@ -210,7 +210,9 @@ struct mvcc_info
   mvcc_info ();
   void init ();
   void reset ();
-  // *INDENT-ON*
+
+  void copy_to (mvcc_info & dest) const;
+  // *INDENT-ON*   
 };
 
 enum mvcc_satisfies_delete_result

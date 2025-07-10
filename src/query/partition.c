@@ -1345,7 +1345,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   OR_PARTITION *part;
   DB_VALUE min, max;
   int rmin = DB_UNK, rmax = DB_UNK;
-  MATCH_STATUS status;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
 
   if (db_value_type_is_collection (val))
     {
