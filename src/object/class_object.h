@@ -713,6 +713,7 @@ struct sm_partition
   struct sm_partition *next;	/* currently not used, always NULL */
   const char *pname;		/* partition name */
   int partition_type;		/* partition type (range, list, hash) */
+  DB_CLASS_PARTITION_TYPE class_partition_type;	/* class partition type (partitioned class, partition class) */
   DB_SEQ *values;		/* values for range and list partition types */
   const char *expr;		/* partition expression */
   const char *comment;
