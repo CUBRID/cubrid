@@ -20952,7 +20952,7 @@ pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
 	  coll_infer->coerc_level = PT_COLLATION_L5_COERC;
 	  break;
 	}
-      /* Fall through */
+      [[fallthrough]];
     case PT_DOT_:
       if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{

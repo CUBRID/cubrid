@@ -2616,7 +2616,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
       sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
-      /* fall thru */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:
       sb ("{");
 

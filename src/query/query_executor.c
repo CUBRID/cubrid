@@ -1527,7 +1527,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	      (void) pr_clear_value (regu_var->value.dbvalptr);
 	    }
 	}
-      /* Fall through */
+      [[fallthrough]];
     case TYPE_LIST_ID:
       if (regu_var->xasl != NULL)
 	{
