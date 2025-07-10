@@ -7427,6 +7427,105 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   return copyarea;
 }
 
+static int
+locator_scan_result_to_errno(SCAN_CODE scan)
+{
+    switch (scan)
+    {
+        case S_SUCCESS:
+            return NO_ERROR;
+        case S_ERROR:
+        case S_DOESNT_FIT:
+        case S_SNAPSHOT_NOT_SATISFIED:
+            return ER_FAILED;
+        case S_DOESNT_EXIST:
+        {
+            int err_id = er_errid();
+            if (err_id == ER_HEAP_NODATA_NEWADDRESS)
+            {
+                er_clear();
+                return NO_ERROR;
+            }
+            return (err_id == NO_ERROR ? ER_HEAP_UNKNOWN_OBJECT : err_id);
+        }
+        default:
+            assert(false);
+            return ER_FAILED;
+    }
+}
+
+/**
+ * locator_prepare_old_recdes() - Prepare the old record descriptor for update operations
+ *  thread_p:           Thread entry context
+ *  oid:                Identifier of the object to fetch
+ *  class_oid:          Identifier of the object’s class
+ *  scan_cache:         Scan cache used for heap operations
+ *  force_update_inplace: Update-in-place style flag
+ *  need_locking:       Whether the object must be locked before fetching
+ *  rec_descriptor:     Optional pre-fetched record descriptor (if non-NULL, it is used directly)
+ *  out_recdes:         Output location for the prepared record descriptor
+ *
+ * This function determines how to obtain the "old" record descriptor
+ * for an update:
+ *   1) If @rec_descriptor is provided, it is used verbatim.
+ *   2) If an in-place update is allowed or locking is not required,
+ *      the last version is fetched via heap_get_last_version().
+ *   3) Otherwise, locator_lock_and_get_object() is used to fetch the record,
+ *      with any existing MVCC snapshot in @scan_cache temporarily disabled.
+ *
+ * The underlying SCAN_CODE result is then passed to locator_scan_result_to_errno()
+ * to produce a standard error code (NO_ERROR or appropriate ER_* value).
+ *
+ * Return:
+ *   NO_ERROR on success,
+ *   ER_FAILED or another error code if the fetch fails.
+ */
+static int
+locator_prepare_old_recdes(THREAD_ENTRY *thread_p,
+                           OID *oid, OID *class_oid,
+                           HEAP_SCANCACHE *scan_cache,
+                           UPDATE_INPLACE_STYLE force_update_inplace,
+                           bool need_locking,
+                           RECDES *rec_descriptor,
+                           RECDES *out_recdes)
+{
+    MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+    SCAN_CODE scan = S_SUCCESS;
+
+    if (rec_descriptor)
+    {
+        *out_recdes = *rec_descriptor;
+    }
+    else if (HEAP_IS_UPDATE_INPLACE(force_update_inplace) || !need_locking)
+    {
+        HEAP_GET_CONTEXT context;
+        heap_init_get_context(thread_p, &context, oid, class_oid, out_recdes, scan_cache, COPY, NULL_CHN);
+        scan = heap_get_last_version(thread_p, &context);
+        heap_clean_get_context(thread_p, &context);
+        assert(lock_get_object_lock(oid, class_oid) >= X_LOCK ||
+               lock_get_object_lock(class_oid, oid_Root_class_oid) >= X_LOCK);
+    }
+    else
+    {
+      /* The oid has been already locked in select phase, however need to get the last object that may differ by
+	   * the current one in case that transaction updates same OID many times during command execution */
+	  /* TODO: investigate if this is still true */
+        if (scan_cache && scan_cache->mvcc_snapshot)
+        {
+            saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
+            scan_cache->mvcc_snapshot = NULL;
+        }
+        scan = locator_lock_and_get_object(thread_p, oid, class_oid, out_recdes,
+                                           scan_cache, X_LOCK, COPY,
+                                           NULL_CHN, LOG_ERROR_IF_DELETED);
+        if (saved_mvcc_snapshot)
+            scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
+    }
+
+    return locator_scan_result_to_errno(scan);
+}
+
+
 /*
  * locator_attribute_info_force () - Force an object represented by attribute
  *                                   information structure
@@ -7497,78 +7596,59 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-      /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
-      if (rec_descriptor != NULL)
-	{
-	  copy_recdes = *rec_descriptor;
-	}
-      else if (HEAP_IS_UPDATE_INPLACE (force_update_inplace) || need_locking == false)
-	{
-	  HEAP_GET_CONTEXT context;
 
-	  /* don't consider visiblity, just get the last version of the object */
-	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
-	  scan = heap_get_last_version (thread_p, &context);
-	  heap_clean_get_context (thread_p, &context);
-
-	  assert ((lock_get_object_lock (oid, &class_oid) >= X_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
-	}
-      else
-	{
-	  /* The oid has been already locked in select phase, however need to get the last object that may differ by
-	   * the current one in case that transaction updates same OID many times during command execution */
-	  /* TODO: investigate if this is still true */
-	  if (scan_cache && scan_cache->mvcc_snapshot != NULL)
-	    {
-	      /* Why is snapshot set to NULL? */
-	      saved_mvcc_snapshot = scan_cache->mvcc_snapshot;
-	      scan_cache->mvcc_snapshot = NULL;
-	    }
-
-	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED);
-	  if (saved_mvcc_snapshot != NULL)
-	    {
-	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
-	    }
-	}
-
-      if (scan == S_SUCCESS)
-	{
-	  /* do nothing for the moment */
-	}
-      else if (scan == S_ERROR || scan == S_DOESNT_FIT)
-	{
-	  /* Whenever an error including an interrupt was broken out, quit the update. */
-	  return ER_FAILED;
-	}
-      else if (scan == S_DOESNT_EXIST)
-	{
-	  int err_id = er_errid ();
-	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
-	    {
-	      /* it is an immature record. go ahead to update */
-	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
-	    }
-	  else
-	    {
-	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
-	    }
-	}
-      else if (scan == S_SNAPSHOT_NOT_SATISFIED)
-	{
-	  return ER_FAILED;
-	}
-      else
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
+    error_code = locator_prepare_old_recdes(thread_p,
+                                                     oid,
+                                                     &class_oid,
+                                                     scan_cache,
+                                                     force_update_inplace,
+                                                     need_locking,
+                                                     rec_descriptor,
+                                                     &copy_recdes);
+             if (error_code != NO_ERROR)
+             {
+                 return error_code;
+                }
 
       old_recdes = &copy_recdes;
 
-      [[fallthrough]];
+      copyarea =
+      locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+                                               LOB_FLAG_INCLUDE_LOB);
+    if (copyarea == NULL)
+      {
+        error_code = ER_FAILED;
+        break;
+      }
+      int has_index;
+
+      assert (LC_IS_FLUSH_UPDATE (operation));
+
+      /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
+      has_index = LC_FLAG_HAS_INDEX;
+      if (heap_attrinfo_check_unique_index (thread_p, attr_info, att_id, n_att_id))
+        {
+          has_index |= LC_FLAG_HAS_UNIQUE_INDEX;
+        }
+
+        /* Assume that it has indices */
+      error_code =
+        locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
+                              att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
+                              pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
+      if (error_code != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+        }
+
+        if (copyarea != NULL)
+	{
+	  locator_free_copy_area (copyarea);
+	  copyarea = NULL;
+	  new_recdes.data = NULL;
+	  new_recdes.area_size = 0;
+	}
+      break;
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
@@ -7582,37 +7662,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  break;
 	}
 
-      /* Assume that it has indices */
-      if (LC_IS_FLUSH_INSERT (operation))
-	{
-	  error_code =
-	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
-				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL, false,
-				  false);
-	}
-      else
-	{
-	  int has_index;
-
-	  assert (LC_IS_FLUSH_UPDATE (operation));
-
-	  /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
-	  has_index = LC_FLAG_HAS_INDEX;
-	  if (heap_attrinfo_check_unique_index (thread_p, attr_info, att_id, n_att_id))
-	    {
-	      has_index |= LC_FLAG_HAS_UNIQUE_INDEX;
-	    }
-
-	  error_code =
-	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
-				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
-				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	    }
-	}
-
+  /* Assume that it has indices */
+        error_code =
+        locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
+                              force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL, false,
+                              false);
+      
       if (copyarea != NULL)
 	{
 	  locator_free_copy_area (copyarea);
