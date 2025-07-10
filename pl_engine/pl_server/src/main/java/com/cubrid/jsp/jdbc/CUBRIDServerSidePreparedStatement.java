@@ -143,7 +143,17 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             }
 
             // 4) execute
-            executeInternal();
+            try {
+                executeInternal();
+            } catch (SQLException e) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
+                        "no query handler".equals(e.getMessage())) {
+                    // prepare again and one more try
+                    invalidate();
+                    prepareAgainIfInvalidated();
+                    executeInternal();
+                }
+            }
 
             // 5) result set
             getMoreResults();
@@ -174,7 +184,18 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             }
 
             // 3) execute
-            executeInternal();
+            try {
+                executeInternal();
+            } catch (SQLException e) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
+                        "no query handler".equals(e.getMessage())) {
+                    // prepare again and one more try
+                    invalidate();
+                    prepareAgainIfInvalidated();
+                    executeInternal();
+                }
+            }
+
 
             // 4) result set
             getMoreResults();
@@ -215,7 +236,18 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             }
 
             // 3) execute
-            executeInternal();
+            try {
+                executeInternal();
+            } catch (SQLException e) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
+                        "no query handler".equals(e.getMessage())) {
+                    // prepare again and one more try
+                    invalidate();
+                    prepareAgainIfInvalidated();
+                    executeInternal();
+                }
+            }
+
 
             // 4) result set
             boolean result = getMoreResults();
