@@ -9925,18 +9925,16 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   else if (op == PT_BETWEEN)
     {
       PT_NODE *between_and = orderby_for->info.expr.arg2;
-      PT_NODE *between_upper = NULL;
       int between_op;
 
       assert (between_and != NULL && between_and->node_type == PT_EXPR);
-      between_upper = between_and->info.expr.arg2;
       between_op = between_and->info.expr.op;
       switch (between_op)
 	{
 	case PT_BETWEEN_GT_LT:
 	case PT_BETWEEN_GE_LT:
 	  lt = true;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
 	case PT_BETWEEN_GT_LE:

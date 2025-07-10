@@ -5450,7 +5450,7 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
 	  tran_get_tran_settings (&dummy_lktimeout, tran_isolation, &dummy_aws);
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case 1:			/* unsupported ones */
     case 2:
     case 3:

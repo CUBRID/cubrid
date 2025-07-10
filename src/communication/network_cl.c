@@ -152,7 +152,7 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);

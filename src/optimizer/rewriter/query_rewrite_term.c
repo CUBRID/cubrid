@@ -83,8 +83,7 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	{
 	  break;		/* impossible case, give up */
 	}
-
-      /* FALL THROUGH */
+      [[fallthrough]];
 
     case PT_NAME:
       if (info->c_name->info.name.location > 0 && info->c_name->info.name.location < node->info.name.location)
