@@ -16278,7 +16278,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  if (new_node == NULL)
 	    {
-	      new_node = parser_copy_tree (parser, node);
+	      new_node = pt_point (parser, node);
 	    }
 	  select_out_list = parser_append_node (new_node, select_out_list);
 	}
