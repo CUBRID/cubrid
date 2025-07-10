@@ -25356,6 +25356,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
+		  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+
 		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
 		      SNAPSHOT_SATISFIED)
 		    {
