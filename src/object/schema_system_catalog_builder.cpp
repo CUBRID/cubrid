@@ -228,6 +228,14 @@ namespace cubschema
 	  case attribute_kind::QUERY_SPEC:
 	    error_code = db_add_query_spec (class_mop, name);
 	    break;
+	  case attribute_kind::CLASS_METHOD:
+	    /*
+	     * Temporary: class method support in system view class for
+	     * compatibility. To be removed when class/instance method support
+	     * is officially dropped.
+	     */
+	    error_code = db_add_class_method (class_mop, name, type);
+	    break;
 	  default:
 	    error_code = ER_FAILED;
 	    break;

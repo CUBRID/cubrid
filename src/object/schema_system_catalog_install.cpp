@@ -291,6 +291,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ());
+  ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial());
   ADD_VIEW_DEFINITION (CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ());
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
@@ -970,12 +971,8 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {}
     },
 // initializer
     nullptr
@@ -1769,6 +1766,53 @@ namespace cubschema
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
     },
 // constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_serial ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SERIAL_NAME,
+		   // columns
+    {
+      {"unique_name", format_varchar (255)},
+      {"name", format_varchar (255)},
+      {"owner", format_varchar (255)},
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"cyclic", "integer"},
+      {"started", "integer"},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"cached_num", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()},
+      /*
+       * Temporary: class method support in system view class for compatibility.
+       * To be removed when class/instance method support is officially dropped.
+       */
+      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
+    },
+// constraints
     {},
 // authorization
     {

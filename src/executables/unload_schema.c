@@ -674,7 +674,7 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 }
 
 /*
- * export_serial - export db_serial
+ * export_serial - export _db_serial
  *    return: NO_ERROR if successful, error code otherwise
  *    output_ctx(in/out): output context
  */
@@ -703,12 +703,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [attr_name] is null";
+    "from [_db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
+    "from [_db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -910,12 +910,12 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [attr_name] is not null";
+    "from [_db_serial] where [class_name] is not null and [attr_name] is not null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
+    "from [_db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1440,7 +1440,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err_count++;
     }
@@ -1472,7 +1472,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err_count++;
     }
@@ -5277,7 +5277,7 @@ extract_serial (extract_context & ctxt)
 	  fprintf (stderr, "%s", db_error_string (3));
 	  if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	    {
-	      fprintf (stderr, " Check the value of db_serial object.\n");
+	      fprintf (stderr, " Check the value of _db_serial object.\n");
 	    }
 	}
     }
@@ -5563,7 +5563,7 @@ extract_class (extract_context & ctxt)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err = ER_FAILED;
       goto end_class;

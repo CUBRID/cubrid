@@ -1405,6 +1405,80 @@ sm_define_view_stored_procedure_arguments_spec (void)
 }
 
 const char *
+sm_define_view_serial_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+        "SELECT "
+          "[serial].[unique_name] AS [unique_name], "
+          "[serial].[name] AS [name], "
+          "CAST ([serial].[owner].[name] AS VARCHAR(255)) AS [owner], "
+          "[serial].[current_val] AS [current_val], "
+          "[serial].[increment_val] AS [increment_val], "
+          "[serial].[max_val] AS [max_val], "
+          "[serial].[min_val] AS [min_val], "
+          "[serial].[start_val] AS [start_val], "
+          "[serial].[cyclic] AS [cyclic], "
+          "[serial].[started] AS [started], "
+          "[serial].[class_name] AS [class_name], "
+          "[serial].[attr_name] AS [attr_name], "
+          "[serial].[cached_num] AS [cached_num], "
+          "[serial].[comment] AS [comment], "
+          "[serial].[created_time] AS [created_time], "
+          "[serial].[updated_time] AS [updated_time] "
+        "FROM "
+	  /* CT_SERIAL_NAME */
+          "[%s] AS [serial] "
+        "WHERE "
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[serial].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[serial]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[object_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+		"AND [au].[auth_type] = 'SELECT'"
+	    ")",
+        CT_SERIAL_NAME,
+        AU_USER_CLASS_NAME,
+        AU_USER_CLASS_NAME,
+        CT_CLASSAUTH_NAME,
+        AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
 sm_define_view_db_collation_spec (void)
 {
   static char stmt [2048];
