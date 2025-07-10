@@ -5197,7 +5197,7 @@ exit:
 
 /*
  * catcls_get_apply_info_log_record_time () - get max log_record_time
- *                                            in db_ha_apply_info
+ *                                            in _db_ha_apply_info
  *
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context

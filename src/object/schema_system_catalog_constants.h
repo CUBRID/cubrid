@@ -43,7 +43,7 @@
 #define CT_STORED_PROC_CODE_NAME   "_db_stored_procedure_code"
 #define CT_PARTITION_NAME          "_db_partition"
 #define CT_SERIAL_NAME             "_db_serial"
-#define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
+#define CT_HA_APPLY_INFO_NAME      "_db_ha_apply_info"
 #define CT_COLLATION_NAME          "_db_collation"
 #define CT_USER_NAME               "db_user"
 #define CT_TRIGGER_NAME            "db_trigger"

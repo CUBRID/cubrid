@@ -1026,12 +1026,8 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {}
     },
 // initializer
     nullptr

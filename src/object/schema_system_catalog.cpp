@@ -72,7 +72,7 @@ namespace cubschema
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
     CT_STORED_PROC_CODE_NAME,   // "_db_stored_procedure_code"
     CT_SERIAL_NAME,		// "_db_serial"
-    CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
+    CT_HA_APPLY_INFO_NAME,	        // "_db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,			// "_db_charset"
     CT_DB_SERVER_NAME,		// "_db_server"
