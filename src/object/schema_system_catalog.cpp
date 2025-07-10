@@ -77,8 +77,7 @@ namespace cubschema
     CT_CHARSET_NAME,			// "_db_charset"
     CT_DB_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
-
-    CT_TRIGGER_NAME,			// "db_trigger"
+    CT_TRIGGER_NAME,		// "_db_trigger"
 
     /* currently, not implemented */
     CT_RESOLUTION_NAME		// "_db_resolution"
@@ -101,7 +100,7 @@ namespace cubschema
     CTV_INDEX_NAME,			// "db_index"
     CTV_INDEXKEY_NAME,		// "db_index_key"
     CTV_AUTH_NAME,			// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trig"
+    CTV_TRIGGER_NAME,		// "db_trigger"
     CTV_PARTITION_NAME,		// "db_partition"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"

@@ -4055,7 +4055,7 @@ synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool *
 	  "LOWER ([t].[owner].[name]) AS [owner_name], "
 	  "[t].[condition] AS [condition] "
 	"FROM "
-	  "[db_trigger] AS [t] "
+	  "[_db_trigger] AS [t] "
 	"WHERE "
 	  "LOCATE ('collate %s', [t].[condition]) > 0",
 	db_coll->coll_name);
