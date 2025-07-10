@@ -15436,7 +15436,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
 
-	  assert ((int) sizeof (cls_info[count]->name) < strlen (classname));
+	  assert ((int) sizeof (cls_info[count]->name) > strlen (classname));
 	  strcpy (cls_info[count]->name, classname);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
