@@ -419,7 +419,7 @@ static VACUUM_DATA vacuum_Data;
 // *INDENT-ON*
 
 /* Set page dirty [and free it]. First and last vacuum data page are not freed. */
-static void
+static inline void
 vacuum_set_dirty_data_page (cubthread::entry * thread_p, vacuum_data_page * data_page, bool free)
 {
   if ((data_page) != vacuum_Data.first_page && (data_page) != vacuum_Data.last_page)
