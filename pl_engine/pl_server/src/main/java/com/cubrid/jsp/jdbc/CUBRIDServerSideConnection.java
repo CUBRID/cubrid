@@ -128,7 +128,7 @@ public class CUBRIDServerSideConnection implements Connection {
         return statements.remove(s);
     }
 
-    private void invalidateStatements() throws SQLException {
+    public void invalidateStatements() {
 
         for (Statement s : statements) {
             ((CUBRIDServerSideStatement) s).invalidate();

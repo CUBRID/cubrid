@@ -159,10 +159,15 @@ public class CUBRIDServerSideStatement implements Statement {
         throw new SQLException(new UnsupportedOperationException());
     }
 
-    void invalidate() throws SQLException {
+    void invalidate() {
         if (!invalidated) {
             invalidated = true;
-            completeResultSet();
+            try {
+                completeResultSet();
+            } catch (SQLException e) {
+                assert false: "unreachable";    // now, completeResultSet does not throw it
+                // ignore
+            }
         }
     }
 
