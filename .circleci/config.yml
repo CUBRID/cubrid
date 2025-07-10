@@ -196,7 +196,7 @@ jobs:
               cubrid-test-shell:
                 docker:
                   - image: cubridci/cubridci:test_shell
-                # self-hosted runner - Request 2vcore/4gb Limits 32vcore/16gb
+                # self-hosted runner
                 resource_class: cubrid/large
                 working_directory: /home
                 
