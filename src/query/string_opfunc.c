@@ -22441,7 +22441,9 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
   int tzh = 0, tzm = 0;
   int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
   int dow = -1;
-  int tu[2], tv[2], tx[2];
+  int tu[2] = { 0, 0 };
+  int tv[2] = { 0, 0 };
+  int tx[2] = { 0, 0 };
   bool tinit[2];
   bool is_matched;
   bool try_tz_explain_tz_id = false;

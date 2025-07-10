@@ -4778,7 +4778,7 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
-  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
   if (!old_class || !newname)
@@ -4796,6 +4796,7 @@ do_rename_partition (MOP old_class, const char *newname)
 
   /* The pexpr format is defined in the function pt_node_to_partition_info. */
   strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
+  expr[DB_MAX_PARTITION_EXPR_LENGTH] = '\0';
   expr_ptr = strchr (expr, ']');	// skip select list
   expr_ptr = strchr (expr_ptr + 1, '[');	// find table name
   sprintf (expr_ptr, "[%s]", newname);

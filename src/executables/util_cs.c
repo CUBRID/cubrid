@@ -2250,6 +2250,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   bool both_flag = false;
   bool ha_only_flag = false;
   bool exclude_ha_flag = false;
+  bool for_cm_flag = false;
   const char *hexa_string;
   FILE *outfp = NULL;
   unsigned int added_in_flags, out_flags, dump_flags;
@@ -2273,8 +2274,12 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   /* --dump-flag is hidden option intended for developers or technical supoort */
   hexa_string = utility_get_option_string_value (arg_map, PARAMDUMP_DUMP_FLAG_S, 0);
 
+  /* --for-cm is hidden option to maintain compatibility with cubrid manager */
+  for_cm_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_FOR_CM_S);
+
   if (ha_only_flag && exclude_ha_flag)
     {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OPTION));
       goto print_dumpparam_usage;
     }
 
@@ -2305,20 +2310,24 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   added_in_flags = PRM_EMPTY_FLAG;
   out_flags = PRM_HIDDEN;
 
-  if (ha_only_flag)
+  /* ignore another options and print old style, when using --for-cm (that is, for_cm_flag is true.)  */
+  if (for_cm_flag == false)
     {
-      added_in_flags |= PRM_FOR_HA;
-    }
-  else if (exclude_ha_flag)
-    {
-      out_flags |= PRM_FOR_HA;
-    }
+      if (ha_only_flag)
+	{
+	  added_in_flags |= PRM_FOR_HA;
+	}
+      else if (exclude_ha_flag)
+	{
+	  out_flags |= PRM_FOR_HA;
+	}
 
-  if (hexa_string != NULL)
-    {
-      dump_flags = (unsigned int) strtoul (hexa_string, NULL, 16);
-      added_in_flags |= dump_flags;
-      out_flags &= ~dump_flags;
+      if (hexa_string != NULL)
+	{
+	  dump_flags = (unsigned int) strtoul (hexa_string, NULL, 16);
+	  added_in_flags |= dump_flags;
+	  out_flags &= ~dump_flags;
+	}
     }
 
   /* should have little copyright herald message ? */
@@ -2333,12 +2342,12 @@ paramdump (UTIL_FUNCTION_ARG * arg)
     }
 
 #if defined(SA_MODE)
-  if (envvar_get ("FOR_QA"))
+  if (for_cm_flag)
     {
       fprintf (outfp,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
       sysprm_dump_parameters (outfp, ' ', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
-			      PRM_OR_CONDITION);
+			      PRM_OR_CONDITION, for_cm_flag);
     }
   else
 #endif
@@ -2347,14 +2356,14 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       /* dump client's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
       sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | added_in_flags, PRM_AND_CONDITION, out_flags,
-			      PRM_OR_CONDITION);
+			      PRM_OR_CONDITION, for_cm_flag);
       fprintf (outfp, "\n");
 
       /* dump server's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
 	       database_name);
       sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | added_in_flags, PRM_AND_CONDITION, out_flags,
-				     PRM_OR_CONDITION);
+				     PRM_OR_CONDITION, for_cm_flag);
     }
 
   db_shutdown ();

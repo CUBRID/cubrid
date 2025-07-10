@@ -254,6 +254,8 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_oid_list = NULL;
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
+  xasl->px_executor = NULL;
+  xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
@@ -2355,12 +2357,15 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       goto error;
     }
 
+  ptr = or_unpack_int (ptr, &xasl->parallelism);
+
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
   xasl->max_iterations = -1;
-
+  xasl->px_executor = NULL;
+  xasl->executed_parallelism = 0;
   return ptr;
 
 error:
@@ -4632,6 +4637,11 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   /* access_spec_type->s_id not sent to server */
   memset (&access_spec->s_id, '\0', sizeof (SCAN_ID));
+  if (access_spec->type == TARGET_METHOD)
+    {
+      access_spec->s_id.s.msid.constructor ();
+    }
+
   access_spec->s_id.status = S_CLOSED;
 
   if (access_spec->type == TARGET_JSON_TABLE)

@@ -40,12 +40,12 @@
 
 int parser_yyinput_single_mode = 0;
 
+static void init_plcsql_lexing (void);
 static int parser_yyinput (char *buff, int max_size);
 static char *parser_c_hint (void);
 static char *parser_line_hint (void);
 static void begin_token (char *token);
 
-static void init_plcsql_lexing();
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
 static int from_plcsql_text;
@@ -75,6 +75,24 @@ int msg_ptr;
 int yybuffer_pos;
 int is_dblink_query_string = 0;
 int expecting_pl_lang_spec = 0;
+
+/* TODO: 
+ * For now, I've set it to ignore warnings in the automatically generated code. 
+ * If possible, let's remove warnings normally instead of setting it to ignore. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX                \
+    _Pragma("GCC diagnostic push")                         \
+    _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")   \
+    _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"")
+
+  #define END_SUPPRESS_WARNING_BISON_FLEX                  \
+    _Pragma("GCC diagnostic pop")
+#else
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
+  #define END_SUPPRESS_WARNING_BISON_FLEX
+#endif
+
+BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %}
 
 %option yylineno
@@ -1754,6 +1772,8 @@ _[uU][tT][fF]8[']		{
 
 %%
 
+END_SUPPRESS_WARNING_BISON_FLEX
+
 void
 csql_yyerror_explicit (int line, int column)
 {
@@ -2002,7 +2022,7 @@ yywrap ()
 
 
 static void
-init_plcsql_lexing()
+init_plcsql_lexing (void)
 {
   plcsql_begin_end_balance = 0;
   plcsql_nest_level = 0;

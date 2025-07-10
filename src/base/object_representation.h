@@ -124,11 +124,17 @@ struct setobj;
     *((INT64*) (val)) = ((INT64) swap64 (packed_value)); \
   } while (0)
 
-#define OR_PUT_BIGINT(ptr, val) \
-  OR_PUT_INT64 (ptr, val)
+#define OR_PUT_BIGINT(ptr, val) do {  \
+     assert (OR_BIGINT_SIZE == OR_INT64_SIZE); \
+     INT64* pval =  (INT64*) (val);   \
+     OR_PUT_INT64 (ptr, pval);        \
+  } while (0)
 
-#define OR_GET_BIGINT(ptr, val) \
-  OR_GET_INT64 (ptr, val)
+#define OR_GET_BIGINT(ptr, val) do {  \
+     assert (OR_BIGINT_SIZE == OR_INT64_SIZE); \
+     INT64* pval =  (INT64*) (val);   \
+     OR_GET_INT64 (ptr, pval);        \
+  } while (0)
 
 STATIC_INLINE void
 OR_PUT_FLOAT (char *ptr, float val)

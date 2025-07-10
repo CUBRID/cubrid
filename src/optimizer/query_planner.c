@@ -4249,7 +4249,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       {
 	if (qo_is_index_iss_scan (a))
 	  {
-	    b_keys = b_cum->pkeys[a_range];
+	    a_keys = a_cum->pkeys[a_range];
 	  }
 	else
 	  {
