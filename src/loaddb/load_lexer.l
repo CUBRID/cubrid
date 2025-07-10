@@ -58,7 +58,8 @@ using token = cubload::parser::token;
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
     _Pragma("GCC diagnostic push")                      \
     _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")\
-    _Pragma("GCC diagnostic ignored \"-Wregister\"")
+    _Pragma("GCC diagnostic ignored \"-Wregister\"")    \
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX               \
     _Pragma("GCC diagnostic pop")

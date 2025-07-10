@@ -553,6 +553,22 @@ static int g_plcsql_text_pos;
 	PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                                   \
 } while (0)
 
+/* TODO: 
+ * For now, I've set it to ignore warnings in the automatically generated code. 
+ * If possible, let's remove warnings normally instead of setting it to ignore. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
+    _Pragma("GCC diagnostic push")                      \
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+
+  #define END_SUPPRESS_WARNING_BISON_FLEX               \
+    _Pragma("GCC diagnostic pop")
+#else
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
+  #define END_SUPPRESS_WARNING_BISON_FLEX
+#endif
+
+BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %}
 
 %locations
@@ -25167,6 +25183,9 @@ opt_alter_synonym
 		DBG_PRINT}}
 
 %%
+
+END_SUPPRESS_WARNING_BISON_FLEX
+
 
 extern FILE *yyin;
 
