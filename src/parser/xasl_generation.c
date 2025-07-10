@@ -16262,7 +16262,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  new_node =
 	    pt_make_result_ref (parser, node, select_node->info.query.q.select.group_by, buildlist->g_val_list);
 
-	  if (pt_has_error (parser))
+	  new_node = pt_has_error (parser) ? NULL : pt_point (parser, node);
+
+	  if (new_node == NULL)
 	    {
 	      if (group_out_list)
 		{
@@ -16274,11 +16276,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		}
 
 	      goto exit_on_error;
-	    }
-
-	  if (new_node == NULL)
-	    {
-	      new_node = pt_point (parser, node);
 	    }
 	  select_out_list = parser_append_node (new_node, select_out_list);
 	}
