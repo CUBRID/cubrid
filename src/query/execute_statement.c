@@ -1446,7 +1446,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
 
   /*
-   * find _db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2382,7 +2382,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   OID_SET_NULL (&serial_obj_id);
 
   /*
-   * find _db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
