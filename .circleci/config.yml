@@ -53,10 +53,8 @@ jobs:
             echo "BASELINE: $BASELINE"
                         
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            TC_PRIVATE_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases-private-ex.git develop | cut -f1)
             echo "sha value from tc repository.(only from develop branch)"
             echo "TC_SHA: $TC_SHA"
-            echo "TC_PRIVATE_SHA: $TC_PRIVATE_SHA"
 
             # Generate dynamic configuration file (continue.yml)
             cat \<<EOF > .circleci/continue.yml
@@ -129,15 +127,15 @@ jobs:
 
                         if [ "\$TEST_SUITE" = "shell" ]; then
                           echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=name | tee tc.list
+                          circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=timings --timings-type=testname | tee tc.list
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rvf
+                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rvf
+                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
                         fi
 
                         echo "[debug] Run the tests"
@@ -198,6 +196,8 @@ jobs:
               cubrid-test-shell:
                 docker:
                   - image: cubridci/cubridci:test_shell
+                # self-hosted runner
+                resource_class: cubrid/large
                 working_directory: /home
                 
             # --------------------------------------------------
@@ -313,28 +313,13 @@ jobs:
                       
               test_shell:
                 executor: cubrid-test-shell
-                resource_class: large
-                parallelism: 30
+                parallelism: 20
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
                   GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
-                  - restore_cache:
-                      keys:
-                        - "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
-                        - "cubrid-testcases-private-ex-develop-"
                   - attach-and-run-tests
-                  - run:
-                      name: Clean up tc before save_cache
-                      command: |
-                        cd cubrid-testcases-private-ex
-                        git clean -fd
-                        git reset --hard
-                  - save_cache:
-                      key: "cubrid-testcases-private-ex-develop-${TC_PRIVATE_SHA}"
-                      paths:
-                        - cubrid-testcases-private-ex
             
             # --------------------------------------------------
             # 4. Conditional workflows
