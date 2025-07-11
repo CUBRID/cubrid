@@ -1430,49 +1430,8 @@ sm_define_view_serial_spec (void)
           "[serial].[updated_time] AS [updated_time] "
         "FROM "
 	  /* CT_SERIAL_NAME */
-          "[%s] AS [serial] "
-        "WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[serial].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[serial]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
-        CT_SERIAL_NAME,
-        AU_USER_CLASS_NAME,
-        AU_USER_CLASS_NAME,
-        CT_CLASSAUTH_NAME,
-        AU_USER_CLASS_NAME);
+          "[%s] AS [serial] ",
+        CT_SERIAL_NAME);
   // *INDENT-ON*
 
   return stmt;
