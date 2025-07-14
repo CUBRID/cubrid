@@ -152,6 +152,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                     invalidate();
                     prepareAgainIfInvalidated();
                     executeInternal();
+                } else {
+                    throw e;
                 }
             }
 
@@ -193,6 +195,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                     invalidate();
                     prepareAgainIfInvalidated();
                     executeInternal();
+                } else {
+                    throw e;
                 }
             }
 
@@ -245,6 +249,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                     invalidate();
                     prepareAgainIfInvalidated();
                     executeInternal();
+                } else {
+                    throw e;
                 }
             }
 
