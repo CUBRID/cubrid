@@ -339,7 +339,7 @@ static int sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
 static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type);
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
-			      bool tde_encrypted, bool is_parallel);
+			      bool tde_encrypted);
 
 static int sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page, INT32 num_pages, char *area_start,
 			    bool tde_encrypted);
@@ -1759,8 +1759,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
 	{
 	  error =
-	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted,
-			       SORT_IS_PARALLEL (sort_param));
+	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2299,7 +2298,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int out_file, 
     {
       error =
 	sort_add_new_file (thread_p, &sort_param->temp[out_file], sort_param->tmp_file_pgs, false,
-			   sort_param->tde_encrypted, SORT_IS_PARALLEL (sort_param));
+			   sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3453,13 +3452,17 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
       px_sort_param[i].file_contents[0].num_pages[0] = pages_per_thread + (i < remaining_pages ? 1 : 0);
       px_sort_param[i].file_contents[0].first_run = 0;
       px_sort_param[i].file_contents[0].last_run = 0;
-      /* px_sort_param[i].temp[0] = sort_param->temp[result_file_idx]; */
+      if (px_sort_param[i].temp[0].volid != NULL_VOLID)
+        {
+	  (void) file_temp_retire (thread_p, &px_sort_param[i].temp[0]);
+        }
+      px_sort_param[i].temp[0] = sort_param->temp[result_file_idx];
 
       start_index += (i == 0) ? 0 : px_sort_param[i - 1].file_contents[0].num_pages[0];
       px_sort_param[i].file_contents[0].start_index = start_index;
 
       /* copy temp file start index ~ num_pages */
-      error = sort_copy_sort_rec_tmpfile (thread_p, sort_param, &px_sort_param[i]);
+      /* error = sort_copy_sort_rec_tmpfile (thread_p, sort_param, &px_sort_param[i]); */
       /* if error return error 추가 */
 
       /* init px_status */
@@ -4360,8 +4363,7 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
  *   tde_encrypted(in): whether the file has to be encrypted or not for TDE
  */
 static int
-sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted,
-		   bool is_parallel)
+sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc, bool tde_encrypted)
 {
   VPID new_vpid;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
@@ -4557,7 +4559,6 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
   int error = NO_ERROR;
   SORT_INFO *sort_info;
 
-  /* TO_DO : put_arg?? */
   sort_info = *dest_sort_info = (SORT_INFO *) db_private_alloc (thread_p, sizeof (SORT_INFO));
   if (sort_info == NULL)
     {
@@ -4807,7 +4808,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
   for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
     {
       error =
-	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted, false);
+	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4934,18 +4935,12 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
       sort_info_p = (SORT_INFO *) sort_param->put_arg;
       sort_info_p->output_file =
 	qfile_open_list (thread_p, &sort_info_p->input_file->type_list, sort_info_p->sort_list_p,
-			 sort_info_p->input_file->query_id, sort_info_p->flag, NULL);
-      sort_info_p->output_file->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      sort_info_p->output_file->tfile_vfid->membuf = NULL;
-      sort_info_p->output_file->tfile_vfid->membuf_npages = 0;
-      sort_info_p->output_file->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
-      sort_info_p->output_file->tfile_vfid->preserved = false;
-      sort_info_p->output_file->tfile_vfid->tde_encrypted = false;
+			 sort_info_p->input_file->query_id, sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
       pthread_mutex_unlock(sort_param->px_mtx);
     }
 
   /* write last temp file */
-  error = sort_put_result_from_tmpfile (thread_p, sort_param, 0);
+  error = sort_put_result_from_tmpfile (thread_p, sort_param, sort_param->file_contents[0].start_index);
   if (error != NO_ERROR)
     {
       sort_param->px_status = PX_ERR_FAILED;
@@ -5073,7 +5068,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
       /* put result from sort location info */
       SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
-
       /* wait for threads */
       SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
       if (error != NO_ERROR)
