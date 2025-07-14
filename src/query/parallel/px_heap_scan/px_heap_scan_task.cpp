@@ -186,14 +186,14 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
 	  }
 #endif
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t1);
@@ -224,14 +224,14 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t2);
 	      }
 #endif
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t1);
@@ -255,7 +255,7 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t1);
@@ -290,7 +290,7 @@ namespace parallel_heap_scan
 			break;
 		      }
 		  }
-#if defined (WITH_PARALLEL_DETAIL_INFO)
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
