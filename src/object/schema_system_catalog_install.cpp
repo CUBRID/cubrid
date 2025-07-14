@@ -818,7 +818,9 @@ namespace cubschema
       {"type_name", format_varchar (16)}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"type_id", nullptr}, false}
+    },
 // authorization
     {
       // owner, grants
