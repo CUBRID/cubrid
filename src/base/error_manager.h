@@ -246,7 +246,8 @@ typedef void (*PTR_FNERLOG) (int err_id);
   ((err) == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED \
    || (err) == ER_NET_SERVER_CRASHED \
    || (err) == ER_OBJ_NO_CONNECT \
-   || (err) == ER_BO_CONNECT_FAILED)
+   || (err) == ER_BO_CONNECT_FAILED \
+   || (err) == ER_NET_CANT_CONNECT_SERVER)
 
 /* Macros to assert that error is set. */
 #define ASSERT_ERROR() \

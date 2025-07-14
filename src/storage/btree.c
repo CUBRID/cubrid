@@ -17733,7 +17733,7 @@ int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -23120,7 +23120,7 @@ int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -23788,7 +23788,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
-	  /* Fall through. */
+	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
 	  /* Must lock object. */
@@ -24100,7 +24100,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
-	  /* Fall through. */
+	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
 	  /* Must lock object. */
@@ -27015,7 +27015,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       /* Set undo_nxlsa. */
       assert (undo_nxlsa != NULL);
       LSA_COPY (&insert_helper.compensate_undo_nxlsa, undo_nxlsa);
-      /* Fall through. */
+      [[fallthrough]];
     case BTREE_OP_INSERT_NEW_OBJECT:
       key_insert_func = btree_key_insert_new_object;
       break;
@@ -30551,7 +30551,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
       LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
-      /* Fall through. */
+      [[fallthrough]];
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       key_func = btree_key_delete_remove_object;

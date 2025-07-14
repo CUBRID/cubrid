@@ -3661,7 +3661,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      sort_info_p->fixed_page = page_p;
 	    }
 #else /* not SortCache */
-	  page_p = qmgr_get_old_page (thread_p, &vpid, list_id_p->tfile_vfid);
+	  page_p = qmgr_get_old_page_read_only (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -3691,7 +3691,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      error = qfile_add_overflow_tuple_to_list (thread_p, sort_info_p->output_file, page_p, list_id_p);
 	    }
 #if 1				/* not SortCache */
-	  qmgr_free_old_page_and_init (thread_p, page_p, list_id_p->tfile_vfid);
+	  qmgr_free_old_page_ro_and_init (thread_p, page_p, list_id_p->tfile_vfid);
 #endif /* not SortCache */
 	}
       else
@@ -5804,10 +5804,11 @@ QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
-  QFILE_LIST_CACHE_ENTRY *lent;
-  int tran_index;
+  QFILE_LIST_CACHE_ENTRY *lent = NULL;
 #if defined(SERVER_MODE)
+  int tran_index;
   TRAN_ISOLATION tran_isolation;
+  bool new_tran = true;
 #if defined(WINDOWS)
   unsigned int num_elements;
 #else
@@ -5818,7 +5819,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
   size_t i_idx, num_active_users;
 #endif
 
-  bool new_tran = true;
+
 
   *result_cached = false;
 
@@ -5845,7 +5846,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 	}
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+#if defined(SERVER_MODE)
+  tran_index =
+#endif
+    LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
   lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);

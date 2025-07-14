@@ -116,9 +116,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 /*
  * System variable names
  */
-
-#pragma region PRM_NAME_DEFINE
-
+// #region PRM_NAME_DEFINE
 #define PRM_NAME_ER_LOG_DEBUG "er_log_debug"
 
 #define PRM_NAME_ER_BTREE_DEBUG "er_btree_debug"
@@ -778,7 +776,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
-#pragma endregion		//PRM_NAME_DEFINE
+// #endregion 
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -950,7 +948,7 @@ static int int_list_initial[1] = { 0 };
  * Upper and lower bounds for the parameters
  */
 
-#pragma region PRM_INITIALIZE_VALUE_DEFINE
+// #region PRM_INITIALIZE_VALUE_DEFINE
 
 bool PRM_ER_LOG_DEBUG = false;
 #if !defined(NDEBUG)
@@ -2572,7 +2570,7 @@ static int prm_uncorrelated_subquery_parallel_execution_threads_lower = 0;
 static int prm_uncorrelated_subquery_parallel_execution_threads_upper = 32;
 static unsigned int prm_uncorrelated_subquery_parallel_execution_threads_flag = 0;
 
-#pragma endregion		//PRM_INITIALIZE_VALUE_DEFINE
+// #endregion 
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -7161,22 +7159,17 @@ static struct prm_config_files_loaded prm_file_has_been_loaded;
  *   if_cond(in): dumping condition of including flags (OR, AND)
  *   out_flags(in): combination of bit flags that you want to exclude from the dump
  *   of_cond(in): dumping condition of excluding flags (OR, AND)
+ *   old_style(in): print in the old sytle
  */
 void
 sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
+			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
   char buf[LINE_MAX], tmpbuf[LINE_MAX];
   int i;
   const SYSPRM_PARAM *prm;
   char dmarker;
   char *ptr;
-  bool old_style = false;
-
-  if (envvar_get ("FOR_QA"))
-    {
-      old_style = true;
-    }
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
@@ -7485,7 +7478,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION);
+      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION,
+			      false);
     }
 #endif
 
@@ -9500,13 +9494,12 @@ cleanup:
 /*
  * xsysprm_dump_server_parameters -
  *   return: none
- *   fp(in):
  */
 void
 xsysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
+				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
-  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond);
+  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond, old_style);
 }
 
 /*
