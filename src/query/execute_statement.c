@@ -20752,8 +20752,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (owner_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -21225,7 +21224,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
