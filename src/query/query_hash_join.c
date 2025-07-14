@@ -881,6 +881,8 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
 
+  assert (manager->px_worker_pool_manager == NULL);
+
   /* stats_group */
   if (thread_is_on_trace (thread_p))
     {
@@ -3480,18 +3482,12 @@ hjoin_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tuple, HASHJOI
 }
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
-/* qexec_hash_join */
-
-/* hjoin_execute */
-
 /*
  * hjoin_split_qlist() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   part_info(in): Partitioning information.
- *   fetch_info(in): Information for reading join column values.
- *   is_null_allowed(in): Whether to include tuples with NULL in any join column in partitioning.
+ *   split_info(in): Input data for split
  *   key(in/out): Space for reading join column values.
  */
 int

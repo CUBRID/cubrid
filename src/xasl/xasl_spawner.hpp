@@ -98,11 +98,11 @@ namespace cubxasl
       SP_TYPE *spawn (const SP_TYPE *src);
       PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);	/* TODO: unsupported */
 
-      /* xasl->val_list */
+      /* (XASL_NODE *)->val_list */
       VAL_LIST *spawn (const VAL_LIST *src);
       int spawn (const QPROC_DB_VALUE_LIST src, QPROC_DB_VALUE_LIST dest);
 
-      /* xasl_state->vd */
+      /* (XASL_STATE *)->vd */
       VAL_DESCR *spawn (const VAL_DESCR *src);
 
       template <typename T>
@@ -240,6 +240,11 @@ namespace cubxasl
 
     T *typed_ptr = static_cast<T *> (ptr);
 
+    /*
+     * When the spawner is extended to support a new type T:
+     *   - Call pr_clear_value for all non-pointer DB_VALUE members
+     *   - Refer to REGU_VARIABLE and DB_VALUE cases as examples
+     */
     if constexpr (std::is_same_v<T, REGU_VARIABLE>)
       {
 	if (typed_ptr->type == TYPE_DBVAL)

@@ -138,7 +138,6 @@ typedef struct hashjoin_fetch_info
 
 typedef struct hashjoin_input_split_info
 {
-  // QFILE_LIST_ID *list_id;
   HASHJOIN_FETCH_INFO *fetch_info;
   QFILE_LIST_ID **part_list_id;
   int part_cnt;
@@ -191,7 +190,7 @@ typedef struct hashjoin_profile_stats
 typedef struct hashjoin_stats
 {
   HASH_METHOD hash_method;
-  int max_parallel_workers;
+  UINT32 max_parallel_workers;
 
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS build;
