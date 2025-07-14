@@ -7568,7 +7568,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
-      /* Fall through */
+      [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:

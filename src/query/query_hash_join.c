@@ -364,7 +364,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       break;
 
     case HASHJOIN_STATUS_ERROR:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);
@@ -1318,8 +1318,7 @@ hjoin_make_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   if (thread_is_on_trace (thread_p))
     {
-      manager->stats_group->context_stats =
-	(HASHJOIN_STATS *) db_private_alloc (thread_p, sizeof (HASHJOIN_STATS) * part_cnt);
+      manager->stats_group->context_stats = (HASHJOIN_STATS *) malloc (sizeof (HASHJOIN_STATS) * part_cnt);
       if (manager->stats_group->context_stats == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -2297,7 +2296,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;
 
     case HASH_METH_NOT_USE:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);
@@ -3000,7 +2999,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;			/* HASH_METH_HASH_FILE */
 
     case HASH_METH_NOT_USE:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);

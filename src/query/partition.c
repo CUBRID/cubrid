@@ -905,7 +905,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 	}
     }
 
-  spec = (PARTITION_SPEC_TYPE *) db_private_alloc (pinfo->thread_p, cnt * sizeof (PARTITION_SPEC_TYPE));
+  spec = (PARTITION_SPEC_TYPE *) malloc (cnt * sizeof (PARTITION_SPEC_TYPE));
   if (spec == NULL)
     {
       assert (false);
@@ -955,7 +955,7 @@ cleanup:
     {
       if (spec != NULL)
 	{
-	  db_private_free (pinfo->thread_p, spec);
+	  free (spec);
 	}
       pinfo->spec->parts = NULL;
     }
@@ -1345,7 +1345,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   OR_PARTITION *part;
   DB_VALUE min, max;
   int rmin = DB_UNK, rmax = DB_UNK;
-  MATCH_STATUS status;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
 
   if (db_value_type_is_collection (val))
     {

@@ -5863,8 +5863,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		   * for only one the new or the old one.
 		   */
 
-		  // todo - this is completely unsafe.
-		  memcpy (new_tdes, tdes, sizeof (*tdes));
+		  (*tdes).copy_to (*new_tdes);
+
 		  new_tdes->tran_index = new_tran_index;
 		  new_tdes->isloose_end = true;
 		  /* new_tdes does not inherit topops fields */
@@ -12163,7 +12163,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 {
   LOG_REC_REDO *redo = NULL;
   LOG_REC_UNDO *undo = NULL;
-  int length;
+  int length = -2;
   char *data = NULL;
 
   LOG_ZIP *zip_ptr = NULL;
@@ -12805,7 +12805,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   /*this is for constructing dml data item */
   int has_pk = 0;
   int *pk_attr_index = NULL;	/*not attr_id, def_order array */
-  int num_pk_attr;
+  int num_pk_attr = 0;
 
   CDC_DATAITEM_TYPE dataitem_type = CDC_DML;
   char *ptr, *start_ptr;
@@ -14493,7 +14493,7 @@ void
 cdc_reinitialize_queue (LOG_LSA * start_lsa)
 {
   assert (cdc_Gl.loginfo_queue != NULL);
-  CDC_LOGINFO_ENTRY *consume;
+  CDC_LOGINFO_ENTRY *consume = NULL;
 
   if (cdc_Gl.producer.produced_queue_size == 0)
     {
@@ -14514,6 +14514,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (LSA_LT (&next_consume_lsa, start_lsa))
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
+	  // TODO: please check consume is NULL
 	  cdc_Gl.consumer.consumed_queue_size += consume->length;
 	  LSA_COPY (&next_consume_lsa, &consume->next_lsa);
 
@@ -14533,7 +14534,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (!cdc_Gl.loginfo_queue->is_empty ())
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
-
+	  // TODO: please check consume is NULL
 	  if (consume->log_info != NULL)
 	    {
 	      free_and_init (consume->log_info);
@@ -15047,7 +15048,7 @@ cdc_cleanup ()
 
   while (!cdc_Gl.loginfo_queue->is_empty ())
     {
-      CDC_LOGINFO_ENTRY *tmp;
+      CDC_LOGINFO_ENTRY *tmp = NULL;
       cdc_Gl.loginfo_queue->consume (tmp);
 
       if (tmp->log_info != NULL)
@@ -15117,16 +15118,15 @@ cdc_finalize ()
     {
       while (!cdc_Gl.loginfo_queue->is_empty ())
 	{
-	  CDC_LOGINFO_ENTRY *tmp;
+	  CDC_LOGINFO_ENTRY *tmp = NULL;
 	  cdc_Gl.loginfo_queue->consume (tmp);
-
-	  if (tmp->log_info != NULL)
-	    {
-	      free_and_init (tmp->log_info);
-	    }
 
 	  if (tmp != NULL)
 	    {
+	      if (tmp->log_info != NULL)
+		{
+		  free_and_init (tmp->log_info);
+		}
 	      free_and_init (tmp);
 	    }
 	}

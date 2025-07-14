@@ -234,7 +234,7 @@ cub_catopen (const char *name, int type)
 		      break;
 		    case '%':
 		      ++nlspath;
-		      /* fallthrough */
+		      [[fallthrough]];
 		    default:
 		      if (pathP - path >= PATH_MAX - 1)
 			{
