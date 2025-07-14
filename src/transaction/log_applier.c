@@ -173,6 +173,9 @@
     } \
   while (0)
 
+#define LA_IS_FLUSH_ERROR(err) \
+  ((err) == ER_LC_PARTIALLY_FAILED_TO_FLUSH || (err) == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
 {
@@ -4250,7 +4253,6 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
   void *log_info;
-  VPID prev_vpid;
   bool first = true;
   int copyed_len;
   int area_len;
@@ -4259,8 +4261,6 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   int length = 0;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
-  prev_vpid.pageid = ((LOG_REC_UNDOREDO *) logs)->data.pageid;
-  prev_vpid.volid = ((LOG_REC_UNDOREDO *) logs)->data.volid;
 
   while (!LSA_ISNULL (&current_lsa))
     {
@@ -5171,7 +5171,7 @@ end:
 
       la_Info.fail_counter++;
 
-      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+      if (ER_IS_SERVER_DOWN_ERROR (error))
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
@@ -5390,7 +5390,7 @@ end:
 
       la_Info.fail_counter++;
 
-      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+      if (ER_IS_SERVER_DOWN_ERROR (error))
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
@@ -5574,7 +5574,7 @@ la_apply_statement_log (LA_ITEM * item)
 
     case CUBRID_STMT_UPDATE_STATS:
       is_ddl = true;
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case CUBRID_STMT_INSERT:
     case CUBRID_STMT_DELETE:
@@ -5607,7 +5607,7 @@ la_apply_statement_log (LA_ITEM * item)
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)
 	    {
-	      if (er_errid () == ER_NET_CANT_CONNECT_SERVER || er_errid () == ER_OBJ_NO_CONNECT)
+	      if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
 		{
 		  error = ER_NET_CANT_CONNECT_SERVER;
 		}
@@ -5671,7 +5671,7 @@ la_apply_statement_log (LA_ITEM * item)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  error_msg = er_msg ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -5855,7 +5855,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	  else
 	    {
 	      /* reconnect to server due to error while flushing repl items */
-	      if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+	      if (LA_IS_FLUSH_ERROR (error))
 		{
 		  goto end;
 		}
@@ -5868,7 +5868,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
-	      if (errid == ER_NET_CANT_CONNECT_SERVER || errid == ER_OBJ_NO_CONNECT)
+	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{
 		  error = ER_NET_CANT_CONNECT_SERVER;
 		  goto end;
@@ -6254,7 +6254,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		  la_applier_need_shutdown = true;
 		  return error;
 		}
-	      else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+	      else if (LA_IS_FLUSH_ERROR (error))
 		{
 		  return error;
 		}
@@ -6574,7 +6574,7 @@ la_log_commit (bool update_commit_time)
 
       er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
 		    la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
-      if (res == ER_NET_CANT_CONNECT_SERVER || res == ER_OBJ_NO_CONNECT)
+      if (ER_IS_SERVER_DOWN_ERROR (res))
 	{
 	  error = ER_NET_CANT_CONNECT_SERVER;
 	}
@@ -8007,27 +8007,30 @@ la_destroy_repl_filter (void)
   return;
 }
 
+/* 
+ * check_reinit_copylog() - check if the copy log is reinitialized.
+ *   return: NO_ERROR or error code
+ *
+ * Note:
+ *   In copylogdb, the 'mark_will_del' flag in the act log header is set
+ *   when an error occurs during log retrieval.
+ * 
+ */
 static int
 check_reinit_copylog (void)
 {
-  int error = NO_ERROR;
-
-  /* fetch header */
-  error = la_fetch_log_hdr (&la_Info.act_log);
-  if (error != NO_ERROR)
+  if (la_fetch_log_hdr (&la_Info.act_log) != NO_ERROR)
     {
-      error = ER_FAILED;
-      return error;
+      return ER_FAILED;
     }
 
-  if (la_Info.act_log.log_hdr->mark_will_del == true)
+  if (la_Info.act_log.log_hdr->mark_will_del)
     {
       la_Info.reinit_copylog = true;
-      error = ER_FAILED;
-      return error;
+      return ER_FAILED;
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 /*
@@ -8335,8 +8338,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 				(long long int) la_Info.committed_lsa.pageid);
 
 		  error = la_log_commit (false);
-		  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
-		      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+		  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
 		    {
 		      la_shutdown ();
 		      return error;
@@ -8523,8 +8525,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      error = la_log_record_process (lrec, &la_Info.final_lsa, pg_ptr);
 	      if (error != NO_ERROR)
 		{
-		  /* check connection error */
-		  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+		  if (ER_IS_SERVER_DOWN_ERROR (error))
 		    {
 		      la_shutdown ();
 		      return ER_NET_CANT_CONNECT_SERVER;
@@ -8534,7 +8535,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		      la_applier_need_shutdown = true;
 		      break;
 		    }
-		  else if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+		  else if (LA_IS_FLUSH_ERROR (error))
 		    {
 		      la_shutdown ();
 		      return error;
@@ -8577,9 +8578,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  error = la_check_time_commit (&time_commit, time_commit_interval);
 	  if (error != NO_ERROR)
 	    {
-	      /* check connection error */
-	      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
-		  || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+	      if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
 		{
 		  la_shutdown ();
 		  return error;
@@ -8596,8 +8595,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	  /* check and change state */
 	  error = la_change_state ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
-	      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+	  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
 	    {
 	      la_shutdown ();
 	      return error;

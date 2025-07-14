@@ -71,7 +71,6 @@ namespace parallel_query_execute
       }
     pthread_mutex_unlock (m_mutex_p);
     int err = 0;
-    int temp_tran_index = thread_ref.tran_index;
     css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
     int enter_qlist_count = thread_ref.m_qlist_count;
     QFILE_LIST_ID list_id;
@@ -131,7 +130,6 @@ namespace parallel_query_execute
 
     if (is_on_parallel_worker)
       {
-	thread_ref.tran_index = temp_tran_index;
 	thread_ref.conn_entry = temp_conn_entry;
 	thread_ref.on_trace = orig_on_trace;
       }
@@ -152,7 +150,6 @@ namespace parallel_query_execute
     pthread_mutex_unlock (m_mutex_p);
 
     int err = 0;
-    int temp_tran_index = thread_ref.tran_index;
     css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
     bool temp_on_trace = thread_ref.on_trace;
     int enter_qlist_count = thread_ref.m_qlist_count;
@@ -207,7 +204,6 @@ namespace parallel_query_execute
 #endif
       }
 
-    thread_ref.tran_index = temp_tran_index;
     thread_ref.conn_entry = temp_conn_entry;
     thread_ref.on_trace = temp_on_trace;
 

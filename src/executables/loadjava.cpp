@@ -127,7 +127,7 @@ parse_argument (int argc, char *argv[])
 	  Path = STATIC_PATH;
 	  break;
 	case 'h':
-	/* fall through */
+	  [[fallthrough]];
 	default:
 	  error = ER_FAILED;
 	  goto exit;

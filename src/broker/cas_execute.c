@@ -8196,13 +8196,13 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_SET:
       collection_str = "set";
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_MULTISET:
       if (collection_str == NULL)
 	{
 	  collection_str = "multiset";
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       if (collection_str == NULL)
 	{
@@ -8258,7 +8258,7 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_NUMERIC:
       sprintf (scale_str, "%d", scale);
-      /* fall through */
+      [[fallthrough]];
     default:
       p = (char *) db_get_type_name (dtype);
       if (p == NULL)

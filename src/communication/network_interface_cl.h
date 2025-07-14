@@ -332,9 +332,7 @@ extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, i
 					int replysize, char **logpg_area_buf, bool verbose);
 extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
 						  char *replybuf, int replysize, char *databuf1, int datasize1,
-						  char *databuf2, int datasize2, char **replydata_ptr1,
-						  int *replydatasize_ptr1, char **replydata_ptr2,
-						  int *replydatasize_ptr2);
+						  char *databuf2, int datasize2);
 extern void net_client_logwr_send_end_msg (int rc, int error);
 extern int net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length);
 #if defined(ENABLE_UNUSED_FUNCTION)

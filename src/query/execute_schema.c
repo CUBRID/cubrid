@@ -5994,7 +5994,7 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 	{
 	  return error;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_ADD_HASHPARTITION:
       error = do_redistribute_partitions_data (entity_name, pinfo->keycol, NULL, 0, PT_ADD_HASHPARTITION, true, false);
       break;
@@ -10787,7 +10787,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    {
 	      break;
 	    }
-	  /* fall through */
+	  [[fallthrough]];
 
 	default:
 	  att = attribute->info.attr_def.attr_name;
@@ -11379,7 +11379,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;
