@@ -37,15 +37,15 @@
 int
 dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **block_particps_ids)
 {
-  int num_ids = 0, i;
+  int num_ids = 0, id_size = sizeof (int);
   char *ids;
 
-  DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
-  DBLINK_CONN_ENTRY *dbl = dblink;
+  DBLINK_CONN_ENTRY *dblink_conn = qmgr_dblink_get_conn_entry (thread_p);
+  DBLINK_CONN_ENTRY *dblink = dblink_conn;
 
-  while (dbl && dbl->is_2pc_participant)
+  while (dblink && dblink->is_2pc_participant)
     {
-      dbl = dbl->next;
+      dblink = dblink->next;
       num_ids++;
     }
 
@@ -53,23 +53,25 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 
   if (num_ids > 0)
     {
-      ids = (char *) malloc (num_ids * 12);
+      int nth = 0;
+
+      ids = (char *) malloc (num_ids * id_size);
       if (ids == NULL)
 	{
 	  return -1;
 	}
 
-      dbl = dblink;
-      for (i = 0; i < num_ids; i++)
+      dblink = dblink_conn;
+      while (dblink && dblink->is_2pc_participant)
 	{
-	  snprintf (ids + i * 12, 12, "%12d", dbl->conn_handle);
-	  dbl = dbl->next;
+	  memcpy (ids + (nth++) * id_size, &(dblink->conn_handle), id_size);
+	  dblink = dblink->next;
 	}
 
       *block_particps_ids = (void *) ids;
     }
 
-  *partid_len = num_ids * 12;
+  *partid_len = num_ids * id_size;
 
   return num_ids;
 }
@@ -77,27 +79,27 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 bool
 dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids)
 {
-  int i = 0;
+  int nth = 0;
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
-  xid.formatID = 1234;
+  xid.formatID = 1105;
   xid.gtrid_length = sizeof (int);
-  xid.bqual_length = 12;
+  xid.bqual_length = sizeof (int);
 
   while (dblink && dblink->is_2pc_participant)
     {
-      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
+      memcpy (xid.data, &gtrid, xid.gtrid_length);
+      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + (nth++) * xid.bqual_length, xid.bqual_length);
       if (cci_xa_prepare (dblink->conn_handle, &xid, &err_buf) != NO_ERROR)
 	{
 	  return false;
 	}
       dblink = dblink->next;
-      i++;
     }
 
-  assert (i <= num_particps);
+  assert (nth <= num_particps);
 
   return true;
 }
@@ -106,31 +108,31 @@ void
 dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 			void *block_particps_ids)
 {
-  int i = 0, ack;
+  int nth = 0, ack;
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
-  xid.formatID = 1234;
+  xid.formatID = 1105;		/* for ver. 11.5 */
   xid.gtrid_length = sizeof (int);
-  xid.bqual_length = 12;
+  xid.bqual_length = sizeof (int);
 
   assert (particps_ack != NULL);
 
   while (dblink && dblink->is_2pc_participant)
     {
-      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
-      /* no check for commit if a participant is fail or not */
+      memcpy (xid.data, &gtrid, xid.gtrid_length);
+      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + (nth++) * xid.bqual_length, xid.bqual_length);
+      /* for participant, no check for commit whether a participant is fail or not */
       ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
       if (ack == NO_ERROR)
 	{
-	  particps_ack[i] = true;
+	  particps_ack[nth] = true;
 	}
       dblink = dblink->next;
-      i++;
     }
 
-  assert (i <= num_particps);
+  assert (nth <= num_particps);
 
   return;
 }
@@ -139,14 +141,14 @@ void
 dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 		       void *block_particps_ids, bool collect)
 {
-  int i = 0, ack;
+  int nth = 0, ack;
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_ENTRY *dblink = qmgr_dblink_get_conn_entry (thread_p);
 
-  xid.formatID = 1234;
+  xid.formatID = 1105;		/* for ver. 11.5 */
   xid.gtrid_length = sizeof (int);
-  xid.bqual_length = 12;
+  xid.bqual_length = sizeof (int);
 
   if (collect)
     {
@@ -155,19 +157,19 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
 
   while (dblink && dblink->is_2pc_participant)
     {
-      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + i * 12, 12);
-      /* for participant, no check for abort if a participant is fail or not */
+      memcpy (xid.data, &gtrid, xid.gtrid_length);
+      memcpy (xid.data + xid.gtrid_length, block_particps_ids + (nth++) * xid.bqual_length, xid.bqual_length);
+      /* for participant, no check for abort whether a participant is fail or not */
       ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
       if (collect && ack == NO_ERROR)
 	{
-	  particps_ack[i] = true;
+	  particps_ack[nth] = true;
 	}
 
       dblink = dblink->next;
-      i++;
     }
 
-  assert (i <= num_particps);
+  assert (nth <= num_particps);
 
   return;
 }
