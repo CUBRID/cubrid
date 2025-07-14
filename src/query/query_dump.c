@@ -3000,7 +3000,6 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		      }
 
 		    default:
-		      /* fall through */
 		      break;
 		    }
 
@@ -3509,7 +3508,6 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      }
 
 		    default:
-		      /* fall through */
 		      break;
 		    }
 

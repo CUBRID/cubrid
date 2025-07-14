@@ -272,9 +272,16 @@ typedef enum
 
 #if defined (SERVER_MODE)
 /* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
 #else
-#define PGBUF_THREAD_SHOULD_IGNORE_UNFIX(th) false
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
+#endif
+
+#if defined (SERVER_MODE)
+/* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
+#else
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif
 
 #define HASH_SIZE_BITS 20
@@ -2170,6 +2177,154 @@ try_again:
 }
 
 /*
+ * pgbuf_simple_fix () - Copy a portion of a page to the given area
+ *   return: area or NULL
+ *   vpid(in): Complete Page identifier
+ *
+ * Note:
+ *       WARNING:
+ *       This is only for reading temporary file.
+ *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
+ *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ */
+PAGE_PTR
+pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
+
+  assert (pgbuf_is_temporary_volume (vpid->volid));
+
+retry:
+  /* Is this a resident page ? */
+  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
+  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
+
+  if (bufptr == NULL)
+    {
+      /* the caller is holding only hash_anchor->hash_mutex. */
+      /* release hash mutex */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+
+      if (!need_fix || er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
+	{
+	  return NULL;
+	}
+
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  return NULL;
+	}
+      pgbuf_unfix (thread_p, pgptr);
+
+      pgptr = pgbuf_simple_fix (thread_p, vpid, true);
+      if (pgptr == NULL)
+	{
+	  /* impossible case */
+	  assert (0);
+	  return NULL;
+	}
+    }
+  else
+    {
+      if (need_fix)
+	{
+	  /* Cannot be mixed with general FIX(LATCH). Only possible when NO_LATCH. */
+	  if (bufptr->latch_mode != PGBUF_NO_LATCH)
+	    {
+	      /* retry simple_fix until finishing general fix and unfix */
+	      PGBUF_BCB_UNLOCK (bufptr);
+	      goto retry;
+	    }
+
+	  /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
+	  if (pgbuf_bcb_is_direct_victim (bufptr))
+	    {
+	      pgbuf_bcb_update_flags (thread_p, bufptr, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG,
+				      PGBUF_BCB_VICTIM_DIRECT_FLAG);
+	    }
+	}
+      else
+	{
+	  if (pgbuf_bcb_is_direct_victim (bufptr))
+	    {
+	      /* This BCB will be soon victimized and removed from the hash table. so it is considered not found. */
+	      PGBUF_BCB_UNLOCK (bufptr);
+	      return NULL;
+	    }
+	}
+
+      /* the caller is holding only bufptr->mutex. */
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+      bufptr->fcnt++;
+      /* release mutex */
+      PGBUF_BCB_UNLOCK (bufptr);
+    }
+
+  return pgptr;
+}
+
+/*
+ * pgbuf_simple_unfix () - Free the buffer where the page associated with pgptr resides
+ *
+ * Note:
+ *       WARNING:
+ *       This is only for reading temporary file.
+ *       only fcnt--. it is latchless and LRU mutexless.
+ *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ */
+void
+pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr;
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  /* only decrease fcnt */
+  PGBUF_BCB_LOCK (bufptr);
+  bufptr->fcnt--;
+  PGBUF_BCB_UNLOCK (bufptr);
+}
+
+/*
+ * pgbuf_dealloc_temp_page () - invalidate page of temporary table
+ *
+ * Note:
+ *       This is only for temporary file.
+ *       init ptype and clear dirty.
+ */
+int
+pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free)
+{
+  PGBUF_BCB *bufptr;
+
+  /* invalidation task is performed */
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  PGBUF_BCB_LOCK (bufptr);
+
+  /* set unknown type */
+  bufptr->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
+  /* clear page flags */
+  bufptr->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
+
+  /* clear dirty */
+  pgbuf_bcb_clear_dirty (thread_p, bufptr);
+
+  /* simple unfix */
+  if (need_free)
+    {
+      bufptr->fcnt--;
+      assert (bufptr->fcnt == 0);
+    }
+  PGBUF_BCB_UNLOCK (bufptr);
+
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_promote_read_latch () - Promote read latch to write latch
  *   return: error code or NO_ERROR
  *   pgptr(in/out): page pointer
@@ -3403,7 +3558,7 @@ repeat:
 	  continue;
 	}
 
-      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || bufptr->latch_mode != PGBUF_NO_LATCH)
+      if (!PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) || pgbuf_is_bcb_fixed_by_any (bufptr, false))
 	{
 	  /* page was fixed or became hot after selected as victim. do not flush it. */
 	  PGBUF_BCB_UNLOCK (bufptr);
@@ -6084,7 +6239,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 	    case PGBUF_LRU_1_ZONE:
 	      /* note: this is most often accessed code and must be highly optimized! */
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  /* do nothing */
 		  /* ... except collecting statistics */
@@ -6113,7 +6268,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    case PGBUF_LRU_2_ZONE:
 	      /* this is the buffer zone between hot and victimized. is less hot than zone one and we allow boosting
 	       * (if bcb's are old enough). */
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  /* do nothing */
 		  /* ... except collecting statistics */
@@ -6148,7 +6303,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      break;
 
 	    case PGBUF_LRU_3_ZONE:
-	      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	      if (PGBUF_SHOULD_IGNORE_UNFIX (thread_p, bufptr))
 		{
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
@@ -6239,7 +6394,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
       aout_list_id = pgbuf_remove_vpid_from_aout_list (thread_p, &bcb->vpid);
     }
 
-  if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+  if (PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
     {
       /* we are not registering unfix for activity and we are not boosting or moving bcb's */
       if (aout_list_id == PGBUF_AOUT_NOT_FOUND)
@@ -6285,7 +6440,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
 
   if (thread_private_lru_index != -1)
     {
-      if (PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+      if (PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
 	{
 	  /* add to top of current private list */
 	  pgbuf_lru_add_new_bcb_to_top (thread_p, bcb, thread_private_lru_index);
@@ -6316,7 +6471,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
   /* add to middle of shared list. */
   pgbuf_lru_add_new_bcb_to_middle (thread_p, bcb, pgbuf_get_shared_lru_index_for_add ());
   perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_VOID_TO_SHARED_MID);
-  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+  if (!PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
     {
       pgbuf_bcb_register_hit_for_lru (bcb);
     }
@@ -8268,7 +8423,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
 	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim.
 	   * note: except vacuum threads who ignore unfixes and have no quota. */
-	  if (!PGBUF_THREAD_SHOULD_IGNORE_UNFIX (thread_p))
+	  if (!PGBUF_VACUUM_SHOULD_IGNORE_UNFIX (thread_p))
 	    {
 	      /* still, offer a chance to those that are just slightly over quota. this actually targets new
 	       * transactions that do not have a quota yet... let them get a few bcb's first until their activity

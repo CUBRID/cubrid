@@ -1527,7 +1527,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	      (void) pr_clear_value (regu_var->value.dbvalptr);
 	    }
 	}
-      /* Fall through */
+      [[fallthrough]];
     case TYPE_LIST_ID:
       if (regu_var->xasl != NULL)
 	{
@@ -14139,7 +14139,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	{
 	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
 	}
-      /* fall through */
+      [[fallthrough]];
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
       /* close the list file */
@@ -14259,7 +14259,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
 	}
-      /* fall through */
+      [[fallthrough]];
     case CONNECTBY_PROC:
       qfile_close_list (thread_p, xasl->list_id);
       break;
@@ -23325,7 +23325,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
     {
     case DB_TYPE_NUMERIC:
       scale = domain->scale;
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:

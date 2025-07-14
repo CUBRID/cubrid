@@ -2912,8 +2912,8 @@ error_exit:
     }
 #endif
 
-  if (logwr_force_shutdown () == false
-      && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER || error == ER_BO_CONNECT_FAILED
+  if (!logwr_force_shutdown ()
+      && (ER_IS_SERVER_DOWN_ERROR (error)
 	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ERR_CSS_TCP_CONNECT_TIMEDOUT))
     {
       (void) sleep (sleep_nsecs);
@@ -3135,9 +3135,9 @@ error_exit:
     }
 #endif
 
-  if (la_force_shutdown () == false
-      && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER
-	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ER_BO_CONNECT_FAILED
+  if (!la_force_shutdown ()
+      && (ER_IS_SERVER_DOWN_ERROR (error)
+	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
 	  || error == ER_NET_SERVER_COMM_ERROR || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH))
     {
       (void) sleep (sleep_nsecs);

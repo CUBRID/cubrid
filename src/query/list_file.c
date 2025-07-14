@@ -3471,7 +3471,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      sort_info_p->fixed_page = page_p;
 	    }
 #else /* not SortCache */
-	  page_p = qmgr_get_old_page (thread_p, &vpid, list_id_p->tfile_vfid);
+	  page_p = qmgr_get_old_page_read_only (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -3501,7 +3501,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      error = qfile_add_overflow_tuple_to_list (thread_p, sort_info_p->output_file, page_p, list_id_p);
 	    }
 #if 1				/* not SortCache */
-	  qmgr_free_old_page_and_init (thread_p, page_p, list_id_p->tfile_vfid);
+	  qmgr_free_old_page_ro_and_init (thread_p, page_p, list_id_p->tfile_vfid);
 #endif /* not SortCache */
 	}
       else
