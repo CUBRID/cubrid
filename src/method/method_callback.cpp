@@ -239,8 +239,8 @@ namespace cubmethod
     query_handler *handler = get_query_handler_by_id (request.handler_id);
     if (handler == nullptr)
       {
-        // CUATION: do not change the error message below because
-        //   it is used in PL server to identify this error.
+	// CUATION: do not change the error message below because
+	//   it is used in PL server to identify this error.
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_QUERY_HANDLER, "no query handler", __FILE__, __LINE__);
       }
     else

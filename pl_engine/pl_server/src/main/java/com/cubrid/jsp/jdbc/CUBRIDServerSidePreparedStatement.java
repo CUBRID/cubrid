@@ -31,8 +31,8 @@
 
 package com.cubrid.jsp.jdbc;
 
-import com.cubrid.jsp.impl.SUStatement;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.impl.SUStatement;
 import cubrid.jdbc.jci.CUBRIDCommandType;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamptz;
@@ -106,7 +106,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                         CUBRIDServerSideJDBCErrorCode.ER_COMMUNICATION, e);
             }
 
-            // the same effect as replaying setByte(), setShort(), setInt(), ..., setObject() and registerOutParameters() calls.
+            // the same effect as replaying setByte(), setShort(), setInt(), ..., setObject() and
+            // registerOutParameters() calls.
             statementHandler.takeBindParametersFrom(saveStatementHandler);
         }
     }
@@ -146,8 +147,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             try {
                 executeInternal();
             } catch (SQLException e) {
-                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
-                        "no query handler".equals(e.getMessage())) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS
+                        && "no query handler".equals(e.getMessage())) {
                     // prepare again and one more try
                     invalidate();
                     prepareAgainIfInvalidated();
@@ -189,8 +190,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             try {
                 executeInternal();
             } catch (SQLException e) {
-                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
-                        "no query handler".equals(e.getMessage())) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS
+                        && "no query handler".equals(e.getMessage())) {
                     // prepare again and one more try
                     invalidate();
                     prepareAgainIfInvalidated();
@@ -199,7 +200,6 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                     throw e;
                 }
             }
-
 
             // 4) result set
             getMoreResults();
@@ -243,8 +243,8 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
             try {
                 executeInternal();
             } catch (SQLException e) {
-                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS &&
-                        "no query handler".equals(e.getMessage())) {
+                if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_DBMS
+                        && "no query handler".equals(e.getMessage())) {
                     // prepare again and one more try
                     invalidate();
                     prepareAgainIfInvalidated();
@@ -253,7 +253,6 @@ public class CUBRIDServerSidePreparedStatement extends CUBRIDServerSideStatement
                     throw e;
                 }
             }
-
 
             // 4) result set
             boolean result = getMoreResults();

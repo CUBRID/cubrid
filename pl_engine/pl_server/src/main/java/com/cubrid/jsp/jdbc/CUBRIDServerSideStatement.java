@@ -165,7 +165,7 @@ public class CUBRIDServerSideStatement implements Statement {
             try {
                 completeResultSet();
             } catch (SQLException e) {
-                assert false: "unreachable";    // now, completeResultSet does not throw it
+                assert false : "unreachable"; // now, completeResultSet does not throw it
                 // ignore
             }
         }

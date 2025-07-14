@@ -53,7 +53,6 @@ import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Struct;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
@@ -208,7 +207,7 @@ public class CUBRIDServerSideConnection implements Connection {
         for (Statement s : tempList) {
             s.close();
         }
-        assert statements.isEmpty();    // they detach themselves from the connection while closing
+        assert statements.isEmpty(); // they detach themselves from the connection while closing
     }
 
     public boolean isClosed() throws SQLException {
