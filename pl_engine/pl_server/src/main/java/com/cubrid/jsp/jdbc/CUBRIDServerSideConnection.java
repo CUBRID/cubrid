@@ -67,7 +67,7 @@ public class CUBRIDServerSideConnection implements Connection {
     private Context context = null;
 
     protected CUBRIDServerSideDatabaseMetaData mdata = null;
-    protected List<Statement> statements = null;
+    protected ArrayList<Statement> statements = null;
     private SUConnection suConn = null;
 
     private int transactionIsolation;
@@ -201,7 +201,11 @@ public class CUBRIDServerSideConnection implements Connection {
          * The connection is not actually terminated or database resources such as query
          * handlers and result sets are removed.
          */
-        for (Statement s : statements) {
+
+        // copy the list to avoid ConcurrentModificationException:
+        // Statement.close detaches itself from the connection
+        ArrayList<Statement> tempList = (ArrayList<Statement>) statements.clone();
+        for (Statement s : tempList) {
             s.close();
         }
         assert statements.isEmpty();    // they detach themselves from the connection while closing
