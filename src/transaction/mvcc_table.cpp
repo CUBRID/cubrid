@@ -232,7 +232,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 
   MVCCID highest_completed_mvccid;
 
-  bool is_perf_tracking = thread_get_thread_entry_info ()->m_perfmon_tracking;
+  bool is_perf_tracking = perfmon_is_perf_tracking ();
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 snapshot_wait_time;

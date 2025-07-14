@@ -7443,7 +7443,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
     }
 
   /* monitoring */
-  if (thread_p->m_perfmon_tracking)
+  if (perfmon_is_perf_tracking ())
     {
       switch (curr_spec->type)
 	{

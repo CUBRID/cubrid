@@ -857,7 +857,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   if (thread_p->tran_index > 0)
     {
       perfmon_inc_stat (thread_p, PSTAT_NET_NUM_REQUESTS);
-      thread_p->m_perfmon_tracking = perfmon_is_perf_tracking ();
     }
   func = net_Requests[request].processing_function;
   assert (func != NULL);

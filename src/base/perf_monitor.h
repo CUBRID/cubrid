@@ -1352,11 +1352,11 @@ perfmon_is_perf_tracking_and_active (THREAD_ENTRY * thread_p, int activation_fla
 #if defined (SERVER_MODE) || defined (SA_MODE)
   if (thread_p)
     {
-      return (bool) (thread_p->m_perfmon_tracking && (activation_flag & thread_p->m_perfmon_activation_flag));
+      return (bool) (activation_flag & thread_p->m_perfmon_activation_flag);
     }
   else
     {
-      return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
+      return false;
     }
 #else
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);

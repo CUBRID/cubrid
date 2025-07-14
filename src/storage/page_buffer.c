@@ -1848,7 +1848,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     }
 
   perf.lock_wait_time = 0;
-  perf.is_perf_tracking = thread_p->m_perfmon_tracking;
+  perf.is_perf_tracking = perfmon_is_perf_tracking ();
 
   if (perf.is_perf_tracking)
     {
@@ -2397,7 +2397,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = thread_p->m_perfmon_tracking;
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2669,7 +2669,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = thread_p->m_perfmon_tracking;
+  is_perf_tracking = perfmon_is_perf_tracking ();
   if (is_perf_tracking)
     {
       perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
@@ -7163,9 +7163,12 @@ pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
 
-  if (perfmon_is_perf_tracking_and_active (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
 
   /* Note that the caller is not holding bufptr->mutex */
@@ -7209,9 +7212,12 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
 
-  if (perfmon_is_perf_tracking_and_active (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
     {
-      tsc_getticks (&start_tick);
+      if (perfmon_is_perf_tracking ())
+	{
+	  tsc_getticks (&start_tick);
+	}
     }
 
   /* the caller is holding bufptr->mutex */
@@ -7424,11 +7430,13 @@ pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, con
 
   if (need_hash_mutex)
     {
-      if (perfmon_is_perf_tracking_and_active (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+      if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
 	{
-	  tsc_getticks (&start_tick);
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      tsc_getticks (&start_tick);
+	    }
 	}
-
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
       if (perfmon_is_perf_tracking_and_active (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
