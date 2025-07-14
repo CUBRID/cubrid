@@ -303,6 +303,7 @@ namespace cubthread
       cubload::driver *m_loaddb_driver;
 
       UINT64 *m_parallel_stats;
+      int m_perfmon_activation_flag;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

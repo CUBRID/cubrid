@@ -2393,7 +2393,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
   /* Allow to file sync helper thread to finish. */
   block->all_pages_written = true;
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES))
+  if (perfmon_is_perf_tracking_and_active (thread_p, PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES))
     {
       perfmon_db_flushed_block_volumes (thread_p, block->count_flush_volumes_info);
     }

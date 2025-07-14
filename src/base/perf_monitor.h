@@ -844,7 +844,8 @@ extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_and_active (THREAD_ENTRY * thread_p, int activation_flag)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool perfmon_is_perf_tracking_force (bool always_collect) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
@@ -1346,9 +1347,21 @@ perfmon_is_perf_tracking (void)
  *
  */
 STATIC_INLINE bool
-perfmon_is_perf_tracking_and_active (int activation_flag)
+perfmon_is_perf_tracking_and_active (THREAD_ENTRY * thread_p, int activation_flag)
 {
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (thread_p)
+    {
+      return (bool) (activation_flag & thread_p->m_perfmon_activation_flag);
+    }
+  else
+    {
+      return false;
+    }
+#else
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
+#endif /* SERVER_MODE || SA_MODE */
+
 }
 
 

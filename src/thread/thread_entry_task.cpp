@@ -67,6 +67,7 @@ namespace cubthread
       {
 	free_and_init (context.m_parallel_stats);
       }
+    context.m_perfmon_activation_flag = 0;
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
     context.tran_index = NULL_TRAN_INDEX;
@@ -89,6 +90,7 @@ namespace cubthread
       {
 	free_and_init (context.m_parallel_stats);
       }
+    context.m_perfmon_activation_flag = 0;
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;
