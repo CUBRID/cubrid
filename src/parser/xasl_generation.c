@@ -1684,7 +1684,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case PT_BETWEEN:
 	    case PT_RANGE:
@@ -1904,7 +1904,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 			  {
 			    break;
 			  }
-			/* FALLTHRU */
+			[[fallthrough]];
 		      case PT_TYPE_NCHAR:
 		      case PT_TYPE_VARNCHAR:
 			node->type_enum = PT_TYPE_NCHAR;
@@ -7351,7 +7351,7 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 		    {
 		      break;
 		    }
-		  /* FALLTHRU */
+		  [[fallthrough]];
 
 		default:
 		  maybe_sci_notation = 1;
@@ -10617,7 +10617,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	{
 	  goto error;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_VALUE:
       p = (rhs->node_type == PT_NAME) ? pt_find_value_of_label (rhs->info.name.original) : &rhs->info.value.db_value;
@@ -22014,7 +22014,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       PT_NODE_PRINT_TO_ALIAS (parser, node, PT_CONVERT_RANGE);
 #endif /* CUBRID_DEBUG */
 
-      /* fall through */
+      [[fallthrough]];
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:

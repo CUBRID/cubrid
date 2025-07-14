@@ -104,8 +104,6 @@ struct or_attribute
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 
-  or_auto_increment auto_increment;
-
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
 
@@ -116,6 +114,17 @@ struct or_attribute
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
+
+  // Notice: Be sure to place "auto_increment" at the end of the structure.
+  or_auto_increment auto_increment;
+
+  // *INDENT-OFF*  
+  or_attribute () // constructor
+  {
+    memset (this, 0x00, offsetof (OR_ATTRIBUTE, auto_increment));
+    auto_increment.serial_obj = oid_Null_oid;
+  }
+  // *INDENT-ON*
 };
 
 typedef struct or_foreign_key OR_FOREIGN_KEY;

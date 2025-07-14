@@ -2388,7 +2388,7 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
 	   * TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS case
 	   */
 
-	  /* FALLTHRU */
+	  [[fallthrough]];
 
 	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
 	  log_2pc_recovery_committed_informing_participants (thread_p, tdes);
