@@ -3264,13 +3264,15 @@ perfmon_start_watch (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
 
-  thread_p->m_perfmon_activation_flag = pstat_Global.activation_flag;
 
   if (pstat_Global.is_watching[tran_index])
     {
       /* Already watching. */
       return;
     }
+
+  thread_p->m_perfmon_tracking = true;
+  thread_p->m_perfmon_activation_flag = pstat_Global.activation_flag;
 
 #if defined (HAVE_ATOMIC_BUILTINS)
   ATOMIC_INC_32 (&pstat_Global.n_watchers, 1);
@@ -3300,13 +3302,15 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
 
-  thread_p->m_perfmon_activation_flag = 0;
 
   if (!pstat_Global.is_watching[tran_index])
     {
       /* Not watching. */
       return;
     }
+
+  thread_p->m_perfmon_tracking = false;
+  thread_p->m_perfmon_activation_flag = 0;
 
 #if defined (HAVE_ATOMIC_BUILTINS)
   ATOMIC_INC_32 (&pstat_Global.n_watchers, -1);

@@ -4026,7 +4026,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   assert (tdes != NULL);
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
+  is_perf_tracking = thread_p->m_perfmon_tracking;
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
