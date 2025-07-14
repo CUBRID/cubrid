@@ -465,7 +465,8 @@ namespace cubschema
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
       {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of",nullptr}, false}
     },
 // authorization
     {
