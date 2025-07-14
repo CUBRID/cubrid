@@ -3264,7 +3264,6 @@ perfmon_start_watch (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
 
-
   if (pstat_Global.is_watching[tran_index])
     {
       /* Already watching. */
@@ -3301,7 +3300,6 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-
 
   if (!pstat_Global.is_watching[tran_index])
     {
