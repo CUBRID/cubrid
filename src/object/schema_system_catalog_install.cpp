@@ -1059,7 +1059,9 @@ namespace cubschema
       {CT_DBCOLL_CHECKSUM_COLUMN, format_varchar (32)}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {CT_DBCOLL_COLL_ID_COLUMN, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
