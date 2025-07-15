@@ -2209,6 +2209,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   int pg_cnt;
   int query_save_state;
   unsigned int decache_clone_flag = 0;
+  xasl_node *xasl_p;
 
   pg_cnt = 0;
   if (xasl == NULL)
@@ -2252,31 +2253,30 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       qfile_clear_list_id (xasl->list_id);
     }
 
-  /* clear the body node */
-  if (xasl->aptr_list)
+  for (xasl_p = xasl->aptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->bptr_list)
+  for (xasl_p = xasl->bptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->bptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->dptr_list)
+  for (xasl_p = xasl->dptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->dptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->dptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->fptr_list)
+  for (xasl_p = xasl->fptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->fptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->fptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->scan_ptr)
+  for (xasl_p = xasl->scan_ptr; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->scan_ptr, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->scan_ptr, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
 
   /* clear the CONNECT BY node */
@@ -2435,10 +2435,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
-	if (buildlist->eptr_list)
+	for (xasl_node * eptr = buildlist->eptr_list; eptr != NULL; eptr = eptr->next)
 	  {
-	    XASL_SET_FLAG (buildlist->eptr_list, decache_clone_flag);
-	    pg_cnt += qexec_clear_xasl (thread_p, buildlist->eptr_list, is_final);
+	    XASL_SET_FLAG (eptr, decache_clone_flag);
+	    pg_cnt += qexec_clear_xasl (thread_p, eptr, is_final);
 	  }
 
 	if (buildlist->groupby_list)
@@ -2697,14 +2697,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   /* Note: Here reset the current pointer to access specification nodes.  This is needed because this XASL tree may be
    * used again if this thread is suspended and restarted. */
   xasl->curr_spec = NULL;
-
-  /* clear the next xasl node */
-
-  if (xasl->next)
-    {
-      XASL_SET_FLAG (xasl->next, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->next, is_final);
-    }
 
   xasl->query_in_progress = query_save_state;
 
@@ -26383,4 +26375,11 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
   xasl->list_id->query_id = xasl_state->query_id;
 
   return NO_ERROR;
+}
+
+int
+qexec_clear_access_spec_list_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCESS_SPEC_TYPE * list,
+						bool is_final, bool except_trace)
+{
+
 }
