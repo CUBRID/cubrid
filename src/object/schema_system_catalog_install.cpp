@@ -1785,7 +1785,6 @@ namespace cubschema
 		   CTV_SERIAL_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", format_varchar (255)},
       {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},

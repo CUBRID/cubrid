@@ -7289,7 +7289,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
       if (qo_is_non_mvcc_class_with_index (class_entryp))
 	{
-	  /* Do not use index of _db_serial/db_has_apply_info for scanning. Current index scanning is optimized for
+	  /* Do not use index of _db_serial/_db_ha_apply_info for scanning. Current index scanning is optimized for
 	   * MVCC, while _db_serial and _db_ha_apply_info have MVCC disabled.
 	   */
 	  constraints = NULL;
