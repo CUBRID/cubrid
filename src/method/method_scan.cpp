@@ -32,13 +32,20 @@ namespace cubscan
 {
   namespace method
   {
-    scanner::scanner ()
-      : m_thread_p (nullptr)
-      , m_method_group (nullptr)
-      , m_list_id (nullptr)
-      , m_dbval_list (nullptr)
+    /* Notice: If a member included in a union has a constructor, it can lead to undefined behavior.
+     * Therefore, the constructor has been removed.
+     * If necessary, please use constructor() explicitly.    */
+    void
+    scanner::constructor()
     {
-
+      m_thread_p = nullptr;
+      m_method_group = nullptr;
+      m_list_id = nullptr;
+      m_arg_count = 0;
+      m_arg_dom_vector = nullptr;
+      m_arg_vector = nullptr;
+      m_dbval_list = nullptr;
+      memset (&m_scan_id, 0x00, sizeof (m_scan_id));
     }
 
     int

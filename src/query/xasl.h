@@ -208,10 +208,6 @@ struct qproc_db_value_list
   QPROC_DB_VALUE_LIST next;
   DB_VALUE *val;
   TP_DOMAIN *dom;
-
-  // *INDENT-OFF*
-  qproc_db_value_list () = default;
-  // *INDENT-ON*
 };
 
 typedef struct val_list_node VAL_LIST;	/* value list */
@@ -219,10 +215,6 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
-
-  // *INDENT-OFF*
-  val_list_node () = default;
-  // *INDENT-ON*
 };
 
 /* To handle selected update list, click counter related */

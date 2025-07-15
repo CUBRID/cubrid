@@ -3335,16 +3335,20 @@ er_print_crash_callstack (int sig)
   /* make coredump filename : processname_YYYYMMDDHHSSMM.min.coredump */
   struct timeval tv;
   struct tm *tm_info;
-  char filename[PATH_MAX + 256];
+  char filename[PATH_MAX];
   char *args = buffer;
 
   gettimeofday (&tv, NULL);
   tm_info = localtime (&tv.tv_sec);
 
-  sprintf (filename, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
-	   tm_info->tm_year + 1900,
-	   tm_info->tm_mon + 1,
-	   tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000);
+  if (snprintf (filename, PATH_MAX, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
+		tm_info->tm_year + 1900,
+		tm_info->tm_mon + 1,
+		tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000) >= PATH_MAX)
+    {
+      assert_release (0);
+      filename[PATH_MAX - 1] = '\0';
+    }
 
   /* print process information and callstack into coredump file */
   fp = fopen (filename, "w+");

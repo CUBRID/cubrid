@@ -359,8 +359,8 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
   int length;
   int server_name_length;
   CSS_CONN_ENTRY *datagram_conn;
-  SOCKET_QUEUE_ENTRY *entry;
-  CSS_SERVER_PROC_REGISTER *proc_register;
+  SOCKET_QUEUE_ENTRY *entry = NULL;
+  CSS_SERVER_PROC_REGISTER *proc_register = NULL;
 
   datagram = NULL;
   datagram_length = 0;
@@ -426,22 +426,21 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 		    {
 		      entry->env_var = NULL;
 		    }
-		}
-	    }
 
-	  if (!entry->ha_mode)
-	    {
+		  if (!entry->ha_mode)
+		    {
 #if !defined(WINDOWS)
-	      if (auto_Restart_server)
-		{
-		  assert (!is_client);
-
-		  /* *INDENT-OFF* */
-		  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER, proc_register->pid,
-						      proc_register->exec_path, proc_register->args, proc_register->server_name);
-		  /* *INDENT-ON* */
-		}
+		      if (auto_Restart_server && !is_client)
+			{
+			  /* *INDENT-OFF* */
+			  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER,
+							      proc_register->pid, proc_register->exec_path,
+							      proc_register->args, proc_register->server_name);
+			  /* *INDENT-ON* */
+			}
 #endif
+		    }
+		}
 	    }
 	}
     }

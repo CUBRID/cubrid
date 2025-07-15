@@ -47,7 +47,7 @@ namespace parallel_query_execute
 		      int parallelism);
       query_executor (query_executor *);
       ~query_executor ();
-      void add_task (XASL_NODE *xasl, xasl_state *xasl_state);
+      bool add_task (XASL_NODE *xasl, xasl_state *xasl_state);
       int run_tasks (THREAD_ENTRY *thread_p);
       inline int get_recursion_level() const
       {

@@ -166,7 +166,11 @@ public class Context {
                     methodCache.clear();
                 }
             }
-            clear();
+
+            if (connection != null) {
+                connection.invalidateStatements();
+            }
+
             tranactionId = tid;
 
             if (sessionClassLoaderManager != null) {
@@ -175,7 +179,7 @@ public class Context {
         }
     }
 
-    public void clear() {
+    private void clear() {
         try {
             closeConnection(connection);
         } catch (Exception e) {

@@ -19441,7 +19441,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	{
 	  return N_INVALID;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case '9':
     case '0':
@@ -22441,7 +22441,9 @@ put_date_time_info (DATE_TIME_INFO * dtzi, const DB_VALUE * format, INTL_LANG da
   int tzh = 0, tzm = 0;
   int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
   int dow = -1;
-  int tu[2], tv[2], tx[2];
+  int tu[2] = { 0, 0 };
+  int tv[2] = { 0, 0 };
+  int tx[2] = { 0, 0 };
   bool tinit[2];
   bool is_matched;
   bool try_tz_explain_tz_id = false;
@@ -24704,10 +24706,10 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 
 	case 1:
 	  ms_string[1] = '0';
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case 2:
 	  ms_string[2] = '0';
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	default:
 	  *ms = atoi (ms_string);
 	}
@@ -28470,7 +28472,7 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
 		db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
 		break;
 	      }
-	    /* fall through */
+	    [[fallthrough]];
 	  case MILLISECOND:
 	    if (db_string_to_datetime_ex (str_date, str_date_len, &datetime_s) == NO_ERROR)
 	      {
