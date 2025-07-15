@@ -53,6 +53,8 @@
 #include "list_file.h"
 #include "query_manager.h"
 #include "object_representation.h"
+#include "px_worker_manager.hpp"
+#include "px_callable_task.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -105,10 +107,10 @@
 #define SORT_EXECUTE_PARALLEL(num, px_sort_param, function)  \
     do {                          \
 	for (int i = 0; i < num; i++) {				\
-	    cubthread::entry_callable_task * task =		\
-	      new cubthread::entry_callable_task (std::		\
+	    parallel_query::callable_task * task =		\
+	       new parallel_query::callable_task (&parallel_query::worker_manager::get_manager(), std::		\
 	          bind (function, std::placeholders::_1, &px_sort_param[i]));	\
-	    css_push_external_task (css_get_current_conn_entry (), task);	\
+	    parallel_query::worker_manager::get_manager().push_task(task);	\
 	  }	\
     } while (0)
 // *INDENT-ON*
@@ -3452,10 +3454,6 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
       px_sort_param[i].file_contents[0].num_pages[0] = pages_per_thread + (i < remaining_pages ? 1 : 0);
       px_sort_param[i].file_contents[0].first_run = 0;
       px_sort_param[i].file_contents[0].last_run = 0;
-      if (px_sort_param[i].temp[0].volid != NULL_VOLID)
-        {
-	  (void) file_temp_retire (thread_p, &px_sort_param[i].temp[0]);
-        }
       px_sort_param[i].temp[0] = sort_param->temp[result_file_idx];
 
       start_index += (i == 0) ? 0 : px_sort_param[i - 1].file_contents[0].num_pages[0];
@@ -4720,6 +4718,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   int i = 0, idx = 0, file_pg_cnt_est;
   int remaining_run, level, merge_num;
   RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  QFILE_LIST_ID * origin_list_id, * mergeable_list_id;
 
   if (parallel_num > SORT_MAX_PARALLEL)
     {
@@ -4736,6 +4735,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   remaining_run = parallel_num;
   level = 0;
 
+  /* merge result run */
   while (remaining_run > 1)
     {
       merge_num = (remaining_run + (SORT_MAX_HALF_FILES - 1)) / SORT_MAX_HALF_FILES;
@@ -4752,6 +4752,27 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 
       remaining_run = merge_num;
       level++;
+    }
+
+  /* split last run into px_sort_param */
+  sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
+
+  /* put result from sort location info */
+  SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
+  parallel_query::worker_manager::get_manager().release_workers ();
+  /* wait for threads */
+  SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* merge last output file */
+  origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
+  for (int i = 1; i < parallel_num; i++)
+    {
+      mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
+      sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
     }
 
   return error;
@@ -4880,6 +4901,12 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       else
         {
           parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
+        }
+
+      /* check worker */
+      if (!parallel_query::worker_manager::get_manager().try_reserve_workers (parallel_num))
+        {
+          return 1;
         }
 
       /* Find the number of parallel processes by page_cnt and tuple_cnt */
@@ -5063,25 +5090,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
       tsc_getticks (&start_tick);
 
-      /* split last run into px_sort_param */
-      sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
-
-      /* put result from sort location info */
-      SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
-      /* wait for threads */
-      SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      /* merge last output file */
-      origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
-      for (int i = 1; i < parallel_num; i++)
-	{
-	  mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
-	  sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
-	}
+      
 
 
       tsc_getticks (&end_tick);
