@@ -251,7 +251,7 @@ static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * q
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
+static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
 static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list);
@@ -10988,10 +10988,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.insert.spec && node->info.insert.spec->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
+
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11171,80 +11172,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node->info.query.q.select.with_increment = NULL;
 	}
 
-      if (pt_has_aggregate (parser, node))
+      /* check the group by */
+      if (pt_check_group_by (parser, node) != NO_ERROR)
 	{
-	  PT_AGG_CHECK_INFO info;
-	  PT_NODE *r;
-	  QFILE_TUPLE_VALUE_POSITION pos;
-	  PT_NODE *referred_node;
-	  int max_position;
-
-	  /* STEP 1: init agg info */
-	  info.from = node->info.query.q.select.from;
-	  info.depth = 0;
-	  info.group_by = node->info.query.q.select.group_by;
-
-	  max_position = pt_length_of_select_list (node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
-
-	  for (t_node = info.group_by; t_node; t_node = t_node->next)
-	    {
-	      r = t_node->info.sort_spec.expr;
-	      if (r == NULL)
-		{
-		  continue;
-		}
-	      /*
-	       * If a position is specified on group by clause,
-	       * we should check its range.
-	       */
-	      if (r->node_type == PT_VALUE && r->alias_print == NULL)
-		{
-		  if (r->type_enum != PT_TYPE_INTEGER)
-		    {
-		      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
-		      continue;
-		    }
-		  else if (r->info.value.data_value.i == 0 || r->info.value.data_value.i > max_position)
-		    {
-		      PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
-				  r->info.value.data_value.i);
-		      continue;
-		    }
-		}
-	      else if (r->node_type == PT_HOST_VAR)
-		{
-		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
-			      pt_short_print (parser, r));
-		  continue;
-		}
-
-	      /* check for after group by position */
-	      pt_to_pos_descr (parser, &pos, r, node, &referred_node);
-	      if (pos.pos_no > 0)
-		{
-		  /* set after group by position num, domain info */
-		  t_node->info.sort_spec.pos_descr = pos;
-		}
-	      /*
-	       * If there is a node referred by the position,
-	       * we should rewrite the position to real name or expression
-	       * regardless of pos.pos_no.
-	       */
-	      if (referred_node != NULL)
-		{
-		  t_node->info.sort_spec.expr = parser_copy_tree (parser, referred_node);
-		  parser_free_node (parser, r);
-		}
-	    }
-
-	  /* STEP 2: check that grouped things are single valued */
-	  if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY) || node->info.query.q.select.group_by == NULL)
-	    {
-	      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_check_single_valued_node, &info,
-				       pt_check_single_valued_node_post, &info);
-	      (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_single_valued_node, &info,
-				       pt_check_single_valued_node_post, &info);
-	    }
+	  break;		/* error */
 	}
 
       if (pt_has_analytic (parser, node))
@@ -11257,20 +11188,6 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (pt_check_order_by (parser, node) != NO_ERROR)
 	{
 	  break;		/* error */
-	}
-
-      if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
-	{
-	  bool has_gbynum = false;
-
-	  /* we do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
-	  (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
-				   pt_check_groupbynum_post, (void *) &has_gbynum);
-
-	  if (has_gbynum)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANNOT_USE_GROUPBYNUM_WITH_ROLLUP);
-	    }
 	}
 
       if (node->info.query.q.select.connect_by)
@@ -11595,7 +11512,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       node = pt_semantic_type (parser, node, info);
 
       /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node)
+      if (node && node->info.merge.into && node->info.merge.into->info.spec.remote_server_name == NULL)
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -14458,6 +14375,131 @@ check_select_list:
 }
 
 /*
+ * pt_check_order_by () - checking an GROUP_BY clause
+ *   return:
+ *   parser(in):
+ *   query(in): query node has GROUP BY
+ *
+ * Note :
+ * 1. If a position is specified on group by clause, rewrite the position to name or expression.
+ * 2. check that grouped things are single valued.
+ * 3. do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM ()
+ * 4. CONNECT_BY_ROOT, SYS_CONNECT_BY_PATH cannot be written with GROUP_BY
+ */
+
+int
+pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int error = NO_ERROR;
+  PT_NODE *t_node;
+
+  /* If a position is specified on group by clause, rewrite the position to name or expression. */
+  if (pt_has_aggregate (parser, node))
+    {
+      PT_AGG_CHECK_INFO info;
+      PT_NODE *r;
+      QFILE_TUPLE_VALUE_POSITION pos;
+      PT_NODE *referred_node;
+      int max_position;
+
+      /* STEP 1: init agg info */
+      info.from = node->info.query.q.select.from;
+      info.depth = 0;
+      info.group_by = node->info.query.q.select.group_by;
+
+      max_position = pt_length_of_select_list (node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
+
+      /* If a position is specified on group by clause, rewrite the position to name or expression */
+      for (t_node = info.group_by; t_node; t_node = t_node->next)
+	{
+	  r = t_node->info.sort_spec.expr;
+	  if (r == NULL)
+	    {
+	      continue;
+	    }
+	  /*
+	   * If a position is specified on group by clause,
+	   * we should check its range.
+	   */
+	  if (r->node_type == PT_VALUE && r->alias_print == NULL)
+	    {
+	      if (r->type_enum != PT_TYPE_INTEGER)
+		{
+		  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_WANT_NUM);
+		  continue;
+		}
+	      else if (r->info.value.data_value.i == 0 || r->info.value.data_value.i > max_position)
+		{
+		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
+			      r->info.value.data_value.i);
+		  continue;
+		}
+	    }
+	  else if (r->node_type == PT_HOST_VAR)
+	    {
+	      PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
+			  pt_short_print (parser, r));
+	      continue;
+	    }
+
+	  /* check for after group by position */
+	  pt_to_pos_descr (parser, &pos, r, node, &referred_node);
+	  if (pos.pos_no > 0)
+	    {
+	      /* set after group by position num, domain info */
+	      t_node->info.sort_spec.pos_descr = pos;
+	    }
+	  /*
+	   * If there is a node referred by the position,
+	   * we should rewrite the position to real name or expression
+	   * regardless of pos.pos_no.
+	   */
+	  if (referred_node != NULL)
+	    {
+	      t_node->info.sort_spec.expr = parser_copy_tree (parser, referred_node);
+	      parser_free_node (parser, r);
+	    }
+	}
+
+      /* STEP 2: check that grouped things are single valued */
+      if (prm_get_bool_value (PRM_ID_ONLY_FULL_GROUP_BY) || node->info.query.q.select.group_by == NULL)
+	{
+	  (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_check_single_valued_node, &info,
+				   pt_check_single_valued_node_post, &info);
+	  (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_single_valued_node, &info,
+				   pt_check_single_valued_node_post, &info);
+	}
+    }
+
+  /* do not allow GROUP BY ... WITH ROLLUP and GROUPBY_NUM () */
+  if (node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup)
+    {
+      bool has_gbynum = false;
+      (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
+			       pt_check_groupbynum_post, (void *) &has_gbynum);
+
+      if (has_gbynum)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANNOT_USE_GROUPBYNUM_WITH_ROLLUP);
+	}
+    }
+
+  /* CONNECT_BY_ROOT, SYS_CONNECT_BY_PATH cannot be written with GROUP_BY */
+  if (node->info.query.q.select.group_by != NULL)
+    {
+      int disallow_ops[] = {
+	2,			/* number of operators */
+	PT_CONNECT_BY_ROOT,
+	PT_SYS_CONNECT_BY_PATH,
+      };
+      parser_walk_tree (parser, node->info.query.q.select.list, pt_expr_disallow_op_except_agg, disallow_ops,
+			NULL, NULL);
+    }
+
+  return error;
+}
+
+/*
  * pt_check_path_eq () - determine if two path expressions are the same
  *   return: 0 if two path expressions are the same, else non-zero.
  *   parser(in):
@@ -15928,7 +15970,7 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *  sort_spec(in): PT_SORT_SPEC node whose expression must be resolved
  *  select_list(in): statement's select list for PT_VALUE lookup
  */
-PT_NODE *
+static PT_NODE *
 pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list)
 {
   PT_NODE *expr, *resolved;
@@ -15991,10 +16033,10 @@ pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE
  *  expr1(in): first expression
  *  expr2(in): second expression
  */
-static bool
+bool
 pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2)
 {
-  if (parser == NULL || expr1 == NULL || expr2 == NULL)
+  if (parser == NULL || expr1 == NULL || expr2 == NULL || (expr1->node_type != expr2->node_type))
     {
       return false;
     }

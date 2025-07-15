@@ -607,8 +607,15 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
 	      as_info_p->fixed_shard_user = proxy_info_p->fixed_shard_user;
 	      if (proxy_info_p->fixed_shard_user == true)
 		{
+		  /* TODO:  Currently, we have temporarily disabled the warning using pragma.
+		   *      If we can identify the cause and resolve it clearly, we will remove the pragma. */
+		  assert ((shard_cas_id + shard_info_p->as_info_index_base) < APPL_SERVER_NUM_LIMIT);
+		  assert (shard_id < SHARD_INFO_SIZE_LIMIT);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wrestrict"
 		  strcpy (as_info_p->database_user, shard_conn_info_p->db_user);
 		  strcpy (as_info_p->database_passwd, shard_conn_info_p->db_password);
+#pragma GCC diagnostic pop
 		}
 
 	      if (shard_cas_id < shard_info_p->min_appl_server)

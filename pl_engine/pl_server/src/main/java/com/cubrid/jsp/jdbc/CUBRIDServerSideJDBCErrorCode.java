@@ -73,30 +73,9 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_NOT_COLLECTION = -21121;
     public static final int ER_ARGUMENT_ZERO = -21128;
 
-    private static HashMap<Integer, String> messageString = null;
+    private static final HashMap<Integer, String> messageString = new HashMap<Integer, String>();
 
-    public static String codeToMessage(int index) {
-        if (messageString == null) setMessageHash();
-        return messageString.get(index);
-    }
-
-    public static String codeToMessage(int index, String msg) {
-        if (messageString == null) {
-            setMessageHash();
-        }
-
-        if (index == ER_DBMS && msg != null) {
-            // received error message from DB server
-            return msg;
-        } else {
-            // default error message
-            return messageString.get(index);
-        }
-    }
-
-    private static void setMessageHash() {
-        messageString = new HashMap<Integer, String>();
-
+    static {
         messageString.put(ER_UNKNOWN, "Error");
         messageString.put(ER_NO_ERROR, "No Error");
         messageString.put(ER_DBMS, "Server error");
@@ -146,5 +125,25 @@ public class CUBRIDServerSideJDBCErrorCode {
 
         messageString.put(ER_NOT_COLLECTION, "The type of the column should be a collection type.");
         messageString.put(ER_ARGUMENT_ZERO, "The argument row can not be zero.");
+    }
+
+    public static String codeToMessage(int index) {
+        return messageString.get(index);
+    }
+
+    public static String codeToMessage(int index, String msg) {
+        if (index == ER_DBMS && msg != null) {
+            // received error message from DB server
+            return msg;
+        } else {
+            // default error message
+            String ret = messageString.get(index);
+            if (ret == null) {
+                assert false : String.format("unknown error code %d", index);
+                return String.format("unknown error code %d", index);
+            } else {
+                return ret;
+            }
+        }
     }
 }

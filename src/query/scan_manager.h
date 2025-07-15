@@ -441,6 +441,7 @@ struct scan_id_struct
   } s;
 
   SCAN_STATS scan_stats;
+  SCAN_STATS *partition_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
 

@@ -31,7 +31,6 @@
 #endif /* SERVER_MODE */
 
 #include "optimizer.h"
-#include "query_bitset.h"
 
 // forward definitions
 struct xasl_node;

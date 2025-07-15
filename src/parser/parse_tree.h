@@ -1420,6 +1420,8 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
 #define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
 #define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
+#define  PT_HINT_INLINE_CTE  0x40000000000ULL	/* inline CTE */
+#define  PT_HINT_MATERIALIZE_CTE  0x80000000000ULL	/* materialize CTE */
 
 /* Parallel query execution threads limits */
 #define  PT_MAX_PARALLEL_THREADS  64
@@ -2237,6 +2239,8 @@ struct pt_cte_info
   PT_NODE *recursive_part;	/* a recursive subquery */
   PT_MISC_TYPE only_all;	/* Type of UNION between non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */
+  int referenced_count;		/* The number of times the CTE is referenced */
+  bool is_materialized;
 };
 
 /* CREATE SERIAL INFO */
@@ -2497,7 +2501,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_do_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -3883,7 +3887,7 @@ struct parser_node
     unsigned is_hidden_column:1;
     unsigned is_paren:1;
     unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-    unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
+    unsigned force_auto_parameterize:1;	/* forces a call to qo_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
     unsigned do_not_fold:1;	/* disables constant folding on the node */
     unsigned is_cnf_start:1;
@@ -4066,6 +4070,7 @@ struct parser_context
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
     unsigned is_parsing_trigger:1;
+    unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
   } flag;
 };
 

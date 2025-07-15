@@ -443,6 +443,7 @@ set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
 set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
 set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
+set(REWRITER_DIR             ${CMAKE_SOURCE_DIR}/src/optimizer/rewriter)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
 set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
@@ -455,7 +456,7 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
-set(PARALLEL_QUERY_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel)
+set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -485,6 +486,7 @@ include_directories(
   src/xasl
   src/query/parallel/px_heap_scan
   src/query/parallel
+  src/query/parallel/px_query_execute
   )
 if(WITH_CCI)
   include_directories(

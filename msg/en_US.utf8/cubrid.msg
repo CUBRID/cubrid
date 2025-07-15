@@ -1964,6 +1964,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 329 Grant option is not allowed for %1$s.
 
 330 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
+331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
 
 
 

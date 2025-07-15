@@ -2252,14 +2252,7 @@ la_ignore_on_error (int errid)
 {
   assert_release (errid != NO_ERROR);
 
-  errid = abs (errid);
-
-  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid))
-    {
-      return true;
-    }
-
-  return false;
+  return sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid);
 }
 
 /*
@@ -2292,13 +2285,7 @@ la_retry_on_error (int errid)
       return true;
     }
 
-  errid = abs (errid);
-  if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid))
-    {
-      return true;
-    }
-
-  return false;
+  return sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid);
 }
 
 /*
@@ -3740,7 +3727,6 @@ static int
 la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 {
   OR_BUF orep, *buf;
-  int status;
   SM_CLASS *sm_class;
   unsigned int repid_bits;
   int bound_bit_flag;
@@ -3752,60 +3738,55 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
   /* Kludge, make sure we don't upgrade objects to OID'd during the reading */
   buf = &orep;
   or_init (buf, record->data, record->length);
-  buf->error_abort = 1;
 
-  status = setjmp (buf->env);
-  if (status == 0)
+  sm_class = (SM_CLASS *) classobj;
+
+  /* offset size */
+  offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
+
+  /* in case of MVCC, repid_bits contains MVCC flags */
+  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+
+  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  if (mvcc_flags == 0)
     {
-      sm_class = (SM_CLASS *) classobj;
-
-      /* offset size */
-      offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
-
-      /* in case of MVCC, repid_bits contains MVCC flags */
-      repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
-
-      mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-      if (mvcc_flags == 0)
-	{
-	  /* non mvcc header */
-	  /* skip chn */
-	  (void) or_advance (buf, OR_INT_SIZE);
-	}
-      else
-	{
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
-	    {
-	      /* skip insert id */
-	      (void) or_advance (buf, OR_MVCCID_SIZE);
-	    }
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-	    {
-	      /* skip delete id */
-	      (void) or_advance (buf, OR_MVCCID_SIZE);
-	    }
-
-	  /* skip chn */
-	  (void) or_advance (buf, OR_INT_SIZE);
-
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
-	    {
-	      /* skip prev version lsa */
-	      (void) or_advance (buf, sizeof (LOG_LSA));
-	    }
-	}
-
-      bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
-
-      error = la_get_current (buf, sm_class, bound_bit_flag, def, key, offset_size);
+      /* non mvcc header */
+      /* skip chn */
+      (void) or_advance (buf, OR_INT_SIZE);
     }
   else
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      error = ER_GENERIC_ERROR;
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
+	{
+	  /* skip insert id */
+	  (void) or_advance (buf, OR_MVCCID_SIZE);
+	}
+
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+	{
+	  /* skip delete id */
+	  (void) or_advance (buf, OR_MVCCID_SIZE);
+	}
+
+      /* skip chn */
+      (void) or_advance (buf, OR_INT_SIZE);
+
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
+	{
+	  /* skip prev version lsa */
+	  (void) or_advance (buf, sizeof (LOG_LSA));
+	}
     }
 
+  bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
+
+  error = la_get_current (buf, sm_class, bound_bit_flag, def, key, offset_size);
+
+  if (error == NO_ERROR && buf->ptr > buf->endptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return ER_TF_BUFFER_OVERFLOW;
+    }
   return error;
 }
 
@@ -6831,7 +6812,11 @@ la_check_duplicated (const char *logpath, const char *dbname, int *lockf_vdes, i
   char lock_path[PATH_MAX];
   FILEIO_LOCKF_TYPE lockf_type = FILEIO_NOT_LOCKF;
 
-  sprintf (lock_path, "%s%s%s%s", logpath, FILEIO_PATH_SEPARATOR (logpath), dbname, LA_LOCK_SUFFIX);
+  if (snprintf (lock_path, sizeof (lock_path), "%s%s%s%s", logpath, FILEIO_PATH_SEPARATOR (logpath), dbname,
+		LA_LOCK_SUFFIX) >= (int) sizeof (lock_path))
+    {
+      lock_path[sizeof (lock_path) - 1] = '\0';
+    }
 
   *lockf_vdes = fileio_open (lock_path, O_RDWR | O_CREAT, 0644);
   if (*lockf_vdes == NULL_VOLDES)

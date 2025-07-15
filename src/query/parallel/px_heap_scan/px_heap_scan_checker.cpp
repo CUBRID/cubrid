@@ -230,7 +230,14 @@ namespace parallel_heap_scan
       case TYPE_SP:
 	result = check (src->value.sp_ptr->args, is_outptr_list);
 	/* cannot execute sp in child threads */
-	result = CHECK_RESULT::CANNOT_PARALLEL;
+	if (is_outptr_list)
+	  {
+	    result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+	  }
+	else
+	  {
+	    result = CHECK_RESULT::CANNOT_PARALLEL;
+	  }
 	break;
       case TYPE_FUNC:
 	temp = check (src->value.funcp->operand, is_outptr_list);
@@ -545,12 +552,12 @@ namespace parallel_heap_scan
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
+      case INSERT_PROC:
 	break;
       case OBJFETCH_PROC:
       case MERGELIST_PROC:
       case UPDATE_PROC:
       case DELETE_PROC:
-      case INSERT_PROC:
       case CONNECTBY_PROC:
       case DO_PROC:
       case MERGE_PROC:

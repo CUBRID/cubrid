@@ -175,7 +175,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
-  ${BASE_DIR}/semaphore.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -235,6 +234,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
+  ${QUERY_DIR}/query_hash_join.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
@@ -261,6 +261,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
+  ${QUERY_DIR}/query_hash_join.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -338,6 +339,15 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_SOURCES
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  )
+set(PARALLEL_QUERY_EXECUTE_HEADERS
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
   )
 
 set(METHOD_SOURCES
@@ -566,6 +576,7 @@ set (CUBRID_LIB_SOURCES
   ${XASL_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -583,6 +594,7 @@ set (CUBRID_LIB_HEADERS
   ${LOADDB_HEADERS}
   ${PARALLEL_HEAP_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
+  ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -679,7 +691,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
-  # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
+  ${COMPAT_DIR}/dbtran_def.h
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_set_function.h
   ${COMPAT_DIR}/dbtype_function.h
@@ -688,6 +700,7 @@ install(FILES
   ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+
 install(FILES
   ${BASE_DIR}/error_code.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
@@ -696,6 +709,11 @@ install(FILES
   ${API_DIR}/cubrid_log.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
+install(FILES
+  ${CM_COMMON_DIR}/cm_stat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
+
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY

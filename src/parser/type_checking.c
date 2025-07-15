@@ -17894,7 +17894,7 @@ pt_is_dblink_related (PT_NODE * p)
 static PT_NODE *
 pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 {
-  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3, result_type;
+  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3 = PT_TYPE_NONE, result_type;
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL, *result = NULL;
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;
@@ -18183,7 +18183,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       /* a NULL OID is returned; the resulting PT_VALUE node will be replaced with a PT_HOST_VAR by the auto
        * parameterization step because of the special force_auto_parameterize flag. Also see and pt_dup_key_update_stmt
-       * () and qo_optimize_queries () */
+       * () and qo_rewrite_queries () */
       tmp_value->type_enum = PT_TYPE_OBJECT;
       OID_SET_NULL (&null_oid);
       db_make_oid (&tmp_value->info.value.db_value, &null_oid);

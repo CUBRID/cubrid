@@ -106,6 +106,7 @@ namespace parallel_heap_scan
     list_id_data data;
     OUTPTR_LIST *outptr_list;
     bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
+    bool open_succeeded = false;
     int writer_error_code = NO_ERROR;
     bool is_list_merge = m_mergable_list_writer != nullptr;
     bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
@@ -120,25 +121,48 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
+    if (m_context->m_orig_thread_p->emulate_tid != thread_id_t())
+      {
+	thread_p->emulate_tid = m_context->m_orig_thread_p->emulate_tid;
+      }
+    else
+      {
+	thread_p->emulate_tid = m_context->m_orig_thread_p->get_id();
+      }
+
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
+	if (m_context->m_orig_thread_p->m_parallel_stats != NULL)
+	  {
+	    thread_p->m_parallel_stats = m_context->m_orig_thread_p->m_parallel_stats;
+	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
-    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
-	m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list, scan_id->vd);
+	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
+			 scan_id->vd);
 	outptr_list = m_memory_mapper->get_outptr_list();
 	assert (outptr_list);
       }
     else
       {
-	m_list_id_wrapper->open (thread_p);
+	open_succeeded = m_list_id_wrapper->open (thread_p);
       }
-    lock.unlock();
+    if (!open_succeeded)
+      {
+	/* maybe interrupted */
+	db_change_private_heap (thread_p, orig_heap_id);
+	thread_p->tran_index = orig_tran_index;
+	thread_p->conn_entry = orig_conn_entry;
+	m_context->add_tasks_scan_ended();
+	m_context->add_tasks_executed();
+	m_context->add_tasks_list_opened();
+	return;
+      }
     m_context->add_tasks_list_opened();
 
     list_writer writer (m_list_stream, m_list_id_wrapper.get());
@@ -149,7 +173,10 @@ namespace parallel_heap_scan
 			 hsidp->pred_attrs.num_attrs, hsidp->pred_attrs.attr_ids, hsidp->pred_attrs.attr_cache,
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
+    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     ret = scan_start_scan (thread_p, scan_id);
+    /* lock because of mvcc_snapshot */
+    lock.unlock();
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -227,8 +254,11 @@ namespace parallel_heap_scan
 		  }
 		if (is_list_merge)
 		  {
+		    if (m_context->has_error() || m_context->is_scan_external_ended)
+		      {
+			break;
+		      }
 		    writer_error_code = m_mergable_list_writer->write (thread_p);
-
 		    if (!resolved_dbval_stored)
 		      {
 			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
@@ -243,7 +273,13 @@ namespace parallel_heap_scan
 		  }
 		else
 		  {
-		    writer.write (thread_p, scan_id, data);
+		    writer_error_code = writer.write (thread_p, scan_id, data);
+		    if (writer_error_code != NO_ERROR)
+		      {
+			m_context->set_has_error();
+			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
+			break;
+		      }
 		  }
 		if (on_trace)
 		  {
@@ -277,8 +313,8 @@ namespace parallel_heap_scan
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
-    thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
+    thread_p->m_parallel_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif
@@ -288,8 +324,9 @@ namespace parallel_heap_scan
   void
   task::retire ()
   {
-    m_worker_manager->pop_task();
+    parallel_query::worker_manager *worker_manager_p = m_worker_manager;
     cubthread::entry_task::retire();
+    worker_manager_p->pop_task();
   }
 }
 #endif /* SERVER_MODE && !WINDOWS */
