@@ -9371,8 +9371,6 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE * 2) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *request, *reply;
-  char *replydata1, *replydata2;
-  int replydata_size1, replydata_size2;
   char *ptr;
   LOG_PAGEID first_pageid_torecv;
   LOGWR_MODE mode, save_mode;
@@ -9446,7 +9444,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   req_error =
     net_client_request_with_logwr_context (ctx_ptr, NET_SERVER_LOGWR_GET_LOG_PAGES, request,
 					   OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					   0, NULL, 0, &replydata1, &replydata_size1, &replydata2, &replydata_size2);
+					   0, NULL, 0);
 
   logwr_Gl.mode = save_mode;
 

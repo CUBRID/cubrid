@@ -5968,7 +5968,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 
       dbval_p = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       db_make_double (result_p, (-1) * db_get_double (dbval_p));

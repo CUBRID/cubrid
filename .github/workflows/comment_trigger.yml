@@ -18,8 +18,7 @@ jobs:
           echo "[debug] Comment: $COMMENT"
           
           # Define test types
-          # TEST_TYPES="shell sql medium plcsql"
-          TEST_TYPES="sql medium plcsql"
+          TEST_TYPES="shell sql medium plcsql"
           TEST_JSON="{"
           
           # Check for 'all' keyword or parse individual test types
