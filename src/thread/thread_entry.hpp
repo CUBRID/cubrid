@@ -304,6 +304,8 @@ namespace cubthread
 
       UINT64 *m_parallel_stats;
 
+      bool skip_end_resource_tracks_in_recycle;
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();

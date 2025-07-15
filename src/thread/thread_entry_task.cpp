@@ -63,6 +63,8 @@ namespace cubthread
     context.get_error_context ().deregister_thread_local ();
 
     context.end_resource_tracks ();
+    context.skip_end_resource_tracks_in_recycle = false;
+    context.emulate_tid = thread_id_t ();
     if (context.m_parallel_stats != NULL)
       {
 	free_and_init (context.m_parallel_stats);
@@ -84,29 +86,15 @@ namespace cubthread
   entry_manager::recycle_context (entry &context)
   {
     er_clear ();    // clear errors
-
-    /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
-     * function in net_server_request. Then, end_resource_tracks is called in either recycle_context
-     * or retire_context. Since recycle_context is called after the request has been completed,
-     * calling end_resource_tracks at that point is appropriate.
-     *
-     * For parallel threads, recycle_context is called after each task has been completed.
-     * If resources are shared between tasks, they may still be needed by the next task,
-     * which means that not all used resources have been freed. In this case, end_resource_tracks
-     * should not be called yet.
-     *
-     * Therefore, parallel threads should call end_resource_tracks only in retire_context,
-     * after all tasks have been completed and shared resources are no longer in use. */
-    if (context.emulate_tid == thread_id_t () || context.emulate_tid == context.get_id ())
+    if (!context.skip_end_resource_tracks_in_recycle)
       {
 	context.end_resource_tracks ();
       }
-
+    context.emulate_tid = thread_id_t ();
     if (context.m_parallel_stats != NULL)
       {
 	free_and_init (context.m_parallel_stats);
       }
-
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;

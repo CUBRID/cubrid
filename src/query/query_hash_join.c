@@ -343,10 +343,9 @@ error_exit:
   goto cleanup;
 }
 
-
 /*
  * hjoin_execute_partitions() -
- *   return: List identifier containing the join result; NULL if no result or on error.
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  */
@@ -416,7 +415,7 @@ error_exit:
 
 /*
  * hjoin_execute() -
- *   return: List identifier containing the join result; NULL if no result or on error.
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
@@ -472,7 +471,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 
 /*
  * hjoin_outer_fill_null_values() -
- *   return: List identifier containing the join result; NULL if no result or on error.
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
@@ -620,7 +619,7 @@ error_exit:
 
 /*
  * hjoin_execute_internal() -
- *   return: List identifier containing the join result; NULL if no result or on error.
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in): Hash join context containing per-partition state.
@@ -737,7 +736,7 @@ error_exit:
  *   manager(in/out): Hash join manager to initialize.
  *   xasl(in): XASL node for hash join execution.
  *   query_id(in): Query identifier.
- *   vd(in): Value descriptor for positional values.
+ *   val_descr(in): Value descriptor for positional values.
  */
 static int
 hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NODE * xasl, QUERY_ID query_id,
@@ -881,7 +880,9 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
 
+#if defined (SERVER_MODE)
   assert (manager->px_worker_pool_manager == NULL);
+#endif /* defined (SERVER_MODE) */
 
   /* stats_group */
   if (thread_is_on_trace (thread_p))
@@ -1158,8 +1159,9 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 /*
  * hjoin_try_partition() -
  *   return: One of the following HASHJOIN_STATUS values:
- *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
  *           - HASHJOIN_STATUS_SINGLE: Partitioning is not needed or falls back on error.
+ *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
+ *           - HASHJOIN_STATUS_PARALLEL: Parallel execution is applied.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   single_context(in): Hash join context for single-threaded execution.
@@ -1307,10 +1309,11 @@ error_exit:
 /*
  * hjoin_check_partition() -
  *   return: One of the following HASHJOIN_STATUS values:
- *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
  *           - HASHJOIN_STATUS_SINGLE: Partitioning is not needed.
+ *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
+ *   single_context(in): Hash join context for single-threaded execution.
  */
 static HASHJOIN_STATUS
 hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
@@ -1361,6 +1364,13 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     }
 }
 
+/*
+ * hjoin_prepare_partition() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   split_info(in): Split information.
+ */
 static int
 hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
 {
@@ -1539,6 +1549,13 @@ error_exit:
   return error;
 }
 
+/*
+ * hjoin_build_partitions() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   split_info(in): Split information.
+ */
 static int
 hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
 {
@@ -1587,6 +1604,14 @@ error_exit:
   goto cleanup;
 }
 
+/*
+ * hjoin_try_parallel() -
+ *   return: One of the following HASHJOIN_STATUS values:
+ *           - HASHJOIN_STATUS_PARTITION: Parallel execution is not applied or falls back on error.
+ *           - HASHJOIN_STATUS_PARALLEL: Parallel execution is applied.
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ */
 static HASHJOIN_STATUS
 hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
@@ -2188,7 +2213,7 @@ error_exit:
 /*
  * hjoin_check_valid_split_info() -
  *   return: None.
- *   info(in): Partition information to be validated.
+ *   info(in): Split information to be validated.
  */
 static void
 hjoin_check_valid_split_info (HASHJOIN_INPUT_SPLIT_INFO * info)
@@ -3257,7 +3282,7 @@ hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN
 
 #if HASHJOIN_PROFILE_TIME
 /*
- * HJOIN_PROFILE_START() -
+ * hjoin_profile_start() -
  *   return: None.
  *   thread_p(in): Thread entry.
  *   start_stats(in/out): Profiling data captured at the start of the step.
@@ -3487,7 +3512,7 @@ hjoin_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tuple, HASHJOI
  *   return: Error code (NO_ERROR if successful, error code otherwise)
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   split_info(in): Input data for split
+ *   split_info(in): Split information.
  *   key(in/out): Space for reading join column values.
  */
 int
@@ -3611,6 +3636,13 @@ error_exit:
   goto cleanup;
 }
 
+/*
+ * hjoin_merge_qlist() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context containing per-partition state.
+ */
 int
 hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
@@ -3710,5 +3742,3 @@ error_exit:
 
   return error;
 }
-
-/* hjoin_trace_merge_stats */

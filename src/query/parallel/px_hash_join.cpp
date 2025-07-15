@@ -52,6 +52,7 @@ namespace parallel_query
        * For parallel threads, end_resource_tracks is expected to be called in retire_context,
        * after all tasks have been completed. */
       context.push_resource_tracks ();
+      context.skip_end_resource_tracks_in_recycle = true;
     }
 
     void
@@ -59,6 +60,7 @@ namespace parallel_query
     {
       clear_spawner ();
       context.emulate_tid = thread_id_t ();
+      context.skip_end_resource_tracks_in_recycle = false;
       cubthread::entry_manager::on_retire (context);
     }
 
@@ -296,6 +298,10 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
 
+    /*
+     * build_partitions
+     */
+
     int
     build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
     {
@@ -323,6 +329,10 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
     }
+
+    /*
+     * execute_partitions
+     */
 
     int
     execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)

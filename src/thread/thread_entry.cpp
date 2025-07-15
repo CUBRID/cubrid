@@ -137,6 +137,7 @@ namespace cubthread
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
     , m_parallel_stats (NULL)
+    , skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
@@ -373,7 +374,6 @@ namespace cubthread
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
     m_qlist_count = 0;
-    emulate_tid = thread_id_t ();
   }
 
   void
