@@ -22,6 +22,7 @@
 #if SERVER_MODE
 #include "px_query_executor.hpp"
 #include <algorithm>
+#include "xasl_cache.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -212,7 +213,10 @@ namespace parallel_query_execute
 	  {
 	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
 	      {
-		make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+		if (!XASL_IS_FLAGED (xptr2, XASL_LINK_TO_REGU_VARIABLE))
+		  {
+		    make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+		  }
 	      }
 	  }
 	if (xasl->type == CTE_PROC)
@@ -237,7 +241,10 @@ namespace parallel_query_execute
 	  {
 	    for (XASL_NODE *xptr2 = xptr->aptr_list; xptr2 != nullptr; xptr2 = xptr2->next)
 	      {
-		make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+		if (!XASL_IS_FLAGED (xptr2, XASL_LINK_TO_REGU_VARIABLE))
+		  {
+		    make_parallel_query_executor_recursively (thread_p, xptr2, worker_manager_p, xasl->px_executor, parallelism);
+		  }
 	      }
 	  }
 	if (xasl->type == CTE_PROC)
@@ -304,15 +311,30 @@ namespace parallel_query_execute
       }
   }
 
-  void query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
+  bool query_executor::add_task (XASL_NODE *xasl, xasl_state *xasl_state)
   {
-    task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p);
-    m_task_queue_global_p->add_task (task_tuple_p);
+    try
+      {
+	task_tuple *task_tuple_p = m_task_queue.add_task (m_thread_p, xasl, xasl_state, m_mutex_p, m_error_messages_p);
+	m_task_queue_global_p->add_task (task_tuple_p);
+      }
+    catch (const std::system_error &e)
+      {
+	er_print_callstack (ARG_FILE_LINE, "add_task - throws err = %d: %s\n", e.code (), e.what ());
+	return false;
+      }
+    catch (const std::exception &e)
+      {
+	er_print_callstack (ARG_FILE_LINE, "add_task - throws err = %s\n", e.what ());
+	return false;
+      }
+    return true;
   }
 
   int query_executor::run_tasks (THREAD_ENTRY *thread_p)
   {
-    int err = m_task_queue.execute_tasks (thread_p);
+    int err;
+    err = m_task_queue.execute_tasks (thread_p);
     if (err != NO_ERROR)
       {
 	return err;
@@ -696,6 +718,10 @@ namespace parallel_query_execute
   {
     try
       {
+	if (!xcache_uses_clones ())
+	  {
+	    return false;
+	  }
 	add_xasl_recursive (xasl);
 	if (!m_is_parallel_executable)
 	  {

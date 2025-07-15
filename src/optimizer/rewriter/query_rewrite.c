@@ -221,7 +221,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	case PT_NE:
 	case PT_NULLSAFE_EQ:
 	  node->info.expr.arg1 = qo_rewrite_hidden_col_as_derived (parser, node->info.expr.arg1, node);
-	  /* fall through */
+	  [[fallthrough]];
 
 	  /* keep out hidden column subquery from UPDATE assignment */
 	case PT_ASSIGN:

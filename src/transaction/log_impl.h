@@ -584,6 +584,8 @@ struct log_tdes
   void unlock_global_oldest_visible_mvccid ();
 #endif
   // *INDENT-ON*
+
+  void copy_to (LOG_TDES & dest) const;
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

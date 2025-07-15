@@ -313,7 +313,6 @@ namespace parallel_heap_scan
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
-    thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
     thread_p->m_parallel_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
