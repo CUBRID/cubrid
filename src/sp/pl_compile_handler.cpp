@@ -147,7 +147,11 @@ namespace cubpl
 	      }
 	    else
 	      {
-		assert (code == METHOD_REQUEST_ERROR);
+		if (code != METHOD_REQUEST_ERROR)
+		  {
+		    er_log_debug (ARG_FILE_LINE, "wrong code %d in a response to COMPILE request\n", code);
+		    assert (false);
+		  }
 		error_code = ER_FAILED;
 	      }
 	  }
