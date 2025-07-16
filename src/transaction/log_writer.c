@@ -305,7 +305,7 @@ logwr_read_log_header (void)
     {
       /* Mount the active log and read the log header */
       logwr_Gl.append_vdes =
-	fileio_mount (NULL, logwr_Gl.db_name, logwr_Gl.active_name, LOG_DBLOG_ACTIVE_VOLID, true, false);
+	fileio_mount (NULL, logwr_Gl.db_name, logwr_Gl.active_name, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
       if (logwr_Gl.append_vdes == NULL_VOLDES)
 	{
 	  /* Unable to mount the active log */
@@ -525,7 +525,7 @@ logwr_initialize (const char *db_name, const char *log_path, int mode, LOG_PAGEI
 	{
 	  bg_arv_info->vdes =
 	    fileio_mount (NULL, logwr_Gl.bg_archive_name, logwr_Gl.bg_archive_name, LOG_DBLOG_ARCHIVE_VOLID, true,
-			  false);
+			  false, true);
 	  if (bg_arv_info->vdes == NULL_VOLDES)
 	    {
 	      return ER_IO_MOUNT_FAIL;
@@ -1340,7 +1340,7 @@ logwr_archive_active_log (void)
     {
       if (fileio_is_volume_exist (archive_name) == true)
 	{
-	  vdes = fileio_mount (NULL, archive_name, archive_name, LOG_DBLOG_ARCHIVE_VOLID, true, false);
+	  vdes = fileio_mount (NULL, archive_name, archive_name, LOG_DBLOG_ARCHIVE_VOLID, true, false, true);
 	  if (vdes == NULL_VOLDES)
 	    {
 	      error_code = ER_IO_MOUNT_FAIL;

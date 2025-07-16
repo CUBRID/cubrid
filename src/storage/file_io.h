@@ -480,7 +480,7 @@ extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES 
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, DKNPAGES npages,
 				const LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
-			 int lockwait, bool dosync);
+			 int lockwait, bool dosync, bool isdirect = false);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);

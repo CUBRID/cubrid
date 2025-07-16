@@ -1350,7 +1350,7 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *igno
   char check_vlabel[PATH_MAX];
   int vdes;
 
-  vdes = fileio_mount (thread_p, boot_Db_full_name, vlabel, volid, false, false);
+  vdes = fileio_mount (thread_p, boot_Db_full_name, vlabel, volid, false, false, true);
   if (vdes == NULL_VOLDES)
     {
       return ER_FAILED;

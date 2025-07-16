@@ -5176,7 +5176,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	  break;
 	}
 
-      vdes = fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false, false);
+      vdes = fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false, false, true);
       if (vdes != NULL_VOLDES)
 	{
 	  ret = disk_get_db_creation (thread_p, volid, &vol_dbcreation);

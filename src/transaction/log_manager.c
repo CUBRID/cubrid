@@ -1133,8 +1133,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
-  log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
-  if (log_Gl.loghdr_pgptr == NULL)
+  if (posix_memalign ((void **) &log_Gl.loghdr_pgptr, 4096, LOG_PAGESIZE) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LOG_PAGESIZE);
       logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_xinit");
@@ -1148,7 +1147,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* Mount the active log and read the log header */
-  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false, true);
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
       if (ismedia_crash != false)
@@ -14357,7 +14356,7 @@ cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 
       if (fileio_is_volume_exist (arv_name) == true)
 	{
-	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false, true);
 	  if (vdes != NULL_VOLDES)
 	    {
 	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)
@@ -14613,7 +14612,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 	  if (fileio_is_volume_exist (arv_name) == true)
 	    {
-	      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false);
+	      vdes = fileio_mount (thread_p, log_Db_fullname, arv_name, LOG_DBLOG_ARCHIVE_VOLID, false, false, true);
 	      if (vdes != NULL_VOLDES)
 		{
 		  if (fileio_read (thread_p, vdes, hdr_pgptr, 0, IO_MAX_PAGE_SIZE) == NULL)

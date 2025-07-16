@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <signal.h>
+#include <stdlib.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -473,7 +474,7 @@ static pthread_mutex_t *fileio_get_volume_mutex (THREAD_ENTRY * thread_p, int vd
 static int fileio_initialize_volume_info_cache (void);
 static void fileio_make_volume_lock_name (char *vol_lockname, const char *vol_fullname);
 static int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
-			  bool dolock, bool dosync);
+			  bool dolock, bool dosync, bool is_direct = false);
 static int fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel,
 					VOLID volid, bool dolock, bool dosync, int atleast_pages);
 static int fileio_max_permanent_volumes (int index, int num_permanent_volums);
@@ -2071,7 +2072,7 @@ fileio_close (int vol_fd)
  */
 static int
 fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *vol_label_p, VOLID vol_id,
-	       bool is_do_lock, bool is_do_sync)
+	       bool is_do_lock, bool is_do_sync, bool is_direct)
 {
   int tmp_vol_desc = NULL_VOLDES;
   int vol_fd;
@@ -2115,7 +2116,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   /* If the file exist make sure that nobody else is using it, before it is truncated */
   if (is_do_lock != false)
     {
-      tmp_vol_desc = fileio_open (vol_label_p, O_RDWR | o_sync, 0);
+      tmp_vol_desc = fileio_open (vol_label_p, O_RDWR | o_sync | (is_direct ? O_DIRECT : 0), 0);
       if (tmp_vol_desc != NULL_VOLDES)
 	{
 	  /* The volume (file) already exist. Make sure that nobody is using it before the old one is destroyed */
@@ -2129,7 +2130,9 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	}
     }
 
-  vol_fd = fileio_open (vol_label_p, FILEIO_DISK_FORMAT_MODE | o_sync, FILEIO_DISK_PROTECTION_MODE);
+  vol_fd =
+    fileio_open (vol_label_p, FILEIO_DISK_FORMAT_MODE | o_sync | (is_direct ? O_DIRECT : 0),
+		 FILEIO_DISK_PROTECTION_MODE);
   if (vol_fd == NULL_VOLDES)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
@@ -2366,8 +2369,8 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
       return NULL_VOLDES;
     }
 
-  malloc_io_page_p = (FILEIO_PAGE *) malloc (page_size);
-  if (malloc_io_page_p == NULL)
+  assert (page_size % 4096 == 0);
+  if (posix_memalign ((void **) &malloc_io_page_p, 4096, page_size) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, page_size);
       return NULL_VOLDES;
@@ -2376,7 +2379,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   memset ((char *) malloc_io_page_p, 0, page_size);
   (void) fileio_initialize_res (thread_p, malloc_io_page_p, (PGLENGTH) page_size);
 
-  vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
+  vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync, true);
   FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
@@ -2431,7 +2434,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
 #if defined(WINDOWS)
       fileio_dismount (thread_p, vol_fd);
-      vol_fd = fileio_mount (thread_p, NULL, vol_label_p, vol_id, false, false);
+      vol_fd = fileio_mount (thread_p, NULL, vol_label_p, vol_id, false, false, true);
 #endif /* WINDOWS */
     }
   else
@@ -2910,7 +2913,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
  */
 int
 fileio_mount (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *vol_label_p, VOLID vol_id, int lock_wait,
-	      bool is_do_sync)
+	      bool is_do_sync, bool is_direct)
 {
 #if defined(WINDOWS)
   int vol_fd;
@@ -2979,7 +2982,7 @@ fileio_mount (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *v
 
   /* OPEN THE DISK VOLUME PARTITION OR FILE SIMULATED VOLUME */
 start:
-  vol_fd = fileio_open (vol_label_p, O_RDWR | o_sync, 0600);
+  vol_fd = fileio_open (vol_label_p, O_RDWR | o_sync | (is_direct ? O_DIRECT : 0), 0600);
   if (vol_fd == NULL_VOLDES)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
@@ -10240,7 +10243,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
   else
     {
       session_p->dbfile.vdes =
-	fileio_mount (thread_p, NULL, session_p->dbfile.vlabel, session_p->dbfile.volid, false, false);
+	fileio_mount (thread_p, NULL, session_p->dbfile.vlabel, session_p->dbfile.volid, false, false, true);
     }
 
   if (session_p->dbfile.vdes == NULL_VOLDES)
@@ -10378,7 +10381,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 	      /* previous vol */
 	      prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-	      prev_vdes = fileio_mount (thread_p, NULL, prev_vol_label_p, prev_volid, false, false);
+	      prev_vdes = fileio_mount (thread_p, NULL, prev_vol_label_p, prev_volid, false, false, true);
 	      if (prev_vdes == NULL_VOLDES)
 		{
 		  goto error;

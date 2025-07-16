@@ -2171,7 +2171,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
     }
 
   if ((log_vdes =
-       fileio_mount (NULL, BO_DB_FULLNAME, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false)) == NULL_VOLDES)
+       fileio_mount (NULL, BO_DB_FULLNAME, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false, true)) == NULL_VOLDES)
     {
       goto error;
     }
