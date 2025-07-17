@@ -38,6 +38,7 @@
  */
 
 #define HASHJOIN_PROFILE_TIME 0
+#define HASHJOIN_COLLISION_RATE 1
 #define HASHJOIN_DUMP_PARTITION 0
 #define HASHJOIN_DUMP_HASH_TABLE 0
 #define HASHJOIN_DUMP_BUILD 0
@@ -189,8 +190,10 @@ typedef struct hashjoin_profile_stats
 
 typedef struct hashjoin_stats
 {
-  HASH_METHOD hash_method;
   UINT32 max_parallel_workers;
+
+  HASH_METHOD hash_method;
+  double collision_rate;
 
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS build;
@@ -205,7 +208,7 @@ typedef struct hashjoin_stats_group
 {
   HASHJOIN_STATS stats;
   HASHJOIN_STATS *context_stats;
-  int context_cnt;
+  UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
 
 typedef struct hashjoin_context
@@ -251,7 +254,7 @@ typedef struct hashjoin_manager
 
   HASHJOIN_CONTEXT single_context;
   HASHJOIN_CONTEXT *contexts;
-  int context_cnt;
+  UINT32 context_cnt;
 
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   HASHJOIN_MERGE_METHOD qlist_merge_method;
@@ -265,6 +268,10 @@ typedef struct hashjoin_manager
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
+
+#if HASHJOIN_DUMP_HASH_TABLE
+  pthread_mutex_t dump_hash_table_mutex;
+#endif				/* HASHJOIN_DUMP_HASH_TABLE */
 } HASHJOIN_MANAGER;
 
 /*

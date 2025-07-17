@@ -22,6 +22,8 @@
 
 #include "px_hash_join.hpp"
 
+#include "perf_monitor.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -44,6 +46,7 @@ namespace parallel_query
     {
       cubthread::entry_manager::on_create (context);
       emulate_main_thread (context);
+      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
 
       /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
        * function in net_server_request. Since parallel threads are not called through net_server_request,
@@ -60,6 +63,7 @@ namespace parallel_query
     {
       clear_spawner ();
       context.emulate_tid = thread_id_t ();
+      perfmon_destroy_parallel_stats (&context);
       context.skip_end_resource_tracks_in_recycle = false;
       cubthread::entry_manager::on_retire (context);
     }
@@ -69,6 +73,8 @@ namespace parallel_query
     {
       cubthread::entry_manager::on_recycle (context);
       emulate_main_thread (context);
+      perfmon_destroy_parallel_stats (&context);
+      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
     }
 
     void
@@ -338,7 +344,7 @@ namespace parallel_query
     execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
     {
       HASHJOIN_CONTEXT *current_context;
-      int context_index;
+      UINT32 context_index;
 
       int error = NO_ERROR;
 

@@ -3794,10 +3794,11 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_PROC_NODE *proc;
   HASHJOIN_STATS_GROUP *stats_group;
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
-  int part_cnt, part_index;
+  UINT32 part_cnt, part_index;
 
   HASHJOIN_INPUT_STATS min_build_stats, max_build_stats;
   HASHJOIN_INPUT_STATS min_probe_stats, max_probe_stats;
+  double max_collision_rate = 0;
   char hash_method_str[32];
   int len;
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -3837,6 +3838,12 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, rows: %ld, method: %s)", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.fetch_time, stats->build.ioreads,
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
+
+#if HASHJOIN_COLLISION_RATE
+      fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
+#else
+      fprintf (fp, ")\n");
+#endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_PROFILE_TIME
       fprintf (fp, ", (F: %d, H: %d, I: %d)", TO_MSEC (stats->profile.build.fetch), TO_MSEC (stats->profile.build.hash),
@@ -3884,6 +3891,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  max_build_stats.fetch_time = MAX (max_build_stats.fetch_time, current_stats->build.fetch_time);
 	  max_build_stats.ioreads += current_stats->build.ioreads;
 	  max_build_stats.qualified_rows += current_stats->build.qualified_rows;
+
+	  max_collision_rate = MAX (max_collision_rate, current_stats->collision_rate);
 
 	  /* min_probe_stats */
 	  perfmon_update_min_timeval (&min_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
@@ -3963,10 +3972,16 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	       part_cnt);
 
       fprintf (fp,
-	       "%*cBUILD (time: %d..%d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, rows: %ld, method: %s)\n",
+	       "%*cBUILD (time: %d..%d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, rows: %ld, method: %s",
 	       indent, ' ', TO_MSEC (min_build_stats.elapsed_time), TO_MSEC (max_build_stats.elapsed_time),
 	       max_build_stats.fetches, min_build_stats.fetch_time, max_build_stats.fetch_time, max_build_stats.ioreads,
 	       max_build_stats.qualified_rows, hash_method_str);
+
+#if HASHJOIN_COLLISION_RATE
+      fprintf (fp, ", collision_rate: %.0f%%)\n", max_collision_rate * 100);
+#else
+      fprintf (fp, ")\n");
+#endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_DUMP_PARTITION
       indent += 2;
@@ -4047,6 +4062,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
   HASHJOIN_INPUT_STATS min_build_stats, max_build_stats;
   HASHJOIN_INPUT_STATS min_probe_stats, max_probe_stats;
+  double max_collision_rate = 0;
   char hash_method_str[32];
   int len;
   bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
@@ -4081,6 +4097,9 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
+#if HASHJOIN_COLLISION_RATE
+      json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+#endif /* HASHJOIN_COLLISION_RATE */
       json_object_set_new (parent, "build", build);
 
 #if HASHJOIN_PROFILE_TIME
@@ -4140,6 +4159,8 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  max_build_stats.fetch_time = MAX (max_build_stats.fetch_time, current_stats->build.fetch_time);
 	  max_build_stats.ioreads = MAX (max_build_stats.ioreads, current_stats->build.ioreads);
 	  max_build_stats.qualified_rows = MAX (max_build_stats.qualified_rows, current_stats->build.qualified_rows);
+
+	  max_collision_rate = MAX (max_collision_rate, current_stats->collision_rate);
 
 	  /* min_probe_stats */
 	  perfmon_update_min_timeval (&min_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
@@ -4234,6 +4255,9 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (hash_method_str));
+#if HASHJOIN_COLLISION_RATE
+      json_object_set_new (build, "collision_rate", json_real (max_collision_rate * 100));
+#endif /* HASHJOIN_COLLISION_RATE */
       json_object_set_new (parent, "build", build);
 
 #if HASHJOIN_DUMP_PARTITION

@@ -353,7 +353,7 @@ static int
 hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_CONTEXT *current_context;
-  int context_cnt, context_index;
+  UINT32 context_cnt, context_index;
 
   int error = NO_ERROR;
 
@@ -630,7 +630,7 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   QFILE_LIST_ID *list_id = NULL;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
-  HASHJOIN_FETCH_INFO *build, *probe;
+  HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
 
   int error = NO_ERROR;
 
@@ -793,7 +793,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   manager->during_join_pred = xasl->during_join_pred;
   manager->max_parallel_workers =
-    (xasl->parallelism > 1) ? xasl->parallelism : prm_get_integer_value (PRM_ID_PARALLELISM);
+    (xasl->parallelism < 0) ? prm_get_integer_value (PRM_ID_PARALLELISM) : xasl->parallelism;
 
   manager->query_id = query_id;
   manager->val_descr = val_descr;
@@ -898,6 +898,10 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
       assert (context->stats == NULL);
     }
 
+#if defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE
+  pthread_mutex_init (&manager->dump_hash_table_mutex, NULL);
+#endif /* defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE */
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 }
@@ -913,7 +917,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_CONTEXT *single_context;
   HASHJOIN_CONTEXT *contexts = NULL;
-  int context_cnt, context_index;
+  UINT32 context_cnt, context_index;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -964,6 +968,10 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       // *INDENT-ON*
     }
 #endif /* defined (SERVER_MODE) */
+
+#if defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE
+  pthread_mutex_destroy (&manager->dump_hash_table_mutex);
+#endif /* defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE */
 }
 
 /*
@@ -1171,7 +1179,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 {
   HASHJOIN_STATUS status;
   HASHJOIN_SPLIT_INFO part_info = HASHJOIN_SPLIT_INFO_INITIALIZER;
-  int context_index;
+  UINT32 context_index;
 
   int error = NO_ERROR;
 
@@ -1281,7 +1289,7 @@ error_exit:
 
       if (manager->stats_group->context_stats != NULL)
 	{
-	  db_private_free_and_init (thread_p, manager->stats_group->context_stats);
+	  free_and_init (manager->stats_group->context_stats);
 	}
 
       manager->stats_group->context_cnt = 0;
@@ -1322,7 +1330,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 
   UINT64 mem_limit;
   INT64 min_tuple_cnt;
-  int part_cnt;
+  UINT32 part_cnt;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -1381,7 +1389,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   HASHJOIN_CONTEXT *contexts = NULL, *current_context;
   HASHJOIN_STATS *context_stats = NULL;
 
-  int part_cnt, part_index;
+  UINT32 part_cnt, part_index;
 
   int error = NO_ERROR;
 
@@ -1525,7 +1533,7 @@ error_exit:
     {
       if (context_stats != NULL)
 	{
-	  db_private_free_and_init (thread_p, context_stats);
+	  free_and_init (context_stats);
 	}
 
       assert (manager->stats_group != NULL);
@@ -1639,14 +1647,13 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p);
 #define new new(__FILE__, __LINE__)
 
-	  if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
+	  if (manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
 	    {
-	      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+	      assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
+	      return HASHJOIN_STATUS_PARALLEL;
 	    }
 
-	  assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
-
-	  return HASHJOIN_STATUS_PARALLEL;
+	  db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
 	}
       catch (...)
         {
@@ -1671,7 +1678,7 @@ static int
 hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   HASHJOIN_FETCH_INFO *outer, *inner;
-  HASHJOIN_FETCH_INFO *build;
+  HASHJOIN_FETCH_INFO *build = NULL;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
@@ -2241,7 +2248,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   SCAN_CODE scan_code;
   bool need_skip_next = false;
 
-  HASHJOIN_FETCH_INFO *build;
+  HASHJOIN_FETCH_INFO *build = NULL;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -2324,6 +2331,8 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
       stats->build.read_rows = build->list_id->tuple_cnt;
       assert (stats->build.read_keys == 0);
+
+      stats->collision_rate = (double) hash_scan->memory.hash_table->ncollisions / build->list_id->tuple_cnt;
     }
 
   /* qfile_close_scan is called by the caller. */
@@ -2334,7 +2343,18 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       goto error_exit;
     }
 
-  HJOIN_DUMP_HASH_TABLE (thread_p, hash_scan, build->list_id);
+#if HASHJOIN_DUMP_HASH_TABLE
+  if (build->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
+    {
+#if defined (SERVER_MODE)
+      pthread_mutex_lock (&manager->dump_hash_table_mutex);
+#endif /* defined (SERVER_MODE) */
+      HJOIN_DUMP_HASH_TABLE (thread_p, hash_scan, build->list_id);
+#if defined (SERVER_MODE)
+      pthread_mutex_unlock (&manager->dump_hash_table_mutex);
+#endif /* defined (SERVER_MODE) */
+    }
+#endif /* HASHJOIN_DUMP_HASH_TABLE */
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -2461,7 +2481,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   bool need_skip_next = false;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
-  HASHJOIN_FETCH_INFO *build, *probe;
+  HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -2654,7 +2674,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   bool any_record_added;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
-  HASHJOIN_FETCH_INFO *build, *probe;
+  HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
 
   HASH_LIST_SCAN *hash_scan;
   HASH_METHOD hash_method;
@@ -2792,7 +2812,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  if (context->during_join_pred != NULL)
 	    {
-	      DB_LOGICAL ev_res;
+	      DB_LOGICAL ev_res = V_UNKNOWN;
 
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      do
@@ -2955,7 +2975,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (hash_value != NULL)
 	{
-	  tuple_record->tpl = ((HASH_SCAN_VALUE *) hash_scan->memory.curr_hash_entry->data)->tuple;
+	  tuple_record->tpl = hash_value->tuple;
 	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
 	}
       else
