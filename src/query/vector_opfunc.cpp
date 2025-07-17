@@ -20,6 +20,7 @@
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "dbtype_def.h"
+#include "db_vector.hpp"
 #include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -143,8 +144,15 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
       std::abort();
     }
 
+  if (std::isnan (distance))
+    {
+      db_make_null (result);
+    }
+  else
+    {
+      db_make_double (result, static_cast<double> (distance));
+    }
 
-  db_make_double (result, static_cast<double> (distance));
   return NO_ERROR;
 }
 
@@ -191,7 +199,8 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
   // Handle zero vectors to avoid division by zero
   if (norm1 == 0.0f || norm2 == 0.0f)
     {
-      return 1.0f; // Maximum distance
+      // NaN distance
+      return std::numeric_limits<float>::quiet_NaN();
     }
 
   float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
