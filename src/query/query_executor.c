@@ -26376,10 +26376,3 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
   return NO_ERROR;
 }
-
-int
-qexec_clear_access_spec_list_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCESS_SPEC_TYPE * list,
-						bool is_final, bool except_trace)
-{
-
-}
