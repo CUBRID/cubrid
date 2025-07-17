@@ -12666,6 +12666,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   TP_DOMAIN_STATUS dom_status;
   PT_NODE *between_ge_lt, *between_ge_lt_arg1, *between_ge_lt_arg2;
   DB_VALUE *width_bucket_arg2 = NULL, *width_bucket_arg3 = NULL;
+  bool numeric_need_round = false;
 
   assert (parser != NULL);
 
@@ -14052,10 +14053,17 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      if (numeric_db_value_add (arg1, arg2, result) != NO_ERROR)
+	      if (numeric_db_value_add (arg1, arg2, result, &numeric_need_round) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
+		}
+
+	      // 임시!
+	      if (numeric_need_round)
+		{
+		  domain->precision = result->domain.numeric_info.precision;
+		  domain->scale = result->domain.numeric_info.scale;
 		}
 
 	      dom_status = tp_value_coerce (result, result, domain);

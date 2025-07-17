@@ -19177,18 +19177,18 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
   int error_status = NO_ERROR;
   int state = 1;
   int i, j, k;
-  //char result_str[DB_MAX_NUMERIC_PRECISION + 2];
+  char result_str[DB_MAX_NUMERIC_PRECISION + 2];
   // TO_NUMBER format 결과 최대 길이 로 맞추면 되나?  요기는 확인 필요!
-  char result_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 2];
+  //char result_str[NUMERIC_MAX_STRING_SIZE + 2];
   char *res_ptr;
   const char fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
 
   result_str[0] = '\0';
-  //result_str[DB_MAX_NUMERIC_PRECISION] = '\0';
-  //result_str[DB_MAX_NUMERIC_PRECISION + 1] = '\0';
-  result_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT] = '\0';
-  result_str[DB_INTERNAL_NUMERIC_PRECISION_LIMIT + 1] = '\0';
+  result_str[DB_MAX_NUMERIC_PRECISION] = '\0';
+  result_str[DB_MAX_NUMERIC_PRECISION + 1] = '\0';
+  //result_str[NUMERIC_MAX_STRING_SIZE] = '\0';
+  //result_str[NUMERIC_MAX_STRING_SIZE + 1] = '\0';
   *token_length = 0;
 
   while (state != 7 && src < last_src)

@@ -769,10 +769,11 @@ static int
 qdata_add_numeric (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
 {
   DB_VALUE dbval_tmp;
+  bool need_round = false;
 
   qdata_coerce_dbval_to_numeric (dbval_p, &dbval_tmp);
 
-  if (numeric_db_value_add (&dbval_tmp, numeric_val_p, result_p) != NO_ERROR)
+  if (numeric_db_value_add (&dbval_tmp, numeric_val_p, result_p, &need_round) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1982,6 +1983,7 @@ static int
 qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
 {
   DB_TYPE type;
+  bool need_round = false;
 
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
@@ -1993,7 +1995,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       return qdata_add_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_add (numeric_val_p, dbval_p, result_p, &need_round) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
@@ -2540,6 +2542,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
     case DB_TYPE_NUMERIC:
       error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      //임시
+      if (result_p->domain.numeric_info.scale < 0)
+	{
+	  domain_p->precision = result_p->domain.numeric_info.precision;
+	  domain_p->scale = result_p->domain.numeric_info.scale;
+	}
       break;
 
     case DB_TYPE_MONETARY:
