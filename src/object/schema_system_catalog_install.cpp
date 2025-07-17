@@ -465,8 +465,7 @@ namespace cubschema
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
       {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
     },
 // authorization
     {
@@ -819,9 +818,7 @@ namespace cubschema
       {"type_name", format_varchar (16)}
     },
 // constraints
-    {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"type_id", nullptr}, false}
-    },
+    {},
 // authorization
     {
       // owner, grants
@@ -1062,9 +1059,7 @@ namespace cubschema
       {CT_DBCOLL_CHECKSUM_COLUMN, format_varchar (32)}
     },
 // constraints
-    {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {CT_DBCOLL_COLL_ID_COLUMN, nullptr}, false},
-    },
+    {},
 // authorization
     {
       // owner, grants
