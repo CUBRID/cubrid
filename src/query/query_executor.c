@@ -2435,10 +2435,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
-	for (xasl_node * eptr = buildlist->eptr_list; eptr != NULL; eptr = eptr->next)
+	for (xasl_p = buildlist->eptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
 	  {
-	    XASL_SET_FLAG (eptr, decache_clone_flag);
-	    pg_cnt += qexec_clear_xasl (thread_p, eptr, is_final);
+	    XASL_SET_FLAG (xasl_p, decache_clone_flag);
+	    pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
 	  }
 
 	if (buildlist->groupby_list)
