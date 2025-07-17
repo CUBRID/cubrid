@@ -53,7 +53,6 @@ import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Struct;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
@@ -67,7 +66,7 @@ public class CUBRIDServerSideConnection implements Connection {
     private Context context = null;
 
     protected CUBRIDServerSideDatabaseMetaData mdata = null;
-    protected List<Statement> statements = null;
+    protected ArrayList<Statement> statements = null;
     private SUConnection suConn = null;
 
     private int transactionIsolation;
@@ -124,15 +123,14 @@ public class CUBRIDServerSideConnection implements Connection {
         }
     }
 
-    /* To manage List<Statement> statements */
-    public void addStatement(Statement s) {
-        this.statements.add(s);
+    boolean removeStatement(Statement s) throws SQLException {
+        return statements.remove(s);
     }
 
-    public void removeStatement(Statement s) throws SQLException {
-        int i = statements.indexOf(s);
-        if (i > -1) {
-            statements.remove(i);
+    public void invalidateStatements() {
+
+        for (Statement s : statements) {
+            ((CUBRIDServerSideStatement) s).invalidate();
         }
     }
 
@@ -151,7 +149,7 @@ public class CUBRIDServerSideConnection implements Connection {
 
     public CallableStatement prepareCall(String sql) throws SQLException {
         CallableStatement cstmt = new CUBRIDServerSideCallableStatement(this, sql);
-        addStatement(cstmt);
+        statements.add(cstmt);
         return cstmt;
     }
 
@@ -171,7 +169,7 @@ public class CUBRIDServerSideConnection implements Connection {
     public void commit() throws SQLException {
         if (context.canTransactionControl()) {
             try {
-                close();
+                invalidateStatements();
                 getSUConnection().endTransaction(true);
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -183,7 +181,7 @@ public class CUBRIDServerSideConnection implements Connection {
     public void rollback() throws SQLException {
         if (context.canTransactionControl()) {
             try {
-                close();
+                invalidateStatements();
                 getSUConnection().endTransaction(false);
             } catch (IOException e) {
                 throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
@@ -202,12 +200,14 @@ public class CUBRIDServerSideConnection implements Connection {
          * The connection is not actually terminated or database resources such as query
          * handlers and result sets are removed.
          */
-        if (statements != null) {
-            for (Statement s : statements) {
-                s.close();
-            }
-            statements.clear();
+
+        // copy the list to avoid ConcurrentModificationException:
+        // Statement.close detaches itself from the connection
+        ArrayList<Statement> tempList = (ArrayList<Statement>) statements.clone();
+        for (Statement s : tempList) {
+            s.close();
         }
+        assert statements.isEmpty(); // they detach themselves from the connection while closing
     }
 
     public boolean isClosed() throws SQLException {
@@ -270,7 +270,7 @@ public class CUBRIDServerSideConnection implements Connection {
         Statement stmt =
                 new CUBRIDServerSideStatement(
                         this, resultSetType, resultSetConcurrency, holdability);
-        addStatement(stmt);
+        statements.add(stmt);
         return stmt;
     }
 
@@ -327,7 +327,7 @@ public class CUBRIDServerSideConnection implements Connection {
         }
         Statement stmt =
                 new CUBRIDServerSideStatement(this, resultSetType, resultSetConcurrency, holdable);
-        addStatement(stmt);
+        statements.add(stmt);
         return stmt;
     }
 

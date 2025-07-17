@@ -5450,7 +5450,7 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
 	  tran_get_tran_settings (&dummy_lktimeout, tran_isolation, &dummy_aws);
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case 1:			/* unsupported ones */
     case 2:
     case 3:
@@ -15436,7 +15436,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
 
-	  assert ((int) sizeof (cls_info[count]->name) < strlen (classname));
+	  assert ((int) sizeof (cls_info[count]->name) > strlen (classname));
 	  strcpy (cls_info[count]->name, classname);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
@@ -20752,8 +20752,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (owner_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -21225,7 +21224,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }

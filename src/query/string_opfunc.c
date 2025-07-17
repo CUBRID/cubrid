@@ -19441,7 +19441,7 @@ get_number_token (const INTL_LANG lang, char *fsp, int *length, char *last_posit
 	{
 	  return N_INVALID;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case '9':
     case '0':
@@ -24706,10 +24706,10 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 
 	case 1:
 	  ms_string[1] = '0';
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case 2:
 	  ms_string[2] = '0';
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	default:
 	  *ms = atoi (ms_string);
 	}
@@ -28472,7 +28472,7 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
 		db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
 		break;
 	      }
-	    /* fall through */
+	    [[fallthrough]];
 	  case MILLISECOND:
 	    if (db_string_to_datetime_ex (str_date, str_date_len, &datetime_s) == NO_ERROR)
 	      {
