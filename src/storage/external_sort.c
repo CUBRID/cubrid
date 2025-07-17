@@ -4759,9 +4759,9 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 
   /* put result from sort location info */
   SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
-  parallel_query::worker_manager::get_manager().release_workers ();
   /* wait for threads */
   SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
+  parallel_query::worker_manager::get_manager().release_workers ();
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -4971,16 +4971,17 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   if (error != NO_ERROR)
     {
       sort_param->px_status = PX_ERR_FAILED;
-      goto cleanup;
+    }
+  else
+    {
+      sort_param->px_status = PX_DONE;
     }
 
-cleanup:
   qfile_close_list (thread_p, sort_info_p->output_file);
   thread_p->pop_resource_tracks ();
 
   /* done */
   pthread_mutex_lock(sort_param->px_mtx);
-  sort_param->px_status = PX_DONE;
   pthread_cond_signal(sort_param->complete_cond);
   pthread_mutex_unlock(sort_param->px_mtx);
 
@@ -5086,18 +5087,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (orderby_time, tv_diff);
       printf ("merge time: %d\n", TO_MSEC (orderby_time));
-
-
-      tsc_getticks (&start_tick);
-
-      
-
-
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (orderby_time, tv_diff);
-      printf ("last merge time: %d\n", TO_MSEC (orderby_time));
-
     }
   else
     {
