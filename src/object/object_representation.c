@@ -3605,7 +3605,21 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
 		{
 		  LANG_COLLATION *lc;
-		  collation_id = or_get_int (buf, &rc);
+		  collation_storage = or_get_int (buf, &rc);
+		  collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
+
+		  if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) == OR_DOMAIN_COLL_ENFORCE_FLAG)
+		    {
+		      collation_flag = TP_DOMAIN_COLL_ENFORCE;
+		    }
+		  else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) == OR_DOMAIN_COLL_LEAVE_FLAG)
+		    {
+		      collation_flag = TP_DOMAIN_COLL_LEAVE;
+		    }
+		  else
+		    {
+		      collation_flag = TP_DOMAIN_COLL_NORMAL;
+		    }
 		  assert (collation_id != LANG_COLL_ISO_BINARY);
 		  if (rc != NO_ERROR)
 		    {

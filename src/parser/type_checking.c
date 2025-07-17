@@ -8613,6 +8613,8 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
   new_att->data_type = parser_copy_tree_list (parser, new_dt);
   PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_SHOULD_FOLD);
 
+  new_att->expected_domain = arg->expected_domain;
+
   return new_att;
 }
 
@@ -10283,7 +10285,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else if (PT_IS_COMPLEX_TYPE (cast_type->type_enum))
 	    {
-	      node->data_type = parser_copy_tree_list (parser, cast_type);
+	      cast_type = pt_domain_to_data_type (parser, node->expected_domain);
+	      node->data_type = node->info.expr.cast_type = cast_type;
+	      //node->data_type = parser_copy_tree_list (parser, cast_type);
 	    }
 
 	  /* TODO : this requires a generic fix: maybe 'arg1_hv' should never be set to arg1->info.expr.arg1; arg1 may
