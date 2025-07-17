@@ -185,7 +185,7 @@ namespace cubxasl
 	return nullptr;
       }
 
-    T *dest = static_cast<T *> (db_private_alloc (&m_thread_ref, sizeof (T) * count));
+    T *dest = static_cast<T *> (db_private_alloc (&m_thread_ref, count * sizeof (T)));
     if (dest == nullptr )
       {
 	ASSERT_ERROR ();

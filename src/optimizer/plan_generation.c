@@ -597,11 +597,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     {
       pos_cnt = outer_info->pred_count;
 
-      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      pos_list = (int *) malloc (pos_cnt * sizeof (int));
       if (pos_list == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (int) * pos_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
 	  goto error_exit;
 	}
 
@@ -640,11 +640,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     {
       pos_cnt = inner_info->pred_count;
 
-      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      pos_list = (int *) malloc (pos_cnt * sizeof (int));
       if (pos_list == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (int) * pos_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
 	  goto error_exit;
 	}
 

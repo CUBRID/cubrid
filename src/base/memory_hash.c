@@ -2619,7 +2619,7 @@ mht_get32_next_power_of_2 (const unsigned int ht_size)
  *
  * Note: Robert Jenkin & Thomas Wang algorithm
  */
-STATIC_INLINE unsigned int
+static unsigned int
 mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size)
 {
   unsigned int c2 = 0x27d4eb2d;	/* a prime or an odd constant */

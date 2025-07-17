@@ -257,9 +257,22 @@ namespace parallel_query
 	  return;
 	}
 
+      HASHJOIN_INPUT_STATS *stats = &m_split_info->stats;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
       if (hjoin_split_qlist (&thread_ref, m_manager, m_split_info, NULL) != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
+	}
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_end (&thread_ref, stats, &start_stats);
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -326,6 +339,21 @@ namespace parallel_query
 
       task_manager.join ();
 
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  HASHJOIN_STATS *stats = &manager->stats_group->stats;
+
+	  stats->split.fetches += split_info->outer.stats.fetches;
+	  stats->split.ioreads += split_info->outer.stats.ioreads;
+	  stats->min_fetch_time = MIN (stats->min_fetch_time, split_info->outer.stats.fetch_time);
+	  stats->max_fetch_time = MAX (stats->max_fetch_time, split_info->outer.stats.fetch_time);
+
+	  stats->split.fetches += split_info->inner.stats.fetches;
+	  stats->split.ioreads += split_info->inner.stats.ioreads;
+	  stats->min_fetch_time = MIN (stats->min_fetch_time, split_info->inner.stats.fetch_time);
+	  stats->max_fetch_time = MAX (stats->max_fetch_time, split_info->inner.stats.fetch_time);
+	}
+
       if (task_manager.has_error ())
 	{
 	  assert_release (er_errid () != NO_ERROR);
@@ -350,11 +378,17 @@ namespace parallel_query
 
       assert (manager != NULL);
 
-      HASHJOIN_STATS *total_stats = &manager->stats_group->stats;
+      HASHJOIN_STATS *stats = &manager->stats_group->stats;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
 
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
       join_task *task = NULL;
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
 
       for (context_index = 0; context_index < manager->context_cnt; context_index++)
 	{
@@ -365,6 +399,11 @@ namespace parallel_query
 	}
 
       task_manager.join ();
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
+	}
 
       if (task_manager.has_error ())
 	{
@@ -378,7 +417,7 @@ namespace parallel_query
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
-	      hjoin_trace_merge_stats (total_stats, current_context->stats);
+	      hjoin_trace_merge_stats (stats, current_context->stats);
 	    }
 
 	  if (current_context->list_id == NULL)
@@ -396,7 +435,19 @@ namespace parallel_query
 		}
 	    }
 
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      hjoin_trace_start (&thread_ref, &start_stats);
+	    }
+
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
+
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      hjoin_trace_end (&thread_ref, &stats->merge, &start_stats);
+	      stats->merge.qualified_rows = manager->single_context.list_id->tuple_cnt;
+	    }
+
 	  if (error != NO_ERROR)
 	    {
 	      assert_release (er_errid () != NO_ERROR);

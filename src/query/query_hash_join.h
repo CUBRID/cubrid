@@ -87,6 +87,21 @@ typedef enum hashjoin_merge_method
   HASHJOIN_MERGE_CONNECT
 } HASHJOIN_MERGE_METHOD;
 
+#if HASHJOIN_PROFILE_TIME
+typedef enum hashjoin_profile_step
+{
+  HASHJOIN_PROFILE_NONE = 0,
+  HASHJOIN_PROFILE_BUILD_FETCH,	/* hjoin_fetch_key */
+  HASHJOIN_PROFILE_BUILD_HASH,	/* qdata_hash_scan_key */
+  HASHJOIN_PROFILE_BUILD_INSERT,	/* hjoin_build_key */
+  HASHJOIN_PROFILE_PROBE_FETCH,	/* hjoin_fetch_key */
+  HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
+  HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
+  HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
+  HASHJOIN_PROFILE_PROBE_ADD	/* hjoin_merge_tuple_to_list_id */
+} HASHJOIN_PROFILE_STEP;
+#endif /* HASHJOIN_PROFILE_TIME */
+
 /*
  * Struct & Typedef Definitions
  */
@@ -118,40 +133,6 @@ typedef struct hashjoin_domain_info
 } HASHJOIN_DOMAIN_INFO;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-
-typedef struct hashjoin_fetch_info
-{
-  QFILE_LIST_ID *list_id;
-  QFILE_LIST_SCAN_ID list_scan_id;
-  QFILE_TUPLE_RECORD tuple_record;
-  QFILE_TUPLE_RECORD *fill_record;
-
-  /* Pointers to members of HASHJOIN_DOMAIN_INFO,
-   * which is a member of HASHJOIN_PROC_NODE. */
-  HASHJOIN_INPUT_DOMAIN_INFO *input;
-  TP_DOMAIN **coerce_domains;
-  bool need_coerce_domains;
-
-  /* Pointer to a member of HASHJOIN_INPUT. */
-  REGU_VARIABLE_LIST regu_list_pred;
-} HASHJOIN_FETCH_INFO;
-#define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, NULL }
-
-typedef struct hashjoin_input_split_info
-{
-  HASHJOIN_FETCH_INFO *fetch_info;
-  QFILE_LIST_ID **part_list_id;
-  int part_cnt;
-} HASHJOIN_INPUT_SPLIT_INFO;
-#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, 0 }
-
-typedef struct hashjoin_split_info
-{
-  HASHJOIN_INPUT_SPLIT_INFO outer;
-  HASHJOIN_INPUT_SPLIT_INFO inner;
-} HASHJOIN_SPLIT_INFO;
-#define HASHJOIN_SPLIT_INFO_INITIALIZER \
-  { HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER, HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER }
 
 typedef struct hashjoin_input_stats
 {
@@ -188,6 +169,22 @@ typedef struct hashjoin_profile_stats
 #define HASHJOIN_PROFILE_STATS_INITIALIZER { { 0 }, { 0 } }
 #endif /* HASHJOIN_PROFILE_TIME */
 
+typedef struct hashjoin_start_stats
+{
+  TSC_TICKS tick;
+  UINT64 fetches;
+  UINT64 fetch_time;
+  UINT64 ioreads;
+#if HASHJOIN_PROFILE_TIME
+  HASHJOIN_PROFILE_STEP step;
+#endif				/* HASHJOIN_PROFILE_TIME */
+} HASHJOIN_START_STATS;
+#if HASHJOIN_PROFILE_TIME
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, 0, HASHJOIN_PROFILE_NONE }
+#else
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, 0 }
+#endif /* HASHJOIN_PROFILE_TIME */
+
 typedef struct hashjoin_stats
 {
   UINT32 max_parallel_workers;
@@ -196,8 +193,13 @@ typedef struct hashjoin_stats
   double collision_rate;
 
   HASHJOIN_INPUT_STATS split;
+  UINT64 min_fetch_time;
+  UINT64 max_fetch_time;
+
+  HASHJOIN_INPUT_STATS parallel;
   HASHJOIN_INPUT_STATS build;
   HASHJOIN_INPUT_STATS probe;
+  HASHJOIN_INPUT_STATS merge;
 
 #if HASHJOIN_PROFILE_TIME
   HASHJOIN_PROFILE_STATS profile;
@@ -210,6 +212,41 @@ typedef struct hashjoin_stats_group
   HASHJOIN_STATS *context_stats;
   UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
+
+typedef struct hashjoin_fetch_info
+{
+  QFILE_LIST_ID *list_id;
+  QFILE_LIST_SCAN_ID list_scan_id;
+  QFILE_TUPLE_RECORD tuple_record;
+  QFILE_TUPLE_RECORD *fill_record;
+
+  /* Pointers to members of HASHJOIN_DOMAIN_INFO,
+   * which is a member of HASHJOIN_PROC_NODE. */
+  HASHJOIN_INPUT_DOMAIN_INFO *input;
+  TP_DOMAIN **coerce_domains;
+  bool need_coerce_domains;
+
+  /* Pointer to a member of HASHJOIN_INPUT. */
+  REGU_VARIABLE_LIST regu_list_pred;
+} HASHJOIN_FETCH_INFO;
+#define HASHJOIN_FETCH_INFO_INITIALIZER { NULL, NULL, false, NULL }
+
+typedef struct hashjoin_input_split_info
+{
+  HASHJOIN_FETCH_INFO *fetch_info;
+  QFILE_LIST_ID **part_list_id;
+  int part_cnt;
+  HASHJOIN_INPUT_STATS stats;
+} HASHJOIN_INPUT_SPLIT_INFO;
+#define HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER { NULL, NULL, 0 }
+
+typedef struct hashjoin_split_info
+{
+  HASHJOIN_INPUT_SPLIT_INFO outer;
+  HASHJOIN_INPUT_SPLIT_INFO inner;
+} HASHJOIN_SPLIT_INFO;
+#define HASHJOIN_SPLIT_INFO_INITIALIZER \
+  { HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER, HASHJOIN_INPUT_SPLIT_INFO_INITIALIZER }
 
 typedef struct hashjoin_context
 {
@@ -285,6 +322,9 @@ int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 		       HASH_SCAN_KEY * key);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats);
+
+void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
+void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

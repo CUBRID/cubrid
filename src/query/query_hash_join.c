@@ -49,19 +49,6 @@
  * Enum & Typedef Definitions
  */
 
-typedef enum hashjoin_profile_step
-{
-  HASHJOIN_PROFILE_NONE = 0,
-  HASHJOIN_PROFILE_BUILD_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_BUILD_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_BUILD_INSERT,	/* hjoin_build_key */
-  HASHJOIN_PROFILE_PROBE_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
-  HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_ADD	/* hjoin_merge_tuple_to_list_id */
-} HASHJOIN_PROFILE_STEP;
-
 typedef enum hashjoin_print_step
 {
   HASHJOIN_PRINT_NONE = 0,
@@ -71,20 +58,6 @@ typedef enum hashjoin_print_step
   HASHJOIN_PRINT_QUALIFIED_KEY,
   HASHJOIN_PRINT_FILL_EMPTY_KEY
 } HASHJOIN_PRINT_STEP;
-
-/*
- * Struct & Typedef Definitions
- */
-
-typedef struct hashjoin_start_stats
-{
-  TSC_TICKS tick;
-  UINT64 fetches;
-  UINT64 fetch_time;
-  UINT64 ioreads;
-  HASHJOIN_PROFILE_STEP step;
-} HASHJOIN_START_STATS;
-#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, 0 }
 
 /*
  * Macro Function Declarations
@@ -189,9 +162,6 @@ static int hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * oute
 			      QFILE_TUPLE_RECORD * overflow_record);
 
 /* Trace */
-static void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
-static void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
-
 #if HASHJOIN_PROFILE_TIME
 static void hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats,
 				 HASHJOIN_PROFILE_STEP step);
@@ -360,7 +330,8 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (thread_p != NULL);
   assert (manager != NULL);
 
-  HASHJOIN_STATS *total_stats = &manager->stats_group->stats;
+  HASHJOIN_STATS *stats = &manager->stats_group->stats;
+  HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
 
   context_cnt = manager->context_cnt;
 
@@ -376,7 +347,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
       if (thread_is_on_trace (thread_p))
 	{
-	  hjoin_trace_merge_stats (total_stats, current_context->stats);
+	  hjoin_trace_merge_stats (stats, current_context->stats);
 	}
 
       if (current_context->list_id == NULL)
@@ -393,7 +364,19 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    }
 	}
 
+      if (thread_is_on_trace (thread_p))
+	{
+	  hjoin_trace_start (thread_p, &start_stats);
+	}
+
       error = hjoin_merge_qlist (thread_p, manager, current_context);
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  hjoin_trace_end (thread_p, &stats->merge, &start_stats);
+	  stats->merge.qualified_rows = manager->single_context.list_id->tuple_cnt;
+	}
+
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -854,11 +837,11 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   type_cnt = merge_info->ls_pos_cnt;
 
-  type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * type_cnt);
+  type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
   if (type_list->domp == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (TP_DOMAIN *) * type_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, type_cnt * sizeof (TP_DOMAIN *));
       return error;
     }
 
@@ -1244,8 +1227,6 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
       goto error_exit;
     }
 
-  hjoin_destroy_qlist (thread_p, single_context);
-
   assert (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -1406,29 +1387,29 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   part_cnt = manager->context_cnt;
   assert (part_cnt > 1);
 
-  contexts = (HASHJOIN_CONTEXT *) db_private_alloc (thread_p, sizeof (HASHJOIN_CONTEXT) * part_cnt);
+  contexts = (HASHJOIN_CONTEXT *) db_private_alloc (thread_p, part_cnt * sizeof (HASHJOIN_CONTEXT));
   if (contexts == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (HASHJOIN_CONTEXT) * part_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, part_cnt * sizeof (HASHJOIN_CONTEXT));
       goto error_exit;
     }
   memset (contexts, 0, sizeof (HASHJOIN_CONTEXT) * part_cnt);
 
-  outer_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID *) * part_cnt);
+  outer_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
   if (outer_part_list_id == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (QFILE_LIST_ID *) * part_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, part_cnt * sizeof (QFILE_LIST_ID *));
       goto error_exit;
     }
   memset (outer_part_list_id, 0, sizeof (QFILE_LIST_ID *) * part_cnt);
 
-  inner_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, sizeof (QFILE_LIST_ID *) * part_cnt);
+  inner_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
   if (inner_part_list_id == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (QFILE_LIST_ID *) * part_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, part_cnt * sizeof (QFILE_LIST_ID *));
       goto error_exit;
     }
   memset (inner_part_list_id, 0, sizeof (QFILE_LIST_ID *) * part_cnt);
@@ -1473,11 +1454,11 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
   if (thread_is_on_trace (thread_p))
     {
-      context_stats = (HASHJOIN_STATS *) malloc (sizeof (HASHJOIN_STATS) * part_cnt);
+      context_stats = (HASHJOIN_STATS *) malloc (part_cnt * sizeof (HASHJOIN_STATS));
       if (context_stats == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (HASHJOIN_STATS) * part_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, part_cnt * sizeof (HASHJOIN_STATS));
 	  goto error_exit;
 	}
       memset (context_stats, 0, sizeof (HASHJOIN_STATS) * part_cnt);
@@ -3260,7 +3241,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
  *   thread_p(in): Thread entry.
  *   start_stats(in/out): Profiling data captured at the start of the step.
  */
-static void
+void
 hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats)
 {
   assert (thread_p != NULL);
@@ -3279,7 +3260,7 @@ hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats)
  *   stats(in/out): Profiling data to accumulate.
  *   start_stats(in): Profiling data captured at the start of the step.
  */
-static void
+void
 hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats)
 {
   TSC_TICKS end_tick;
@@ -3624,6 +3605,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
    * ensure qfile_close_scan runs here
    * before jumping to error_exit. */
   qfile_close_scan (thread_p, &list_scan_id);
+
+  if (split_info->fetch_info->list_id != NULL)
+    {
+      qfile_close_list (thread_p, split_info->fetch_info->list_id);
+      qfile_destroy_list (thread_p, split_info->fetch_info->list_id);
+    }
 
   for (part_index = 0; part_index < split_info->part_cnt; part_index++)
     {
