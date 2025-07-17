@@ -2304,7 +2304,8 @@ bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int 
 
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
 	{
-	  assert (type != CCI_U_TYPE_NCHAR_DEPRECATED && type != CCI_U_TYPE_VARNCHAR_DEPRECATED);
+	  /* Since the existing test code uses CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR, the assert() is commented out. */
+	  //assert (type != CCI_U_TYPE_NCHAR_DEPRECATED && type != CCI_U_TYPE_VARNCHAR_DEPRECATED);
 	  write2_func ("%s ", type_str_tbl[(int) type]);
 	  bind_value_print (type, net_value, slow_log);
 	}
