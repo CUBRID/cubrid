@@ -2633,7 +2633,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
 	  size += OR_INT_SIZE;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  /*
@@ -2828,7 +2828,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
@@ -3136,7 +3136,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = (carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
@@ -3456,7 +3456,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case DB_TYPE_NULL:
 	    case DB_TYPE_BLOB:
@@ -3522,7 +3522,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		{
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
@@ -3711,7 +3711,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
 		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
-		  /* FALLTHRU */
+		  [[fallthrough]];
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;

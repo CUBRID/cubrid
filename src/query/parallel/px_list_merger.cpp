@@ -83,7 +83,10 @@ namespace parallel_query
     PAGE_PTR head_last_pgptr = qmgr_get_old_page (m_thread_p, &m_head_list_id->last_vpid, m_head_list_id->tfile_vfid);
     assert (head_last_pgptr != NULL);
     QFILE_PUT_NEXT_VPID (head_last_pgptr, &list_id->first_vpid);
-    pgbuf_set_dirty (m_thread_p, head_last_pgptr, FREE);
+    if (m_head_list_id->last_vpid.volid != NULL_VOLID)
+      {
+	pgbuf_set_dirty (m_thread_p, head_last_pgptr, FREE);
+      }
 
     /* list_id first page -> head last page (prev) */
     PAGE_PTR list_id_first_pgptr = qmgr_get_old_page (m_thread_p, &list_id->first_vpid, list_id->tfile_vfid);

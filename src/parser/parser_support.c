@@ -9925,18 +9925,16 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   else if (op == PT_BETWEEN)
     {
       PT_NODE *between_and = orderby_for->info.expr.arg2;
-      PT_NODE *between_upper = NULL;
       int between_op;
 
       assert (between_and != NULL && between_and->node_type == PT_EXPR);
-      between_upper = between_and->info.expr.arg2;
       between_op = between_and->info.expr.op;
       switch (between_op)
 	{
 	case PT_BETWEEN_GT_LT:
 	case PT_BETWEEN_GE_LT:
 	  lt = true;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
 	case PT_BETWEEN_GT_LE:
@@ -11865,15 +11863,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
 {
   int i;
-  int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
   PT_NODE *list = NULL;		/* for insert select list */
-  PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
+  PT_NODE *into_spec = NULL, *upd_spec = NULL, *server;
 
-  PARSER_VARCHAR *comment, *dml;
+  PARSER_VARCHAR *comment = NULL, *dml;
 
   switch (node->node_type)
     {

@@ -120,7 +120,12 @@ logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
 static void
 logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
 {
-  memset (tdes, 0, sizeof (LOG_TDES));
+  /* TODO: this is completely unsafe.
+   * Using memset() on LOG_TDES is not appropriate.
+   * However, since this is the only place in the entire codebase where memset() is used and it is for testing purposes,
+   * we ensure that no compile warnings are triggered.   */
+  memset ((void *) tdes, 0, sizeof (LOG_TDES));
+
   tdes->tran_index = tran_index;
   tdes->trid = NULL_TRANID;
 
@@ -157,7 +162,13 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  memset (*thread_array, 0, size);
+
+  for (i = 0; i < num_threads; i++)
+    {
+      // placement new
+      new ((*thread_array) + i) THREAD_ENTRY ();
+    }
+
   for (i = 0; i < num_threads; i++)
     {
       thread_p = *thread_array + i;

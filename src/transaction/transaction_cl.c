@@ -342,7 +342,7 @@ tran_commit (bool retain_lock)
 	      ASSERT_ERROR_AND_SET (error_code);
 	      break;
 	    }
-	  /* Fall Thru */
+	  [[fallthrough]];
 	case TRAN_RECOVERY:
 	case TRAN_ACTIVE:
 	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
@@ -474,7 +474,7 @@ tran_abort (void)
 	      ASSERT_ERROR_AND_SET (error_code);
 	      break;
 	    }
-	  /* Fall Thru */
+	  [[fallthrough]];
 	case TRAN_RECOVERY:
 	case TRAN_ACTIVE:
 	case TRAN_UNACTIVE_COMMITTED:
@@ -782,7 +782,7 @@ tran_2pc_prepare (void)
 	  error_code = er_errid ();
 	  break;
 	}
-      /* fall thru */
+      [[fallthrough]];
 
     case TRAN_RECOVERY:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
@@ -940,7 +940,7 @@ tran_2pc_prepare_global_tran (int gtrid)
 	  error_code = er_errid ();
 	  break;
 	}
-      /* Fall Thru */
+      [[fallthrough]];
 
     case TRAN_RECOVERY:
     case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:

@@ -1103,6 +1103,8 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 		}
 	      in++;
 	    }
+
+	  continue;
 	}
 
       if (*in == '(')
@@ -1136,10 +1138,6 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	    }
 
 	  return in + 1;
-	}
-      else if (*in == NULL)
-	{
-	  break;
 	}
 
       in++;

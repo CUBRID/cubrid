@@ -632,6 +632,8 @@ int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
+static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
+				    VAL_LIST * vallist);
 
 static void
 pt_init_xasl_supp_info ()
@@ -1684,7 +1686,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case PT_BETWEEN:
 	    case PT_RANGE:
@@ -1904,7 +1906,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 			  {
 			    break;
 			  }
-			/* FALLTHRU */
+			[[fallthrough]];
 		      case PT_TYPE_NCHAR:
 		      case PT_TYPE_VARNCHAR:
 			node->type_enum = PT_TYPE_NCHAR;
@@ -7354,7 +7356,7 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 		    {
 		      break;
 		    }
-		  /* FALLTHRU */
+		  [[fallthrough]];
 
 		default:
 		  maybe_sci_notation = 1;
@@ -10620,7 +10622,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	{
 	  goto error;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_VALUE:
       p = (rhs->node_type == PT_NAME) ? pt_find_value_of_label (rhs->info.name.original) : &rhs->info.value.db_value;
@@ -16102,7 +16104,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   if (pt_has_aggregate (parser, select_node))
     {
       int *attr_offsets;
-      PT_NODE *group_out_list, *group;
+      PT_NODE *group_out_list, *group, *select_out_list, *node, *new_node;
 
       /* set 'etc' field for pseudocolumns nodes */
       pt_set_level_node_etc (parser, select_node->info.query.q.select.group_by, &xasl->level_val);
@@ -16257,7 +16259,46 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       symbols->current_listfile = group_out_list;
       symbols->listfile_value_list = buildlist->g_val_list;
 
-      buildlist->g_outptr_list = pt_to_outlist (parser, select_node->info.query.q.select.list, NULL, unbox);
+      select_out_list = NULL;
+      for (node = select_node->info.query.q.select.list; node; node = node->next)
+	{
+	  new_node =
+	    pt_make_result_ref (parser, node, select_node->info.query.q.select.group_by, buildlist->g_val_list);
+
+	  if (pt_has_error (parser))
+	    {
+	      if (group_out_list)
+		{
+		  parser_free_tree (parser, group_out_list);
+		}
+	      if (select_out_list)
+		{
+		  parser_free_tree (parser, select_out_list);
+		}
+	      goto exit_on_error;
+	    }
+
+	  if (new_node == NULL)
+	    {
+	      new_node = pt_point (parser, node);
+	      if (new_node == NULL)
+		{
+		  if (group_out_list)
+		    {
+		      parser_free_tree (parser, group_out_list);
+		    }
+		  if (select_out_list)
+		    {
+		      parser_free_tree (parser, select_out_list);
+		    }
+		  goto exit_on_error;
+		}
+	    }
+
+	  select_out_list = parser_append_node (new_node, select_out_list);
+	}
+
+      buildlist->g_outptr_list = pt_to_outlist (parser, select_out_list, NULL, unbox);
 
       if (buildlist->g_outptr_list == NULL)
 	{
@@ -16266,6 +16307,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      parser_free_tree (parser, group_out_list);
 	    }
 	  goto exit_on_error;
+	}
+
+      if (select_out_list)
+	{
+	  parser_free_tree (parser, select_out_list);
 	}
 
       /* pred should never user the current instance for fetches either, so we turn off the current_class, if there is
@@ -22017,7 +22063,7 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       PT_NODE_PRINT_TO_ALIAS (parser, node, PT_CONVERT_RANGE);
 #endif /* CUBRID_DEBUG */
 
-      /* fall through */
+      [[fallthrough]];
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -27872,4 +27918,44 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	}
     }
   return node;
+}
+
+static PT_NODE *
+pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list, VAL_LIST * vallist)
+{
+  PT_NODE *new_node = NULL;
+  PT_NODE *groupby = groupby_list;
+  QPROC_DB_VALUE_LIST db_list = vallist->valp;
+
+  int is_pseudocolumn = 0;
+  (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+
+  if (!is_pseudocolumn && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
+    {
+      char *str_select = parser_print_tree (parser, node);
+
+      for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
+	{
+	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	  /* brute method, compare printed trees */
+	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
+	    {
+	      assert (node->etc == NULL);
+	      new_node = pt_point_ref (parser, node);
+	      if (new_node == NULL)
+		{
+		  /* allocation failed */
+		  PT_ERROR (parser, node,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+	      new_node->etc = (void *) db_list->val;
+	      break;
+	    }
+	}
+    }
+
+  return new_node;
 }
