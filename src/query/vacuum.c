@@ -3610,8 +3610,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
   worker->undo_data_buffer_capacity = IO_PAGESIZE;
 
   size_worker_prefetch_log_buffer = VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES * LOG_PAGESIZE;
-  worker->prefetch_log_buffer = (char *) malloc (size_worker_prefetch_log_buffer);
-  if (worker->prefetch_log_buffer == NULL)
+  if (posix_memalign ((void **) &worker->prefetch_log_buffer, 4096, size_worker_prefetch_log_buffer) != 0)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate prefetch buffer.");
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");

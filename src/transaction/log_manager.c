@@ -8759,11 +8759,11 @@ log_is_active_log_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const 
   LOG_HEADER hdr;
   REL_COMPATIBILITY compat;
   bool is_corrupted = false;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);

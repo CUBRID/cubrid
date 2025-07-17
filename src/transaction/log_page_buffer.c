@@ -229,7 +229,7 @@ struct logpb_partial_append
 {
   LOGPB_APPENDREC_STATUS status;
 
-  char buffer_log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char buffer_log_page[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *log_page_record_header;
   LOG_RECORD_HEADER original_record_header;
   LOG_RECORD_HEADER *record_header_p;
@@ -618,8 +618,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   /* Initialize partial append */
   log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
-  log_Pb.partial_append.log_page_record_header =
-    (LOG_PAGE *) PTR_ALIGN (log_Pb.partial_append.buffer_log_page, MAX_ALIGNMENT);
+  log_Pb.partial_append.log_page_record_header = (LOG_PAGE *) PTR_ALIGN (log_Pb.partial_append.buffer_log_page, 4096);
 
 #if !defined (NDEBUG)
   // suppress valgrind complaint.
@@ -2367,7 +2366,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
   static bool is_log_header_validated = false;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
 
@@ -2377,7 +2376,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log
       is_log_header_validated = false;
     }
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -5180,8 +5179,8 @@ LOG_PAGE *
 logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
 			  int *ret_arv_num, LOG_ARV_HEADER * ret_arv_hdr, bool is_fatal)
 {
-  char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char hdr_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_hdr_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_ARV_HEADER *arv_hdr;
   LOG_PAGE *hdr_pgptr;
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
@@ -5199,9 +5198,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
   LOG_ARCHIVE_CS_ENTER (thread_p);
 
-  aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-
+  aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, 4096);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
@@ -5644,7 +5642,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;	/* Archive header page PTR */
   LOG_ARV_HEADER *arvhdr;	/* Archive header */
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
-  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGEID pageid, last_pageid;
@@ -5655,7 +5653,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   int num_pages = 0;
   FILEIO_WRITE_MODE write_mode;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -5683,8 +5681,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
       logpb_dismount_log_archive (thread_p);
     }
 
-  malloc_arv_hdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
-  if (malloc_arv_hdr_pgptr == NULL)
+  if (posix_memalign ((void **) &malloc_arv_hdr_pgptr, 4096, LOG_PAGESIZE) != 0)
     {
       goto error;
     }
@@ -11011,7 +11008,7 @@ logpb_initialize_logging_statistics (void)
 int
 logpb_background_archiving (THREAD_ENTRY * thread_p)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr;
   LOG_PAGEID page_id, last_page_id;
@@ -11023,7 +11020,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   bg_arv_info = &log_Gl.bg_archive_info;
