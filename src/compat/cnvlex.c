@@ -166,6 +166,8 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #include <assert.h>
 #include "config.h"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
 /* Set up custom prefix */
 #undef YY_PREFIX
 #define YY_PREFIX dbcnv
@@ -2002,3 +2004,4 @@ cnv_fmt_exit (void)
       YY_CURRENT_BUFFER = NULL;
     }
 }
+#endif // ENABLE_USE_CNVLEX

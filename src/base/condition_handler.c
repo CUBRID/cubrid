@@ -41,6 +41,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
 /* format type of condition argument */
 enum co_format_type
 {
@@ -834,3 +836,15 @@ co_conversion_spec (const char *cspec, int size)
 
   return new_cspec;
 }
+
+#else // ENABLE_USE_CNVLEX
+/*
+ * co_final() - clean up all memory allocated in this module
+ *   return: none
+ */
+void
+co_final (void)
+{
+  // empty
+}
+#endif // ENABLE_USE_CNVLEX

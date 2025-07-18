@@ -29,6 +29,8 @@
 #include "dbtype_def.h"
 #include "condition_handler.h"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
 extern const char *db_string_value (const char *string, int str_size, const char *format, DB_VALUE * value);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern DB_VALUE *db_string_to_value (const char *string, const char *format, DB_TYPE type, ...);
@@ -72,5 +74,9 @@ extern int db_numeric_string (const DB_VALUE * the_numeric, const char *numeric_
 
 /* cleanup function, should only be called by bo_shutdown */
 extern void cnv_cleanup (void);
+#else // ENABLE_USE_CNVLEX
+extern int db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size);
+extern void cnv_cleanup (void);
+#endif // ENABLE_USE_CNVLEX
 
 #endif /* _CNV_H_ */

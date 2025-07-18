@@ -28,6 +28,7 @@
 
 #include "condition_handler_code.h"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
 /* conversion error code */
 #define CNV_ERR_STRING_TOO_LONG   CO_CODE( CO_MODULE_CNV, 1)
 #define CNV_ERR_BAD_TYPE          CO_CODE( CO_MODULE_CNV, 2)
@@ -161,5 +162,5 @@
 
 #define CNV_ER_FMT_BAD_FORMAT \
   "`%s' is not a valid %s format."
-
+#endif // ENABLE_USE_CNVLEX
 #endif /* _CNVERR_H_ */

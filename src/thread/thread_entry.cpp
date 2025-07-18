@@ -90,7 +90,9 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
+#if defined(ENABLE_USE_CNVLEX)	// ctshim      
     , cnv_adj_buffer ()
+#endif
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -167,9 +169,11 @@ namespace cubthread
 
     private_heap_id = db_create_private_heap ();
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim      
     cnv_adj_buffer[0] = NULL;
     cnv_adj_buffer[1] = NULL;
     cnv_adj_buffer[2] = NULL;
+#endif
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -231,6 +235,7 @@ namespace cubthread
       {
 	return;
       }
+#if defined(ENABLE_USE_CNVLEX)	// ctshim        
     for (int i = 0; i < 3; i++)
       {
 	if (cnv_adj_buffer[i] != NULL)
@@ -238,6 +243,7 @@ namespace cubthread
 	    adj_ar_free (cnv_adj_buffer[i]);
 	  }
       }
+#endif
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);

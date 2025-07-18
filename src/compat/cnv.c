@@ -57,6 +57,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -363,7 +365,6 @@ static bool bfmt_valid_char (FMT_TOKEN * token);
 static void bfmt_new (BIT_STRING_FORMAT * bfmt, const char *format);
 static const char *bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit);
 static int bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-
 static int num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric, char *string, int max_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static const char *num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric);
@@ -8598,7 +8599,6 @@ db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string
   return r;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * db_validate_format() - If the given format string is valid for the given
  *   data type, then return 0. otherwise, signal and return an error condition.
@@ -8684,7 +8684,6 @@ db_validate_format (const char *format, DB_TYPE type)
 
   return error;
 }
-#endif
 
 /*
  * cnv_cleanup() - This function is called when the database connection is shut
@@ -8733,3 +8732,162 @@ cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
   thread_p->cnv_adj_buffer[idx] = buffer_p;
 }
 #endif // SERVER_MODE
+
+#else // ENABLE_USE_CNVLEX
+
+typedef enum bit_string_format_e
+{
+  BIT_STRING_BINARY = 0,
+  BIT_STRING_HEX = 1
+} BIT_STRING_FORMAT;
+
+
+#define BITS_IN_BYTE		8
+#define HEX_IN_BYTE		2
+#define BITS_IN_HEX		4
+
+/*
+ * 2**3.1 ~ 10.  Thus a string with one decimal value per byte will be (8/3.1)
+ * times longer than a string with 8 binary places per byte.
+ * A 'decimal string' needs to be 3 times longer than a raw numeric string
+ * plus a sign and a NULL termination.
+ */
+#define BYTE_COUNT(bit_cnt)	(((bit_cnt)+BITS_IN_BYTE-1)/BITS_IN_BYTE)
+#define BYTE_COUNT_HEX(bit_cnt)	(((bit_cnt)+BITS_IN_HEX-1)/BITS_IN_HEX)
+
+/*
+ * bfmt_print() - Change the given string to a representation of the given bit
+ *    string value in the given format. if this is not long enough to contain
+ *    the new string, then an error is returned.
+ * return:
+ * bfmt(in) :
+ * the_db_bit(in) :
+ * string(out) :
+ * max_size(in) : the maximum number of chars that can be stored in
+ *   the string (including final '\0' char)
+ */
+static int
+bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
+{
+  int length = 0;
+  int string_index = 0;
+  int byte_index;
+  int bit_index;
+  const char *bstring;
+  int error = NO_ERROR;
+  static char digits[16] = {
+    '0', '1', '2', '3', '4', '5', '6', '7',
+    '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+  };
+
+  /* Get the buffer and the length from the_db_bit */
+  bstring = db_get_bit (the_db_bit, &length);
+
+  switch (*bfmt)
+    {
+    case BIT_STRING_BINARY:
+      if (length + 1 > max_size)
+	{
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
+	    {
+	      for (bit_index = 7; bit_index >= 0 && string_index < length; bit_index--)
+		{
+		  *string = digits[((bstring[byte_index] >> bit_index) & 0x1)];
+		  string++;
+		  string_index++;
+		}
+	    }
+	  *string = '\0';
+	}
+      break;
+
+    case BIT_STRING_HEX:
+      if (BYTE_COUNT_HEX (length) + 1 > max_size)
+	{
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
+	    {
+	      *string = digits[((bstring[byte_index] >> BITS_IN_HEX) & 0x0f)];
+	      string++;
+	      string_index++;
+	      if (string_index < BYTE_COUNT_HEX (length))
+		{
+		  *string = digits[((bstring[byte_index] & 0x0f))];
+		  string++;
+		  string_index++;
+		}
+	    }
+	  *string = '\0';
+	}
+      break;
+
+    default:
+      assert (!"possible to get here");
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * db_bit_string() - Change the given string to a representation of
+ *    the given bit value in the given format. If an error occurs, then
+ *    the contents of the string are undefined and an error condition is
+ *    returned.
+ *    if max_size is not long enough to contain the new float string, then an
+ *    error is returned.
+ * return:
+ * the_db_bit(in) :
+ * bit_format(in) :
+ * string(out) :
+ * max_size(in) : the maximum number of chars that can be stored in
+ *   the string (including final '\0' char)
+ */
+int
+db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size)
+{
+  BIT_STRING_FORMAT bfmt = BIT_STRING_BINARY;
+
+  assert (string != NULL);
+  assert (max_size > 0);
+
+  if (bit_format && *bit_format)
+    {
+      char *p = (char *) bit_format;
+      while (*p == ' ' || *p == '\t')
+	{
+	  p++;
+	}
+
+      if (p[0] == '%' && (p[2] == '\0' || p[2] == ' ' || p[2] == '\t'))
+	{
+	  p++;
+	  if (*p == 'X' || *p == 'H' || *p == 'x' || *p == 'h')
+	    {
+	      bfmt = BIT_STRING_HEX;
+	    }
+	}
+    }
+
+  return bfmt_print (&bfmt, the_db_bit, string, max_size);
+}
+
+/*
+ * cnv_cleanup() - This function is called when the database connection is shut
+ *   down so that anything we allocated by the cnv_ module and maintained in
+ *   static variables can be reclaimed.
+ * return:
+ */
+void
+cnv_cleanup (void)
+{
+  // empty
+}
+#endif // ENABLE_USE_CNVLEX

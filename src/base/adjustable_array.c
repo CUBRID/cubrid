@@ -37,6 +37,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
 /*
  * adj_ar_concat_strings() - concatenate the specified strings
  *   return: concatenated string
@@ -402,3 +404,5 @@ adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n)
   return NULL;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+#endif // ENABLE_USE_CNVLEX
