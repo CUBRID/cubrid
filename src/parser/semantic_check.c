@@ -250,7 +250,7 @@ static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * q
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
+static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
 static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list);
@@ -4486,8 +4486,7 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	  find = node;
 	  break;
 	}
-
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_EXPR:
     case PT_MERGE:
@@ -4920,7 +4919,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
 
-      /* FALL THRU */
+      [[fallthrough]];
 
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -5138,8 +5137,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      AU_SET_USER (me);
 	    }
 	}
+      [[fallthrough]];
 
-      /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
 	{
@@ -12098,7 +12097,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  pt_resolve_object (parser, node);
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_HOST_VAR:
     case PT_EXPR:
@@ -15966,7 +15965,7 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *  sort_spec(in): PT_SORT_SPEC node whose expression must be resolved
  *  select_list(in): statement's select list for PT_VALUE lookup
  */
-PT_NODE *
+static PT_NODE *
 pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list)
 {
   PT_NODE *expr, *resolved;
@@ -16029,10 +16028,10 @@ pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE
  *  expr1(in): first expression
  *  expr2(in): second expression
  */
-static bool
+bool
 pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2)
 {
-  if (parser == NULL || expr1 == NULL || expr2 == NULL)
+  if (parser == NULL || expr1 == NULL || expr2 == NULL || (expr1->node_type != expr2->node_type))
     {
       return false;
     }

@@ -53,6 +53,7 @@ namespace cubmethod
     METHOD_CALLBACK_ER_STMT_POOLING = -10024,
     METHOD_CALLBACK_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED = -10026,
     METHOD_CALLBACK_ER_NOT_IMPLEMENTED = -10100,
+    METHOD_CALLBACK_ER_NO_QUERY_HANDLER = -10301,
   };
 
   class error_context : public cubpacking::packable_object

@@ -297,10 +297,12 @@ namespace cubthread
 
       int count_private_allocators;
 #endif
-      int m_qlist_count;
+      std::atomic_int m_qlist_count;
       int read_ovfl_pages_count; // For Vacuum only.
 
       cubload::driver *m_loaddb_driver;
+
+      UINT64 *m_parallel_stats;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

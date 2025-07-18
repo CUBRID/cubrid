@@ -78,7 +78,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)
@@ -2597,7 +2597,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 {
   DB_VALUE *value_list = NULL;
   int err_code;
-  int i, num_bind_params, num_bind = 0;
+  int i, num_bind_params = 0, num_bind = 0;
   int num_markers;
   int stmt_id = -1;
   int first_value;
@@ -8196,13 +8196,13 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_SET:
       collection_str = "set";
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_MULTISET:
       if (collection_str == NULL)
 	{
 	  collection_str = "multiset";
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       if (collection_str == NULL)
 	{
@@ -8258,7 +8258,7 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_NUMERIC:
       sprintf (scale_str, "%d", scale);
-      /* fall through */
+      [[fallthrough]];
     default:
       p = (char *) db_get_type_name (dtype);
       if (p == NULL)
@@ -8598,6 +8598,7 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
   if (schema_name[0] == '\0')
     {
       strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
+      schema_name[DB_MAX_SCHEMA_LENGTH - 1] = '\0';
     }
 
   if (schema_name[0] != '\0' && class_name_only != NULL)
