@@ -10285,9 +10285,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else if (PT_IS_COMPLEX_TYPE (cast_type->type_enum))
 	    {
-	      cast_type = pt_domain_to_data_type (parser, node->expected_domain);
-	      node->data_type = node->info.expr.cast_type = cast_type;
-	      //node->data_type = parser_copy_tree_list (parser, cast_type);
+	      if (node->expected_domain && node->expected_domain->type->id == DB_TYPE_ENUMERATION)
+		{
+		  cast_type = pt_domain_to_data_type (parser, node->expected_domain);
+		  node->data_type = node->info.expr.cast_type = cast_type;
+		}
+	      else
+		{
+		  node->data_type = parser_copy_tree_list (parser, cast_type);
+		}
 	    }
 
 	  /* TODO : this requires a generic fix: maybe 'arg1_hv' should never be set to arg1->info.expr.arg1; arg1 may
