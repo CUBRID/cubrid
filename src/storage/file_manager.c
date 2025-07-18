@@ -9786,10 +9786,10 @@ STATIC_INLINE void
 file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
 {
   assert (tran_entry->owner_mutex == thread_get_current_entry_index ());
-  pthread_mutex_unlock (&tran_entry->mutex);
 #if !defined (NDEBUG)
   tran_entry->owner_mutex = -1;
 #endif /* !NDEBUG */
+  pthread_mutex_unlock (&tran_entry->mutex);
 }
 
 
