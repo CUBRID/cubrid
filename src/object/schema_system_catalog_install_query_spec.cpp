@@ -1262,7 +1262,7 @@ sm_define_view_partition_spec (void)
 const char *
 sm_define_view_stored_procedure_spec (void)
 {
-  static char stmt [2200];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1306,7 +1306,17 @@ sm_define_view_stored_procedure_spec (void)
 	    ") THEN [sp_code].[scode] "
 	    "ELSE NULL "
 	    "END AS [code], "
-	  "[sp].[comment] AS [comment] "
+        // TODO: implement sql_data_access
+        //   "CASE [sp].[sql_data_access] "
+        //     "WHEN 0 THEN 'NO SQL' "
+        //     "WHEN 1 THEN 'CONTAINS SQL' "
+        //     "WHEN 2 THEN 'READS SQL DATA' "
+        //     "WHEN 3 THEN 'MODIFIES SQL DATA' "
+        //     "ELSE NULL "
+        //   "END AS [sql_data_access], "
+	  "[sp].[comment] AS [comment], "
+	  "[sp].[created_time] AS [created_time], "
+	  "[sp].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp] "
