@@ -8613,8 +8613,6 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
   new_att->data_type = parser_copy_tree_list (parser, new_dt);
   PT_EXPR_INFO_SET_FLAG (new_att, PT_EXPR_INFO_CAST_SHOULD_FOLD);
 
-  new_att->expected_domain = arg->expected_domain;
-
   return new_att;
 }
 
@@ -10285,15 +10283,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else if (PT_IS_COMPLEX_TYPE (cast_type->type_enum))
 	    {
-	      if (node->expected_domain && node->expected_domain->type->id == DB_TYPE_ENUMERATION)
-		{
-		  cast_type = pt_domain_to_data_type (parser, node->expected_domain);
-		  node->data_type = node->info.expr.cast_type = cast_type;
-		}
-	      else
-		{
-		  node->data_type = parser_copy_tree_list (parser, cast_type);
-		}
+	      node->data_type = parser_copy_tree_list (parser, cast_type);
 	    }
 
 	  /* TODO : this requires a generic fix: maybe 'arg1_hv' should never be set to arg1->info.expr.arg1; arg1 may
@@ -20537,7 +20527,7 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
   if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_hv_late_bind (expr->info.expr.op)
       && expr->expected_domain != NULL)
     {
-      PT_NODE *new_expr = NULL;
+      PT_NODE *new_expr = NULL, *cast_type = NULL;
 
       if (expr->type_enum == PT_TYPE_ENUMERATION)
 	{
@@ -20547,9 +20537,15 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
 	  return NULL;
 	}
 
+      /* for session variable, it needs to cast the expected domain */
+      if (expr->info.expr.op == PT_EVALUATE_VARIABLE && expr->expected_domain)
+	{
+	  cast_type = pt_domain_to_data_type (parser, expr->expected_domain);
+	}
+
       new_expr =
 	pt_wrap_with_cast_op (parser, expr, pt_db_to_type_enum (expr->expected_domain->type->id),
-			      expr->expected_domain->precision, expr->expected_domain->scale, NULL);
+			      expr->expected_domain->precision, expr->expected_domain->scale, cast_type);
 
       if (new_expr != NULL)
 	{
