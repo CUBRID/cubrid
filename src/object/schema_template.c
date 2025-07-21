@@ -117,6 +117,7 @@ static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *co
 
 static int change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status);
 static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
+static MOP smt_find_index_catalog_class (const char *name);
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -1543,7 +1544,8 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
+				SM_FUNCTION_INFO * function_index, int options, const char *comment,
+				SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val, current_datetime;
@@ -1581,6 +1583,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.index_btid = BTID_INITIALIZER;
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
+  con.index_type = SM_BTREE_TYPE;
+  con.options = options;
   con.created_time = *db_get_datetime (&current_datetime);
   con.updated_time = *db_get_datetime (&current_datetime);
 
@@ -1696,6 +1700,13 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
       ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
+
+      fk_info->index_catalog_of_ref_class = smt_find_index_catalog_class (pk->name);
+      if (fk_info->index_catalog_of_ref_class == NULL)
+	{
+	  ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND, pk->name);
+	  return error;
+	}
     }
 
   /* check pk'size and fk's size */
@@ -2002,6 +2013,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
   int deduplicate_key_col_pos = -1;
+  int options = 0;
+  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2023,6 +2036,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
 	    {
 	      deduplicate_key_col_pos = n_atts;
+	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
+	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
 	    }
 	  n_atts++;
 	}
@@ -2229,7 +2244,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, comment, index_status);
+					      shared_cons_name, filter_index, function_index, options, comment,
+					      index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -4943,4 +4959,21 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
     }
 
   return NO_ERROR;
+}
+
+static MOP
+smt_find_index_catalog_class (const char *name)
+{
+  MOP index_class;
+  DB_VALUE value;
+
+  index_class = db_find_class (CT_INDEX_NAME);
+  if (index_class == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  db_make_string (&value, name);
+  return db_find_unique (index_class, "index_name", &value);
 }

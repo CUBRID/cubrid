@@ -698,14 +698,21 @@ namespace cubschema
       {"is_foreign_key", "integer"},
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
-      {"comment", format_varchar (1024)},
       {"status", "integer"},
+      {"referential_index", CT_INDEX_NAME},
+      {"delete_rule", "integer"},
+      {"update_rule", "integer"},
+      {"referential_match_option", "integer"},
+      {"index_type", "integer"},
+      {"options", "integer"},
+      {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
     },
 // constraints
     {
       {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"index_name", nullptr}, false},
     },
 // authorization
     {

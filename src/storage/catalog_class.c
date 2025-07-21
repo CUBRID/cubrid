@@ -45,6 +45,7 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+#include "storage_common.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2267,8 +2268,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 				  int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL, *status_value = NULL;
-  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL, *status_seq = NULL;
+  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL;
+  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
@@ -2325,43 +2326,112 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
 
       key_size = set_size (key_seq_p);
-      /* exclude 5 metadata fields (BTID, status, comment, created_time, updated_time); 
-       * each attribute has 2 parts: att_name and asc_desc */
-      att_cnt = (key_size - 5) / 2;
+      att_cnt = get_class_constraint_att_count (key_size);
 
-      /* updated_time */
-      error = set_get_element (key_seq_p, key_size - 1, &attrs[13].value);
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_STATUS_INDEX),
+			 &attrs[10].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      /* created_time */
-      error = set_get_element (key_seq_p, key_size - 2, &attrs[12].value);
+      if (is_foreign_key)
+	{
+	  error = set_get_element (key_seq_p,
+				   get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX), &svalue);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  if (DB_VALUE_TYPE (&svalue) != DB_TYPE_SEQUENCE)
+	    {
+	      error = ER_SM_INVALID_PROPERTY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto error;
+	    }
+
+	  seq = db_get_set (&svalue);
+	  error = set_get_element (seq, SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (db_value_is_null (&val) == false)
+	    {
+	      db_make_oid (&attrs[11].value, db_get_oid (&val));
+	    }
+
+	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  db_make_int (&attrs[12].value, db_get_int (&val));
+
+	  error = set_get_element (seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  db_make_int (&attrs[13].value, db_get_int (&val));
+
+	  seq = db_get_set (&svalue);
+	  error = set_get_element (seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  db_make_int (&attrs[14].value, db_get_int (&val));
+	}
+
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_INDEX_TYPE_INDEX),
+			 &attrs[15].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      /* Get status. */
-      error = set_get_element (key_seq_p, key_size - 4, &attrs[11].value);
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONS_INDEX),
+			 &attrs[16].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      /* comment */
-      error = set_get_element (key_seq_p, key_size - 3, &attrs[10].value);
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_COMMENT_INDEX),
+			 &attrs[17].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[10].value, DB_MAX_COMMENT_LENGTH);
+      db_string_truncate (&attrs[17].value, DB_MAX_COMMENT_LENGTH);
+
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_CREATED_TIME_INDEX),
+			 &attrs[18].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      error =
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_UPDATED_TIME_INDEX),
+			 &attrs[19].value);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
 
       if (!is_primary_key && !is_foreign_key)
 	{
-	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 5, &svalue);
+	  error =
+	    set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
+			     &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
@@ -2390,16 +2460,17 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      DB_SET *child_seq = db_get_set (&val);
 	      int seq_size = set_size (seq);
-	      int flag, l = 0;
+	      SM_INDEX_FLAG index_flag;
+	      int l = 0;
 	      DB_VALUE temp;
 	      int col_id, att_index_start;
 	      char *buffer, *ptr;
 	      TP_DOMAIN *fi_domain = NULL;
+	      const char *index_flag_str;
 
 	      /* have filter or function index */
 	      while (true)
 		{
-		  flag = 0;
 		  error = set_get_element (child_seq, 0, &avalue);
 		  if (error != NO_ERROR)
 		    {
@@ -2413,17 +2484,22 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		      goto error;
 		    }
 
-		  if (!intl_identifier_casecmp (db_get_string (&avalue), SM_FILTER_INDEX_ID))
+		  index_flag_str = db_get_string (&avalue);
+		  if (!intl_identifier_casecmp (index_flag_str, SM_FILTER_INDEX_ID))
 		    {
-		      flag = 0x01;
+		      index_flag = SM_INDEX_FLAG_FILTER;
 		    }
-		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID))
+		  else if (!intl_identifier_casecmp (index_flag_str, SM_FUNCTION_INDEX_ID))
 		    {
-		      flag = 0x02;
+		      index_flag = SM_INDEX_FLAG_FUNCTION;
 		    }
-		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID))
+		  else if (!intl_identifier_casecmp (index_flag_str, SM_PREFIX_INDEX_ID))
 		    {
-		      flag = 0x03;
+		      index_flag = SM_INDEX_FLAG_PREFIX;
+		    }
+		  else
+		    {
+		      index_flag = SM_INDEX_FLAG_NONE;
 		    }
 
 		  pr_clear_value (&avalue);
@@ -2441,9 +2517,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		      goto error;
 		    }
 
-		  switch (flag)
+		  switch (index_flag)
 		    {
-		    case 0x01:
+		    case SM_INDEX_FLAG_FILTER:
 		      pred_seq = db_get_set (&avalue);
 		      attr_val_p = &attrs[8].value;
 		      error = set_get_element (pred_seq, 0, attr_val_p);
@@ -2453,7 +2529,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 			}
 		      break;
 
-		    case 0x02:
+		    case SM_INDEX_FLAG_FUNCTION:
 		      has_function_index = 1;
 		      pred_seq = db_get_set (&avalue);
 
@@ -2561,7 +2637,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
 		      break;
 
-		    case 0x03:
+		    case SM_INDEX_FLAG_PREFIX:
 		      pvalue = db_value_copy (&avalue);
 		      prefix_seq = db_get_set (pvalue);
 		      break;

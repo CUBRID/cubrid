@@ -488,6 +488,8 @@ struct sm_foreign_key_info
   SM_FOREIGN_KEY_ACTION update_action;
   char *name;
   bool is_dropped;
+  MOP index_catalog_of_ref_class;
+  SM_FOREIGN_KEY_MATCH_OPTION ref_match_option;
 };
 
 typedef struct sm_predicate_info SM_PREDICATE_INFO;
@@ -529,11 +531,16 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+typedef enum
+{
+  SM_BTREE_TYPE,
+} SM_INDEX_TYPE;
+
 /* Property list format: { property_name, constraint... }
  * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
  * - constraint: { name, info }
  *   - name: constraint name
- *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, comment, created_time, updated_time }
+ *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, index_type, options, comment, created_time, updated_time }
  *     - BTID: volid|pageid|fileid
  *     - [att_name|id, asc_desc] can repeat for multiple attributes
  *     - optional_info appears only when applicable:
@@ -560,9 +567,21 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
+  SM_INDEX_TYPE index_type;
+  int options;			/* bits 0-3: deduplicate level (0-14), rest reserved */
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 };
+
+/* options macros */
+#define OPTION_DEDUPLICATE_MASK   0x0F
+#define OPTION_DEDUPLICATE_SHIFT  0
+#define SET_OPTION_DEDUPLICATE(opt, level) \
+  do { \
+    (opt) = ((opt) & ~OPTION_DEDUPLICATE_MASK) | ((level) & OPTION_DEDUPLICATE_MASK); \
+  } while (0)
+#define GET_OPTION_DEDUPLICATE(opt) \
+  (((opt) >> OPTION_DEDUPLICATE_SHIFT) & OPTION_DEDUPLICATE_MASK)
 
 /*
  *    Holds information about a method argument.  This will be used
