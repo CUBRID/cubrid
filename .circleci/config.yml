@@ -197,7 +197,8 @@ jobs:
                 docker:
                   - image: cubridci/cubridci:test_shell
                 # self-hosted runner
-                resource_class: cubrid/xlarge
+                #resource_class: cubrid/xlarge
+                resource_class: cubrid/large
                 working_directory: /home
                 
             # --------------------------------------------------
@@ -313,7 +314,8 @@ jobs:
                       
               test_shell:
                 executor: cubrid-test-shell
-                parallelism: 50
+                # parallelism: 50
+                parallelism: 20
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
