@@ -1675,6 +1675,8 @@ namespace cubschema
       {"action_type", "integer"},
       {"action_time", "integer"},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec ()}
     },

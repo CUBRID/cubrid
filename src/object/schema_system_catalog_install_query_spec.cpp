@@ -1128,7 +1128,9 @@ sm_define_view_trigger_spec (void)
 	  "CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [target_attr_type], "
 	  "[t].[action_type] AS [action_type], "
 	  "[t].[action_time] AS [action_time], "
-	  "[t].[comment] AS [comment] "
+	  "[t].[comment] AS [comment], "
+	  "[t].[created_time] AS [created_time], "
+	  "[t].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* TR_CLASS_NAME */
 	  "[%s] AS [t] "
