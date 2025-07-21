@@ -4936,7 +4936,7 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 }
 
 static void
-la_log_sql_error (const char *class_name, DB_VALUE * key_val)
+la_set_error_sql_log (const char *class_name, DB_VALUE * key_val)
 {
   char sql_log_err[LINE_MAX];
   string_buffer sb;
@@ -5009,18 +5009,21 @@ la_apply_delete_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error = er_errid ();
+      goto end;
     }
 
   if (la_enable_sql_logging)
     {
       if (la_write_delete_sql_log (item, class_obj) != NO_ERROR)
 	{
-	  la_log_sql_error (item->class_name, &item->key);
+	  la_set_error_sql_log (item->class_name, &item->key);
 	}
     }
 
   error = la_repl_add_object (class_obj, item, NULL);
+
+end:
   if (error != NO_ERROR)
     {
       la_log_apply_error ("apply_delete", ER_HA_LA_FAILED_TO_APPLY_DELETE, item, error);
@@ -5178,7 +5181,7 @@ la_apply_update_log (LA_ITEM * item)
 
       if (ret != NO_ERROR)
 	{
-	  la_log_sql_error (item->class_name, la_get_item_pk_value (item));
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
 
@@ -5374,7 +5377,7 @@ la_apply_insert_log (LA_ITEM * item)
       er_stack_pop ();
       if (ret != NO_ERROR)
 	{
-	  la_log_sql_error (item->class_name, la_get_item_pk_value (item));
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
 
