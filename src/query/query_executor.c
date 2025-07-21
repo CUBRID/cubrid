@@ -8241,17 +8241,35 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       /* MVCC use IX_LOCK on class at update/delete */
       lock = IX_LOCK;
     }
-
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *orig_thread_p = NULL;
+  if (thread_p->emulate_tid != thread_id_t ())
+    {
+      orig_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      pthread_mutex_lock (&orig_thread_p->m_px_lock);
+    }
+#endif
   for (partition_spec = spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
     {
       granted = lock_subclass (thread_p, &partition_spec->oid, &ACCESS_SPEC_CLS_OID (spec), lock, LK_UNCOND_LOCK);
       if (granted != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+#if defined(SERVER_MODE)
+	  if (orig_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	  return error;
 	}
     }
-
+#if defined(SERVER_MODE)
+  if (orig_thread_p != NULL)
+    {
+      pthread_mutex_unlock (&thread_p->m_px_lock);
+    }
+#endif
   return NO_ERROR;
 }
 
