@@ -1547,14 +1547,25 @@ namespace cubschema
       {"key_count", "integer"},
       {"is_primary_key", format_varchar (3)},
       {"is_foreign_key", format_varchar (3)},
+      // TODO: refactor existing code related to deduplication
 #if 0				// Not yet, Disabled for QA verification convenience
       {"is_deduplicate", format_varchar (3)},
       {"deduplicate_key_level", "smallint"},
 #endif
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", format_varchar (3)},
-      {"comment", format_varchar (1024)},
       {"status", format_varchar (255)},
+      {"referential_index_class_owner_name", format_varchar (255)},
+      {"referential_index_class_name", format_varchar (255)},
+      {"referential_index_name", format_varchar (255)},
+      {"delete_rule",format_varchar (32)},
+      {"update_rule", format_varchar (32)},
+      {"referential_match_option", format_varchar (7)},
+      {"index_type", format_varchar (32)},
+      {"deduplicate_key_level", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_spec ()}
     },

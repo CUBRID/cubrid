@@ -757,7 +757,7 @@ sm_define_view_method_file_spec (void)
 const char *
 sm_define_view_index_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -810,14 +810,51 @@ sm_define_view_index_spec (void)
 #endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
-	  "[i].[comment] AS [comment], "
 	  "CASE [i].[status] "
 	    "WHEN 0 THEN 'NO_INDEX' "
 	    "WHEN 1 THEN 'NORMAL INDEX' "
 	    "WHEN 2 THEN 'INVISIBLE INDEX' "
 	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
-	    "ELSE 'NULL' "
-	    "END AS [status] "
+	    "ELSE NULL "
+	    "END AS [status], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[owner].[name] "
+            "ELSE NULL "
+            "END AS [referential_index_class_owner_name], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[class_name] "
+            "ELSE NULL "
+            "END AS [referential_index_class_name], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[index_name] "
+            "ELSE NULL "
+            "END AS [referential_index_name], "
+          "CASE [i].[delete_rule] "
+            "WHEN 0 THEN 'CASCADE' "
+            "WHEN 1 THEN 'RESTRICT' "
+            "WHEN 2 THEN 'NO ACTION' "
+            "WHEN 3 THEN 'SET NULL' "
+            "ELSE NULL "
+            "END AS [delete_rule], "
+          "CASE [i].[update_rule] "
+            "WHEN 0 THEN 'CASCADE' "
+            "WHEN 1 THEN 'RESTRICT' "
+            "WHEN 2 THEN 'NO ACTION' "
+            "WHEN 3 THEN 'SET NULL' "
+            "ELSE NULL "
+            "END AS [update_rule], "
+          "CASE [i].[referential_match_option] "
+            "WHEN 0 THEN 'NONE' "
+            "WHEN 1 THEN 'PARTIAL' "
+            "WHEN 2 THEN 'FULL' "
+            "END AS [referential_match_option], "
+          "CASE [i].[index_type] "
+            "WHEN 0 THEN 'BTREE' "
+            "END AS [index_type], "
+          "[i].[options] & 15 AS [deduplicate_key_level], "
+	  "[i].[comment] AS [comment], "
+          "[i].[created_time] AS [created_time], "
+          "[i].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_INDEX_NAME */
 	  "[%s] AS [i] "
