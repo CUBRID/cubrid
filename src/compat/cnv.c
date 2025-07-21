@@ -57,16 +57,17 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+
+#else
+#include "dbtype.h"
+#endif // ENABLE_USE_CNVLEX
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
-
-#else
-#include "dbtype.h"
-#endif // ENABLE_USE_CNVLEX
 
 #define BITS_IN_BYTE		8
 #define HEX_IN_BYTE		2
