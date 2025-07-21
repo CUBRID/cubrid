@@ -78,7 +78,10 @@ sm_define_view_class_spec (void)
 	    "END AS [partitioned], "
 	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
 	  "[coll].[coll_name] AS [collation], "
-	  "[c].[comment] AS [comment] "
+	  "[c].[comment] AS [comment], "
+          "[c].[created_time] AS [created_time], "
+          "[c].[updated_time] AS [updated_time], "
+          "[c].[checked_time] AS [checked_time] "
 	"FROM "
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], "

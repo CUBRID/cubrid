@@ -1222,6 +1222,9 @@ namespace cubschema
       {"is_reuse_oid_class", format_varchar (3)},
       {"collation", format_varchar (32)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"checked_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
     },
