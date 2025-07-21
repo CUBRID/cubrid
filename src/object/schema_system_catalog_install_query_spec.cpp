@@ -1583,7 +1583,9 @@ sm_define_view_db_server_spec (void)
 	  "[ds].[user_name] AS [user_name], "
 	  "[ds].[properties] AS [properties], "
 	  "CAST ([ds].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
-	  "[ds].[comment] AS [comment] "
+	  "[ds].[comment] AS [comment], "
+          "[ds].[created_time] AS [created_time], "
+          "[ds].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_DB_SERVER_NAME */
 	  "[%s] AS [ds] "

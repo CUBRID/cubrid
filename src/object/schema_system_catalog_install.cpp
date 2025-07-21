@@ -1925,6 +1925,8 @@ namespace cubschema
       {"properties", format_varchar (2048)},
       {"owner", format_varchar (255)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
     },
