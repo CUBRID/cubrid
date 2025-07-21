@@ -1197,6 +1197,7 @@ sm_define_view_partition_spec (void)
 	  "CASE [p].[ptype] WHEN 0 THEN 'HASH' WHEN 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type], "
 	  "TRIM (SUBSTRING ([pp].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pp].[pexpr]) - 8))) AS [partition_expr], "
 	  "[p].[pvalues] AS [partition_values], "
+          "CASE [p].[class_partition_type] WHEN 2 THEN 'PARTITION CLASS' END AS [class_partition_type], "
 	  "[p].[comment] AS [comment] "
 	"FROM "
 	  /* CT_PARTITION_NAME */

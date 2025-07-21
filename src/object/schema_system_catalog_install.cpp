@@ -1709,6 +1709,7 @@ namespace cubschema
       {"partition_type", format_varchar (32)},
       {"partition_expr", format_varchar (2048)},
       {"partition_values", "sequence of"},
+      {"class_partition_type", format_varchar (32)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
