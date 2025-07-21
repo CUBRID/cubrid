@@ -464,6 +464,6 @@ extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 extern int mmon_disable_force ();
 
 /* tdes */
-extern void tdes_set_tran_start (char *sql_user_text);
-extern void tdes_reset_query_time_if_ddl_statement (PT_NODE * node);
+extern void tdes_set_query_start_info (char *sql_user_text);
+extern void tdes_reset_query_start_info (PT_NODE * node);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

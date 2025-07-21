@@ -4128,7 +4128,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
-  tdes_reset_query_time_if_ddl_statement (statement);
+  tdes_reset_query_start_info (statement);
 
   /* enable data replication log */
   if (need_stmt_based_repl)

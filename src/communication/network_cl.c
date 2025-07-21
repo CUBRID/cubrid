@@ -421,7 +421,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
   error = NO_ERROR;
 
   assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT
-	  || request == NET_SERVER_TDES_SET_TRAN_START || request == NET_SERVER_TDES_RESET_QUERY_TIME);
+	  || request == NET_SERVER_TDES_SET_QUERY_START_INFO || request == NET_SERVER_TDES_RESET_QUERY_START_INFO);
 
   if (net_Server_name[0] == '\0')
     {

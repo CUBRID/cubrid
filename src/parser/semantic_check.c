@@ -12498,7 +12498,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
   if (pt_has_error (parser))
     {
-      tdes_reset_query_time_if_ddl_statement (node);
+      tdes_reset_query_start_info (node);
       pt_register_orphan (parser, node);
       return NULL;
     }
@@ -12558,7 +12558,7 @@ pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (pt_is_ddl_statement (node))
     {
-      tdes_set_tran_start (node->sql_user_text);
+      tdes_set_query_start_info (node->sql_user_text);
     }
   return pt_check_with_info (parser, node, NULL);
 }
