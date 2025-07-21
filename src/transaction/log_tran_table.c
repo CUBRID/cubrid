@@ -1570,7 +1570,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
-  tdes->sql_user_text = NULL;
+  free_and_init (tdes->sql_user_text);
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);

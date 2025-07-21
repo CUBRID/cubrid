@@ -754,13 +754,13 @@ net_server_init (void)
   req_p->processing_function = smmon_disable_force;
 
   /* tdes */
-  req_p = &net_Requests[NET_SERVER_TDES_SET_TRAN_START];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = stdes_set_tran_start;
+  req_p = &net_Requests[NET_SERVER_TDES_SET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_set_query_start_info;
 
-  req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_TIME];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = stdes_reset_query_time_if_ddl_statement;
+  req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_reset_query_start_info;
 }
 
 /*

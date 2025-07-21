@@ -11513,85 +11513,61 @@ smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 }
 
 /*
- * stdes_set_tran_start - set the start time and sql text of the transaction
+ * stdes_set_query_start_info - set the start time and sql text of the transaction
  *   thread_p(in): the thread pointer
  *   rid(in): the request id
  *   request(in): the request
  *   reqlen(in): the request length
  */
 void
-stdes_set_tran_start (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *sql_user_text = NULL;
   int tran_index = -1;
-
-  or_unpack_string (request, &sql_user_text);
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-#if defined (SERVER_MODE)
-  set_tdes_query_exec_info (tran_index, sql_user_text);
-
-  if (sql_user_text)
-    {
-      db_private_free_and_init (thread_p, sql_user_text);
-    }
-#endif /* SERVER_MODE */
-}
-
-/*
- * set_tdes_query_exec_info - set the query start time, transaction start time, and sql text
- *   tran_index(in): the transaction index
- *   sql_user_text(in): the SQL user text to set
- */
-static void
-set_tdes_query_exec_info (int tran_index, char *sql_user_text)
-{
   LOG_TDES *tdes_p;
+
+  or_unpack_string_nocopy (request, &sql_user_text);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   tdes_p = LOG_FIND_TDES (tran_index);
   assert (tdes_p != NULL);
   if (tdes_p)
     {
-      /* We use log_Clock_msec instead of calling gettimeofday if the system supports atomic built-ins. */
       tdes_p->query_start_time = log_get_clock_msec ();
 
       if (tdes_p->tran_start_time == 0)
 	{
-	  /* set transaction start time, if this is the first query */
 	  tdes_p->tran_start_time = tdes_p->query_start_time;
 	}
 
       if (sql_user_text)
 	{
-	  tdes_p->sql_user_text = sql_user_text;
+	  tdes_p->sql_user_text = strdup (sql_user_text);
 	}
     }
 }
 
 /*
- * stdes_reset_query_time_if_ddl_statement - reset the query start time if the statement is a DDL statement
+ * stdes_reset_query_start_info - reset the query start time if the statement is a DDL statement
  *   thread_p(in): the thread pointer
  *   rid(in): the request id
  *   request(in): the request
  *   reqlen(in): the request length
  */
 void
-stdes_reset_query_time_if_ddl_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int tran_index = -1;
   LOG_TDES *tdes_p;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-#if defined (SERVER_MODE)
   tdes_p = LOG_FIND_TDES (tran_index);
   assert (tdes_p != NULL);
 
-  if (tdes_p != NULL)
+  if (tdes_p)
     {
       tdes_p->query_start_time = 0;
+      free_and_init (tdes_p->sql_user_text);
     }
-
-#endif /* SERVER_MODE */
 }
