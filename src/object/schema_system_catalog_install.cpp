@@ -1889,6 +1889,8 @@ namespace cubschema
       {"target_name", format_varchar (255)},
       {"target_owner_name", format_varchar (255)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec ()}
     },

@@ -1533,7 +1533,9 @@ sm_define_view_synonym_spec (void)
 	  "CASE [s].[is_public] WHEN 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
 	  "[s].[target_name] AS [target_name], "
 	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], " /* string -> varchar(255) */
-	  "[s].[comment] AS [comment] "
+	  "[s].[comment] AS [comment], "
+          "[s].[created_time] AS [created_time], "
+          "[s].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_SYNONYM_NAME */
 	  "[%s] AS [s] "
