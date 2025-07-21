@@ -8267,7 +8267,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
 #if defined(SERVER_MODE)
   if (orig_thread_p != NULL)
     {
-      pthread_mutex_unlock (&thread_p->m_px_lock);
+      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
     }
 #endif
   return NO_ERROR;
