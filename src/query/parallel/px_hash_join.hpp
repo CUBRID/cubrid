@@ -100,28 +100,30 @@ namespace parallel_query
     class base_task: public cubthread::entry_task
     {
       public:
-	base_task (HASHJOIN_MANAGER *manager, task_manager &task_manager);
+	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager);
 	void retire () override;
 
       protected:
-	HASHJOIN_MANAGER *m_manager;
 	task_manager &m_task_manager;
+	HASHJOIN_MANAGER *m_manager;
     };
 
-    class partition_task: public base_task
+    class split_task: public base_task
     {
       public:
-	partition_task (HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info, task_manager &task_manager);
+	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
+
+	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
     };
 
     class join_task: public base_task
     {
       public:
-	join_task (HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context, task_manager &task_manager);
+	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,HASHJOIN_CONTEXT *context);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:

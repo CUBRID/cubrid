@@ -5427,6 +5427,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   PT_NODE *term_expr, *pred_node;
   PT_NODE *outer_part, *inner_part;
   PT_NODE *name_list;
+  PT_NODE *hash_key = NULL;
 
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
@@ -5580,6 +5581,14 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	}
     }
 
+  /* hash_key */
+  hash_key = pt_make_integer_value (parser, -1);
+  if (hash_key == NULL)
+    {
+      goto error_exit;
+    }
+  outer_info->expr_list = parser_append_node (outer_info->expr_list /* back */ , hash_key /* front */ );
+
   /* outer_info */
   outer_info->expr_count = pt_length_of_list (outer_info->expr_list);
 
@@ -5589,15 +5598,23 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   outer_info->name_count = pt_length_of_list (outer_info->name_list);
 
   outer_info->expr_name_list =
-    parser_append_node (outer_info->name_list /* node */ , outer_info->expr_list /* list */ );
+    parser_append_node (outer_info->name_list /* back */ , outer_info->expr_list /* front */ );
   assert (outer_info->expr_name_list != NULL);
 
   outer_info->expr_name_count = pt_length_of_list (outer_info->expr_name_list);
   assert (outer_info->expr_name_count > 0);
   assert (outer_info->expr_name_count == outer_info->expr_count + outer_info->name_count);
-  assert (outer_info->expr_count == bitset_cardinality (&outer_info->exprs_set));
+  assert (outer_info->expr_count == bitset_cardinality (&outer_info->exprs_set) + 1 /* hash_key */ );
 
   outer_info->pred_count = pt_length_of_list (outer_info->pred_list);
+
+  /* hash_key */
+  hash_key = pt_make_integer_value (parser, -1);
+  if (hash_key == NULL)
+    {
+      goto error_exit;
+    }
+  inner_info->expr_list = parser_append_node (inner_info->expr_list /* back */ , hash_key /* front */ );
 
   /* inner_info */
   inner_info->expr_count = pt_length_of_list (inner_info->expr_list);
@@ -5608,13 +5625,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
 
   inner_info->expr_name_list =
-    parser_append_node (inner_info->name_list /* node */ , inner_info->expr_list /* list */ );
+    parser_append_node (inner_info->name_list /* back */ , inner_info->expr_list /* front */ );
   assert (inner_info->expr_name_list != NULL);
 
   inner_info->expr_name_count = pt_length_of_list (inner_info->expr_name_list);
   assert (inner_info->expr_name_count > 0);
   assert (inner_info->expr_name_count == inner_info->expr_count + inner_info->name_count);
-  assert (inner_info->expr_count == bitset_cardinality (&inner_info->exprs_set));
+  assert (inner_info->expr_count == bitset_cardinality (&inner_info->exprs_set) + 1 /* hash_key */ );
 
   inner_info->pred_count = pt_length_of_list (inner_info->pred_list);
 
@@ -5823,8 +5840,8 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   outer_expr = outer_info->expr_list;
   inner_expr = inner_info->expr_list;
-  outer_expr_pos = 0;
-  inner_expr_pos = 0;
+  outer_expr_pos = 1;		/* after hash_key */
+  inner_expr_pos = 1;		/* after hash_key */
 
   value_index = 0;
 

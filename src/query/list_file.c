@@ -2910,9 +2910,6 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   PAGE_PTR old_page = NULL, new_page = NULL, prev_page = NULL;
   PAGE_PTR old_overflow_page = NULL, new_overflow_page = NULL, prev_overflow_page = NULL;
 
-  assert (base_list_id->tuple_cnt > 0);
-  assert (!VPID_ISNULL (&base_list_id->last_vpid));
-
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
 
@@ -2922,19 +2919,22 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   VPID_SET_NULL (&old_overflow_vpid);
   VPID_SET_NULL (&new_overflow_vpid);
 
-  prev_vpid = base_list_id->last_vpid;
-  prev_page = qmgr_get_old_page (thread_p, &prev_vpid, base_list_id->tfile_vfid);
-  if (prev_page == NULL)
+  if (!VPID_ISNULL (&base_list_id->last_vpid))
     {
-      goto error_exit;
+      prev_vpid = base_list_id->last_vpid;
+      prev_page = qmgr_get_old_page (thread_p, &prev_vpid, base_list_id->tfile_vfid);
+      if (prev_page == NULL)
+	{
+	  goto error_exit;
+	}
     }
 
   old_vpid = append_list_id->first_vpid;
 
   while (!VPID_ISNULL (&old_vpid))
     {
-      assert (!VPID_ISNULL (&prev_vpid));
-      assert (prev_page != NULL);
+      assert (VPID_ISNULL (&base_list_id->last_vpid) || !VPID_ISNULL (&prev_vpid));
+      assert (VPID_ISNULL (&base_list_id->last_vpid) || prev_page != NULL);
 
       old_page = qmgr_get_old_page (thread_p, &old_vpid, append_list_id->tfile_vfid);
       if (old_page == NULL)
@@ -2948,8 +2948,15 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	  goto error_exit;
 	}
 
-      QFILE_PUT_NEXT_VPID (prev_page, &new_vpid);
-      qfile_set_dirty_page (thread_p, prev_page, FREE, base_list_id->tfile_vfid);
+      if (prev_page != NULL)
+	{
+	  QFILE_PUT_NEXT_VPID (prev_page, &new_vpid);
+	  qfile_set_dirty_page (thread_p, prev_page, FREE, base_list_id->tfile_vfid);
+	}
+      else
+	{
+	  QFILE_COPY_VPID (&base_list_id->first_vpid, &new_vpid);
+	}
 
       base_list_id->last_vpid = new_vpid;
 
@@ -2958,7 +2965,10 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 
       memcpy (new_page, old_page, DB_PAGESIZE);
 
-      QFILE_PUT_PREV_VPID (new_page, &prev_vpid);
+      if (!VPID_ISNULL (&prev_vpid))
+	{
+	  QFILE_PUT_PREV_VPID (new_page, &prev_vpid);
+	}
       prev_vpid = new_vpid;
 
       /* overflow page */
@@ -3004,13 +3014,15 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 
   base_list_id->tuple_cnt += append_list_id->tuple_cnt;
   base_list_id->page_cnt += append_list_id->page_cnt;
+  assert (!VPID_ISNULL (&base_list_id->first_vpid));
+  assert (!VPID_ISNULL (&base_list_id->last_vpid));
+  base_list_id->last_offset = append_list_id->last_offset;
+  base_list_id->lasttpl_len = append_list_id->lasttpl_len;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
-  assert_release (er_errid () != NO_ERROR);
-
   if (prev_page != NULL && prev_page != new_page)
     {
       qmgr_free_old_page_and_init (thread_p, prev_page, base_list_id->tfile_vfid);
@@ -3036,6 +3048,7 @@ error_exit:
       qmgr_free_old_page_and_init (thread_p, old_overflow_page, append_list_id->tfile_vfid);
     }
 
+  assert_release (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -3077,8 +3090,6 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   return NO_ERROR;
 
 error_exit:
-  assert_release (er_errid () != NO_ERROR);
-
   if (base_last_page != NULL)
     {
       qmgr_free_old_page_and_init (thread_p, base_last_page, base_list_id->tfile_vfid);
@@ -3089,6 +3100,7 @@ error_exit:
       qmgr_free_old_page_and_init (thread_p, append_first_page, append_list_id->tfile_vfid);
     }
 
+  assert_release (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
