@@ -26,9 +26,9 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include "condition_handler_code.h"
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
 /* conversion error code */
 #define CNV_ERR_STRING_TOO_LONG   CO_CODE( CO_MODULE_CNV, 1)
 #define CNV_ERR_BAD_TYPE          CO_CODE( CO_MODULE_CNV, 2)

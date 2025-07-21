@@ -92,15 +92,17 @@ int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
 int db_Disable_modifications = 0;
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 static int transfer_string (char *dst, int *xflen, int *outlen,
 			    const int dstlen, const char *src,
 			    const int srclen, const DB_TYPE_C type, const INTL_CODESET codeset);
 static int transfer_bit_string (char *buf, int *xflen, int *outlen,
 				const int buflen, const DB_VALUE * src, const DB_TYPE_C c_type);
 #endif
+
 static int coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+
+#if defined(ENABLE_USE_CNVLEX)
 static int coerce_numeric_to_dbvalue (DB_VALUE * value, char *buf, const DB_TYPE_C c_type);
 static int coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);
 static int coerce_date_to_dbvalue (DB_VALUE * value, char *buf);
@@ -1293,7 +1295,7 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
     case DB_TYPE_C_VARNCHAR:
       status = coerce_char_to_dbvalue (value, (char *) input, input_length);
       break;
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
     case DB_TYPE_C_INT:
     case DB_TYPE_C_SHORT:
     case DB_TYPE_C_LONG:
@@ -1891,7 +1893,7 @@ db_get_currency_default ()
   return lang_currency ();
 }
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * transfer_string() -
  * return     : an error indicator.
@@ -2070,7 +2072,7 @@ db_init_db_json_pointers (DB_JSON * val)
   return NO_ERROR;
 }
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * db_value_get() -
  *
@@ -2990,7 +2992,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 
   switch (db_type)
     {
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       {
@@ -3131,10 +3133,9 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
-	else
-	  if (numeric_coerce_num_to_num
-	      (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
-	       DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+	else if (numeric_coerce_num_to_num
+		 (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		  DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -3157,7 +3158,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
   return status;
 }
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * coerce_numeric_to_dbvalue() - Coerce the C character number string
  *              into the desired type and place in a DB_VALUE container.

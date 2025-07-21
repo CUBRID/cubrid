@@ -27,12 +27,12 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "porting.h"
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
 #define ADJ_AR_EOA -1
 
 enum adj_err_code

@@ -38,7 +38,7 @@
 #include <cassert>
 
 // forward definitions
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 // from adjustable_array.h
 struct adj_array;
 #endif
@@ -229,7 +229,7 @@ namespace cubthread
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
-#if defined(ENABLE_USE_CNVLEX)	// ctshim      
+#if defined(ENABLE_USE_CNVLEX)
       adj_array *cnv_adj_buffer[3];	/* conversion buffer */
 #endif
 

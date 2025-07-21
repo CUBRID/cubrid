@@ -279,7 +279,7 @@ extern "C"
   extern bool db_value_type_is_collection (const DB_VALUE * value);
   extern bool db_value_is_null (const DB_VALUE * value);
   extern bool db_value_need_clear (const DB_VALUE * value);
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
   extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
 			   int *outputlen);
 #endif

@@ -26,8 +26,8 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include "intl_support.h"
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
 /*
  * Lexical scan modes. These correspond directly to start conditions defined
  * in the scanner definition file. Be sure to update db_fmt_lex_start() to

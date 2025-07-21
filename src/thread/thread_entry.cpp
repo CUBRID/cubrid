@@ -90,7 +90,7 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-#if defined(ENABLE_USE_CNVLEX)	// ctshim      
+#if defined(ENABLE_USE_CNVLEX)
     , cnv_adj_buffer ()
 #endif
     , conn_entry (NULL)
@@ -169,7 +169,7 @@ namespace cubthread
 
     private_heap_id = db_create_private_heap ();
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim      
+#if defined(ENABLE_USE_CNVLEX)
     cnv_adj_buffer[0] = NULL;
     cnv_adj_buffer[1] = NULL;
     cnv_adj_buffer[2] = NULL;
@@ -235,7 +235,7 @@ namespace cubthread
       {
 	return;
       }
-#if defined(ENABLE_USE_CNVLEX)	// ctshim        
+#if defined(ENABLE_USE_CNVLEX)
     for (int i = 0; i < 3; i++)
       {
 	if (cnv_adj_buffer[i] != NULL)

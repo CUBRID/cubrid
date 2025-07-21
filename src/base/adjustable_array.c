@@ -22,7 +22,7 @@
  */
 
 #ident "$Id$"
-
+#if defined(ENABLE_USE_CNVLEX)
 #include "config.h"
 
 #include <stdlib.h>
@@ -36,8 +36,6 @@
 #include "adjustable_array.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
 
 /*
  * adj_ar_concat_strings() - concatenate the specified strings

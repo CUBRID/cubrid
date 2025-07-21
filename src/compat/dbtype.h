@@ -186,7 +186,7 @@ extern "C"
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
   extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
 			   int *outputlen);
 #endif

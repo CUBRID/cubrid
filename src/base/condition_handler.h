@@ -27,10 +27,10 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include <stdio.h>
 #include <stdarg.h>
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
 /* condition severity level */
 typedef enum
 {
@@ -60,7 +60,6 @@ extern int co_put_detail (CO_DETAIL level);
 extern const char *co_message (void);
 #endif
 extern int co_code (void);
-#endif // ENABLE_USE_CNVLEX
 extern void co_final (void);
-
+#endif // ENABLE_USE_CNVLEX
 #endif /* _CONDITION_HANDLER_H_ */

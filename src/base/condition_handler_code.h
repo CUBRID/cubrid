@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#if defined(ENABLE_USE_CNVLEX)	// ctshim
+#if defined(ENABLE_USE_CNVLEX)
 
 /* Constants for encoding and decoding CO_CODE values. */
 #define CO_MAX_CODE         1024	/* Max codes per module */
