@@ -1558,7 +1558,7 @@ namespace cubschema
       {"referential_index_class_owner_name", format_varchar (255)},
       {"referential_index_class_name", format_varchar (255)},
       {"referential_index_name", format_varchar (255)},
-      {"delete_rule",format_varchar (32)},
+      {"delete_rule", format_varchar (32)},
       {"update_rule", format_varchar (32)},
       {"referential_match_option", format_varchar (7)},
       {"index_type", format_varchar (32)},
