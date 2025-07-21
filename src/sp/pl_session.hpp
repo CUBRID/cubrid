@@ -51,7 +51,7 @@ namespace cubthread
 namespace cubmethod
 {
   class method_invoke_group;
-  class db_parameter_info;
+  struct db_parameter_info;
 }
 
 namespace cubpl

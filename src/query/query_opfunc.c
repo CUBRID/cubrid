@@ -383,10 +383,10 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
       or_init (&buf, val_p, val_size);
       rc = pr_type->data_writeval (&buf, dbval_p);
 
-      if (rc != NO_ERROR)
+      if (buf.ptr > buf.endptr || rc != NO_ERROR)
 	{
-	  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
-	  assert (rc != ER_TF_BUFFER_OVERFLOW);
+	  /* This should not happen */
+	  assert_release (false);
 	  return ER_FAILED;
 	}
 
@@ -5968,7 +5968,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 
       dbval_p = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       db_make_double (result_p, (-1) * db_get_double (dbval_p));

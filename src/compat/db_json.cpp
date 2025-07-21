@@ -3985,7 +3985,7 @@ db_json_or_buf_underflow (or_buf *buf, size_t length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {
-      return or_underflow (buf);
+      return ER_TF_BUFFER_UNDERFLOW;
     }
 
   return NO_ERROR;

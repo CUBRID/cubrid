@@ -273,9 +273,9 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 
 	  if (access_info->ip_files[0] != '\0')
 	    {
-	      if (strlen (access_info->ip_files) < LINE_MAX)
+	      if (strlen (access_info->ip_files) < (sizeof (access_info->ip_files) - 1))
 		{
-		  strncat (access_info->ip_files, ",", 1);
+		  strcat (access_info->ip_files, ",");
 		}
 	      else
 		{
@@ -284,9 +284,9 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, c
 	    }
 
 	  filename_len = strlen (path_buf);
-	  if ((strlen (access_info->ip_files) + filename_len) < LINE_MAX)
+	  if ((strlen (access_info->ip_files) + filename_len) < sizeof (access_info->ip_files))
 	    {
-	      strncat (access_info->ip_files, path_buf, filename_len);
+	      strcat (access_info->ip_files, path_buf);
 	    }
 	  else
 	    {

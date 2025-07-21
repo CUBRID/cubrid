@@ -2437,38 +2437,35 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   if (rep->n_attributes > 0)
     {
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
   if (rep->n_shared_attrs > 0)
     {
-      rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+      rep->shared_attrs = (OR_ATTRIBUTE *) calloc (rep->n_shared_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->shared_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
   if (rep->n_class_attrs > 0)
     {
-      rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+      rep->class_attrs = (OR_ATTRIBUTE *) calloc (rep->n_class_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->class_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -3009,14 +3006,12 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return rep;
     }
 
-  rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+  rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
   if (rep->attributes == NULL)
     {
       free_and_init (rep);
       return NULL;
     }
-  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
    * OR_VAR_TABLE_ELEMENT_OFFSET. */
@@ -3207,15 +3202,13 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  continue;
 	}
 
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
        * OR_VAR_TABLE_ELEMENT_OFFSET. */
@@ -4525,13 +4518,9 @@ or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
     {
       return MVCCID_ALL_VISIBLE;
     }
-  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
   else
     {
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
       MVCCID insert_id = 0;
       OR_GET_BIGINT (buf->ptr, &insert_id);
       buf->ptr += OR_MVCCID_SIZE;
@@ -4580,16 +4569,9 @@ or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
   if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
     {
       /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
+      assert (buf->ptr + OR_MVCCID_SIZE <= buf->endptr);
+      OR_GET_BIGINT (buf->ptr, &(delid));
+      buf->ptr += OR_MVCCID_SIZE;
     }
   return delid;
 }
@@ -4613,15 +4595,9 @@ or_mvcc_get_chn (OR_BUF * buf, int *error)
 
   *error = NO_ERROR;
 
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-    }
+  assert (buf->ptr + OR_INT_SIZE <= buf->endptr);
+  chn = OR_GET_INT (buf->ptr);
+  buf->ptr += OR_INT_SIZE;
 
   return chn;
 }
@@ -4680,12 +4656,7 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
     {
       return NO_ERROR;
     }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
@@ -4713,11 +4684,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
       return NO_ERROR;
     }
 
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_underflow (buf));
-    }
-
+  assert (buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE <= buf->endptr);
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 

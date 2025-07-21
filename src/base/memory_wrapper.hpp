@@ -23,6 +23,12 @@
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
+template <typename T>
+inline T *placement_new (T *ptr)
+{
+  return new (ptr)  T();
+}
+
 #if !defined(WINDOWS)
 
 #include "memory_cwrapper.h"

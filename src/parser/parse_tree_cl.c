@@ -2616,7 +2616,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
       sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
-      /* fall thru */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:
       sb ("{");
 
@@ -6107,7 +6107,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
 	  q = pt_append_nulstring (parser, q, " ");
 	  q = pt_append_varchar (parser, q, r2);
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser, p->info.alter.alter_clause.rename.old_name);
 	  q = pt_append_varchar (parser, q, r1);
@@ -8715,7 +8715,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
 
       show_collation = true;
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -12203,7 +12203,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* break case PT_RANGE */
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -13091,7 +13091,13 @@ static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
-  PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+
+  /* do not check attribute list for dblink */
+  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+    }
+
   PT_APPLY_WALK (parser, p->info.insert.value_clauses, arg);
   PT_APPLY_WALK (parser, p->info.insert.into_var, arg);
   PT_APPLY_WALK (parser, p->info.insert.where, arg);
@@ -14811,6 +14817,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  assert (0);
 		}
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_INLINE_CTE)
+	    {
+	      q = pt_append_nulstring (parser, q, "INLINE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
+	    {
+	      q = pt_append_nulstring (parser, q, "MATERIALIZE ");
 	    }
 
 	  q = pt_append_nulstring (parser, q, "*/ ");
@@ -18436,7 +18452,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 	{
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:

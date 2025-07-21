@@ -218,7 +218,4 @@ extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
 /* to generate xasl for dblink */
 extern XASL_NODE *pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node);
-
-/* to check dblink in trigger action */
-extern void pt_check_dblink_trigger (PARSER_CONTEXT * parser, PT_NODE * node);
 #endif /* _XASL_GENERATION_H_ */
