@@ -316,7 +316,7 @@ namespace cubpl
   void
   session::set_interrupt (int reason, std::string msg)
   {
-    if (m_is_interrupted)
+    if (m_is_interrupted)       // !!! synchronize
       {
 	// do not overwrite interrupt
 	return;
@@ -344,7 +344,7 @@ namespace cubpl
 	m_interrupt_msg.assign (msg);
 	break;
       default:
-	/* do nothing */
+	/* do nothing */        // !!! assert false
 	break;
       }
 

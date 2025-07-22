@@ -2768,7 +2768,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 
 	      // Only TT_WORKER threads use pl_session
-	      if (thread_p && thread_p->type == TT_WORKER)
+	      if (thread_p && thread_p->type == TT_WORKER)      // ??? is the other case possible?
 		{
 		  if (session_has_pl_session (thread_p))
 		    {

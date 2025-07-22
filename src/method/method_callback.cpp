@@ -269,6 +269,7 @@ namespace cubmethod
 	    if (error != NO_ERROR)
 	      {
 		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+                fprintf(stderr, "err code (%d), err msg (%s)\n", db_error_code (), db_error_string (1));
 	      }
 	  }
 
