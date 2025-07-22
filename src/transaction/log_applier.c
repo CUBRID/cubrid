@@ -518,7 +518,11 @@ static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 				     void **logs, char **rec_type, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
-
+static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
+static void la_set_error_sql_log (const char *class_name, DB_VALUE * key_val);
+static int la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj);
+static int la_write_update_sql_log(LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
+static int la_write_insert_sql_log(LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
