@@ -11569,6 +11569,8 @@ tdes_set_query_start_info (char *sql_user_text)
   int request_len;
 
   request_len = or_packed_string_length (sql_user_text, NULL);
+  assert (request_len > 0);
+
   request = (char *) malloc (request_len);
   if (request == NULL)
     {
