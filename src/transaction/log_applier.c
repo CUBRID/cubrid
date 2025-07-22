@@ -5237,7 +5237,7 @@ la_is_mvcc_class (const OID * class_oid)
   return true;
 }
 
-static bool
+static int
 la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
 {
   MOBJ mclass;
