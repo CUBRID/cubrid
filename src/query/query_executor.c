@@ -8246,6 +8246,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
   if (thread_p->emulate_tid != thread_id_t ())
     {
       orig_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      assert (orig_thread_p != NULL);
       pthread_mutex_lock (&orig_thread_p->m_px_lock);
     }
 #endif
