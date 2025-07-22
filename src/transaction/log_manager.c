@@ -11142,12 +11142,16 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  count++;
 
-	  if (count < 10)
+	  if (count >= 10)
 	    {
-	      continue;
+	      er_log_debug (ARG_FILE_LINE,
+			    "cdc_loginfo_producer_execute : process_lsa is NULL_LSA (producer.request : %d, producer.state : %d)",
+			    cdc_Gl.producer.request, cdc_Gl.producer.state);
+
+	      assert (false);
 	    }
 
-	  assert (false);
+	  continue;
 	}
 
       error = cdc_log_extract (thread_p, &process_lsa, &log_info_entry);
