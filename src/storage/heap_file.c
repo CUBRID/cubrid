@@ -8207,8 +8207,9 @@ heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid, 
     }
   else
     {
-      scan_cache->page_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE, S_LOCK, NULL,
-								    &scan_cache->page_watcher);
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL,
+				     &scan_cache->page_watcher);
       if (scan_cache->page_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
@@ -8347,13 +8348,13 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		{
 		  /* must be last slot of page, end scanning */
 		  OID_SET_NULL (next_oid);
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	      else
 		{
 		  /* Error, stop scanning */
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	    }
