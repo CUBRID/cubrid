@@ -22,6 +22,7 @@
  */
 
 #ident "$Id$"
+
 #if defined(ENABLE_USE_CNVLEX)
 #include "config.h"
 

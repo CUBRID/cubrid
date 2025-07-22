@@ -8645,6 +8645,7 @@ db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string
 }
 
 #if defined(ENABLE_USE_CNVLEX)
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_validate_format() - If the given format string is valid for the given
  *   data type, then return 0. otherwise, signal and return an error condition.
@@ -8730,6 +8731,7 @@ db_validate_format (const char *format, DB_TYPE type)
 
   return error;
 }
+#endif
 
 /*
  * cnv_cleanup() - This function is called when the database connection is shut
