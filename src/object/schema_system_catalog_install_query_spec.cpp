@@ -815,7 +815,7 @@ sm_define_view_index_spec (void)
 	    "WHEN 1 THEN 'NORMAL INDEX' "
 	    "WHEN 2 THEN 'INVISIBLE INDEX' "
 	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
-	    "ELSE NULL "
+	    "ELSE 'NULL' "
 	    "END AS [status], "
           "CASE "
             "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[owner].[name] "
