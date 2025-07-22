@@ -3211,7 +3211,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   char *undo_data = NULL;
   int undo_data_size;
   char *es_uri = NULL;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *log_page_p = NULL;
   BTID_INT btid_int;
   BTID sys_btid;
@@ -3257,7 +3257,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   assert (!LSA_ISNULL (&data->start_lsa) && (data->get_blockid () == vacuum_get_log_blockid (data->start_lsa.pageid)));
 
   /* Fetch the page where start_lsa is located */
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, 4096);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
 
@@ -3600,8 +3600,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
   /* Allocate undo data buffer */
-  worker->undo_data_buffer = (char *) malloc (IO_PAGESIZE);
-  if (worker->undo_data_buffer == NULL)
+  if (posix_memalign ((void **) &worker->undo_data_buffer, 4096, IO_PAGESIZE) != 0)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate undo data buffer.");
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
@@ -5414,7 +5413,7 @@ static int
 vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
-  char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_page_buf[IO_MAX_PAGE_SIZE + 4096];
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER log_rec_header;
   LOG_PAGE *log_page_p = NULL;
@@ -5438,7 +5437,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   /* Recovery was done. */
 
   /* Initialize log_page_p. */
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, 4096);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
 

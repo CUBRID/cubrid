@@ -1575,7 +1575,7 @@ error:
 static int
 logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char *active_log_path, LOG_HEADER * hdr)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_HEADER *log_hdr;
   LOG_PHY_PAGEID phy_pageid;
   int error_code = NO_ERROR;
@@ -1584,7 +1584,7 @@ logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char
   assert (active_log_path != NULL);
   assert (hdr != NULL);
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   if (fileio_is_volume_exist (active_log_path) == false)
     {
@@ -2207,8 +2207,8 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
     {
       char *ptr = NULL;
       int i;
-      char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-      char *aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+      char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
+      char *aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
       ptr = (char *) log_pgptr;
       for (i = 0; i < num_pages; i++)
@@ -2261,10 +2261,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   int nbytes, error_code;
   LOG_PHY_PAGEID phy_pageid;
   FILEIO_WRITE_MODE write_mode;
-  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *enc_pgptr = NULL;
 
-  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, 4096);
 
   assert (log_pgptr != NULL);
   assert (log_pgptr->hdr.logical_pageid == logical_pageid);
@@ -2774,11 +2774,11 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
   LOG_PHY_PAGEID phy_pageid;
   int i;
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
-  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *enc_pgptr = NULL;
 
-  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, 4096);
 
 #if !defined (CS_MODE)
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
@@ -2861,8 +2861,8 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   int i;
   LOG_PAGEID pageid, prev_lsa_pageid;
   LOG_PHY_PAGEID phy_pageid;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char enc_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
+  char enc_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *enc_pgptr = NULL;
   LOG_BUFFER *bufptr;
@@ -2899,7 +2899,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  current_lsa.pageid = pageid;
 	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
-	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, 4096);
 
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
 	    {
@@ -2925,7 +2925,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
       if (LOG_IS_PAGE_TDE_ENCRYPTED (log_pgptr))
 	{
-	  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, MAX_ALIGNMENT);
+	  enc_pgptr = (LOG_PAGE *) PTR_ALIGN (enc_pgbuf, 4096);
 	  if (tde_encrypt_log_page (log_pgptr, logpb_get_tde_algorithm (log_pgptr), enc_pgptr) != NO_ERROR)
 	    {
 	      /* 
@@ -3181,12 +3181,12 @@ void
 logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_LSA * first_null_block_lsa)
 {
   const int block_size = 4 * ONE_K;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
+  char null_buffer[block_size + 4096], *null_block;
   int i, max_num_blocks = LOG_PAGESIZE / block_size;
 
   assert (log_pgptr != NULL && first_null_block_lsa != NULL);
 
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
+  null_block = PTR_ALIGN (null_buffer, 4096);
   memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
 
   LSA_SET_NULL (first_null_block_lsa);
@@ -5200,6 +5200,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
   aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, 4096);
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
+
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
@@ -10299,10 +10300,10 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	}
       else
 	{
-	  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+	  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
 	  LOG_PAGE *log_pgptr;
 
-	  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+	  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 	  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
 	  /* Initialize the buffer pool, so we can read the header */
@@ -11278,7 +11279,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
   int vdes = NULL_VOLDES;
   int arv_num;
   LOG_ARV_HEADER *arv_hdr;
-  char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_arv_hdr_pgbuf;
+  char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_arv_hdr_pgbuf;
   LOG_PAGE *arv_hdr_pgptr;
   char arv_name[PATH_MAX];
 
@@ -11300,7 +11301,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
       logpb_dismount_log_archive (thread_p);
     }
 
-  aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, MAX_ALIGNMENT);
+  aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, 4096);
   arv_hdr_pgptr = (LOG_PAGE *) aligned_arv_hdr_pgbuf;
 
   fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
@@ -11413,10 +11414,10 @@ logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
 	  fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false,
 			true)) != NULL_VOLDES)
     {
-      char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+      char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
       LOG_PAGE *log_pgptr;
 
-      aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+      aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
       log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       if (logpb_Initialized == false)

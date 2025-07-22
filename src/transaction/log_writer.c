@@ -287,12 +287,12 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mod
 static int
 logwr_read_log_header (void)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr;
   int error = NO_ERROR;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   if (!fileio_is_volume_exist (logwr_Gl.active_name))
@@ -352,7 +352,7 @@ logwr_read_log_header (void)
 static int
 logwr_read_bgarv_log_header (void)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr;
   LOG_BGARV_HEADER *bgarv_header;
@@ -361,7 +361,7 @@ logwr_read_bgarv_log_header (void)
 
   bg_arv_info = &logwr_Gl.bg_archive_info;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   assert (bg_arv_info->vdes != NULL_VOLDES);
@@ -768,7 +768,7 @@ logwr_set_hdr_and_flush_info (void)
 static int
 logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + 4096];
   char *aligned_log_pgbuf = NULL;
   LOG_PAGEID pageid = NULL_PAGEID;
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
@@ -778,7 +778,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
 
   bg_arv_info = &logwr_Gl.bg_archive_info;
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   pageid = bg_arv_info->current_page_id;
   if (pageid == NULL_PAGEID)
@@ -837,7 +837,7 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 static LOG_PAGE **
 logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + 4096];
   LOG_PAGEID fpageid;
   LOG_PHY_PAGEID phy_pageid;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
@@ -856,7 +856,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 #endif
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
-  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  buf_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, 4096);
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
   if (npages > 0)
@@ -1146,7 +1146,7 @@ logwr_flush_all_append_pages (void)
 int
 logwr_flush_bgarv_header_page (void)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = NULL;
@@ -1160,7 +1160,7 @@ logwr_flush_bgarv_header_page (void)
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
   assert (bg_arv_info->vdes != NULL_VOLDES);
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
@@ -1278,7 +1278,7 @@ logwr_archive_active_log (void)
 {
   char archive_name[PATH_MAX] = { '\0' };
   LOG_ARV_HEADER *arvhdr;
-  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;
@@ -1292,7 +1292,7 @@ logwr_archive_active_log (void)
   char buffer[LINE_MAX];
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   /* Create the archive header page */
   malloc_arv_hdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
