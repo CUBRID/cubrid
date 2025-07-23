@@ -828,7 +828,7 @@ sm_define_view_index_spec (void)
             "WHEN 0 THEN 'BTREE' "
             "ELSE NULL "
             "END AS [index_type], "
-          "[i].[options] & 15 AS [deduplicate_key_level], "
+          "[i].[options] & %d AS [deduplicate_key_level], "
 	  "[i].[comment] AS [comment], "
           "[i].[created_time] AS [created_time], "
           "[i].[updated_time] AS [updated_time] "
@@ -873,11 +873,7 @@ sm_define_view_index_spec (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",            
 	CT_INDEXKEY_NAME,
-#if 0 // Not yet, Disabled for QA verification convenience        
-        CT_INDEXKEY_NAME,
-        DEDUPLICATE_KEY_ATTR_NAME_PREFIX,
-        CT_INDEXKEY_NAME,
-#endif                    
+        OPTION_DEDUPLICATE_MASK,
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
