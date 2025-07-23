@@ -2695,7 +2695,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   char *classname;
   const char *attr_name;
   DB_VALUE def_dbvalue;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int disk_length;
   OR_BUF buf;
   bool copy;
@@ -10368,7 +10368,7 @@ static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   OR_ATTRIBUTE *attrepr;
   char *disk_data = NULL;
   int disk_bound = false;
@@ -11518,7 +11518,7 @@ int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
@@ -11852,7 +11852,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   char *ptr_bound, *ptr_varvals;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   DB_VALUE temp_dbvalue;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   unsigned int repid_bits;
   SCAN_CODE status;
   int i;
@@ -25356,6 +25356,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
+		  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+
 		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
 		      SNAPSHOT_SATISFIED)
 		    {

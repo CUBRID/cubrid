@@ -3901,7 +3901,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
@@ -4518,8 +4518,7 @@ exit_on_error:
 static int
 fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
 {
-
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;
   REGU_VARIABLE *regu_var;
   regu_variable_list_node *regup;

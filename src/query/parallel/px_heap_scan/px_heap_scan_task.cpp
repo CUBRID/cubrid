@@ -186,18 +186,21 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
 	  }
+#endif
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t1);
 	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
 	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
 	  }
-
+#endif
 	if (page_scan_code == S_END)
 	  {
 	    m_context->is_scan_internal_ended = true;
@@ -221,17 +224,21 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t2);
 	      }
+#endif
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t1);
 		tsc_elapsed_time_usec (&tv_diff, t1, t2);
 		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
 	      }
+#endif
 	    if (rec_scan_code == S_ERROR)
 	      {
 		if (m_context->has_error())
@@ -248,10 +255,12 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t1);
 		  }
+#endif
 		if (is_list_merge)
 		  {
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
@@ -281,12 +290,14 @@ namespace parallel_heap_scan
 			break;
 		      }
 		  }
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
 		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
 		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
 		  }
+#endif
 	      }
 	  }
       }
