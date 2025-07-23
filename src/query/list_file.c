@@ -512,6 +512,9 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 
   memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
 
+  /* Should be managed by dest_list_id_p thereafter. */
+  const_cast < QFILE_LIST_ID * >(src_list_id_p)->dependent_list_id = NULL;
+
   qfile_update_qlist_count (thread_get_thread_entry_info (), dest_list_id_p, 1);
 
   return NO_ERROR;
@@ -572,6 +575,12 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->type_list.domp != NULL)
     {
       free_and_init (list_id_p->type_list.domp);
+    }
+
+  if (list_id_p->dependent_list_id != NULL)
+    {
+      qfile_clear_list_id (list_id_p->dependent_list_id);
+      free_and_init (list_id_p->dependent_list_id);
     }
 
   QFILE_CLEAR_LIST_ID (list_id_p);
@@ -2242,6 +2251,12 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 	    }
 	}
 
+      if (list_id_p->dependent_list_id != NULL)
+	{
+	  qfile_destroy_list (thread_p, list_id_p->dependent_list_id);
+	  QFILE_FREE_AND_INIT_LIST_ID (list_id_p->dependent_list_id);
+	}
+
       qfile_clear_list_id (list_id_p);
     }
 }
@@ -3057,11 +3072,16 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
 {
   PAGE_PTR base_last_page = NULL, append_first_page = NULL;
 
+  /* Check if qfile_close_list was called */
+  assert (base_list_id->last_pgptr == NULL);
+  assert (append_list_id->last_pgptr == NULL);
+
   assert (base_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&base_list_id->last_vpid));
 
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
+  assert (append_list_id->tfile_vfid->membuf == NULL);
 
   base_last_page = qmgr_get_old_page (thread_p, &base_list_id->last_vpid, base_list_id->tfile_vfid);
   if (base_last_page == NULL)
@@ -3085,6 +3105,9 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
 
   base_list_id->tuple_cnt += append_list_id->tuple_cnt;
   base_list_id->page_cnt += append_list_id->page_cnt;
+
+  append_list_id->dependent_list_id = base_list_id->dependent_list_id;
+  base_list_id->dependent_list_id = append_list_id;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;

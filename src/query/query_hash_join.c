@@ -30,6 +30,7 @@
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "query_list.h"		/* JOIN_TYPE */
+#include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
 
@@ -851,7 +852,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 	}
     }
 
-  manager->qlist_merge_method = HASHJOIN_MERGE_APPEND;
+  manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
   manager->qlist_flag =
     (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
 
@@ -1513,26 +1514,37 @@ error_exit:
 static int
 hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
 {
-  HASH_SCAN_KEY *part_key = NULL;
+  QFILE_LIST_ID **temp_part_list_id = NULL;
+  HASH_SCAN_KEY *temp_key = NULL;
+  UINT32 part_cnt, part_index;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (split_info != NULL);
 
-  part_key = qdata_alloc_hscan_key (thread_p, manager->key_cnt, true);
-  if (part_key == NULL)
+  part_cnt = manager->context_cnt;
+
+  temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
+  if (temp_part_list_id == NULL)
+    {
+      goto error_exit;
+    }
+  memset (temp_part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
+
+  temp_key = qdata_alloc_hscan_key (thread_p, manager->key_cnt, true);
+  if (temp_key == NULL)
     {
       goto error_exit;
     }
 
-  error = hjoin_split_qlist (thread_p, manager, &split_info->outer, part_key);
+  error = hjoin_split_qlist (thread_p, manager, &split_info->outer, temp_part_list_id, temp_key);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  error = hjoin_split_qlist (thread_p, manager, &split_info->inner, part_key);
+  error = hjoin_split_qlist (thread_p, manager, &split_info->inner, temp_part_list_id, temp_key);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -1541,9 +1553,23 @@ hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-  if (part_key != NULL)
+  if (temp_part_list_id != NULL)
     {
-      qdata_free_hscan_key (thread_p, part_key, manager->key_cnt);
+      for (part_index = 0; part_index < part_cnt; part_index++)
+	{
+	  if (temp_part_list_id[part_index] != NULL)
+	    {
+	      qfile_close_list (thread_p, temp_part_list_id[part_index]);
+	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
+	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	    }
+	}
+      db_private_free_and_init (thread_p, temp_part_list_id);
+    }
+
+  if (temp_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, temp_key, manager->key_cnt);
     }
 
   return error;
@@ -1666,7 +1692,7 @@ hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   assert (part_cnt > 1);
 
 #if defined (SERVER_MODE)
-  if (manager->px_worker_pool_manager->get_worker_pool () != NULL)
+  if (manager->px_worker_pool_manager != NULL)
     {
       assert (outer->part_mutexes == NULL);
       assert (inner->part_mutexes == NULL);
@@ -3424,7 +3450,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
   QFILE_TUPLE outer_record_end, inner_record_end, tuple_record_end;
   QFILE_TUPLE tuple_value;
   INT32 unbound_value[2] = { 0, 0 };	/* QFILE_TUPLE_VALUE_HEADER */
-  int realloc_size, offset, value_size;
+  int available_size, realloc_size, offset, value_size;
   int pos_index, value_index, skip_index;
 
   int error = NO_ERROR;
@@ -3463,7 +3489,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 
       if (tuple_record != NULL)
 	{
-	  value_index = merge_info->ls_outer_inner_list[pos_index];
+	  value_index = merge_info->ls_pos_list[pos_index];
 
 	  tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
 	  for (skip_index = 0; skip_index < value_index; skip_index++)
@@ -3486,10 +3512,11 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 	}
 
       value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
+      available_size = overflow_record->size - offset;
 
-      if ((overflow_record->size - offset) < value_size)
+      if (value_size > available_size)
 	{
-	  realloc_size = overflow_record->size + CEIL_PTVDIV (value_size, DB_PAGESIZE);
+	  realloc_size = CEIL_PTVDIV (overflow_record->size + (value_size - available_size), DB_PAGESIZE) * DB_PAGESIZE;
 
 	  /* overflow_record is managed and cleaned up by the caller. */
 	  error = qfile_reallocate_tuple (overflow_record, realloc_size);
@@ -3793,7 +3820,7 @@ hjoin_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tuple, HASHJOI
  */
 int
 hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_INPUT_SPLIT_INFO * split_info,
-		   HASH_SCAN_KEY * key)
+		   QFILE_LIST_ID ** temp_part_list_id, HASH_SCAN_KEY * temp_key)
 {
   QFILE_LIST_ID *list_id;
   QFILE_LIST_ID **part_list_id;
@@ -3812,7 +3839,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (split_info != NULL);
-  assert (key != NULL);
+  assert (temp_part_list_id != NULL);
+  assert (temp_key != NULL);
 
   /* Do not perform NULL checks; 
    * validation is expected to be handled by the caller */
@@ -3833,8 +3861,9 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      error = hjoin_fetch_key (thread_p, split_info->fetch_info, &tuple_record, key, NULL /* compare_key */ ,
-			       &need_skip_next);
+      error =
+	hjoin_fetch_key (thread_p, split_info->fetch_info, &tuple_record, temp_key, NULL /* compare_key */ ,
+			 &need_skip_next);
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
@@ -3857,17 +3886,44 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	}			/* else if (need_skip_next) */
       else
 	{
-	  hash_key = qdata_hash_scan_key (key, UINT_MAX, HASH_METH_IN_MEM);
+	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
 	  part_id = (is_outer_join) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
 
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
 
-      assert (part_list_id[part_id] != NULL);
-      error = qfile_add_tuple_to_list (thread_p, part_list_id[part_id], tuple_record.tpl);
+      if (temp_part_list_id[part_id] == NULL)
+	{
+	  temp_part_list_id[part_id] =
+	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id, QFILE_FLAG_ALL, NULL);
+	  if (temp_part_list_id[part_id] == NULL)
+	    {
+	      goto error_exit;
+	    }
+	}
+
+      error = qfile_add_tuple_to_list (thread_p, temp_part_list_id[part_id], tuple_record.tpl);
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
+	}
+
+      if (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
+	  temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1)
+	{
+	  qfile_close_list (thread_p, temp_part_list_id[part_id]);
+
+	  if (part_list_id[part_id]->tuple_cnt > 0)
+	    {
+	      qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
+	      qfile_destroy_list (thread_p, temp_part_list_id[part_id]);
+	    }
+	  else
+	    {
+	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false);
+	    }
+
+	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 	}
     }				/* while (qfile_scan_list_next (list_scan_id)) */
 
@@ -3884,7 +3940,24 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
-      qfile_close_list (thread_p, split_info->part_list_id[part_index]);
+      assert (part_list_id[part_index] != NULL);
+
+      if (temp_part_list_id[part_index] != NULL)
+	{
+	  qfile_close_list (thread_p, temp_part_list_id[part_index]);
+
+	  if (part_list_id[part_index]->tuple_cnt > 0)
+	    {
+	      qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
+	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
+	    }
+	  else
+	    {
+	      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false);
+	    }
+
+	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	}
     }
 
   if (scan_code == S_ERROR || error != NO_ERROR)
@@ -3988,8 +4061,8 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    goto error_exit;
 	  }
 
-	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
-
+	/* Do not call QFILE_FREE_AND_INIT_LIST_ID; it must be called through single_context->list_id. */
+	context->list_id = NULL;
 	break;
       }
 
