@@ -212,7 +212,7 @@ classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, in
  *    of this type, if they are fixed size.  A value of -1 indicates that
  *    the values are of variable size.
  *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the PR_TYPE structures
+ *    This information is duplicated in the const PR_TYPE structures
  *    for use on the client.  Should consider using this on the client
  *    side as well to avoid the duplication.
  *
@@ -4759,7 +4759,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 int
 or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   int size = 0, bits;
   DB_TYPE dbval_type;
@@ -4839,7 +4839,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
 int
 or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
   int rc = NO_ERROR;
@@ -5088,7 +5088,7 @@ char *
 or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
   char *ptr_to_packed_value;

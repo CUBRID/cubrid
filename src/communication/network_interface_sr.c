@@ -5044,7 +5044,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
   SCAN_CODE qp_scan;
   OR_BUF buf;
   TP_DOMAIN **domains;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
