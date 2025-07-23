@@ -12085,6 +12085,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   next = node->next;
   node->next = NULL;
 
+  if (pt_is_ddl_statement (node))
+    {
+      tdes_set_query_start_info (node->sql_user_text);
+    }
+
   switch (node->node_type)
     {
     case PT_UPDATE:
@@ -12513,10 +12518,6 @@ pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p, PT_NOD
 PT_NODE *
 pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  if (pt_is_ddl_statement (node))
-    {
-      tdes_set_query_start_info (node->sql_user_text);
-    }
   return pt_check_with_info (parser, node, NULL);
 }
 
