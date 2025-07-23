@@ -1194,22 +1194,27 @@ valid options:\n\
   -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 DBA 비밀 번호: 
+22 삭제할 볼륨 id 입력 (q : quit) : 
+23 해당 (볼륨 id : %1$d)를 지우기 원하나요 ? (y/n)
+31 삭제 가능한 볼륨 정보:\n\n
+32 다음 볼륨 삭제 준비 완료:\n\n
+33 volid               purpose             used_pages           free_pages           total_pages         volume_name\n
+34 %1$5d               %2$12s   %3$13d        %4$13d         %5$13d         %6$-64s\n
+41 시스템 볼륨 또는 첫번째 볼륨은 삭제할 수 없습니다 (volume id : %1$d).\n
+42 해당 볼륨을 찾지 못했습니다 (볼륨 id : %1$d).\n
+43 잘 못된 볼륨 id (%1$s).\n
+44 해당 볼륨을 삭제하지 못했습니다 (볼륨 id : %1$d).\n
+45 삭제할 수 있는 볼륨이 없습니다.\n
+46 해당 (볼륨 id : %1$d)이 삭제되었습니다.\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: 빈 영구 볼륨 삭제.\n\
+usage: %1$s delvoldb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+  -S, --SA-mode                    독립 모드 실행\n\
+  -i, --volid                      삭제할 볼륨 id\n\
+  -p, --dba-password=PASS          DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb는 현재 클라이언트 서버 모드에서 지원되지 않습니다.\n

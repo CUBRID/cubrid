@@ -374,6 +374,37 @@ db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
 }
 
 /*
+ * db_del_volume_ex() - Delete a volume extension from the database.
+ *
+ *    return : Error code
+ *    volid(in) : volume id you want to delete
+ */
+int
+db_del_volume_ex (VOLID volid)
+{
+  int error = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+
+  if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_add_volume");
+      return er_errid ();
+    }
+
+  if (volid >= 1)
+    {
+      error = boot_del_volume_extension (volid);
+    }
+  else
+    {
+      error = ER_BO_DELVOL_CANNOT_DELETE_VOLID;
+    }
+
+  return error;
+}
+
+/*
  * db_num_volumes() - Find the number of permanent volumes in the database.
  *
  * return : the number of permanent volumes in database.

@@ -835,6 +835,12 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVDK_DELVOL,
+   "RVDK_DELVOL",
+   NULL,
+   disk_rv_redo_delvol,
+   NULL,
+   disk_rv_dump_delvol},
 };
 
 /*

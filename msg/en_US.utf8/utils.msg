@@ -168,6 +168,7 @@ Available administrator's utilities:\n\
     copydb\n\
     createdb\n\
     deletedb\n\
+    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\
@@ -1208,22 +1209,27 @@ valid options:\n\
   -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 Enter DBA password: 
+22 Enter volume id for removing (q : quit) :  
+23 Do you wish to remove (volume id : %1$d) ? (y/n) 
+31 Description volumes that can be deleted:\n\n
+32 Ready to remove the following an volume:\n\n
+33 volid               purpose             used_pages           free_pages           total_pages         volume_name\n
+34 %1$5d               %2$12s   %3$13d        %4$13d         %5$13d         %6$-64s\n
+41 Cannot remove system volume or the first volume (volume id : %1$d).\n
+42 Cannot find the volume (volume id : %1$d).\n
+43 Invalid volume id (%1$s).\n
+44 Cannot remove volume (volume id : %1$d).\n
+45 Thers is not an volume that can be deleted.\n
+46 The volume (volume id : %1$d) has been deleted.\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: Remove an empty volume file from the database.\n\
+usage: %1$s delvoldb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
   -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+  -i, --volid                      volume id to deleted\n\
+  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb is temporary not available for client-server mode\n

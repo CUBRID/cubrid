@@ -86,6 +86,7 @@ extern int disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_d
 extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPAGES npages,
 				      const char *path, const char *name, const char *comments,
 				      int max_write_size_in_sec, bool overwrite, VOLID * volid_out);
+extern int disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid);
 extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
@@ -132,6 +133,8 @@ extern DISK_ISVALID disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clo
 #endif /* SA_MODE */
 
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_redo_delvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void disk_rv_dump_delvol (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_hdr (FILE * fp, int length_ignore, void *data);
@@ -155,5 +158,6 @@ extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR 
 #endif /* !NDEBUG */
 
 extern int disk_sectors_to_extend_npages (const int num_pages);
+extern int disk_check_num_permvols (THREAD_ENTRY * thread_p);
 
 #endif /* _DISK_MANAGER_H_ */

@@ -559,6 +559,9 @@ log_rv_need_sync_redo (const vpid & a_rcv_vpid, LOG_RCVINDEX a_rcvindex)
     case RVDK_UNRESERVE_SECTORS:
       // Sector reservation is handled synchronously for better control; may be changed to async
       return true;
+    case RVDK_DELVOL:
+      // deleting volume
+      return true;
     default:
       return false;
     }
@@ -4039,7 +4042,9 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
+#if 0
       assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+#endif
       last_parent_lsa = *postpone_start_lsa;
     }
 

@@ -147,6 +147,19 @@ struct disk_check_vol_info
   bool exists;			/* whether volid does exist */
 };
 
+typedef struct disk_delete_vol_info DISK_DELETE_VOL_INFO;
+struct disk_delete_vol_info
+{
+  VOLID volid;			/* volume id that want to delete */
+  DKNSECTS nsect_total;
+  DKNSECTS nsect_max;
+  DKNSECTS nsect_free;
+  VOLID prev_volid;		/* previous volume id of volid */
+  VOLID next_volid;		/* next volume id of volid */
+  INT16 nvols;			/* number of permenant volumes before deleting volume */
+  char next_vol_fullname[1];	/* Actually more than one */
+};
+
 /************************************************************************/
 /* Disk cache section                                                   */
 /************************************************************************/
@@ -194,6 +207,7 @@ typedef struct disk_cache DISK_CACHE;
 struct disk_cache
 {
   int nvols_perm;		/* number of permanent type volumes */
+  int last_volid_perm;
   int nvols_temp;		/* number of temporary type volumes */
   DISK_CACHE_VOLINFO vols[LOG_MAX_DBVOLID + 1];	/* volume info array */
 
@@ -308,7 +322,7 @@ struct disk_reserve_context
 /************************************************************************/
 
 /* logging */
-static bool disk_Logging = false;
+static bool disk_Logging = true;
 #define disk_log(func, msg, ...) \
   if (disk_Logging) \
     _er_log_debug (ARG_FILE_LINE, "DISK " func " " LOG_THREAD_TRAN_MSG ": \n\t" msg "\n", \
@@ -479,6 +493,7 @@ STATIC_INLINE bool disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURP
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_check_own_reserve_for_purpose (DB_VOLPURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
 static DISK_ISVALID disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair);
+static bool disk_is_removable_volume (THREAD_ENTRY * thread_p, INT16 volid, char *volname, int *nsect_total);
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -523,7 +538,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   int kbytes_to_be_written_per_sec = ext_info->max_writesize_in_sec;
   DISK_VOLPURPOSE vol_purpose = ext_info->purpose;
   DKNPAGES extend_npages = DISK_SECTS_NPAGES (ext_info->nsect_total);
-  INT16 prev_volid;
+  INT16 prev_volid, next_volid;
   int error_code = NO_ERROR;
 
   assert ((int) sizeof (DISK_VOLUME_HEADER) <= DB_PAGESIZE);
@@ -695,11 +710,28 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE && volid != LOG_DBFIRST_VOLID)
     {
+      char next_vol_fullname[PATH_MAX];
+      if (disk_get_link (thread_p, prev_volid, &next_volid, next_vol_fullname) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
       error_code = disk_set_link (thread_p, prev_volid, volid, vol_fullname, true, DISK_FLUSH);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+
+      if (next_volid != NULL_VOLID)
+	{
+	  error_code = disk_set_link (thread_p, volid, next_volid, next_vol_fullname, true, DISK_FLUSH);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit;
+	    }
 	}
       fault_inject_random_crash ();
     }
@@ -1221,6 +1253,153 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * disk_rv_redo_delvol () - Redo update of removal volume
+ *
+ *   return: NO_ERROR if all OK, ER_ status otherwise
+ *   rcv(in): Recovery structure
+ */
+int
+disk_rv_redo_delvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+#if !defined (NDEBUG)
+  int break_pos = -1;
+  {
+    char *env = getenv ("delvol_break");
+    if (env)
+      {
+	break_pos = atoi (env);
+      }
+  }
+#define recovery_check(a) { if (break_pos == a) { printf("test ... %d\n", break_pos); _exit(-1); } }
+
+  /* inject faults to test recovery */
+#define fault_inject_random_crash() FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_DEL, 0)
+#else /* RELEASE */
+#define fault_inject_random_crash()
+#define recovery_check(a)
+#endif /* RELEASE */
+
+  DISK_DELETE_VOL_INFO *link;
+  PAGE_PTR pgptr = NULL;
+  DISK_VOLUME_HEADER *vhdr;
+  bool in_recovery = log_is_in_crash_recovery ();
+  bool is_exist_volume = false;
+  int error = NO_ERROR;
+  VOLID next_volid;
+  char next_vol_fullname[DB_MAX_PATH_LENGTH];
+
+  printf ("call disk_rv_redo_delvol\n");
+
+  link = (DISK_DELETE_VOL_INFO *) rcv->data;
+
+  if (in_recovery && !xdisk_is_volume_exist (thread_p, link->volid))
+    {
+      if (xboot_find_number_permanent_volumes (thread_p) != link->nvols - 1)
+	{
+	  boot_change_permanent_volumes (link->nvols - 1);
+	  boot_db_parm_update (thread_p);
+	  recovery_check (6);
+	}
+
+      if (disk_get_link (thread_p, link->prev_volid, &next_volid, next_vol_fullname) != NULL)
+	{
+	  if (next_volid != link->next_volid)
+	    {
+	      disk_set_link (thread_p, link->prev_volid, link->next_volid, link->next_vol_fullname, false, DISK_FLUSH);
+	      logpb_recreate_volume_info (thread_p);
+	      recovery_check (7);
+	    }
+	}
+    }
+  else
+    {
+      if (!xdisk_is_volume_exist (thread_p, link->volid)
+	  || disk_Cache->vols[link->volid].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  return NO_ERROR;
+	}
+
+      int nvols = xboot_find_number_permanent_volumes (thread_p);
+      if (nvols != link->nvols)
+	{
+	  return ER_FAILED;
+	}
+
+      char *vlabel;
+      vlabel = fileio_get_volume_label (link->volid, PEEK);
+
+      boot_change_permanent_volumes (nvols - 1);
+      if (xboot_find_last_permanent (thread_p) == link->volid)
+	{
+	  boot_change_last_permanent (link->prev_volid);
+	}
+
+      error = boot_db_parm_update (thread_p);
+      if (error != NO_ERROR)
+	{
+	  boot_change_permanent_volumes (nvols);
+	  if (xboot_find_last_permanent (thread_p) == link->prev_volid)
+	    {
+	      boot_change_last_permanent (link->volid);
+	    }
+	  return ER_FAILED;
+	}
+
+      logpb_force_flush_pages (thread_p);
+
+      recovery_check (1);
+      error = disk_set_link (thread_p, link->prev_volid, link->next_volid, link->next_vol_fullname, false, DISK_FLUSH);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      recovery_check (2);
+      error = logpb_recreate_volume_info (thread_p);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* decache info of deleted volume from disk cache */
+      disk_cache_lock_reserve_for_purpose (disk_Cache->vols[link->volid].purpose);
+      disk_cache_update_vol_free (link->volid, -link->nsect_free);
+      disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[link->volid].purpose);
+
+      disk_Cache->nvols_perm--;
+      disk_Cache->last_volid_perm = xboot_peek_last_permanent (thread_p);
+      disk_Cache->vols[link->volid].purpose = DISK_UNKNOWN_PURPOSE;
+
+      disk_Cache->perm_purpose_info.extend_info.nsect_total -= link->nsect_total;
+      disk_Cache->perm_purpose_info.extend_info.nsect_max -= link->nsect_max;
+
+      recovery_check (3);
+      disk_unformat (thread_p, vlabel);
+      recovery_check (4);
+    }
+
+//    pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  recovery_check (5);
+
+  return NO_ERROR;
+
+#undef fault_inject_random_crash
+}
+
+/*
+ * disk_rv_dump_delvol () - Dump removal volume information
+ *   return: voild
+ *   length_ignore(in): Length of Recovery Data
+ *   data(in): The data being logged
+ */
+void
+disk_rv_dump_delvol (FILE * fp, int length_ignore, void *data)
+{
+  fprintf (fp, "Remove volume: volid = %d\n", *((int *) data));
+}
+
+/*
  * disk_rv_undo_format () - Undo the initialization of a disk. The disk is uninitialized or removed
  *   return: NO_ERROR
  *   rcv(in): Recovery structure
@@ -1244,7 +1423,11 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    *      condition: LOG_ISRESTARTED () == false AND volid == disk_Cache->nvols_perm - 1
    */
 
+#if 0
   if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
+#else
+  if (!LOG_ISRESTARTED () && volid == disk_Cache->last_volid_perm)
+#endif
     {
       VPID vpid_volheader;
       PAGE_PTR page_volheader = NULL;
@@ -1290,6 +1473,7 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       assert (disk_Cache->vols[volid].nsect_free == 0);
       disk_Cache->nvols_perm--;
+      disk_Cache->last_volid_perm = xboot_peek_last_permanent (thread_p);
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
 
       disk_Cache->perm_purpose_info.extend_info.nsect_total -= total;
@@ -1307,9 +1491,16 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   else
     {
       /* case 1 or 2. disk cache is not updated here. */
+#if 0
       assert (disk_Cache->nvols_perm <= volid || (LOG_ISRESTARTED () && (disk_Cache->nvols_perm - 1 == volid)));
       assert (disk_Cache->vols[volid].nsect_free == 0);
       assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
+#else
+      assert (disk_Cache->last_volid_perm <= volid
+	      || (LOG_ISRESTARTED () && (disk_Cache->last_volid_perm - 1 <= volid)));
+      assert (disk_Cache->vols[volid].nsect_free == 0);
+      assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
+#endif
 
       /* make sure purpose is reset */
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
@@ -1369,7 +1560,7 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    * while we are here, the sectors reserved in step #2 are already found in sector table pages, so the assumption that
    * whole volume is empty is wrong. we need to count the sectors to make sure we are not wrong. */
 
-  if (disk_Cache->nvols_perm == volheader->volid)
+  if (disk_Cache->last_volid_perm == volheader->volid)
     {
       /* add to disk cache */
       disk_Cache->nvols_perm++;
@@ -1825,7 +2016,11 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+#if 0
       assert (disk_Cache->nvols_perm + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
+#else
+      assert (disk_Cache->last_volid_perm + 1 + disk_Cache->nvols_temp <= LOG_MAX_DBVOLID);
+#endif
 
       disk_log ("disk_extend", "added new volume %d with %d free sectors for %s.", volid_new, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
@@ -2105,7 +2300,7 @@ static int
 disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * volid_out, DKNSECTS * nsects_free_out)
 {
   char fullname[PATH_MAX];
-  VOLID volid;
+  VOLID volid = NULL_VOLID;;
   DKNSECTS nsect_part_max;
   int error_code = NO_ERROR;
   bool can_overwrite;
@@ -2121,7 +2316,11 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
    * 6. update boot_Db_parm.
    */
 
+#if 0
   if (disk_Cache->nvols_perm + disk_Cache->nvols_temp >= LOG_MAX_DBVOLID)
+#else
+  if (disk_Cache->last_volid_perm + 1 + disk_Cache->nvols_temp >= LOG_MAX_DBVOLID)
+#endif
     {
       /* oops, too many volumes */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXNUM_VOLS_HAS_BEEN_EXCEEDED, 1, LOG_MAX_DBVOLID);
@@ -2129,6 +2328,21 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
     }
 
   /* get from boot the volume name and identifier */
+  if (extinfo->voltype == DB_PERMANENT_VOLTYPE && disk_Cache->nvols_perm < disk_Cache->last_volid_perm + 1)
+    {
+      int iter_vol = 0;
+
+      for (iter_vol = 0; iter_vol <= disk_Cache->last_volid_perm; iter_vol++)
+	{
+	  if (disk_Cache->vols[iter_vol].purpose == DISK_UNKNOWN_PURPOSE)
+	    {
+	      break;
+	    }
+	}
+      assert (iter_vol < disk_Cache->last_volid_perm);
+      volid = iter_vol;
+    }
+
   error_code =
     boot_get_new_volume_name_and_id (thread_p, extinfo->voltype, extinfo->path, extinfo->name, fullname, &volid);
   if (error_code != NO_ERROR)
@@ -2222,6 +2436,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
       disk_Cache->nvols_perm++;
+      disk_Cache->last_volid_perm = MAX (volid, disk_Cache->last_volid_perm);
     }
   else
     {
@@ -2238,10 +2453,17 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
     {
-      if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+      if (volid == disk_Cache->last_volid_perm)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto exit;
+	  if (logpb_add_volume (NULL, volid, extinfo->name, DB_PERMANENT_DATA_PURPOSE) == NULL_VOLID)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	}
+      else
+	{
+	  (void) logpb_recreate_volume_info (thread_p);
 	}
     }
 
@@ -2351,7 +2573,11 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
       csect_exit (thread_p, CSECT_DISK_CHECK);
       return error_code;
     }
+#if 0
   assert (volid_new == disk_Cache->nvols_perm - 1);
+#else
+  assert (volid_new <= disk_Cache->last_volid_perm);
+#endif
 
   if (ext_info.purpose == DB_PERMANENT_DATA_PURPOSE)
     {
@@ -2381,6 +2607,174 @@ disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, DKNPA
 
   /* success */
   return NO_ERROR;
+}
+
+/*
+ * disk_del_volume_extenstion:
+ *    return: NO_ERROR
+ *
+ *  volid(in): volume id you want to delete
+ *
+ */
+int
+disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  PAGE_PTR vhdr_pgptr = NULL;
+  DISK_VOLUME_HEADER *vhdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;;
+  DISK_DELETE_VOL_INFO *redo_recv;
+  int redo_size;
+  VOLID prev_volid = NULL_VOLID, next_volid = NULL_VOLID;
+  char next_vol_fullname[DB_MAX_PATH_LENGTH];
+  DKNSECTS nsect_total, nsect_max, nsect_free;
+  int error = NO_ERROR;
+
+  /* check if the volume is removable */
+  if (disk_is_removable_volume (thread_p, volid, NULL, NULL) == false)
+    {
+      return ER_NOT_A_EMPTY_VOLUME;
+    }
+
+  /* get info of deleting volume */
+  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &vhdr_pgptr, &vhdr) != NO_ERROR)
+    {
+      return ER_BO_DELVOL_CANNOT_DELETE_VOLID;
+    }
+  nsect_total = vhdr->nsect_total;
+  nsect_max = vhdr->nsect_max;
+  nsect_free = disk_Cache->vols[volid].nsect_free;
+  pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
+
+  /* find previous volume and get info */
+  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+  if (prev_volid == NULL_VOLID)
+    {
+      return ER_BO_DELVOL_CANNOT_DELETE_VOLID;
+    }
+
+#if 0
+  if (disk_get_volheader (thread_p, prev_volid, PGBUF_LATCH_READ, &addr.pgptr, &vhdr) != NO_ERROR)
+    {
+      return ER_BO_DELVOL_CANNOT_DELETE_VOLID;
+    }
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+#endif
+
+  /* find next volume and get info */
+  if (xboot_find_last_permanent (thread_p) == volid)
+    {
+      next_volid = NULL_VOLID;
+      next_vol_fullname[0] = '\0';
+    }
+  else if (disk_get_link (thread_p, volid, &next_volid, next_vol_fullname) == NULL)
+    {
+      error = ER_BO_DELVOL_CANNOT_DELETE_VOLID;
+      goto error;
+    }
+
+  /* make redo data */
+  redo_size = (sizeof (*redo_recv) + (int) strlen (next_vol_fullname));
+  redo_recv = (DISK_DELETE_VOL_INFO *) malloc (redo_size);
+  if (redo_recv == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, redo_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+
+  redo_recv->volid = volid;
+  redo_recv->prev_volid = prev_volid;
+  redo_recv->next_volid = next_volid;
+  redo_recv->nsect_total = nsect_total;
+  redo_recv->nsect_max = nsect_max;
+  redo_recv->nsect_free = nsect_free;
+  redo_recv->nvols = xboot_find_number_permanent_volumes (thread_p);
+  (void) strcpy (redo_recv->next_vol_fullname, next_vol_fullname);
+
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  log_append_postpone (thread_p, RVDK_DELVOL, &addr, redo_size, redo_recv);
+
+  free_and_init (redo_recv);
+
+  return NO_ERROR;
+
+error:
+
+  return error;;
+}
+
+/*
+ * disk_is_removable_volume () - check if the volume can be deleted
+ *
+ *   return: true if the volume can be deleted or false
+ *
+ *   volid(in): volume id you want to delete
+ *
+ *   Note : This function only checks for persistent volumes and returns false for temporary volumes.
+ *          For permanent temp volumes, it returns true without further checking.
+ *          For permanent data volumes, it checks for the presence of data.
+ */
+static bool
+disk_is_removable_volume (THREAD_ENTRY * thread_p, INT16 volid, char *volname, int *nsect_total)
+{
+  PAGE_PTR vhdr_pgptr = NULL;
+  DISK_VOLUME_HEADER *vhdr = NULL;
+  VPID vpid;
+  int total_nsect, free_nsect;
+  bool is_empty_volume, not_allocated;
+  bool return_var;
+
+  vpid.volid = volid;
+  vpid.pageid = DISK_VOLHEADER_PAGE;
+
+  vhdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (vhdr_pgptr == NULL)
+    {
+      return false;
+    }
+
+  vhdr = (DISK_VOLUME_HEADER *) vhdr_pgptr;
+
+  if (vhdr->type == DB_TEMPORARY_VOLTYPE)
+    {
+      return_var = false;
+      goto exit;
+    }
+  else if (vhdr->purpose == DB_TEMPORARY_DATA_PURPOSE)
+    {
+      return_var = true;
+      goto exit;
+    }
+
+  total_nsect = vhdr->nsect_total;
+  free_nsect = disk_Cache->vols[vhdr->volid].nsect_free;
+
+  is_empty_volume = (total_nsect == (free_nsect + CEIL_PTVDIV ((vhdr->sys_lastpage + 1), DISK_SECTOR_NPAGES)));
+  not_allocated = (total_nsect <= (free_nsect + CEIL_PTVDIV ((vhdr->sys_lastpage + 1), DISK_SECTOR_NPAGES)));
+
+  if (is_empty_volume && not_allocated)
+    {
+      return_var = true;
+    }
+
+  if (volname)
+    {
+      strncpy (volname, disk_vhdr_get_vol_fullname (vhdr), DB_MAX_PATH_LENGTH);
+    }
+
+  if (nsect_total)
+    {
+      *nsect_total = vhdr->nsect_total;
+    }
+
+exit:
+
+  pgbuf_unfix_and_init (thread_p, vhdr_pgptr);
+
+  return return_var;
 }
 
 /*
@@ -2486,6 +2880,8 @@ disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
       return false;
     }
 
+  disk_Cache->last_volid_perm = MAX (volid, disk_Cache->last_volid_perm);
+
   if (vol_type != DB_PERMANENT_VOLTYPE)
     {
       /* don't save temporary volumes... they will be dropped anyway */
@@ -2548,6 +2944,7 @@ disk_cache_init (void)
     }
 
   disk_Cache->nvols_perm = 0;
+  disk_Cache->last_volid_perm = -1;
   disk_Cache->nvols_temp = 0;
 
   disk_Cache->perm_purpose_info.extend_info.nsect_vol_max =
@@ -4499,7 +4896,11 @@ disk_reserve_from_cache_vols (DB_VOLTYPE type, DISK_RESERVE_CONTEXT * context)
   if (type == DB_PERMANENT_VOLTYPE)
     {
       start_iter = 0;
+#if 0
       end_iter = disk_Cache->nvols_perm;
+#else
+      end_iter = disk_Cache->last_volid_perm + 1;
+#endif
       incr = 1;
 
       min_free = MIN (context->nsect_total, disk_Cache->perm_purpose_info.extend_info.nsect_vol_max) / 2;
@@ -4961,6 +5362,7 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
   ext_info.voltype = DB_PERMANENT_VOLTYPE;
 
   disk_Cache->nvols_perm = 1;
+  disk_Cache->last_volid_perm = LOG_DBFIRST_VOLID;
   disk_Cache->vols[LOG_DBFIRST_VOLID].purpose = DB_PERMANENT_DATA_PURPOSE;
 
   error_code = disk_format (thread_p, full_dbname, LOG_DBFIRST_VOLID, &ext_info, &nsect_free);
@@ -4968,6 +5370,7 @@ disk_format_first_volume (THREAD_ENTRY * thread_p, const char *full_dbname, cons
     {
       ASSERT_ERROR ();
       disk_Cache->nvols_perm = 0;
+      disk_Cache->last_volid_perm = NULL_VOLID;
       return error_code;
     }
 
@@ -5502,7 +5905,11 @@ xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOL
 
   assert (volid != NULL_VOLID);
   assert (disk_Cache != NULL);
+#if 0
   assert (volid < disk_Cache->nvols_perm || volid > LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+#else
+  assert (disk_is_valid_volid (volid));
+#endif
 
   if (space_info != NULL)
     {
@@ -5607,7 +6014,11 @@ xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
   /* get from cache. */
   /* todo: investigate usage */
   assert (disk_Cache != NULL);
+#if 0
   assert (volid <= disk_Cache->nvols_perm || volid > LOG_MAX_DBVOLID - disk_Cache->nvols_temp);
+#else
+  assert (disk_is_valid_volid (volid));
+#endif
 
   return DISK_SECTS_NPAGES (disk_Cache->vols[volid].nsect_free);
 }
@@ -5829,7 +6240,11 @@ disk_dump_goodvol_all (THREAD_ENTRY * thread_p, INT16 volid, void *arg)
 STATIC_INLINE bool
 disk_is_valid_volid (VOLID volid)
 {
+#if 0
   return volid < disk_Cache->nvols_perm || volid > LOG_MAX_DBVOLID - disk_Cache->nvols_temp;
+#else
+  return volid <= disk_Cache->last_volid_perm || volid > LOG_MAX_DBVOLID - disk_Cache->nvols_temp;
+#endif
 }
 
 /*
@@ -5859,7 +6274,11 @@ disk_get_voltype (VOLID volid)
   assert (disk_Cache != NULL);
   assert (disk_is_valid_volid (volid));
 
+#if 0
   return volid < disk_Cache->nvols_perm ? DB_PERMANENT_VOLTYPE : DB_TEMPORARY_VOLTYPE;
+#else
+  return volid <= disk_Cache->last_volid_perm ? DB_PERMANENT_VOLTYPE : DB_TEMPORARY_VOLTYPE;
+#endif
 }
 
 /*
@@ -5891,8 +6310,13 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 
   /* get number of volumes. we know the total number of permanent type volumes, we'll have to count how many of them
    * have temporary purpose */
-  for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+  for (iter_vol = 0; iter_vol <= disk_Cache->last_volid_perm; iter_vol++)
     {
+      if (disk_Cache->vols[iter_vol].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  continue;
+	}
+
       if (disk_Cache->vols[iter_vol].purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  spaceall[SPACEDB_PERM_TEMP_ALL].nvols++;
@@ -5930,8 +6354,12 @@ disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL **
 	  goto exit;
 	}
 
-      for (iter_vol = 0; iter_vol < disk_Cache->nvols_perm; iter_vol++)
+      for (iter_vol = 0; iter_vol <= disk_Cache->last_volid_perm; iter_vol++)
 	{
+	  if (disk_Cache->vols[iter_vol].purpose == DISK_UNKNOWN_PURPOSE)
+	    {
+	      continue;
+	    }
 	  (*spacevols)[iter_spacevols].volid = iter_vol;
 	  (*spacevols)[iter_spacevols].type = DB_PERMANENT_VOLTYPE;
 	  (*spacevols)[iter_spacevols].purpose = disk_Cache->vols[iter_vol].purpose;
@@ -6002,6 +6430,128 @@ exit:
     {
       /* free spacevols */
       free_and_init (*spacevols);
+    }
+
+  return error_code;
+}
+
+/*
+ * xdisk_get_volinfo_can_deleted () - get info of volumes that can be deleted
+ *
+ * return          : error code or volume count that can be deleted 
+ * thread_p (in)   : thread entry
+ * volid (in)      : volume id (if volid is NULL_VOLID, all volumes that can be deleted) 
+ * spacevols (out) : output volume info that can be deleted if not null
+ *
+ */
+int
+xdisk_get_volinfo_can_deleted (THREAD_ENTRY * thread_p, int volid, SPACEDB_ONEVOL ** spacevols)
+{
+  SPACEDB_ONEVOL *tempvols = NULL;
+  char tmp_volname[DB_MAX_PATH_LENGTH];
+  int nsect_total;
+  bool is_extend_locked = false;
+  int error_code = NO_ERROR;
+  int startvol, endvol, temp_volcount, volcount;
+  int iter_vol;
+
+  disk_lock_extend ();
+  is_extend_locked = true;
+
+  assert (spacevols != NULL);
+
+  /* check whether to collect information on a specific volume or all volumes that can be deleted. */
+  /* if volid is NULL_VOLID (-1), gather information on a specific volume. */
+  if (volid != NULL_VOLID)
+    {
+      if (volid > disk_Cache->last_volid_perm || disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_VOLID, 1, volid);
+	  error_code = ER_FILE_UNKNOWN_VOLID;
+	  goto exit;
+	}
+
+      startvol = volid;
+      endvol = volid;
+      temp_volcount = 1;
+    }
+  else
+    {
+      startvol = LOG_DBFIRST_VOLID + 1;
+      endvol = disk_Cache->last_volid_perm;
+      temp_volcount = disk_Cache->last_volid_perm;
+    }
+
+  tempvols = (SPACEDB_ONEVOL *) malloc (temp_volcount * sizeof (SPACEDB_ONEVOL));
+  if (tempvols == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, temp_volcount * sizeof (SPACEDB_ONEVOL));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  for (iter_vol = startvol, volcount = 0; iter_vol <= endvol; iter_vol++)
+    {
+      if (disk_Cache->vols[iter_vol].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  continue;
+	}
+
+      if (disk_is_removable_volume (thread_p, iter_vol, tmp_volname, &nsect_total) == false)
+	{
+	  continue;
+	}
+
+      tempvols[volcount].volid = iter_vol;
+      tempvols[volcount].type = DB_PERMANENT_VOLTYPE;
+      tempvols[volcount].purpose = disk_Cache->vols[iter_vol].purpose;
+      tempvols[volcount].npage_free = DISK_SECTS_NPAGES (disk_Cache->vols[iter_vol].nsect_free);
+      tempvols[volcount].npage_used = DISK_SECTS_NPAGES (nsect_total) - tempvols[volcount].npage_free;
+      strncpy (tempvols[volcount].name, tmp_volname, DB_MAX_PATH_LENGTH);
+
+      volcount++;
+    }
+
+  if (volcount == 0)
+    {
+      *spacevols = NULL;
+      free_and_init (tempvols);
+    }
+  else if (temp_volcount != volcount)
+    {
+      *spacevols = (SPACEDB_ONEVOL *) malloc (volcount * sizeof (SPACEDB_ONEVOL));
+      if (*spacevols != NULL)
+	{
+	  memcpy (*spacevols, tempvols, volcount * sizeof (SPACEDB_ONEVOL));
+	  free_and_init (tempvols);
+	}
+      else
+	{
+	  *spacevols = tempvols;
+	}
+    }
+  else
+    {
+      *spacevols = tempvols;
+    }
+  error_code = NO_ERROR;
+
+exit:
+
+  if (is_extend_locked)
+    {
+      disk_unlock_extend ();
+    }
+
+  if (error_code != NO_ERROR && tempvols != NULL)
+    {
+      /* free tempvols */
+      free_and_init (tempvols);
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      error_code = volcount;
     }
 
   return error_code;
@@ -6317,7 +6867,11 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
   volid_perm_last = xboot_find_last_permanent (thread_p);
   volid_temp_last = xboot_find_last_temp (thread_p);
 
+#if 0
   if (nvols_perm != volid_perm_last + 1)
+#else
+  if (nvols_perm >= volid_perm_last)
+#endif
     {
       /* cannot repair */
       assert_release (false);
@@ -6339,6 +6893,21 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
       if (repair)
 	{
 	  disk_Cache->nvols_perm = nvols_perm;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  csect_exit (thread_p, CSECT_DISK_CHECK);
+	  return DISK_INVALID;
+	}
+    }
+
+  if (volid_perm_last != disk_Cache->last_volid_perm)
+    {
+      assert (false);
+      if (repair)
+	{
+	  disk_Cache->last_volid_perm = volid_perm_last;
 	}
       else
 	{
@@ -6370,8 +6939,13 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
   /* second step: check volume cached info is consistent */
-  for (volid_iter = 0; volid_iter < disk_Cache->nvols_perm; volid_iter++)
+  for (volid_iter = 0; volid_iter <= disk_Cache->last_volid_perm; volid_iter++)
     {
+      if (disk_Cache->vols[volid_iter].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  continue;
+	}
+
       valid = disk_check_volume (thread_p, volid_iter, repair);
       if (valid != DISK_VALID)
 	{
@@ -6401,8 +6975,13 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
     }
 
   /* check permanently stored volumes */
-  for (perm_free = 0, temp_free = 0, volid_iter = 0; volid_iter < disk_Cache->nvols_perm; volid_iter++)
+  for (perm_free = 0, temp_free = 0, volid_iter = 0; volid_iter <= disk_Cache->last_volid_perm; volid_iter++)
     {
+      if (disk_Cache->vols[volid_iter].purpose == DISK_UNKNOWN_PURPOSE)
+	{
+	  continue;
+	}
+
       if (disk_Cache->vols[volid_iter].purpose == DB_PERMANENT_DATA_PURPOSE)
 	{
 	  perm_free += disk_Cache->vols[volid_iter].nsect_free;
@@ -6496,7 +7075,7 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
 
   int error_code = NO_ERROR;
 
-  *disk_map_clone = (DISK_VOLMAP_CLONE *) calloc (disk_Cache->nvols_perm, sizeof (DISK_VOLMAP_CLONE));
+  *disk_map_clone = (DISK_VOLMAP_CLONE *) calloc (disk_Cache->last_volid_perm + 1, sizeof (DISK_VOLMAP_CLONE));
   if (*disk_map_clone == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -6504,9 +7083,10 @@ disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_cl
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
+  for (iter = 0; iter <= disk_Cache->last_volid_perm; iter++)
     {
-      if (disk_Cache->vols[iter].purpose == DB_TEMPORARY_DATA_PURPOSE)
+      if (disk_Cache->vols[iter].purpose == DISK_UNKNOWN_PURPOSE
+	  || disk_Cache->vols[iter].purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  /* we don't consider volumes with temporary purpose here */
 	  continue;
@@ -6598,7 +7178,7 @@ disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone)
 {
   VOLID iter;
 
-  for (iter = 0; iter < disk_Cache->nvols_perm; iter++)
+  for (iter = 0; iter < disk_Cache->last_volid_perm; iter++)
     {
       free ((*disk_map_clone)[iter].map);
     }
@@ -6650,8 +7230,14 @@ disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone)
   DISK_STAB_UNIT *unit;
   VOLID volid;
 
-  for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
+  for (volid = 0; volid <= disk_Cache->last_volid_perm; volid++)
     {
+      if (disk_Cache->vols[volid].purpose == DISK_UNKNOWN_PURPOSE
+	  || disk_Cache->vols[volid].purpose == DB_TEMPORARY_DATA_PURPOSE)
+	{
+	  continue;
+	}
+
       for (unit = (DISK_STAB_UNIT *) disk_map_clone[volid].map;
 	   (char *) unit < disk_map_clone[volid].map + disk_map_clone[volid].size_map; unit++)
 	{
@@ -6691,6 +7277,24 @@ int
 disk_sectors_to_extend_npages (const int num_pages)
 {
   return DISK_SECTS_ROUND_UP (DISK_PAGES_TO_SECTS (num_pages));
+}
+
+
+int
+disk_check_num_permvols (THREAD_ENTRY * thread_p)
+{
+  int error = NO_ERROR;
+  int nvols = xboot_find_number_permanent_volumes (thread_p);
+
+  printf ("disk_check_num_permvols : %d, %d\n", disk_Cache->nvols_perm, nvols);
+  if (disk_Cache->nvols_perm != nvols)
+    {
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_INCONSISTENT_NPERM_VOLUMES, 2, disk_Cache->nvols_perm,
+	      nvols);
+      return ER_FAILED;
+    }
+
+  return error;
 }
 
 /************************************************************************/

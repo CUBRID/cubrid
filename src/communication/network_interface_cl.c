@@ -4288,6 +4288,63 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 }
 
 /*
+ * boot_del_volume_extension -
+ *
+ * return:
+ *
+ *   volid(in):
+ *   clear_cached(in): clear cached files in the temporary temp volume
+ *
+ * NOTE:
+ */
+int
+boot_del_volume_extension (VOLID volid)
+{
+  int success = ER_FAILED;
+
+#if defined(CS_MODE)
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "deldb database");
+  return ER_FAILED;
+#else
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xboot_del_volume_extension (thread_p, volid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * disk_get_volinfo_can_deleted -
+ *
+ * return:
+ *  
+ *  volid(in) :
+ *  spacevols(out) :
+ */
+int
+disk_get_volinfo_can_deleted (VOLID volid, SPACEDB_ONEVOL ** spacevols)
+{
+  int success = ER_FAILED;
+#if defined(CS_MODE)
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "deldb database");
+  return ER_FAILED;
+#else
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xdisk_get_volinfo_can_deleted (thread_p, volid, spacevols);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif
+}
+
+/*
  * boot_check_db_consistency -
  *
  * return:

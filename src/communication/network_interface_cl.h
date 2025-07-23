@@ -56,6 +56,7 @@
 #include "flashback_cl.h"
 #include "pl_struct_compile.hpp"
 #include "pl_signature.hpp"
+#include "disk_manager.h"
 #include "memory_monitor_common.hpp"
 
 // forward declarations
@@ -214,6 +215,8 @@ extern int boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_leve
 			const char *backup_verbose_file, int num_threads, FILEIO_ZIP_METHOD zip_method,
 			FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs, bool separate_keys);
 extern VOLID boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info);
+extern int boot_del_volume_extension (VOLID volid);
+extern int disk_get_volinfo_can_deleted (VOLID volid, SPACEDB_ONEVOL ** spacevols);
 extern int boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * idx_btid);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);

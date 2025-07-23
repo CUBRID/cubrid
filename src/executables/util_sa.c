@@ -5190,3 +5190,272 @@ print_dump_tz_usage:
 	   basename (arg->argv0));
   return err_status;
 }
+
+/*
+ * delvoldb() - delvoldb main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+delvoldb (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *volid_str;
+  const char *database_name;
+  const char *dba_password;
+  char *passbuf = NULL;
+
+  bool start_transaction = false;
+  int volcount = 0, volid = -1, res;
+  char volume_fullname[PATH_MAX];
+  char *end;
+
+  int error;
+  int i;
+  char reply[81];
+
+  SPACEDB_ONEVOL *spacevols = NULL;
+
+#define VOL_PURPOSE_STRING(VOL_PURPOSE)         \
+            ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"      \
+            : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
+            : "UNKNOWN")
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_delvol_usage;
+    }
+
+  volid_str = utility_get_option_string_value (arg_map, DELVOL_VOLUME_ID_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, DELVOL_DBA_PASSWORD_S, 0);
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* frist try to restart with the password given */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf =
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  start_transaction = true;
+
+  if (volid_str != NULL)
+    {
+      res = str_to_int32 (&volid, &end, volid_str, 10);
+      if (res < 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_INVALID_VOLUME_ID),
+				 volid_str);
+	  goto error_exit;
+	}
+
+      if (volid <= 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_CANNOT_REMOVE_FIRST_VOL),
+				 volid);
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      volid = -1;
+    }
+
+  error = disk_get_volinfo_can_deleted (volid, &spacevols);
+  if (error < NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+  else if (error == 0)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB,
+			      volid != -1 ? DELVOLDB_MSG_NOT_VOL_CAN_DELETED : DELVOLDB_MSG_CANNOT_REMOVE_VOL), volid);
+      goto error_exit;
+    }
+  else
+    {
+      volcount = error;
+    }
+
+  fprintf (stdout,
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB,
+			   volid != -1 ? DELVOLDB_MSG_READY_TO_DEL : DELVOLDB_MSG_LIST_VOL_CAN_DELETED));
+  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_VOLS_HEADER_SIZE));
+
+  for (i = 0; i < volcount; i++)
+    {
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_OUTPUT_FORMAT),
+	       spacevols[i].volid,
+	       VOL_PURPOSE_STRING (spacevols[i].purpose),
+	       spacevols[i].npage_used,
+	       spacevols[i].npage_free, spacevols[i].npage_used + spacevols[i].npage_free, spacevols[i].name);
+    }
+
+  if (volid == -1)
+    {
+      do
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_CHOOSE_VOLID));
+	  fflush (stdout);
+
+	  if (fgets (reply, 80, stdin) == NULL)
+	    {
+	      continue;
+	    }
+
+	  size_t len = strcspn (reply, "\n");
+	  if (reply[len] == '\n')
+	    {
+	      reply[len] = '\0';
+	    }
+
+	  if (reply[0] == '\0')
+	    {
+	      continue;
+	    }
+
+	  /* check to quit */
+	  if (reply[0] == 'Q' || reply[0] == 'q')
+	    {
+	      goto error_exit;
+	    }
+
+	  /* do left trim and right trim */
+	  char *p = reply;
+	  for (; *p == ' ' || *p == '\t' || *p == '\r' || *p == '\f' || *p == '\v'; p++);
+
+	  char *e = p + strlen (p);
+	  while (e > p && (unsigned char) *(e - 1) <= ' ')
+	    {
+	      *(--e) = '\0';
+	    }
+
+	  if (*p == '\0')
+	    {
+	      continue;
+	    }
+
+	  res = str_to_int32 (&volid, &end, p, 10);
+	  if (res < 0)
+	    {
+	      /* retry to request volid, when input string can not be converted to an int value */
+	      continue;
+	    }
+
+	  /* check if the volid is in the list of volid that can be deleted */
+	  for (i = 0; i < volcount; i++)
+	    {
+	      if (volid == spacevols[i].volid)
+		{
+		  break;
+		}
+	    }
+
+	  if (i < volcount)
+	    {
+	      strcpy (volume_fullname, spacevols[i].name);
+	      break;
+	    }
+	}
+      while (1);
+    }
+  else
+    {
+      strcpy (volume_fullname, spacevols[0].name);
+    }
+
+  if (spacevols != NULL)
+    {
+      free_and_init (spacevols);
+    }
+
+  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_VERIFY), volid);
+  fflush (stdout);
+
+  reply[0] = getc (stdin);
+  if (reply[0] != 'Y' && reply[0] != 'y')
+    {
+      db_abort_transaction ();
+      db_shutdown ();
+
+      return EXIT_SUCCESS;
+    }
+
+  res = db_del_volume_ex ((VOLID) volid);
+  if (res != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_DONE), volid);
+  fflush (stdout);
+
+  db_commit_transaction ();
+
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_delvol_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  if (start_transaction)
+    {
+      db_abort_transaction ();
+      db_shutdown ();
+    }
+
+  return EXIT_FAILURE;
+#undef VOL_PURPOSE_STRING
+}

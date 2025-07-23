@@ -83,6 +83,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "log_manager.h"
+#include "fault_injection.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -354,6 +355,14 @@ xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p)
   return nvols;
 }
 
+void
+boot_change_permanent_volumes (int nvols)
+{
+  disk_lock_extend ();
+  boot_Db_parm->nvols = nvols;
+  disk_unlock_extend ();
+}
+
 /*
  * xboot_find_number_temp_volumes () - find the number of temporary volumes
  *
@@ -388,6 +397,14 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
   disk_unlock_extend ();
 
   return volid;
+}
+
+void
+boot_change_last_permanent (VOLID volid)
+{
+  disk_lock_extend ();
+  boot_Db_parm->last_volid = volid;
+  disk_unlock_extend ();
 }
 
 /*
@@ -565,6 +582,30 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
     }
   assert (volid != NULL_VOLID);
   return volid;
+}
+
+/*
+ * xboot_del_volume_extension () - delete a volume extension of the database
+ *
+ * return : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   volid : volume id you want to delete
+ *
+ */
+int
+xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  int r;
+
+  if (xdisk_is_volume_exist (thread_p, volid) == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, volid);
+      return ER_BO_UNKNOWN_VOLUME;
+    }
+
+  r = disk_del_volume_extension (thread_p, volid);
+
+  return r;
 }
 
 /*
@@ -1050,7 +1091,7 @@ boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID 
 /*
  * boot_find_rest_permanent_volumes () - call function on the rest of permanent vols of database
  *
- * return : NO_ERROR if all OK, ER_ status otherwise
+ * return : number of mounted volume if all OK, ER_ status otherwise
  *
  *   newvolpath(in): restore the database and log volumes to the path specified in the database-loc-file.
  *   use_volinfo(in): use volinfo indicator
@@ -1131,10 +1172,14 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 	}
     }
 
+#if 0
   if (num_vols < boot_Db_parm->nvols)
     {
       return ER_FAILED;
     }
+#else
+  error_code = num_vols;
+#endif
 
   return error_code;
 }
@@ -2359,9 +2404,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* Find the rest of the volumes and mount them */
-
+  /* Notice : If a crash occurs while deleting a volume (delvoldb), the number of persistent volumes may be different, 
+     so the number of persistent volumes will be checked after recovery. */
   error_code = boot_find_rest_volumes (thread_p, from_backup ? r_args : NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
-  if (error_code != NO_ERROR)
+  if (error_code < NO_ERROR)
     {
       goto error;
     }
@@ -2423,6 +2469,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
   error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  /* In case a crash occurs when deleting a volume (delvoldb), we check the number of permanent disks after recovery. */
+  error_code = disk_check_num_permvols (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5226,7 +5280,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       /* Find the rest of the volumes and mount them */
       error_code = boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
-      if (error_code != NO_ERROR)
+      if (error_code < NO_ERROR || error_code != boot_Db_parm->nvols)
 	{
 	  goto error_rem_allvols;
 	}
@@ -5482,7 +5536,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Find the rest of the volumes and mount them */
 
   error_code = boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID, boot_mount, NULL);
-  if (error_code != NO_ERROR)
+  if (error_code < NO_ERROR || error_code != boot_Db_parm->nvols)
     {
       goto error_exit;
     }
@@ -5955,7 +6009,11 @@ boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, co
 
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
-      *volid_newvol_out = boot_Db_parm->last_volid + 1;
+      if (*volid_newvol_out == NULL_VOLID || boot_Db_parm->nvols == boot_Db_parm->last_volid + 1)
+	{
+	  *volid_newvol_out = boot_Db_parm->last_volid + 1;
+	}
+
       if (*volid_newvol_out > LOG_MAX_DBVOLID
 	  || (boot_Db_parm->temp_nvols > 0 && *volid_newvol_out >= boot_Db_parm->temp_last_volid))
 	{
@@ -6032,13 +6090,13 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
       assert (boot_Db_parm->nvols >= 0);
-      if (volid != boot_Db_parm->last_volid + 1)
+      if (volid > boot_Db_parm->last_volid + 1)
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      boot_Db_parm->last_volid = volid;
+      boot_Db_parm->last_volid = MAX (volid, boot_Db_parm->last_volid);
       boot_Db_parm->nvols++;
 
       VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
@@ -6122,6 +6180,12 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
     }
   heap_scancache_end (thread_p, &scan_cache);
   return error_code;
+}
+
+int
+boot_db_parm_update (THREAD_ENTRY * thread_p)
+{
+  return boot_db_parm_update_heap (thread_p);
 }
 
 //
