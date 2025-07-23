@@ -783,31 +783,6 @@ sm_define_view_index_spec (void)
 	    ") AS [key_count], "        
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
-#if 0 // Not yet, Disabled for QA verification convenience          
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	  "CAST(NVL ("
-                  "(" 
-		      "SELECT 'YES' "
-		      "FROM [%s] [k] "
-		      "WHERE [k].index_of.class_of = [i].class_of "
-			  "AND [k].index_of.index_name = [i].[index_name] "
-			  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-   		   "), "
-                   "'NO') "
-                   "AS VARCHAR(3)"
-             ") AS [is_deduplicate], "
-	  "CAST(NVL (" 
-                  "("
-		      "SELECT REPLACE([k].key_attr_name,'%s','') "
-		      "FROM [%s] [k]"
-		      "WHERE [k].index_of.class_of = [i].class_of "
-			   "AND [k].index_of.index_name = [i].[index_name] "
-			   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-		   ")"
-                   ", 0)" 
-                  " AS SMALLINT" 
-             ") AS [deduplicate_key_level], "
-#endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
 	  "CASE [i].[status] "

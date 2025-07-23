@@ -1547,11 +1547,6 @@ namespace cubschema
       {"key_count", "integer"},
       {"is_primary_key", format_varchar (3)},
       {"is_foreign_key", format_varchar (3)},
-      // TODO: refactor existing code related to deduplication
-#if 0				// Not yet, Disabled for QA verification convenience
-      {"is_deduplicate", format_varchar (3)},
-      {"deduplicate_key_level", "smallint"},
-#endif
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", format_varchar (3)},
       {"status", format_varchar (255)},
