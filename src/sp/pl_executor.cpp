@@ -412,7 +412,9 @@ exit:
     do
       {
 	cubmem::block response_blk;
+	er_log_debug (ARG_FILE_LINE, "ttt before reading from java: stack level=%d\n", m_stack->m_level);
 	error_code = m_stack->read_data_from_java (response_blk);
+	er_log_debug (ARG_FILE_LINE, "ttt after reading from java: stack level=%d\n", m_stack->m_level);
 	if (error_code != NO_ERROR)
 	  {
 	    break;
@@ -433,14 +435,19 @@ exit:
 	/* processing */
 	if (start_code == SP_CODE_INTERNAL_JDBC)
 	  {
+	    er_log_debug (ARG_FILE_LINE, "ttt SP_CODE_INTERNAL_JDBC\n");
 	    error_code = response_callback_command ();
+	    er_log_debug (ARG_FILE_LINE, "ttt answered SP_CODE_INTERNAL_JDBC: stack level=%d\n",
+			  m_stack->m_level);
 	  }
 	else if (start_code == SP_CODE_RESULT || start_code == SP_CODE_ERROR)
 	  {
+	    er_log_debug (ARG_FILE_LINE, "ttt %s\n", start_code == SP_CODE_RESULT ? "SP_CODE_RESULT" : "SP_CODE_ERROR");
 	    error_code = response_result (start_code, value);
 	  }
 	else
 	  {
+	    er_log_debug (ARG_FILE_LINE, "ttt (network?) ERROR\n");
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
 		    start_code);
 	    error_code = ER_SP_NETWORK_ERROR;
@@ -537,55 +544,69 @@ exit:
       */
 
       case METHOD_CALLBACK_GET_DB_PARAMETER:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_GET_DB_PARAMETER\n");
 	error_code = callback_get_db_parameter (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_QUERY_PREPARE:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_QUERY_PREPARE\n");
 	error_code = callback_prepare (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_QUERY_EXECUTE:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_QUERY_EXECUTE\n");
 	error_code = callback_execute (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_FETCH:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_FETCH\n");
 	error_code = callback_fetch (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_OID_GET:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_OID_GET\n");
 	error_code = callback_oid_get (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_OID_PUT:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_OID_PUT\n");
 	error_code = callback_oid_put (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_OID_CMD:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_OID_CMD\n");
 	error_code = callback_oid_cmd (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_COLLECTION:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_COLLECTION\n");
 	error_code = callback_collection_cmd (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_MAKE_OUT_RS:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_MAKE_OUT_RS\n");
 	error_code = callback_make_outresult (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_GET_GENERATED_KEYS:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_GET_GENERATED_KEYS\n");
 	error_code = callback_get_generated_keys (thread_ref, unpacker);
 	break;
       case METHOD_CALLBACK_END_TRANSACTION:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_END_TRANSACTION\n");
 	error_code = callback_end_transaction (thread_ref, unpacker);
 	break;
       case METHOD_CALLBACK_CHANGE_RIGHTS:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_CHANGE_RIGHTS\n");
 	error_code = callback_change_auth_rights (thread_ref, unpacker);
 	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_GET_CODE_ATTR\n");
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
+	er_log_debug (ARG_FILE_LINE, "ttt METHOD_CALLBACK_SET_PL_SESSION_PARAM\n");
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
       default:

@@ -78,6 +78,9 @@ namespace cubpl
       int interrupt_handler ();
 
     public:
+      // temp
+      int m_level = -1;
+
       execution_stack () = delete; // Not DefaultConstructible
       execution_stack (cubthread::entry *thread_p);
 

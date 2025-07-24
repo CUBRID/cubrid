@@ -99,12 +99,11 @@ namespace cubpl
 	thread_p = thread_get_thread_entry_info ();
       }
 
-
-    std::unique_lock<std::mutex> lock (m_mutex);
+    //std::unique_lock<std::mutex> lock (m_mutex);
 
     if (m_stack_idx >= METHOD_MAX_RECURSION_DEPTH)
       {
-	lock.unlock ();
+	//lock.unlock ();
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
 	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
 	return nullptr;
@@ -121,7 +120,7 @@ namespace cubpl
       {
 	// block creating a new stack
 	set_local_error_for_interrupt ();
-	m_cond_var.notify_all ();
+	//m_cond_var.notify_all ();
 	return nullptr;
       }
 
@@ -136,6 +135,7 @@ namespace cubpl
 	// push to exec_stack
 	int stack_size = (int) m_exec_stack.size ();
 	PL_STACK_ID stack_id = stack->get_id ();
+	er_log_debug (ARG_FILE_LINE, "ttt pushing: m_stack_idx=%d, stack_id=%ld\n", m_stack_idx, stack_id);
 	if (m_stack_idx < stack_size)
 	  {
 	    m_exec_stack [m_stack_idx] = stack_id;
@@ -144,6 +144,8 @@ namespace cubpl
 	  {
 	    m_exec_stack.emplace_back (stack_id);
 	  }
+	// temp
+	stack->m_level = m_stack_idx;
 
 	m_is_running = true;
       }
@@ -167,27 +169,28 @@ namespace cubpl
     auto pred = [&] () -> bool
     {
       // condition to check
-      return m_exec_stack[m_stack_idx] == sid;
+      //return m_exec_stack[m_stack_idx] == sid;
+      bool b = m_exec_stack[m_stack_idx] == sid;  // ??? if m_stack_idx reaches -1, then this causes core dump
+      er_log_debug (ARG_FILE_LINE, "ttt poping %s: m_stack_idx=%d, stack_id=%ld\n", b ? "okay" : "fail", m_stack_idx, sid);
+      return b;
     };
 
     // Guaranteed to be removed from the topmost element
-    std::unique_lock<std::mutex> ulock (m_mutex);
-    m_cond_var.wait (ulock, pred);
+    //std::unique_lock<std::mutex> ulock (m_mutex);
+    //m_cond_var.wait (ulock, pred);
 
-    if (pred ())
-      {
-	if (m_stack_idx > -1)
-	  {
-	    m_exec_stack[m_stack_idx] = -1;
-	    m_stack_idx--;
-	  }
+    //if (pred ())
+    assert (pred());
+    assert (m_stack_idx > -1);
+    m_exec_stack[m_stack_idx] = -1;
+    m_stack_idx--;
 
-	m_stack_map.erase (sid);
-      }
+    m_stack_map.erase (sid);
 
     if (m_stack_idx < 0)
       {
 	m_is_running = false;
+	m_cond_var.notify_all();        // temp
 
 	// clear interrupt
 	clear_interrupt ();
@@ -197,7 +200,7 @@ namespace cubpl
   execution_stack *
   session::top_stack ()
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
 
     return top_stack_internal ();
   }
@@ -205,13 +208,14 @@ namespace cubpl
   void
   session::notify_waiting_stacks ()
   {
-    m_cond_var.notify_all ();
+    assert (false);
+    //m_cond_var.notify_all ();
   }
 
   connection_view
   session::claim_connection ()
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
 
     connection_view cv = nullptr;
     if (m_session_connections.empty ())
@@ -240,7 +244,7 @@ namespace cubpl
   void
   session::release_connection (connection_view &conn)
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
 
     if (conn != nullptr)
       {
@@ -299,7 +303,7 @@ namespace cubpl
   bool
   session::is_thread_involved (thread_id_t id)
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
 
     for (const auto &it : m_stack_map)
       {
@@ -404,7 +408,7 @@ namespace cubpl
 	return;
       }
 
-    m_cond_var.notify_all ();
+    //m_cond_var.notify_all ();
 
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);
@@ -436,7 +440,7 @@ namespace cubpl
 	return nullptr;
       }
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
 
     // find in map
     auto search = m_cursor_map.find (query_id);
@@ -458,7 +462,7 @@ namespace cubpl
 	return nullptr;
       }
 
-    std::lock_guard<std::mutex> lock (m_mutex);
+    //std::lock_guard<std::mutex> lock (m_mutex);
     query_cursor *cursor = nullptr;
 
     // find in map
@@ -495,7 +499,7 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex);
+    //std::lock_guard<std::mutex> ulock (m_mutex);
     return destroy_cursor_internal (thread_p, query_id);
   }
 
@@ -526,7 +530,7 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex);
+    //std::lock_guard<std::mutex> ulock (m_mutex);
     m_session_cursors.insert (query_id);
   }
 
@@ -539,14 +543,14 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex);
+    //std::lock_guard<std::mutex> ulock (m_mutex);
     m_session_cursors.erase (query_id);
   }
 
   bool
   session::is_session_cursor (QUERY_ID query_id)
   {
-    std::lock_guard<std::mutex> ulock (m_mutex);
+    //std::lock_guard<std::mutex> ulock (m_mutex);
     if (m_session_cursors.find (query_id) != m_session_cursors.end ())
       {
 	return true;
@@ -560,7 +564,7 @@ namespace cubpl
   void
   session::destroy_all_cursors ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
+    //std::unique_lock<std::mutex> ulock (m_mutex);
 
     for (auto &it : m_cursor_map)
       {
