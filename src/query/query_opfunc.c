@@ -311,7 +311,7 @@ qdata_set_value_list_to_null (val_list_node * val_list_p)
 bool
 qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 {
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   DB_TYPE src_type;
 
   /* check if there is nothing to do, so we don't clobber a db_value if we happen to try to copy it to itself */
@@ -358,7 +358,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
   char *val_p;
   int val_size, align, rc;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   DB_TYPE dbval_type;
 
   if (DB_IS_NULL (dbval_p))
@@ -6248,7 +6248,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 {
   int val_size, align;
   int tuple_value_size = 0;
-  PR_TYPE *type_p;
+  const PR_TYPE *type_p;
   DB_TYPE dbval_type;
 
   if (DB_IS_NULL (dbval_p))
@@ -6318,7 +6318,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_LIST_SCAN_ID scan_id;
   OR_BUF buf;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   QFILE_TUPLE_VALUE_FLAG flag;
   int length;
   TP_DOMAIN *domain_p;
@@ -6946,7 +6946,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
   DB_COLLECTION *collection_p = NULL;
   SETOBJ *setobj_p;
   DB_TYPE type;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int error;
   REGU_VARIABLE_LIST operand;
   TP_DOMAIN *domain_p;

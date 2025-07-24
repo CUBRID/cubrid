@@ -948,7 +948,7 @@ static AREA *Value_area = NULL;
 int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
 
 int pr_Enable_string_compression = true;
-PR_TYPE tp_Null = {
+const PR_TYPE tp_Null = {
   "*NULL*", DB_TYPE_NULL, 0, 0, 0, 0,
   mr_initmem_null,
   mr_initval_null,
@@ -971,9 +971,9 @@ PR_TYPE tp_Null = {
   mr_cmpval_null
 };
 
-PR_TYPE *tp_Type_null = &tp_Null;
+const PR_TYPE *tp_Type_null = &tp_Null;
 
-PR_TYPE tp_Integer = {
+const PR_TYPE tp_Integer = {
   "integer", DB_TYPE_INTEGER, 0, sizeof (int), sizeof (int), 4,
   mr_initmem_int,
   mr_initval_int,
@@ -996,9 +996,9 @@ PR_TYPE tp_Integer = {
   mr_cmpval_int
 };
 
-PR_TYPE *tp_Type_integer = &tp_Integer;
+const PR_TYPE *tp_Type_integer = &tp_Integer;
 
-PR_TYPE tp_Short = {
+const PR_TYPE tp_Short = {
   "smallint", DB_TYPE_SHORT, 0, sizeof (short), sizeof (short), 2,
   mr_initmem_short,
   mr_initval_short,
@@ -1021,9 +1021,9 @@ PR_TYPE tp_Short = {
   mr_cmpval_short
 };
 
-PR_TYPE *tp_Type_short = &tp_Short;
+const PR_TYPE *tp_Type_short = &tp_Short;
 
-PR_TYPE tp_Bigint = {
+const PR_TYPE tp_Bigint = {
   "bigint", DB_TYPE_BIGINT, 0, sizeof (DB_BIGINT), sizeof (DB_BIGINT), 4,
   mr_initmem_bigint,
   mr_initval_bigint,
@@ -1046,9 +1046,9 @@ PR_TYPE tp_Bigint = {
   mr_cmpval_bigint
 };
 
-PR_TYPE *tp_Type_bigint = &tp_Bigint;
+const PR_TYPE *tp_Type_bigint = &tp_Bigint;
 
-PR_TYPE tp_Float = {
+const PR_TYPE tp_Float = {
   "float", DB_TYPE_FLOAT, 0, sizeof (float), sizeof (float), 4,
   mr_initmem_float,
   mr_initval_float,
@@ -1071,9 +1071,9 @@ PR_TYPE tp_Float = {
   mr_cmpval_float
 };
 
-PR_TYPE *tp_Type_float = &tp_Float;
+const PR_TYPE *tp_Type_float = &tp_Float;
 
-PR_TYPE tp_Double = {
+const PR_TYPE tp_Double = {
   "double", DB_TYPE_DOUBLE, 0, sizeof (double), sizeof (double), 4,
   mr_initmem_double,
   mr_initval_double,
@@ -1096,9 +1096,9 @@ PR_TYPE tp_Double = {
   mr_cmpval_double
 };
 
-PR_TYPE *tp_Type_double = &tp_Double;
+const PR_TYPE *tp_Type_double = &tp_Double;
 
-PR_TYPE tp_Time = {
+const PR_TYPE tp_Time = {
   "time", DB_TYPE_TIME, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
   mr_initmem_time,
   mr_initval_time,
@@ -1121,9 +1121,9 @@ PR_TYPE tp_Time = {
   mr_cmpval_time
 };
 
-PR_TYPE *tp_Type_time = &tp_Time;
+const PR_TYPE *tp_Type_time = &tp_Time;
 
-PR_TYPE tp_Utime = {
+const PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   mr_initmem_utime,
   mr_initval_utime,
@@ -1146,9 +1146,9 @@ PR_TYPE tp_Utime = {
   mr_cmpval_utime
 };
 
-PR_TYPE *tp_Type_utime = &tp_Utime;
+const PR_TYPE *tp_Type_utime = &tp_Utime;
 
-PR_TYPE tp_Timestamptz = {
+const PR_TYPE tp_Timestamptz = {
   "timestamptz", DB_TYPE_TIMESTAMPTZ, 0, sizeof (DB_TIMESTAMPTZ), OR_TIMESTAMPTZ_SIZE, 4,
   mr_initmem_timestamptz,
   mr_initval_timestamptz,
@@ -1171,11 +1171,11 @@ PR_TYPE tp_Timestamptz = {
   mr_cmpval_timestamptz
 };
 
-PR_TYPE *tp_Type_Timestamptz = &tp_Timestamptz;
+const PR_TYPE *tp_Type_Timestamptz = &tp_Timestamptz;
 
 /* timestamp with locale time zone has the same storage and primitives as
  * (simple) timestamp */
-PR_TYPE tp_Timestampltz = {
+const PR_TYPE tp_Timestampltz = {
   "timestampltz", DB_TYPE_TIMESTAMPLTZ, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   mr_initmem_utime,
   mr_initval_timestampltz,
@@ -1198,7 +1198,7 @@ PR_TYPE tp_Timestampltz = {
   mr_cmpval_utime
 };
 
-PR_TYPE tp_Datetime = {
+const PR_TYPE tp_Datetime = {
   "datetime", DB_TYPE_DATETIME, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
   mr_initmem_datetime,
   mr_initval_datetime,
@@ -1221,9 +1221,9 @@ PR_TYPE tp_Datetime = {
   mr_cmpval_datetime
 };
 
-PR_TYPE *tp_Type_datetime = &tp_Datetime;
+const PR_TYPE *tp_Type_datetime = &tp_Datetime;
 
-PR_TYPE tp_Datetimetz = {
+const PR_TYPE tp_Datetimetz = {
   "datetimetz", DB_TYPE_DATETIMETZ, 0, sizeof (DB_DATETIMETZ), OR_DATETIMETZ_SIZE, 4,
   mr_initmem_datetimetz,
   mr_initval_datetimetz,
@@ -1246,11 +1246,11 @@ PR_TYPE tp_Datetimetz = {
   mr_cmpval_datetimetz
 };
 
-PR_TYPE *tp_Type_Datetimetz = &tp_Datetimetz;
+const PR_TYPE *tp_Type_Datetimetz = &tp_Datetimetz;
 
 /* datetime with locale time zone has the same storage and primitives as
  * (simple) datetime */
-PR_TYPE tp_Datetimeltz = {
+const PR_TYPE tp_Datetimeltz = {
   "datetimeltz", DB_TYPE_DATETIMELTZ, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
   mr_initmem_datetime,
   mr_initval_datetimeltz,
@@ -1273,9 +1273,9 @@ PR_TYPE tp_Datetimeltz = {
   mr_cmpval_datetime
 };
 
-PR_TYPE *tp_Type_datetimeltz = &tp_Datetimeltz;
+const PR_TYPE *tp_Type_datetimeltz = &tp_Datetimeltz;
 
-PR_TYPE tp_Monetary = {
+const PR_TYPE tp_Monetary = {
   "monetary", DB_TYPE_MONETARY, 0, sizeof (DB_MONETARY), OR_MONETARY_SIZE, 4,
   mr_initmem_money,
   mr_initval_money,
@@ -1298,9 +1298,9 @@ PR_TYPE tp_Monetary = {
   mr_cmpval_money
 };
 
-PR_TYPE *tp_Type_monetary = &tp_Monetary;
+const PR_TYPE *tp_Type_monetary = &tp_Monetary;
 
-PR_TYPE tp_Date = {
+const PR_TYPE tp_Date = {
   "date", DB_TYPE_DATE, 0, sizeof (DB_DATE), OR_DATE_SIZE, 4,
   mr_initmem_date,
   mr_initval_date,
@@ -1323,7 +1323,7 @@ PR_TYPE tp_Date = {
   mr_cmpval_date
 };
 
-PR_TYPE *tp_Type_date = &tp_Date;
+const PR_TYPE *tp_Type_date = &tp_Date;
 
 /*
  * tp_Object
@@ -1333,7 +1333,7 @@ PR_TYPE *tp_Type_date = &tp_Date;
  * following the OID and it must be on an 8 byte boundary for the Alpha boxes.
  */
 
-PR_TYPE tp_Object = {
+const PR_TYPE tp_Object = {
   "object", DB_TYPE_OBJECT, 0, MR_OID_SIZE, OR_OID_SIZE, 4,
   mr_initmem_object,
   mr_initval_object,
@@ -1356,9 +1356,9 @@ PR_TYPE tp_Object = {
   mr_cmpval_object
 };
 
-PR_TYPE *tp_Type_object = &tp_Object;
+const PR_TYPE *tp_Type_object = &tp_Object;
 
-PR_TYPE tp_Elo = {		/* todo: remove me */
+const PR_TYPE tp_Elo = {	/* todo: remove me */
   "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
   mr_initmem_elo,
   mr_initval_elo,
@@ -1381,9 +1381,9 @@ PR_TYPE tp_Elo = {		/* todo: remove me */
   mr_cmpval_elo
 };
 
-PR_TYPE *tp_Type_elo = &tp_Elo;
+const PR_TYPE *tp_Type_elo = &tp_Elo;
 
-PR_TYPE tp_Blob = {
+const PR_TYPE tp_Blob = {
   "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO *), 0, 8,
   mr_initmem_elo,
   mr_initval_blob,
@@ -1406,9 +1406,9 @@ PR_TYPE tp_Blob = {
   mr_cmpval_elo
 };
 
-PR_TYPE *tp_Type_blob = &tp_Blob;
+const PR_TYPE *tp_Type_blob = &tp_Blob;
 
-PR_TYPE tp_Clob = {
+const PR_TYPE tp_Clob = {
   "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO *), 0, 8,
   mr_initmem_elo,
   mr_initval_clob,
@@ -1431,9 +1431,9 @@ PR_TYPE tp_Clob = {
   mr_cmpval_elo
 };
 
-PR_TYPE *tp_Type_clob = &tp_Clob;
+const PR_TYPE *tp_Type_clob = &tp_Clob;
 
-PR_TYPE tp_Variable = {
+const PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,
   NULL,				/* initmem */
   mr_initval_variable,
@@ -1456,9 +1456,9 @@ PR_TYPE tp_Variable = {
   mr_cmpval_variable
 };
 
-PR_TYPE *tp_Type_variable = &tp_Variable;
+const PR_TYPE *tp_Type_variable = &tp_Variable;
 
-PR_TYPE tp_Substructure = {
+const PR_TYPE tp_Substructure = {
   "*substructure*", DB_TYPE_SUB, 1, sizeof (void *), 0, 8,
   mr_initmem_sub,
   mr_initval_sub,
@@ -1481,9 +1481,9 @@ PR_TYPE tp_Substructure = {
   mr_cmpval_sub
 };
 
-PR_TYPE *tp_Type_substructure = &tp_Substructure;
+const PR_TYPE *tp_Type_substructure = &tp_Substructure;
 
-PR_TYPE tp_Pointer = {
+const PR_TYPE tp_Pointer = {
   "*pointer*", DB_TYPE_POINTER, 0, sizeof (void *), 0, 4,
   mr_initmem_ptr,
   mr_initval_ptr,
@@ -1506,9 +1506,9 @@ PR_TYPE tp_Pointer = {
   mr_cmpval_ptr
 };
 
-PR_TYPE *tp_Type_pointer = &tp_Pointer;
+const PR_TYPE *tp_Type_pointer = &tp_Pointer;
 
-PR_TYPE tp_Error = {
+const PR_TYPE tp_Error = {
   "*error*", DB_TYPE_ERROR, 0, sizeof (int), 0, 4,
   mr_initmem_error,
   mr_initval_error,
@@ -1531,7 +1531,7 @@ PR_TYPE tp_Error = {
   mr_cmpval_error
 };
 
-PR_TYPE *tp_Type_error = &tp_Error;
+const PR_TYPE *tp_Type_error = &tp_Error;
 
 /*
  * tp_Oid
@@ -1540,7 +1540,7 @@ PR_TYPE *tp_Type_error = &tp_Error;
  * int and two shorts.  This is done because the WS_MEMOID has a pointer
  * following the OID and it must be on an 8 byte boundary for the Alpha boxes.
  */
-PR_TYPE tp_Oid = {
+const PR_TYPE tp_Oid = {
   "*oid*", DB_TYPE_OID, 0, sizeof (OID), OR_OID_SIZE, 4,
   mr_initmem_oid,
   mr_initval_oid,
@@ -1563,9 +1563,9 @@ PR_TYPE tp_Oid = {
   mr_cmpval_oid
 };
 
-PR_TYPE *tp_Type_oid = &tp_Oid;
+const PR_TYPE *tp_Type_oid = &tp_Oid;
 
-PR_TYPE tp_Set = {
+const PR_TYPE tp_Set = {
   "set", DB_TYPE_SET, 1, sizeof (SETOBJ *), 0, 4,
   mr_initmem_set,
   mr_initval_set,
@@ -1588,9 +1588,9 @@ PR_TYPE tp_Set = {
   mr_cmpval_set
 };
 
-PR_TYPE *tp_Type_set = &tp_Set;
+const PR_TYPE *tp_Type_set = &tp_Set;
 
-PR_TYPE tp_Multiset = {
+const PR_TYPE tp_Multiset = {
   "multiset", DB_TYPE_MULTISET, 1, sizeof (SETOBJ *), 0, 4,
   mr_initmem_set,
   mr_initval_multiset,
@@ -1613,9 +1613,9 @@ PR_TYPE tp_Multiset = {
   mr_cmpval_set
 };
 
-PR_TYPE *tp_Type_multiset = &tp_Multiset;
+const PR_TYPE *tp_Type_multiset = &tp_Multiset;
 
-PR_TYPE tp_Sequence = {
+const PR_TYPE tp_Sequence = {
   "sequence", DB_TYPE_SEQUENCE, 1, sizeof (SETOBJ *), 0, 4,
   mr_initmem_set,
   mr_initval_sequence,
@@ -1638,9 +1638,9 @@ PR_TYPE tp_Sequence = {
   mr_cmpval_sequence
 };
 
-PR_TYPE *tp_Type_sequence = &tp_Sequence;
+const PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
-PR_TYPE tp_Midxkey = {
+const PR_TYPE tp_Midxkey = {
   "midxkey", DB_TYPE_MIDXKEY, 1, 0, 0, 1,
   NULL,				/* initmem */
   mr_initval_midxkey,
@@ -1663,9 +1663,9 @@ PR_TYPE tp_Midxkey = {
   mr_cmpval_midxkey
 };
 
-PR_TYPE *tp_Type_midxkey = &tp_Midxkey;
+const PR_TYPE *tp_Type_midxkey = &tp_Midxkey;
 
-PR_TYPE tp_Vobj = {
+const PR_TYPE tp_Vobj = {
   "*vobj*", DB_TYPE_VOBJ, 1, sizeof (SETOBJ *), 0, 8,
   mr_initmem_set,
   mr_initval_vobj,
@@ -1688,9 +1688,9 @@ PR_TYPE tp_Vobj = {
   mr_cmpval_vobj
 };
 
-PR_TYPE *tp_Type_vobj = &tp_Vobj;
+const PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
-PR_TYPE tp_Numeric = {
+const PR_TYPE tp_Numeric = {
   "numeric", DB_TYPE_NUMERIC, 0, 0, 0, 1,
   mr_initmem_numeric,
   mr_initval_numeric,
@@ -1713,9 +1713,9 @@ PR_TYPE tp_Numeric = {
   mr_cmpval_numeric
 };
 
-PR_TYPE *tp_Type_numeric = &tp_Numeric;
+const PR_TYPE *tp_Type_numeric = &tp_Numeric;
 
-PR_TYPE tp_Enumeration = {
+const PR_TYPE tp_Enumeration = {
   "enum", DB_TYPE_ENUMERATION, 0, sizeof (unsigned short), sizeof (unsigned short), sizeof (unsigned short),
   mr_initmem_enumeration,
   mr_initval_enumeration,
@@ -1738,7 +1738,7 @@ PR_TYPE tp_Enumeration = {
   mr_cmpval_enumeration
 };
 
-PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
+const PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
 
 
 /*
@@ -1748,7 +1748,7 @@ PR_TYPE *tp_Type_enumeration = &tp_Enumeration;
  *    care when modifying either of these.  It would be safer to build
  *    this at run time.
  */
-PR_TYPE *tp_Type_id_map[] = {
+const PR_TYPE *tp_Type_id_map[] = {
   &tp_Null,
   &tp_Integer,
   &tp_Float,
@@ -1792,7 +1792,7 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Json,
 };
 
-PR_TYPE tp_ResultSet = {
+const PR_TYPE tp_ResultSet = {
   "resultset", DB_TYPE_RESULTSET, 0, sizeof (DB_RESULTSET), sizeof (DB_RESULTSET), 4,
   mr_initmem_resultset,
   mr_initval_resultset,
@@ -1815,7 +1815,7 @@ PR_TYPE tp_ResultSet = {
   mr_cmpval_resultset
 };
 
-PR_TYPE *tp_Type_resultset = &tp_ResultSet;
+const PR_TYPE *tp_Type_resultset = &tp_ResultSet;
 
 /*
  * DB_VALUE MAINTENANCE
@@ -2157,7 +2157,7 @@ pr_free_ext_value (DB_VALUE * value)
 int
 pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_TYPE src_dbtype;
 
   if (dest != NULL)
@@ -8710,10 +8710,10 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
  *    return: type descriptor
  *    id(in): type identifier constant
  */
-PR_TYPE *
+const PR_TYPE *
 pr_type_from_id (DB_TYPE id)
 {
-  PR_TYPE *type = NULL;
+  const PR_TYPE *type = NULL;
 
   if (id <= DB_TYPE_LAST && id != DB_TYPE_TABLE)
     {
@@ -8735,7 +8735,7 @@ const char *
 pr_type_name (DB_TYPE id)
 {
   const char *name = NULL;
-  PR_TYPE *type;
+  const PR_TYPE *type;
 
   type = pr_type_from_id (id);
 
@@ -8762,7 +8762,7 @@ pr_type_name (DB_TYPE id)
 int
 pr_is_variable_type (DB_TYPE id)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   int is_variable = 0;
 
   type = pr_type_from_id (id);
@@ -8786,10 +8786,10 @@ pr_is_variable_type (DB_TYPE id)
  *    check for them.
  *
  */
-PR_TYPE *
+const PR_TYPE *
 pr_find_type (const char *name)
 {
-  PR_TYPE *type, *found;
+  const PR_TYPE *type, *found;
   int i;
 
   if (name == NULL)
@@ -8855,7 +8855,7 @@ pr_find_type (const char *name)
  * pr_mem_size - Determine the number of bytes required for the memory
  * representation of a particular type.
  *    return: memory size of type
- *    type(in): PR_TYPE structure
+ *    type(in): const PR_TYPE structure
  * Note:
  *    This only determines the size for an attribute value in contiguous
  *    memory storage for an instance.
@@ -8900,7 +8900,7 @@ pr_mem_size (const PR_TYPE * type)
 int
 pr_value_mem_size (const DB_VALUE * value)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
@@ -9739,7 +9739,7 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 int
 pr_data_writeval_disk_size (DB_VALUE * value)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
@@ -9765,7 +9765,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
 int
 pr_index_writeval_disk_size (DB_VALUE * value)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
@@ -9784,7 +9784,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
 void
 pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
@@ -11411,7 +11411,7 @@ mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 }
 #endif
 
-PR_TYPE tp_String = {
+const PR_TYPE tp_String = {
   "character varying", DB_TYPE_STRING, 1, sizeof (const char *), 0, 1,
   mr_initmem_string,
   mr_initval_string,
@@ -11434,7 +11434,7 @@ PR_TYPE tp_String = {
   mr_cmpval_string
 };
 
-PR_TYPE *tp_Type_string = &tp_String;
+const PR_TYPE *tp_Type_string = &tp_String;
 
 /*
  * TYPE CHAR
@@ -12269,7 +12269,7 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 }
 #endif
 
-PR_TYPE tp_Char = {
+const PR_TYPE tp_Char = {
   "character", DB_TYPE_CHAR, 0, 0, 0, 1,
   mr_initmem_char,
   mr_initval_char,
@@ -12292,7 +12292,7 @@ PR_TYPE tp_Char = {
   mr_cmpval_char
 };
 
-PR_TYPE *tp_Type_char = &tp_Char;
+const PR_TYPE *tp_Type_char = &tp_Char;
 
 /*
  * TYPE NCHAR
@@ -13179,7 +13179,7 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
 #endif
 
 
-PR_TYPE tp_NChar = {
+const PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
   mr_initmem_nchar,
   mr_initval_nchar,
@@ -13202,7 +13202,7 @@ PR_TYPE tp_NChar = {
   mr_cmpval_nchar
 };
 
-PR_TYPE *tp_Type_nchar = &tp_NChar;
+const PR_TYPE *tp_Type_nchar = &tp_NChar;
 
 /*
  * TYPE VARNCHAR
@@ -14316,7 +14316,7 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
 }
 #endif
 
-PR_TYPE tp_VarNChar = {
+const PR_TYPE tp_VarNChar = {
   "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0, 1,
   mr_initmem_varnchar,
   mr_initval_varnchar,
@@ -14339,7 +14339,7 @@ PR_TYPE tp_VarNChar = {
   mr_cmpval_varnchar
 };
 
-PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
+const PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
 
 /*
  * TYPE BIT
@@ -15041,7 +15041,7 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
 }
 
 
-PR_TYPE tp_Bit = {
+const PR_TYPE tp_Bit = {
   "bit", DB_TYPE_BIT, 0, 0, 0, 1,
   mr_initmem_bit,
   mr_initval_bit,
@@ -15064,7 +15064,7 @@ PR_TYPE tp_Bit = {
   mr_cmpval_bit
 };
 
-PR_TYPE *tp_Type_bit = &tp_Bit;
+const PR_TYPE *tp_Type_bit = &tp_Bit;
 
 /*
  * TYPE VARBIT
@@ -15730,7 +15730,7 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 }
 
 
-PR_TYPE tp_VarBit = {
+const PR_TYPE tp_VarBit = {
   "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 1,
   mr_initmem_varbit,
   mr_initval_varbit,
@@ -15753,7 +15753,7 @@ PR_TYPE tp_VarBit = {
   mr_cmpval_varbit
 };
 
-PR_TYPE *tp_Type_varbit = &tp_VarBit;
+const PR_TYPE *tp_Type_varbit = &tp_VarBit;
 
 
 static void
@@ -16577,7 +16577,7 @@ error:
   return rc;
 }
 
-PR_TYPE tp_Json = {
+const PR_TYPE tp_Json = {
   "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0, 1,
   mr_initmem_json,
   mr_initval_json,
@@ -16600,7 +16600,7 @@ PR_TYPE tp_Json = {
   mr_cmpval_json
 };
 
-PR_TYPE *tp_Type_json = &tp_Json;
+const PR_TYPE *tp_Type_json = &tp_Json;
 
 static void
 mr_initmem_json (void *mem, TP_DOMAIN * domain)
