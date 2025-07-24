@@ -4471,7 +4471,7 @@ classobj_domain_size (TP_DOMAIN * domain)
  */
 
 SM_ATTRIBUTE *
-classobj_make_attribute (const char *name, struct pr_type * type, SM_NAME_SPACE name_space)
+classobj_make_attribute (const char *name, const PR_TYPE * type, SM_NAME_SPACE name_space)
 {
   SM_ATTRIBUTE *att;
 
@@ -8176,7 +8176,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}

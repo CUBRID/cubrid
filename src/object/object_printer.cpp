@@ -259,10 +259,10 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	      m_buf ("STRING");
 	      break;
 	    }
-	/* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_CHAR:
 	  has_collation = 1;
-	/* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  strcpy (temp_buffer, temp_domain->type->name);

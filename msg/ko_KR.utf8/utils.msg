@@ -936,6 +936,7 @@ $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 21 클라이언트 프로그램에 의해 사용되는 시스템 파라미터\n
 22 서버 '%1$s'에 의해 로딩된 시스템 파라미터\n
 23 독립 모드에서 사용되는 시스템 파라미터\n
+24 에러: --ha-only와 --exclude-ha는 함께 사용할 수 없습니다.\n
 60 \
 paramdump: 시스템 파라미터 설정을 덤프\n\
 사용법: %1$s paramdump [옵션] database-name\n\

@@ -9080,11 +9080,11 @@ error:
  */
 void
 sysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
-			       unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond)
+			       unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_request;
   char *ptr, *request;
 
   if (outfp == NULL)
@@ -9097,6 +9097,7 @@ sysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_
   ptr = or_pack_int (ptr, if_cond);
   ptr = or_pack_int (ptr, out_flags);
   ptr = or_pack_int (ptr, of_cond);
+  ptr = or_pack_int (ptr, old_style);
 
   req_error =
     net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0,
@@ -9104,7 +9105,7 @@ sysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xsysprm_dump_server_parameters (outfp, in_flags, if_cond, out_flags, of_cond);
+  xsysprm_dump_server_parameters (outfp, in_flags, if_cond, out_flags, of_cond, old_style);
 
   exit_server (*thread_p);
 #endif /* !CS_MODE */
@@ -9370,8 +9371,6 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE * 2) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *request, *reply;
-  char *replydata1, *replydata2;
-  int replydata_size1, replydata_size2;
   char *ptr;
   LOG_PAGEID first_pageid_torecv;
   LOGWR_MODE mode, save_mode;
@@ -9445,7 +9444,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   req_error =
     net_client_request_with_logwr_context (ctx_ptr, NET_SERVER_LOGWR_GET_LOG_PAGES, request,
 					   OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					   0, NULL, 0, &replydata1, &replydata_size1, &replydata2, &replydata_size2);
+					   0, NULL, 0);
 
   logwr_Gl.mode = save_mode;
 

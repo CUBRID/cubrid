@@ -1435,7 +1435,7 @@ tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
 	{
 	  db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->domain.char_info.type = TP_DOMAIN_TYPE (domain);
@@ -1527,7 +1527,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 
   switch (TP_DOMAIN_TYPE (dom1))
     {
-
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -1736,7 +1735,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	  match = 0;
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_VARBIT:
       if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
 	{
@@ -1770,7 +1769,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	  match = 0;
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_BIT:
       /*
        * Unlike varchar, we have to be a little tighter on domain matches for
@@ -1820,6 +1819,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_TABLE:
       break;
     case DB_TYPE_ELO:
+    default:
       assert (false);
       break;
       /* don't have a default so we make sure to add clauses for all types */
@@ -2456,6 +2456,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_TABLE:
       break;
     case DB_TYPE_ELO:
+    default:
       assert (false);
       break;
       /* don't have a default so we make sure to add clauses for all types */
@@ -3379,6 +3380,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_TABLE:
 	  break;
 	case DB_TYPE_ELO:
+	default:
 	  assert (false);
 	  break;
 	}
@@ -10681,7 +10683,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	}
       else
 	{
-	  PR_TYPE *pr_type;
+	  const PR_TYPE *pr_type;
 
 	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
@@ -11305,8 +11307,11 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 	      break;
 	    case DB_TYPE_SHORT:
 	      bigint = db_get_short (src);
+	      break;
 	    default:
 	      /* never here */
+	      assert (false);
+	      bigint = 0;
 	      break;
 	    }
 

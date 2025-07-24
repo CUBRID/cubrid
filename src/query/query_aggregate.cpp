@@ -600,7 +600,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   cubxasl::aggregate_list_node *agg_p;
   cubxasl::aggregate_accumulator *accumulator;
   DB_VALUE *percentile_val = NULL;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
   char *disk_repr_p = NULL;
@@ -1194,7 +1194,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   SCAN_CODE scan_code;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   char *tuple_p;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
   int sampling_weight = 1;
@@ -1410,7 +1410,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  if (DB_IS_NULL (agg_p->accumulator.value))
 			    {
 			      /* first iteration: can't add to a null agg_ptr->value */
-			      PR_TYPE *tmp_pr_type;
+			      const PR_TYPE *tmp_pr_type;
 			      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
 			      tmp_pr_type = pr_type_from_id (dbval_type);
@@ -1721,7 +1721,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
   int i, nloops, cmp;
   REGU_VARIABLE_LIST regu_var_list, regu_var_node, regu_tmp_node;
   AGGREGATE_DIST_PERCENT_INFO *info_p;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   SORT_LIST *sort_p;
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;

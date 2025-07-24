@@ -128,7 +128,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = floor (db_get_double (value));
@@ -293,7 +293,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = ceil (db_get_double (value));
@@ -613,7 +613,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = db_get_double (value);
@@ -989,7 +989,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1136,7 +1136,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1283,7 +1283,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1426,7 +1426,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1568,7 +1568,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1757,7 +1757,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1866,7 +1866,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -2451,7 +2451,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       assert (type1 == DB_TYPE_DOUBLE);
       value1 = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_DOUBLE:
       d1 = db_get_double (value1);
       dtmp = round_double (d1, d2);
@@ -4242,7 +4242,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_DOUBLE:
 	  d = db_get_double (tmpval_p);
 	  if (d < 0)

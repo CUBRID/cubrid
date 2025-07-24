@@ -1939,7 +1939,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
   int npages = 0;
   int blt_npages = 0;
   int blt_wrs_npages = 0;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
 
   if (utility_get_option_string_table_size (arg_map) != 4)

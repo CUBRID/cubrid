@@ -2583,7 +2583,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
 	  size += OR_INT_SIZE;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  /*
@@ -2770,7 +2770,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
@@ -3075,7 +3075,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = (carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
@@ -3390,7 +3390,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case DB_TYPE_NULL:
 	    case DB_TYPE_BLOB:
@@ -3444,7 +3444,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		{
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
-	      /* FALLTHRU */
+	      [[fallthrough]];
 
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
@@ -3627,7 +3627,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
 		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
-		  /* FALLTHRU */
+		  [[fallthrough]];
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -4695,7 +4695,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 int
 or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   int size = 0, bits;
   DB_TYPE dbval_type;
@@ -4775,7 +4775,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
 int
 or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
   int rc = NO_ERROR;
@@ -5024,7 +5024,7 @@ char *
 or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
   char *ptr_to_packed_value;
