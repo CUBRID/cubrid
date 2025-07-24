@@ -506,7 +506,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   probe = context->probe;
 
   /* Prevent faults when qfile_close_scan is called */
-  assert (probe->list_scan_id.status == S_CLOSED);
+  probe->list_scan_id.status = S_CLOSED;
 
   // *INDENT-OFF*
   probe->tuple_record = { NULL, 0 };
@@ -3861,9 +3861,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      error =
-	hjoin_fetch_key (thread_p, split_info->fetch_info, &tuple_record, temp_key, NULL /* compare_key */ ,
-			 &need_skip_next);
+      error = hjoin_fetch_key (thread_p, split_info->fetch_info, &tuple_record, temp_key, NULL /* compare_key */ ,
+			       &need_skip_next);
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
@@ -3920,6 +3919,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else
 	    {
+	      qfile_destroy_list (thread_p, part_list_id[part_id]);
 	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false);
 	    }
 
@@ -3953,6 +3953,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else
 	    {
+	      qfile_destroy_list (thread_p, part_list_id[part_index]);
 	      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false);
 	    }
 

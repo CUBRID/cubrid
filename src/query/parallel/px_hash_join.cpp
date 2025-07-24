@@ -489,6 +489,7 @@ namespace parallel_query
 		      }
 		    else
 		      {
+			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
 			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false);
 		      }
 		  }
@@ -550,6 +551,7 @@ namespace parallel_query
 		      }
 		    else
 		      {
+			qfile_destroy_list (&thread_ref, part_list_id[part_index]);
 			qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false);
 		      }
 		  }
