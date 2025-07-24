@@ -1437,6 +1437,49 @@ sm_define_view_serial_spec (void)
 }
 
 const char *
+sm_define_view_ha_apply_info_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+        "SELECT "
+          "[log_stat].[db_name] AS [db_name], "
+          "[log_stat].[db_creation_time] AS [db_creation_time], "
+          "[log_stat].[copied_log_path] AS [copied_log_path], "
+          "[log_stat].[committed_lsa_pageid] AS [committed_lsa_pageid], "
+          "[log_stat].[committed_lsa_offset] AS [committed_lsa_offset], "
+          "[log_stat].[committed_rep_pageid] AS [committed_rep_pageid], "
+          "[log_stat].[committed_rep_offset] AS [committed_rep_offset], "
+          "[log_stat].[append_lsa_pageid] AS [append_lsa_pageid], "
+          "[log_stat].[append_lsa_offset] AS [append_lsa_offset], "
+          "[log_stat].[eof_lsa_pageid] AS [eof_lsa_pageid], "
+          "[log_stat].[eof_lsa_offset] AS [eof_lsa_offset], "
+          "[log_stat].[final_lsa_pageid] AS [final_lsa_pageid], "
+          "[log_stat].[final_lsa_offset] AS [final_lsa_offset], "
+          "[log_stat].[required_lsa_pageid] AS [required_lsa_pageid], "
+          "[log_stat].[required_lsa_offset] AS [required_lsa_offset], "
+          "[log_stat].[log_record_time] AS [log_record_time], "
+          "[log_stat].[log_commit_time] AS [log_commit_time], "
+          "[log_stat].[last_access_time] AS [last_access_time], "
+          "[log_stat].[status] AS [status], "
+          "[log_stat].[insert_counter] AS [insert_counter], "
+          "[log_stat].[update_counter] AS [update_counter], "
+          "[log_stat].[delete_counter] AS [delete_counter], "
+          "[log_stat].[schema_counter] AS [schema_counter], "
+          "[log_stat].[commit_counter] AS [commit_counter], "
+          "[log_stat].[fail_counter] AS [fail_counter], "
+          "[log_stat].[start_time] AS [start_time] "
+        "FROM "
+	  /* CT_HA_APPLY_INFO_NAME */
+          "[%s] AS [log_stat] ",
+        CT_HA_APPLY_INFO_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
 sm_define_view_db_collation_spec (void)
 {
   static char stmt [2048];

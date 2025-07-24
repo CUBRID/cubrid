@@ -292,6 +292,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ());
   ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial());
+  ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
   ADD_VIEW_DEFINITION (CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ());
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
@@ -1806,6 +1807,58 @@ namespace cubschema
        * To be removed when class/instance method support is officially dropped.
        */
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_ha_apply_info ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_HA_APPLY_INFO_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"db_creation_time", "datetime"},
+      {"copied_log_path", format_varchar (4096)},
+      {"committed_lsa_pageid", "bigint"},
+      {"committed_lsa_offset", "integer"},
+      {"committed_rep_pageid", "bigint"},
+      {"committed_rep_offset", "integer"},
+      {"append_lsa_pageid", "bigint"},
+      {"append_lsa_offset", "integer"},
+      {"eof_lsa_pageid", "bigint"},
+      {"eof_lsa_offset", "integer"},
+      {"final_lsa_pageid", "bigint"},
+      {"final_lsa_offset", "integer"},
+      {"required_lsa_pageid", "bigint"},
+      {"required_lsa_offset", "integer"},
+      {"log_record_time", "datetime"},
+      {"log_commit_time", "datetime"},
+      {"last_access_time", "datetime"},
+      {"status", "integer"},
+      {"insert_counter", "bigint"},
+      {"update_counter", "bigint"},
+      {"delete_counter", "bigint"},
+      {"schema_counter", "bigint"},
+      {"commit_counter", "bigint"},
+      {"fail_counter", "bigint"},
+      {"start_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_ha_apply_info_spec ()},
     },
 // constraints
     {},

@@ -113,10 +113,10 @@ static const char *prohibited_classes[] = {
   CT_USER_NAME,
   CT_AUTHORIZATION_NAME,
   CT_PASSWORD_NAME,
+  /* catalog classes */
   CT_TRIGGER_NAME,
   CT_SERIAL_NAME,
   CT_HA_APPLY_INFO_NAME,
-  /* catalog classes */
   CT_CLASS_NAME,
   CT_ATTRIBUTE_NAME,
   CT_DOMAIN_NAME,
@@ -154,6 +154,7 @@ static const char *prohibited_classes[] = {
   CTV_AUTH_NAME,
   CTV_TRIGGER_NAME,
   CTV_SERIAL_NAME,
+  CTV_HA_APPLY_INFO_NAME,
   CTV_STORED_PROC_NAME,
   CTV_STORED_PROC_ARGS_NAME,
   CTV_PARTITION_NAME,

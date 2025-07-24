@@ -72,6 +72,7 @@
 #define CTV_STORED_PROC_NAME       "db_stored_procedure"
 #define CTV_STORED_PROC_ARGS_NAME  "db_stored_procedure_args"
 #define CTV_SERIAL_NAME            "db_serial"
+#define CTV_HA_APPLY_INFO_NAME     "db_ha_apply_info"
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_DB_COLLATION_NAME      "db_collation"
 #define CTV_DB_CHARSET_NAME	   "db_charset"
