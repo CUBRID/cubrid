@@ -2590,7 +2590,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_LSA prev_lsa;
@@ -2616,7 +2616,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   int last_checked_page_id = NULL_PAGEID;
   bool is_log_page_broken;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
   memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
 
