@@ -772,7 +772,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   OR_BUF buf;
   DB_VALUE dbval1, dbval2;
   int length1, length2;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   bool is_copy;
   DB_TYPE type = TP_DOMAIN_TYPE (domain_p);
   int rc;
@@ -1001,7 +1001,7 @@ void
 qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 {
   DB_VALUE dbval;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int i;
   char *tuple_p;
   OR_BUF buf;
@@ -1978,7 +1978,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (v2);
-      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
+      const PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
@@ -2057,7 +2057,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
+      const PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
@@ -6322,7 +6322,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   PAGE_PTR page_p;
   QFILE_TUPLE_VALUE_FLAG flag;
   QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   char *ptr;
   int length;

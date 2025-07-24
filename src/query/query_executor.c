@@ -11641,7 +11641,7 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
   assert (attr != NULL && default_val != NULL);
 
   OR_BUF buf;
-  PR_TYPE *pr_type = pr_type_from_id (attr->type);
+  const PR_TYPE *pr_type = pr_type_from_id (attr->type);
   bool copy = (pr_is_set_type (attr->type)) ? true : false;
   if (pr_type != NULL)
     {
@@ -17297,7 +17297,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_do
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
   int length;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
 
   flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl, index, &ptr, &length);
@@ -17418,7 +17418,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
   QFILE_TUPLE tuple;
   OR_BUF buf;
   DB_VALUE dbval1, *dbvalp2;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   DB_TYPE type;
   TP_DOMAIN *domp;
   int length1, length2, equal, i;

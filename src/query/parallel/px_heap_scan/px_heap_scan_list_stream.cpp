@@ -301,7 +301,7 @@ namespace parallel_heap_scan
     QFILE_TUPLE_RECORD tplrec;
     QFILE_TUPLE_VALUE_FLAG flag;
     OR_BUF iterator, buf;
-    PR_TYPE *pr_type;
+    const PR_TYPE *pr_type;
     int i, rc;
     REGU_VARIABLE_LIST p;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_id->s.phsid;
