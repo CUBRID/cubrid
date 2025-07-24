@@ -29,6 +29,7 @@
 #include "xasl.h"
 #include "px_query_task.hpp"
 #include "error_context.hpp"
+#include "xasl_predicate.hpp"
 
 //forward definition
 struct xasl_state;
@@ -82,6 +83,17 @@ namespace parallel_query_execute
     private:
       void add_xasl_recursive (XASL_NODE *xasl);
       void check_xasl_recursive (XASL_NODE *xasl);
+      void check_regu_var (REGU_VARIABLE *regu_var);
+      void check_pred_expr (PRED_EXPR *pred_expr);
+      void check_pred (PRED *pred);
+      void check_eval_term (EVAL_TERM *eval_term);
+      void check_comp_eval_term (COMP_EVAL_TERM *comp_eval_term);
+      void check_alsm_eval_term (ALSM_EVAL_TERM *alsm_eval_term);
+      void check_like_eval_term (LIKE_EVAL_TERM *like_eval_term);
+      void check_rlike_eval_term (RLIKE_EVAL_TERM *rlike_eval_term);
+      void check_regu_var_list (REGU_VARIABLE_LIST regu_var_list);
+      void check_xasl_node (XASL_NODE *xasl);
+      void check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type);
       std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
       std::multimap<XASL_NODE *, XASL_NODE *> m_xasl_map;
       std::multimap<XASL_NODE *, XASL_NODE *> m_list_scan_map;

@@ -424,6 +424,248 @@ namespace parallel_query_execute
       }
   }
 
+  void xasl_checker::check_regu_var (REGU_VARIABLE *regu_var)
+  {
+    if (!regu_var)
+      {
+	return;
+      }
+    switch (regu_var->type)
+      {
+      case TYPE_DBVAL:
+      case TYPE_CONSTANT:
+      case TYPE_ORDERBY_NUM:
+      case TYPE_ATTR_ID:
+      case TYPE_CLASS_ATTR_ID:
+      case TYPE_SHARED_ATTR_ID:
+      case TYPE_POSITION:
+      case TYPE_LIST_ID:
+      case TYPE_POS_VALUE:
+      case TYPE_OID:
+      case TYPE_CLASSOID:
+      case TYPE_REGUVAL_LIST:
+	/* can execute parallel */
+	break;
+      case TYPE_REGU_VAR_LIST:
+	check_regu_var_list (regu_var->value.regu_var_list);
+	break;
+      case TYPE_FUNC:
+	check_regu_var_list (regu_var->value.funcp->operand);
+	break;
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+	if (regu_var->value.arithptr->opcode == T_EVALUATE_VARIABLE || regu_var->value.arithptr->opcode == T_DEFINE_VARIABLE)
+	  {
+	    m_is_parallel_executable = false;
+	  }
+	check_regu_var (regu_var->value.arithptr->leftptr);
+	check_regu_var (regu_var->value.arithptr->rightptr);
+	check_regu_var (regu_var->value.arithptr->thirdptr);
+	break;
+      case TYPE_SP:
+	m_is_parallel_executable = false;
+	break;
+      default:
+	assert (0);
+	m_is_parallel_executable = false;
+	break;
+      }
+  }
+
+  void xasl_checker::check_pred_expr (PRED_EXPR *pred_expr)
+  {
+    if (!pred_expr)
+      {
+	return;
+      }
+    switch (pred_expr->type)
+      {
+      case T_PRED:
+	check_pred (&pred_expr->pe.m_pred);
+	break;
+      case T_EVAL_TERM:
+	check_eval_term (&pred_expr->pe.m_eval_term);
+	break;
+      case T_NOT_TERM:
+	check_pred_expr (pred_expr->pe.m_not_term);
+	break;
+      default:
+	assert (0);
+	break;
+      }
+  }
+
+  void xasl_checker::check_pred (PRED *pred)
+  {
+    if (!pred)
+      {
+	return;
+      }
+    check_pred_expr (pred->lhs);
+    check_pred_expr (pred->rhs);
+  }
+
+  void xasl_checker::check_eval_term (EVAL_TERM *eval_term)
+  {
+    if (!eval_term)
+      {
+	return;
+      }
+    switch (eval_term->et_type)
+      {
+      case T_COMP_EVAL_TERM:
+	check_comp_eval_term (&eval_term->et.et_comp);
+	break;
+      case T_ALSM_EVAL_TERM:
+	check_alsm_eval_term (&eval_term->et.et_alsm);
+	break;
+      case T_LIKE_EVAL_TERM:
+	check_like_eval_term (&eval_term->et.et_like);
+	break;
+      case T_RLIKE_EVAL_TERM:
+	check_rlike_eval_term (&eval_term->et.et_rlike);
+	break;
+      default:
+	assert (0);
+	break;
+      }
+  }
+
+  void xasl_checker::check_comp_eval_term (COMP_EVAL_TERM *comp_eval_term)
+  {
+    if (!comp_eval_term)
+      {
+	return;
+      }
+    check_regu_var (comp_eval_term->lhs);
+    check_regu_var (comp_eval_term->rhs);
+  }
+
+  void xasl_checker::check_alsm_eval_term (ALSM_EVAL_TERM *alsm_eval_term)
+  {
+    if (!alsm_eval_term)
+      {
+	return;
+      }
+    check_regu_var (alsm_eval_term->elem);
+    check_regu_var (alsm_eval_term->elemset);
+  }
+
+  void xasl_checker::check_like_eval_term (LIKE_EVAL_TERM *like_eval_term)
+  {
+    if (!like_eval_term)
+      {
+	return;
+      }
+    check_regu_var (like_eval_term->src);
+    check_regu_var (like_eval_term->pattern);
+    check_regu_var (like_eval_term->esc_char);
+  }
+
+  void xasl_checker::check_rlike_eval_term (RLIKE_EVAL_TERM *rlike_eval_term)
+  {
+    if (!rlike_eval_term)
+      {
+	return;
+      }
+    check_regu_var (rlike_eval_term->src);
+    check_regu_var (rlike_eval_term->pattern);
+    check_regu_var (rlike_eval_term->case_sensitive);
+  }
+
+  void xasl_checker::check_regu_var_list (REGU_VARIABLE_LIST regu_var_list)
+  {
+    REGU_VARIABLE_LIST regu_var_list_p;
+    for (regu_var_list_p = regu_var_list; regu_var_list_p != nullptr; regu_var_list_p = regu_var_list_p->next)
+      {
+	check_regu_var (&regu_var_list_p->value);
+      }
+  }
+
+  void xasl_checker::check_xasl_node (XASL_NODE *xasl)
+  {
+    if (!xasl)
+      {
+	return;
+      }
+    ACCESS_SPEC_TYPE *spec_list;
+    check_pred_expr (xasl->ordbynum_pred);
+    check_regu_var (xasl->orderby_limit);
+    if (xasl->outptr_list)
+      {
+	check_regu_var_list (xasl->outptr_list->valptrp);
+      }
+    for (spec_list = xasl->spec_list; spec_list != nullptr; spec_list = spec_list->next)
+      {
+	check_access_spec_type (spec_list);
+      }
+    for (spec_list = xasl->merge_spec; spec_list != nullptr; spec_list = spec_list->next)
+      {
+	check_access_spec_type (spec_list);
+      }
+    check_pred_expr (xasl->during_join_pred);
+    check_pred_expr (xasl->after_join_pred);
+    check_pred_expr (xasl->if_pred);
+    check_pred_expr (xasl->instnum_pred);
+    check_regu_var (xasl->limit_offset);
+    check_regu_var (xasl->limit_row_count);
+
+  }
+
+  void xasl_checker::check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type)
+  {
+    if (!access_spec_type)
+      {
+	return;
+      }
+    check_pred_expr (access_spec_type->where_key);
+    check_pred_expr (access_spec_type->where_pred);
+    check_pred_expr (access_spec_type->where_range);
+    switch (access_spec_type->type)
+      {
+      case TARGET_LIST:
+      {
+	check_regu_var_list (access_spec_type->s.list_node.list_regu_list_pred);
+	check_regu_var_list (access_spec_type->s.list_node.list_regu_list_rest);
+	check_regu_var_list (access_spec_type->s.list_node.list_regu_list_build);
+	check_regu_var_list (access_spec_type->s.list_node.list_regu_list_probe);
+      }
+      break;
+      case TARGET_CLASS:
+      {
+	check_regu_var_list (access_spec_type->s.cls_node.cls_regu_list_key);
+	check_regu_var_list (access_spec_type->s.cls_node.cls_regu_list_pred);
+	check_regu_var_list (access_spec_type->s.cls_node.cls_regu_list_range);
+	check_regu_var_list (access_spec_type->s.cls_node.cls_regu_list_rest);
+      }
+      break;
+      case TARGET_CLASS_ATTR:
+      case TARGET_DBLINK:
+      case TARGET_METHOD:
+      case TARGET_REGUVAL_LIST:
+      case TARGET_SET:
+      case TARGET_SHOWSTMT:
+      default:
+	m_is_parallel_executable = false;
+	break;
+      }
+    switch (access_spec_type->access)
+      {
+      case ACCESS_METHOD_SEQUENTIAL:
+      case ACCESS_METHOD_INDEX:
+	break;
+      case ACCESS_METHOD_JSON_TABLE:
+      case ACCESS_METHOD_SCHEMA:
+      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+      case ACCESS_METHOD_INDEX_KEY_INFO:
+      case ACCESS_METHOD_INDEX_NODE_INFO:
+      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+      default:
+	m_is_parallel_executable = false;
+	break;
+      }
+  }
   void xasl_checker::add_xasl_recursive (XASL_NODE *xasl)
   {
     if (!xasl)
@@ -474,34 +716,14 @@ namespace parallel_query_execute
 		return;
 	      }
 	  }
-	if (aptr->outptr_list)
-	  {
-	    for (REGU_VARIABLE_LIST outptr = aptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-	      {
-		REGU_VARIABLE *regu_var = &outptr->value;
-		if (regu_var->type == TYPE_SP)
-		  {
-		    m_is_parallel_executable = false;
-		  }
-	      }
-	  }
+	check_xasl_node (aptr);
 	if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
 	  }
 	for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
 	  {
-	    if (aptr_scan_ptr->outptr_list)
-	      {
-		for (REGU_VARIABLE_LIST outptr = aptr_scan_ptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-		  {
-		    REGU_VARIABLE *regu_var = &outptr->value;
-		    if (regu_var->type == TYPE_SP)
-		      {
-			m_is_parallel_executable = false;
-		      }
-		  }
-	      }
+	    check_xasl_node (aptr_scan_ptr);
 	    if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
 	      {
 		m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
@@ -510,17 +732,7 @@ namespace parallel_query_execute
       }
     for (XASL_NODE *scan_ptr = xasl->scan_ptr; scan_ptr != nullptr; scan_ptr = scan_ptr->scan_ptr)
       {
-	if (scan_ptr ->outptr_list)
-	  {
-	    for (REGU_VARIABLE_LIST outptr = scan_ptr ->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-	      {
-		REGU_VARIABLE *regu_var = &outptr->value;
-		if (regu_var->type == TYPE_SP)
-		  {
-		    m_is_parallel_executable = false;
-		  }
-	      }
-	  }
+	check_xasl_node (scan_ptr);
 	if (scan_ptr ->spec_list && scan_ptr ->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, scan_ptr->spec_list->s.list_node.xasl_node));
@@ -545,34 +757,14 @@ namespace parallel_query_execute
 		    return;
 		  }
 	      }
-	    if (aptr->outptr_list)
-	      {
-		for (REGU_VARIABLE_LIST outptr = aptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-		  {
-		    REGU_VARIABLE *regu_var = &outptr->value;
-		    if (regu_var->type == TYPE_SP)
-		      {
-			m_is_parallel_executable = false;
-		      }
-		  }
-	      }
+	    check_xasl_node (aptr);
 	    if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
 	      {
 		m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
 	      }
 	    for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
 	      {
-		if (aptr_scan_ptr->outptr_list)
-		  {
-		    for (REGU_VARIABLE_LIST outptr = aptr_scan_ptr->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-		      {
-			REGU_VARIABLE *regu_var = &outptr->value;
-			if (regu_var->type == TYPE_SP)
-			  {
-			    m_is_parallel_executable = false;
-			  }
-		      }
-		  }
+		check_xasl_node (aptr_scan_ptr);
 		if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
 		  {
 		    m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
@@ -617,99 +809,20 @@ namespace parallel_query_execute
 	    m_xasl_map.insert (std::make_pair (xasl, eptr));
 	  }
       }
-    if (xasl->outptr_list)
-      {
-	for (REGU_VARIABLE_LIST outptr = xasl->outptr_list->valptrp; outptr != nullptr; outptr = outptr->next)
-	  {
-	    REGU_VARIABLE *regu_var = &outptr->value;
-	    if (regu_var->type == TYPE_SP)
-	      {
-		m_is_parallel_executable = false;
-	      }
-	    if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-	      {
-		if (regu_var->value.arithptr->opcode == T_EVALUATE_VARIABLE || regu_var->value.arithptr->opcode == T_DEFINE_VARIABLE)
-		  {
-		    m_is_parallel_executable = false;
-		  }
-	      }
-	  }
-      }
+    check_xasl_node (xasl);
 
     if (xasl->spec_list)
       {
-	switch (xasl->spec_list->type)
-	  {
-	  case TARGET_LIST:
+	if (xasl->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, xasl->spec_list->s.list_node.xasl_node));
-	    break;
-	  }
-	  case TARGET_CLASS:
-	    break;
-	  case TARGET_CLASS_ATTR:
-	  case TARGET_DBLINK:
-	  case TARGET_METHOD:
-	  case TARGET_REGUVAL_LIST:
-	  case TARGET_SET:
-	  case TARGET_SHOWSTMT:
-	  default:
-	    m_is_parallel_executable = false;
-	    break;
-	  }
-	switch (xasl->spec_list->access)
-	  {
-	  case ACCESS_METHOD_SEQUENTIAL:
-	  case ACCESS_METHOD_INDEX:
-	    break;
-	  case ACCESS_METHOD_JSON_TABLE:
-	  case ACCESS_METHOD_SCHEMA:
-	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
-	  case ACCESS_METHOD_INDEX_KEY_INFO:
-	  case ACCESS_METHOD_INDEX_NODE_INFO:
-	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-	  default:
-	    m_is_parallel_executable = false;
-	    break;
 	  }
       }
     if (xasl->merge_spec)
       {
-	switch (xasl->merge_spec->type)
-	  {
-	  case TARGET_LIST:
+	if (xasl->merge_spec->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, xasl->merge_spec->s.list_node.xasl_node));
-	    break;
-	  }
-	  case TARGET_CLASS:
-	    break;
-	  case TARGET_CLASS_ATTR:
-	  case TARGET_DBLINK:
-	  case TARGET_METHOD:
-	  case TARGET_REGUVAL_LIST:
-	  case TARGET_SET:
-	  case TARGET_SHOWSTMT:
-	  default:
-	    m_is_parallel_executable = false;
-	    break;
-	  }
-	switch (xasl->merge_spec->access)
-	  {
-	  case ACCESS_METHOD_SEQUENTIAL:
-	  case ACCESS_METHOD_INDEX:
-	    break;
-	  case ACCESS_METHOD_JSON_TABLE:
-	  case ACCESS_METHOD_SCHEMA:
-	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
-	  case ACCESS_METHOD_INDEX_KEY_INFO:
-	  case ACCESS_METHOD_INDEX_NODE_INFO:
-	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-	  default:
-	    m_is_parallel_executable = false;
-	    break;
 	  }
       }
   }
