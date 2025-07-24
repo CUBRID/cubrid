@@ -11542,7 +11542,7 @@ stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 
       if (sql_user_text)
 	{
-	  tdes_p->sql_user_text = strdup (sql_user_text);
+	  tdes_p->ddl_sql_user_text = strdup (sql_user_text);
 	}
     }
 }
@@ -11568,6 +11568,6 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   if (tdes_p)
     {
       tdes_p->query_start_time = 0;
-      free_and_init (tdes_p->sql_user_text);
+      free_and_init (tdes_p->ddl_sql_user_text);
     }
 }
