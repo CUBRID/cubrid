@@ -443,7 +443,7 @@ static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, in
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 static int sm_set_class_timestamps (SM_CLASS * class_);
-static int set_checked_time_with_strategy (MOP op, SM_CLASS *class_, bool with_fullscan);
+static int set_checked_time_with_strategy (MOP op, bool with_fullscan);
 
 
 /*
@@ -4254,7 +4254,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      return error;
 		    }
 
-		  error = set_checked_time_with_strategy (classop, class_, with_fullscan);
+		  error = set_checked_time_with_strategy (classop, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -4387,7 +4387,7 @@ sm_update_all_statistics (bool with_fullscan)
 		      return error;
 		    }
 
-		  error = set_checked_time_with_strategy (cl->op, class_, with_fullscan);
+		  error = set_checked_time_with_strategy (cl->op, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -16696,23 +16696,19 @@ sm_update_class_timestamp (SM_CLASS * class_)
 }
 
 static int
-set_checked_time_with_strategy (MOP op, SM_CLASS *class_, bool with_fullscan)
+set_checked_time_with_strategy (MOP op, bool with_fullscan)
 {
-  DB_VALUE timestamp, current_datetime;
+  SM_CLASS *class_ = NULL;
   time_t sec;
+  DB_VALUE timestamp, current_datetime;
+  DB_DATETIME checked_time = (DB_DATETIME) { 0, 0 };
 
   if (au_fetch_class_force (op, &class_, AU_FETCH_UPDATE) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (class_->stats == NULL || class_->stats->time_stamp == 0)
-    {
-      // *INDENT-OFF*
-      class_->checked_time = (DB_DATETIME){0, 0};
-      // *INDENT-ON*
-    }
-  else
+  if (class_->stats != NULL && class_->stats->time_stamp != 0)
     {
       sec = (time_t) class_->stats->time_stamp;
       db_make_timestamp (&timestamp, (DB_TIMESTAMP) sec);
@@ -16721,9 +16717,10 @@ set_checked_time_with_strategy (MOP op, SM_CLASS *class_, bool with_fullscan)
 	  return ER_FAILED;
 	}
 
-      class_->checked_time = *db_get_datetime (&current_datetime);
+      checked_time = *db_get_datetime (&current_datetime);
     }
 
+  class_->checked_time = checked_time;
   class_->gathering_strategy = (int) with_fullscan;
 
   if (locator_flush_class (op) != NO_ERROR)
