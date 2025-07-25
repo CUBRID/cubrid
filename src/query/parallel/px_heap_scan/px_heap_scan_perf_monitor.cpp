@@ -119,6 +119,12 @@ namespace parallel_heap_scan
 	max_read_rows = std::max (max_read_rows, (UINT64) m_scan_stats[i].read_rows);
 	min_qualified_rows = std::min (min_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
 	max_qualified_rows = std::max (max_qualified_rows, (UINT64) m_scan_stats[i].qualified_rows);
+#if WITH_PARALLEL_DETAIL_INFO
+	fprintf (fp, "\n%*c(parallel worker #%zu", indent, ' ', i);
+	fprintf (fp, ", heap time: %lu", TO_MSEC (m_memory_mapper_stats[i].elapsed_scan));
+	fprintf (fp, ", next page fix: %lu", TO_MSEC (m_memory_mapper_stats[i].elapsed_page_lock));
+	fprintf (fp, ", temp write: %lu)", TO_MSEC (m_memory_mapper_stats[i].elapsed_enqueue));
+#endif
       }
 
     fprintf (fp, "\n%*c(parallel workers: %zu", indent, ' ', m_parallelism);
