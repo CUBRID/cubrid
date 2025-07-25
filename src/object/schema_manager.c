@@ -4367,9 +4367,9 @@ sm_update_all_statistics (bool with_fullscan)
 	  if (!WS_IS_DELETED (cl->op))
 	    {
 	      /* uncache statistics only if object is cached - MOP trickery */
-	      if (cl->op->object != NULL)
+	      class_ = (SM_CLASS *) cl->op->object;
+	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 		{
-		  class_ = (SM_CLASS *) cl->op->object;
 		  if (class_->stats != NULL)
 		    {
 		      stats_free_statistics (class_->stats);
@@ -4411,17 +4411,16 @@ sm_update_all_catalog_statistics (bool with_fullscan)
 {
   int error = NO_ERROR;
   int i;
-
   const char *classes[] = {
     CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
-    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
-    CT_SERIAL_NAME, CT_USER_NAME, CT_AUTHORIZATION_NAME,
-    CT_TRIGGER_NAME, CT_PASSWORD_NAME, CT_HA_APPLY_INFO_NAME,
-    CT_DB_SERVER_NAME, NULL
+    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_STORED_PROC_CODE_NAME,
+    CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
+    CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
+    CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
+    CT_DB_SERVER_NAME, CT_SYNONYM_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
