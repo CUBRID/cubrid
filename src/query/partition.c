@@ -174,7 +174,7 @@ static void partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VA
 static bool partition_supports_pruning_op_for_function (const PRUNING_OP op, const REGU_VARIABLE * part_expr);
 static MATCH_STATUS partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left,
 						  const REGU_VARIABLE * right, REGU_VARIABLE * part_expr,
-						  const PRUNING_OP op, PRUNING_BITSET * pruned);
+						  PRUNING_OP op, PRUNING_BITSET * pruned);
 
 /* PRUNING_BITSET manipulation functions */
 
@@ -2104,7 +2104,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
  */
 static MATCH_STATUS
 partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * left, const REGU_VARIABLE * right,
-			      REGU_VARIABLE * part_expr, const PRUNING_OP op, PRUNING_BITSET * pruned)
+			      REGU_VARIABLE * part_expr, PRUNING_OP op, PRUNING_BITSET * pruned)
 {
   MATCH_STATUS status = MATCH_NOT_FOUND;
   DB_VALUE val, casted_val;
@@ -2128,6 +2128,14 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 
   if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
     {
+      if (pinfo->partition_type == DB_PARTITION_RANGE)
+	{
+	  /* if the precision of the partition key is smaller than the precision of the constant value,
+	   * or if the partition key expression does not guarantee monotonicity, some partitions may not be selected.
+	   * therefore, when the partition key is an expression, add an equality condition to the comparison for pruning. */
+	  op = (op == PO_GT) ? PO_GE : (op == PO_LT) ? PO_LE : op;
+	}
+
       if (db_value_type_is_collection (&val))
 	{
 	  DB_TYPE domain_type = DB_VALUE_DOMAIN_TYPE (&val);
@@ -2168,7 +2176,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		  continue;
 		}
 
-	      else if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&old_collection_val))
+	      if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&old_collection_val))
 		{
 		  dom_status = tp_value_cast (&old_collection_val, &casted_val, left->domain, false);
 
