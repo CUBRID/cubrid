@@ -23,7 +23,7 @@
 
 log_reader::log_reader ()
 {
-  m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, MAX_ALIGNMENT));
+  m_page = reinterpret_cast<log_page *> (PTR_ALIGN (m_area_buffer, 4096));
 }
 
 int log_reader::set_lsa_and_fetch_page (const log_lsa &lsa, fetch_mode fetch_page_mode)

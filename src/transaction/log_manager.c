@@ -900,10 +900,10 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
 #if defined(CUBRID_DEBUG)
   {
-    char temp_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_temp_pgbuf;
+    char temp_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_temp_pgbuf;
     LOG_PAGE *temp_pgptr;
 
-    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, MAX_ALIGNMENT);
+    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, 4096);
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
@@ -919,10 +919,10 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
     }
 #if defined(CUBRID_DEBUG)
   {
-    char temp_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_temp_pgbuf;
+    char temp_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_temp_pgbuf;
     LOG_PAGE *temp_pgptr;
 
-    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, MAX_ALIGNMENT);
+    aligned_temp_pgbuf = PTR_ALIGN (temp_pgbuf, 4096);
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
@@ -3437,7 +3437,7 @@ static LOG_LSA *
 log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDES * tdes, LOG_LSA * savept_lsa)
 {
   char *ptr;			/* Pointer to savepoint name */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where a savepoint log record is located */
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
   LOG_REC_SAVEPT *savept;	/* A savepoint log record */
@@ -3446,7 +3446,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
   int length;			/* Length of savepoint name */
   bool found = false;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   /* Find the savepoint LSA, for the given savepoint name */
   LSA_COPY (&prev_lsa, &tdes->savept_lsa);
@@ -7083,7 +7083,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	   TRANID desired_tranid)
 {
   LOG_LSA lsa;			/* LSA of log record to dump */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_RECTYPE type;		/* Log record type */
@@ -7091,7 +7091,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 
   LOG_ZIP *log_dump_ptr = NULL;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   if (out_fp == NULL)
     {
@@ -7661,7 +7661,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 {
   LOG_LSA prev_tranlsa;		/* Previous LSA */
   LOG_LSA upto_lsa;		/* copy of upto_lsa_ptr contents */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer of LSA log record */
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* The log record */
@@ -7680,7 +7680,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   int data_header_size = 0;
   bool is_mvcc_op = false;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   /*
    * Execute every single undo log record upto the given upto_lsa_ptr since it
@@ -8020,7 +8020,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
 {
   LOG_REC_SYSOP_END *top_result;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_RECORD_HEADER *log_rec;
@@ -8041,7 +8041,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
   LSA_COPY (&top_result_lsa, &tdes->tail_topresult_lsa);
   LSA_SET_NULL (&prev_last_parent_lsa);
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   nxtop_stack = *out_nxtop_range_stack;
@@ -8240,7 +8240,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
   LOG_LSA log_lsa;
   LOG_LSA forward_lsa;
 
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_RECORD_HEADER *log_rec;
@@ -8255,7 +8255,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
   assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || tdes->state == TRAN_UNACTIVE_WILL_COMMIT
 	  || tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE);
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   LSA_COPY (&end_postpone_lsa, &tdes->tail_lsa);
@@ -8626,12 +8626,12 @@ static void
 log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 {
   LOG_PAGEID pageid;		/* Log page identifier */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page */
   LOG_RECORD_HEADER *eof = NULL;	/* End of log record */
   LOG_RECTYPE type;		/* Type of a log record */
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   /* Guess the end of the log from the header */
 
@@ -9231,8 +9231,8 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
     }
   else
     {
-      char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-      LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+      char buf[IO_MAX_PAGE_SIZE + 4096];
+      LOG_PAGE *page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, 4096);
 
       assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
 
@@ -9567,7 +9567,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
   int error = NO_ERROR;
   char path[PATH_MAX];
   int fd = -1;
-  char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char buf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *page_hdr;
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
 
@@ -9585,7 +9585,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
 
   log_build_full_path (db_get_string (arg_values[0]), path);
 
-  page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, MAX_ALIGNMENT);
+  page_hdr = (LOG_PAGE *) PTR_ALIGN (buf, 4096);
 
   fd = fileio_open (path, O_RDONLY, 0);
   if (fd == -1)
@@ -9775,7 +9775,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   char *undo_data;
   LOG_LSA oldest_prior_lsa;
   bool is_zipped = false;
-  char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_buf[IO_MAX_PAGE_SIZE + 4096];
   LOG_ZIP *log_unzip_ptr = NULL;
   char *area = NULL;
   SCAN_CODE scan = S_SUCCESS;
@@ -9866,7 +9866,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 
       if (udata_size <= IO_MAX_PAGE_SIZE)
 	{
-	  area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+	  area = PTR_ALIGN (log_buf, 4096);
 	}
       else
 	{
@@ -10650,7 +10650,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
   LOG_LSA next_log_rec_lsa = LSA_INITIALIZER;
 
   LOG_PAGE *log_page_p = NULL;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
 
   LOG_RECORD_HEADER *log_rec_header = NULL;
   LOG_RECORD_HEADER *nx_rec_header = NULL;
@@ -10672,7 +10672,7 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
 
   LSA_COPY (&cur_log_rec_lsa, process_lsa);
 
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, 4096);
 
   /*fetch log page */
 
@@ -11309,8 +11309,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   int tmpbuf_index;
 
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
+  char *preserved_log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   LOG_PAGE *log_page_p = NULL;	// log_page for process_lsa : when process_lsa is advanced, then next log_page can be fetched into this buffer
   LOG_PAGE *preserved_log_page_p = NULL;	// log_page for redo/undo lsa
 
@@ -11339,8 +11339,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   int error_code = NO_ERROR;
 
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  preserved_log_page_p = (LOG_PAGE *) PTR_ALIGN (preserved_log_pgbuf, MAX_ALIGNMENT);
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, 4096);
+  preserved_log_page_p = (LOG_PAGE *) PTR_ALIGN (preserved_log_pgbuf, 4096);
 
   /* Get UNDO RECDES from undo lsa */
 
@@ -11697,8 +11697,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
-		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+		    char temp_buf[IO_MAX_PAGE_SIZE + 4096] = "\0";
+		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, 4096);
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -11916,8 +11916,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
-		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+		    char temp_buf[IO_MAX_PAGE_SIZE + 4096] = "\0";
+		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, 4096);
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)

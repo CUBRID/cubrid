@@ -1843,7 +1843,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   int i;
 
   LOG_PAGE *log_page_local = NULL;
-  char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_page_buffer[IO_MAX_PAGE_SIZE + 4096];
   LOG_LSA log_lsa_local;
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
@@ -1964,7 +1964,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
    * commit to this transactions
    */
 
-  log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+  log_page_local = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, 4096);
   log_page_local->hdr.logical_pageid = NULL_PAGEID;
   log_page_local->hdr.offset = NULL_OFFSET;
 
@@ -2518,7 +2518,7 @@ static bool
 log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 			      const LOG_RECORD_HEADER * log_rec_header)
 {
-  char fwd_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char fwd_log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *fwd_aligned_log_pgbuf;
   LOG_PAGE *log_fwd_page_p;
   LOG_LSA fwd_log_lsa;
@@ -2526,7 +2526,7 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
 
   assert (log_lsa != NULL && log_rec_header != NULL);
 
-  fwd_aligned_log_pgbuf = PTR_ALIGN (fwd_log_pgbuf, MAX_ALIGNMENT);
+  fwd_aligned_log_pgbuf = PTR_ALIGN (fwd_log_pgbuf, 4096);
   log_fwd_page_p = (LOG_PAGE *) fwd_aligned_log_pgbuf;
 
   LSA_COPY (&fwd_log_lsa, &log_rec_header->forw_lsa);
@@ -3960,7 +3960,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   LOG_LSA iter_lsa, prev_lsa;
   LOG_RECORD_HEADER logrec_head;
   LOG_PAGE *log_page = NULL;
-  char buffer_log_page[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char buffer_log_page[IO_MAX_PAGE_SIZE + 4096];
   LOG_LSA last_parent_lsa = LSA_INITIALIZER;
 
   assert (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
@@ -3973,7 +3973,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
       return;
     }
 
-  log_page = (LOG_PAGE *) PTR_ALIGN (buffer_log_page, MAX_ALIGNMENT);
+  log_page = (LOG_PAGE *) PTR_ALIGN (buffer_log_page, 4096);
 
   /* how it works:
    * we can have so-called logical run postpone system operation for some complex cases (e.g. file destroy or
@@ -4067,8 +4067,8 @@ log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       /* We need to read the log record for system op start postpone */
       LOG_LSA sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
-      char log_page_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-      LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, MAX_ALIGNMENT);
+      char log_page_buffer[IO_MAX_PAGE_SIZE + 4096];
+      LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_page_buffer, 4096);
       LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
       int undo_buffer_size = 0, undo_data_size = 0;
       char *undo_buffer = NULL, *undo_data = NULL;
@@ -4314,7 +4314,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 static void
 log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_RECORD_HEADER *log_rec;
   LOG_LSA prev_atomic_sysop_start_lsa;
@@ -4381,7 +4381,7 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   /* Get transaction lsa that precede atomic_sysop_start_lsa. */
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
   if (logpb_fetch_page (thread_p, &tdes->rcv.atomic_sysop_start_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
     {
@@ -4416,7 +4416,7 @@ static void
 log_recovery_undo (THREAD_ENTRY * thread_p)
 {
   LOG_LSA max_undo_lsa = NULL_LSA;	/* LSA of log record to undo */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
@@ -4446,7 +4446,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   int info_logging_interval_in_secs = 0;
   UINT64 total_page_cnt = 0, read_page_cnt = 0;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   /*
    * Remove from the list of transaction to abort, those that have finished
@@ -5205,7 +5205,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 static void
 log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, const LOG_LSA * new_prev_lsa)
 {
-  char newappend_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char newappend_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_newappend_pgbuf;
   LOG_PAGE *newappend_pgptr = NULL;
   int arv_num;
@@ -5216,7 +5216,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (new_prev_lsa != NULL);
 
-  aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
+  aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, 4096);
 
   if (log_Gl.append.vdes != NULL_VOLDES && log_Gl.append.log_pgptr != NULL)
     {
@@ -5398,7 +5398,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
 LOG_LSA *
 log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 {
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_RECTYPE type;		/* Log record type */
@@ -5425,7 +5425,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   int repl_log_length;
   size_t size;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   if (LSA_ISNULL (lsa))
     {
@@ -5788,7 +5788,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   LOG_LSA local_start_postpone_run_lsa;
   LOG_REC_RUN_POSTPONE *run_posp;
 
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   LOG_RECORD_HEADER *log_rec;
@@ -5819,7 +5819,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 
   LSA_SET_NULL (&next_postpone_lsa);
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   LSA_COPY (&end_postpone_lsa, &tdes->tail_lsa);

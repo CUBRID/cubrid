@@ -2068,7 +2068,7 @@ void
 log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
 {
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + 4096], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA lsa;
   LOG_LSA prev_tranlsa;		/* prev LSA of transaction */
@@ -2078,7 +2078,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LS
   int *ack_list = NULL;
   int size_ack_list = 0;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, 4096);
 
   if (!LOG_ISTRAN_2PC (tdes))
     {
