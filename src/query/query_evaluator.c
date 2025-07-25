@@ -553,7 +553,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
   char *ptr;
@@ -698,7 +698,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   DB_LOGICAL rc;
   int length;
@@ -912,7 +912,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
   char *p_tplp;
   SCAN_CODE qp_scan;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
   bool list_on;
@@ -1088,7 +1088,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
   char *p_tplp;
   SCAN_CODE qp_scan;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   int length;
   bool list_on;

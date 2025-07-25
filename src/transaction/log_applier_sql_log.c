@@ -182,10 +182,8 @@ sl_init (const char *db_name, const char *repl_log_path)
   if (snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path)) >=
       PATH_MAX)
     {
-      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning. 
-       * Additional review will be required.
-       */
-      /* empty */ ;
+      assert_release (false);
+      sql_log_base_path[PATH_MAX - 1] = '\0';
     }
 
   snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", dirname (sql_log_path), db_name);
@@ -658,12 +656,10 @@ sl_delete_oldest_file_if_needed (void)
       oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
     }
 
-  if (snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id) >= PATH_MAX)
+  if (snprintf (oldest_file_path, PATH_MAX, "%s.%u", sql_log_base_path, oldest_file_id) >= PATH_MAX)
     {
-      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning. 
-       * Additional review will be required.
-       */
-      /* empty */ ;
+      assert_release (false);
+      oldest_file_path[PATH_MAX - 1] = '\0';
     }
 
   // step(2) : delete the oldest file if it exists
@@ -691,7 +687,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 {
   const char *log_path = NULL, *path_base_name = "sql_log";
   char *p = NULL;
-  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
+  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX + 60];
 
   assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
 

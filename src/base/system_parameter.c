@@ -116,9 +116,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 /*
  * System variable names
  */
-
-#pragma region PRM_NAME_DEFINE
-
+// #region PRM_NAME_DEFINE
 #define PRM_NAME_ER_LOG_DEBUG "er_log_debug"
 
 #define PRM_NAME_ER_BTREE_DEBUG "er_btree_debug"
@@ -774,11 +772,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
-#define PRM_NAME_PARALLEL_HEAP_SCAN_THREADS "parallel_heap_scan_threads"
+#define PRM_NAME_PARALLELISM "parallelism"
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
-#pragma endregion		//PRM_NAME_DEFINE
+// #endregion 
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -950,7 +948,7 @@ static int int_list_initial[1] = { 0 };
  * Upper and lower bounds for the parameters
  */
 
-#pragma region PRM_INITIALIZE_VALUE_DEFINE
+// #region PRM_INITIALIZE_VALUE_DEFINE
 
 bool PRM_ER_LOG_DEBUG = false;
 #if !defined(NDEBUG)
@@ -2554,11 +2552,11 @@ static bool prm_enable_jvm_heap_dump_default = true;
 #endif
 static unsigned int prm_enable_jvm_heap_dump_flag = 0;
 
-int PRM_PARALLEL_HEAP_SCAN_THREADS = 0;
-static int prm_parallel_heap_scan_threads_default = 2;
-static int prm_parallel_heap_scan_threads_lower = 0;
-static int prm_parallel_heap_scan_threads_upper = 32;
-static unsigned int prm_parallel_heap_scan_threads_flag = 0;
+int PRM_PARALLELISM = 0;
+static int prm_parallelism_default = 2;
+static int prm_parallelism_lower = 0;
+static int prm_parallelism_upper = 32;
+static unsigned int prm_parallelism_flag = 0;
 
 int PRM_MAX_PARALLEL_WORKERS = 0;
 static int prm_max_parallel_workers_default = 32;
@@ -2566,7 +2564,13 @@ static int prm_max_parallel_workers_lower = 0;
 static int prm_max_parallel_workers_upper = 128;
 static unsigned int prm_max_parallel_workers_flag = 0;
 
-#pragma endregion		//PRM_INITIALIZE_VALUE_DEFINE
+int PRM_UNCORRELATED_SUBQUERY_PARALLEL_EXECUTION_THREADS = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_default = 2;
+static int prm_uncorrelated_subquery_parallel_execution_threads_lower = 0;
+static int prm_uncorrelated_subquery_parallel_execution_threads_upper = 32;
+static unsigned int prm_uncorrelated_subquery_parallel_execution_threads_flag = 0;
+
+// #endregion 
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3613,7 +3617,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY,
    PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
-   (PRM_EMPTY_FLAG),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_compactdb_page_reclaim_only_flag,
    (void *) &prm_compactdb_page_reclaim_only_default,
@@ -3887,7 +3891,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY,
    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY,
-   (PRM_EMPTY_FLAG),
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
    PRM_KEYWORD,
    &prm_ha_mode_flag,
    (void *) &prm_ha_mode_default,
@@ -4598,7 +4602,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNLOADDB_IGNORE_ERROR,
    PRM_NAME_UNLOADDB_IGNORE_ERROR,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_unloaddb_ignore_error_flag,
    (void *) &prm_unloaddb_ignore_error_default,
@@ -4609,7 +4613,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNLOADDB_LOCK_TIMEOUT,
    PRM_NAME_UNLOADDB_LOCK_TIMEOUT,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_unloaddb_lock_timeout_flag,
    (void *) &prm_unloaddb_lock_timeout_default,
@@ -4620,7 +4624,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOADDB_FLUSH_INTERVAL,
    PRM_NAME_LOADDB_FLUSH_INTERVAL,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    &prm_loaddb_flush_interval_flag,
    (void *) &prm_loaddb_flush_interval_default,
@@ -4812,7 +4816,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DB_VOLUME_SIZE,
    PRM_NAME_DB_VOLUME_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_db_volume_size_flag,
    (void *) &prm_db_volume_size_default,
@@ -4824,7 +4828,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LOG_VOLUME_SIZE,
    PRM_NAME_LOG_VOLUME_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_log_volume_size_flag,
    (void *) &prm_log_volume_size_default,
@@ -5938,7 +5942,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEBUG_ES,
    PRM_NAME_DEBUG_ES,
-   (PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_debug_es_flag,
    (void *) &prm_debug_es_default,
@@ -6247,7 +6251,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DDL_AUDIT_LOG_SIZE,
    PRM_NAME_DDL_AUDIT_LOG_SIZE,
-   (PRM_SIZE_UNIT),
+   (PRM_FOR_CLIENT | PRM_SIZE_UNIT),
    PRM_BIGINT,
    &prm_ddl_audit_log_size_flag,
    (void *) &prm_ddl_audit_log_size_default,
@@ -6660,15 +6664,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PARALLEL_HEAP_SCAN_THREADS,
-   PRM_NAME_PARALLEL_HEAP_SCAN_THREADS,
+  {PRM_ID_PARALLELISM,
+   PRM_NAME_PARALLELISM,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_parallel_heap_scan_threads_flag,
-   (void *) &prm_parallel_heap_scan_threads_default,
-   (void *) &PRM_PARALLEL_HEAP_SCAN_THREADS,
-   (void *) &prm_parallel_heap_scan_threads_upper,
-   (void *) &prm_parallel_heap_scan_threads_lower,
+   &prm_parallelism_flag,
+   (void *) &prm_parallelism_default,
+   (void *) &PRM_PARALLELISM,
+   (void *) &prm_parallelism_upper,
+   (void *) &prm_parallelism_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -7095,6 +7099,24 @@ public:
     assert (conf_path != NULL);
     assert (m_used >= 0);
 
+    for (int i = 0; i < m_used; i++)
+      {
+	if (m_loaded[i].conf_path != NULL && strcmp (conf_path, m_loaded[i].conf_path) == 0)
+	  {
+	    if (db_name)
+	      {
+		if (m_loaded[i].db_name != NULL && strcmp (db_name, m_loaded[i].db_name) == 0)
+		  {
+		    return;
+		  }
+	      }
+	    else if (m_loaded[i].db_name == NULL)
+	      {
+		return;
+	      }
+	  }
+      }
+
     if (m_used < MAX_NUM_OF_PRM_FILES_LOADED)
       {
 	assert (m_loaded[m_used].conf_path == NULL);
@@ -7128,18 +7150,26 @@ public:
 
 static struct prm_config_files_loaded prm_file_has_been_loaded;
 
-
 /*
  * sysprm_dump_parameters - Print out current system parameters
  *   return: none
- *   fp(in):
+ *   fp(in): file descriptor to save results
+ *   pmarker(in): prefix marker
+ *   in_flags(in): combination of bit flags you want to dump 
+ *   if_cond(in): dumping condition of including flags (OR, AND)
+ *   out_flags(in): combination of bit flags that you want to exclude from the dump
+ *   of_cond(in): dumping condition of excluding flags (OR, AND)
+ *   old_style(in): print in the old sytle
  */
 void
-sysprm_dump_parameters (FILE * fp)
+sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+			unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
-  char buf[LINE_MAX];
+  char buf[LINE_MAX], tmpbuf[LINE_MAX];
   int i;
   const SYSPRM_PARAM *prm;
+  char dmarker;
+  char *ptr;
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
   fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
@@ -7150,12 +7180,51 @@ sysprm_dump_parameters (FILE * fp)
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
       prm = GET_PRM (i);
-      if (PRM_IS_HIDDEN (prm) || PRM_IS_OBSOLETED (prm))
+
+      if (PRM_IS_OBSOLETED (prm))
 	{
 	  continue;
 	}
+
+      /* skip matched excluding flags */
+      if (of_cond == PRM_OR_CONDITION && (prm->static_flag & out_flags))
+	{
+	  continue;
+	}
+      else if (of_cond == PRM_AND_CONDITION && ((prm->static_flag & out_flags) == out_flags))
+	{
+	  continue;
+	}
+
+      /* skip unmatched including flags */
+      if (if_cond == PRM_OR_CONDITION && !(prm->static_flag | in_flags))
+	{
+	  continue;
+	}
+      else if (if_cond == PRM_AND_CONDITION && ((prm->static_flag & in_flags) != in_flags))
+	{
+	  continue;
+	}
+
       prm_print (prm, buf, LINE_MAX, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
-      fprintf (fp, "%s\n", buf);
+      prm_print (prm, tmpbuf, LINE_MAX, PRM_PRINT_NONE, PRM_PRINT_DEFAULT_VAL);
+
+      /* check if it is different from the default value */
+      dmarker = ' ';
+      ptr = strchr (buf, '=');
+      if (ptr != NULL && strcmp (ptr + 1, tmpbuf) != 0)
+	{
+	  dmarker = '*';
+	}
+
+      if (old_style)
+	{
+	  fprintf (fp, "%s\n", buf);
+	}
+      else
+	{
+	  fprintf (fp, "[%c%c] %s (%s)\n", pmarker, dmarker, buf, tmpbuf);
+	}
     }
 }
 
@@ -7409,7 +7478,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
 #if 0
   if (envvar_get ("PARAM_DUMP"))
     {
-      sysprm_dump_parameters (stdout);
+      sysprm_dump_parameters (stdout, ' ', PRM_ALL_FLAGS, SYSPRM_OR_CONDITION, PRM_EMPTY_FLAG, SYSPRM_OR_CONDITION,
+			      false);
     }
 #endif
 
@@ -9424,12 +9494,12 @@ cleanup:
 /*
  * xsysprm_dump_server_parameters -
  *   return: none
- *   fp(in):
  */
 void
-xsysprm_dump_server_parameters (FILE * outfp)
+xsysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
+				unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style)
 {
-  sysprm_dump_parameters (outfp);
+  sysprm_dump_parameters (outfp, 'S', in_flags, if_cond, out_flags, of_cond, old_style);
 }
 
 /*

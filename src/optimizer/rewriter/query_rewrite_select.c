@@ -2312,22 +2312,15 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   switch (PT_SPEC_JOIN_TYPE (curr_pk_spec))
     {
     case PT_JOIN_NONE:
-      /* fallthrough */
     case PT_JOIN_INNER:
-      /* fallthrough */
     case PT_JOIN_NATURAL:
       break;
 
     case PT_JOIN_CROSS:
-      /* fallthrough */
     case PT_JOIN_LEFT_OUTER:
-      /* fallthrough */
     case PT_JOIN_RIGHT_OUTER:
-      /* fallthrough */
     case PT_JOIN_FULL_OUTER:
-      /* fallthrough */
     case PT_JOIN_UNION:
-      /* fallthrough */
     default:
       goto exit_on_fail_with_exclude;
     }
@@ -2560,7 +2553,6 @@ exit_on_fail_with_cleanup:
       parent_pred_point_list = NULL;
     }
 
-exit_on_fail:
   return false;
 }
 
@@ -2617,22 +2609,16 @@ qo_check_fks_ref_pk_in_child_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   switch (PT_SPEC_JOIN_TYPE (curr_fk_spec))
     {
     case PT_JOIN_NONE:
-      /* fallthrough */
     case PT_JOIN_INNER:
-      /* fallthrough */
     case PT_JOIN_NATURAL:
       break;
 
     case PT_JOIN_CROSS:
-      /* fallthrough */
     case PT_JOIN_LEFT_OUTER:
-      /* fallthrough */
     case PT_JOIN_RIGHT_OUTER:
-      /* fallthrough */
     case PT_JOIN_FULL_OUTER:
-      /* fallthrough */
     case PT_JOIN_UNION:
-      /* fallthrough */
+      [[fallthrough]];
     default:
       goto exit_on_fail_with_exclude;
     }
@@ -3108,7 +3094,6 @@ exit_on_fail_with_cleanup:
     }
   /* fallthrough */
 
-exit_on_fail:
   return false;
 }
 

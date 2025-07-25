@@ -101,32 +101,6 @@ pipeline {
             }
           }
         }
-
-        stage('Windows Release') {
-          when {
-            not {
-              // Skip Windows Release stage for feature branches
-              branch 'feature/*'
-            }
-          }
-          agent {
-            node {
-              label 'windows'
-            }
-          }
-          steps {
-            echo 'Building...'
-            bat "win/build.bat build"
-
-            echo 'Packing...'
-            bat "win/build.bat /out ${OUTPUT_DIR} dist"
-          }
-          post {
-            always {
-              archiveArtifacts "${OUTPUT_DIR}/*"
-            }
-          }
-        }
       }
     }
   }

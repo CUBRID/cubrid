@@ -2040,14 +2040,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* operators classified as lhs- and rhs-indexable */
 	case PT_EQ:
 	  QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case PT_LT:
 	case PT_LE:
 	case PT_GT:
 	case PT_GE:
 	  /* temporary guess; RHS could be a indexable segment */
 	  rhs_indexable = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 
 	  /* operators classified as rhs-indexable */
 	case PT_BETWEEN:
@@ -2082,7 +2082,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    }
 		}
 	    }
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case PT_IS_IN:
 	case PT_EQ_SOME:
 	  /* temporary guess; LHS could be a indexable segment */
@@ -2092,7 +2092,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      QO_TERM_SET_FLAG (term, QO_TERM_RANGELIST);
 	    }
 	  lhs_indexable = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 
 	  /* operators classified as not-indexable */
 	case PT_NOT_BETWEEN:
@@ -2126,7 +2126,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  rhs_expr = pt_expr->info.expr.arg2;
 	  /* get segments from RHS of the expression */
 	  qo_expr_segs (env, rhs_expr, &rhs_segs);
-	  /* FALLTHRU */
+	  [[fallthrough]];
 
 	case PT_IS_NULL:
 	case PT_IS_NOT_NULL:
@@ -2142,7 +2142,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	case PT_OR:
 	  QO_TERM_SET_FLAG (term, QO_TERM_OR_PRED);
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case PT_NOT:
 	case PT_XOR:
 	  /* get segments from the expression itself */
@@ -2621,12 +2621,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
 
-      /* always true transitive equi-join term is not suitable as m-join edge. */
-      if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
-	{
-	  merge_applies = false;
-	}
-
       if (merge_applies)
 	{
 	  QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
@@ -2753,7 +2747,7 @@ wrapup:
 	      }
 	  }
       }
-      /* FALL THROUGH */
+      [[fallthrough]];
     case PT_PATH_OUTER_WEASEL:
       /* These can't be implemented with index scans regardless because an index scan won't properly implement the
        * left-outer semantics of the path...

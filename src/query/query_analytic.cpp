@@ -115,7 +115,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 {
   DB_VALUE dbval, sqr_val;
   DB_VALUE *opr_dbval_p = NULL;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   OR_BUF buf;
   char *disk_repr_p = NULL;
   int dbval_size;
@@ -228,9 +228,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  error = pr_type_p->data_writeval (&buf, &dbval);
 	  if (error != NO_ERROR)
 	    {
-	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
-	      assert (error != ER_TF_BUFFER_OVERFLOW);
-
+	      assert_release (buf.ptr <= buf.endptr);
 	      db_private_free_and_init (thread_p, disk_repr_p);
 	      error = ER_FAILED;
 	      goto exit;
@@ -759,7 +757,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   DB_VALUE dbval;
   QFILE_LIST_ID *list_id_p;
   char *tuple_p;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   OR_BUF buf;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
@@ -889,7 +887,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		  if (DB_IS_NULL (func_p->value))
 		    {
 		      /* first iteration: can't add to a null agg_ptr->value */
-		      PR_TYPE *tmp_pr_type;
+		      const PR_TYPE *tmp_pr_type;
 		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
 		      tmp_pr_type = pr_type_from_id (dbval_type);

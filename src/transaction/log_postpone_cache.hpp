@@ -63,6 +63,7 @@ class log_postpone_cache
 
     ~log_postpone_cache () = default;
 
+    void copy_to (log_postpone_cache &dest) const;
     void reset ();
 
     void add_redo_data (const log_prior_node &node);
