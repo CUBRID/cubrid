@@ -2542,12 +2542,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
     case DB_TYPE_NUMERIC:
       error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
-      //임시
-      if (result_p->domain.numeric_info.scale < 0)
-	{
-	  domain_p->precision = result_p->domain.numeric_info.precision;
-	  domain_p->scale = result_p->domain.numeric_info.scale;
-	}
+      // PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없네? 그냥 result_p 쓰면되네!
       break;
 
     case DB_TYPE_MONETARY:
