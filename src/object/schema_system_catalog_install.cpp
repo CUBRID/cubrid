@@ -1222,6 +1222,9 @@ namespace cubschema
       {"is_reuse_oid_class", format_varchar (3)},
       {"collation", format_varchar (32)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"checked_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
     },
@@ -1544,14 +1547,20 @@ namespace cubschema
       {"key_count", "integer"},
       {"is_primary_key", format_varchar (3)},
       {"is_foreign_key", format_varchar (3)},
-#if 0				// Not yet, Disabled for QA verification convenience
-      {"is_deduplicate", format_varchar (3)},
-      {"deduplicate_key_level", "smallint"},
-#endif
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", format_varchar (3)},
-      {"comment", format_varchar (1024)},
       {"status", format_varchar (255)},
+      {"referential_index_class_owner_name", format_varchar (255)},
+      {"referential_index_class_name", format_varchar (255)},
+      {"referential_index_name", format_varchar (255)},
+      {"delete_rule", format_varchar (32)},
+      {"update_rule", format_varchar (32)},
+      {"referential_match_option", format_varchar (7)},
+      {"index_type", format_varchar (32)},
+      {"deduplicate_key_level", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_spec ()}
     },
@@ -1661,6 +1670,8 @@ namespace cubschema
       {"action_type", "integer"},
       {"action_time", "integer"},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec ()}
     },
@@ -1695,6 +1706,7 @@ namespace cubschema
       {"partition_type", format_varchar (32)},
       {"partition_expr", format_varchar (2048)},
       {"partition_values", "sequence of"},
+      {"class_partition_type", format_varchar (32)},
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
@@ -1734,7 +1746,11 @@ namespace cubschema
       {"target", format_varchar (4096)},
       {"owner", format_varchar (256)},
       {"code", format_varchar (1073741823)},
+// TODO: implement sql_data_access
+//       {"sql_data_access", format_varchar (17)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
     },
@@ -1870,6 +1886,8 @@ namespace cubschema
       {"target_name", format_varchar (255)},
       {"target_owner_name", format_varchar (255)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec ()}
     },
@@ -1906,6 +1924,8 @@ namespace cubschema
       {"properties", format_varchar (2048)},
       {"owner", format_varchar (255)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
     },

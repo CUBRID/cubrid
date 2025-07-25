@@ -78,7 +78,10 @@ sm_define_view_class_spec (void)
 	    "END AS [partitioned], "
 	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
 	  "[coll].[coll_name] AS [collation], "
-	  "[c].[comment] AS [comment] "
+	  "[c].[comment] AS [comment], "
+          "[c].[created_time] AS [created_time], "
+          "[c].[updated_time] AS [updated_time], "
+          "[c].[checked_time] AS [checked_time] "
 	"FROM "
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], "
@@ -754,7 +757,7 @@ sm_define_view_method_file_spec (void)
 const char *
 sm_define_view_index_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -780,41 +783,55 @@ sm_define_view_index_spec (void)
 	    ") AS [key_count], "        
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
-#if 0 // Not yet, Disabled for QA verification convenience          
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	  "CAST(NVL ("
-                  "(" 
-		      "SELECT 'YES' "
-		      "FROM [%s] [k] "
-		      "WHERE [k].index_of.class_of = [i].class_of "
-			  "AND [k].index_of.index_name = [i].[index_name] "
-			  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-   		   "), "
-                   "'NO') "
-                   "AS VARCHAR(3)"
-             ") AS [is_deduplicate], "
-	  "CAST(NVL (" 
-                  "("
-		      "SELECT REPLACE([k].key_attr_name,'%s','') "
-		      "FROM [%s] [k]"
-		      "WHERE [k].index_of.class_of = [i].class_of "
-			   "AND [k].index_of.index_name = [i].[index_name] "
-			   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-		   ")"
-                   ", 0)" 
-                  " AS SMALLINT" 
-             ") AS [deduplicate_key_level], "
-#endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
-	  "[i].[comment] AS [comment], "
 	  "CASE [i].[status] "
 	    "WHEN 0 THEN 'NO_INDEX' "
 	    "WHEN 1 THEN 'NORMAL INDEX' "
 	    "WHEN 2 THEN 'INVISIBLE INDEX' "
 	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
 	    "ELSE 'NULL' "
-	    "END AS [status] "
+	    "END AS [status], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[owner].[name] "
+            "ELSE NULL "
+            "END AS [referential_index_class_owner_name], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[class_name] "
+            "ELSE NULL "
+            "END AS [referential_index_class_name], "
+          "CASE "
+            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[index_name] "
+            "ELSE NULL "
+            "END AS [referential_index_name], "
+          "CASE [i].[delete_rule] "
+            "WHEN 0 THEN 'CASCADE' "
+            "WHEN 1 THEN 'RESTRICT' "
+            "WHEN 2 THEN 'NO ACTION' "
+            "WHEN 3 THEN 'SET NULL' "
+            "ELSE NULL "
+            "END AS [delete_rule], "
+          "CASE [i].[update_rule] "
+            "WHEN 0 THEN 'CASCADE' "
+            "WHEN 1 THEN 'RESTRICT' "
+            "WHEN 2 THEN 'NO ACTION' "
+            "WHEN 3 THEN 'SET NULL' "
+            "ELSE NULL "
+            "END AS [update_rule], "
+          "CASE [i].[referential_match_option] "
+            "WHEN 0 THEN 'NONE' "
+            "WHEN 1 THEN 'PARTIAL' "
+            "WHEN 2 THEN 'FULL' "
+            "ELSE NULL "
+            "END AS [referential_match_option], "
+          "CASE [i].[index_type] "
+            "WHEN 0 THEN 'BTREE' "
+            "ELSE NULL "
+            "END AS [index_type], "
+          "[i].[options] & %d AS [deduplicate_key_level], "
+	  "[i].[comment] AS [comment], "
+          "[i].[created_time] AS [created_time], "
+          "[i].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_INDEX_NAME */
 	  "[%s] AS [i] "
@@ -856,11 +873,7 @@ sm_define_view_index_spec (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",            
 	CT_INDEXKEY_NAME,
-#if 0 // Not yet, Disabled for QA verification convenience        
-        CT_INDEXKEY_NAME,
-        DEDUPLICATE_KEY_ATTR_NAME_PREFIX,
-        CT_INDEXKEY_NAME,
-#endif                    
+        OPTION_DEDUPLICATE_MASK,
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
@@ -1088,7 +1101,9 @@ sm_define_view_trigger_spec (void)
 	  "CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END AS [target_attr_type], "
 	  "[t].[action_type] AS [action_type], "
 	  "[t].[action_time] AS [action_time], "
-	  "[t].[comment] AS [comment] "
+	  "[t].[comment] AS [comment], "
+	  "[t].[created_time] AS [created_time], "
+	  "[t].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* TR_CLASS_NAME */
 	  "[%s] AS [t] "
@@ -1157,6 +1172,7 @@ sm_define_view_partition_spec (void)
 	  "CASE [p].[ptype] WHEN 0 THEN 'HASH' WHEN 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type], "
 	  "TRIM (SUBSTRING ([pp].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pp].[pexpr]) - 8))) AS [partition_expr], "
 	  "[p].[pvalues] AS [partition_values], "
+          "CASE [p].[class_partition_type] WHEN 2 THEN 'PARTITION CLASS' ELSE NULL END AS [class_partition_type], "
 	  "[p].[comment] AS [comment] "
 	"FROM "
 	  /* CT_PARTITION_NAME */
@@ -1221,7 +1237,7 @@ sm_define_view_partition_spec (void)
 const char *
 sm_define_view_stored_procedure_spec (void)
 {
-  static char stmt [2200];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1265,7 +1281,17 @@ sm_define_view_stored_procedure_spec (void)
 	    ") THEN [sp_code].[scode] "
 	    "ELSE NULL "
 	    "END AS [code], "
-	  "[sp].[comment] AS [comment] "
+        // TODO: implement sql_data_access
+        //   "CASE [sp].[sql_data_access] "
+        //     "WHEN 0 THEN 'NO SQL' "
+        //     "WHEN 1 THEN 'CONTAINS SQL' "
+        //     "WHEN 2 THEN 'READS SQL DATA' "
+        //     "WHEN 3 THEN 'MODIFIES SQL DATA' "
+        //     "ELSE NULL "
+        //   "END AS [sql_data_access], "
+	  "[sp].[comment] AS [comment], "
+	  "[sp].[created_time] AS [created_time], "
+	  "[sp].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp] "
@@ -1482,7 +1508,9 @@ sm_define_view_synonym_spec (void)
 	  "CASE [s].[is_public] WHEN 1 THEN 'YES' ELSE 'NO' END AS [is_public_synonym], "
 	  "[s].[target_name] AS [target_name], "
 	  "CAST ([s].[target_owner].[name] AS VARCHAR(255)) AS [target_owner_name], " /* string -> varchar(255) */
-	  "[s].[comment] AS [comment] "
+	  "[s].[comment] AS [comment], "
+          "[s].[created_time] AS [created_time], "
+          "[s].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_SYNONYM_NAME */
 	  "[%s] AS [s] "
@@ -1532,7 +1560,9 @@ sm_define_view_db_server_spec (void)
 	  "[ds].[user_name] AS [user_name], "
 	  "[ds].[properties] AS [properties], "
 	  "CAST ([ds].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
-	  "[ds].[comment] AS [comment] "
+	  "[ds].[comment] AS [comment], "
+          "[ds].[created_time] AS [created_time], "
+          "[ds].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_DB_SERVER_NAME */
 	  "[%s] AS [ds] "
