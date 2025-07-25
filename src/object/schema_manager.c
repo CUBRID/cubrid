@@ -443,7 +443,7 @@ static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, in
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 static int sm_set_class_timestamps (SM_CLASS * class_);
-static int sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_);
+static int set_checked_time_with_strategy (MOP op, SM_CLASS *class_, bool with_fullscan);
 
 
 /*
@@ -4254,7 +4254,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      return error;
 		    }
 
-		  error = sm_set_checked_time_from_stats (classop, class_);
+		  error = set_checked_time_with_strategy (classop, class_, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -4387,7 +4387,7 @@ sm_update_all_statistics (bool with_fullscan)
 		      return error;
 		    }
 
-		  error = sm_set_checked_time_from_stats (cl->op, class_);
+		  error = set_checked_time_with_strategy (cl->op, class_, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -16696,7 +16696,7 @@ sm_update_class_timestamp (SM_CLASS * class_)
 }
 
 static int
-sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
+set_checked_time_with_strategy (MOP op, SM_CLASS *class_, bool with_fullscan)
 {
   DB_VALUE timestamp, current_datetime;
   time_t sec;
@@ -16723,6 +16723,8 @@ sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
 
       class_->checked_time = *db_get_datetime (&current_datetime);
     }
+
+  class_->gathering_strategy = (int) with_fullscan;
 
   if (locator_flush_class (op) != NO_ERROR)
     {

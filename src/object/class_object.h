@@ -805,6 +805,7 @@ struct sm_class
   unsigned int virtual_cache_snapshot_version;
 
   int tde_algorithm;
+  int gathering_strategy;
 
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
