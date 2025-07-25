@@ -92,6 +92,10 @@ struct mvcc_rec_header
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)
 
+#define MVCC_IS_HEADER_ALL_VISIBLE(rec_header_p) \
+  (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID|OR_MVCC_FLAG_VALID_DELID) \
+   && MVCC_GET_INSID (rec_header_p) == MVCCID_ALL_VISIBLE)
+
 #define MVCC_SET_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag |= (flag))
 

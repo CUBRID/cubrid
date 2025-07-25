@@ -10900,7 +10900,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	}
       else
 	{
-	  PR_TYPE *pr_type;
+	  const PR_TYPE *pr_type;
 
 	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
