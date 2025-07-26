@@ -8033,6 +8033,41 @@ check_reinit_copylog (void)
   return NO_ERROR;
 }
 
+static inline void
+la_set_slave_db_name (char *dest, const char *src)
+{
+  const char *at = strchr (src, '@');
+  size_t len;
+
+  if (at != NULL)
+    {
+      len = at - src;
+    }
+  else
+    {
+      len = DB_MAX_IDENTIFIER_LENGTH;
+    }
+
+  snprintf (dest, DB_MAX_IDENTIFIER_LENGTH, "%.*s", (int) len, src);
+}
+
+static inline void
+la_set_peer_host (char *dest, const char *src)
+{
+  const char *host = la_get_hostname_from_log_path ((char *) src);
+
+  snprintf (dest, CUB_MAXHOSTNAMELEN, "%s", host ? host : "unknown");
+}
+
+static inline void
+la_init_delay_history (int *delay_history)
+{
+  for (int i = 0; i < LA_NUM_DELAY_HISTORY; i++)
+    {
+      delay_history[i] = -1;
+    }
+}
+
 /*
  * la_apply_log_file() - apply the transaction log to the slave
  *   return: int
@@ -8062,14 +8097,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   };
   LOG_LSA prev_final;
   struct timeval time_commit;
-  char *s;
   int last_nxarv_num = 0;
   bool clear_owner;
   int now = 0, last_eof_time = 0;
   LOG_LSA last_eof_lsa;
   int time_commit_interval;
   int delay_hist[LA_NUM_DELAY_HISTORY];
-  int i;
   int remove_arv_interval_in_secs;
   int max_arv_count_to_delete = 0;
 
@@ -8089,22 +8122,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* ! WINDOWS */
 
-  strncpy (la_slave_db_name, database_name, DB_MAX_IDENTIFIER_LENGTH);
-  s = strchr (la_slave_db_name, '@');
-  if (s)
-    {
-      *s = '\0';
-    }
-
-  s = la_get_hostname_from_log_path ((char *) log_path);
-  if (s)
-    {
-      strncpy (la_peer_host, s, CUB_MAXHOSTNAMELEN);
-    }
-  else
-    {
-      strncpy (la_peer_host, "unknown", CUB_MAXHOSTNAMELEN);
-    }
+  la_set_slave_db_name (la_slave_db_name, database_name);
+  la_set_peer_host (la_peer_host, log_path);
 
   /* init la_Info */
   la_init (log_path, max_mem_size);
@@ -8184,10 +8203,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       return error;
     }
 
-  for (i = 0; i < LA_NUM_DELAY_HISTORY; i++)
-    {
-      delay_hist[i] = -1;
-    }
+  la_init_delay_history (delay_hist);
+
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
 
   if (prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE) != REPL_FILTER_NONE)

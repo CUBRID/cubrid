@@ -2026,7 +2026,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
   VFID overflow_file_vfid;
   int ret = NO_ERROR;
   TP_DOMAIN *tp_domain;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   DB_TYPE src_type, dst_type;
   DB_VALUE new_key;
   DB_VALUE *key_ptr = key;
@@ -2133,7 +2133,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_
 {
   RECDES rec;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int ret = NO_ERROR;
 
   if (node_type == BTREE_LEAF_NODE)
@@ -4165,7 +4165,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
   /* write the key */
   if (key_type == BTREE_NORMAL_KEY)
     {				/* key fits in page */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       if (node_type == BTREE_LEAF_NODE)
 	{
@@ -4628,7 +4628,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (key_type == BTREE_NORMAL_KEY)
     {				/* key is within page */
       TP_DOMAIN *key_domain;
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
       char *old_ptr;
 
       if (node_type == BTREE_LEAF_NODE)
@@ -12677,7 +12677,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   if (*mid_slot == (slot_id - 1) && is_key_added_to_left && !found)
     {
       /* the new key is the split key */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       /* Safe guard. */
       assert (*mid_slot != key_cnt);
@@ -13430,7 +13430,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
     {
-      PR_TYPE *pr_type = btid->key_type->type;
+      const PR_TYPE *pr_type = btid->key_type->type;
       sep_key_len = pr_type->get_index_size_of_value (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
@@ -14032,7 +14032,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 
       if (node_type == BTREE_LEAF_NODE)
 	{
-	  PR_TYPE *pr_type;
+	  const PR_TYPE *pr_type;
 
 	  pr_type = btid->key_type->type;
 	  sep_key_len = pr_type->get_index_size_of_value (sep_key);
@@ -14296,7 +14296,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
     {
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       pr_type = btid->key_type->type;
 
@@ -17319,7 +17319,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
   char *datap;
   int key_len;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int ret = NO_ERROR;
   int size;
   OID oid_and_flags;
@@ -17531,7 +17531,7 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
   int error_code = NO_ERROR;
   char *datap = NULL;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OID oid_and_flags;
 
   key_len = (int) btree_get_disk_size_of_key (key);
@@ -18300,7 +18300,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
 				  OID * oid, BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   VPID root_vpid;
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -19313,7 +19313,7 @@ static void
 btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, const char *debug_msg)
 {
   int severity;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   char *err_key;
 
   assert (btid != NULL);
@@ -22603,7 +22603,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      /* Get key value */
 	      DB_VALUE rec_key_value;
 	      TP_DOMAIN *key_domain = NULL;
-	      PR_TYPE *pr_type = NULL;
+	      const PR_TYPE *pr_type = NULL;
 
 	      db_make_null (&rec_key_value);
 	      key_domain = btid->key_type;
@@ -30731,7 +30731,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (delete_helper->buffered_key != NULL)
     {
       /* Unpack key from buffer. */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
       int key_size = -1;
 
       /* Assert key is initialized. */
