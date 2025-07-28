@@ -249,6 +249,7 @@ namespace parallel_query_execute
 	m_worker_stats.m_ioreads = 0;
 	m_worker_stats.m_fetch_time = 0;
       }
+    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
   }
   task_queue::~task_queue()
   {
@@ -430,7 +431,7 @@ namespace parallel_query_execute
 
   task_queue_global::task_queue_global()
   {
-
+    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
   }
 
   task_queue_global::~task_queue_global()
