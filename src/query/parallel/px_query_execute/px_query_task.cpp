@@ -81,7 +81,7 @@ namespace parallel_query_execute
       {
 	thread_ref.tran_index = m_orig_thread_p->tran_index;
 	thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-	thread_ref.emulate_tid = m_orig_thread_p->get_id();
+	thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
 	if (m_orig_thread_p->on_trace)
 	  {
 	    thread_ref.on_trace = true;
@@ -158,7 +158,7 @@ namespace parallel_query_execute
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
     thread_ref.on_trace = m_orig_thread_p->on_trace;
-    thread_ref.emulate_tid = m_orig_thread_p->get_id();
+    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
 
     if (m_orig_thread_p->on_trace)
       {

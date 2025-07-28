@@ -136,7 +136,8 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_parallel_stats (NULL)
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
       // private:
     , m_id ()
     , m_error ()
