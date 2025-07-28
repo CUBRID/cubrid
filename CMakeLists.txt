@@ -363,6 +363,19 @@ set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
 message("Including Third Party Libraries")
 add_subdirectory(3rdparty)
 
+include(FetchContent)
+
+# Set options BEFORE calling MakeAvailable
+# set(USEARCH_USE_OPENMP ON CACHE BOOL "" FORCE)
+set(USEARCH_USE_SIMSIMD ON CACHE BOOL "" FORCE)
+set(USEARCH_USE_JEMALLOC OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG main)
+FetchContent_MakeAvailable(usearch)
+
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
 # use add_custom_command because we want to regenerate csql_grammar.yy

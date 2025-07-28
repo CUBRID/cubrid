@@ -36,9 +36,12 @@
 _Pragma("GCC push_options") \
 _Pragma("GCC optimize (\"tree-vectorize,no-trapping-math,unroll-loops,associative-math,no-signed-zeros\")")
 
-#include "usearch/index.hpp"
-#include "usearch/index_dense.hpp"
-#include "usearch/index_plugins.hpp"
+// #include "usearch/index.hpp"
+// #include "usearch/index_dense.hpp"
+// #include "usearch/index_plugins.hpp"
+#include <usearch/index.hpp>
+#include <usearch/index_dense.hpp>
+#include <usearch/index_plugins.hpp>
 
 _Pragma("GCC pop_options")
 
