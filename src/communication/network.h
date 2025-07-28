@@ -285,8 +285,7 @@ enum net_server_request
 #define NET_SERVER_REQUEST_ITEM(name) name,
   NET_SERVER_REQUEST_LIST
 #undef NET_SERVER_REQUEST_ITEM
-
-  NET_SERVER_REQUEST_END,
+    NET_SERVER_REQUEST_END,
 
   /*
    * This request number must be preserved.
