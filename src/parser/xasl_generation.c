@@ -69,6 +69,7 @@
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
+#include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -18392,6 +18393,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   if (pt_has_error (parser))
     {
@@ -22274,6 +22276,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)
