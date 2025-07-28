@@ -41,6 +41,10 @@ namespace parallel_query
     /* Forward Declarations */
     class base_task;
 
+    /*
+     * entry_manager
+     */
+
     class entry_manager : public cubthread::entry_manager
     {
       public:
@@ -56,6 +60,10 @@ namespace parallel_query
 
 	void emulate_main_thread (cubthread::entry &thread_ref);
     };
+
+    /*
+     * worker_pool_manager
+     */
 
     class worker_pool_manager
     {
@@ -73,6 +81,10 @@ namespace parallel_query
 	cubthread::entry_workpool *m_worker_pool;
     };
 
+    /*
+     * task_manager
+     */
+
     class task_manager
     {
       public:
@@ -88,14 +100,18 @@ namespace parallel_query
 
       private:
 	cubthread::entry_workpool *m_worker_pool;
-	int m_active_tasks;
 
-	std::mutex m_mutex;
-	std::condition_variable m_cv;
+	std::condition_variable m_all_tasks_done_cv;
+	std::mutex m_active_tasks_mutex;
+	int m_active_tasks;
 
 	std::atomic<bool> m_has_error;
 	cuberr::context &m_main_error_context;
     };
+
+    /*
+     * base_task
+     */
 
     class base_task: public cubthread::entry_task
     {
@@ -108,17 +124,27 @@ namespace parallel_query
 	HASHJOIN_MANAGER *m_manager;
     };
 
+    /*
+     * split_task
+     */
+
     class split_task: public base_task
     {
       public:
-	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info);
+	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
+		    HASHJOIN_INPUT_STATS *m_stats);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
+	HASHJOIN_INPUT_STATS *m_stats;
 
 	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
     };
+
+    /*
+     * join_task
+     */
 
     class join_task: public base_task
     {
@@ -130,11 +156,27 @@ namespace parallel_query
 	HASHJOIN_CONTEXT *m_context;
     };
 
+    /*
+     * build_partitions
+     */
+
     int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
+
+    /*
+     * execute_partitions
+     */
+
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
+
+    /*
+     * tls_spawner
+     */
 
     cubxasl::spawner *get_spawner (cubthread::entry &thread_ref);
     void clear_spawner ();
+
+    /* get_val_descr must be called first,
+     * because it creates a DB_VALUE reused by other spawned structures. */
     VAL_DESCR *get_val_descr (cubthread::entry &thread_ref, VAL_DESCR *val_descr);
     PRED_EXPR *get_during_join_pred (cubthread::entry &thread_ref, PRED_EXPR *during_join_pred);
     REGU_VARIABLE_LIST get_outer_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST outer_regu_list_pred);

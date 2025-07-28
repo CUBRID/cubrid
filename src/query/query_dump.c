@@ -3796,12 +3796,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   UINT32 part_cnt, part_index;
 
-  HASHJOIN_INPUT_STATS min_build_stats, max_build_stats;
-  HASHJOIN_INPUT_STATS min_probe_stats, max_probe_stats;
-  double max_collision_rate = 0;
   char hash_method_str[32];
   int len;
-  bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
   bool need_separator;
 
   assert (fp != NULL);
@@ -3821,92 +3817,27 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (part_cnt > 1)
     {
-      min_build_stats = HASHJOIN_INPUT_STATS_MAX_INITIALIZER;
-      max_build_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
-
-      min_probe_stats = HASHJOIN_INPUT_STATS_MAX_INITIALIZER;
-      max_probe_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
-
-      use_hash_memory = use_hash_hybrid = use_hash_file = use_hash_skip = false;
-      need_separator = false;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  /* min_build_stats */
-	  perfmon_update_min_timeval (&min_build_stats.elapsed_time, &current_stats->build.elapsed_time);
-	  min_build_stats.fetch_time = MIN (min_build_stats.fetch_time, current_stats->build.fetch_time);
-
-	  /* max_build_stats */
-	  perfmon_update_max_timeval (&max_build_stats.elapsed_time, &current_stats->build.elapsed_time);
-	  max_build_stats.fetches += current_stats->build.fetches;
-	  max_build_stats.fetch_time = MAX (max_build_stats.fetch_time, current_stats->build.fetch_time);
-	  max_build_stats.ioreads += current_stats->build.ioreads;
-	  max_build_stats.qualified_rows += current_stats->build.qualified_rows;
-
-	  max_collision_rate = MAX (max_collision_rate, current_stats->collision_rate);
-
-	  /* min_probe_stats */
-	  perfmon_update_min_timeval (&min_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
-	  min_probe_stats.fetch_time = MIN (min_probe_stats.fetch_time, current_stats->probe.fetch_time);
-
-	  /* max_probe_stats */
-	  perfmon_update_max_timeval (&max_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
-	  max_probe_stats.fetches += current_stats->probe.fetches;
-	  max_probe_stats.fetch_time = MAX (max_probe_stats.fetch_time, current_stats->probe.fetch_time);
-	  max_probe_stats.ioreads += current_stats->probe.ioreads;
-	  max_probe_stats.read_rows += current_stats->probe.read_rows;
-	  max_probe_stats.read_keys += current_stats->probe.read_keys;
-	  max_probe_stats.qualified_rows += current_stats->probe.qualified_rows;
-
-	  switch (current_stats->hash_method)
-	    {
-	    case HASH_METH_IN_MEM:
-	      use_hash_memory = true;
-	      break;
-
-	    case HASH_METH_HYBRID:
-	      use_hash_hybrid = true;
-	      break;
-
-	    case HASH_METH_HASH_FILE:
-	      use_hash_file = true;
-	      break;
-
-	    case HASH_METH_NOT_USE:
-	      use_hash_skip = true;
-	      break;
-
-	    default:
-	      /* impossible case */
-	      assert (false);
-	      break;
-	    }
-	}
-
       if (stats->max_parallel_workers > 0)
 	{
 	  xasl_p->xasl_stats.fetches += stats->split.fetches;
-	  xasl_p->xasl_stats.fetches += max_build_stats.fetches;
-	  xasl_p->xasl_stats.fetches += max_probe_stats.fetches;
+	  xasl_p->xasl_stats.fetches += stats->build.fetches;
+	  xasl_p->xasl_stats.fetches += stats->probe.fetches;
 
 	  xasl_p->xasl_stats.ioreads += stats->split.ioreads;
-	  xasl_p->xasl_stats.ioreads += max_build_stats.ioreads;
-	  xasl_p->xasl_stats.ioreads += max_probe_stats.ioreads;
+	  xasl_p->xasl_stats.ioreads += stats->build.ioreads;
+	  xasl_p->xasl_stats.ioreads += stats->probe.ioreads;
 	}
 
       len = 0;
       need_separator = false;
 
-      if (use_hash_memory)
+      if (stats->use_hash_memory)
 	{
 	  len += sprintf (hash_method_str + len, "%s", qdump_hashjoin_type_string (HASH_METH_IN_MEM));
 	  need_separator = true;
 	}
 
-      if (use_hash_hybrid)
+      if (stats->use_hash_hybrid)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -3914,7 +3845,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  need_separator = true;
 	}
 
-      if (use_hash_file)
+      if (stats->use_hash_file)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -3922,7 +3853,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  need_separator = true;
 	}
 
-      if (use_hash_skip)
+      if (stats->use_hash_skip)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -3981,9 +3912,18 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     }
   else
     {
-      fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, parts: %d)\n", indent, ' ',
-	       TO_MSEC (stats->split.elapsed_time), stats->split.fetches, stats->min_fetch_time, stats->max_fetch_time,
-	       stats->split.ioreads, part_cnt);
+      if (stats->max_parallel_workers > 0)
+	{
+	  fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, partitions: %d)\n", indent,
+		   ' ', TO_MSEC (stats->split.elapsed_time), stats->split.fetches, stats->split.min_fetch_time,
+		   stats->split.max_fetch_time, stats->split.ioreads, part_cnt);
+	}
+      else
+	{
+	  fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld, partitions: %d)\n", indent, ' ',
+		   TO_MSEC (stats->split.elapsed_time), stats->split.fetches, stats->split.fetch_time,
+		   stats->split.ioreads, part_cnt);
+	}
 
       if (stats->max_parallel_workers > 0)
 	{
@@ -3994,12 +3934,12 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       fprintf (fp,
 	       "%*cBUILD (time: %d..%d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, rows: %ld, method: %s",
-	       indent, ' ', TO_MSEC (min_build_stats.elapsed_time), TO_MSEC (max_build_stats.elapsed_time),
-	       max_build_stats.fetches, min_build_stats.fetch_time, max_build_stats.fetch_time, max_build_stats.ioreads,
-	       max_build_stats.qualified_rows, hash_method_str);
+	       indent, ' ', TO_MSEC (stats->build.min_elapsed_time), TO_MSEC (stats->build.max_elapsed_time),
+	       stats->build.fetches, stats->build.min_fetch_time, stats->build.max_fetch_time, stats->build.ioreads,
+	       stats->build.qualified_rows, hash_method_str);
 
 #if HASHJOIN_COLLISION_RATE
-      fprintf (fp, ", collision_rate: %.0f%%)\n", max_collision_rate * 100);
+      fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
 #else
       fprintf (fp, ")\n");
 #endif /* HASHJOIN_COLLISION_RATE */
@@ -4031,9 +3971,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       fprintf (fp,
 	       "%*cPROBE (time: %d..%d, fetch: %ld, fetch_time: %ld..%ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
-	       indent, ' ', TO_MSEC (min_probe_stats.elapsed_time), TO_MSEC (max_probe_stats.elapsed_time),
-	       max_probe_stats.fetches, min_probe_stats.fetch_time, max_probe_stats.fetch_time, max_probe_stats.ioreads,
-	       max_probe_stats.read_rows, max_probe_stats.read_keys, max_probe_stats.qualified_rows);
+	       indent, ' ', TO_MSEC (stats->probe.min_elapsed_time), TO_MSEC (stats->probe.max_elapsed_time),
+	       stats->probe.fetches, stats->probe.min_fetch_time, stats->probe.max_fetch_time, stats->probe.ioreads,
+	       stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
 
 #if HASHJOIN_DUMP_PARTITION
       indent += 2;
@@ -4090,13 +4030,9 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   HASHJOIN_STATS *stats, *part_stats, *current_stats;
   UINT32 part_cnt, part_index;
 
-  HASHJOIN_INPUT_STATS min_build_stats, max_build_stats;
-  HASHJOIN_INPUT_STATS min_probe_stats, max_probe_stats;
-  double max_collision_rate = 0;
   char hash_method_str[32];
   char time_str[100], fetch_time_str[100];
   int len;
-  bool use_hash_memory, use_hash_hybrid, use_hash_file, use_hash_skip;
   bool need_separator;
 
   assert (xasl_p != NULL);
@@ -4116,92 +4052,27 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (part_cnt > 1)
     {
-      min_build_stats = HASHJOIN_INPUT_STATS_MAX_INITIALIZER;
-      max_build_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
-
-      min_probe_stats = HASHJOIN_INPUT_STATS_MAX_INITIALIZER;
-      max_probe_stats = HASHJOIN_INPUT_STATS_INITIALIZER;
-
-      use_hash_memory = use_hash_hybrid = use_hash_file = use_hash_skip = false;
-      need_separator = false;
-
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  current_stats = &part_stats[part_index];
-	  assert (current_stats != NULL);
-
-	  /* min_build_stats */
-	  perfmon_update_min_timeval (&min_build_stats.elapsed_time, &current_stats->build.elapsed_time);
-	  min_build_stats.fetch_time = MIN (min_build_stats.fetch_time, current_stats->build.fetch_time);
-
-	  /* max_build_stats */
-	  perfmon_update_max_timeval (&max_build_stats.elapsed_time, &current_stats->build.elapsed_time);
-	  max_build_stats.fetches += current_stats->build.fetches;
-	  max_build_stats.fetch_time = MAX (max_build_stats.fetch_time, current_stats->build.fetch_time);
-	  max_build_stats.ioreads += current_stats->build.ioreads;
-	  max_build_stats.qualified_rows += current_stats->build.qualified_rows;
-
-	  max_collision_rate = MAX (max_collision_rate, current_stats->collision_rate);
-
-	  /* min_probe_stats */
-	  perfmon_update_min_timeval (&min_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
-	  min_probe_stats.fetch_time = MIN (min_probe_stats.fetch_time, current_stats->probe.fetch_time);
-
-	  /* max_probe_stats */
-	  perfmon_update_max_timeval (&max_probe_stats.elapsed_time, &current_stats->probe.elapsed_time);
-	  max_probe_stats.fetches += current_stats->probe.fetches;
-	  max_probe_stats.fetch_time = MAX (max_probe_stats.fetch_time, current_stats->probe.fetch_time);
-	  max_probe_stats.ioreads += current_stats->probe.ioreads;
-	  max_probe_stats.read_rows += current_stats->probe.read_rows;
-	  max_probe_stats.read_keys += current_stats->probe.read_keys;
-	  max_probe_stats.qualified_rows += current_stats->probe.qualified_rows;
-
-	  switch (current_stats->hash_method)
-	    {
-	    case HASH_METH_IN_MEM:
-	      use_hash_memory = true;
-	      break;
-
-	    case HASH_METH_HYBRID:
-	      use_hash_hybrid = true;
-	      break;
-
-	    case HASH_METH_HASH_FILE:
-	      use_hash_file = true;
-	      break;
-
-	    case HASH_METH_NOT_USE:
-	      use_hash_skip = true;
-	      break;
-
-	    default:
-	      /* impossible case */
-	      assert (false);
-	      break;
-	    }
-	}
-
       if (stats->max_parallel_workers > 0)
 	{
 	  xasl_p->xasl_stats.fetches += stats->split.fetches;
-	  xasl_p->xasl_stats.fetches += max_build_stats.fetches;
-	  xasl_p->xasl_stats.fetches += max_probe_stats.fetches;
+	  xasl_p->xasl_stats.fetches += stats->build.fetches;
+	  xasl_p->xasl_stats.fetches += stats->probe.fetches;
 
 	  xasl_p->xasl_stats.ioreads += stats->split.ioreads;
-	  xasl_p->xasl_stats.ioreads += max_build_stats.ioreads;
-	  xasl_p->xasl_stats.ioreads += max_probe_stats.ioreads;
+	  xasl_p->xasl_stats.ioreads += stats->build.ioreads;
+	  xasl_p->xasl_stats.ioreads += stats->probe.ioreads;
 	}
 
       len = 0;
       need_separator = false;
 
-      if (use_hash_memory)
+      if (stats->use_hash_memory)
 	{
 	  len += sprintf (hash_method_str + len, "%s", qdump_hashjoin_type_string (HASH_METH_IN_MEM));
 	  need_separator = true;
 	}
 
-      if (use_hash_hybrid)
+      if (stats->use_hash_hybrid)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -4209,7 +4080,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  need_separator = true;
 	}
 
-      if (use_hash_file)
+      if (stats->use_hash_file)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -4217,7 +4088,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	  need_separator = true;
 	}
 
-      if (use_hash_skip)
+      if (stats->use_hash_skip)
 	{
 	  len +=
 	    sprintf (hash_method_str + len, "%s%s", (need_separator) ? "+" : "",
@@ -4282,7 +4153,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
     }
   else
     {
-      len = sprintf (fetch_time_str, "%ld..%ld", stats->min_fetch_time, stats->max_fetch_time);
+      len = sprintf (fetch_time_str, "%ld..%ld", stats->split.min_fetch_time, stats->split.max_fetch_time);
       fetch_time_str[len] = '\0';
 
       partition = json_object ();
@@ -4290,14 +4161,14 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (partition, "fetch", json_integer (stats->split.fetches));
       json_object_set_new (partition, "fetch_time", json_string (fetch_time_str));
       json_object_set_new (partition, "ioread", json_integer (stats->split.ioreads));
-      json_object_set_new (partition, "parts", json_integer (part_cnt));
+      json_object_set_new (partition, "partitions", json_integer (part_cnt));
       json_object_set_new (parent, "split", partition);
 
       len =
-	sprintf (time_str, "%d..%d", TO_MSEC (min_build_stats.elapsed_time), TO_MSEC (max_build_stats.elapsed_time));
+	sprintf (time_str, "%d..%d", TO_MSEC (stats->build.min_elapsed_time), TO_MSEC (stats->build.max_elapsed_time));
       time_str[len] = '\0';
 
-      len = sprintf (fetch_time_str, "%ld..%ld", min_build_stats.fetch_time, max_build_stats.fetch_time);
+      len = sprintf (fetch_time_str, "%ld..%ld", stats->build.min_fetch_time, stats->build.max_fetch_time);
       fetch_time_str[len] = '\0';
 
       build = json_object ();
@@ -4308,7 +4179,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (hash_method_str));
 #if HASHJOIN_COLLISION_RATE
-      json_object_set_new (build, "collision_rate", json_real (max_collision_rate * 100));
+      json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
 #endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_DUMP_PARTITION
@@ -4341,10 +4212,10 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 #endif /* HASHJOIN_DUMP_PARTITION */
 
       len =
-	sprintf (time_str, "%d..%d", TO_MSEC (min_probe_stats.elapsed_time), TO_MSEC (max_probe_stats.elapsed_time));
+	sprintf (time_str, "%d..%d", TO_MSEC (stats->probe.min_elapsed_time), TO_MSEC (stats->probe.max_elapsed_time));
       time_str[len] = '\0';
 
-      len = sprintf (fetch_time_str, "%ld..%ld", min_probe_stats.fetch_time, max_probe_stats.fetch_time);
+      len = sprintf (fetch_time_str, "%ld..%ld", stats->probe.min_fetch_time, stats->probe.max_fetch_time);
       fetch_time_str[len] = '\0';
 
       probe = json_object ();

@@ -2920,19 +2920,17 @@ error:
 int
 qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id)
 {
-  VPID old_vpid, new_vpid, prev_vpid;
-  VPID old_overflow_vpid, new_overflow_vpid;
+  VPID old_vpid = VPID_INITIALIZER, new_vpid = VPID_INITIALIZER, prev_vpid = VPID_INITIALIZER;
+  VPID old_overflow_vpid = VPID_INITIALIZER, new_overflow_vpid = VPID_INITIALIZER;
   PAGE_PTR old_page = NULL, new_page = NULL, prev_page = NULL;
   PAGE_PTR old_overflow_page = NULL, new_overflow_page = NULL, prev_overflow_page = NULL;
 
+  assert (thread_p != NULL);
+  assert (base_list_id != NULL);
+  assert (append_list_id != NULL);
+
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
-
-  VPID_SET_NULL (&old_vpid);
-  VPID_SET_NULL (&new_vpid);
-  VPID_SET_NULL (&prev_vpid);
-  VPID_SET_NULL (&old_overflow_vpid);
-  VPID_SET_NULL (&new_overflow_vpid);
 
   if (!VPID_ISNULL (&base_list_id->last_vpid))
     {
@@ -2948,6 +2946,7 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 
   while (!VPID_ISNULL (&old_vpid))
     {
+      /* last_vpid can be NULL if the tuple_cnt of base_list_id is 0 */
       assert (VPID_ISNULL (&base_list_id->last_vpid) || !VPID_ISNULL (&prev_vpid));
       assert (VPID_ISNULL (&base_list_id->last_vpid) || prev_page != NULL);
 
@@ -3071,6 +3070,10 @@ int
 qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id)
 {
   PAGE_PTR base_last_page = NULL, append_first_page = NULL;
+
+  assert (thread_p != NULL);
+  assert (base_list_id != NULL);
+  assert (append_list_id != NULL);
 
   /* Check if qfile_close_list was called */
   assert (base_list_id->last_pgptr == NULL);

@@ -5587,9 +5587,9 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
     {
       goto error_exit;
     }
-  outer_info->expr_list = parser_append_node (outer_info->expr_list /* back */ , hash_key /* front */ );
 
   /* outer_info */
+  outer_info->expr_list = parser_append_node (outer_info->expr_list /* back */ , hash_key /* front */ );
   outer_info->expr_count = pt_length_of_list (outer_info->expr_list);
 
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
@@ -5614,9 +5614,9 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
     {
       goto error_exit;
     }
-  inner_info->expr_list = parser_append_node (inner_info->expr_list /* back */ , hash_key /* front */ );
 
   /* inner_info */
+  inner_info->expr_list = parser_append_node (inner_info->expr_list /* back */ , hash_key /* front */ );
   inner_info->expr_count = pt_length_of_list (inner_info->expr_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
@@ -5840,8 +5840,10 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   outer_expr = outer_info->expr_list;
   inner_expr = inner_info->expr_list;
-  outer_expr_pos = 1;		/* after hash_key */
-  inner_expr_pos = 1;		/* after hash_key */
+
+  /* after hash_key */
+  outer_expr_pos = 1;
+  inner_expr_pos = 1;
 
   value_index = 0;
 

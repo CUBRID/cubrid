@@ -47,8 +47,9 @@ namespace parallel_query
     entry_manager::on_create (cubthread::entry &context)
     {
       cubthread::entry_manager::on_create (context);
+
       emulate_main_thread (context);
-      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
+      context.skip_end_resource_tracks_in_recycle = true;
 
       /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
        * function in net_server_request. Since parallel threads are not called through net_server_request,
@@ -57,16 +58,19 @@ namespace parallel_query
        * For parallel threads, end_resource_tracks is expected to be called in retire_context,
        * after all tasks have been completed. */
       context.push_resource_tracks ();
-      context.skip_end_resource_tracks_in_recycle = true;
+
+      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
     }
 
     void
     entry_manager::on_retire (cubthread::entry &context)
     {
       clear_spawner ();
-      context.emulate_tid = thread_id_t ();
       perfmon_destroy_parallel_stats (&context);
+
+      context.emulate_tid = thread_id_t ();
       context.skip_end_resource_tracks_in_recycle = false;
+
       cubthread::entry_manager::on_retire (context);
     }
 
@@ -74,7 +78,10 @@ namespace parallel_query
     entry_manager::on_recycle (cubthread::entry &context)
     {
       cubthread::entry_manager::on_recycle (context);
+
       emulate_main_thread (context);
+      context.skip_end_resource_tracks_in_recycle = true;
+
       perfmon_destroy_parallel_stats (&context);
       perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
     }
@@ -107,7 +114,7 @@ namespace parallel_query
     bool
     worker_pool_manager::try_reserve_workers (int pool_size)
     {
-      if (pool_size <= 0 || m_worker_pool != nullptr)
+      if (pool_size <= 1 || m_worker_pool != nullptr)
 	{
 	  assert (false);
 	  return false;
@@ -135,7 +142,7 @@ namespace parallel_query
     worker_pool_manager::release_workers ()
     {
       cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
-      m_worker_pool = NULL;
+      m_worker_pool = nullptr;
 
       parallel_query::worker_manager_reserver::get_manager().release_workers ();
     }
@@ -152,21 +159,21 @@ namespace parallel_query
 
     task_manager::task_manager (cubthread::entry_workpool *worker_pool, cuberr::context &main_error_context)
       : m_worker_pool (worker_pool)
+      , m_all_tasks_done_cv ()
+      , m_active_tasks_mutex ()
       , m_active_tasks (0)
-      , m_mutex ()
-      , m_cv ()
       , m_has_error (false)
       , m_main_error_context (main_error_context)
     {
-      //
+      assert (m_worker_pool != nullptr);
     }
 
     void
     task_manager::push_task (base_task *task)
     {
-      assert (task != NULL);
+      assert (task != nullptr);
       {
-	std::lock_guard<std::mutex> lock (m_mutex);
+	std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
 	++m_active_tasks;
       }
       cubthread::get_manager()->push_task (m_worker_pool, task);
@@ -175,25 +182,25 @@ namespace parallel_query
     void
     task_manager::end_task ()
     {
-      std::lock_guard<std::mutex> lock (m_mutex);
+      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
       --m_active_tasks;
       if (m_active_tasks == 0)
 	{
-	  m_cv.notify_all ();
+	  m_all_tasks_done_cv.notify_all ();
 	}
     }
 
     void
     task_manager::join ()
     {
-      std::unique_lock<std::mutex> lock (m_mutex);
-      m_cv.wait (lock, [this] { return m_active_tasks == 0; });
+      std::unique_lock<std::mutex> lock (m_active_tasks_mutex);
+      m_all_tasks_done_cv.wait (lock, [this] { return m_active_tasks == 0; });
     }
 
     bool
     task_manager::has_error ()
     {
-      return m_has_error;
+      return m_has_error.load();
     }
 
     bool
@@ -228,7 +235,8 @@ namespace parallel_query
       : m_task_manager (task_manager)
       , m_manager (manager)
     {
-      assert (manager != NULL);
+      assert (m_manager != nullptr);
+      assert (m_manager->context_cnt > 1);
     }
 
     void base_task::retire ()
@@ -241,11 +249,16 @@ namespace parallel_query
      * split_task
      */
 
-    split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info)
+    split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
+			    HASHJOIN_INPUT_STATS *stats)
       : base_task (task_manager, manager)
       , m_split_info (split_info)
+      , m_stats (stats)
     {
-      assert (split_info != NULL);
+      assert (m_split_info != nullptr);
+      assert (m_split_info->fetch_info != nullptr);
+      assert (m_split_info->fetch_info->list_id != nullptr);
+      assert (m_split_info->part_mutexes != nullptr);
     }
 
     void
@@ -253,18 +266,18 @@ namespace parallel_query
     {
       QFILE_LIST_ID *list_id;
       QFILE_LIST_ID **part_list_id;
-      QFILE_LIST_ID **temp_part_list_id = NULL;
+      QFILE_LIST_ID **temp_part_list_id = nullptr;
 
-      PAGE_PTR page = NULL;
-      QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+      PAGE_PTR page = nullptr;
+      QFILE_TUPLE_RECORD tuple_record = { nullptr, 0 };
       int tuple_cnt, tuple_index, tuple_length, tuple_offset;
 
       VPID overflow_vpid = VPID_INITIALIZER;
-      PAGE_PTR overflow_page = NULL;
-      QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
+      PAGE_PTR overflow_page = nullptr;
+      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
       int copy_offset, copy_size;
 
-      HASH_SCAN_KEY *temp_key = NULL;
+      HASH_SCAN_KEY *temp_key = nullptr;
       unsigned int hash_key;
       UINT32 part_cnt, part_index, part_id;
 
@@ -274,8 +287,12 @@ namespace parallel_query
       int error = NO_ERROR;
       bool has_error = false;
 
+      HASHJOIN_INPUT_STATS *stats = m_stats;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
+
       /* Do not perform NULL checks;
-       * validation is expected to be handled by the caller */
+       * validation is expected to be handled by the constructor */
       list_id = m_split_info->fetch_info->list_id;
       part_list_id = m_split_info->part_list_id;
       part_cnt = m_manager->context_cnt;
@@ -283,7 +300,7 @@ namespace parallel_query
       is_outer_join = IS_OUTER_JOIN_TYPE (m_manager->join_type);
 
       temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (&thread_ref, part_cnt * sizeof (QFILE_LIST_ID *));
-      if (temp_part_list_id == NULL)
+      if (temp_part_list_id == nullptr)
 	{
 	  assert_release (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
@@ -292,7 +309,7 @@ namespace parallel_query
       memset (temp_part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
 
       temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
-      if (temp_key == NULL)
+      if (temp_key == nullptr)
 	{
 	  assert_release (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
@@ -303,7 +320,13 @@ namespace parallel_query
 	  return;
 	}
 
-      do	/* next page */
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      /* next page */
+      do
 	{
 	  if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
 	    {
@@ -312,7 +335,7 @@ namespace parallel_query
 	    }
 
 	  page = get_next_page (thread_ref);
-	  if (page == NULL)
+	  if (page == nullptr)
 	    {
 	      if (er_errid () != NO_ERROR)
 		{
@@ -335,7 +358,8 @@ namespace parallel_query
 	  tuple_index = -1;
 	  tuple_offset = 0;
 
-	  do	/* next tuple */
+	  /* next tuple */
+	  do
 	    {
 	      if (tuple_index == -1)
 		{
@@ -359,8 +383,11 @@ namespace parallel_query
 
 	      tuple_index++;
 
+	      /* overflow page */
 	      if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
 		{
+		  assert (tuple_index == 0);
+
 		  overflow_page = page;
 
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
@@ -400,7 +427,7 @@ namespace parallel_query
 
 		      /* next overflow page */
 		      overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, list_id->tfile_vfid);
-		      if (overflow_page == NULL)
+		      if (overflow_page == nullptr)
 			{
 			  has_error = true;
 			  break;
@@ -416,12 +443,9 @@ namespace parallel_query
 		  tuple_record.tpl = overflow_record.tpl;
 		}	/* if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID) */
 
-	      if (has_error)
-		{
-		  break;
-		}
+	      assert (has_error == false);
 
-	      error = hjoin_fetch_key (&thread_ref, m_split_info->fetch_info, &tuple_record, temp_key, NULL /* compare_key */,
+	      error = hjoin_fetch_key (&thread_ref, m_split_info->fetch_info, &tuple_record, temp_key, nullptr /* compare_key */,
 				       &need_skip_next);
 	      if (error != NO_ERROR)
 		{
@@ -454,11 +478,11 @@ namespace parallel_query
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
 
-	      if (temp_part_list_id[part_id] == NULL)
+	      if (temp_part_list_id[part_id] == nullptr)
 		{
 		  temp_part_list_id[part_id] =
-			  qfile_open_list (&thread_ref, &list_id->type_list, NULL, list_id->query_id, QFILE_FLAG_ALL, NULL);
-		  if (temp_part_list_id[part_id] == NULL)
+			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id, QFILE_FLAG_ALL, nullptr);
+		  if (temp_part_list_id[part_id] == nullptr)
 		    {
 		      assert_release (er_errid () != NO_ERROR);
 		      m_task_manager.handle_error (thread_ref);
@@ -494,12 +518,22 @@ namespace parallel_query
 		      }
 		  }
 
+		  if (thread_is_on_trace (&thread_ref))
+		    {
+		      stats->qualified_rows += temp_part_list_id[part_id]->tuple_cnt;
+		    }
+
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		}
 	    }
 	  while (true);		/* next tuple */
 
-	  if (page != NULL)
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      stats->read_rows += tuple_index + 1;
+	    }
+
+	  if (page != nullptr)
 	    {
 	      qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
 	    }
@@ -511,20 +545,20 @@ namespace parallel_query
 	}
       while (true);	/* next page */
 
-      if (page != NULL)
+      if (page != nullptr)
 	{
 	  assert (false);
 	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
 	}
 
-      assert (temp_part_list_id != NULL);
-      assert (temp_key != NULL);
+      assert (temp_part_list_id != nullptr);
+      assert (temp_key != nullptr);
 
       if (has_error)
 	{
 	  for (part_index = 0; part_index < part_cnt; part_index++)
 	    {
-	      if (temp_part_list_id[part_index] != NULL)
+	      if (temp_part_list_id[part_index] != nullptr)
 		{
 		  qfile_close_list (&thread_ref, temp_part_list_id[part_index]);
 		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
@@ -536,9 +570,9 @@ namespace parallel_query
 	{
 	  for (part_index = 0; part_index < part_cnt; part_index++)
 	    {
-	      assert (part_list_id[part_index] != NULL);
+	      assert (part_list_id[part_index] != nullptr);
 
-	      if (temp_part_list_id[part_index] != NULL)
+	      if (temp_part_list_id[part_index] != nullptr)
 		{
 		  qfile_close_list  (&thread_ref, temp_part_list_id[part_index]);
 
@@ -556,10 +590,21 @@ namespace parallel_query
 		      }
 		  }
 
+		  if (thread_is_on_trace (&thread_ref))
+		    {
+		      stats->qualified_rows += temp_part_list_id[part_index]->tuple_cnt;
+		    }
+
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
 		}
 	    }
 	}
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_end (&thread_ref, stats, &start_stats);
+	}
+
       db_private_free_and_init (&thread_ref, temp_part_list_id);
 
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
@@ -574,9 +619,9 @@ namespace parallel_query
     split_task::get_next_page (cubthread::entry &thread_ref)
     {
       /* Do not perform NULL checks;
-       * validation is expected to be handled by the caller */
+       * validation is expected to be handled by the constructor */
       QFILE_LIST_ID *list_id = m_split_info->fetch_info->list_id;
-      PAGE_PTR page = NULL;
+      PAGE_PTR page = nullptr;
 
       std::lock_guard<std::mutex> lock (m_split_info->shared_mutex);
 
@@ -586,10 +631,10 @@ namespace parallel_query
 	  if (VPID_ISNULL (&m_split_info->shared_next_vpid))
 	    {
 	      page = qmgr_get_old_page (&thread_ref, &list_id->first_vpid, list_id->tfile_vfid);
-	      if (page == NULL)
+	      if (page == nullptr)
 		{
 		  assert_release (er_errid () != NO_ERROR);
-		  return NULL;
+		  return nullptr;
 		}
 
 	      if (qfile_has_next_page (page))
@@ -606,7 +651,7 @@ namespace parallel_query
 	    {
 	      /* impossible case */
 	      assert_release (false);
-	      return NULL;
+	      return nullptr;
 	    }
 	  break;
 
@@ -614,10 +659,10 @@ namespace parallel_query
 	  if (!VPID_ISNULL (&m_split_info->shared_next_vpid))
 	    {
 	      page = qmgr_get_old_page (&thread_ref, &m_split_info->shared_next_vpid, list_id->tfile_vfid);
-	      if (page == NULL)
+	      if (page == nullptr)
 		{
 		  assert_release (er_errid () != NO_ERROR);
-		  return NULL;
+		  return nullptr;
 		}
 
 	      if (qfile_has_next_page (page))
@@ -634,19 +679,19 @@ namespace parallel_query
 	    {
 	      /* impossible case */
 	      assert_release (false);
-	      return NULL;
+	      return nullptr;
 	    }
 	  break;
 
 	case S_AFTER:
 	  /* nothing to do */
 	  assert (VPID_ISNULL (&m_split_info->shared_next_vpid));
-	  return NULL;
+	  return nullptr;
 
 	default:
 	  /* impossible case */
 	  assert_release (false);
-	  return NULL;
+	  return nullptr;
 	}
 
       return page;
@@ -660,18 +705,22 @@ namespace parallel_query
       : base_task (task_manager, manager)
       , m_context (context)
     {
-      assert (manager != NULL);
-      assert (context != NULL);
+      assert (m_manager != nullptr);
+      assert (m_manager->context_cnt > 1);
+      assert (m_context != nullptr);
     }
 
     void
     join_task::execute (cubthread::entry &thread_ref)
     {
+      int error = NO_ERROR;
+
       if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
 	{
 	  return;
 	}
 
+      /* reuse TLS variables if already set */
       m_context->val_descr = get_val_descr (thread_ref, m_manager->val_descr);
       m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->during_join_pred);
       m_context->outer.regu_list_pred = get_outer_regu_list_pred (thread_ref, m_manager->outer->regu_list_pred);
@@ -683,9 +732,18 @@ namespace parallel_query
 	  return;
 	}
 
-      if (hjoin_execute (&thread_ref, m_manager, m_context) != NO_ERROR)
+      error = hjoin_execute (&thread_ref, m_manager, m_context);
+
+      /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
+      m_context->val_descr = nullptr;
+      m_context->during_join_pred = nullptr;
+      m_context->outer.regu_list_pred = nullptr;
+      m_context->inner.regu_list_pred = nullptr;
+
+      if (error != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
+	  return;
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -699,59 +757,134 @@ namespace parallel_query
     build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
     {
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
-      int task_index;
+      UINT32 task_cnt, task_index;
 
-      assert (manager != NULL);
-      assert (split_info != NULL);
+      assert (manager != nullptr);
+      assert (split_info != nullptr);
+
+      HASHJOIN_STATS *stats = manager->single_context.stats;
+      HASHJOIN_INPUT_STATS *px_stats = nullptr, *current_stats = nullptr;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       outer = &split_info->outer;
       inner = &split_info->inner;
 
+      task_cnt = manager->max_parallel_workers;
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  stats->split.min_elapsed_time = { LONG_MAX, 999999 };
+	  stats->split.min_fetch_time = UINT64_MAX;
+
+	  px_stats = (HASHJOIN_INPUT_STATS *) db_private_alloc (&thread_ref, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
+	  if (px_stats == nullptr)
+	    {
+	      assert_release (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	  memset (px_stats, 0, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
+	}
+
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
-      split_task *task = NULL;
+      split_task *task = nullptr;
 
-      for (task_index = 0; task_index < manager->max_parallel_workers; task_index++)
+      if (thread_is_on_trace (&thread_ref))
 	{
-	  task = new split_task (task_manager, manager, outer);
+	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  task = new split_task (task_manager, manager, outer, (px_stats != nullptr) ? &px_stats[task_index] : nullptr);
 	  task_manager.push_task (task);
 	}
 
       task_manager.join ();
 
-      if (outer->fetch_info->list_id != NULL)
+      if (thread_is_on_trace (&thread_ref))
 	{
-	  qfile_close_list (&thread_ref, outer->fetch_info->list_id);
-	  qfile_destroy_list (&thread_ref, outer->fetch_info->list_id);
-	}
-
-      for (task_index = 0; task_index < manager->max_parallel_workers; task_index++)
-	{
-	  task = new split_task (task_manager, manager, inner);
-	  task_manager.push_task (task);
-	}
-
-      task_manager.join ();
-
-      if (inner->fetch_info->list_id != NULL)
-	{
-	  qfile_close_list (&thread_ref, inner->fetch_info->list_id);
-	  qfile_destroy_list (&thread_ref, inner->fetch_info->list_id);
+	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  HASHJOIN_STATS *stats = &manager->stats_group->stats;
+	  for (task_index = 0; task_index < task_cnt; task_index++)
+	    {
+	      current_stats = &px_stats[task_index];
 
-	  stats->split.fetches += split_info->outer.stats.fetches;
-	  stats->split.ioreads += split_info->outer.stats.ioreads;
-	  stats->min_fetch_time = MIN (stats->min_fetch_time, split_info->outer.stats.fetch_time);
-	  stats->max_fetch_time = MAX (stats->max_fetch_time, split_info->outer.stats.fetch_time);
+	      if (current_stats->fetches == 0)
+		{
+		  continue;
+		}
 
-	  stats->split.fetches += split_info->inner.stats.fetches;
-	  stats->split.ioreads += split_info->inner.stats.ioreads;
-	  stats->min_fetch_time = MIN (stats->min_fetch_time, split_info->inner.stats.fetch_time);
-	  stats->max_fetch_time = MAX (stats->max_fetch_time, split_info->inner.stats.fetch_time);
+	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
+	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);
+	      stats->split.min_fetch_time = MIN (stats->split.min_fetch_time, current_stats->fetch_time);
+	      stats->split.max_fetch_time = MAX (stats->split.max_fetch_time, current_stats->fetch_time);
+	      stats->split.fetches += current_stats->fetches;
+	      stats->split.ioreads += current_stats->ioreads;
+	    }
+
+	  memset (px_stats, 0, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
+	}
+
+      if (task_manager.has_error ())
+	{
+	  assert_release (er_errid () != NO_ERROR);
+
+	  /* cleanup */
+	  if (px_stats != nullptr)
+	    {
+	      db_private_free_and_init (&thread_ref, px_stats);
+	    }
+
+	  return er_errid ();
+	}
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  task = new split_task (task_manager, manager, inner, (px_stats != nullptr) ? &px_stats[task_index] : nullptr);
+	  task_manager.push_task (task);
+	}
+
+      task_manager.join ();
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
+	}
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  for (task_index = 0; task_index < task_cnt; task_index++)
+	    {
+	      current_stats = &px_stats[task_index];
+
+	      if (current_stats->fetches == 0)
+		{
+		  continue;
+		}
+
+	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
+	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);
+	      stats->split.min_fetch_time = MIN (stats->split.min_fetch_time, current_stats->fetch_time);
+	      stats->split.max_fetch_time = MAX (stats->split.max_fetch_time, current_stats->fetch_time);
+	      stats->split.fetches += current_stats->fetches;
+	      stats->split.ioreads += current_stats->ioreads;
+	    }
+	}
+
+      /* cleanup */
+      if (px_stats != nullptr)
+	{
+	  db_private_free_and_init (&thread_ref, px_stats);
 	}
 
       if (task_manager.has_error ())
@@ -776,17 +909,24 @@ namespace parallel_query
 
       int error = NO_ERROR;
 
-      assert (manager != NULL);
+      assert (manager != nullptr);
 
-      HASHJOIN_STATS *stats = &manager->stats_group->stats;
+      HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
-      join_task *task = NULL;
+      join_task *task = nullptr;
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  stats->build.min_elapsed_time = { LONG_MAX, 999999 };
+	  stats->build.min_fetch_time = UINT64_MAX;
+
+	  stats->probe.min_elapsed_time = { LONG_MAX, 999999 };
+	  stats->probe.min_fetch_time = UINT64_MAX;
+
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
@@ -820,7 +960,7 @@ namespace parallel_query
 	      hjoin_trace_merge_stats (stats, current_context->stats);
 	    }
 
-	  if (current_context->list_id == NULL)
+	  if (current_context->list_id == nullptr)
 	    {
 	      error = er_errid ();
 	      if (error != NO_ERROR)
@@ -830,7 +970,8 @@ namespace parallel_query
 		}
 	      else
 		{
-		  /* list_id can be NULL when the join result is empty. In this case, it is NO_ERROR. */
+		  /* list_id can be NULL when the join result is empty.
+		   * In this case, it is NO_ERROR. */
 		  continue;
 		}
 	    }
@@ -891,12 +1032,14 @@ namespace parallel_query
 	    }
 	}
 
+      /* return raw pointer, keep ownership */
       return tls_spawner.get();
     }
 
     void
     clear_spawner ()
     {
+      /* call destructor */
       tls_spawner.reset ();
     }
 

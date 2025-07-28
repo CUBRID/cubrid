@@ -135,15 +135,17 @@ typedef struct hashjoin_domain_info
 typedef struct hashjoin_input_stats
 {
   TSCTIMEVAL elapsed_time;
+  TSCTIMEVAL min_elapsed_time;
+  TSCTIMEVAL max_elapsed_time;
   UINT64 fetches;
   UINT64 fetch_time;
+  UINT64 min_fetch_time;
+  UINT64 max_fetch_time;
   UINT64 ioreads;
   UINT64 read_rows;
   UINT64 read_keys;
   UINT64 qualified_rows;
 } HASHJOIN_INPUT_STATS;
-#define HASHJOIN_INPUT_STATS_INITIALIZER { { 0 }, 0, 0, 0, 0, 0, 0 }
-#define HASHJOIN_INPUT_STATS_MAX_INITIALIZER { { LONG_MAX, 999999 }, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX }
 
 #if HASHJOIN_PROFILE_TIME
 typedef struct hashjoin_profile_stats
@@ -181,12 +183,14 @@ typedef struct hashjoin_stats
   UINT32 max_parallel_workers;
 
   HASH_METHOD hash_method;
+  bool use_hash_memory;
+  bool use_hash_hybrid;
+  bool use_hash_file;
+  bool use_hash_skip;
+
   double collision_rate;
 
   HASHJOIN_INPUT_STATS split;
-  UINT64 min_fetch_time;
-  UINT64 max_fetch_time;
-
   HASHJOIN_INPUT_STATS parallel;
   HASHJOIN_INPUT_STATS build;
   HASHJOIN_INPUT_STATS probe;
@@ -240,8 +244,6 @@ typedef struct hashjoin_input_split_info
 #endif				/* defined (SERVER_MODE) */
   QFILE_LIST_ID **part_list_id;
 
-  HASHJOIN_INPUT_STATS stats;
-
   // *INDENT-OFF*
   hashjoin_input_split_info ()
     : fetch_info (nullptr)
@@ -253,7 +255,7 @@ typedef struct hashjoin_input_split_info
 #endif /* defined (SERVER_MODE) */
     , part_list_id (nullptr)
   {
-    std::memset (&stats, 0, sizeof (stats));
+    //
   }
   // *INDENT-ON*
 } HASHJOIN_INPUT_SPLIT_INFO;
