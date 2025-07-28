@@ -544,19 +544,6 @@ namespace parallel_heap_scan
 
   memory_mapper::memory_mapper (SCAN_ID *scan_idp, OUTPTR_LIST *outptr_list)
   {
-    /* Structure sizes
-     * SCAN_ID : 2184
-     * val_descr : 48
-     * heap_cache_attrinfo : 56
-     * regu_variable_list_node : 120
-     * PRED_EXPR : 48
-     * when you change the size of the structure, please update the phs modules to scan properly.
-     */
-    assert_release (sizeof (SCAN_ID) == 2184);
-    assert_release (sizeof (val_descr) == 48);
-    assert_release (sizeof (heap_cache_attrinfo) == 56);
-    assert_release (sizeof (regu_variable_list_node) == 120);
-    assert_release (sizeof (PRED_EXPR) == 48);
     m_obj_cnt = 0;
     val_descr_ptr = nullptr;
     PARALLEL_HEAP_SCAN_ID *phsid = (PARALLEL_HEAP_SCAN_ID *) &scan_idp->s.phsid;

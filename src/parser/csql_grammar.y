@@ -12095,6 +12095,20 @@ opt_using
 		{ parser_restore_hvar (); }
 		{{ DBG_TRACE_GRAMMAR(opt_using, | USING execute_using_list);
 
+                        int arg[2];
+                        arg[0] = PT_SELECT;
+                        arg[1] = 0;
+
+			PT_NODE *node = $3;
+                        (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                        if(arg[1] == 1)
+                        {
+                                PT_ERRORf (this_parser, node,
+				"check syntax at '%s', subqueries are not allowed in using clause.",
+				pt_short_print_l (this_parser, node));
+                        }
+
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
