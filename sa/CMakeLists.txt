@@ -40,7 +40,6 @@ set(EXECUTABLE_HEADERS
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -108,9 +107,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
