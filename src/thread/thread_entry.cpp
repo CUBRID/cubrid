@@ -138,7 +138,9 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_parallel_stats (NULL)
+    , m_px_lock ()
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
       // private:
     , m_id ()
     , m_error ()
@@ -162,6 +164,11 @@ namespace cubthread
 	assert (false);
       }
     if (pthread_cond_init (&wakeup_cond, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_init (&m_px_lock, NULL) != 0)
       {
 	// cannot recover from this
 	assert (false);
@@ -254,6 +261,11 @@ namespace cubthread
       }
     if (pthread_cond_destroy (&wakeup_cond) != 0)
       {
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_lock) != 0)
+      {
+	// cannot recover from this
 	assert (false);
       }
 

@@ -1419,6 +1419,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
 #define  PT_HINT_INLINE_CTE  0x40000000000ULL	/* inline CTE */
 #define  PT_HINT_MATERIALIZE_CTE  0x80000000000ULL	/* materialize CTE */
+#define  PT_HINT_NO_PARALLEL_SUBQUERY  0x100000000000ULL	/* disable parallel subquery */
 
 /* Parallel query execution threads limits */
 #define  PT_MAX_PARALLEL_THREADS  64
