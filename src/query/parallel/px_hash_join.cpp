@@ -814,11 +814,6 @@ namespace parallel_query
 	    {
 	      current_stats = &px_stats[task_index];
 
-	      if (current_stats->fetches == 0)
-		{
-		  continue;
-		}
-
 	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
 	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);
 	      stats->split.min_fetch_time = MIN (stats->split.min_fetch_time, current_stats->fetch_time);
@@ -866,11 +861,6 @@ namespace parallel_query
 	  for (task_index = 0; task_index < task_cnt; task_index++)
 	    {
 	      current_stats = &px_stats[task_index];
-
-	      if (current_stats->fetches == 0)
-		{
-		  continue;
-		}
 
 	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
 	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);

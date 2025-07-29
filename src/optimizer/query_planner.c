@@ -53,8 +53,8 @@
 #include "regu_var.hpp"
 
 #define TEST_DUMP_PLAN_COST 0
-#define TEST_HASH_JOIN_ENABLE 0
-#define TEST_HASH_JOIN_FORCE_ENABLE 0
+#define TEST_HASH_JOIN_ENABLE 1
+#define TEST_HASH_JOIN_FORCE_ENABLE 1
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
