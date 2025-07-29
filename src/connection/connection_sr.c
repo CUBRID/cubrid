@@ -3177,6 +3177,13 @@ css_set_exec_path (char *exec_path)
   strncpy (css_Server_exec_path, exec_path, sizeof (css_Server_exec_path) - 1);
 }
 
+char *
+css_get_exec_path (void)
+{
+  assert (css_Server_exec_path != NULL);
+  return css_Server_exec_path;
+}
+
 /*
  * css_set_argv () -
  *   return: none
@@ -3188,4 +3195,11 @@ css_set_argv (char **argv)
 {
   assert (argv != NULL);
   css_Server_argv = argv;
+}
+
+char **
+css_get_argv (void)
+{
+  assert (css_Server_argv != NULL);
+  return css_Server_argv;
 }

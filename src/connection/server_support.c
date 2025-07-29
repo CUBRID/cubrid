@@ -32,6 +32,7 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "master_connector.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1316,6 +1317,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR;
 
+  cubthread::master_connector<cubsocket::epoll> mconn;
+  std::string sn (server_name, name_length);
+
   if (server_name == NULL || port_id <= 0)
     {
       return ER_FAILED;
@@ -1366,6 +1370,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   css_Server_connection_socket = INVALID_SOCKET;
+  
+  mconn.connect (port_id, sn);
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
