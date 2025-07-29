@@ -1068,9 +1068,9 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats)
+  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats)
     {
-      stats = thread_p->m_parallel_stats;
+      stats = thread_p->m_px_stats;
     }
   else
     {
@@ -3318,15 +3318,15 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 void
 perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p)
 {
-  thread_p->emulate_tid = orig_thread_p->get_id ();
-  thread_p->m_parallel_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+  thread_p->m_px_orig_thread_entry = orig_thread_p;
+  thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
 }
 
 void
 perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  free (thread_p->m_parallel_stats);
-  thread_p->m_parallel_stats = NULL;
+  free (thread_p->m_px_stats);
+  thread_p->m_px_stats = NULL;
 }
 
 #endif /* SERVER_MODE || SA_MODE */

@@ -121,21 +121,21 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
-    if (m_context->m_orig_thread_p->emulate_tid != thread_id_t())
+    if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->emulate_tid;
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
       }
     else
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->get_id();
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
       }
 
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
-	if (m_context->m_orig_thread_p->m_parallel_stats != NULL)
+	if (m_context->m_orig_thread_p->m_px_stats != NULL)
 	  {
-	    thread_p->m_parallel_stats = m_context->m_orig_thread_p->m_parallel_stats;
+	    thread_p->m_px_stats = m_context->m_orig_thread_p->m_px_stats;
 	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
@@ -186,18 +186,21 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
 	  }
+#endif
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t1);
 	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
 	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
 	  }
-
+#endif
 	if (page_scan_code == S_END)
 	  {
 	    m_context->is_scan_internal_ended = true;
@@ -221,17 +224,21 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t2);
 	      }
+#endif
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t1);
 		tsc_elapsed_time_usec (&tv_diff, t1, t2);
 		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
 	      }
+#endif
 	    if (rec_scan_code == S_ERROR)
 	      {
 		if (m_context->has_error())
@@ -248,10 +255,12 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t1);
 		  }
+#endif
 		if (is_list_merge)
 		  {
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
@@ -281,12 +290,14 @@ namespace parallel_heap_scan
 			break;
 		      }
 		  }
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
 		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
 		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
 		  }
+#endif
 	      }
 	  }
       }
@@ -314,7 +325,7 @@ namespace parallel_heap_scan
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
     thread_p->conn_entry = orig_conn_entry;
-    thread_p->m_parallel_stats = NULL;
+    thread_p->m_px_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif

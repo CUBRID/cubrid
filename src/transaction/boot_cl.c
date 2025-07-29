@@ -1549,16 +1549,20 @@ boot_client_all_finalize (int final_level)
       lang_final ();
       tz_unload ();
 
+#if defined(ENABLE_USE_CNVLEX)
       /* adj_arrays & lex buffers in the cnv formatting library. */
       cnv_cleanup ();
+#endif
 
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
 
+#if defined(ENABLE_USE_CNVLEX)
       /* Clean up stuff allocated by the utilities library too. Not really necessary but avoids warnings from memory
        * tracking tools that customers might be using. */
       co_final ();
+#endif
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
       memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
@@ -1700,7 +1704,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ER_NET_SERVER_HAND_SHAKE:
 	case ER_NET_HS_UNKNOWN_SERVER_REL:
 	  cap_error = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case ER_NET_DIFFERENT_RELEASE:
 	case ER_NET_NO_SERVER_HOST:
 	case ER_NET_CANT_CONNECT_SERVER:

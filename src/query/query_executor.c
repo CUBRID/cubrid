@@ -1528,7 +1528,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 	      (void) pr_clear_value (regu_var->value.dbvalptr);
 	    }
 	}
-      /* Fall through */
+      [[fallthrough]];
     case TYPE_LIST_ID:
       if (regu_var->xasl != NULL)
 	{
@@ -2227,6 +2227,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   int pg_cnt;
   int query_save_state;
   unsigned int decache_clone_flag = 0;
+  xasl_node *xasl_p;
 
   pg_cnt = 0;
   if (xasl == NULL)
@@ -2270,31 +2271,30 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       qfile_clear_list_id (xasl->list_id);
     }
 
-  /* clear the body node */
-  if (xasl->aptr_list)
+  for (xasl_p = xasl->aptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->aptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->aptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->bptr_list)
+  for (xasl_p = xasl->bptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->bptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->dptr_list)
+  for (xasl_p = xasl->dptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->dptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->dptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->fptr_list)
+  for (xasl_p = xasl->fptr_list; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->fptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->fptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
-  if (xasl->scan_ptr)
+  for (xasl_p = xasl->scan_ptr; xasl_p; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->scan_ptr, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->scan_ptr, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
     }
 
   /* clear the CONNECT BY node */
@@ -2453,10 +2453,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
-	if (buildlist->eptr_list)
+	for (xasl_p = buildlist->eptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
 	  {
-	    XASL_SET_FLAG (buildlist->eptr_list, decache_clone_flag);
-	    pg_cnt += qexec_clear_xasl (thread_p, buildlist->eptr_list, is_final);
+	    XASL_SET_FLAG (xasl_p, decache_clone_flag);
+	    pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final);
 	  }
 
 	if (buildlist->groupby_list)
@@ -2715,14 +2715,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
   /* Note: Here reset the current pointer to access specification nodes.  This is needed because this XASL tree may be
    * used again if this thread is suspended and restarted. */
   xasl->curr_spec = NULL;
-
-  /* clear the next xasl node */
-
-  if (xasl->next)
-    {
-      XASL_SET_FLAG (xasl->next, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl (thread_p, xasl->next, is_final);
-    }
 
   xasl->query_in_progress = query_save_state;
 
@@ -11693,7 +11685,7 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
   assert (attr != NULL && default_val != NULL);
 
   OR_BUF buf;
-  PR_TYPE *pr_type = pr_type_from_id (attr->type);
+  const PR_TYPE *pr_type = pr_type_from_id (attr->type);
   bool copy = (pr_is_set_type (attr->type)) ? true : false;
   if (pr_type != NULL)
     {
@@ -14183,7 +14175,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	{
 	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
 	}
-      /* fall through */
+      [[fallthrough]];
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
       /* close the list file */
@@ -14303,7 +14295,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  qexec_destroy_upddel_ehash_files (thread_p, xasl);
 	}
-      /* fall through */
+      [[fallthrough]];
     case CONNECTBY_PROC:
       qfile_close_list (thread_p, xasl->list_id);
       break;
@@ -14910,7 +14902,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 #if SERVER_MODE
-		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->px_executor == nullptr)
+		      if (!XASL_IS_FLAGED (xasl, XASL_NO_PARALLEL_SUBQUERY) && XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
+			  && xasl->px_executor == nullptr)
 			{
 			  int n_workers_to_reserve = 0;
 			  if (xasl->parallelism == -1)
@@ -17349,7 +17342,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_do
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
   int length;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
 
   flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl, index, &ptr, &length);
@@ -17470,7 +17463,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
   QFILE_TUPLE tuple;
   OR_BUF buf;
   DB_VALUE dbval1, *dbvalp2;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   DB_TYPE type;
   TP_DOMAIN *domp;
   int length1, length2, equal, i;
@@ -23372,7 +23365,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
     {
     case DB_TYPE_NUMERIC:
       scale = domain->scale;
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:

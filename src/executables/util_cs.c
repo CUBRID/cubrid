@@ -2341,29 +2341,45 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-#if defined(SA_MODE)
   if (for_cm_flag)
     {
+#if defined(SA_MODE)
       fprintf (outfp,
 	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
       sysprm_dump_parameters (outfp, ' ', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
-			      PRM_OR_CONDITION, for_cm_flag);
+			      PRM_OR_CONDITION, true);
+#else
+      if (both_flag)
+	{
+	  /* dump client's parameters */
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
+	  sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
+				  PRM_OR_CONDITION, true);
+	  fprintf (outfp, "\n");
+	}
+
+      /* dump server's parameters */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
+	       database_name);
+      sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | PRM_FOR_SERVER, PRM_OR_CONDITION, out_flags,
+				     PRM_OR_CONDITION, true);
+#endif
     }
   else
-#endif
     {
 
       /* dump client's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_CLIENT_PARAMETER));
       sysprm_dump_parameters (outfp, 'C', PRM_FOR_CLIENT | added_in_flags, PRM_AND_CONDITION, out_flags,
-			      PRM_OR_CONDITION, for_cm_flag);
+			      PRM_OR_CONDITION, false);
       fprintf (outfp, "\n");
 
       /* dump server's parameters */
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_SERVER_PARAMETER),
 	       database_name);
       sysprm_dump_server_parameters (outfp, PRM_FOR_SERVER | added_in_flags, PRM_AND_CONDITION, out_flags,
-				     PRM_OR_CONDITION, for_cm_flag);
+				     PRM_OR_CONDITION, false);
     }
 
   db_shutdown ();
@@ -2912,8 +2928,8 @@ error_exit:
     }
 #endif
 
-  if (logwr_force_shutdown () == false
-      && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER || error == ER_BO_CONNECT_FAILED
+  if (!logwr_force_shutdown ()
+      && (ER_IS_SERVER_DOWN_ERROR (error)
 	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ERR_CSS_TCP_CONNECT_TIMEDOUT))
     {
       (void) sleep (sleep_nsecs);
@@ -3135,9 +3151,9 @@ error_exit:
     }
 #endif
 
-  if (la_force_shutdown () == false
-      && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER
-	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ER_BO_CONNECT_FAILED
+  if (!la_force_shutdown ()
+      && (ER_IS_SERVER_DOWN_ERROR (error)
+	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
 	  || error == ER_NET_SERVER_COMM_ERROR || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH))
     {
       (void) sleep (sleep_nsecs);

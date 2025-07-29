@@ -4480,7 +4480,7 @@ classobj_domain_size (TP_DOMAIN * domain)
  */
 
 SM_ATTRIBUTE *
-classobj_make_attribute (const char *name, struct pr_type * type, SM_NAME_SPACE name_space)
+classobj_make_attribute (const char *name, const PR_TYPE * type, SM_NAME_SPACE name_space)
 {
   SM_ATTRIBUTE *att;
 

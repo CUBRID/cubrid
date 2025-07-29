@@ -591,7 +591,7 @@ get_domain_internal (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** 
 {
   int error = NO_ERROR;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
-  PR_TYPE *type;
+  const PR_TYPE *type;
 
   /* If the domain is already determined, use it */
   if (*domainp)
@@ -698,7 +698,7 @@ def_class_internal (const char *name, int class_type)
 {
   char realname[SM_MAX_IDENTIFIER_LENGTH];
   SM_TEMPLATE *template_ = NULL;
-  PR_TYPE *type;
+  const PR_TYPE *type;
 
   if (sm_check_name (name))
     {

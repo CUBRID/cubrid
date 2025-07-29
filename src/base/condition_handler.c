@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include "config.h"
 
 #include <stdlib.h>
@@ -834,3 +835,4 @@ co_conversion_spec (const char *cspec, int size)
 
   return new_cspec;
 }
+#endif // ENABLE_USE_CNVLEX

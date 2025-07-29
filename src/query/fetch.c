@@ -176,7 +176,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case T_ADD:
     case T_SUB:
@@ -3960,7 +3960,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
@@ -4585,7 +4585,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
 		      QFILE_TUPLE * next_tpl)
 {
   int length;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   char *ptr;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;

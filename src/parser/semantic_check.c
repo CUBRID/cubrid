@@ -47,6 +47,7 @@
 #include "object_primitive.h"
 #include "db_client_type.hpp"
 #include "msgcat_glossary.hpp"
+#include "network_interface_cl.h"
 
 #include "cubvec_assert.h"
 
@@ -4487,8 +4488,7 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	  find = node;
 	  break;
 	}
-
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_EXPR:
     case PT_MERGE:
@@ -4921,7 +4921,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
 
-      /* FALL THRU */
+      [[fallthrough]];
 
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -5139,8 +5139,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      AU_SET_USER (me);
 	    }
 	}
+      [[fallthrough]];
 
-      /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
 	{
@@ -12095,6 +12095,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   next = node->next;
   node->next = NULL;
 
+  if (pt_is_ddl_statement (node))
+    {
+      tdes_set_query_start_info (node->sql_user_text);
+    }
+
   switch (node->node_type)
     {
     case PT_UPDATE:
@@ -12107,7 +12112,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  pt_resolve_object (parser, node);
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_HOST_VAR:
     case PT_EXPR:
@@ -12465,6 +12470,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
   if (pt_has_error (parser))
     {
+      tdes_reset_query_start_info (node);
       pt_register_orphan (parser, node);
       return NULL;
     }
