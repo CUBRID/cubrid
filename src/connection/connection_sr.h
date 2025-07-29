@@ -195,4 +195,8 @@ extern void css_free_user_access_status (void);
 extern void css_set_exec_path (char *exec_path);
 extern void css_set_argv (char **argv);
 
+
+char * css_get_exec_path (void);
+char ** css_get_argv (void);
+
 #endif /* _CONNECTION_SR_H_ */
