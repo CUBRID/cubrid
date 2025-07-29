@@ -68,7 +68,7 @@ namespace parallel_query
       clear_spawner ();
       perfmon_destroy_parallel_stats (&context);
 
-      context.emulate_tid = thread_id_t ();
+      context.m_px_orig_thread_entry = nullptr;
       context.skip_end_resource_tracks_in_recycle = false;
 
       cubthread::entry_manager::on_retire (context);
@@ -89,7 +89,7 @@ namespace parallel_query
     void
     entry_manager::emulate_main_thread (cubthread::entry &thread_ref)
     {
-      thread_ref.emulate_tid = m_main_thread_ref.get_id ();
+      thread_ref.m_px_orig_thread_entry = &m_main_thread_ref;
       thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
       thread_ref.conn_entry = m_main_thread_ref.conn_entry;
       thread_ref.on_trace = m_main_thread_ref.on_trace;

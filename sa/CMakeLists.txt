@@ -419,11 +419,13 @@ set(PARALLEL_QUERY_HEADERS
 set(PARALLEL_QUERY_EXECUTE_SOURCES
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
   )
 
 set(METHOD_SOURCES

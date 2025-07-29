@@ -26,8 +26,8 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include "intl_support.h"
-
 /*
  * Lexical scan modes. These correspond directly to start conditions defined
  * in the scanner definition file. Be sure to update db_fmt_lex_start() to
@@ -122,4 +122,5 @@ extern const char *cnv_fmt_next_token (void);
 extern FMT_LEX_MODE cnv_fmt_number_mode (INTL_ZONE zone);
 extern FMT_LEX_MODE cnv_fmt_time_mode (INTL_ZONE zone);
 extern void cnv_fmt_exit (void);
+#endif // ENABLE_USE_CNVLEX
 #endif /* _CNVLEX_H_ */

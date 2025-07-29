@@ -69,6 +69,7 @@
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
+#include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -16716,6 +16717,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       xasl->parallelism = -1;
     }
 
+  if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
+    {
+      XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+    }
+
   if (qo_plan == NULL || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
     {
       while (from)
@@ -17069,6 +17075,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   else
     {
       xasl->parallelism = -1;
+    }
+
+  if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
+    {
+      XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
     }
 
   if (!qo_plan || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
@@ -18382,6 +18393,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   if (pt_has_error (parser))
     {
@@ -22264,6 +22276,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)
