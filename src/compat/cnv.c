@@ -35,6 +35,8 @@
 #include <wchar.h>
 
 #include "porting.h"
+
+#if defined(ENABLE_USE_CNVLEX)
 #include "adjustable_array.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
@@ -42,6 +44,7 @@
 #include "object_domain.h"
 #include "language_support.h"
 #include "object_primitive.h"
+
 #include "cnv.h"
 #include "cnvlex.h"
 #include "cnverr.h"
@@ -54,6 +57,11 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+
+#else
+#include "dbtype.h"
+#endif // ENABLE_USE_CNVLEX
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -71,10 +79,13 @@
  * A 'decimal string' needs to be 3 times longer than a raw numeric string
  * plus a sign and a NULL termination.
  */
-#define DEC_BUFFER_SIZE		(DB_NUMERIC_BUF_SIZE * 6) + 2
-#define GET_MIN(a, b)		(a < b) ? a : b
 #define BYTE_COUNT(bit_cnt)	(((bit_cnt)+BITS_IN_BYTE-1)/BITS_IN_BYTE)
 #define BYTE_COUNT_HEX(bit_cnt)	(((bit_cnt)+BITS_IN_HEX-1)/BITS_IN_HEX)
+
+#if defined(ENABLE_USE_CNVLEX)
+
+#define DEC_BUFFER_SIZE		(DB_NUMERIC_BUF_SIZE * 6) + 2
+#define GET_MIN(a, b)		(a < b) ? a : b
 
 #define CNV_ERR_BAD_BINARY_DIGIT	-1
 #define CNV_ERR_BAD_HEX_DIGIT	-2
@@ -195,6 +206,7 @@ struct monetary_format_s
   DB_CURRENCY currency;
   FMT_LEX_MODE mode;
 };
+#endif // ENABLE_USE_CNVLEX
 
 typedef enum bit_string_format_e
 {
@@ -202,6 +214,7 @@ typedef enum bit_string_format_e
   BIT_STRING_HEX = 1
 } BIT_STRING_FORMAT;
 
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * Utility Functions
  */
@@ -363,7 +376,6 @@ static bool bfmt_valid_char (FMT_TOKEN * token);
 static void bfmt_new (BIT_STRING_FORMAT * bfmt, const char *format);
 static const char *bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit);
 static int bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
-
 static int num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric, char *string, int max_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static const char *num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric);
@@ -5931,6 +5943,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
       return cnv_fmt_next_token ();
     }
 }
+#endif // ENABLE_USE_CNVLEX
 
 /*
  * bfmt_print() - Change the given string to a representation of the given bit
@@ -5965,7 +5978,11 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
     case BIT_STRING_BINARY:
       if (length + 1 > max_size)
 	{
+#if defined(ENABLE_USE_CNVLEX)
 	  error = CNV_ERR_STRING_TOO_LONG;
+#else
+	  error = ER_FAILED;
+#endif
 	}
       else
 	{
@@ -5985,7 +6002,11 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
     case BIT_STRING_HEX:
       if (BYTE_COUNT_HEX (length) + 1 > max_size)
 	{
+#if defined(ENABLE_USE_CNVLEX)
 	  error = CNV_ERR_STRING_TOO_LONG;
+#else
+	  error = ER_FAILED;
+#endif
 	}
       else
 	{
@@ -6013,6 +6034,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   return error;
 }
 
+#if defined(ENABLE_USE_CNVLEX)
 #if defined (ENABLE_UNUSED_FUNCTION)
 /* Numeric Format Descriptor Functions */
 
@@ -8560,6 +8582,7 @@ db_string_bit (const char *bit_char_string, const char *bit_format, DB_VALUE * t
   bfmt_new (&bfmt, bit_format);
   return bfmt_value (bfmt, bit_char_string, the_db_bit);
 }
+#endif // ENABLE_USE_CNVLEX
 
 /*
  * db_bit_string() - Change the given string to a representation of
@@ -8584,6 +8607,7 @@ db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string
   assert (string != NULL);
   assert (max_size > 0);
 
+#if defined(ENABLE_USE_CNVLEX)
   r = csect_enter (NULL, CSECT_CNV_FMT_LEXER, INF_WAIT);
   if (r != NO_ERROR)
     {
@@ -8591,14 +8615,37 @@ db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string
     }
 
   bfmt_new (&bfmt, bit_format);
+#else
+  bfmt = BIT_STRING_BINARY;
+  if (bit_format && *bit_format)
+    {
+      char *p = (char *) bit_format;
+      while (*p == ' ' || *p == '\t')
+	{
+	  p++;
+	}
+
+      if (p[0] == '%' && (p[2] == '\0' || p[2] == ' ' || p[2] == '\t'))
+	{
+	  p++;
+	  if (*p == 'X' || *p == 'H' || *p == 'x' || *p == 'h')
+	    {
+	      bfmt = BIT_STRING_HEX;
+	    }
+	}
+    }
+
+#endif
   r = bfmt_print (&bfmt, the_db_bit, string, max_size);
 
+#if defined(ENABLE_USE_CNVLEX)
   csect_exit (NULL, CSECT_CNV_FMT_LEXER);
-
+#endif
   return r;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
+#if defined(ENABLE_USE_CNVLEX)
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_validate_format() - If the given format string is valid for the given
  *   data type, then return 0. otherwise, signal and return an error condition.
@@ -8733,3 +8780,5 @@ cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
   thread_p->cnv_adj_buffer[idx] = buffer_p;
 }
 #endif // SERVER_MODE
+
+#endif // ENABLE_USE_CNVLEX

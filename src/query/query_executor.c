@@ -8243,9 +8243,9 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
     }
 #if defined(SERVER_MODE)
   THREAD_ENTRY *orig_thread_p = NULL;
-  if (thread_p->emulate_tid != thread_id_t ())
+  if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      orig_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      orig_thread_p = thread_p->m_px_orig_thread_entry;
       assert (orig_thread_p != NULL);
       pthread_mutex_lock (&orig_thread_p->m_px_lock);
     }
@@ -14877,7 +14877,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 #if SERVER_MODE
-		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->px_executor == nullptr)
+		      if (!XASL_IS_FLAGED (xasl, XASL_NO_PARALLEL_SUBQUERY) && XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
+			  && xasl->px_executor == nullptr)
 			{
 			  int n_workers_to_reserve = 0;
 			  if (xasl->parallelism == -1)

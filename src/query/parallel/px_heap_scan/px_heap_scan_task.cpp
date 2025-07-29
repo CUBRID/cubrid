@@ -121,21 +121,21 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
-    if (m_context->m_orig_thread_p->emulate_tid != thread_id_t())
+    if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->emulate_tid;
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
       }
     else
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->get_id();
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
       }
 
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
-	if (m_context->m_orig_thread_p->m_parallel_stats != NULL)
+	if (m_context->m_orig_thread_p->m_px_stats != NULL)
 	  {
-	    thread_p->m_parallel_stats = m_context->m_orig_thread_p->m_parallel_stats;
+	    thread_p->m_px_stats = m_context->m_orig_thread_p->m_px_stats;
 	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
@@ -325,7 +325,7 @@ namespace parallel_heap_scan
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
     thread_p->conn_entry = orig_conn_entry;
-    thread_p->m_parallel_stats = NULL;
+    thread_p->m_px_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif
