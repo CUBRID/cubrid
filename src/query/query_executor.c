@@ -8241,17 +8241,36 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       /* MVCC use IX_LOCK on class at update/delete */
       lock = IX_LOCK;
     }
-
+#if defined(SERVER_MODE)
+  THREAD_ENTRY *orig_thread_p = NULL;
+  if (thread_p->m_px_orig_thread_entry != NULL)
+    {
+      orig_thread_p = thread_p->m_px_orig_thread_entry;
+      assert (orig_thread_p != NULL);
+      pthread_mutex_lock (&orig_thread_p->m_px_lock);
+    }
+#endif
   for (partition_spec = spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
     {
       granted = lock_subclass (thread_p, &partition_spec->oid, &ACCESS_SPEC_CLS_OID (spec), lock, LK_UNCOND_LOCK);
       if (granted != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+#if defined(SERVER_MODE)
+	  if (orig_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	  return error;
 	}
     }
-
+#if defined(SERVER_MODE)
+  if (orig_thread_p != NULL)
+    {
+      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+    }
+#endif
   return NO_ERROR;
 }
 
@@ -14858,7 +14877,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 #if SERVER_MODE
-		      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->px_executor == nullptr)
+		      if (!XASL_IS_FLAGED (xasl, XASL_NO_PARALLEL_SUBQUERY) && XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
+			  && xasl->px_executor == nullptr)
 			{
 			  int n_workers_to_reserve = 0;
 			  if (xasl->parallelism == -1)
@@ -14879,6 +14899,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    {
 			      using dpool = parallel_query::worker_manager_with_dedicated_pool;
 			      using pexec = parallel_query_execute::query_executor;
+			      /* TODO: Temporarily limited to 2. 
+			       * Remove this when exact parallel count is available 
+			       * for better performance with many uncorrelated subqueries.*/
+			      n_workers_to_reserve = parallel_query_execute::max_parallelism - 1;
+
 			      dpool *px_worker_manager_p = &dpool::get_manager ();
 			      if (pexec::make_parallel_query_executor_recursively
 				  (thread_p, xasl, px_worker_manager_p, nullptr, n_workers_to_reserve) != true)
