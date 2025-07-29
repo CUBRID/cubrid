@@ -231,7 +231,7 @@ struct sort_param
   int px_parallelism;
   PX_STATUS px_status;
   int px_result_file_idx;
-  int px_tran_index;
+  THREAD_ENTRY *px_orig_thread_p;
   SORT_PARALLEL_TYPE px_type;
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
@@ -1647,7 +1647,8 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY * thread_p = &thread_ref;
 
-  thread_ref.tran_index = sort_param->px_tran_index;
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
@@ -4478,7 +4479,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].px_parallelism = parallel_num;
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's tran_index. */
-      px_sort_param[i].px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      px_sort_param[i].px_orig_thread_p = thread_p;
 
       /* deep copy for get_arg, put_arg */
       if (sort_param->px_type == SORT_ORDER_BY)
@@ -4945,7 +4946,8 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   SORT_INFO *sort_info_p;
   int error = NO_ERROR;
 
-  thread_ref.tran_index = sort_param->px_tran_index;
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
