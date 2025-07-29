@@ -27,6 +27,8 @@
 #ident "$Id$"
 
 #include "dbtype_def.h"
+
+#if defined(ENABLE_USE_CNVLEX)
 #include "condition_handler.h"
 
 extern const char *db_string_value (const char *string, int str_size, const char *format, DB_VALUE * value);
@@ -66,11 +68,16 @@ extern const char *db_string_datetime (const char *datetime_string, const char *
 extern int db_datetime_string (const DB_DATETIME * the_datetime, const char *datetime_format, char *string,
 			       int max_size);
 extern const char *db_string_bit (const char *string, const char *bit_format, DB_VALUE * the_db_bit);
+#endif // ENABLE_USE_CNVLEX
+
 extern int db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size);
+
+#if defined(ENABLE_USE_CNVLEX)
 extern const char *db_string_numeric (const char *string, const char *numeric_format, DB_VALUE * the_numeric);
 extern int db_numeric_string (const DB_VALUE * the_numeric, const char *numeric_format, char *string, int max_size);
 
 /* cleanup function, should only be called by bo_shutdown */
 extern void cnv_cleanup (void);
+#endif // ENABLE_USE_CNVLEX
 
 #endif /* _CNV_H_ */

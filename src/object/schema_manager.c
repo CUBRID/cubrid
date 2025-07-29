@@ -5750,7 +5750,7 @@ sm_att_type_id (MOP classop, const char *name)
 static const char *
 sm_type_name (DB_TYPE id)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
 
   type = pr_type_from_id (id);
   if (type != NULL)
@@ -10260,7 +10260,7 @@ fixup_self_domain (TP_DOMAIN * domain, MOP self)
 
   for (d = domain; d != NULL; d = d->next)
     {
-      /* PR_TYPE is changeable only for transient domain. */
+      /* const PR_TYPE is changeable only for transient domain. */
       if (d->type == tp_Type_null && !d->is_cached)
 	{
 	  d->type = tp_Type_object;

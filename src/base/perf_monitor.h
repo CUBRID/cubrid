@@ -986,9 +986,9 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+      if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats != NULL)
 	{
-	  thread_p->m_parallel_stats[offset] += amount;
+	  thread_p->m_px_stats[offset] += amount;
 	}
       else
 	{
@@ -1023,9 +1023,9 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   if (pstat_Global.is_watching[tran_index])
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (thread_p->emulate_tid != thread_id_t () && thread_p->m_parallel_stats != NULL)
+      if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats != NULL)
 	{
-	  thread_p->m_parallel_stats[offset] += amount;
+	  thread_p->m_px_stats[offset] += amount;
 	}
       else
 	{
