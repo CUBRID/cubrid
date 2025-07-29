@@ -27,6 +27,7 @@
 /* client: used to collect histogram, server: used to log an error */
 const char *net_server_request_name[NET_SERVER_REQUEST_END] =
 {
+  "NET_SERVER_REQUEST_START",
 #define NET_SERVER_REQUEST_ITEM(name) #name,
   NET_SERVER_REQUEST_LIST
 #undef NET_SERVER_REQUEST_ITEM
