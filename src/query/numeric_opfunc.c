@@ -70,6 +70,11 @@
 
 #define ROUND(x)                  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 
+// (38 + 127) + (38 - (-84)) = 165 + 122 = 287
+#define POW10_MAX_INDEX            (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE)
+// 287 * log2(10) = 119
+#define POW10_BUF_SIZE            (120)
+
 typedef struct dec_string DEC_STRING;
 struct dec_string
 {
@@ -84,7 +89,7 @@ static DEC_STRING powers_of_2[DB_NUMERIC_BUF_SIZE * 16];
 #if !defined(SERVER_MODE)
 static bool initialized_2 = false;
 #endif
-static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
+static unsigned char powers_of_10[POW10_MAX_INDEX + 1][POW10_BUF_SIZE];
 #if !defined(SERVER_MODE)
 static bool initialized_10 = false;
 #endif
@@ -103,7 +108,8 @@ static const uint8_t _gv_digits_lut[65] = {
   20, 20, 20, 20, 20
 };
 
-static const int _gv_pow10_small[4] = { 1, 10, 100, 1000 };
+static const int _gv_pow10_small100[2] = { 1, 10 };
+static const int _gv_pow10_small10000[4] = { 1, 10, 100, 1000 };
 
 typedef enum fp_value_type
 {
@@ -196,23 +202,29 @@ static void round_and_clamp (char *out_str, int *out_prec, int *out_scale, int t
 static int decimal_digits (uint8_t val);
 static int recalc_effective_precision (const unsigned char *buf, int buf_size);
 
+// base-256 덧셈 (1byte 씩 기존과 동일)
 static int floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
 				       int *result_scale, DB_VALUE * answer, bool * need_round);
-static int calc_base256_bytes (int prec);
-static void pad_base256 (const uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes);
-static void mul_pow10_dynamic (uint8_t * dbv_buf, int calc_bytes, int exponent);
-static void add_base256_dynamic (const uint8_t * dbv1_buf1, const uint8_t * dbv2_buf2, uint8_t * calc_buf,
-				 int calc_bytes);
+static int calc_bytes_from_prec (int prec);
+static void fp_numeric_pad (uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes);
+static void fp_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent);
+static void fp_numeric_add (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
 
+//base-256에서 연산 결과 자릿수 확인하는 함수들
 static int numeric_coerce_num_to_dec_str2 (DB_C_NUMERIC num, unsigned int num_size, char *dec_str);
 static bool is_all_zero (const uint8_t * buf, int buf_len);
 static int count_digits_by_division (const uint8_t * calc_buf, int calc_bytes);
 
-static void round_and_normalize_numeric (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-					 int *result_scale, bool * need_round);
-static uint16_t div_pow10_bytes (uint8_t * calc_buf, int calc_bytes);
-static void add_base256_scalar (uint8_t * calc_buf, int calc_bytes, uint8_t val);
+static void fp_numeric_init_pow10_table (void);
+static int fp_numeric_cmp_base256 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
+static int fp_numeric_overflow (const uint8_t * calc_buf, int calc_bytes);
 
+static void fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
+				       int *result_scale, bool * need_round);
+static uint16_t fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
+static void fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
+
+// base-256인데 8바이트로 한거 -- 제거할 것
 static int floating_point_numeric_add3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
 					int *result_scale, DB_VALUE * answer, bool * need_round);
 static void unpack_base256_to_words2 (const uint8_t * src_buf, uint64_t * word_buf, int word_count,
@@ -225,7 +237,6 @@ static void round_and_pack_words2 (uint64_t * calc_buf, int calc_bytes, int word
 				   uint8_t * result_buf, int *result_prec, int *result_scale, bool * need_round);
 static void round_and_pack_words3 (uint64_t * calc_buf, int calc_bytes, int word_count, int word_aligned_bytes,
 				   uint8_t * result_buf, int *result_prec, int *result_scale, bool * need_round);
-
 //임시 함수
 static int word_based_calc_effective_precision (const uint64_t * calc_buf, int work_words);
 // 1차 개선
@@ -238,16 +249,14 @@ static void pack_words_to_bytes2 (const uint64_t * calc_buf, int word_count, int
 static uint16_t div_pow10_word (uint64_t * calc_buf, int word_count);
 static void add_word_scalar (uint64_t * calc_buf, int word_count, uint64_t val);
 
+// base-256 뺄셈 (1byte 씩 기존과 동일)
 static int floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
 				       int *result_scale, DB_VALUE * answer, bool * need_round);
-static int floating_point_numeric_sub2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
-					int *result_scale, DB_VALUE * answer, bool * need_round);
-static void sub_bigint_word (const uint64_t * dbv1_buf1, const uint64_t * dbv2_buf2, uint64_t * calc_buf,
-			     int word_count);
+static void fp_numeric_sub (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
 
 //base-10000 처리방식
-static int floating_point_numeric_add4 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
-					int *result_scale, DB_VALUE * answer, bool * need_round);
+static int floating_point_numeric_add_base10000 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
+						 int *result_scale, DB_VALUE * answer, bool * need_round);
 static inline void convert_base256_to_base10000 (uint8_t src[DB_NUMERIC_BUF_SIZE], uint16_t * digits, int *digit_count,
 						 int digit_capacity);
 static void mul_pow10_base10000 (uint16_t * digits, int *digit_count, int exponent, int digit_capacity);
@@ -260,6 +269,21 @@ static void convert_base10000_to_base256 (const uint16_t * d, int cnt, uint8_t d
 
 static void sub_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1, const uint16_t * base10000_buf2,
 			   int base10000_cnt2, uint16_t * base10000_calc_buf, int *base10000_calc_cnt);
+
+//base-100 처리방식
+static int floating_point_numeric_add_base100 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
+					       int *result_scale, DB_VALUE * answer, bool * need_round);
+static inline void convert_base256_to_base100 (uint8_t src[DB_NUMERIC_BUF_SIZE], uint8_t * digits, int *digit_count,
+					       int digit_capacity);
+static void mul_pow10_base100 (uint8_t * digits, int *digit_count, int exponent, int digit_capacity);
+static void add_base100 (const uint8_t * base100_buf1, int base100_cnt1, const uint8_t * base100_buf2, int base100_cnt2,
+			 uint8_t * base100_calc_buf, int *base100_calc_cnt, int digit_capacity);
+static int compare_abs_base100 (const uint8_t * base100_buf1, int base100_cnt1, const uint8_t * base100_buf2,
+				int base100_cnt2);
+static void sub_base100 (const uint8_t * base100_buf1, int base100_cnt1, const uint8_t * base100_buf2, int base100_cnt2,
+			 uint8_t * base100_calc_buf, int *base100_calc_cnt, int digit_capacity);
+static void round_base100 (uint8_t * buf100_calc, int *buf100_calc_cnt, int full_prec, int num_excess);
+static void convert_base100_to_base256 (const uint8_t * buf100_calc, int pack_cnt, uint8_t * result_buf);
 
 /*
  * numeric_is_negative () -
@@ -542,17 +566,27 @@ numeric_get_pow_of_2 (int exp)
 static void
 numeric_init_pow_of_10_helper (void)
 {
-  int i;
+  int i, j;
+  uint32_t carry, temp;
 
-  numeric_zero (powers_of_10[0], DB_NUMERIC_BUF_SIZE);
+  numeric_zero (powers_of_10[0], POW10_BUF_SIZE);
 
   /* Set first element to 1 */
-  powers_of_10[0][DB_NUMERIC_BUF_SIZE - 1] = 1;
+  powers_of_10[0][POW10_BUF_SIZE - 1] = 1;
 
   /* Loop through elements setting each one to 10 times the prior */
-  for (i = 1; i < TWICE_NUM_MAX_PREC + 1; i++)
+  for (i = 1; i < POW10_MAX_INDEX + 1; i++)
     {
-      numeric_scale_dec (powers_of_10[i - 1], 1, powers_of_10[i]);
+      memcpy (powers_of_10[i], powers_of_10[i - 1], POW10_BUF_SIZE);
+
+      // 120바이트 전체에 대해 10 곱셈
+      carry = 0;
+      for (j = POW10_BUF_SIZE - 1; j >= 0; j--)
+	{
+	  temp = (uint32_t) powers_of_10[i][j] * 10 + carry;
+	  powers_of_10[i][j] = (uint8_t) (temp & 0xFF);
+	  carry = temp >> 8;
+	}
     }
 }
 
@@ -1747,20 +1781,22 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     {
       // int 타입의 자릿수의 경우 prec을 10으로 처리하여 실제 자릿수를 모름
       // 따라서 실제 값을 재계산해서 자릿수를 구해야 함
-      if (prec1 == 10 || prec2 == 10)
-	{
-	  if (prec1 == 10)
-	    {
-	      prec1 = recalc_effective_precision (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-	    }
-	  if (prec2 == 10)
-	    {
-	      prec2 = recalc_effective_precision (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
-	    }
-	  calc_prec1 = prec1 - scale1;
-	  calc_prec2 = prec2 - scale2;
-	  result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
-	}
+      // 연산 후 정확한 자릿수를 알 수 있어, 제거할 수 있음
+      // 제거
+//       if (prec1 == 10 || prec2 == 10)
+//      {
+//        if (prec1 == 10)
+//          {
+//            prec1 = recalc_effective_precision (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+//          }
+//        if (prec2 == 10)
+//          {
+//            prec2 = recalc_effective_precision (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+//          }
+//        calc_prec1 = prec1 - scale1;
+//        calc_prec2 = prec2 - scale2;
+//        result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
+//      }
 
       /* 1바이트 씩 계산하는 새로운 함수 테스트 */
 //       {
@@ -1787,7 +1823,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 //      fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
 //       }
 
-//       /* 8바이트 씩 계산하는 새로운 함수 테스트 */
+      /* base 변환하여 계산하는 새로운 함수 테스트 */
 //       {
 //         struct timespec start, end;
 //         double time_spent;
@@ -1797,12 +1833,12 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 //      int i = 0;
 //         int tmp_prec = result_prec;
 //         int tmp_scale = result_scale;
-//      int cnt = 1;
+//      int cnt = 1000000;
 //         while (i < cnt)
 //           {
 //          result_prec = tmp_prec;
 //          result_scale = tmp_scale;
-//          ret = floating_point_numeric_add4(dbv1, dbv2, &result_prec, &result_scale, answer, need_round);  
+//          ret = floating_point_numeric_add_base10000(dbv1, dbv2, &result_prec, &result_scale, answer, need_round);  
 //          i++;
 //        }
 //      clock_gettime(CLOCK_REALTIME, &end);
@@ -1812,8 +1848,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 //      fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
 //       }
 
-      /* 8바이트 씩 계산하는 새로운 함수 */
-      ret = floating_point_numeric_add4 (dbv1, dbv2, &result_prec, &result_scale, answer, need_round);
+      /* 1바이트 씩 계산하는 새로운 함수 */
+      ret = floating_point_numeric_add (dbv1, dbv2, &result_prec, &result_scale, answer, need_round);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -1875,6 +1911,7 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+// 제거
 static inline int
 decimal_digits (uint8_t val)
 {
@@ -1885,6 +1922,7 @@ decimal_digits (uint8_t val)
   return 1;
 }
 
+// 제거
 static int
 recalc_effective_precision (const unsigned char *buf, int buf_size)
 {
@@ -1915,68 +1953,86 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 {
   int ret = NO_ERROR;
   int calc_bytes, calc_prec;
-  int exponent1, exponent2;
-  int scale1, scale2;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
-  char temp[NUMERIC_MAX_STRING_SIZE];
 
-  // 1) 필요한 바이트 수 계산
-  calc_bytes = calc_base256_bytes (*result_prec);
+  /* 1) 지수 정렬 계산 */
+  int scale1 = DB_VALUE_SCALE (dbv1);
+  int scale2 = DB_VALUE_SCALE (dbv2);
+  int exponent1 = *result_scale - scale1;
+  int exponent2 = *result_scale - scale2;
+
+  // 2) 부호 확인 및 음수 -> 양수 변환
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (db_locate_numeric (dbv1)) ? true : false;
+  if (arg1_sign)
+    {
+      numeric_negate (dbv1_copy);
+    }
+
+  arg2_sign = numeric_is_negative (db_locate_numeric (dbv2)) ? true : false;
+  if (arg2_sign)
+    {
+      numeric_negate (dbv2_copy);
+    }
+
+  // 3) 필요한 바이트 수 계산
+  calc_bytes = calc_bytes_from_prec (*result_prec) + 1;
   if (calc_bytes < 1)
     {
       return ER_FAILED;
     }
 
-  // 2) 버퍼 할당
-  uint8_t dbv1_buf1[calc_bytes];
-  uint8_t dbv2_buf2[calc_bytes];
-  uint8_t calc_buf[calc_bytes];
+  // 4) 새로운 계산 버퍼 초기화
+  uint8_t dbv1_buf[calc_bytes];
+  uint8_t dbv2_buf[calc_bytes];
+  uint8_t calc_buf[calc_bytes] = { 0 };
 
-  // 3) 새로운 버퍼에 기존 값 복사
-  (void) pad_base256 (db_locate_numeric (dbv1), dbv1_buf1, calc_bytes);
-  (void) pad_base256 (db_locate_numeric (dbv2), dbv2_buf2, calc_bytes);
+  (void) fp_numeric_pad (dbv1_copy, dbv1_buf, calc_bytes);
+  (void) fp_numeric_pad (dbv2_copy, dbv2_buf, calc_bytes);
 
-  /* 4) 지수 정렬 계산 */
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  exponent1 = *result_scale - scale1;
-  exponent2 = *result_scale - scale2;
-
-  // 5) 음수 scale 보정
+  // 5) scale 보정
   if (exponent1)
     {
-      mul_pow10_dynamic (dbv1_buf1, calc_bytes, exponent1);
+      fp_numeric_mul_pow10 (dbv1_buf, calc_bytes, exponent1);
     }
   if (exponent2)
     {
-      mul_pow10_dynamic (dbv2_buf2, calc_bytes, exponent2);
+      fp_numeric_mul_pow10 (dbv2_buf, calc_bytes, exponent2);
     }
 
 //   fprintf(stderr, "[DEBUG] mantissa_buf1_hex: ");
 //   for (int i = 0; i < calc_bytes; i++)
-//     fprintf(stderr, "%02X", dbv1_buf1[i]);
+//     fprintf(stderr, "%02X", dbv1_buf[i]);
 //   fprintf(stderr, "\n");
 
 //   fprintf(stderr, "[DEBUG] mantissa_buf2_hex: ");
 //   for (int i = 0; i < calc_bytes; i++)
-//     fprintf(stderr, "%02X", dbv2_buf2[i]);
+//     fprintf(stderr, "%02X", dbv2_buf[i]);
 //   fprintf(stderr, "\n");
 
   // 6) 덧셈
-  (void) add_base256_dynamic (dbv1_buf1, dbv2_buf2, calc_buf, calc_bytes);
-
-  // 7) 덧셈 이후 prec 재계산
-  // 7-1) 예측 방법 사용
-  // calc_prec = recalc_effective_precision (calc_buf, calc_bytes);
-
-  // 7-2) 10진수 문자로 변환하여 자릿수 확인
-  //calc_prec = numeric_coerce_num_to_dec_str2 (calc_buf, calc_bytes, temp);
-
-  // 7-3) 0이 될때까지 10으로 나누며 몇 번 나눴는지 카운트
-  calc_prec = count_digits_by_division (calc_buf, calc_bytes);
-  if (calc_prec > *result_prec)
+  if (arg1_sign == arg2_sign)
     {
-      (*result_prec)++;
+      (void) fp_numeric_add (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+      result_sign = arg1_sign;	// 결과 부호 = 입력 부호
+    }
+  else
+    {
+      if (fp_numeric_cmp_base256 (dbv1_buf, dbv2_buf, calc_bytes) >= 0)
+	{
+	  // |arg1| >= |arg2|
+	  (void) fp_numeric_sub (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+	  result_sign = arg1_sign;	// 결과 부호 = 큰 수의 부호
+	}
+      else
+	{
+	  // |arg1| < |arg2|
+	  (void) fp_numeric_sub (dbv2_buf, dbv1_buf, calc_buf, calc_bytes);
+	  result_sign = arg2_sign;	// 결과 부호 = 큰 수의 부호
+	}
     }
 
 //   fprintf(stderr, "[DEBUG] add mantissa_hex: ");
@@ -1984,23 +2040,59 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 //     fprintf(stderr, "%02X", calc_buf[i]);
 //   fprintf(stderr, "\n");
 
-  // 8) 반올림 & 정규화
-  round_and_normalize_numeric (calc_buf, calc_bytes, result_buf, result_prec, result_scale, need_round);
+  // 7) 덧셈 이후 prec 재계산
+  // 7-1) 예측 방법 사용 -- 제거
+  // calc_prec = recalc_effective_precision (calc_buf, calc_bytes);
+
+  // 7-2) 10진수 문자로 변환하여 자릿수 확인 -- 제거
+  //calc_prec = numeric_coerce_num_to_dec_str2 (calc_buf, calc_bytes, temp);
+
+  // 7-3) 0이 될때까지 10으로 나누며 몇 번 나눴는지 카운트 -- 제거
+  //calc_prec = count_digits_by_division (calc_buf, calc_bytes);
+
+  // 7-4) 미리 계산된 테이블 과 이진 탐색 사용
+  calc_prec = fp_numeric_overflow (calc_buf, calc_bytes);
+  if (calc_prec > *result_prec)
+    {
+      (*result_prec) = calc_prec;
+    }
+
+//   fprintf(stderr, "[DEBUG] calc_prec=%d\n", calc_prec);
+//   fprintf(stderr, "\n");
+
+  // 8) 반올림 & 다시 16바이트로 pack
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, need_round);
 
 //   fprintf(stderr, "[DEBUG] final mantissa_hex: ");
 //   for (int i = 0; i < 16; i++)
 //     fprintf(stderr, "%02X", result_buf[i]);
 //   fprintf(stderr, "\n");
 
-  // 8) 결과
+  // 9) 결과
+  if (result_sign)
+    {
+      // 결과가 음수인 경우
+      numeric_negate ((unsigned char *) result_buf);
+    }
   db_make_numeric (answer, result_buf, *result_prec, *result_scale);
 
   return ret;
 }
 
+static int
+calc_bytes_from_prec (int prec)
+{
+  const double log2_10 = 3.3219280948873626;
+  double bits;
+  // 필요한 비트 수
+  bits = 1.0 + prec * log2_10;
+  // 바이트로 나눠서 올림
+  return (int) ceil (bits / 8.0);
+}
+
 /* 바이트 값 padding 후, 바이트 단위 버퍼를 워드 단위 버퍼로 변환 */
 static void
-pad_base256 (const uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes)
+fp_numeric_pad (uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes)
 {
   int pad = calc_bytes - DB_NUMERIC_BUF_SIZE;
   memset (padded_dbv_buf, 0, pad);
@@ -2009,7 +2101,7 @@ pad_base256 (const uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes)
 
 /* 2) buf[bytes] *= 10^d  (한 바이트당 0..255인 base-256) */
 static void
-mul_pow10_dynamic (uint8_t * dbv_buf, int calc_bytes, int exponent)
+fp_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent)
 {
   int i = 0;
   uint16_t carry = 0;
@@ -2028,21 +2120,20 @@ mul_pow10_dynamic (uint8_t * dbv_buf, int calc_bytes, int exponent)
 
 /* 3) res[i] = a[i] + b[i]  (i=bytes-1..0), carry 전파 */
 static void
-add_base256_dynamic (const uint8_t * dbv1_buf1, const uint8_t * dbv2_buf2, uint8_t * calc_buf, int calc_bytes)
+fp_numeric_add (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes)
 {
   int i = 0;
   uint16_t carry = 0;
   uint16_t temp = 0;
   for (i = calc_bytes - 1; i >= 0; --i)
     {
-      temp = (uint16_t) dbv1_buf1[i] + dbv2_buf2[i] + carry;
+      temp = (uint16_t) dbv1_buf[i] + dbv2_buf[i] + carry;
       calc_buf[i] = (uint8_t) (temp & 0xFF);
       carry = temp >> 8;
     }
-  /* 최상위 자릿수에서 carry가 일어나면 자릿수 증가시키기 */
 }
 
-/// 버퍼 전체가 0인지 검사
+// 제거
 static bool
 is_all_zero (const uint8_t * buf, int buf_len)
 {
@@ -2058,8 +2149,7 @@ is_all_zero (const uint8_t * buf, int buf_len)
   return true;
 }
 
-/// calc_buf[0..calc_bytes-1]에 담긴 양의 정수의 10진수 자릿수를
-/// “0이 될 때까지 div_pow10_bytes() 반복” 방식으로 구한다.
+// 제거
 static int
 count_digits_by_division (const uint8_t * calc_buf, int calc_bytes)
 {
@@ -2077,12 +2167,113 @@ count_digits_by_division (const uint8_t * calc_buf, int calc_bytes)
   // 3) 10으로 나누며 몇 번 나눴는지 카운트
   do
     {
-      div_pow10_bytes (tmp, calc_bytes);
+      fp_numeric_div_pow10 (tmp, calc_bytes);
       digits++;
     }
   while (!is_all_zero (tmp, calc_bytes));
 
   return digits;
+}
+
+static int
+fp_numeric_cmp_base256 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes)
+{
+  int i = 0;
+  for (i = 0; i < calc_bytes; i++)
+    {
+      if (dbv1_buf[i] != dbv2_buf[i])
+	{
+	  return dbv1_buf[i] < dbv2_buf[i] ? -1 : 1;
+	}
+    }
+  return 0;
+}
+
+static void
+fp_numeric_init_pow10_table (void)
+{
+#if !defined(SERVER_MODE)
+  /* If this is the first time to call this routine, initialize */
+  if (!initialized_10)
+    {
+      numeric_init_pow_of_10_helper ();
+      initialized_10 = true;
+    }
+#endif
+}
+
+static int
+fp_numeric_overflow (const uint8_t * calc_buf, int calc_bytes)
+{
+  int lo = 0, hi = 0;
+  int mid = 0;
+  int i = 0;
+  const uint8_t *tmp = NULL;
+  int val_first_nonzero = 0;
+  int tmp_first_nonzero = 0;
+
+  // 안에서 init 호출—outside에서는 exp_max만 넘기면 됨
+  fp_numeric_init_pow10_table ();
+  hi = POW10_MAX_INDEX;
+
+  // val의 첫 번째 0이 아닌 바이트 위치 찾기
+  for (i = 0; i < calc_bytes; i++)
+    {
+      if (calc_buf[i] != 0)
+	{
+	  val_first_nonzero = calc_bytes - i;
+	  break;
+	}
+    }
+
+  while (lo < hi)
+    {
+      mid = (lo + hi + 1) >> 1;
+      tmp = (uint8_t *) powers_of_10[mid] + (POW10_BUF_SIZE - calc_bytes);
+
+      // tmp의 첫 번째 0이 아닌 바이트 위치 찾기
+      for (i = 0; i < POW10_BUF_SIZE; i++)
+	{
+	  if (powers_of_10[mid][i] != 0)
+	    {
+	      tmp_first_nonzero = POW10_BUF_SIZE - i;
+	      break;
+	    }
+	}
+
+//       printf("compare[%2d]: val = ", mid);
+//       for (int i = 0; i < len; i++)
+//         printf("%02X", val[i]);
+//       printf("  vs pow10[%2d] = ", mid + 1);
+//       for (int i = 0; i < POW10_BUF_SIZE; i++)
+//         printf("%02X", powers_of_10[mid][i]);
+//       printf("  val_first_nonzero = %d, tmp_first_nonzero = %d\n", val_first_nonzero, tmp_first_nonzero);
+//       printf("\n");
+
+      if (val_first_nonzero < tmp_first_nonzero)
+	{
+	  // val이 더 작음
+	  hi = mid - 1;
+	}
+      else if (val_first_nonzero > tmp_first_nonzero)
+	{
+	  // val이 더 큼
+	  lo = mid;
+	}
+      else
+	{
+	  // 위치가 같으면 상세 비교
+	  if (fp_numeric_cmp_base256 (calc_buf, tmp, calc_bytes) >= 0)
+	    {
+	      lo = mid;
+	    }
+	  else
+	    {
+	      hi = mid - 1;
+	    }
+	}
+    }
+  return lo + 1;
 }
 
 /*
@@ -2093,8 +2284,8 @@ count_digits_by_division (const uint8_t * calc_buf, int calc_bytes)
  * raw_prec 자리 중 앞 KEEP=38만 살리고 39번째 자리에서 반올림
  */
 static void
-round_and_normalize_numeric (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-			     int *result_scale, bool * need_round)
+fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
+			   int *result_scale, bool * need_round)
 {
   int keep = DB_MAX_NUMERIC_PRECISION;
   uint16_t rem10 = 0;
@@ -2119,17 +2310,18 @@ round_and_normalize_numeric (uint8_t * calc_buf, int calc_bytes, uint8_t * resul
   // 2) 38 자리 까지 값을 나눠서 짜르고, 39자리는 rem10에 저장(반올림 여부 확인용)
   for (i = 0; i < drop; i++)
     {
-      rem10 = div_pow10_bytes (calc_buf, calc_bytes);
+      rem10 = fp_numeric_div_pow10 (calc_buf, calc_bytes);
     }
 
   // 3) half-up 반올림: rem10 >= 5 이면 +1
   if (rem10 >= 5)
     {
-      (void) add_base256_scalar (calc_buf, calc_bytes, 1);
-      round_prec = recalc_effective_precision (calc_buf, calc_bytes);
+      (void) fp_numeric_increment (calc_buf, calc_bytes, 1);
+      //round_prec = count_digits_by_division (calc_buf, calc_bytes);
+      round_prec = fp_numeric_overflow (calc_buf, calc_bytes);
       if (round_prec > keep)
 	{
-	  (void) div_pow10_bytes (calc_buf, calc_bytes);
+	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
 	  (*result_scale)--;
 	}
     }
@@ -2142,7 +2334,7 @@ round_and_normalize_numeric (uint8_t * calc_buf, int calc_bytes, uint8_t * resul
 }
 
 static uint16_t
-div_pow10_bytes (uint8_t * calc_buf, int calc_bytes)
+fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes)
 {
   uint32_t temp = 0;		// temp를 16비트로하면, (*rem10 << 8) | calc_buf[i] 과정에서 오버플로우 발생.
   uint16_t rem10 = 0;		// rem10 값을 8비트로하면, 중간계산에서 부족할 수 있음.
@@ -2161,7 +2353,7 @@ div_pow10_bytes (uint8_t * calc_buf, int calc_bytes)
   * buf += val (val <= 255)
   */
 static void
-add_base256_scalar (uint8_t * calc_buf, int calc_bytes, uint8_t val)
+fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val)
 {
   int i = 0;
   uint16_t temp = 0;
@@ -2174,6 +2366,8 @@ add_base256_scalar (uint8_t * calc_buf, int calc_bytes, uint8_t val)
     }
 }
 
+// base-256을 8바이트 씩 묶어서 연산
+// 제거
 static int
 floating_point_numeric_add3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
 			     DB_VALUE * answer, bool * need_round)
@@ -2189,7 +2383,7 @@ floating_point_numeric_add3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *
   int before_digits1, before_digits2, full_before_digits, full_after_digits;
 
   // 1) 필요한 바이트 수 계산
-  calc_bytes = calc_base256_bytes (*result_prec);
+  calc_bytes = calc_bytes_from_prec (*result_prec);
   if (calc_bytes < 1)
     {
       return ER_FAILED;
@@ -2289,9 +2483,11 @@ floating_point_numeric_add3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *
   return ret;
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static int
-floating_point_numeric_add4 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
-			     DB_VALUE * answer, bool * need_round)
+floating_point_numeric_add_base10000 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
+				      DB_VALUE * answer, bool * need_round)
 {
   int ret = NO_ERROR;
   int tmp_idx = 0;
@@ -2316,14 +2512,12 @@ floating_point_numeric_add4 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *
   arg1_sign = numeric_is_negative (db_locate_numeric (dbv1)) ? true : false;
   if (arg1_sign)
     {
-      //numeric_copy (dbv1_copy, db_locate_numeric (dbv1));
       numeric_negate (dbv1_copy);
     }
 
   arg2_sign = numeric_is_negative (db_locate_numeric (dbv2)) ? true : false;
   if (arg2_sign)
     {
-      //numeric_copy (dbv2_copy, db_locate_numeric (dbv2));
       numeric_negate (dbv2_copy);
     }
 
@@ -2452,9 +2646,8 @@ floating_point_numeric_add4 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *
   return ret;
 }
 
-// src: big-endian 16바이트 buffer
-// digits: little-endian, LSB가 digits[0]
-// digit_count: 변환 후 실제 사용된 칸 개수
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static inline void
 convert_base256_to_base10000 (uint8_t src[DB_NUMERIC_BUF_SIZE], uint16_t * digits, int *digit_count, int digit_capacity)
 {
@@ -2508,6 +2701,8 @@ convert_base256_to_base10000 (uint8_t src[DB_NUMERIC_BUF_SIZE], uint16_t * digit
     }
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static void
 mul_pow10_base10000 (uint16_t * digits, int *digit_count, int exponent, int digit_capacity)
 {
@@ -2537,7 +2732,7 @@ mul_pow10_base10000 (uint16_t * digits, int *digit_count, int exponent, int digi
   if (rem)
     {
       uint32_t carry = 0, tmp = 0;
-      int mul = _gv_pow10_small[rem];
+      int mul = _gv_pow10_small10000[rem];
       int i;
       for (i = 0; i < *digit_count; i++)
 	{
@@ -2557,6 +2752,8 @@ mul_pow10_base10000 (uint16_t * digits, int *digit_count, int exponent, int digi
     }
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static void
 add_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1,
 	       const uint16_t * base10000_buf2, int base10000_cnt2,
@@ -2592,6 +2789,8 @@ add_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1,
   *base10000_calc_cnt = i;
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static int
 compare_abs_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1, const uint16_t * base10000_buf2,
 		       int base10000_cnt2)
@@ -2626,6 +2825,53 @@ compare_abs_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1, cons
   return 0;
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
+static void
+sub_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1,
+	       const uint16_t * base10000_buf2, int base10000_cnt2,
+	       uint16_t * base10000_calc_buf, int *base10000_calc_cnt)
+{
+  int i;
+  int max_cnt = base10000_cnt1 > base10000_cnt2 ? base10000_cnt1 : base10000_cnt2;
+  int32_t borrow = 0, tmp, buf1_digit, buf2_digit;
+
+  for (i = 0; i < max_cnt; i++)
+    {
+      // 1) 각 자리값을 0일 수도 있다고 가정
+      buf1_digit = (i < base10000_cnt1 ? base10000_buf1[i] : 0);
+      buf2_digit = (i < base10000_cnt2 ? base10000_buf2[i] : 0);
+
+      tmp = buf1_digit - borrow - buf2_digit;
+      if (tmp < 0)
+	{
+	  tmp += 10000;
+	  borrow = 1;
+	}
+      else
+	{
+	  borrow = 0;
+	}
+
+      base10000_calc_buf[(*base10000_calc_cnt)++] = (uint16_t) tmp;
+    }
+
+  // (선행) borrow가 1로 남았다면, base10000_buf1 < base10000_buf2 상황.
+  // 필요하다면 에러 처리하거나, 보수를 취해 음수 표현을 해야 합니다.
+  // 2) 연산 결과 검증 (가장 중요!)
+  assert (borrow == 0);		// |buf1| >= |buf2| 전제 조건 검증
+
+  // 3) 최상위 0 세그먼트 제거, 반올림 할 때 제거할거라 필요 없어보임
+//   while (i > 0 && base10000_calc_buf[i - 1] == 0)
+//     {
+//       i--;
+//     }
+
+//   *base10000_calc_cnt = i;
+}
+
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static void
 round_base10000 (uint16_t * buf10000_calc, int *buf10000_calc_cnt, int full_prec, int num_excess)
 {
@@ -2643,7 +2889,7 @@ round_base10000 (uint16_t * buf10000_calc, int *buf10000_calc_cnt, int full_prec
   round_check_seg = round_check_pos / 4;
   round_check_rem = round_check_pos % 4;
   round_check_val = buf10000_calc[round_check_seg];
-  round_check_digit = (round_check_val / _gv_pow10_small[round_check_rem]) % 10;
+  round_check_digit = (round_check_val / _gv_pow10_small10000[round_check_rem]) % 10;
 
   // 2) 38번째 자리 까지 자르기
   drop_segments = num_excess / 4;
@@ -2664,7 +2910,7 @@ round_base10000 (uint16_t * buf10000_calc, int *buf10000_calc_cnt, int full_prec
   if (drop_remainder > 0)
     {
       carry = 0;
-      divisor = _gv_pow10_small[drop_remainder];	// {1,10,100,1000} 중 하나
+      divisor = _gv_pow10_small10000[drop_remainder];	// {1,10,100,1000} 중 하나
       for (i = *buf10000_calc_cnt - 1; i >= 0; --i)
 	{
 	  // x = carry*10000 + 현재 세그먼트
@@ -2673,12 +2919,6 @@ round_base10000 (uint16_t * buf10000_calc, int *buf10000_calc_cnt, int full_prec
 	  buf10000_calc[i] = tmp / divisor;
 	  // 나머지 → 다음 (LSB쪽) 패딩값으로
 	  carry = tmp % divisor;
-	}
-
-      // 가장 위쪽에 남은 0 세그먼트 제거
-      while (*buf10000_calc_cnt > 0 && buf10000_calc[*buf10000_calc_cnt - 1] == 0)
-	{
-	  (*buf10000_calc_cnt)--;
 	}
     }
 //       fprintf(stderr, "[DBG] after rem: ");
@@ -2709,8 +2949,16 @@ round_base10000 (uint16_t * buf10000_calc, int *buf10000_calc_cnt, int full_prec
 //       for (int i = base10000_calc_cnt-1; i >= 0; --i)
 //         fprintf(stderr, "%04u ", base10000_calc_buf[i]);
 //       fprintf(stderr, "\n");
+
+  // 4) 최종 normalize: leading-zero 세그먼트 제거
+  while (*buf10000_calc_cnt > 0 && buf10000_calc[*buf10000_calc_cnt - 1] == 0)
+    {
+      (*buf10000_calc_cnt)--;
+    }
 }
 
+// base-256을 base-10000으로 변환 후 연산
+// 잠깐 기록
 static void
 convert_base10000_to_base256 (const uint16_t * buf10000_calc, int pack_cnt, uint8_t * result_buf)
 {
@@ -2756,18 +3004,527 @@ convert_base10000_to_base256 (const uint16_t * buf10000_calc, int pack_cnt, uint
     }
 }
 
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
 static int
-calc_base256_bytes (int prec)
+floating_point_numeric_add_base100 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
+				    DB_VALUE * answer, bool * need_round)
 {
-  const double log2_10 = 3.3219280948873626;
-  double bits;
-  // 필요한 비트 수
-  bits = 1.0 + prec * log2_10;
-  // 바이트로 나눠서 올림
-  return (int) ceil (bits / 8.0);
+  int ret = NO_ERROR;
+  int tmp_idx = 0;
+  int first_sig_digits = 0;
+  uint8_t first_sig_val = 0;
+  int full_prec = 0;
+  int keep_segs = 0;
+  int pack_cnt = 0;
+
+  int scale1 = DB_VALUE_SCALE (dbv1);
+  int scale2 = DB_VALUE_SCALE (dbv2);
+  int exponent1 = *result_scale - scale1;
+  int exponent2 = *result_scale - scale2;
+
+  // 기존 base-256은 Big-Endian으로 저장되어 있음
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  // 1) 부호 확인 및 음수 -> 양수 변환
+  arg1_sign = numeric_is_negative (db_locate_numeric (dbv1)) ? true : false;
+  if (arg1_sign)
+    {
+      numeric_negate (dbv1_copy);
+    }
+
+  arg2_sign = numeric_is_negative (db_locate_numeric (dbv2)) ? true : false;
+  if (arg2_sign)
+    {
+      numeric_negate (dbv2_copy);
+    }
+
+  // 2) digit_capacity & 버퍼 준비 (2자리씩 묶으니 2로 나누고 올림 + carry용 1)
+  int digit_capacity = (*result_prec + 1) / 2 + 1;
+  uint8_t buf100_1[digit_capacity];
+  uint8_t buf100_2[digit_capacity];
+  uint8_t buf100_calc[digit_capacity] = { 0 };
+  int buf100_cnt1 = 0, buf100_cnt2 = 0, buf100_calc_cnt = 0;
+
+//   fprintf(stderr, "[DBG] src1 bytes: ");
+//   for (int i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
+//     fprintf(stderr, "%02X", dbv1_copy[i]);
+//   fprintf(stderr, "\n");
+//   fprintf(stderr, "[DBG] src2 bytes: ");
+//   for (int i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
+//     fprintf(stderr, "%02X", dbv2_copy[i]);
+//   fprintf(stderr, "\n");
+
+  // 3) 256 -> 10000 변환 할때, Big-Endian 으로 변환하면서 base변경 할 경우 비용 더 발생할 것 같아,
+  // Little-Endian 순서로 변환하여 계산
+  convert_base256_to_base100 ((uint8_t *) dbv1_copy, buf100_1, &buf100_cnt1, digit_capacity);
+  convert_base256_to_base100 ((uint8_t *) dbv2_copy, buf100_2, &buf100_cnt2, digit_capacity);
+
+//   fprintf(stderr, "[DBG] conv1 count=%d: ", buf10000_cnt1);
+//   for (int i = buf10000_cnt1-1; i >= 0; --i)
+//     fprintf(stderr, "%04u ", buf10000_1[i]);
+//   fprintf(stderr, "\n");
+//   fprintf(stderr, "[DBG] conv2 count=%d: ", buf10000_cnt2);
+//   for (int i = buf10000_cnt2-1; i >= 0; --i)
+//     fprintf(stderr, "%04u ", buf10000_2[i]);
+//   fprintf(stderr, "\n");
+
+  // 4) scale 보정
+  if (exponent1)
+    {
+      (void) mul_pow10_base100 (buf100_1, &buf100_cnt1, exponent1, digit_capacity);
+    }
+  if (exponent2)
+    {
+      (void) mul_pow10_base100 (buf100_2, &buf100_cnt2, exponent2, digit_capacity);
+    }
+
+//   fprintf(stderr, "[DBG] after scale1 count=%d: ", buf100_cnt1);
+//   for (int i = buf100_cnt1-1; i >= 0; --i)
+//     fprintf(stderr, "%04u ", buf100_1[i]);
+//   fprintf(stderr, "\n");
+
+//   fprintf(stderr, "[DBG] after scale2 count=%d: ", buf100_cnt2);
+//   for (int i = buf100_cnt2-1; i >= 0; --i)
+//     fprintf(stderr, "%04u ", buf100_2[i]);
+//   fprintf(stderr, "\n");
+
+  // 5) 덧셈 - 부호에 따른 처리
+  if (arg1_sign == arg2_sign)
+    {
+      // 같은 부호: 절댓값 덧셈
+      (void) add_base100 (buf100_1, buf100_cnt1, buf100_2, buf100_cnt2, buf100_calc, &buf100_calc_cnt, digit_capacity);
+      result_sign = arg1_sign;	// 결과 부호 = 입력 부호
+    }
+  else
+    {
+      // 다른 부호: 절댓값 뺄셈
+      if (compare_abs_base100 (buf100_1, buf100_cnt1, buf100_2, buf100_cnt2) >= 0)
+	{
+	  // |arg1| >= |arg2|
+	  sub_base100 (buf100_1, buf100_cnt1, buf100_2, buf100_cnt2, buf100_calc, &buf100_calc_cnt, digit_capacity);
+	  result_sign = arg1_sign;	// 결과 부호 = 큰 수의 부호
+	}
+      else
+	{
+	  // |arg1| < |arg2|
+	  sub_base100 (buf100_2, buf100_cnt2, buf100_1, buf100_cnt1, buf100_calc, &buf100_calc_cnt, digit_capacity);
+	  result_sign = arg2_sign;	// 결과 부호 = 큰 수의 부호
+	}
+    }
+
+//   fprintf(stderr, "[DBG] add result count=%d: ", buf100_calc_cnt);
+//   for (int i = buf100_calc_cnt-1; i >= 0; --i)
+//     fprintf(stderr, "%04u ", buf100_calc[i]);
+//   fprintf(stderr, "\n");
+
+  // 5) 연산 결과 전체 자릿수 계산
+  tmp_idx = buf100_calc_cnt;
+  while (tmp_idx > 0 && buf100_calc[tmp_idx] == 0)
+    {
+      tmp_idx--;
+    }
+  first_sig_val = buf100_calc[tmp_idx];
+  first_sig_digits = (first_sig_val >= 10 ? 2 : 1);
+  full_prec = first_sig_digits + tmp_idx * 2;
+
+  // 6) 하프업 반올림 & LSB 드롭
+  if (full_prec > DB_MAX_NUMERIC_PRECISION)
+    {
+      int num_excess = full_prec - DB_MAX_NUMERIC_PRECISION;
+      round_base100 (buf100_calc, &buf100_calc_cnt, full_prec, num_excess);
+
+      // 6) scale/precision 보정
+      *result_prec = DB_MAX_NUMERIC_PRECISION;
+      *result_scale = *result_scale - num_excess;
+//       fprintf(stderr, "[DBG] new_prec=%d new_scale=%d\n", *result_prec, *result_scale);
+    }
+
+  // 6) pack → base-256
+  keep_segs = (DB_MAX_NUMERIC_PRECISION + 1) / 2;	// =10
+  pack_cnt = buf100_calc_cnt < keep_segs ? buf100_calc_cnt : keep_segs;
+  convert_base100_to_base256 (buf100_calc, pack_cnt, result_buf);
+
+
+//   fprintf(stderr, "[DBG] packed bytes: ");
+//   for (int i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
+//     fprintf(stderr, "%02X", result_buf[i]);
+//   fprintf(stderr, "\n");
+
+  *need_round = true;
+
+  // 7) 결과 저장
+  if (result_sign)
+    {
+      // 결과가 음수인 경우
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (answer, result_buf, *result_prec, *result_scale);
+
+  return ret;
 }
 
-/* big-endian base-256 값을 work_bytes(8의 배수) 길이의 uint64_t 워드 배열에 복사 */
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static inline void
+convert_base256_to_base100 (uint8_t src[DB_NUMERIC_BUF_SIZE], uint8_t * digits, int *digit_count, int digit_capacity)
+{
+  size_t b;
+  int i, j;
+  uint16_t carry, tmp;
+
+  // 0) 초기화: base-100 digit 배열과 카운트
+  memset (digits, 0, sizeof (uint8_t) * digit_capacity);
+  *digit_count = 0;
+
+  // 1) 각 바이트마다: (누적값 *= 256) + (누적값 += byte)
+  for (b = 0; b < DB_NUMERIC_BUF_SIZE; b++)
+    {
+      // 1a) 누적 base-100 숫자 * 256 (자리 올리기 + carry 처리)
+      carry = 0;
+      for (i = 0; i < *digit_count; i++)
+	{
+	  tmp = (uint16_t) digits[i] * 256 + carry;
+	  digits[i] = tmp % 100;
+	  carry = tmp / 100;
+	}
+      // 남은 carry를 새 세그먼트로 추가 (base-100)
+      if (carry)
+	{
+	  if (*digit_count < digit_capacity)
+	    {
+	      digits[(*digit_count)++] = carry % 100;
+	      carry /= 100;
+	    }
+	  if (carry && *digit_count < digit_capacity)
+	    {
+	      digits[(*digit_count)++] = carry;
+	    }
+	}
+
+      // 1b) 누적값 += src[b] (새 바이트 값 더하기)
+      carry = src[b];
+      for (j = 0; j < *digit_count; j++)
+	{
+	  tmp = (uint16_t) digits[j] + carry;
+	  digits[j] = tmp % 100;
+	  carry = tmp / 100;
+	  if (!carry)
+	    {
+	      break;
+	    }
+	}
+      //남은 carry를 새 세그먼트로 추가 (base-100)
+      if (carry && *digit_count < digit_capacity)
+	{
+	  digits[(*digit_count)++] = carry;
+	}
+    }
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static void
+mul_pow10_base100 (uint8_t * digits, int *digit_count, int exponent, int digit_capacity)
+{
+  int pos, rem;
+
+  if (exponent <= 0)
+    {
+      return;
+    }
+
+  // 1) 10^(2*k) 처리: digit 단위로 자리 이동
+  pos = exponent / 2;
+  if (pos)
+    {
+      if (*digit_count + pos > digit_capacity)
+	{
+	  assert (false);
+	}
+      // 뒤(큰 값)로 shift
+      memmove (digits + pos, digits, sizeof (uint8_t) * (*digit_count));
+      // 앞 pos개는 0으로 채우기
+      memset (digits, 0, sizeof (uint8_t) * pos);
+      *digit_count += pos;
+    }
+
+  // 2) 나머지 10^(exponent%2) : 곱셈 + carry 전파
+  rem = exponent % 2;
+  if (rem)
+    {
+      uint16_t carry = 0, tmp = 0;
+      int mul = _gv_pow10_small100[rem];
+      int i;
+      for (i = 0; i < *digit_count; i++)
+	{
+	  tmp = (uint16_t) digits[i] * mul + carry;
+	  digits[i] = tmp % 100;
+	  carry = tmp / 100;
+	}
+      while (carry)
+	{
+	  if (*digit_count + 1 > digit_capacity)
+	    {
+	      assert (false);
+	    }
+	  digits[(*digit_count)++] = carry % 100;
+	  carry /= 100;
+	}
+    }
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static void
+add_base100 (const uint8_t * base100_buf1, int base100_cnt1,
+	     const uint8_t * base100_buf2, int base100_cnt2,
+	     uint8_t * base100_calc_buf, int *base100_calc_cnt, int digit_capacity)
+{
+  int i;
+  int max_cnt = base100_cnt1 > base100_cnt2 ? base100_cnt1 : base100_cnt2;
+  uint16_t carry = 0, tmp = 0;
+
+  // 0) 결과 카운트 초기화
+  *base100_calc_cnt = 0;
+
+  // 1) 각 자리수 덧셈
+  for (i = 0; i < max_cnt; i++)
+    {
+      tmp = carry;
+      if (i < base100_cnt1)
+	{
+	  tmp += base100_buf1[i];
+	}
+      if (i < base100_cnt2)
+	{
+	  tmp += base100_buf2[i];
+	}
+
+      /* overflow 체크 */
+      if (*base100_calc_cnt < digit_capacity)
+	{
+	  base100_calc_buf[(*base100_calc_cnt)++] = tmp % 100;
+	}
+      else
+	{
+	  assert (false);
+	}
+      carry = tmp / 100;
+    }
+  // 2) 남은 carry 처리 (최대 2칸)
+  if (carry)
+    {
+      if (*base100_calc_cnt < digit_capacity)
+	{
+	  base100_calc_buf[(*base100_calc_cnt)++] = carry % 100;
+	}
+      else
+	{
+	  assert (false);
+	}
+      carry /= 100;
+    }
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static int
+compare_abs_base100 (const uint8_t * base100_buf1, int base100_cnt1, const uint8_t * base100_buf2, int base100_cnt2)
+{
+  int i;
+
+  // cnt1 > cnt2 인 경우
+  if (base100_cnt1 > base100_cnt2)
+    {
+      return 1;
+    }
+
+  // cnt1 < cnt2 인 경우
+  if (base100_cnt1 < base100_cnt2)
+    {
+      return -1;
+    }
+
+  // cnt1 == cnt2 인 경우
+  for (i = base100_cnt1 - 1; i >= 0; i--)
+    {
+      if (base100_buf1[i] > base100_buf2[i])
+	{
+	  return 1;
+	}
+      if (base100_buf1[i] < base100_buf2[i])
+	{
+	  return -1;
+	}
+    }
+
+  return 0;
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static void
+sub_base100 (const uint8_t * base100_buf1, int base100_cnt1,
+	     const uint8_t * base100_buf2, int base100_cnt2,
+	     uint8_t * base100_calc_buf, int *base100_calc_cnt, int digit_capacity)
+{
+  int i;
+  int max_cnt = base100_cnt1 > base100_cnt2 ? base100_cnt1 : base100_cnt2;
+  int16_t borrow = 0, tmp, buf1_digit, buf2_digit;
+
+  // 0) 결과 카운트 초기화
+  *base100_calc_cnt = 0;
+
+  // 1) 자리별 뺄셈 (|buf1| >= |buf2| 전제)
+  for (i = 0; i < max_cnt; i++)
+    {
+      // 1) 각 자리값을 0일 수도 있다고 가정
+      buf1_digit = (i < base100_cnt1 ? base100_buf1[i] : 0);
+      buf2_digit = (i < base100_cnt2 ? base100_buf2[i] : 0);
+
+      tmp = buf1_digit - borrow - buf2_digit;
+      if (tmp < 0)
+	{
+	  tmp += 100;
+	  borrow = 1;
+	}
+      else
+	{
+	  borrow = 0;
+	}
+
+      // overflow 체크 후 저장
+      if (i < digit_capacity)
+	{
+	  base100_calc_buf[(*base100_calc_cnt)++] = (uint8_t) tmp;
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
+
+  // (선행) borrow가 1로 남았다면, base10000_buf1 < base10000_buf2 상황.
+  // 필요하다면 에러 처리하거나, 보수를 취해 음수 표현을 해야 합니다.
+  // 2) |buf1| >= |buf2| 전제 확인
+  assert (borrow == 0);
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static void
+round_base100 (uint8_t * buf100_calc, int *buf100_calc_cnt, int full_prec, int num_excess)
+{
+  int digit_per_seg = 2;
+  int round_check_pos, round_check_seg, round_check_rem, round_check_digit;
+  uint16_t round_check_val;
+  int drop_segments, drop_remainder;
+  int new_cnt, i, j;
+  uint16_t carry, tmp;
+  int divisor;
+  int round_digit = 39;
+
+  // 1) 39번째 자리 추출, 반올림은 38자리까지 자른 뒤 진행
+  // 이유는 자르는 과정에서 반올림 처리한 자리까지 날라가버림
+  round_check_pos = full_prec - round_digit;
+  round_check_seg = round_check_pos / digit_per_seg;
+  round_check_rem = round_check_pos % digit_per_seg;
+  round_check_val = buf100_calc[round_check_seg];
+  round_check_digit = (round_check_val / _gv_pow10_small100[round_check_rem]) % 10;
+
+  // 2) 38번째 자리 까지 자르기
+  drop_segments = num_excess / digit_per_seg;
+  if (drop_segments)
+    {
+      // LSB쪽(0번 인덱스)에 붙어있던 세그먼트를
+      // 앞쪽(고위)으로 당겨서 seg_drop개를 잘라냄
+      new_cnt = *buf100_calc_cnt - drop_segments;
+      memmove (buf100_calc, buf100_calc + drop_segments, sizeof (uint8_t) * new_cnt);
+      *buf100_calc_cnt = new_cnt;
+    }
+
+  drop_remainder = num_excess % digit_per_seg;	// 0 or 1
+  if (drop_remainder)
+    {
+      carry = 0;
+      divisor = _gv_pow10_small100[drop_remainder];	// {1,10} 중 하나
+      for (i = *buf100_calc_cnt - 1; i >= 0; --i)
+	{
+	  // x = carry*100 + 현재 세그먼트
+	  tmp = carry * 100 + buf100_calc[i];
+	  // 몫 → 세그먼트에
+	  buf100_calc[i] = tmp / divisor;
+	  // 나머지 → 다음 (LSB쪽) 패딩값으로
+	  carry = tmp % divisor;
+	}
+    }
+
+  // 3) 하프업 반올림 처리
+  if (round_check_digit >= 5)
+    {
+      buf100_calc[0] += 1;
+      for (j = 0; j + 1 < *buf100_calc_cnt; j++)
+	{
+	  if (buf100_calc[j] < 100)
+	    {
+	      break;
+	    }
+	  buf100_calc[j] -= 100;
+	  buf100_calc[j + 1] += 1;
+	}
+      if (buf100_calc[*buf100_calc_cnt - 1] >= 100)
+	{
+	  buf100_calc[*buf100_calc_cnt - 1] -= 100;
+	  buf100_calc[*buf100_calc_cnt++] = 1;
+	}
+    }
+
+  // 4) 최종 normalize: leading-zero 세그먼트 제거
+  while (*buf100_calc_cnt > 0 && buf100_calc[*buf100_calc_cnt - 1] == 0)
+    {
+      (*buf100_calc_cnt)--;
+    }
+}
+
+// base-256을 base-100으로 변환 후 연산
+// 잠깐 기록
+static void
+convert_base100_to_base256 (const uint8_t * buf100_calc, int pack_cnt, uint8_t * result_buf)
+{
+  int i, j;
+  uint16_t carry, tmp;
+
+  // big-endian 바이트 버퍼으로 Horner’s method 역순
+  memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+
+  tmp = 0;
+  for (i = pack_cnt - 1; i >= 0; i--)
+    {
+      // 1) 전체 dst *= 100
+      carry = 0;
+      for (j = DB_NUMERIC_BUF_SIZE - 1; j >= 0; j--)
+	{
+	  tmp = (uint16_t) result_buf[j] * 100 + carry;
+	  result_buf[j] = tmp & 0xFF;
+	  carry = tmp >> 8;
+	}
+
+      // 2) 전체 dst += segment
+      carry = buf100_calc[i];
+      for (j = DB_NUMERIC_BUF_SIZE - 1; j >= 0 && carry; j--)
+	{
+	  tmp = (uint16_t) result_buf[j] + carry;
+	  result_buf[j] = tmp & 0xFF;
+	  carry = tmp >> 8;
+	}
+    }
+}
+
+// 제거
 static void
 unpack_base256_to_words2 (const uint8_t * src_buf, uint64_t * word_buf, int word_count, int word_aligned_bytes)
 {
@@ -2790,6 +3547,7 @@ unpack_base256_to_words2 (const uint8_t * src_buf, uint64_t * word_buf, int word
     }
 }
 
+// 제거
 static void
 mul_pow10_word (uint64_t * word_buf, int word_count, int exponent)
 {
@@ -2809,6 +3567,7 @@ mul_pow10_word (uint64_t * word_buf, int word_count, int exponent)
     }
 }
 
+// 제거
 static void
 add_bigint_word (const uint64_t * dbv1_buf1, const uint64_t * dbv2_buf2, uint64_t * calc_buf, int word_count)
 {
@@ -2823,15 +3582,7 @@ add_bigint_word (const uint64_t * dbv1_buf1, const uint64_t * dbv2_buf2, uint64_
     }
 }
 
-/**
- * Word 기반 반올림 & 정규화
- * calc_buf [IN/OUT] work_words 길이 big-int 워드 배열
- * work_words 워드 개수
- * max_prec p_res (연산 후 precision)
- * work_bytes work_words*8
- * result_buf 최종 저장할 16~18 바이트 버퍼
- * out_scale 반환될 음수 scale
- */
+// 제거
 static void
 round_and_pack_words2 (uint64_t * calc_buf, int calc_bytes, int word_count, int word_aligned_bytes,
 		       uint8_t * result_buf, int *result_prec, int *result_scale, bool * need_round)
@@ -2885,6 +3636,7 @@ round_and_pack_words2 (uint64_t * calc_buf, int calc_bytes, int word_count, int 
   pack_words_to_bytes2 (calc_buf, word_count, word_aligned_bytes, result_buf, DB_NUMERIC_BUF_SIZE);
 }
 
+// 제거
 static void
 round_and_pack_words3 (uint64_t * calc_buf, int calc_bytes, int word_count, int word_aligned_bytes,
 		       uint8_t * result_buf, int *result_prec, int *result_scale, bool * need_round)
@@ -2935,6 +3687,7 @@ round_and_pack_words3 (uint64_t * calc_buf, int calc_bytes, int word_count, int 
   pack_words_to_bytes2 (calc_buf, word_count, word_aligned_bytes, result_buf, DB_NUMERIC_BUF_SIZE);
 }
 
+// 제거
 static inline int
 fast_decimal_digits_by_word (uint64_t * word_buf, int word_count)
 {
@@ -2979,6 +3732,7 @@ fast_decimal_digits_by_word (uint64_t * word_buf, int word_count)
   return digits;
 }
 
+// 제거
 static inline int
 fast_decimal_digits_by_word2 (uint64_t word_buf)
 {
@@ -3019,7 +3773,7 @@ fast_decimal_digits_by_word2 (uint64_t word_buf)
   return digits;
 }
 
-
+// 제거
 static void
 pack_words_to_bytes2 (const uint64_t * calc_buf, int word_count, int word_aligned_bytes, uint8_t * result_buf,
 		      int result_bytes)
@@ -3040,6 +3794,7 @@ pack_words_to_bytes2 (const uint64_t * calc_buf, int word_count, int word_aligne
   memcpy (result_buf, tmp_words + offset, result_bytes);
 }
 
+// 제거
 static uint16_t
 div_pow10_word (uint64_t * calc_buf, int word_count)
 {
@@ -3056,6 +3811,7 @@ div_pow10_word (uint64_t * calc_buf, int word_count)
   return rem;
 }
 
+// 제거
 static void
 add_word_scalar (uint64_t * calc_buf, int word_count, uint64_t val)
 {
@@ -3135,23 +3891,23 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   if (result_prec >= DB_MAX_NUMERIC_PRECISION)
     {
-      if (prec1 == 10 || prec2 == 10)
-	{
-	  if (prec1 == 10)
-	    {
-	      prec1 = recalc_effective_precision (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-	    }
-	  if (prec2 == 10)
-	    {
-	      prec2 = recalc_effective_precision (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
-	    }
-	  calc_prec1 = prec1 - scale1;
-	  calc_prec2 = prec2 - scale2;
-	  result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
-	}
+//       if (prec1 == 10 || prec2 == 10)
+//      {
+//        if (prec1 == 10)
+//          {
+//            prec1 = recalc_effective_precision (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+//          }
+//        if (prec2 == 10)
+//          {
+//            prec2 = recalc_effective_precision (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+//          }
+//        calc_prec1 = prec1 - scale1;
+//        calc_prec2 = prec2 - scale2;
+//        result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
+//      }
       //임시
       bool need_round = true;
-      ret = floating_point_numeric_sub2 (dbv1, dbv2, &result_prec, &result_scale, answer, &need_round);
+      ret = floating_point_numeric_sub (dbv1, dbv2, &result_prec, &result_scale, answer, &need_round);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -3218,261 +3974,113 @@ floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 			    DB_VALUE * answer, bool * need_round)
 {
   int ret = NO_ERROR;
-  int calc_bytes;		// 실제 연산에 필요한 바이트
-  int exponent1, exponent2;
-  int prec1, prec2;
-  int scale1, scale2;
+  int calc_bytes, calc_prec;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
-  int word_aligned_bytes, word_count;
-  uint64_t *first_word_buf;
-  int calc_after_prec, calc_before_prec;
 
-  // 1) 필요한 바이트 수 계산
-  calc_bytes = calc_base256_bytes (*result_prec);
+  /* 1) 지수 정렬 계산 */
+  int scale1 = DB_VALUE_SCALE (dbv1);
+  int scale2 = DB_VALUE_SCALE (dbv2);
+  int exponent1 = *result_scale - scale1;
+  int exponent2 = *result_scale - scale2;
+
+  // 2) 부호 확인 및 음수 -> 양수 변환
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (db_locate_numeric (dbv1)) ? true : false;
+  if (arg1_sign)
+    {
+      numeric_negate (dbv1_copy);
+    }
+
+  arg2_sign = numeric_is_negative (db_locate_numeric (dbv2)) ? true : false;
+  if (arg2_sign)
+    {
+      numeric_negate (dbv2_copy);
+    }
+
+  // 3) 필요한 바이트 수 계산
+  calc_bytes = calc_bytes_from_prec (*result_prec) + 1;
   if (calc_bytes < 1)
     {
       return ER_FAILED;
     }
 
-  // 2) 8바이트 워드 정렬(워드 단위 연산을 위해)
-  word_aligned_bytes = ((calc_bytes + 7) / 8) * 8;	// 8바이트 배수로 올림한 값
-  word_count = word_aligned_bytes / 8;	// 8바이트 워드 수
+  // 4) 새로운 계산 버퍼 초기화
+  uint8_t dbv1_buf[calc_bytes];
+  uint8_t dbv2_buf[calc_bytes];
+  uint8_t calc_buf[calc_bytes] = { 0 };
 
-  // 3) 1바이트 -> 8바이트(word) 언팩
-  uint64_t dbv1_buf1[word_count];
-  uint64_t dbv2_buf2[word_count];
-  uint64_t calc_buf[word_count];
-
-  (void) unpack_base256_to_words2 (db_locate_numeric (dbv1), dbv1_buf1, word_count, word_aligned_bytes);
-  (void) unpack_base256_to_words2 (db_locate_numeric (dbv2), dbv2_buf2, word_count, word_aligned_bytes);
-
-  // 4) 지수 계산
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  exponent1 = *result_scale - scale1;
-  exponent2 = *result_scale - scale2;
+  (void) fp_numeric_pad (dbv1_copy, dbv1_buf, calc_bytes);
+  (void) fp_numeric_pad (dbv2_copy, dbv2_buf, calc_bytes);
 
   // 5) scale 보정
   if (exponent1)
     {
-      (void) mul_pow10_word (dbv1_buf1, word_count, exponent1);
+      fp_numeric_mul_pow10 (dbv1_buf, calc_bytes, exponent1);
     }
   if (exponent2)
     {
-      (void) mul_pow10_word (dbv2_buf2, word_count, exponent2);
+      fp_numeric_mul_pow10 (dbv2_buf, calc_bytes, exponent2);
     }
 
-  // 6) prec가 더 큰 값의 상위 바이트 저장
-  // 버퍼의 크기는 최대한 맞춰서 저장하니, 0번째만 확인하는게 맞을듯?
-  first_word_buf = dbv1_buf1[0] > dbv2_buf2[0] ? dbv1_buf1 : dbv2_buf2;
-  calc_before_prec = fast_decimal_digits_by_word (first_word_buf, 1);
-
-//   fprintf(stderr, "[DEBUG] mantissa_buf1_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)dbv1_buf1[i]);
-//   fprintf(stderr, "\n");
-
-//   fprintf(stderr, "[DEBUG] mantissa_buf2_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)dbv2_buf2[i]);
-//   fprintf(stderr, "\n");
-
-  // 7) 뺄셈
-  (void) sub_bigint_word (dbv1_buf1, dbv2_buf2, calc_buf, word_count);
-  calc_after_prec = fast_decimal_digits_by_word (calc_buf, word_count);
-
-  if (calc_before_prec > calc_after_prec)
+  // 6) 뺄셈
+  if (arg1_sign == arg2_sign)
     {
-      (*result_prec)--;
-    }
-
-//   fprintf(stderr, "[DEBUG] sub mantissa_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)calc_buf[i]);
-//   fprintf(stderr, "\n");
-
-  // 8) 반올림 & 정규화
-  round_and_pack_words2 (calc_buf, calc_bytes, word_count, word_aligned_bytes, result_buf, result_prec, result_scale,
-			 need_round);
-
-//   fprintf(stderr, "[DEBUG] final mantissa_hex: ");
-//   for (int i = 0; i < 16; i++)
-//     fprintf(stderr, "%02X", result_buf[i]);
-//   fprintf(stderr, "\n");
-
-  // 9) 결과 저장
-  db_make_numeric (answer, result_buf, *result_prec, *result_scale);
-
-  return ret;
-}
-
-static int
-floating_point_numeric_sub2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
-			     DB_VALUE * answer, bool * need_round)
-{
-  int ret = NO_ERROR;
-  int calc_bytes;		// 실제 연산에 필요한 바이트
-  int exponent1, exponent2;
-  int prec1, prec2;
-  int scale1, scale2;
-  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
-  int word_aligned_bytes, word_count;
-  int idx1 = 0, idx2 = 0, idx_result = 0;
-  int orig_top_digits, temp_top_digits, new_top_digits;
-
-  // 1) 필요한 바이트 수 계산
-  calc_bytes = calc_base256_bytes (*result_prec);
-  if (calc_bytes < 1)
-    {
-      return ER_FAILED;
-    }
-
-  // 2) 8바이트 워드 정렬(워드 단위 연산을 위해)
-  word_aligned_bytes = ((calc_bytes + 7) / 8) * 8;	// 8바이트 배수로 올림한 값
-  word_count = word_aligned_bytes / 8;	// 8바이트 워드 수
-
-  // 3) 1바이트 -> 8바이트(word) 언팩
-  uint64_t dbv1_buf1[word_count];
-  uint64_t dbv2_buf2[word_count];
-  uint64_t calc_buf[word_count];
-
-  (void) unpack_base256_to_words2 (db_locate_numeric (dbv1), dbv1_buf1, word_count, word_aligned_bytes);
-  (void) unpack_base256_to_words2 (db_locate_numeric (dbv2), dbv2_buf2, word_count, word_aligned_bytes);
-
-  // 4) 지수 계산
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  exponent1 = *result_scale - scale1;
-  exponent2 = *result_scale - scale2;
-
-  // 5) scale 보정
-  if (exponent1)
-    {
-      (void) mul_pow10_word (dbv1_buf1, word_count, exponent1);
-    }
-  if (exponent2)
-    {
-      (void) mul_pow10_word (dbv2_buf2, word_count, exponent2);
-    }
-
-  // 6) prec가 더 큰 값의 상위 바이트 저장?
-  // 연산 전 전체 자릿수(full_prec) 계산
-  while (idx1 < word_count && dbv1_buf1[idx1] == 0)
-    {
-      idx1++;
-    }
-  while (idx2 < word_count && dbv2_buf2[idx2] == 0)
-    {
-      idx2++;
-    }
-  orig_top_digits = fast_decimal_digits_by_word2 (dbv1_buf1[idx1]);
-  temp_top_digits = fast_decimal_digits_by_word2 (dbv2_buf2[idx2]);
-  int low_word_count1 = word_count - idx1 - 1;
-  int low_word_count2 = word_count - idx2 - 1;
-  int full_before1 = orig_top_digits + low_word_count1 * 20;	// 버퍼 크기로 예약된 자릿수, 실제 값의 자릿수와 꼭 같지 않아도됨
-  int full_before2 = temp_top_digits + low_word_count2 * 20;
-  int full_before = full_before1 > full_before2 ? full_before1 : full_before2;
-  int full_after = 0;
-
-//   fprintf(stderr, "[DEBUG] mantissa_buf1_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)dbv1_buf1[i]);
-//   fprintf(stderr, "\n");
-
-//   fprintf(stderr, "[DEBUG] mantissa_buf2_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)dbv2_buf2[i]);
-//   fprintf(stderr, "\n");
-
-  // 7) 뺄셈
-  (void) sub_bigint_word (dbv1_buf1, dbv2_buf2, calc_buf, word_count);
-
-  // 8) 뺄셈 결과 전체 자릿수(full_after) 계산
-  while (idx_result < word_count && calc_buf[idx_result] == 0)
-    {
-      idx_result++;
-    }
-  if (idx_result == word_count)
-    {
-      full_after = 1;
+      if (fp_numeric_cmp_base256 (dbv1_buf, dbv2_buf, calc_bytes) >= 0)
+	{
+	  // |arg1| >= |arg2|
+	  (void) fp_numeric_sub (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+	  result_sign = arg1_sign;	// 결과 부호 = 큰 수의 부호
+	}
+      else
+	{
+	  // |arg1| < |arg2|
+	  (void) fp_numeric_sub (dbv2_buf, dbv1_buf, calc_buf, calc_bytes);
+	  result_sign = !arg2_sign;	// 결과 부호 = 큰 수의 부호
+	}
     }
   else
     {
-      new_top_digits = fast_decimal_digits_by_word2 (calc_buf[idx_result]);
-      int low_word_result_count = word_count - idx_result - 1;
-      full_after = new_top_digits + low_word_result_count * 20;
+      (void) fp_numeric_add (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+      result_sign = arg1_sign;	// 결과 부호 = 입력 부호
     }
 
-  // 9) full_after 가 줄었다면 result_prec 에 반영
-  if (full_after < full_before)
+  // 7) 뺄셈 이후 prec 재계산
+  calc_prec = fp_numeric_overflow (calc_buf, calc_bytes);
+  if (calc_prec > *result_prec)
     {
-      (*result_prec) = full_after;
+      (*result_prec) = calc_prec;
     }
 
-//   fprintf(stderr, "[DEBUG] sub mantissa_hex: ");
-//   for (int i = 0; i < word_count; i++)
-//     fprintf(stderr, "%016llX", (unsigned long long)calc_buf[i]);
-//   fprintf(stderr, "\n");
+  // 8) 반올림 & 다시 16바이트로 pack
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, need_round);
 
-  // 8) 반올림 & 정규화
-  round_and_pack_words3 (calc_buf, calc_bytes, word_count, word_aligned_bytes, result_buf, result_prec, result_scale,
-			 need_round);
-
-//   fprintf(stderr, "[DEBUG] final mantissa_hex: ");
-//   for (int i = 0; i < 16; i++)
-//     fprintf(stderr, "%02X", result_buf[i]);
-//   fprintf(stderr, "\n");
 
   // 9) 결과 저장
+  if (result_sign)
+    {
+      // 결과가 음수인 경우
+      numeric_negate ((unsigned char *) result_buf);
+    }
   db_make_numeric (answer, result_buf, *result_prec, *result_scale);
 
   return ret;
 }
 
 static void
-sub_bigint_word (const uint64_t * dbv1_buf1, const uint64_t * dbv2_buf2, uint64_t * calc_buf, int word_count)
+fp_numeric_sub (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes)
 {
   int i = 0;
-  __int128_t borrow = 0, op1_word = 0, op2_word = 0, temp = 0;
-
-  for (i = word_count - 1; i >= 0; i--)
+  int borrow = 0;
+  int temp = 0;
+  for (i = calc_bytes - 1; i >= 0; i--)
     {
-      op1_word = (__int128_t) dbv1_buf1[i];
-      op2_word = (__int128_t) dbv2_buf2[i];
-      temp = op1_word - op2_word - borrow;
+      temp = (int) dbv1_buf[i] - (int) dbv2_buf[i] - borrow;
       if (temp < 0)
 	{
-	  // underflow: borrow 1 from 상위 워드
-	  temp += ((__int128_t) 1 << 64);
-	  borrow = 1;
-	}
-      else
-	{
-	  borrow = 0;
-	}
-      calc_buf[i] = (uint64_t) temp;
-    }
-}
-
-static void
-sub_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1,
-	       const uint16_t * base10000_buf2, int base10000_cnt2,
-	       uint16_t * base10000_calc_buf, int *base10000_calc_cnt)
-{
-  int i;
-  int max_cnt = base10000_cnt1 > base10000_cnt2 ? base10000_cnt1 : base10000_cnt2;
-  int32_t borrow = 0, tmp, buf1_digit, buf2_digit;
-
-  for (i = 0; i < max_cnt; i++)
-    {
-      // 1) 각 자리값을 0일 수도 있다고 가정
-      buf1_digit = (i < base10000_cnt1 ? base10000_buf1[i] : 0);
-      buf2_digit = (i < base10000_cnt2 ? base10000_buf2[i] : 0);
-
-      tmp = buf1_digit - borrow - buf2_digit;
-      if (tmp < 0)
-	{
-	  tmp += 10000;
+	  temp += 256;
 	  borrow = 1;
 	}
       else
@@ -3480,21 +4088,8 @@ sub_base10000 (const uint16_t * base10000_buf1, int base10000_cnt1,
 	  borrow = 0;
 	}
 
-      base10000_calc_buf[i] = (uint16_t) tmp;
+      calc_buf[i] = (uint8_t) (temp & 0xFF);
     }
-
-  // (선행) borrow가 1로 남았다면, base10000_buf1 < base10000_buf2 상황.
-  // 필요하다면 에러 처리하거나, 보수를 취해 음수 표현을 해야 합니다.
-  // 2) 연산 결과 검증 (가장 중요!)
-  assert (borrow == 0);		// |buf1| >= |buf2| 전제 조건 검증
-
-  // 3) 최상위 0 세그먼트 제거
-  while (i > 0 && base10000_calc_buf[i - 1] == 0)
-    {
-      i--;
-    }
-
-  *base10000_calc_cnt = i;
 }
 
 /*
