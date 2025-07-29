@@ -564,7 +564,7 @@ catcls_guess_record_length (OR_VALUE * value_p)
 {
   int length;
   DB_TYPE data_type;
-  PR_TYPE *map_p;
+  const PR_TYPE *map_p;
   OR_VALUE *attrs_p;
   int n_attrs, i;
 
@@ -1756,7 +1756,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     {
       /* enumerations are stored as a collection of strings */
       TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_STRING);
-      PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
+      const PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
 
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)

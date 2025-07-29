@@ -47,6 +47,7 @@
 #include "object_primitive.h"
 #include "db_client_type.hpp"
 #include "msgcat_glossary.hpp"
+#include "network_interface_cl.h"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -12084,6 +12085,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   next = node->next;
   node->next = NULL;
 
+  if (pt_is_ddl_statement (node))
+    {
+      tdes_set_query_start_info (node->sql_user_text);
+    }
+
   switch (node->node_type)
     {
     case PT_UPDATE:
@@ -12454,6 +12460,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
   if (pt_has_error (parser))
     {
+      tdes_reset_query_start_info (node);
       pt_register_orphan (parser, node);
       return NULL;
     }

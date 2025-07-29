@@ -151,7 +151,7 @@ namespace cubpl
 	      }
 
 	    DB_VALUE *value = &m_current_tuple[i];
-	    PR_TYPE *pr_type = domain->type;
+	    const PR_TYPE *pr_type = domain->type;
 
 	    if (flag == V_BOUND)
 	      {
@@ -210,7 +210,7 @@ namespace cubpl
 		    break;
 		  }
 
-		PR_TYPE *pr_type = domain->type;
+		const PR_TYPE *pr_type = domain->type;
 		if (pr_type == NULL)
 		  {
 		    scan_code = S_ERROR;
