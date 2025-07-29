@@ -93,18 +93,24 @@ int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 #endif
 int db_Disable_modifications = 0;
 
+#if defined(ENABLE_USE_CNVLEX)
 static int transfer_string (char *dst, int *xflen, int *outlen,
 			    const int dstlen, const char *src,
 			    const int srclen, const DB_TYPE_C type, const INTL_CODESET codeset);
 static int transfer_bit_string (char *buf, int *xflen, int *outlen,
 				const int buflen, const DB_VALUE * src, const DB_TYPE_C c_type);
+#endif
+
 static int coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);
+
+#if defined(ENABLE_USE_CNVLEX)
 static int coerce_numeric_to_dbvalue (DB_VALUE * value, char *buf, const DB_TYPE_C c_type);
 static int coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen);
 static int coerce_date_to_dbvalue (DB_VALUE * value, char *buf);
 static int coerce_time_to_dbvalue (DB_VALUE * value, char *buf);
 static int coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf);
 static int coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf);
+#endif
 
 static VALCNV_BUFFER *valcnv_append_bytes (VALCNV_BUFFER * old_string,
 					   const char *new_tail, const size_t new_tail_length);
@@ -1307,6 +1313,7 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
     case DB_TYPE_C_VARNCHAR:
       status = coerce_char_to_dbvalue (value, (char *) input, input_length);
       break;
+#if defined(ENABLE_USE_CNVLEX)
     case DB_TYPE_C_INT:
     case DB_TYPE_C_SHORT:
     case DB_TYPE_C_LONG:
@@ -1358,8 +1365,10 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
 	  break;
 	}
       break;
+#endif // ENABLE_USE_CNVLEX
     default:
       status = C_TO_VALUE_UNSUPPORTED_CONVERSION;
+      assert (false);
       break;
     }
 
@@ -1902,6 +1911,7 @@ db_get_currency_default ()
   return lang_currency ();
 }
 
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * transfer_string() -
  * return     : an error indicator.
@@ -2047,6 +2057,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
 
   return error_code;
 }
+#endif // ENABLE_USE_CNVLEX
 
 int
 db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
@@ -2079,6 +2090,7 @@ db_init_db_json_pointers (DB_JSON * val)
   return NO_ERROR;
 }
 
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * db_value_get() -
  *
@@ -2976,7 +2988,7 @@ unsupported_conversion:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNSUPPORTED_CONVERSION, 1, "db_value_get");
   return ER_DB_UNSUPPORTED_CONVERSION;
 }
-
+#endif // ENABLE_USE_CNVLEX
 /*
  * coerce_char_to_dbvalue() - Coerce the C character string into the
  *                       desired type and place in a DB_VALUE container.
@@ -2998,6 +3010,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 
   switch (db_type)
     {
+#if defined(ENABLE_USE_CNVLEX)
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       {
@@ -3123,6 +3136,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  status = C_TO_VALUE_CONVERSION_ERROR;
 	}
       break;
+#endif // ENABLE_USE_CNVLEX
     case DB_TYPE_NUMERIC:
       {
 	DB_VALUE tmp_value;
@@ -3137,10 +3151,9 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
-	else
-	  if (numeric_coerce_num_to_num
-	      (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
-	       DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+	else if (numeric_coerce_num_to_num
+		 (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
+		  DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -3155,6 +3168,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
       }
       break;
     default:
+      assert (false);
       status = C_TO_VALUE_UNSUPPORTED_CONVERSION;
       break;
     }
@@ -3162,6 +3176,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
   return status;
 }
 
+#if defined(ENABLE_USE_CNVLEX)
 /*
  * coerce_numeric_to_dbvalue() - Coerce the C character number string
  *              into the desired type and place in a DB_VALUE container.
@@ -3989,7 +4004,7 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
 
   return status;
 }
-
+#endif // ENABLE_USE_CNVLEX
 /*
  * DOMAIN ACCESSORS
  */

@@ -37,6 +37,8 @@ namespace parallel_query_execute
 
   using err_desc_t = std::pair<int, cuberr::er_message *>;
 
+  const int TASK_QUEUE_RESERVE_SIZE = 64;
+
   struct WORKER_STATS
   {
     std::atomic<UINT64> m_fetches;
