@@ -27,6 +27,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -60,5 +61,5 @@ extern const char *co_message (void);
 #endif
 extern int co_code (void);
 extern void co_final (void);
-
+#endif // ENABLE_USE_CNVLEX
 #endif /* _CONDITION_HANDLER_H_ */
