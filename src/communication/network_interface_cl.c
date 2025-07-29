@@ -11581,7 +11581,7 @@ tdes_set_query_start_info (char *sql_user_text)
   ptr = or_pack_string (request, sql_user_text);
   assert (ptr <= request + request_len);
 
-  net_client_request_no_reply (NET_SERVER_TDES_SET_QUERY_START_INFO, request, request_len);
+  net_client_request (NET_SERVER_TDES_SET_QUERY_START_INFO, request, request_len);
 
   free_and_init (request);
 #endif /* !CS_MODE */
@@ -11598,7 +11598,7 @@ tdes_reset_query_start_info (PT_NODE * node)
 #if defined(CS_MODE)
   if (pt_is_ddl_statement (node))
     {
-      net_client_request_no_reply (NET_SERVER_TDES_RESET_QUERY_START_INFO, NULL, 0);
+      net_client_request (NET_SERVER_TDES_RESET_QUERY_START_INFO, NULL, 0);
     }
 #endif
 }
