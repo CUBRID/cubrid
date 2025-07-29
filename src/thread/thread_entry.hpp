@@ -38,8 +38,10 @@
 #include <cassert>
 
 // forward definitions
+#if defined(ENABLE_USE_CNVLEX)
 // from adjustable_array.h
 struct adj_array;
+#endif
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -227,7 +229,9 @@ namespace cubthread
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
+#if defined(ENABLE_USE_CNVLEX)
       adj_array *cnv_adj_buffer[3];	/* conversion buffer */
+#endif
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
@@ -302,7 +306,9 @@ namespace cubthread
 
       cubload::driver *m_loaddb_driver;
 
-      UINT64 *m_parallel_stats;
+      pthread_mutex_t m_px_lock;
+      UINT64 *m_px_stats;
+      entry *m_px_orig_thread_entry;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

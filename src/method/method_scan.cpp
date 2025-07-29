@@ -277,7 +277,7 @@ namespace cubscan
 
 	      DB_VALUE *value = &m_arg_vector [i];
 	      TP_DOMAIN *domain = m_arg_dom_vector [i];
-	      PR_TYPE *pr_type = domain->type;
+	      const PR_TYPE *pr_type = domain->type;
 
 	      db_make_null (value);
 	      if (flag == V_BOUND)
