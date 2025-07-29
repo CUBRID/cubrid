@@ -553,7 +553,7 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 
   while (dblink)
     {
-      rc = cci_end_tran (dblink->conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
+      rc = cci_end_tran (dblink->conn_info.conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
       if (rc < 0 && tran_error == NO_ERROR)
 	{
 	  is_abort = true;
@@ -561,7 +561,7 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	}
 
-      rc = cci_disconnect (dblink->conn_handle, &err_buf);
+      rc = cci_disconnect (dblink->conn_info.conn_handle, &err_buf);
       if (rc < 0 && tran_error == NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);

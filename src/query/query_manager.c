@@ -3844,8 +3844,8 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 
   while (dblink)
     {
-      if (!strcmp (dblink->conn_url, conn_url) && !strcmp (dblink->user_name, user_name)
-	  && !strcmp (dblink->password, password))
+      if (!strcmp (dblink->conn_info.conn_url, conn_url) && !strcmp (dblink->conn_info.user_name, user_name)
+	  && !strcmp (dblink->conn_info.password, password))
 	{
 	  if (set_participant)
 	    {
@@ -3853,7 +3853,7 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	      dblink->is_2pc_participant = set_participant;
 	    }
 
-	  return dblink->conn_handle;
+	  return dblink->conn_info.conn_handle;
 	}
 
       dblink = dblink->next;
@@ -3878,12 +3878,12 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  dblink_conn_entry->conn_handle = conn_handle;
+  dblink_conn_entry->conn_info.conn_handle = conn_handle;
   dblink_conn_entry->is_2pc_participant = set_participant;
 
-  strcpy (dblink_conn_entry->conn_url, conn_url);
-  strcpy (dblink_conn_entry->user_name, user_name);
-  strcpy (dblink_conn_entry->password, password);
+  strcpy (dblink_conn_entry->conn_info.conn_url, conn_url);
+  strcpy (dblink_conn_entry->conn_info.user_name, user_name);
+  strcpy (dblink_conn_entry->conn_info.password, password);
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 
