@@ -29,6 +29,7 @@
 #include "xasl.h"
 #include "px_query_task.hpp"
 #include "error_context.hpp"
+#include "xasl_predicate.hpp"
 
 //forward definition
 struct xasl_state;

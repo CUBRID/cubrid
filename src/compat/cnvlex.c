@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
+
 #define FLEX_SCANNER
 
 #include <stdio.h>
@@ -165,6 +167,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #include <stdlib.h>
 #include <assert.h>
 #include "config.h"
+
 
 /* Set up custom prefix */
 #undef YY_PREFIX
@@ -2002,3 +2005,4 @@ cnv_fmt_exit (void)
       YY_CURRENT_BUFFER = NULL;
     }
 }
+#endif // ENABLE_USE_CNVLEX

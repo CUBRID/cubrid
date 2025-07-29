@@ -90,7 +90,9 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
+#if defined(ENABLE_USE_CNVLEX)
     , cnv_adj_buffer ()
+#endif
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -136,7 +138,8 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_parallel_stats (NULL)
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
       // private:
     , m_id ()
     , m_error ()
@@ -167,9 +170,11 @@ namespace cubthread
 
     private_heap_id = db_create_private_heap ();
 
+#if defined(ENABLE_USE_CNVLEX)
     cnv_adj_buffer[0] = NULL;
     cnv_adj_buffer[1] = NULL;
     cnv_adj_buffer[2] = NULL;
+#endif
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -231,6 +236,7 @@ namespace cubthread
       {
 	return;
       }
+#if defined(ENABLE_USE_CNVLEX)
     for (int i = 0; i < 3; i++)
       {
 	if (cnv_adj_buffer[i] != NULL)
@@ -238,6 +244,7 @@ namespace cubthread
 	    adj_ar_free (cnv_adj_buffer[i]);
 	  }
       }
+#endif
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);

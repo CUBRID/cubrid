@@ -27,6 +27,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -87,5 +88,6 @@ extern int adj_ar_length (const ADJ_ARRAY * adj_array_p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void *adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n);
 #endif
+#endif // ENABLE_USE_CNVLEX
 
 #endif /* _ADJUSTABLE_ARRAY_H_ */
