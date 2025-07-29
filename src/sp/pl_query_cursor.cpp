@@ -87,6 +87,11 @@ namespace cubpl
       {
 	qfile_close_scan (m_thread, &m_scan_id);
 
+        if (m_query_entry->list_id == NULL) {
+            int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+            m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+        }
+
 	if (m_query_entry->list_id)
 	  {
 	    // Since the list was not created in this thread, incrementing the count of the list (m_qlist_count) is required
@@ -195,7 +200,11 @@ namespace cubpl
 	OR_BUF buf;
 
 	assert (m_query_entry != NULL);
-	assert (m_query_entry->list_id != NULL);
+        if (m_query_entry->list_id == NULL) {
+            int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+            m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+        }
+
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {

@@ -80,6 +80,7 @@ namespace cubpl
     , m_all_session_params_required {true}
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
+    er_log_debug (ARG_FILE_LINE, "pl_session (create): %d\n", m_id);
   }
 
   session::~session ()
