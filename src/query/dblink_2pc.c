@@ -119,18 +119,26 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
 
   assert (particps_ack != NULL);
 
-  while (dblink && dblink->is_2pc_participant)
+  while (dblink)
     {
-      memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + (nth++) * xid.bqual_length, xid.bqual_length);
-      /* for participant, no check for commit whether a participant is fail or not */
-      ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
-      if (ack == NO_ERROR)
+      if (dblink->is_2pc_participant)
 	{
-	  particps_ack[nth] = true;
+	  memcpy (xid.data, &gtrid, xid.gtrid_length);
+	  memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + nth * xid.bqual_length, xid.bqual_length);
+	  /* for participant, no check for commit whether a participant is fail or not */
+	  ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
+	  if (ack == NO_ERROR)
+	    {
+	      particps_ack[nth] = true;
+	    }
+
+	  nth++;
 	}
+
       dblink = dblink->next;
     }
+
+  qmgr_dblink_clear_conn_entry (thread_p);
 
   assert (nth <= num_particps);
 
@@ -155,19 +163,26 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
       assert (particps_ack != NULL);
     }
 
-  while (dblink && dblink->is_2pc_participant)
+  while (dblink)
     {
-      memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + (nth++) * xid.bqual_length, xid.bqual_length);
-      /* for participant, no check for abort whether a participant is fail or not */
-      ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
-      if (collect && ack == NO_ERROR)
+      if (dblink->is_2pc_participant)
 	{
-	  particps_ack[nth] = true;
+	  memcpy (xid.data, &gtrid, xid.gtrid_length);
+	  memcpy (xid.data + xid.gtrid_length, (char *) block_particps_ids + nth * xid.bqual_length, xid.bqual_length);
+	  /* for participant, no check for abort whether a participant is fail or not */
+	  ack = cci_xa_end_tran (dblink->conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
+	  if (collect && ack == NO_ERROR)
+	    {
+	      particps_ack[nth] = true;
+	    }
+
+	  nth++;
 	}
 
       dblink = dblink->next;
     }
+
+  qmgr_dblink_clear_conn_entry (thread_p);
 
   assert (nth <= num_particps);
 

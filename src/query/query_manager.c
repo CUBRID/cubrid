@@ -3900,3 +3900,15 @@ qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p)
 
   return tran_entry_p->dblink_entry;
 }
+
+void
+qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
+  tran_entry_p->dblink_entry = NULL;
+
+  return;
+}

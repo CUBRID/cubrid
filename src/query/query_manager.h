@@ -191,4 +191,5 @@ extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url
 extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
 					char *password, bool set_participant);
 extern DBLINK_CONN_ENTRY *qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p);
+extern void qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p);
 #endif /* _QUERY_MANAGER_H_ */
