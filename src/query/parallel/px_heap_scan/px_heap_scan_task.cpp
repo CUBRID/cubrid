@@ -28,6 +28,7 @@
 #include <memory>
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
+#include "page_buffer.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
@@ -63,8 +64,13 @@ namespace parallel_heap_scan
   {
     std::unique_lock<std::mutex> lock (m_context->m_locked_vpid.mutex);
     HEAP_SCANCACHE *scan_cache = &scan_id->s.hsid.scan_cache;
+    SCAN_CODE page_scan_code;
     if (m_context->m_locked_vpid.is_ended)
       {
+	if (m_old_page_watcher.pgptr != NULL)
+	  {
+	    pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+	  }
 	return S_END;
       }
     if (VPID_ISNULL (&m_context->m_locked_vpid.vpid))
@@ -74,7 +80,16 @@ namespace parallel_heap_scan
 	m_context->m_locked_vpid.vpid.volid = hfid->vfid.volid;
       }
     VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
-    SCAN_CODE page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &m_old_page_watcher);
+      }
+    page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (m_old_page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+      }
+
     if (page_scan_code == S_END)
       {
 	m_context->m_locked_vpid.is_ended = true;
@@ -177,6 +192,7 @@ namespace parallel_heap_scan
     ret = scan_start_scan (thread_p, scan_id);
     /* lock because of mvcc_snapshot */
     lock.unlock();
+    PGBUF_INIT_WATCHER (&m_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);

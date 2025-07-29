@@ -43,6 +43,7 @@ namespace parallel_query_execute
 	  {
 	    return false;
 	  }
+	thread_p->m_px_orig_thread_entry = thread_p;
 #if WITH_PARALLEL_DETAIL_INFO
 	std::string xasl_tree_str = dump_xasl_tree_to_string (xasl);
 	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : xasl tree: \n%s", xasl_tree_str.c_str());

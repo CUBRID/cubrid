@@ -39,6 +39,9 @@ namespace parallel_query_execute
   using pool = parallel_query::worker_manager_with_dedicated_pool;
 
   using err_desc_t = std::pair<int, cuberr::er_message *>;
+
+  const int max_parallelism = 2;
+
   class query_executor
   {
     public:
