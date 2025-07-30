@@ -373,7 +373,7 @@ set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
 # set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
 # set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
 
-FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG main)
+FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG v2.17.8)
 FetchContent_MakeAvailable(usearch)
 
 # CSQL FLEX/BISON targets
