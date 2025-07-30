@@ -23,10 +23,12 @@
 #ifndef _CONNECTION_EPOLL_HPP_
 #define _CONNECTION_EPOLL_HPP_
 
-#include <nonblocking.hpp>
+#include "nonblocking.hpp"
+#include "packet_buffer.hpp"
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <cstdint>
 
 #define TIMEOUT_INFINITE -1
 #define TIMEOUT_NOWAIT 0
@@ -35,31 +37,34 @@ namespace cubsocket
 {
   class epoll : public nonblocking
   {
-  public:
-    epoll ();
-    ~epoll ();
-    epoll (const epoll& other) = delete;
-    epoll &operator= (const epoll& other) = delete;
-    
-    int wait (void *events, int maxevents, int timeout);
-    bool add_descriptor (int fd, int flags);
-    bool modify_descriptor (int fd, int flags);
+    public:
+      enum class iores : int
+      {
+	done,
+	would_block,
+	budget_shortage,
+	peer_reset,
+	fatal_error,
+	unknown
+      };
 
-    int recv (int fd, void *buf, int length, int flags, int budget);
+      epoll ();
+      ~epoll ();
+      epoll (const epoll &other) = delete;
+      epoll &operator= (const epoll &other) = delete;
 
-    int send (int fd, struct ::iovec *iov, int length, int budget);
-    int send (int fd, struct ::msghdr *msg, int budget);
+      int wait (void *events, int maxevents, int timeout) noexcept;
+      bool add_descriptor (int fd, std::uint32_t flags, void *ptr = nullptr) noexcept;
+      bool modify_descriptor (int fd, std::uint32_t flags, void *ptr = nullptr) noexcept;
+      bool remove_descriptor (int fd) noexcept;
 
-  private:
-    enum offset
-    {
-      Incomplete = 0,
-      Done
-    };
+      int recv (int fd, void *buf, int length, int flags, int budget) noexcept;
 
-    int m_epoll;
+      [[gnu::hot]]
+      iores send (int fd, struct ::msghdr *msg, std::size_t budget) noexcept;
 
-    offset adjust_iovec (struct ::iovec *&iov, size_t &length, size_t bytes);
+    private:
+      int m_epoll;
   };
 }
 
