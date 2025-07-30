@@ -1371,8 +1371,10 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
   
-  mconn.connect (port_id, sn);
-
+  if (!mconn.connect (port_id, sn))
+  {
+    _er_log_debug (__FILE__, __LINE__, "[w] master connector: connect failed");
+  }
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
     {

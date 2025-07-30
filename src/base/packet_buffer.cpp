@@ -21,7 +21,6 @@
  */
 
 #include "packet_buffer.hpp"
-#include <arpa/inet.h>
 
 namespace cubbase
 {
@@ -42,28 +41,6 @@ namespace cubbase
     m_header.clear ();
     m_buf.clear ();
     m_length = 0;
-  }
-
-  template <typename... Spans>
-  void packet_buffer::push (const cubbase::span<std::byte>& first, const Spans&... rest)
-  {
-    std::size_t size;
-
-    size = first.size() + (rest.size() + ... + 0);
-    auto append = [&](const cubbase::span<std::byte> &s) {
-      m_buf.push_back (s);
-    };
-
-    m_header.push_back (htonl (static_cast<int> (size)));
-    m_buf.push_back ({ reinterpret_cast<std::byte *> (&m_header.back ()), sizeof (int) });
-    m_length += sizeof (int) + size;
-    append (first);
-    if constexpr (sizeof...(rest) > 0)
-    {
-      (append (rest), ...);
-    }
-
-    assert (m_buf.size () <= m_iovmax);
   }
 
   std::vector<cubbase::span<std::byte>> &packet_buffer::get_buffer ()

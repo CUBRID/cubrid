@@ -27,13 +27,15 @@ namespace cubsocket
 {
   class nonblocking
   {
-  public:
-    nonblocking ();
-    ~nonblocking ();
-    
-    virtual int wait (void *events, int maxevents, int timeout) = 0;
+    public:
+      nonblocking ();
+      ~nonblocking ();
 
-    bool is_nonblocking (int fd);
+      virtual int wait (void *events, int maxevents, int timeout) = 0;
+
+      bool is_nonblocking (int fd) noexcept;
+      int get_flags (int fd) noexcept;
+      int set_flags (int fd, int flags) noexcept;
   };
 }
 

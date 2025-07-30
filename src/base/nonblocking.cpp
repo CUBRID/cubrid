@@ -34,21 +34,32 @@ namespace cubsocket
   nonblocking::~nonblocking ()
   {
   }
-  
-  bool nonblocking::is_nonblocking (int fd)
+
+  bool nonblocking::is_nonblocking (int fd) noexcept
   {
     int flags;
 
     flags = fcntl (fd, F_GETFL, 0);
     if (flags == -1)
-    {
-      assert_release (false);
-    }
+      {
+	assert_release (false);
+      }
 
     if (flags & O_NONBLOCK)
-    {
-      return true;
-    }
+      {
+	return true;
+      }
     return false;
+  }
+
+  int nonblocking::get_flags (int fd) noexcept
+  {
+    return fcntl (fd, F_GETFL, 0);
+  }
+
+
+  int nonblocking::set_flags (int fd, int flags) noexcept
+  {
+    return fcntl (fd, F_SETFL, flags);
   }
 }

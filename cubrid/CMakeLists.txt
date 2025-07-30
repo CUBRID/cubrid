@@ -53,9 +53,6 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
   ${THREAD_DIR}/thread_worker_pool.cpp
-
-  ${CONNECTION_DIR}/nonblocking.cpp
-  ${CONNECTION_DIR}/epoll.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
@@ -72,8 +69,6 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
 
-  ${CONNECTION_DIR}/nonblocking.hpp
-  ${CONNECTION_DIR}/epoll.hpp
   ${CONNECTION_DIR}/connection.hpp
   )
 
@@ -139,6 +134,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/packet_buffer.cpp
+  ${BASE_DIR}/nonblocking.cpp
+  ${BASE_DIR}/epoll.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/compressor.hpp
@@ -182,6 +179,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
   ${BASE_DIR}/packet_buffer.hpp
+  ${BASE_DIR}/nonblocking.hpp
+  ${BASE_DIR}/epoll.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -203,7 +202,7 @@ set(CONNECTION_SOURCES
   )
 
 set(CONNECTION_HEADERS
-  ${THREAD_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/master_connector.hpp
   )
 
 set(COMMUNICATION_SOURCES

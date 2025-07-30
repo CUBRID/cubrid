@@ -28,7 +28,6 @@
 #include "assert.h"
 
 #include <cstddef>
-#include <iterator>
 
 namespace cubbase
 {
@@ -121,7 +120,7 @@ namespace cubbase
 	return span<T> (_data + offset, count);
       }
 
-    private:
+    public:
       T *_data;
       size_type _size;
   };
