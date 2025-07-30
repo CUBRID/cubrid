@@ -87,10 +87,11 @@ namespace cubpl
       {
 	qfile_close_scan (m_thread, &m_scan_id);
 
-        if (m_query_entry->list_id == NULL) {
-            int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
-            m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-        }
+	if (m_query_entry->list_id == NULL)
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	  }
 
 	if (m_query_entry->list_id)
 	  {
@@ -140,10 +141,11 @@ namespace cubpl
 	OR_BUF buf;
 
 	assert (m_query_entry != NULL);
-        if (m_query_entry->list_id == NULL) {
-            int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
-            m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-        }
+	if (m_query_entry->list_id == NULL)
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	  }
 
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
@@ -204,10 +206,11 @@ namespace cubpl
 	OR_BUF buf;
 
 	assert (m_query_entry != NULL);
-        if (m_query_entry->list_id == NULL) {
-            int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
-            m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-        }
+	if (m_query_entry->list_id == NULL)
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	  }
 
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
