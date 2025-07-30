@@ -1573,11 +1573,11 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
     {
       px_sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM) * parallel_num);
       if (sort_param == NULL)
-        {
-          error = ER_OUT_OF_VIRTUAL_MEMORY;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
-          goto cleanup;
-        }
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
+	  goto cleanup;
+	}
 
       /* parallel process */
       error = sort_start_parallelism (thread_p, px_sort_param, sort_param, parallel_num);
@@ -1644,9 +1644,9 @@ cleanup:
 
 #if defined(SERVER_MODE)
 static void
-sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
+sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
-  THREAD_ENTRY * thread_p = &thread_ref;
+  THREAD_ENTRY *thread_p = &thread_ref;
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
@@ -1656,7 +1656,7 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time = {0,};
+  struct timeval orderby_time = { 0, };
   tsc_getticks (&start_tick);
 
   if (sort_param->px_type == SORT_ORDER_BY)
@@ -1696,16 +1696,16 @@ sort_listfile_execute (cubthread::entry &thread_ref, SORT_PARAM * sort_param)
   tsc_getticks (&end_tick);
   tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
   TSC_ADD_TIMEVAL (orderby_time, tv_diff);
-  printf ("thread %d done, time: %d\n",thread_p->index, TO_MSEC (orderby_time));
+  printf ("thread %d done, time: %d\n", thread_p->index, TO_MSEC (orderby_time));
 
 cleanup:
   thread_p->pop_resource_tracks ();
 
- /* done */
-  pthread_mutex_lock(sort_param->px_mtx);
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
   sort_param->px_status = PX_DONE;
-  pthread_cond_signal(sort_param->complete_cond);
-  pthread_mutex_unlock(sort_param->px_mtx);
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
 }
 #endif
 
@@ -3371,7 +3371,9 @@ sort_copy_sort_rec_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SO
 	  goto bailout;
 	}
 
-      error = sort_write_area (thread_p, &px_sort_param->temp[0], write_cur_page, read_pages, px_sort_param->internal_memory, px_sort_param->tde_encrypted);
+      error =
+	sort_write_area (thread_p, &px_sort_param->temp[0], write_cur_page, read_pages, px_sort_param->internal_memory,
+			 px_sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  goto bailout;
@@ -3414,7 +3416,8 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
   else
     {
       /* page from page buffer */
-      last_pgptr = pgbuf_fix (thread_p, &dest_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      last_pgptr =
+	pgbuf_fix (thread_p, &dest_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       QFILE_PUT_NEXT_VPID (last_pgptr, &src_list_id->first_vpid);
       pgbuf_set_dirty (thread_p, last_pgptr, FREE);
     }
@@ -4474,36 +4477,8 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].px_status = PX_PROGRESS;
       px_sort_param[i].px_parallelism = parallel_num;
       px_sort_param[i].px_result_file_idx = 0;
-      /* Copy the parent's tran_index. */
+      /* Copy the parent's thread_p. */
       px_sort_param[i].px_orig_thread_p = thread_p;
-
-      /* deep copy for get_arg, put_arg */
-      if (sort_param->px_type == SORT_ORDER_BY)
-	{
-	  error =
-	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].get_arg,
-				 (SORT_INFO *) sort_param->get_arg);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      break;
-	    }
-
-	  error =
-	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].put_arg,
-				 (SORT_INFO *) sort_param->put_arg);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      break;
-	    }
-	}
-      else
-	{
-	  /* not implemented yet (group by, analytic fuction, create index) */
-	  error = ER_FAILED;
-	  break;
-	}
     }
 
   if (error != NO_ERROR)
@@ -4522,19 +4497,19 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 		  free_and_init (px_sort_param[i].file_contents[j].num_pages);
 		}
 	    }
-	  SORT_INFO * sort_info = (SORT_INFO *) px_sort_param[i].put_arg;
+	  SORT_INFO *sort_info = (SORT_INFO *) px_sort_param[i].put_arg;
 	  if (sort_info != NULL)
-	  {
-	    if (sort_info->s_id->s_id != NULL)
-	      {
-	        db_private_free_and_init (thread_p, sort_info->s_id->s_id);
-	      }
-	    if (sort_info->s_id != NULL)
-	      {
-	        db_private_free_and_init (thread_p, sort_info->s_id);
-	      }
-	    db_private_free_and_init (thread_p, sort_info);
-	  }
+	    {
+	      if (sort_info->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info->s_id->s_id);
+		}
+	      if (sort_info->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info->s_id);
+		}
+	      db_private_free_and_init (thread_p, sort_info);
+	    }
 	}
     }
 
@@ -4618,10 +4593,6 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   QFILE_LIST_SCAN_ID *scan_id_p;
   SORT_INFO *sort_info_p, *org_sort_info_p;
 
-  /* TO_DO : fix all pages to split. Consider using a numerable temporary file */
-  /* get scan id of input file */
-  sort_info_p = (SORT_INFO *) sort_param->get_arg;
-
   /* init vpid */
   for (i = 0; i < parallel_num; i++)
     {
@@ -4630,16 +4601,21 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
     }
 
   /* page_cnt contains ovfl_page. If the length of tuple is longer than page, split by the number of tuples. */
+  sort_info_p = (SORT_INFO *) sort_param->get_arg;
   splitted_num_page = sort_info_p->input_file->page_cnt / parallel_num;
   splitted_num_page = MIN (splitted_num_page, sort_info_p->input_file->tuple_cnt / parallel_num);
 
-  /* find first and last vpid for splitted file */
   i = 0;
   is_first_vpid = false;
   prev_vpid = sort_info_p->input_file->first_vpid;
+  /* TO_DO : dont fix all pages to split. Consider using a numerable temporary file */
   while (true)
     {
       page_p = qmgr_get_old_page (thread_p, &prev_vpid, sort_info_p->input_file->tfile_vfid);
+      if (page_p == NULL)
+        {
+	  return ER_FAILED;
+        }
       if (is_first_vpid)
 	{
 	  QFILE_PUT_PREV_VPID_NULL (page_p);
@@ -4671,6 +4647,10 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 
 	      /* init prev page id */
 	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
+              if (page_p == NULL)
+                {
+	          return ER_FAILED;
+                }
 	      QFILE_PUT_PREV_VPID_NULL (page_p);
 	      qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
 	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
@@ -4689,7 +4669,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 
       sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true);
       /* tuple_cnt and page_cnt put approximately. */
-      /* It can be put precisely through the page header, but not have to be precise for later process. */
+      /* It can be put precisely from the page header, but not have to be precise for later process. */
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
       sort_info_p->input_file->page_cnt = splitted_num_page;
       sort_info_p->input_file->first_vpid = (i == 0) ? org_sort_info_p->input_file->first_vpid : first_vpid[i - 1];
@@ -4715,7 +4695,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   int i = 0, idx = 0, file_pg_cnt_est;
   int remaining_run, level, merge_num;
   RESULT_RUN result_run[SORT_MAX_PARALLEL];
-  QFILE_LIST_ID * origin_list_id, * mergeable_list_id;
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
 
   if (parallel_num > SORT_MAX_PARALLEL)
     {
@@ -4758,7 +4738,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
   /* wait for threads */
   SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
-  parallel_query::worker_manager::get_manager().release_workers ();
+  parallel_query::worker_manager::get_manager ().release_workers ();
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -4825,8 +4805,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 
   for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
     {
-      error =
-	sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
+      error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4892,19 +4871,19 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       if (sort_info_p->parallelism > 0)
-        {
-          parallel_num = sort_info_p->parallelism;
-        }
+	{
+	  parallel_num = sort_info_p->parallelism;
+	}
       else
-        {
-          parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
-        }
+	{
+	  parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
+	}
 
       /* check worker */
-      if (!parallel_query::worker_manager::get_manager().try_reserve_workers (parallel_num))
-        {
-          return 1;
-        }
+      if (!parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
+	{
+	  return 1;
+	}
 
       /* Find the number of parallel processes by page_cnt and tuple_cnt */
       if (sort_info_p->input_file->page_cnt > parallel_num && sort_info_p->input_file->tuple_cnt > parallel_num)
@@ -4933,12 +4912,12 @@ static void
 sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
 
-      TSC_TICKS start_tick, end_tick;
-      TSCTIMEVAL tv_diff;
-      struct timeval orderby_time = { 0, };
-      tsc_getticks (&start_tick);
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  struct timeval orderby_time = { 0, };
+  tsc_getticks (&start_tick);
 
-  THREAD_ENTRY * thread_p = &thread_ref;
+  THREAD_ENTRY *thread_p = &thread_ref;
   SORT_INFO *sort_info_p;
   int error = NO_ERROR;
 
@@ -4956,12 +4935,12 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   else
     {
-      pthread_mutex_lock(sort_param->px_mtx);
+      pthread_mutex_lock (sort_param->px_mtx);
       sort_info_p = (SORT_INFO *) sort_param->put_arg;
       sort_info_p->output_file =
 	qfile_open_list (thread_p, &sort_info_p->input_file->type_list, sort_info_p->sort_list_p,
 			 sort_info_p->input_file->query_id, sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
-      pthread_mutex_unlock(sort_param->px_mtx);
+      pthread_mutex_unlock (sort_param->px_mtx);
     }
 
   /* write last temp file */
@@ -4979,14 +4958,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   thread_p->pop_resource_tracks ();
 
   /* done */
-  pthread_mutex_lock(sort_param->px_mtx);
-  pthread_cond_signal(sort_param->complete_cond);
-  pthread_mutex_unlock(sort_param->px_mtx);
+  pthread_mutex_lock (sort_param->px_mtx);
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
 
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (orderby_time, tv_diff);
-      printf ("last parallel merge time: %d\n", TO_MSEC (orderby_time));
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("last parallel merge time: %d\n", TO_MSEC (orderby_time));
 }
 
 /*
@@ -5014,6 +4993,26 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
     {
       QFILE_LIST_SCAN_ID *scan_id_p;
       SORT_INFO *sort_info_p;
+
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  /* deep copy for get_arg, put_arg */
+	  error =
+	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].get_arg,
+				 (SORT_INFO *) sort_param->get_arg);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  error =
+	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].put_arg,
+				 (SORT_INFO *) sort_param->put_arg);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
 
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
@@ -5052,7 +5051,7 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   int error = NO_ERROR;
   SORT_INFO *sort_info_p;
   QFILE_LIST_SCAN_ID *scan_id_p;
-  QFILE_LIST_ID * origin_list_id, * mergeable_list_id;
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -5099,7 +5098,7 @@ cleanup:
       for (int i = 0; i < parallel_num; i++)
 	{
 	  sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-	  qfile_free_list_id  (sort_info_p->input_file);
+	  qfile_free_list_id (sort_info_p->input_file);
 	}
 
       /* clear output_file for px */
@@ -5108,7 +5107,7 @@ cleanup:
 	  /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
 	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
 	  /* output file is opened in other thread */
-	  qfile_free_list_id  (sort_info_p->output_file);
+	  qfile_free_list_id (sort_info_p->output_file);
 	}
     }
 
