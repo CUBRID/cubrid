@@ -697,6 +697,19 @@ list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
 list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
 list(APPEND EP_LIBS ${LIBFAISS_LIBS})
 
+
+# USEARCH (header-only)
+# Set options BEFORE calling MakeAvailable
+set(USEARCH_USE_OPENMP ON CACHE BOOL "" FORCE)
+set(USEARCH_USE_SIMSIMD OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_JEMALLOC OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
+FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG v2.17.8)
+FetchContent_MakeAvailable(usearch)
+
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
