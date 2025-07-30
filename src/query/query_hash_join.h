@@ -48,7 +48,6 @@
  * Forward Declarations
  */
 
-#if defined (SERVER_MODE)
 namespace parallel_query
 {
   namespace hash_join
@@ -56,7 +55,6 @@ namespace parallel_query
     class worker_pool_manager;
   }
 }
-#endif				/* defined (SERVER_MODE) */
 
 struct xasl_node;
 struct tp_domain;
@@ -97,7 +95,8 @@ typedef enum hashjoin_profile_step
   HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
   HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
   HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_ADD	/* hjoin_merge_tuple_to_list_id */
+  HASHJOIN_PROFILE_PROBE_ADD,	/* hjoin_merge_tuple_to_list_id */
+  HASHJOIN_PROFILE_MERGE	/* hjoin_merge_qlist */
 } HASHJOIN_PROFILE_STEP;
 
 /*
@@ -165,6 +164,15 @@ typedef struct hashjoin_profile_stats
     TSCTIMEVAL match;		/* hjoin_fetch_key */
     TSCTIMEVAL add;		/* hjoin_merge_tuple_to_list_id */
   } probe;
+
+  struct
+  {
+    TSCTIMEVAL elapsed_time;	/* hjoin_fetch_key */
+    UINT64 fetches;
+    UINT64 fetch_time;
+    UINT64 ioreads;
+    UINT64 qualified_rows;
+  } merge;
 } HASHJOIN_PROFILE_STATS;
 #endif /* HASHJOIN_PROFILE_TIME */
 
@@ -230,34 +238,7 @@ typedef struct hashjoin_fetch_info
 typedef struct hashjoin_input_split_info
 {
   HASHJOIN_FETCH_INFO *fetch_info;
-
-#if defined (SERVER_MODE)
-  // *INDENT-OFF*
-  std::mutex shared_mutex;
-  // *INDENT-ON*
-  SCAN_POSITION shared_position;
-  VPID shared_next_vpid;
-
-  // *INDENT-OFF*
-  std::mutex *part_mutexes;
-  // *INDENT-ON*
-#endif				/* defined (SERVER_MODE) */
   QFILE_LIST_ID **part_list_id;
-
-  // *INDENT-OFF*
-  hashjoin_input_split_info ()
-    : fetch_info (nullptr)
-#if defined (SERVER_MODE)
-    , shared_mutex ()
-    , shared_position (S_BEFORE)
-    , shared_next_vpid (VPID_INITIALIZER)
-    , part_mutexes (nullptr)
-#endif /* defined (SERVER_MODE) */
-    , part_list_id (nullptr)
-  {
-    //
-  }
-  // *INDENT-ON*
 } HASHJOIN_INPUT_SPLIT_INFO;
 
 /* HASHJOIN_SPLIT_INFO */
@@ -265,16 +246,27 @@ typedef struct hashjoin_split_info
 {
   HASHJOIN_INPUT_SPLIT_INFO outer;
   HASHJOIN_INPUT_SPLIT_INFO inner;
+} HASHJOIN_SPLIT_INFO;
 
+/* HASHJOIN_SHARED_SPLIT_INFO */
+typedef struct hashjoin_shared_split_info
+{
   // *INDENT-OFF*
-  hashjoin_split_info ()
-    : outer ()
-    , inner ()
+  std::mutex scan_mutex;
+  SCAN_POSITION scan_position;
+  VPID next_vpid;
+  std::mutex *part_mutexes;
+
+  hashjoin_shared_split_info ()
+    : scan_mutex ()
+    , scan_position (S_BEFORE)
+    , next_vpid (VPID_INITIALIZER)
+    , part_mutexes (nullptr)
   {
     //
   }
   // *INDENT-ON*
-} HASHJOIN_SPLIT_INFO;
+} HASHJOIN_SHARED_SPLIT_INFO;
 
 /* HASHJOIN_CONTEXT*/
 typedef struct hashjoin_context
@@ -326,11 +318,9 @@ typedef struct hashjoin_manager
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
 
-#if defined (SERVER_MODE)
   /* *INDENT-OFF* */
   parallel_query::hash_join::worker_pool_manager *px_worker_pool_manager;
   /* *INDENT-ON* */
-#endif				/* defined (SERVER_MODE) */
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
@@ -341,22 +331,58 @@ typedef struct hashjoin_manager
 } HASHJOIN_MANAGER;
 
 /*
+ * Macro Function Declarations
+ */
+
+#if HASHJOIN_PROFILE_TIME
+#define HJOIN_PROFILE_START(thread_p, start_stats_p, step) \
+   if (thread_is_on_trace ((thread_p))) \
+     { \
+       hjoin_profile_start ((thread_p), (start_stats_p), (step)); \
+     }
+#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) \
+   if (thread_is_on_trace ((thread_p))) \
+     { \
+       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
+     }
+#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) \
+   if (thread_is_on_trace ((thread_p))) \
+     { \
+       assert ((step) == HASHJOIN_PROFILE_MERGE); \
+       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
+       (stats_p)->merge.qualified_rows = (rows); \
+     }
+#else
+#define HJOIN_PROFILE_START(thread_p, start_stats, step) ((void) 0)
+#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
+#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) ((void) 0)
+#endif /* HASHJOIN_PROFILE_TIME */
+
+/*
  * Function Declarations
  */
 
 int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * vd);
 
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
-int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_INPUT_SPLIT_INFO * split_info,
-		       QFILE_LIST_ID ** temp_part_list_id, HASH_SCAN_KEY * temp_key);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
+int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+				  HASHJOIN_SHARED_SPLIT_INFO * shared_info);
+void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
 
 void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats);
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
+
+#if HASHJOIN_PROFILE_TIME
+void hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step);
+void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats, HASHJOIN_START_STATS * start_stats,
+			HASHJOIN_PROFILE_STEP step);
+#endif /* HASHJOIN_PROFILE_TIME */
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

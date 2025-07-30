@@ -132,11 +132,12 @@ namespace parallel_query
     {
       public:
 	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-		    HASHJOIN_INPUT_STATS *m_stats);
+		    HASHJOIN_SHARED_SPLIT_INFO *shared_info, HASHJOIN_INPUT_STATS *m_stats);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
+	HASHJOIN_SHARED_SPLIT_INFO *m_shared_info;
 	HASHJOIN_INPUT_STATS *m_stats;
 
 	PAGE_PTR get_next_page (cubthread::entry &thread_ref);
