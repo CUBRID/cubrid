@@ -1432,12 +1432,13 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 {
 
   int error = NO_ERROR;
-  SORT_PARAM *sort_param = NULL;
+  SORT_PARAM ori_sort_param;
+  SORT_PARAM *sort_param = &ori_sort_param;
   INT32 input_pages;
   int i;
 
   /* for parallel sort */
-  SORT_PARAM px_sort_param[SORT_MAX_PARALLEL];	/* TO_DO : need dynamic alloc */
+  SORT_PARAM *px_sort_param = NULL;
   int parallel_num = 1;
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_status mutex */
@@ -1450,27 +1451,17 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   CUBRID_SORT_START ();
 #endif /* ENABLE_SYSTEMTAP */
 
-  sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM));
-  if (sort_param == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
-      return error;
-    }
-
 #if defined(SERVER_MODE)
   if (pthread_mutex_init (&px_mtx, NULL) != 0)
     {
       error = ER_CSS_PTHREAD_MUTEX_INIT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      free_and_init (sort_param);
       return error;
     }
   if (pthread_cond_init (&complete_cond, NULL) != 0)
     {
       error = ER_CSS_PTHREAD_COND_INIT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      free_and_init (sort_param);
       return error;
     }
   sort_param->px_mtx = &px_mtx;
@@ -1580,6 +1571,14 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
     }
   else
     {
+      px_sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM) * parallel_num);
+      if (sort_param == NULL)
+        {
+          error = ER_OUT_OF_VIRTUAL_MEMORY;
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
+          goto cleanup;
+        }
+
       /* parallel process */
       error = sort_start_parallelism (thread_p, px_sort_param, sort_param, parallel_num);
       if (error != NO_ERROR)
@@ -1630,6 +1629,8 @@ cleanup:
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
+
+      free_and_init (px_sort_param);
     }
   else
     {
@@ -4346,11 +4347,6 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
 	  db_private_free_and_init (thread_p, sort_param->put_arg);
 	}
     }
-
-  if (parallel_type == PX_SINGLE || parallel_type == PX_MAIN_IN_PARALLEL)
-    {
-      free_and_init (sort_param);
-    }
 }
 
 /*
@@ -4622,7 +4618,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   QFILE_LIST_SCAN_ID *scan_id_p;
   SORT_INFO *sort_info_p, *org_sort_info_p;
 
-  /* TO_DO : fix all page to split. Consider using a numerable temporary file */
+  /* TO_DO : fix all pages to split. Consider using a numerable temporary file */
   /* get scan id of input file */
   sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
@@ -5112,7 +5108,6 @@ cleanup:
 	  /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
 	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
 	  /* output file is opened in other thread */
-	  qfile_update_qlist_count (thread_p, sort_info_p->output_file, 1);
 	  qfile_free_list_id  (sort_info_p->output_file);
 	}
     }
