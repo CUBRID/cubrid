@@ -26,6 +26,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_USE_CNVLEX)
 #include "condition_handler_code.h"
 
 /* conversion error code */
@@ -161,5 +162,5 @@
 
 #define CNV_ER_FMT_BAD_FORMAT \
   "`%s' is not a valid %s format."
-
+#endif // ENABLE_USE_CNVLEX
 #endif /* _CNVERR_H_ */

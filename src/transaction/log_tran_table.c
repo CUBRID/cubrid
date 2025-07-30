@@ -1570,7 +1570,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
-
+  free_and_init (tdes->ddl_sql_user_text);
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);
@@ -1655,6 +1655,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
+  tdes->ddl_sql_user_text = NULL;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -2323,6 +2324,15 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  else
 	    {
 	      XASL_ID_SET_NULL (&query_exec_info[i].xasl_id);
+
+	      if (tdes->query_start_time > 0 && tdes->ddl_sql_user_text)
+		{
+		  query_exec_info[i].query_stmt = strdup (tdes->ddl_sql_user_text);
+		}
+	      else
+		{
+		  query_exec_info[i].query_stmt = NULL;
+		}
 	    }
 
 	  size += (2 * OR_FLOAT_SIZE	/* query time + tran time */

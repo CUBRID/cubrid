@@ -6627,9 +6627,9 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 
   THREAD_ENTRY *target_thread_p = thread_p;
 
-  if (thread_p->emulate_tid != thread_id_t () && thread_p->emulate_tid != thread_p->get_id ())
+  if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      THREAD_ENTRY *emulate_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
+      THREAD_ENTRY *emulate_thread_p = thread_p->m_px_orig_thread_entry;
       if (emulate_thread_p != NULL)
 	{
 	  target_thread_p = emulate_thread_p;
