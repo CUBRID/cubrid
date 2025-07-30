@@ -1024,7 +1024,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int inc_val_flag;
   int ret;
-  bool need_round = false;
+  bool is_fp_numeric_op = false;
 
   inc_val_flag = numeric_db_value_is_positive (inc_val);
   if (inc_val_flag < 0)
@@ -1047,7 +1047,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   /* inc_val_flag (1 or 0) */
   if (inc_val_flag > 0)
     {
-      ret = numeric_db_value_sub (max_val, &add_val, &tmp_val);
+      ret = numeric_db_value_sub (max_val, &add_val, &tmp_val, &is_fp_numeric_op);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1073,12 +1073,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
       else
 	{
-	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &need_round);
+	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &is_fp_numeric_op);
 	}
     }
   else
     {
-      ret = numeric_db_value_sub (min_val, &add_val, &tmp_val);
+      ret = numeric_db_value_sub (min_val, &add_val, &tmp_val, &is_fp_numeric_op);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1104,7 +1104,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
       else
 	{
-	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &need_round);
+	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &is_fp_numeric_op);
 	}
     }
 

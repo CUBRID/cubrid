@@ -372,7 +372,7 @@ int
 sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
   int result;
-  bool need_round = false;
+  bool is_fp_numeric_op = false;
 
   if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
@@ -410,7 +410,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       DB_VALUE next_value;
 
-      result = numeric_db_value_add (cur_value, incr_value, &next_value, &need_round);
+      result = numeric_db_value_add (cur_value, incr_value, &next_value, &is_fp_numeric_op);
       if (result != NO_ERROR)
 	{
 	  return ER_FAILED;

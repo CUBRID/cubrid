@@ -1404,6 +1404,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool au_disable_flag = false;
   size_t name_size;
   const char *comment = NULL;
+  bool is_fp_numeric_op = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1718,7 +1719,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
    */
-  error = numeric_db_value_sub (&max_val, &min_val, &range_val);
+  error = numeric_db_value_sub (&max_val, &min_val, &range_val, &is_fp_numeric_op);
   if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
@@ -2334,6 +2335,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
+  bool is_fp_numeric_op = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2678,7 +2680,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       ER_INVALID_SERIAL_VALUE);
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
-  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val);
+  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val, &is_fp_numeric_op);
   if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
