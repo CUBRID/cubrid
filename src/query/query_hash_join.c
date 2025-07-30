@@ -90,7 +90,7 @@ static int hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
 
 /* Hash Join Manager */
 static int hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NODE * xasl,
-			       QUERY_ID query_id, VAL_DESCR * vd);
+			       QUERY_ID query_id, VAL_DESCR * val_descr);
 static void hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
 /* Hash Join Domain Info */
@@ -171,10 +171,10 @@ static void hjoin_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tu
  *   thread_p(in): Thread entry.
  *   xasl(in): XASL node for hash join execution.
  *   query_id(in): Query identifier.
- *   vd(in): Value descriptor for positional values.
+ *   val_descr(in): Value descriptor for positional values.
  */
 int
-qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * vd)
+qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * val_descr)
 {
   HASHJOIN_MANAGER manager;
   HASHJOIN_CONTEXT *single_context;
@@ -186,7 +186,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
   assert (xasl != NULL);
   assert (query_id != NULL_QUERY_ID);
 
-  error = hjoin_init_manager (thread_p, &manager, xasl, query_id, vd);
+  error = hjoin_init_manager (thread_p, &manager, xasl, query_id, val_descr);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3240,7 +3240,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   HASH_METHOD hash_method;
   HASH_SCAN_KEY *key, *found_key;
 
-  int error = NO_ERROR;
+  int error = NO_ERROR, save_error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -3383,7 +3383,24 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 		  /* impossible case */
 		  assert_release (false);
-		  error = er_errid ();
+		  save_error = er_errid ();
+
+		  HJOIN_PRINT_TUPLE (&probe->list_scan_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
+
+		  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+		  error =
+		    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
+						  manager->merge_info, &overflow_record);
+		  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
+
+		  if (error != NO_ERROR)
+		    {
+		      break;	/* error_exit */
+		    }
+
+		  error = save_error;
+
+		  any_record_added = true;	/* meaningless */
 		  break;
 		}
 	      else
