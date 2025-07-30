@@ -71,7 +71,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
       *block_particps_ids = (void *) ids;
     }
 
-  *partid_len = num_ids * id_size;
+  *partid_len = id_size;
 
   return num_ids;
 }
@@ -133,17 +133,19 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
     {
       memcpy (xid.data, &gtrid, xid.gtrid_length);
       memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle) + i * xid.bqual_length, xid.bqual_length);
-      if (cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf) != NO_ERROR)
+      ack = cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
+      /* while recovery conn_handle would be invaild, so retry once */
+      if (ack != NO_ERROR)
 	{
 	  int conn_handle =
 	    cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
 
-	  /* for participant, no check for commit whether a participant is fail or not */
 	  ack = cci_xa_end_tran (conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
-	  if (ack == NO_ERROR)
-	    {
-	      particps_ack[i] = true;
-	    }
+	}
+
+      if (ack == NO_ERROR)
+	{
+	  particps_ack[i] = true;
 	}
     }
 
@@ -175,17 +177,20 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
     {
       memcpy (xid.data, &gtrid, xid.gtrid_length);
       memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle) + i * xid.bqual_length, xid.bqual_length);
-      if (cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf) != NO_ERROR)
+      ack = cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
+      /* while recovery conn_handle would be invaild, so retry once */
+      if (ack != NO_ERROR)
 	{
 	  int conn_handle =
 	    cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
 
-	  /* for participant, no check for commit whether a participant is fail or not */
 	  ack = cci_xa_end_tran (conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
-	  if (collect && ack == NO_ERROR)
-	    {
-	      particps_ack[i] = true;
-	    }
+	}
+
+      /* for participant, no check for commit whether a participant is fail or not */
+      if (collect && ack == NO_ERROR)
+	{
+	  particps_ack[i] = true;
 	}
     }
 
