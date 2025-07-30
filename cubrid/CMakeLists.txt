@@ -455,7 +455,7 @@ set(STORAGE_HEADERS
 )
 
 set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
-    PROPERTIES COMPILE_FLAGS "-march=native -O3"
+    PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
 )
 
 set(SESSION_SOURCES
