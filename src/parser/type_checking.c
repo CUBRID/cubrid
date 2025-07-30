@@ -20527,7 +20527,7 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
   if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_hv_late_bind (expr->info.expr.op)
       && expr->expected_domain != NULL)
     {
-      PT_NODE *new_expr = NULL;
+      PT_NODE *new_expr = NULL, *cast_type = NULL;
 
       if (expr->type_enum == PT_TYPE_ENUMERATION)
 	{
@@ -20537,9 +20537,15 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
 	  return NULL;
 	}
 
+      /* for session variable, it needs to cast the expected domain */
+      if (expr->info.expr.op == PT_EVALUATE_VARIABLE && expr->expected_domain)
+	{
+	  cast_type = pt_domain_to_data_type (parser, expr->expected_domain);
+	}
+
       new_expr =
 	pt_wrap_with_cast_op (parser, expr, pt_db_to_type_enum (expr->expected_domain->type->id),
-			      expr->expected_domain->precision, expr->expected_domain->scale, NULL);
+			      expr->expected_domain->precision, expr->expected_domain->scale, cast_type);
 
       if (new_expr != NULL)
 	{
