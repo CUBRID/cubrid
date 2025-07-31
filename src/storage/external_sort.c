@@ -233,6 +233,7 @@ struct sort_param
   int px_result_file_idx;
   THREAD_ENTRY *px_orig_thread_p;
   SORT_PARALLEL_TYPE px_type;
+  SORT_PARAM *ori_sort_param;
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -1628,7 +1629,7 @@ cleanup:
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
-
+      parallel_query::worker_manager::get_manager ().release_workers ();
       free_and_init (px_sort_param);
     }
   else
@@ -4270,6 +4271,10 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
       if (sort_param->get_arg != NULL)
 	{
 	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->input_file)
+	    {
+	      qfile_free_list_id (sort_info_p->input_file);
+	    }
 	  if (sort_info_p->s_id->s_id != NULL)
 	    {
 	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
@@ -4283,6 +4288,11 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PA
       if (sort_param->put_arg != NULL)
 	{
 	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
+          SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+	  if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
+	    {
+	      qfile_free_list_id (sort_info_p->output_file);
+	    }
 	  if (sort_info_p->s_id->s_id != NULL)
 	    {
 	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
@@ -4423,6 +4433,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's thread_p. */
       px_sort_param[i].px_orig_thread_p = thread_p;
+      px_sort_param[i].ori_sort_param = sort_param;
     }
 
   if (error != NO_ERROR)
@@ -4497,6 +4508,9 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
     }
   memcpy (sort_info->s_id->s_id, src_sort_info->s_id->s_id, sizeof (QFILE_LIST_SCAN_ID));
 
+  sort_info->output_file = NULL;
+  sort_info->input_file = NULL;
+
 end:
   if (error != NO_ERROR)
     {
@@ -4557,9 +4571,9 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
     {
       page_p = qmgr_get_old_page (thread_p, &prev_vpid, sort_info_p->input_file->tfile_vfid);
       if (page_p == NULL)
-        {
+	{
 	  return ER_FAILED;
-        }
+	}
       if (is_first_vpid)
 	{
 	  QFILE_PUT_PREV_VPID_NULL (page_p);
@@ -4591,10 +4605,10 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 
 	      /* init prev page id */
 	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
-              if (page_p == NULL)
-                {
-	          return ER_FAILED;
-                }
+	      if (page_p == NULL)
+		{
+		  return ER_FAILED;
+		}
 	      QFILE_PUT_PREV_VPID_NULL (page_p);
 	      qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
 	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
@@ -4683,7 +4697,6 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
   /* wait for threads */
   SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
-  parallel_query::worker_manager::get_manager ().release_workers ();
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -4698,22 +4711,21 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     }
 
 cleanup:
-  if (sort_param->px_type == SORT_ORDER_BY)
+  /* clear input_file for px */
+  for (int i = 0; i < parallel_num; i++)
     {
-      /* clear input_file for px */
-      for (int i = 0; i < parallel_num; i++)
-	{
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-	  qfile_free_list_id (sort_info_p->input_file);
-	}
+      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+      qfile_free_list_id (sort_info_p->input_file);
+      sort_info_p->input_file = NULL;
+    }
 
-      /* clear output_file for px */
-      for (int i = 1; i < parallel_num; i++)
-	{
-	  /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
-	  qfile_free_list_id (sort_info_p->output_file);
-	}
+  /* clear output_file for px */
+  for (int i = 1; i < parallel_num; i++)
+    {
+      /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
+      sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+      qfile_free_list_id (sort_info_p->output_file);
+      sort_info_p->output_file = NULL;
     }
 
   return error;
@@ -4882,7 +4894,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   tsc_getticks (&start_tick);
 
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INFO *sort_info_p;
+  SORT_INFO *sort_info_p, *ori_sort_info_p;
   int error = NO_ERROR;
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
@@ -4892,17 +4904,18 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   thread_p->push_resource_tracks ();
 
   sort_param->px_status = PX_PROGRESS;
+  sort_info_p = (SORT_INFO *) sort_param->put_arg;
+  ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
   if (sort_param->file_contents[0].start_index == 0)
     {
       /* first file : use origin output temp file */
-      sort_info_p = (SORT_INFO *) sort_param->put_arg;
+      sort_info_p->output_file = ori_sort_info_p->output_file;
     }
   else
     {
-      sort_info_p = (SORT_INFO *) sort_param->put_arg;
       sort_info_p->output_file =
-	qfile_open_list (thread_p, &sort_info_p->input_file->type_list, sort_info_p->sort_list_p,
-			 sort_info_p->input_file->query_id, sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+	qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
+			 ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
     }
 
   /* write last temp file */
