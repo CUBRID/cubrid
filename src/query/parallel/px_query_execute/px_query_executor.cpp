@@ -165,7 +165,7 @@ namespace parallel_query_execute
       }
     catch (const std::system_error &e)
       {
-	er_print_callstack (ARG_FILE_LINE, "add_task - throws err = %d: %s\n", e.code (), e.what ());
+	er_print_callstack (ARG_FILE_LINE, "add_task - throws err = %d: %s\n", e.code().value(), e.what ());
 	return false;
       }
     catch (const std::exception &e)
