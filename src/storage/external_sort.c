@@ -1650,7 +1650,6 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
-  pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
 
@@ -4889,7 +4888,6 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
-  pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
 
