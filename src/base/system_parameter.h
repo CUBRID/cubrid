@@ -659,6 +659,7 @@ extern "C"
 
   typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
+
   struct sysprm_param
   {
     PARAM_ID id;		/* parameter ID */
