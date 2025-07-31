@@ -613,6 +613,7 @@ extern "C"
 /*
  * Dynamic flags
  */
+#define PRM_CLEAR_DYNAMIC_FLAG 0x00000000
 #define PRM_SET             0x00000001	/* has been set */
 #define PRM_ALLOCATED       0x00000002	/* storage has been malloc'd */
 #define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
@@ -666,7 +667,7 @@ extern "C"
     const char *name;		/* the keyword expected */
     unsigned int static_flag;	/* bitmask flag representing status words */
     SYSPRM_DATATYPE datatype;	/* value data type */
-    unsigned int *dynamic_flag;	/* shared by both original and duplicated */
+    unsigned int dynamic_flag;	/* shared by both original and duplicated */
     void *default_value;	/* address of (pointer to) default value */
     void *value;		/* address of (pointer to) current value */
     void *upper_limit;		/* highest allowable value */
