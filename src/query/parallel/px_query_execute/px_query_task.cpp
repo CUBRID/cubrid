@@ -77,11 +77,12 @@ namespace parallel_query_execute
     bool is_list_id_kept = false;
     bool orig_on_trace = thread_ref.on_trace;
     bool is_on_parallel_worker = (thread_ref.get_id() != m_orig_thread_p->get_id());
+
+    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
     if (is_on_parallel_worker)
       {
 	thread_ref.tran_index = m_orig_thread_p->tran_index;
 	thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-	thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
 	if (m_orig_thread_p->on_trace)
 	  {
 	    thread_ref.on_trace = true;

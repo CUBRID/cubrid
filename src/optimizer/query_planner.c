@@ -251,7 +251,6 @@ static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
-static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
@@ -978,7 +977,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
@@ -986,7 +985,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
-	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix);
+	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix, false);
 
 	  if (group_sort_list)
 	    {
@@ -1869,7 +1868,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   assert (plan->plan_un.scan.index != NULL);
@@ -2795,7 +2794,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   qo_plan_compute_cost (plan);
@@ -11069,8 +11068,9 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
  *   is_index_w_prefix(out):
  *
  */
-static PT_NODE *
-qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix)
+PT_NODE *
+qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
+				 bool for_min_max_optimize)
 {
   QO_PLAN *plan;
   QO_ENV *env;
@@ -11298,7 +11298,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for order_by skip */
 
       /* check for constant col's order node */
-      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
+      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL, for_min_max_optimize);
       if (pos_descr.pos_no > 0)
 	{
 	  col = tree->info.query.q.select.list;
@@ -11414,7 +11414,7 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
-  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix);
+  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix, false);
 
   if (plan->iscan_sort_list == NULL || is_prefix)
     {
