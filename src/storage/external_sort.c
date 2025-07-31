@@ -327,7 +327,6 @@ static void sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PA
 static void sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
 static void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 				 int parallel_num);
-static int sort_copy_sort_rec_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_PARAM * px_sort_param);
 #endif
 
 static int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum);
@@ -3338,56 +3337,6 @@ bailout:
 }
 
 /*
- * sort_copy_sort_rec_tmpfile () -copy sort record temp file
- *   return:
- *   sort_param(in): sort parameters
- *
- */
-static int
-sort_copy_sort_rec_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_PARAM * px_sort_param)
-{
-  int tot_pages;
-  int current_pages = px_sort_param->file_contents[0].start_index;
-  int read_pages = 0, cur_read_pages = 0, write_cur_page = 0;
-  int slot_num = 0;
-  char *cur_pgptr;
-  int result_file_idx = sort_param->px_result_file_idx;
-  RECDES record = RECDES_INITIALIZER;
-  RECDES long_record = RECDES_INITIALIZER;
-  int error = NO_ERROR;
-  SORT_REC *sort_rec;
-  int tot_rows = 0;
-
-  tot_pages = px_sort_param->file_contents[0].num_pages[0];
-  while (tot_pages > 0)
-    {
-      read_pages = (tot_pages > px_sort_param->tot_buffers) ? px_sort_param->tot_buffers : tot_pages;
-
-      error =
-	sort_read_area (thread_p, &sort_param->temp[result_file_idx], current_pages, read_pages,
-			px_sort_param->internal_memory);
-      if (error != NO_ERROR)
-	{
-	  goto bailout;
-	}
-
-      error =
-	sort_write_area (thread_p, &px_sort_param->temp[0], write_cur_page, read_pages, px_sort_param->internal_memory,
-			 px_sort_param->tde_encrypted);
-      if (error != NO_ERROR)
-	{
-	  goto bailout;
-	}
-      write_cur_page += read_pages;
-      current_pages += read_pages;
-      tot_pages -= read_pages;
-    }
-
-bailout:
-  return error;
-}
-
-/*
  * sort_merge_list_id () - Simply concatenate the two list files. Each list file must be destroyed separately.
  *   return:
  *   dest_list_id(in): dest_list_id
@@ -3451,7 +3400,6 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
   int remaining_pages = total_pages % parallel_num;
   int start_index = 0;
   int cp_pages, read_pages;
-  int error = NO_ERROR;
 
   for (int i = 0; i < parallel_num; i++)
     {
@@ -3463,10 +3411,6 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
 
       start_index += (i == 0) ? 0 : px_sort_param[i - 1].file_contents[0].num_pages[0];
       px_sort_param[i].file_contents[0].start_index = start_index;
-
-      /* copy temp file start index ~ num_pages */
-      /* error = sort_copy_sort_rec_tmpfile (thread_p, sort_param, &px_sort_param[i]); */
-      /* if error return error 추가 */
 
       /* init px_status */
       px_sort_param[i].px_status = PX_PROGRESS;
@@ -4696,6 +4640,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   int remaining_run, level, merge_num;
   RESULT_RUN result_run[SORT_MAX_PARALLEL];
   QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
+  SORT_INFO *sort_info_p;
 
   if (parallel_num > SORT_MAX_PARALLEL)
     {
@@ -4738,11 +4683,11 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
   /* wait for threads */
   SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
-  parallel_query::worker_manager::get_manager ().release_workers ();
   if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      goto cleanup;
     }
+  parallel_query::worker_manager::get_manager ().release_workers ();
 
   /* merge last output file */
   origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
@@ -4750,6 +4695,25 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     {
       mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
       sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
+    }
+
+cleanup:
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      /* clear input_file for px */
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+	  qfile_free_list_id (sort_info_p->input_file);
+	}
+
+      /* clear output_file for px */
+      for (int i = 1; i < parallel_num; i++)
+	{
+	  /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
+	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+	  qfile_free_list_id (sort_info_p->output_file);
+	}
     }
 
   return error;
@@ -4935,12 +4899,10 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   else
     {
-      pthread_mutex_lock (sort_param->px_mtx);
       sort_info_p = (SORT_INFO *) sort_param->put_arg;
       sort_info_p->output_file =
 	qfile_open_list (thread_p, &sort_info_p->input_file->type_list, sort_info_p->sort_list_p,
 			 sort_info_p->input_file->query_id, sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
-      pthread_mutex_unlock (sort_param->px_mtx);
     }
 
   /* write last temp file */
@@ -5089,26 +5051,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
     {
       /* not implemented yet (group by, analytic function, create index) */
       return ER_FAILED;
-    }
-
-cleanup:
-  if (sort_param->px_type == SORT_ORDER_BY)
-    {
-      /* clear input_file for px */
-      for (int i = 0; i < parallel_num; i++)
-	{
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-	  qfile_free_list_id (sort_info_p->input_file);
-	}
-
-      /* clear output_file for px */
-      for (int i = 1; i < parallel_num; i++)
-	{
-	  /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
-	  /* output file is opened in other thread */
-	  qfile_free_list_id (sort_info_p->output_file);
-	}
     }
 
   return error;
