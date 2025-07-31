@@ -3049,7 +3049,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id)
+		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+		      bool min_max_optimzied_scan)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3134,6 +3135,11 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (scan_init_index_key_limit (thread_p, isidp, &indx_info->key_info, vd) != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (min_max_optimzied_scan && SCAN_IS_INDEX_COVERED (isidp))
+    {
+      isidp->key_limit_upper = 1;
     }
 
   /* attribute information of the index key */
@@ -5925,11 +5931,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (scan_id->position == S_BEFORE)
 	    {
 	      SCAN_CODE ret;
-
 	      /* Either we are not using ISS, or we are using it, and in this case, we are supposed to be here for the
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
-
 	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
 	      if (ret != S_SUCCESS)
 		{
@@ -5958,7 +5962,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    {
 		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
 		      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
-
 		      isidp->curr_oidp = &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->inst_oid);
 		    }
 		  else
@@ -5968,6 +5971,24 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    }
 		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		}
+	    }
+	  else if (scan_id->position == S_GO_BACKWARD)
+	    {
+	      SCAN_CODE ret;
+	      isidp->curr_keyno = -1;
+	      if (SCAN_IS_INDEX_COVERED (isidp))
+		{
+		  isidp->key_limit_upper = 1;
+		  qfile_reopen_list_as_append_mode (thread_p, isidp->indx_cov.list_id);
+		}
+	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+	      if (ret != S_SUCCESS)
+		{
+		  return ret;
+		}
+
+	      isidp->curr_oidno = 0;	/* first oid number */
+	      scan_id->position = S_ON;
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
@@ -8112,6 +8133,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       if (scan_id->scan_stats.covered_index == true)
 	{
 	  fprintf (fp, ", covered: true");
+	}
+
+      if (scan_id->scan_stats.min_max_only_scan == true)
+	{
+	  fprintf (fp, ", min_max_only: true");
 	}
 
       if (scan_id->s.isid.need_count_only == true)
