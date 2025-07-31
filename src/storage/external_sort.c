@@ -1649,6 +1649,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
@@ -4683,11 +4684,11 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
   /* wait for threads */
   SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
+  parallel_query::worker_manager::get_manager ().release_workers ();
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
-  parallel_query::worker_manager::get_manager ().release_workers ();
 
   /* merge last output file */
   origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
@@ -4887,6 +4888,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   thread_p->push_resource_tracks ();
