@@ -63,9 +63,9 @@ namespace cubthread
     context.get_error_context ().deregister_thread_local ();
 
     context.end_resource_tracks ();
-    if (context.m_parallel_stats != NULL)
+    if (context.m_px_stats != NULL)
       {
-	free_and_init (context.m_parallel_stats);
+	free_and_init (context.m_px_stats);
       }
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
@@ -75,6 +75,7 @@ namespace cubthread
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
+    context.m_px_orig_thread_entry = NULL;
 #endif // SERVER_MODE
 
     get_manager ()->retire_entry (context);
@@ -85,10 +86,11 @@ namespace cubthread
   {
     er_clear ();    // clear errors
     context.end_resource_tracks ();
-    if (context.m_parallel_stats != NULL)
+    if (context.m_px_stats != NULL)
       {
-	free_and_init (context.m_parallel_stats);
+	free_and_init (context.m_px_stats);
       }
+    context.m_px_orig_thread_entry = NULL;
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;

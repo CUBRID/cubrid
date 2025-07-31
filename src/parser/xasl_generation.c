@@ -69,6 +69,7 @@
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
+#include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -285,6 +286,8 @@ static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id);
 static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag);
 
+static void pt_optimize_min_max_list (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan,
+				      AGGREGATE_TYPE * aggregate);
 static void pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_list);
 
 static void pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIST * value_list,
@@ -521,7 +524,7 @@ static VAL_LIST *pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute
 static AGGREGATE_TYPE *pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * out_list,
 					VAL_LIST * value_list, REGU_VARIABLE_LIST regu_list,
 					REGU_VARIABLE_LIST scan_regu_list, PT_NODE * out_names,
-					DB_VALUE ** grbynum_valp);
+					DB_VALUE ** grbynum_valp, QO_PLAN * qo_plan);
 
 static SYMBOL_INFO *pt_push_symbol_info (PARSER_CONTEXT * parser, PT_NODE * select_node);
 
@@ -3977,8 +3980,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  /* others will be set after resolving arg_list */
 	}
 
-      aggregate_list->flag_agg_optimize = false;
+      aggregate_list->flag.agg_optimized = false;
       BTID_SET_NULL (&aggregate_list->btid);
+      aggregate_list->flag.min_max_optimized = false;
       if (info->flag_agg_optimize
 	  && (aggregate_list->function == PT_COUNT_STAR
 	      || aggregate_list->function == PT_MAX || aggregate_list->function == PT_MIN))
@@ -4003,7 +4007,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */
-		  aggregate_list->flag_agg_optimize = true;
+		  aggregate_list->flag.agg_optimized = true;
 		}
 	    }
 	  else if (tree->info.function.arg_list->node_type == PT_NAME)
@@ -4015,9 +4019,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      if (btid != NULL)
 		{
 		  /* If btree does not exist, optimize with heap in non-MVCC */
-		  aggregate_list->flag_agg_optimize = true;
+		  aggregate_list->flag.agg_optimized = true;
 		}
 	    }
+	}
+      else if ((aggregate_list->function == PT_MIN || aggregate_list->function == PT_MAX)
+	       && info->flag_agg_min_max_optimized)
+	{
+	  pt_optimize_min_max_list (parser, tree, info->qo_plan, aggregate_list);
 	}
 
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
@@ -4453,6 +4462,85 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
   return -1;
 }
 
+static void
+pt_optimize_min_max_list (PARSER_CONTEXT * parser, PT_NODE * node, QO_PLAN * plan, AGGREGATE_TYPE * aggregate)
+{
+  bool dummy;
+  assert (node->node_type == PT_FUNCTION);
+  PT_NODE *arg_list = node->info.function.arg_list;
+  PT_NODE *iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, true);
+
+  switch (aggregate->function)
+    {
+    case PT_MIN:
+      if (pt_sort_spec_cover_for_min_max (parser, QO_ENV_PT_TREE ((plan->info)->env), iscan_sort_list, arg_list))
+	{
+	  aggregate->flag.min_max_optimized = true;
+	  aggregate->flag.part_key_descending = (iscan_sort_list->info.sort_spec.asc_or_desc == PT_DESC);
+	}
+      else
+	{
+	  aggregate->flag.min_max_optimized = false;
+	}
+      break;
+    case PT_MAX:
+      if (pt_sort_spec_cover_for_min_max (parser, QO_ENV_PT_TREE ((plan->info)->env), iscan_sort_list, arg_list))
+	{
+	  aggregate->flag.min_max_optimized = true;
+	  aggregate->flag.part_key_descending = (iscan_sort_list->info.sort_spec.asc_or_desc == PT_DESC);
+	}
+      else
+	{
+	  aggregate->flag.min_max_optimized = false;
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+pt_set_access_spec_for_aggregation (PARSER_CONTEXT * parser, AGGREGATE_TYPE * aggregate, ACCESS_SPEC_TYPE * access_spec)
+{
+  AGGREGATE_TYPE *agg;
+  bool min_max_scan = false;
+  bool min_max_only_scan = true;
+
+  for (agg = aggregate; agg != NULL; agg = agg->next)
+    {
+      switch (agg->function)
+	{
+	case PT_MIN:
+	  if (agg->flag.min_max_optimized)
+	    {
+	      min_max_scan = true;
+	    }
+	  else
+	    {
+	      min_max_only_scan = false;
+	    }
+	  break;
+	case PT_MAX:
+	  if (agg->flag.min_max_optimized)
+	    {
+	      min_max_scan = true;
+	    }
+	  else
+	    {
+	      min_max_only_scan = false;
+	    }
+	  break;
+	default:
+	  min_max_only_scan = false;
+	  break;
+	}
+    }
+  if (min_max_only_scan && min_max_scan)
+    {
+      access_spec->flags = (ACCESS_SPEC_FLAG) (access_spec->flags | ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
+    }
+}
+
 /*
  * pt_index_value () -
  *   return: the DB_VALUE at the index position in a VAL_LIST
@@ -4498,7 +4586,7 @@ pt_index_value (const VAL_LIST * value, int index)
 static AGGREGATE_TYPE *
 pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * out_list, VAL_LIST * value_list,
 		 REGU_VARIABLE_LIST regu_list, REGU_VARIABLE_LIST scan_regu_list, PT_NODE * out_names,
-		 DB_VALUE ** grbynum_valp)
+		 DB_VALUE ** grbynum_valp, QO_PLAN * plan)
 {
   PT_NODE *select_list, *from, *where, *having;
   AGGREGATE_INFO info;
@@ -4515,10 +4603,19 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.scan_regu_list = scan_regu_list;
   info.out_names = out_names;
   info.grbynum_valp = grbynum_valp;
+  info.qo_plan = plan;
 
   /* init */
   info.class_name = NULL;
   info.flag_agg_optimize = false;
+  info.flag_agg_min_max_optimized = false;
+
+  /* TODO : for multi table */
+  if (!select_node->info.query.q.select.group_by && !select_node->info.query.order_by
+      && !select_node->info.query.orderby_for && from->next == NULL)
+    {
+      info.flag_agg_min_max_optimized = true;
+    }
 
   if (pt_is_single_tuple (parser, select_node))
     {
@@ -5281,7 +5378,7 @@ pt_make_dblink_access_spec (ACCESS_METHOD access,
  */
 void
 pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p, PT_NODE * node, PT_NODE * root,
-		 PT_NODE ** referred_node)
+		 PT_NODE ** referred_node, bool for_min_max_optimize)
 {
   PT_NODE *temp;
   char *node_str = NULL;
@@ -5339,6 +5436,10 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p, PT
 		}
 	    }
 	  else if (pt_check_compatible_node_for_orderby (parser, temp, node))
+	    {
+	      pos_p->pos_no = i;
+	    }
+	  else if (for_min_max_optimize && pt_check_compatible_node_for_min_max_optimize (parser, temp, node))
 	    {
 	      pos_p->pos_no = i;
 	    }
@@ -5407,7 +5508,7 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p, PT
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
-      pt_to_pos_descr (parser, pos_p, node, root->info.query.q.union_.arg1, referred_node);
+      pt_to_pos_descr (parser, pos_p, node, root->info.query.q.union_.arg1, referred_node, for_min_max_optimize);
       break;
 
     default:
@@ -16229,7 +16330,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
       aggregate =
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
-			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val);
+			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val, qo_plan);
 
       /* compute function count */
       buildlist->g_func_count = 0;
@@ -16707,6 +16808,20 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   pt_set_aptr (parser, select_node, xasl);
 
+  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
+    }
+  else
+    {
+      xasl->parallelism = -1;
+    }
+
+  if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
+    {
+      XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+    }
+
   if (qo_plan == NULL || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
     {
       while (from)
@@ -16952,15 +17067,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
-    {
-      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
-    }
-  else
-    {
-      xasl->parallelism = -1;
-    }
-
   return xasl;
 
 exit_on_error:
@@ -17025,7 +17131,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_connect_by_operator_node_etc (parser, select_node->info.query.q.select.having, xasl);
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
-  aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val);
+  aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val, qo_plan);
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
    * used by subsequent calls, and must be done first, before calculating subquery lists, etc. */
@@ -17062,6 +17168,20 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   pt_set_aptr (parser, select_node, xasl);
 
+  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
+    }
+  else
+    {
+      xasl->parallelism = -1;
+    }
+
+  if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
+    {
+      XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+    }
+
   if (!qo_plan || !pt_gen_optimized_plan (parser, select_node, qo_plan, xasl))
     {
       PT_NODE *from;
@@ -17091,6 +17211,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 	  goto exit_on_error;
 	}
       buildvalue = &xasl->proc.buildvalue;
+    }
+
+  /* set access spec for aggregation */
+  if (xasl->spec_list)
+    {
+      pt_set_access_spec_for_aggregation (parser, aggregate, xasl->spec_list);
     }
 
   /* check sampling scan */
@@ -17169,14 +17295,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
-    {
-      xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
-    }
-  else
-    {
-      xasl->parallelism = -1;
-    }
 
   return xasl;
 
@@ -18381,6 +18499,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   if (pt_has_error (parser))
     {
@@ -22263,6 +22382,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   scan_check_parallel_heap_scan_possible (xasl);
+  check_parallel_subquery_possible (xasl);
 
   /* fill in XASL cache related information */
   if (xasl)
