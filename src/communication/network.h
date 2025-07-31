@@ -279,10 +279,6 @@ enum net_server_request
   NET_SERVER_MMON_GET_SERVER_INFO,
   NET_SERVER_MMON_DISABLE_FORCE,
 
-  /* tdes */
-  NET_SERVER_TDES_SET_QUERY_START_INFO,
-  NET_SERVER_TDES_RESET_QUERY_START_INFO,
-
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

@@ -580,6 +580,8 @@ extern "C"
 				   PT_NODE * const escape);
 
   extern bool pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list);
+  extern bool pt_sort_spec_cover_for_min_max (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * cur_list,
+					      PT_NODE * new_list);
   extern bool pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NODE * group_list,
 					  PT_NODE * tree);
 

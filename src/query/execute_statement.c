@@ -91,7 +91,6 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
-#include "network.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4127,8 +4126,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
       break;
     }
-
-  tdes_reset_query_start_info (statement);
 
   /* enable data replication log */
   if (need_stmt_based_repl)
