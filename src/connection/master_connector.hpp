@@ -61,6 +61,7 @@ namespace cubthread
 
       int m_port;
 
+      bool recv () noexcept;
       bool send () noexcept;
 
       inline bool make_nonblocking (int fd) noexcept;
@@ -121,6 +122,12 @@ namespace cubthread
 
     close (fd);
     return true;
+  }
+
+  template <typename T>
+  bool master_connector<T>::recv () noexcept
+  {
+
   }
 
   template <typename T>
