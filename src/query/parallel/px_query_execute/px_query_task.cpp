@@ -207,15 +207,6 @@ namespace parallel_query_execute
 
     thread_ref.conn_entry = temp_conn_entry;
     thread_ref.on_trace = temp_on_trace;
-
-    if (m_orig_thread_p->on_trace)
-      {
-	m_worker_stats_p->m_fetches.fetch_add (m_xasl->xasl_stats.fetches);
-	m_worker_stats_p->m_ioreads.fetch_add (m_xasl->xasl_stats.ioreads);
-	m_worker_stats_p->m_fetch_time.fetch_add (m_xasl->xasl_stats.fetch_time);
-	perfmon_destroy_parallel_stats (&thread_ref);
-      }
-
   }
 
 
@@ -415,10 +406,6 @@ namespace parallel_query_execute
 
     if (thread_p->on_trace)
       {
-	perfmon_add_stat (thread_p, PSTAT_PB_NUM_FETCHES, m_worker_stats.m_fetches.load());
-	perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOREADS, m_worker_stats.m_ioreads.load());
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					m_worker_stats.m_fetch_time.load()*1000);
 	m_worker_stats.m_fetches.store (0);
 	m_worker_stats.m_ioreads.store (0);
 	m_worker_stats.m_fetch_time.store (0);

@@ -24,6 +24,7 @@
 
 #include "error_manager.h"
 #include "log_impl.h"
+#include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
@@ -92,7 +93,23 @@ namespace cubthread
       }
     if (context.m_px_stats != NULL)
       {
-	free_and_init (context.m_px_stats);
+	entry *parent_context = context.m_px_orig_thread_entry;
+	assert (parent_context != NULL);
+
+	int fetches_offset = pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset;
+	int ioreads_offset = pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset;
+	int fetch_time_offset = pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset;
+
+	pthread_mutex_lock (&parent_context->m_px_lock);
+	perfmon_add_stat (parent_context, PSTAT_PB_NUM_FETCHES, context.m_px_stats[fetches_offset]);
+	perfmon_add_stat (parent_context, PSTAT_PB_NUM_IOREADS, context.m_px_stats[ioreads_offset]);
+	perfmon_add_at_offset_to_local (parent_context, fetch_time_offset, context.m_px_stats[fetch_time_offset]);
+	pthread_mutex_unlock (&parent_context->m_px_lock);
+
+	/* init */
+	context.m_px_stats[fetches_offset] = 0;
+	context.m_px_stats[ioreads_offset] = 0;
+	context.m_px_stats[fetch_time_offset] = 0;
       }
     context.m_px_orig_thread_entry = NULL;
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats

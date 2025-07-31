@@ -318,17 +318,6 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 #endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
-  if (thread_is_on_trace (thread_p))
-    {
-      // *INDENT-OFF*
-      stats->build.min_elapsed_time = { LONG_MAX, 999999 };
-      stats->build.min_fetch_time = UINT64_MAX;
-
-      stats->probe.min_elapsed_time = { LONG_MAX, 999999 };
-      stats->probe.min_fetch_time = UINT64_MAX;
-      // *INDENT-ON*
-    }
-
   context_cnt = manager->context_cnt;
 
   for (context_index = 0; context_index < context_cnt; context_index++)
@@ -1162,15 +1151,15 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 
   assert (status == HASHJOIN_STATUS_PARTITION);
 
-  status = hjoin_try_parallel (thread_p, manager);
-  single_context->status = status;
-  if (status == HASHJOIN_STATUS_ERROR)
+  error = hjoin_prepare_partition (thread_p, manager, &split_info);
+  if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  error = hjoin_prepare_partition (thread_p, manager, &split_info);
-  if (error != NO_ERROR)
+  status = hjoin_try_parallel (thread_p, manager);
+  single_context->status = status;
+  if (status == HASHJOIN_STATUS_ERROR)
     {
       goto error_exit;
     }
@@ -1897,9 +1886,19 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  try
 	  {
 #undef new
-	    // *INDENT-OFF*
-	    new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p);
-	    // *INDENT-ON*
+	    if (thread_p->m_px_orig_thread_entry == NULL)
+	      {
+		// *INDENT-OFF*
+		new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p);
+		// *INDENT-ON*
+	      }
+	    else
+	      {
+		// *INDENT-OFF*
+		new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p->m_px_orig_thread_entry);
+		// *INDENT-ON*
+	      }
+
 #define new new(__FILE__, __LINE__)
 
 	    if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
@@ -3873,7 +3872,6 @@ hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats)
 
   tsc_getticks (&start_stats->tick);
   start_stats->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-  start_stats->fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
   start_stats->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 }
 
@@ -3899,9 +3897,6 @@ hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN
 
   TSC_ADD_TIMEVAL (stats->elapsed_time, tv_diff);
   stats->fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - start_stats->fetches;
-  stats->fetch_time += (UINT64) ((perfmon_get_from_statistic (thread_p,
-							      PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
-				  start_stats->fetch_time) / 1000);
   stats->ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - start_stats->ioreads;
 }
 
@@ -3937,7 +3932,6 @@ hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats
 
     case HASHJOIN_PROFILE_MERGE:
       start_stats->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      start_stats->fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
       start_stats->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
       break;
 
@@ -4010,9 +4004,6 @@ hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
     case HASHJOIN_PROFILE_MERGE:
       TSC_ADD_TIMEVAL (stats->merge.elapsed_time, tv_diff);
       stats->merge.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - start_stats->fetches;
-      stats->merge.fetch_time +=
-	(UINT64) ((perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) -
-		   start_stats->fetch_time) / 1000);
       stats->merge.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - start_stats->ioreads;
       break;
 
@@ -4047,8 +4038,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
   perfmon_update_min_timeval (&stats->build.min_elapsed_time, &context_stats->build.elapsed_time);
   perfmon_update_max_timeval (&stats->build.max_elapsed_time, &context_stats->build.elapsed_time);
   stats->build.fetches += context_stats->build.fetches;
-  stats->build.min_fetch_time = MIN (stats->build.min_fetch_time, context_stats->build.fetch_time);
-  stats->build.max_fetch_time = MAX (stats->build.max_fetch_time, context_stats->build.fetch_time);
   stats->build.ioreads += context_stats->build.ioreads;
   stats->build.read_rows += context_stats->build.read_rows;
   stats->build.read_keys += context_stats->build.read_keys;
@@ -4090,8 +4079,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
   perfmon_update_min_timeval (&stats->probe.min_elapsed_time, &context_stats->probe.elapsed_time);
   perfmon_update_max_timeval (&stats->probe.max_elapsed_time, &context_stats->probe.elapsed_time);
   stats->probe.fetches += context_stats->probe.fetches;
-  stats->probe.min_fetch_time = MIN (stats->probe.min_fetch_time, context_stats->probe.fetch_time);
-  stats->probe.max_fetch_time = MAX (stats->probe.max_fetch_time, context_stats->probe.fetch_time);
   stats->probe.ioreads += context_stats->probe.ioreads;
   stats->probe.read_rows += context_stats->probe.read_rows;
   stats->probe.read_keys += context_stats->probe.read_keys;

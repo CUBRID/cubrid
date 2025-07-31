@@ -23,7 +23,7 @@
 #include "px_hash_join.hpp"
 
 #include "object_representation.h"	/* QFILE_GET_TUPLE_COUNT, QFILE_GET_NEXT_VPID */
-#include "perf_monitor.h"
+#include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
 #include "query_manager.h"	/* qmgr_get_old_page, qfile_has_next_page, qmgr_set_dirty_page, ... */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -66,7 +66,7 @@ namespace parallel_query
     entry_manager::on_retire (cubthread::entry &context)
     {
       clear_spawner ();
-      perfmon_destroy_parallel_stats (&context);
+      perfmon_destroy_parallel_stats (&context);	/* meaningless */
 
       context.m_px_orig_thread_entry = nullptr;
       context.skip_end_resource_tracks_in_recycle = false;
@@ -78,12 +78,13 @@ namespace parallel_query
     entry_manager::on_recycle (cubthread::entry &context)
     {
       cubthread::entry_manager::on_recycle (context);
+      assert (context.m_px_stats != nullptr);
+      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] == 0);
+      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] == 0);
+      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] == 0);
 
       emulate_main_thread (context);
       context.skip_end_resource_tracks_in_recycle = true;
-
-      perfmon_destroy_parallel_stats (&context);
-      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
     }
 
     void
@@ -250,11 +251,10 @@ namespace parallel_query
      */
 
     split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, HASHJOIN_INPUT_STATS *stats)
+			    HASHJOIN_SHARED_SPLIT_INFO *shared_info)
       : base_task (task_manager, manager)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
-      , m_stats (stats)
     {
       assert (m_split_info != nullptr);
       assert (m_split_info->fetch_info != nullptr);
@@ -290,10 +290,6 @@ namespace parallel_query
       int error = NO_ERROR;
       bool has_error = false;
 
-      HASHJOIN_INPUT_STATS *stats = m_stats;
-      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
-
       /* Do not perform NULL checks;
        * validation is expected to be handled by the constructor */
       list_id = m_split_info->fetch_info->list_id;
@@ -321,11 +317,6 @@ namespace parallel_query
 	  db_private_free_and_init (&thread_ref, temp_part_list_id);
 
 	  return;
-	}
-
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
       /* next page */
@@ -521,20 +512,10 @@ namespace parallel_query
 		      }
 		  }
 
-		  if (thread_is_on_trace (&thread_ref))
-		    {
-		      stats->qualified_rows += temp_part_list_id[part_id]->tuple_cnt;
-		    }
-
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		}
 	    }
 	  while (true);		/* next tuple */
-
-	  if (thread_is_on_trace (&thread_ref))
-	    {
-	      stats->read_rows += tuple_index + 1;
-	    }
 
 	  if (page != nullptr)
 	    {
@@ -593,19 +574,9 @@ namespace parallel_query
 		      }
 		  }
 
-		  if (thread_is_on_trace (&thread_ref))
-		    {
-		      stats->qualified_rows += temp_part_list_id[part_index]->tuple_cnt;
-		    }
-
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
 		}
 	    }
-	}
-
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  hjoin_trace_end (&thread_ref, stats, &start_stats);
 	}
 
       db_private_free_and_init (&thread_ref, temp_part_list_id);
@@ -768,7 +739,6 @@ namespace parallel_query
       assert (split_info != nullptr);
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
-      HASHJOIN_INPUT_STATS *px_stats = nullptr, *current_stats = nullptr;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
@@ -784,20 +754,6 @@ namespace parallel_query
 	  return er_errid ();
 	}
 
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  stats->split.min_elapsed_time = { LONG_MAX, 999999 };
-	  stats->split.min_fetch_time = UINT64_MAX;
-
-	  px_stats = (HASHJOIN_INPUT_STATS *) db_private_alloc (&thread_ref, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
-	  if (px_stats == nullptr)
-	    {
-	      assert_release (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-	  memset (px_stats, 0, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
-	}
-
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
       split_task *task = nullptr;
@@ -809,8 +765,7 @@ namespace parallel_query
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new split_task (task_manager, manager, outer, &shared_info,
-				 (px_stats != nullptr) ? &px_stats[task_index] : nullptr);
+	  task = new split_task (task_manager, manager, outer, &shared_info);
 	  task_manager.push_task (task);
 	}
 
@@ -821,35 +776,12 @@ namespace parallel_query
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  for (task_index = 0; task_index < task_cnt; task_index++)
-	    {
-	      current_stats = &px_stats[task_index];
-
-	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
-	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);
-	      stats->split.min_fetch_time = MIN (stats->split.min_fetch_time, current_stats->fetch_time);
-	      stats->split.max_fetch_time = MAX (stats->split.max_fetch_time, current_stats->fetch_time);
-	      stats->split.fetches += current_stats->fetches;
-	      stats->split.ioreads += current_stats->ioreads;
-	    }
-
-	  /* init */
-	  memset (px_stats, 0, task_cnt * sizeof (HASHJOIN_INPUT_STATS));
-	}
-
       if (task_manager.has_error ())
 	{
 	  assert_release (er_errid () != NO_ERROR);
 
 	  /* cleanup */
 	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-
-	  if (px_stats != nullptr)
-	    {
-	      db_private_free_and_init (&thread_ref, px_stats);
-	    }
 
 	  return er_errid ();
 	}
@@ -865,8 +797,7 @@ namespace parallel_query
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new split_task (task_manager, manager, inner, &shared_info,
-				 (px_stats != nullptr) ? &px_stats[task_index] : nullptr);
+	  task = new split_task (task_manager, manager, inner, &shared_info);
 	  task_manager.push_task (task);
 	}
 
@@ -877,28 +808,8 @@ namespace parallel_query
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  for (task_index = 0; task_index < task_cnt; task_index++)
-	    {
-	      current_stats = &px_stats[task_index];
-
-	      perfmon_update_min_timeval (&stats->split.min_elapsed_time, &current_stats->elapsed_time);
-	      perfmon_update_max_timeval (&stats->split.max_elapsed_time, &current_stats->elapsed_time);
-	      stats->split.min_fetch_time = MIN (stats->split.min_fetch_time, current_stats->fetch_time);
-	      stats->split.max_fetch_time = MAX (stats->split.max_fetch_time, current_stats->fetch_time);
-	      stats->split.fetches += current_stats->fetches;
-	      stats->split.ioreads += current_stats->ioreads;
-	    }
-	}
-
       /* cleanup */
       hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-
-      if (px_stats != nullptr)
-	{
-	  db_private_free_and_init (&thread_ref, px_stats);
-	}
 
       if (task_manager.has_error ())
 	{
@@ -938,10 +849,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  stats->build.min_elapsed_time = { LONG_MAX, 999999 };
-	  stats->build.min_fetch_time = UINT64_MAX;
-
 	  stats->probe.min_elapsed_time = { LONG_MAX, 999999 };
-	  stats->probe.min_fetch_time = UINT64_MAX;
 
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}

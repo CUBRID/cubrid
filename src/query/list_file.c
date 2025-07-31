@@ -6853,20 +6853,8 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       return;
     }
 
-  THREAD_ENTRY *target_thread_p = thread_p;
-
-  if (thread_p->m_px_orig_thread_entry != NULL)
-    {
-      THREAD_ENTRY *emulate_thread_p = thread_p->m_px_orig_thread_entry;
-      if (emulate_thread_p != NULL)
-	{
-	  target_thread_p = emulate_thread_p;
-	}
-      else
-	{
-	  assert (false);
-	}
-    }
+  THREAD_ENTRY *target_thread_p =
+    (thread_p->m_px_orig_thread_entry != NULL) ? thread_p->m_px_orig_thread_entry : thread_p;
 
   target_thread_p->m_qlist_count.fetch_add (inc);
 

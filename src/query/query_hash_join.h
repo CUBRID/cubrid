@@ -137,9 +137,6 @@ typedef struct hashjoin_input_stats
   TSCTIMEVAL min_elapsed_time;
   TSCTIMEVAL max_elapsed_time;
   UINT64 fetches;
-  UINT64 fetch_time;
-  UINT64 min_fetch_time;
-  UINT64 max_fetch_time;
   UINT64 ioreads;
   UINT64 read_rows;
   UINT64 read_keys;
@@ -169,7 +166,6 @@ typedef struct hashjoin_profile_stats
   {
     TSCTIMEVAL elapsed_time;	/* hjoin_fetch_key */
     UINT64 fetches;
-    UINT64 fetch_time;
     UINT64 ioreads;
     UINT64 qualified_rows;
   } merge;
@@ -180,11 +176,10 @@ typedef struct hashjoin_start_stats
 {
   TSC_TICKS tick;
   UINT64 fetches;
-  UINT64 fetch_time;
   UINT64 ioreads;
   HASHJOIN_PROFILE_STEP step;
 } HASHJOIN_START_STATS;
-#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, 0, HASHJOIN_PROFILE_NONE }
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, HASHJOIN_PROFILE_NONE }
 
 typedef struct hashjoin_stats
 {
@@ -318,9 +313,9 @@ typedef struct hashjoin_manager
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
 
-  /* *INDENT-OFF* */
+  // *INDENT-OFF*
   parallel_query::hash_join::worker_pool_manager *px_worker_pool_manager;
-  /* *INDENT-ON* */
+  // *INDENT-ON*
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
