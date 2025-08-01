@@ -40,7 +40,7 @@ namespace cubbase
   {
   public:
     DMRB (std::size_t capacity);
-    ~DMRB ();
+    virtual ~DMRB ();
 
     DMRB (const DMRB &other) = delete;
     DMRB &operator= (const DMRB &other) = delete;
