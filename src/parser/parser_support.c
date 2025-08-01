@@ -4242,6 +4242,59 @@ pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list)
   return (s2 == NULL) ? true : false;
 }
 
+/*
+ * pt_sort_spec_cover_min_max () -
+ *   return:  true or false
+ *   cur_list(in): current PT_SORT_SPEC list pointer
+ *   new_list(in): new PT_SORT_SPEC list pointer
+ */
+
+bool
+pt_sort_spec_cover_for_min_max (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * cur_list, PT_NODE * new_list)
+{
+  PT_NODE *s1, *s2;
+  QFILE_TUPLE_VALUE_POSITION *p1, p2;
+
+  if (new_list == NULL || cur_list == NULL)
+    {
+      return false;
+    }
+
+  for (s1 = cur_list, s2 = new_list; s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      p1 = &(s1->info.sort_spec.pos_descr);
+      if (s2->node_type != PT_NAME)
+	{
+	  return false;
+	}
+      pt_to_pos_descr (parser, &p2, s2, tree, NULL, true);
+
+      if (p1->pos_no <= 0)
+	{
+	  s1 = NULL;		/* mark as end-of-sort */
+	}
+
+      if (p2.pos_no <= 0)
+	{
+	  s2 = NULL;		/* mark as end-of-sort */
+	}
+
+      /* end-of-sort check */
+      if (s1 == NULL || s2 == NULL)
+	{
+	  break;
+	}
+
+      /* equality check */
+      if (p1->pos_no != p2.pos_no)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 /* pt_enter_packing_buf() - mark the beginning of another level of packing
  *   return: none
  */
@@ -8670,7 +8723,7 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NOD
 
   while (s1 && s2)
     {
-      pt_to_pos_descr (parser, &pos_descr, s2->info.sort_spec.expr, tree, NULL);
+      pt_to_pos_descr (parser, &pos_descr, s2->info.sort_spec.expr, tree, NULL, false);
       if (pos_descr.pos_no > 0)
 	{
 	  col = tree->info.query.q.select.list;

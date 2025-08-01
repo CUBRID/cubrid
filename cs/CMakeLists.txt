@@ -39,7 +39,6 @@ set(EXECUTABLE_HEADERS
   
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -82,11 +81,9 @@ set (COMPAT_HEADERS
   )
 
 set(BASE_SOURCES
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c

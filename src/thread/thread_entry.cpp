@@ -22,7 +22,6 @@
 
 #include "thread_entry.hpp"
 
-#include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
 #include "error_manager.h"
@@ -90,9 +89,6 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-#if defined(ENABLE_USE_CNVLEX)
-    , cnv_adj_buffer ()
-#endif
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -176,12 +172,6 @@ namespace cubthread
 
     private_heap_id = db_create_private_heap ();
 
-#if defined(ENABLE_USE_CNVLEX)
-    cnv_adj_buffer[0] = NULL;
-    cnv_adj_buffer[1] = NULL;
-    cnv_adj_buffer[2] = NULL;
-#endif
-
     struct timeval t;
     gettimeofday (&t, NULL);
     rand_seed = (unsigned int) t.tv_usec;
@@ -242,15 +232,7 @@ namespace cubthread
       {
 	return;
       }
-#if defined(ENABLE_USE_CNVLEX)
-    for (int i = 0; i < 3; i++)
-      {
-	if (cnv_adj_buffer[i] != NULL)
-	  {
-	    adj_ar_free (cnv_adj_buffer[i]);
-	  }
-      }
-#endif
+
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);
