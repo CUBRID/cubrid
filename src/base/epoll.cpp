@@ -105,12 +105,111 @@ namespace cubsocket
     return true;
   }
 
-  int epoll::recv (int fd, void *buf, int length, int flags, int budget) noexcept
+  epoll::iores epoll::recvmsg (int fd, struct ::msghdr *msg) noexcept
   {
-    return 0;
+    ssize_t bytes;
+    std::size_t advance;
+
+    while (msg->msg_iovlen)
+      {
+	bytes = ::recvmsg (fd, msg, MSG_DONTWAIT);
+	if (bytes > 0)
+	  {
+	    advance = static_cast<std::size_t> (bytes);
+	    while (advance && msg->msg_iovlen)
+	      {
+		if (advance < msg->msg_iov->iov_len)
+		  {
+		    msg->msg_iov->iov_base = static_cast<std::byte *> (msg->msg_iov->iov_base) + advance;
+		    msg->msg_iov->iov_len -= advance;
+		    advance = 0;
+		  }
+		else
+		  {
+		    advance -= msg->msg_iov->iov_len;
+		    ++msg->msg_iov;
+		    --msg->msg_iovlen;
+		  }
+	      }
+	    continue;
+	  }
+
+	if (__builtin_expect (bytes == 0, 0))
+	  {
+	    return iores::peer_reset;
+	  }
+
+	switch (errno)
+	  {
+	  case EINTR:
+	    continue;
+	  case EAGAIN:
+	    /* case EWOULDBLOCK: */
+	    return iores::would_block;
+	  case ECONNRESET:
+	    return iores::peer_reset;
+	  default:
+	    return iores::fatal_error;
+	  }
+      }
+
+    return iores::done;
   }
 
-  epoll::iores epoll::send (int fd, struct ::msghdr *msg, std::size_t budget) noexcept
+  epoll::iores epoll::sendmsg (int fd, struct ::msghdr *msg) noexcept
+  {
+    ssize_t bytes;
+    std::size_t advance;
+
+    while (msg->msg_iovlen)
+      {
+	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+	if (bytes > 0)
+	  {
+	    advance = static_cast<std::size_t> (bytes);
+	    while (advance && msg->msg_iovlen)
+	      {
+		if (advance < msg->msg_iov->iov_len)
+		  {
+		    msg->msg_iov->iov_base = static_cast<std::byte *> (msg->msg_iov->iov_base) + advance;
+		    msg->msg_iov->iov_len -= advance;
+		    advance = 0;
+		  }
+		else
+		  {
+		    advance -= msg->msg_iov->iov_len;
+		    ++msg->msg_iov;
+		    --msg->msg_iovlen;
+		  }
+	      }
+	    continue;
+	  }
+
+	if (__builtin_expect (bytes == 0, 0))
+	  {
+	    return iores::peer_reset;
+	  }
+
+	switch (errno)
+	  {
+	  case EINTR:
+	    continue;
+	  case EAGAIN:
+	    /* case EWOULDBLOCK: */
+	    return iores::would_block;
+	  case EPIPE:
+	  case ECONNRESET:
+	    return iores::peer_reset;
+	  default:
+	    _er_log_debug (__FILE__, __LINE__, "[w] sendmsg error: %s", strerror (errno) );
+	    return iores::fatal_error;
+	  }
+      }
+
+    return iores::done;
+  }
+
+  epoll::iores epoll::sendmsg (int fd, struct ::msghdr *msg, std::size_t budget) noexcept
   {
     ssize_t bytes;
     std::size_t advance;

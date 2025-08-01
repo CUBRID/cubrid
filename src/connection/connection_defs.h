@@ -29,6 +29,7 @@
 
 #include "boot.h"
 #if defined(SERVER_MODE)
+#include "DMRB_SPSC.hpp"
 #include "connection_list_sr.h"
 #include "critical_section.h"
 #endif
@@ -447,6 +448,9 @@ struct css_conn_entry
   unsigned short stop_phase;
 
   char *version_string;		/* client version string */
+
+  cubbase::DMRB_SPSC *sendbuf;
+  cubbase::DMRB_SPSC *recvbuf;
 
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
