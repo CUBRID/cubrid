@@ -143,6 +143,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
 
+      agg_p->is_ended = false;
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
        * against each group at 'xs_eval_grbynum_pred()' */
       if (agg_p->function == PT_GROUPBY_NUM)
@@ -595,7 +596,7 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
  */
 int
 qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list)
+			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index)
 {
   cubxasl::aggregate_list_node *agg_p;
   cubxasl::aggregate_accumulator *accumulator;
@@ -615,7 +616,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
-      if (agg_p->flag_agg_optimize)
+      if (agg_p->flag.agg_optimized || agg_p->is_ended)
 	{
 	  continue;
 	}
@@ -663,6 +664,65 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    {
 	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
+	    }
+	}
+
+      if (agg_p->flag.min_max_optimized)
+	{
+	  switch (agg_p->function)
+	    {
+	    case PT_MIN:
+	      if (use_desc_index == agg_p->flag.part_key_descending)
+		{
+		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&db_values[0]);
+		  pr_clear_value (accumulator->value);
+
+		  if (TP_DOMAIN_TYPE (agg_p->domain) != type)
+		    {
+		      int coerce_error = db_value_coerce (&db_values[0], accumulator->value, agg_p->domain);
+		      if (coerce_error != NO_ERROR)
+			{
+			  /* set error here */
+			  return ER_FAILED;
+			}
+		    }
+		  else
+		    {
+		      pr_clone_value (&db_values[0], accumulator->value);
+		    }
+		  agg_p->is_ended = true;
+		  continue;
+		}
+
+	      break;
+
+	    case PT_MAX:
+	      if (use_desc_index != agg_p->flag.part_key_descending)
+		{
+		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&db_values[0]);
+		  pr_clear_value (accumulator->value);
+
+		  if (TP_DOMAIN_TYPE (agg_p->domain) != type)
+		    {
+		      int coerce_error = db_value_coerce (&db_values[0], accumulator->value, agg_p->domain);
+		      if (coerce_error != NO_ERROR)
+			{
+			  /* set error here */
+			  return ER_FAILED;
+			}
+		    }
+		  else
+		    {
+		      pr_clone_value (&db_values[0], accumulator->value);
+		    }
+		  agg_p->is_ended = true;
+		  continue;
+		}
+	      break;
+
+	    default:
+	      assert (false);
+	      break;
 	    }
 	}
 
@@ -966,7 +1026,7 @@ qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregat
   long long oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
 
-  if (!agg_p->flag_agg_optimize)
+  if (!agg_p->flag.agg_optimized)
     {
       return ER_FAILED;
     }
@@ -1033,6 +1093,26 @@ qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregat
   return NO_ERROR;
 }
 
+bool
+qdata_evaluate_aggregate_min_max_finished (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  int i;
+
+  for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
+    {
+      if (! (agg_p->function == PT_MIN || agg_p->function == PT_MAX))
+	{
+	  assert (false);
+	}
+      if (!agg_p->is_ended)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /*
  * qdata_evaluate_aggregate_hierarchy () - aggregate evaluation optimization
  *					   across a class hierarchy
@@ -1049,7 +1129,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 {
   int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
   DB_VALUE result;
-  if (!agg_p->flag_agg_optimize)
+  if (!agg_p->flag.agg_optimized)
     {
       return ER_FAILED;
     }
@@ -1291,7 +1371,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      agg_p->sort_list->pos_descr.dom = agg_p->list_id->type_list.domp[agg_p->sort_list->pos_descr.pos_no];
 	    }
 
-	  if (agg_p->flag_agg_optimize == false)
+	  if (agg_p->flag.agg_optimized == false)
 	    {
 	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
