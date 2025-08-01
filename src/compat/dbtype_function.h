@@ -279,10 +279,6 @@ extern "C"
   extern bool db_value_type_is_collection (const DB_VALUE * value);
   extern bool db_value_is_null (const DB_VALUE * value);
   extern bool db_value_need_clear (const DB_VALUE * value);
-#if defined(ENABLE_USE_CNVLEX)
-  extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
-			   int *outputlen);
-#endif
   extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
   extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);

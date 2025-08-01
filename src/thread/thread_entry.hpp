@@ -38,10 +38,7 @@
 #include <cassert>
 
 // forward definitions
-#if defined(ENABLE_USE_CNVLEX)
-// from adjustable_array.h
-struct adj_array;
-#endif
+
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -229,9 +226,6 @@ namespace cubthread
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
-#if defined(ENABLE_USE_CNVLEX)
-      adj_array *cnv_adj_buffer[3];	/* conversion buffer */
-#endif
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
