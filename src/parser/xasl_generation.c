@@ -19580,7 +19580,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
-    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH;
+    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_HEAP_SCAN |
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -19742,6 +19743,21 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	    }
 	}
       select_stmt->info.query.q.select.use_hash = arg;
+    }
+
+  if (hint_flags & PT_HINT_PARALLEL)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.delete_.num_parallel_threads;
+	  break;
+	case PT_UPDATE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.update.num_parallel_threads;
+	  break;
+	default:
+	  break;
+	}
     }
 
   return NO_ERROR;

@@ -256,6 +256,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       goto error_exit;
     }
 
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   if (single_context->list_id != NULL)
     {
       /* Check if qfile_close_list was called */

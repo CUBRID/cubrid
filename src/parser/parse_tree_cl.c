@@ -9043,6 +9043,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -14740,6 +14745,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_SUBQUERY ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
 	    {
 	      q = pt_append_nulstring (parser, q, "PARALLEL");
@@ -15976,6 +15986,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
 	{
 	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");

@@ -2643,7 +2643,18 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
-  hashjoin_xasl->parallelism = xasl->parallelism;
+
+  if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
+    {
+      hashjoin_xasl->parallelism =
+	(QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN) ? 0 : xasl->parallelism;
+    }
+  else
+    {
+      /* impossible case */
+      assert (false);
+      hashjoin_xasl->parallelism = xasl->parallelism;
+    }
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);

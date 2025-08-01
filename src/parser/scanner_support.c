@@ -659,6 +659,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_USE_IDX_DESC:	/* descending index scan */
 	case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
 	case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
+	case PT_HINT_NO_PARALLEL_HASH_JOIN:	/* disable parallel hash join */
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -773,6 +774,50 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
 			}
 		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			}
+		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			}
+		      node->info.delete_.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			}
+		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+			{
+			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			}
+		      node->info.update.num_parallel_threads = num_parallel_threads;
 		      hint_table[i].arg_list = NULL;
 		    }
 		}
