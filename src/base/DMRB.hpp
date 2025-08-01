@@ -51,7 +51,11 @@ namespace cubbase
     std::size_t available () const noexcept;
     bool empty () const noexcept;
 
+    /* provider */
     virtual cubbase::span<std::byte> reserve (std::size_t length) = 0;
+    virtual void commit (std::size_t length) = 0;
+
+    /* consumer */
     virtual void consume (std::size_t length) = 0;
 
     virtual cubbase::span<const std::byte> peek () const = 0;
