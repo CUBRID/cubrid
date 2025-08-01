@@ -79,7 +79,7 @@ namespace cubthread
       inline std::optional<int> send_register_request (CSS_CONN_ENTRY *conn, std::string &server_name) noexcept;
       inline int recv_register_response (CSS_CONN_ENTRY *conn) noexcept;
 
-      inline CSS_CONN_ENTRY *register_in_unix (CSS_CONN_ENTRY *conn, int request_id) noexcept;
+      inline CSS_CONN_ENTRY *switch_to_unix_socket (CSS_CONN_ENTRY *conn, int request_id) noexcept;
 
       inline CSS_CONN_ENTRY *register_in_master (CSS_CONN_ENTRY *conn, std::string &server_name) noexcept;
   };
@@ -328,10 +328,8 @@ namespace cubthread
 
     /* cub_server magic number to be delivered to cub_master */
     memcpy ((char *) &header[0], css_Net_magic, sizeof (css_Net_magic));
-
     /* make the name pakcet to register this server to cub_master */
     this->set_registrant (&registrant, server_name);
-
     /* headers */
     request_id = css_get_request_id (conn);
     css_set_net_header (&header[1], COMMAND_TYPE, SERVER_REQUEST_FROM_SERVER, request_id, sizeof (CSS_SERVER_PROC_REGISTER),
@@ -347,7 +345,6 @@ namespace cubthread
     m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header[1]), sizeof (NET_HEADER) });
     m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header[2]), sizeof (NET_HEADER) });
     m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&registrant), sizeof (CSS_SERVER_PROC_REGISTER) });
-
     /* send all */
     er_log_debug (__FILE__, __LINE__, "[w] send register packet: start\n");
     if (__builtin_expect (!this->send (), 0))
@@ -387,10 +384,17 @@ namespace cubthread
   }
 
   template <typename T>
-  inline CSS_CONN_ENTRY *master_connector<T>::register_in_unix (CSS_CONN_ENTRY *conn, int request_id) noexcept
+  inline CSS_CONN_ENTRY *master_connector<T>::switch_to_unix_socket (CSS_CONN_ENTRY *conn, int request_id) noexcept
   {
+    NET_HEADER header = DEFAULT_HEADER_DATA;
     std::string unix_path;
     int unix_socket, datagram_fd;
+
+    /* add EPOLLOUT */
+    if (!m_events.modify_descriptor (conn->fd, EPOLLET | EPOLLOUT))
+      {
+	return nullptr;
+      }
 
     /* send the "pathname" for the datagram */
     /* be sure to open the datagram first.  */
@@ -398,13 +402,24 @@ namespace cubthread
     unix_path += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
     (void) ::unlink (unix_path.c_str ());
 
+    /* setup unix domain socket and get thethe  path */
     if (!css_tcp_setup_server_datagram (unix_path.c_str (), &unix_socket))
       {
 	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
 
 	return nullptr;
       }
-    if (css_send_data (conn, request_id, unix_path.c_str (), unix_path.length () + 1) != NO_ERRORS)
+
+    /* send unix path to open new unix connection to master */
+    css_set_net_header (&header, DATA_TYPE, 0, request_id, unix_path.length () + 1, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+    /* clear the packet buffer */
+    m_packet.clear ();
+    /* register the packets */
+    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header), sizeof (NET_HEADER) });
+    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (unix_path.c_str ())), unix_path.length () + 1 });
+    /* send */
+    er_log_debug (__FILE__, __LINE__, "[w] send unix path packet: start\n");
+    if (__builtin_expect (!this->send (), 0))
       {
 	(void) ::unlink (unix_path.c_str ());
 	::close (unix_socket);
@@ -412,6 +427,9 @@ namespace cubthread
 
 	return nullptr;
       }
+    er_log_debug (__FILE__, __LINE__, "[w] send unix path packet: done\n");
+
+    /* wait to be reqeusted to connect from master */
     if (!css_tcp_listen_server_datagram (unix_socket, &datagram_fd))
       {
 	(void) ::unlink (unix_path.c_str ());
@@ -421,6 +439,7 @@ namespace cubthread
 	return nullptr;
       }
 
+    /* only connected file descriptor is needed */
     (void) ::unlink (unix_path.c_str ());
     css_free_conn (conn);
     ::close (unix_socket);
@@ -456,7 +475,7 @@ namespace cubthread
 
       case SERVER_REQUEST_ACCEPTED:
 	er_log_debug (__FILE__, __LINE__, "successfully connected to master\n");
-	return this->register_in_unix (conn, *request_id);
+	return this->switch_to_unix_socket (conn, *request_id);
 
       default:
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
