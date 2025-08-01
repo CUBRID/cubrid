@@ -51,8 +51,12 @@ namespace cubbase
       }
 
     ptr = static_cast<std::byte *> (m_base) + (head & m_mask);
-    m_head.store (head + length, std::memory_order_release);
     return { ptr, length };
+  }
+
+  void DMRB_SPSC::commit (std::size_t length)
+  {
+    m_head.fetch_add (length, std::memory_order_release);
   }
 
   void DMRB_SPSC::consume (std::size_t length)

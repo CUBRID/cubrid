@@ -40,6 +40,8 @@ namespace cubbase
     ~DMRB_SPSC ();
 
     cubbase::span<std::byte> reserve (std::size_t length);
+    void commit (std::size_t length);
+
     void consume (std::size_t length);
 
     cubbase::span<const std::byte> peek () const;
