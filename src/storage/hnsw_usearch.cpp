@@ -34,9 +34,9 @@
 #include <fstream>
 #include <filesystem>
 
-#include "usearch/index.hpp"
-#include "usearch/index_dense.hpp"
-#include "usearch/index_plugins.hpp"
+#include <usearch/index.hpp>
+#include <usearch/index_dense.hpp>
+#include <usearch/index_plugins.hpp>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
