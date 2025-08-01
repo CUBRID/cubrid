@@ -58,10 +58,14 @@ namespace cubsocket
       bool modify_descriptor (int fd, std::uint32_t flags, void *ptr = nullptr) noexcept;
       bool remove_descriptor (int fd) noexcept;
 
-      int recv (int fd, void *buf, int length, int flags, int budget) noexcept;
-
       [[gnu::hot]]
-      iores send (int fd, struct ::msghdr *msg, std::size_t budget) noexcept;
+      iores recvmsg (int fd, struct ::msghdr *msg) noexcept;
+
+      /* DO NOT MERGE THESE TWO FUNCTIONS BY REFACTORING! */
+      [[gnu::hot]]
+      iores sendmsg (int fd, struct ::msghdr *msg) noexcept;
+      [[gnu::hot]]
+      iores sendmsg (int fd, struct ::msghdr *msg, std::size_t budget) noexcept;
 
     private:
       int m_epoll;

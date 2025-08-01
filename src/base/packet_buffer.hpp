@@ -56,13 +56,15 @@ namespace cubbase
       void clear ();
 
       template <typename... Spans>
+      void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest);
+      template <typename... Spans>
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
       std::vector<cubbase::span<std::byte>> &get_buffer ();
       std::size_t get_length ();
 
     private:
-      const int m_iovmax;
+      const std::size_t m_iovmax;
 
       std::vector<int> m_header;
       std::vector<cubbase::span<std::byte>> m_buf;
@@ -70,7 +72,7 @@ namespace cubbase
   };
 
   template <typename... Spans>
-  void packet_buffer::push (const cubbase::span<std::byte> &first, const Spans &... rest)
+  void packet_buffer::push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
   {
     std::size_t size;
 
@@ -83,6 +85,26 @@ namespace cubbase
     m_header.push_back (htonl (static_cast<int> (size)));
     m_buf.push_back ({ reinterpret_cast<std::byte *> (&m_header.back ()), sizeof (int) });
     m_length += sizeof (int) + size;
+    append (first);
+    if constexpr (sizeof... (rest) > 0)
+      {
+	(append (rest), ...);
+      }
+
+    assert (m_buf.size () <= m_iovmax);
+  }
+
+  template <typename... Spans>
+  void packet_buffer::push (const cubbase::span<std::byte> &first, const Spans &... rest)
+  {
+    std::size_t size;
+
+    m_length += first.size() + (rest.size() + ... + 0);
+    auto append = [&] (const cubbase::span<std::byte> &s)
+    {
+      m_buf.push_back (s);
+    };
+
     append (first);
     if constexpr (sizeof... (rest) > 0)
       {

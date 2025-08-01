@@ -60,6 +60,7 @@ namespace cubbase
 	}
 
       /* reserve address space */
+      /* TODO: change this to NUMA or MUST make first touch on epoll group core */
       m_base = ::mmap (nullptr, m_size * 2, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       if (m_base == MAP_FAILED)
 	{
