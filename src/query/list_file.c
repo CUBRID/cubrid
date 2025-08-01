@@ -3979,11 +3979,13 @@ qfile_clear_sort_info (SORT_INFO * sort_info_p)
  *   limit(in):
  *   do_close(in):
  *   parallelism(in)
+ *   orderby_stats(in)
  */
 QFILE_LIST_ID *
 qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST * sort_list_p,
 			   QUERY_OPTIONS option, int flag, SORT_GET_FUNC * get_func, SORT_PUT_FUNC * put_func,
-			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close, int parallelism)
+			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close, int parallelism,
+			   ORDERBY_STATS * orderby_stats)
 {
   QFILE_LIST_ID *srlist_id;
   QFILE_LIST_SCAN_ID t_scan_id;
@@ -4022,6 +4024,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   info.sort_list_p = sort_list_p;
   info.flag = flag;
   info.parallelism = parallelism;
+  info.orderby_stats = orderby_stats;
 
   if (get_func == NULL)
     {
@@ -4055,7 +4058,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  struct timeval orderby_time  = {0,};
+  struct timeval orderby_time = { 0, };
   tsc_getticks (&start_tick);
 
   sort_result =
@@ -4143,7 +4146,7 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST *
   ls_flag = (option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT : QFILE_FLAG_ALL;
 
   return qfile_sort_list_with_func (thread_p, list_id_p, sort_list_p, option, ls_flag, NULL, NULL, NULL, NULL,
-				    NO_SORT_LIMIT, do_close, 0);
+				    NO_SORT_LIMIT, do_close, 0, NULL);
 }
 
 /*

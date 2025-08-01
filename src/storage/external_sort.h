@@ -149,9 +149,11 @@ struct SORT_INFO
   RECDES output_recdes;		/* A working buffer for output of tuples; used only when we're using
 				 * ls_sort_put_next_short() as the output function. */
   void *extra_arg;		/* extra information supplied by the caller */
-  SORT_LIST * sort_list_p;	/* to open output list file in parallel */
-  int flag;			/* to open output list file in parallel */
+  /* for parallel */
+  SORT_LIST *sort_list_p;	/* to open output list file */
+  int flag;			/* to open output list file */
   int parallelism;
+  void *orderby_stats;
 };
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
