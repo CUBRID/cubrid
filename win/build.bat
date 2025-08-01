@@ -267,10 +267,10 @@ echo Packging JDBC in %SOURCE_DIR%\cubrid-jdbc\ ...
 set JDBC_VERSION=0
 for /f %%i IN (%SOURCE_DIR%\cubrid-jdbc\output\VERSION-DIST) DO set JDBC_VERSION=%%i
 echo drop cubrid_jdbc.jar into %DIST_DIR%
-copy %SOURCE_DIR%\cubrid-jdbc\cubrid_jdbc.jar %DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar
+copy %SOURCE_DIR%\cubrid-jdbc\cubrid_jdbc.jar %DIST_DIR%\cubrid-jdbc-%JDBC_VERSION%.jar
 if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-echo Package created. [%DIST_DIR%\JDBC-%JDBC_VERSION%-cubrid.jar]
-set DIST_PKGS=%DIST_PKGS% JDBC-%JDBC_VERSION%-cubrid.jar
+echo Package created. [%DIST_DIR%\cubrid-jdbc-%JDBC_VERSION%.jar]
+set DIST_PKGS=%DIST_PKGS% cubrid-jdbc-%JDBC_VERSION%.jar
 GOTO :EOF
 
 :ABSPATH
