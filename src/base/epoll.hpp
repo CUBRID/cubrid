@@ -42,6 +42,7 @@ namespace cubsocket
       {
 	done,
 	would_block,
+	out_of_buffer,
 	budget_shortage,
 	peer_reset,
 	fatal_error,
