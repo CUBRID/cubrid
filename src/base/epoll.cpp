@@ -23,6 +23,7 @@
 #include "epoll.hpp"
 #include "error_manager.h"
 
+#include <tuple>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -34,7 +35,7 @@ namespace cubsocket
 {
   epoll::epoll ()
   {
-    m_epoll = ::epoll_create1 (0);
+    m_epoll = ::epoll_create1 (EPOLL_CLOEXEC);
     if (m_epoll == -1)
       {
 	assert_release (false);
@@ -105,17 +106,20 @@ namespace cubsocket
     return true;
   }
 
-  epoll::iores epoll::recvmsg (int fd, struct ::msghdr *msg) noexcept
+  std::tuple<epoll::iores, std::size_t> epoll::recvmsg (int fd, struct ::msghdr *msg) noexcept
   {
-    ssize_t bytes;
     std::size_t advance;
+    ssize_t bytes;
+    size_t total;
 
+    total = 0;
     while (msg->msg_iovlen)
       {
-	bytes = ::recvmsg (fd, msg, MSG_NOSIGNAL);
+	bytes = ::recvmsg (fd, msg, 0);
 	if (bytes > 0)
 	  {
 	    advance = static_cast<std::size_t> (bytes);
+	    total += advance;
 	    while (advance && msg->msg_iovlen)
 	      {
 		if (advance < msg->msg_iov->iov_len)
@@ -136,7 +140,8 @@ namespace cubsocket
 
 	if (__builtin_expect (bytes == 0, 0))
 	  {
-	    return iores::peer_reset;
+	    _er_log_debug (__FILE__, __LINE__, "[w] recv 0: peer_reset: %s", strerror (errno));
+	    return { iores::peer_reset, -1 };
 	  }
 
 	switch (errno)
@@ -145,15 +150,18 @@ namespace cubsocket
 	    continue;
 	  case EAGAIN:
 	    /* case EWOULDBLOCK: */
-	    return iores::would_block;
+	    return { iores::would_block, total };
 	  case ECONNRESET:
-	    return iores::peer_reset;
+	    _er_log_debug (__FILE__, __LINE__, "[w] ECONNRESET: peer_reset: %s", strerror (errno));
+	    return { iores::peer_reset, -1 };
 	  default:
-	    return iores::fatal_error;
+	    return { iores::fatal_error, -1 };
 	  }
       }
 
-    return iores::done;
+    assert (msg->msg_iovlen == 0);
+
+    return { iores::out_of_buffer, total };
   }
 
   epoll::iores epoll::sendmsg (int fd, struct ::msghdr *msg) noexcept

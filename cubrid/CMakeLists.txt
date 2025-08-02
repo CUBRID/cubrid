@@ -134,8 +134,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/packet_buffer.cpp
-  ${BASE_DIR}/DMRB.cpp
-  ${BASE_DIR}/DMRB_SPSC.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
   )

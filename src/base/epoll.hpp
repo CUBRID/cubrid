@@ -60,7 +60,7 @@ namespace cubsocket
       bool remove_descriptor (int fd) noexcept;
 
       [[gnu::hot]]
-      iores recvmsg (int fd, struct ::msghdr *msg) noexcept;
+      std::tuple<iores, std::size_t> recvmsg (int fd, struct ::msghdr *msg) noexcept;
 
       /* DO NOT MERGE THESE TWO FUNCTIONS BY REFACTORING! */
       [[gnu::hot]]
