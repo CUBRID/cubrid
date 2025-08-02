@@ -32,6 +32,7 @@
 #include "connection_sr.h"
 #include "tcp.h"
 #include "packet_buffer.hpp"
+#include "DMRB_SPSC.hpp"
 #include "epoll.hpp"
 #include "span.hpp"
 #include "porting.h"
@@ -48,8 +49,8 @@ namespace cubthread
   template <typename T>
   class master_connector
   {
-      static_assert (
-	      std::is_same<T, cubsocket::epoll>::value,
+      static_assert(
+	      std::is_base_of<cubsocket::nonblocking, T>::value,
 	      "T must be the child of cubsocket::nonblocking (cubsocket::epoll)"
       );
 
@@ -62,15 +63,14 @@ namespace cubthread
       bool dispatch_connection () noexcept;
 
     private:
-      const int m_bufsize = 8;
-
       T m_events;
-      cubbase::packet_buffer m_packet;
+      cubbase::DMRB_SPSC</* ThreadSafe */ false> m_recvbuf;
+      cubbase::packet_buffer m_sendbuf;
 
       int m_port;
       CSS_CONN_ENTRY *m_connection;
 
-      bool recv () noexcept;
+      bool recv (std::size_t threshold) noexcept;
       bool send () noexcept;
 
       inline bool make_nonblocking (int fd) noexcept;
@@ -88,9 +88,11 @@ namespace cubthread
 
   template <typename T>
   master_connector<T>::master_connector () :
-    m_packet (m_bufsize),
+    m_recvbuf (/* buffer size */ 8 * 1024),
+    m_sendbuf (/* packet max */ 8),
     m_connection (nullptr)
   {
+    ::signal (SIGPIPE, SIG_IGN);
   }
 
   template <typename T>
@@ -134,6 +136,11 @@ namespace cubthread
 	close (fd);
 	return false;
       }
+    /* will never be used */
+    delete conn->recvbuf;
+    conn->recvbuf = nullptr;
+    delete conn->sendbuf;
+    conn->sendbuf = nullptr;
 
     /* register this cub_server in cub_master */
     conn = this->register_in_master (conn, server_name);
@@ -172,7 +179,6 @@ namespace cubthread
 	return false;
       }
 
-    available = m_connection->recvbuf->available ();
     while (true)
       {
 	
@@ -232,31 +238,40 @@ namespace cubthread
 	      }
 	  }
       }
- 
-
-
-        
 //    m_events.wait ();
 
     return false;
   }
 
   template <typename T>
-  bool master_connector<T>::recv () noexcept
+  bool master_connector<T>::recv (std::size_t threshold) noexcept
   {
     const int MAX_EVENTS = 2;
 
     epoll_event events[MAX_EVENTS];
     struct ::msghdr msg = { 0, 0, 0, 0, 0, 0, 0 };
-    cubsocket::epoll::iores res;
+    cubbase::span<std::byte> buf;
+    struct ::iovec iov = { 0, 0 };
+    cubsocket::epoll::iores result;
+    std::size_t nbytes, total;
     int nfds;
 
-    assert (m_packet.get_buffer ().size () != 0);
+    assert (m_recvbuf.available () > 0);
 
-    msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_packet.get_buffer ().data ());
-    msg.msg_iovlen = m_packet.get_buffer ().size ();
+    /* set msg buf */
+    buf = m_recvbuf.reserve (m_recvbuf.available ());
+    if (buf.empty ())
+      {
+	_er_log_debug (__FILE__, __LINE__, "[w] DMRB reserve failed.");
+	return false;
+      }
+    iov.iov_base = buf.data ();
+    iov.iov_len = buf.size ();
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
 
-    res = cubsocket::epoll::iores::unknown;
+    /* recv */
+    total = 0;
     do
       {
 	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
@@ -267,30 +282,37 @@ namespace cubthread
 	  }
 	if (events[0].events & EPOLLIN)
 	  {
-	    res = m_events.recvmsg (events[0].data.fd, &msg);
-	    switch (res)
+	    std::tie (result, nbytes) = m_events.recvmsg (events[0].data.fd, &msg);
+	    switch (result)
 	      {
+	      case cubsocket::epoll::iores::would_block:
+		total += nbytes;
+		if (total >= threshold)
+		  {
+		    m_recvbuf.commit (total);
+		    return true;
+		  }
+		break;
+
 	      case cubsocket::epoll::iores::peer_reset:
 		if (__builtin_expect (!m_events.remove_descriptor (events[nfds].data.fd), 0))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
 		    assert_release (false);
 		  }
-
-	      case cubsocket::epoll::iores::done:
-	      case cubsocket::epoll::iores::would_block:
 		break;
 
 	      default:
 		/* something was wrong */
-		_er_log_debug (__FILE__, __LINE__, "[w] m_event->recvmsg error %d", res);
+		_er_log_debug (__FILE__, __LINE__, "[w] m_event->recvmsg error %d", result);
+		assert_release (false);
 		break;
 	      }
 	  }
       }
-    while (res == cubsocket::epoll::iores::would_block);
+    while (true);
 
-    return res == cubsocket::epoll::iores::done;
+    return false;
   }
 
   template <typename T>
@@ -303,10 +325,10 @@ namespace cubthread
     cubsocket::epoll::iores res;
     int nfds;
 
-    assert (m_packet.get_buffer ().size () != 0);
+    assert (m_sendbuf.get_buffer ().size () != 0);
 
-    msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_packet.get_buffer ().data ());
-    msg.msg_iovlen = m_packet.get_buffer ().size ();
+    msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_sendbuf.get_buffer ().data ());
+    msg.msg_iovlen = m_sendbuf.get_buffer ().size ();
 
     res = cubsocket::epoll::iores::unknown;
     do
@@ -434,12 +456,12 @@ namespace cubthread
 			conn->invalidate_snapshot, conn->db_error);
 
     /* clear the packet buffer */
-    m_packet.clear ();
+    m_sendbuf.clear ();
     /* register the packets */
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header[0]), sizeof (NET_HEADER) });
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header[1]), sizeof (NET_HEADER) });
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header[2]), sizeof (NET_HEADER) });
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&registrant), sizeof (CSS_SERVER_PROC_REGISTER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&header[0]), sizeof (NET_HEADER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&header[1]), sizeof (NET_HEADER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&header[2]), sizeof (NET_HEADER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&registrant), sizeof (CSS_SERVER_PROC_REGISTER) });
     /* send all */
     er_log_debug (__FILE__, __LINE__, "[w] send register packet: start\n");
     if (__builtin_expect (!this->send (), 0))
@@ -462,17 +484,18 @@ namespace cubthread
 	return -1;
       }
 
-    /* clear the packet buffer */
-    m_packet.clear ();
-    /* register the packets */
-    m_packet.push ({ reinterpret_cast<std::byte *> (&response), sizeof (int) });
     /* recv */
     er_log_debug (__FILE__, __LINE__, "[w] recv register packet: start\n");
-    if (__builtin_expect (!this->recv (), 0))
+    if (__builtin_expect (!this->recv (4), 0))
       {
 	return -1;
       }
     er_log_debug (__FILE__, __LINE__, "[w] recv register packet: done\n");
+
+    assert (m_recvbuf.readable () >= sizeof (int));
+
+    response = *reinterpret_cast<int *> (const_cast<std::byte *> (&m_recvbuf.peek ()[0]));
+    m_recvbuf.consume (sizeof (int));
 
     response = ntohl (response);
     return response;
@@ -508,10 +531,10 @@ namespace cubthread
     /* send unix path to open new unix connection to master */
     css_set_net_header (&header, DATA_TYPE, 0, request_id, unix_path.length () + 1, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     /* clear the packet buffer */
-    m_packet.clear ();
+    m_sendbuf.clear ();
     /* register the packets */
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (&header), sizeof (NET_HEADER) });
-    m_packet.push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (unix_path.c_str ())), unix_path.length () + 1 });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&header), sizeof (NET_HEADER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (unix_path.c_str ())), unix_path.length () + 1 });
     /* send */
     er_log_debug (__FILE__, __LINE__, "[w] send unix path packet: start\n");
     if (__builtin_expect (!this->send (), 0))
