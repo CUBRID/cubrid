@@ -1398,6 +1398,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       if (status == NO_ERROR)
 	{
+	  connector.dispatch_connection ();
 	  // server message loop
 	  css_setup_server_loop ();
 	}

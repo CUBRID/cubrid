@@ -27,6 +27,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 
+#include "server_support.h"
 #include "filesys_temp.hpp"
 #include "connection_sr.h"
 #include "tcp.h"
@@ -58,6 +59,7 @@ namespace cubthread
 
       CSS_CONN_ENTRY *get_connection () noexcept;
       bool connect (int port, std::string &server_name) noexcept;
+      bool dispatch_connection () noexcept;
 
     private:
       const int m_bufsize = 8;
@@ -144,6 +146,99 @@ namespace cubthread
     m_connection = conn;
 
     return true;
+  }
+
+  template <typename T>
+  bool master_connector<T>::dispatch_connection () noexcept
+  {
+    const int MAX_EVENTS = 2;
+
+    epoll_event events[MAX_EVENTS];
+    struct ::msghdr msg = { 0, 0, 0, 0, 0, 0, 0 };
+    struct ::iovec iov = { nullptr, 0 };
+    cubsocket::epoll::iores res;
+    int nfds, i;
+    int response;
+    std::size_t available;
+
+    iov.iov_base = &response;
+    iov.iov_len = 4;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    /* TODO: add eventfd to wakeup temporary */
+    if (!m_events.add_descriptor (m_connection->fd, EPOLLET | EPOLLIN, m_connection))
+      {
+	return false;
+      }
+
+    available = m_connection->recvbuf->available ();
+    while (true)
+      {
+	
+	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
+	if (nfds <= 0)
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "[w] epoll_wait failed: %s", strerror (errno));
+	    return false;
+	  }
+
+	i = 0;
+	do
+	  {
+	    assert (events[i].data.ptr);
+
+	    if (reinterpret_cast<CSS_CONN_ENTRY *> (events[i].data.ptr)->fd == m_connection->fd)
+	      {
+	      }
+	    else
+	      {
+		/* this must be eventfd */
+	      }
+	    i++;
+	  }
+	while (__builtin_expect (i < nfds, 0));
+
+      }
+
+
+      {
+	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
+	if (nfds != 1)
+	  {
+	    /* I added only one socket to this epoll */
+	    return false;
+	  }
+	if (events[0].events & EPOLLIN)
+	  {
+	    res = m_events.recvmsg (events[0].data.fd, &msg);
+	    switch (res)
+	      {
+	      case cubsocket::epoll::iores::peer_reset:
+		if (__builtin_expect (!m_events.remove_descriptor (events[nfds].data.fd), 0))
+		  {
+		    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
+		    assert_release (false);
+		  }
+
+	      case cubsocket::epoll::iores::done:
+	      case cubsocket::epoll::iores::would_block:
+		break;
+
+	      default:
+		/* something was wrong */
+		_er_log_debug (__FILE__, __LINE__, "[w] m_event->recvmsg error %d", res);
+		break;
+	      }
+	  }
+      }
+ 
+
+
+        
+//    m_events.wait ();
+
+    return false;
   }
 
   template <typename T>
@@ -364,14 +459,13 @@ namespace cubthread
 
     if (!m_events.modify_descriptor (conn->fd, EPOLLET | EPOLLIN))
       {
-	return false;
+	return -1;
       }
 
     /* clear the packet buffer */
     m_packet.clear ();
     /* register the packets */
     m_packet.push ({ reinterpret_cast<std::byte *> (&response), sizeof (int) });
-
     /* recv */
     er_log_debug (__FILE__, __LINE__, "[w] recv register packet: start\n");
     if (__builtin_expect (!this->recv (), 0))
@@ -381,6 +475,7 @@ namespace cubthread
     er_log_debug (__FILE__, __LINE__, "[w] recv register packet: done\n");
 
     response = ntohl (response);
+    return response;
   }
 
   template <typename T>
@@ -436,6 +531,12 @@ namespace cubthread
 	::close (unix_socket);
 	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
 
+	return nullptr;
+      }
+
+    /* remove origin */
+    if (!m_events.remove_descriptor (conn->fd))
+      {
 	return nullptr;
       }
 

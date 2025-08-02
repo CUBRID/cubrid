@@ -112,7 +112,7 @@ namespace cubsocket
 
     while (msg->msg_iovlen)
       {
-	bytes = ::recvmsg (fd, msg, MSG_DONTWAIT);
+	bytes = ::recvmsg (fd, msg, MSG_NOSIGNAL);
 	if (bytes > 0)
 	  {
 	    advance = static_cast<std::size_t> (bytes);
@@ -163,7 +163,7 @@ namespace cubsocket
 
     while (msg->msg_iovlen)
       {
-	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
 	if (bytes > 0)
 	  {
 	    advance = static_cast<std::size_t> (bytes);
