@@ -25,6 +25,7 @@
 
 #include "connection_globals.h"
 #include "system_parameter.h"
+#include "log_common_impl.h"
 #include "error_manager.h"
 
 #include "server_support.h"
@@ -84,6 +85,14 @@ namespace cubthread
       inline CSS_CONN_ENTRY *switch_to_unix_socket (CSS_CONN_ENTRY *conn, int request_id) noexcept;
 
       inline CSS_CONN_ENTRY *register_in_master (CSS_CONN_ENTRY *conn, std::string &server_name) noexcept;
+
+      inline bool reserve_recvbuf (struct ::msghdr &msg, struct ::iovec &iov) noexcept;
+      inline bool dispatch_prepare (struct ::msghdr &msg, struct ::iovec &iov) noexcept;
+      inline bool process_new_client (int fd) noexcept;
+      inline bool process_request (CSS_CONN_ENTRY *conn, struct ::msghdr &msg) noexcept;
+      inline bool recv_request (epoll_event &event, struct ::msghdr &msg) noexcept;
+
+      inline bool dispatch_until (struct ::msghdr &msg, struct ::iovec &iov) noexcept;
   };
 
   template <typename T>
@@ -158,89 +167,12 @@ namespace cubthread
   template <typename T>
   bool master_connector<T>::dispatch_connection () noexcept
   {
-    const int MAX_EVENTS = 2;
+    if (!this->dispatch_until ())
+    {
+      return false;
+    }
 
-    epoll_event events[MAX_EVENTS];
-    struct ::msghdr msg = { 0, 0, 0, 0, 0, 0, 0 };
-    struct ::iovec iov = { nullptr, 0 };
-    cubsocket::epoll::iores res;
-    int nfds, i;
-    int response;
-    std::size_t available;
-
-    iov.iov_base = &response;
-    iov.iov_len = 4;
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
-
-    /* TODO: add eventfd to wakeup temporary */
-    if (!m_events.add_descriptor (m_connection->fd, EPOLLET | EPOLLIN, m_connection))
-      {
-	return false;
-      }
-
-    while (true)
-      {
-	
-	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
-	if (nfds <= 0)
-	  {
-	    _er_log_debug (__FILE__, __LINE__, "[w] epoll_wait failed: %s", strerror (errno));
-	    return false;
-	  }
-
-	i = 0;
-	do
-	  {
-	    assert (events[i].data.ptr);
-
-	    if (reinterpret_cast<CSS_CONN_ENTRY *> (events[i].data.ptr)->fd == m_connection->fd)
-	      {
-	      }
-	    else
-	      {
-		/* this must be eventfd */
-	      }
-	    i++;
-	  }
-	while (__builtin_expect (i < nfds, 0));
-
-      }
-
-
-      {
-	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
-	if (nfds != 1)
-	  {
-	    /* I added only one socket to this epoll */
-	    return false;
-	  }
-	if (events[0].events & EPOLLIN)
-	  {
-	    res = m_events.recvmsg (events[0].data.fd, &msg);
-	    switch (res)
-	      {
-	      case cubsocket::epoll::iores::peer_reset:
-		if (__builtin_expect (!m_events.remove_descriptor (events[nfds].data.fd), 0))
-		  {
-		    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
-		    assert_release (false);
-		  }
-
-	      case cubsocket::epoll::iores::done:
-	      case cubsocket::epoll::iores::would_block:
-		break;
-
-	      default:
-		/* something was wrong */
-		_er_log_debug (__FILE__, __LINE__, "[w] m_event->recvmsg error %d", res);
-		break;
-	      }
-	  }
-      }
-//    m_events.wait ();
-
-    return false;
+    return true;
   }
 
   template <typename T>
@@ -295,7 +227,7 @@ namespace cubthread
 		break;
 
 	      case cubsocket::epoll::iores::peer_reset:
-		if (__builtin_expect (!m_events.remove_descriptor (events[nfds].data.fd), 0))
+		if (__builtin_expect (!m_events.remove_descriptor (events[0].data.fd), 0))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
 		    assert_release (false);
@@ -345,7 +277,7 @@ namespace cubthread
 	    switch (res)
 	      {
 	      case cubsocket::epoll::iores::peer_reset:
-		if (__builtin_expect (!m_events.remove_descriptor (events[nfds].data.fd), 0))
+		if (__builtin_expect (!m_events.remove_descriptor (events[0].data.fd), 0))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
 		    assert_release (false);
@@ -438,7 +370,7 @@ namespace cubthread
     assert (conn != NULL);
 
     /* at first, it must be registered */
-    if (!m_events.add_descriptor (conn->fd, EPOLLET | EPOLLOUT))
+    if (!m_events.add_descriptor (conn->fd, EPOLLOUT))
       {
 	return std::nullopt;
       }
@@ -479,7 +411,7 @@ namespace cubthread
 
     assert (conn != NULL);
 
-    if (!m_events.modify_descriptor (conn->fd, EPOLLET | EPOLLIN))
+    if (!m_events.modify_descriptor (conn->fd, EPOLLIN))
       {
 	return -1;
       }
@@ -568,6 +500,13 @@ namespace cubthread
     css_free_conn (conn);
     ::close (unix_socket);
 
+    /* make non-blocking */
+    assert (!this->m_events.is_nonblocking (datagram_fd));
+    if (!this->make_nonblocking (datagram_fd))
+      {
+	return nullptr;
+      }
+
     return css_make_conn (datagram_fd);
   }
 
@@ -609,6 +548,255 @@ namespace cubthread
     /* impossible ! */
     assert_release (false);
     return nullptr;
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::reserve_recvbuf (struct ::msghdr &msg, struct ::iovec &iov) noexcept
+  {
+    cubbase::span<std::byte> buf;
+
+    assert (m_recvbuf.available () > 0);
+
+    buf = m_recvbuf.reserve (m_recvbuf.available ());
+    if (buf.empty ())
+      {
+	_er_log_debug (__FILE__, __LINE__, "[w] DMRB reserve failed.");
+	return false;
+      }
+
+    iov.iov_base = buf.data ();
+    iov.iov_len = buf.size ();
+
+    assert (msg.msg_iov == &iov);
+    assert (msg.msg_iovlen == 1);
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::dispatch_prepare (struct ::msghdr &msg, struct ::iovec &iov) noexcept
+  {
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    if (!this->reserve_recvbuf (msg, iov))
+      {
+	return false;
+      }
+
+    if (!m_events.add_descriptor (m_connection->fd, EPOLLIN, m_connection))
+      {
+	return false;
+      }
+
+    return true;
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::process_new_client (int fd) noexcept
+  {
+    NET_HEADER header = DEFAULT_HEADER_DATA;
+    SOCKET new_fd;
+    int error;
+    CSS_CONN_ENTRY *conn;
+    int reason;
+    unsigned short rid;
+
+    /* receive new socket descriptor from the master */
+    new_fd = css_open_new_socket_from_master (fd, &rid);
+    if (IS_INVALID_SOCKET (new_fd))
+      {
+	return false;
+      }
+
+    /* TODO: make this wrkks
+    if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
+      {
+	ASSERT_ERROR_AND_SET (error);
+	css_refuse_connection_request (new_fd, rid, SERVER_INACCESSIBLE_IP, error);
+	return;
+      }
+      */
+
+    conn = css_make_conn (new_fd);
+    if (conn == NULL)
+      {
+	error = ER_CSS_CLIENTS_EXCEEDED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
+//TODO:	css_refuse_connection_request (new_fd, rid, SERVER_CLIENTS_EXCEEDED, error);
+	return false;
+      }
+
+    /* send response to new client */
+    css_set_net_header (&header, DATA_TYPE, 0, rid, sizeof (int), conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+    reason = htonl (SERVER_CONNECTED);
+    /* clear the packet buffer */
+    m_sendbuf.clear ();
+    /* register the packets */
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&header), sizeof (NET_HEADER) });
+    m_sendbuf.push_for_send ({ reinterpret_cast<std::byte *> (&reason), sizeof (int) });
+    if (__builtin_expect (!this->send (), 0))
+      {
+	return false;
+      }
+
+    if (css_Connect_handler)
+      {
+	(void) (*css_Connect_handler) (conn);
+      }
+    else
+      {
+	assert_release (false);
+      }
+    return true;
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::process_request (CSS_CONN_ENTRY *conn, struct ::msghdr &msg) noexcept
+  {
+    int request;
+    int r;
+
+    assert (m_recvbuf.readable () >= sizeof (int));
+
+    /* read from recv buffer */
+    request = *reinterpret_cast<int *> (const_cast<std::byte *> (&m_recvbuf.peek ()[0]));
+    m_recvbuf.consume (sizeof (int));
+
+    /* handle */
+    switch (ntohl (request))
+      {
+      case SERVER_START_NEW_CLIENT:
+	this->process_new_client (conn->fd);
+	break;
+
+      case SERVER_START_SHUTDOWN:
+	//css_process_shutdown_request (master_fd);
+	::close (conn->fd);
+	r = 0;
+	break;
+
+      case SERVER_STOP_SHUTDOWN:
+      case SERVER_SHUTDOWN_IMMEDIATE:
+      case SERVER_START_TRACING:
+      case SERVER_STOP_TRACING:
+      case SERVER_HALT_EXECUTION:
+      case SERVER_RESUME_EXECUTION:
+      case SERVER_REGISTER_HA_PROCESS:
+	break;
+      case SERVER_GET_HA_MODE:
+	//css_process_get_server_ha_mode_request (master_fd);
+	break;
+      case SERVER_CHANGE_HA_MODE:
+	//css_process_change_server_ha_mode_request (master_fd);
+	break;
+      case SERVER_GET_EOF:
+	css_process_get_eof_request (conn->fd);
+	break;
+      default:
+	/* master do not respond */
+	r = -1;
+	break;
+      }
+
+    return true;
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::recv_request (epoll_event &event, struct ::msghdr &msg) noexcept
+  {
+    cubsocket::epoll::iores result;
+    CSS_CONN_ENTRY * conn;
+    std::size_t nbytes;
+
+    conn = reinterpret_cast<CSS_CONN_ENTRY *> (event.data.ptr);
+    std::tie (result, nbytes) = m_events.recvmsg (conn->fd, &msg);
+    switch (result)
+      {
+      case cubsocket::epoll::iores::would_block:
+	conn->recvbytes += nbytes;
+
+	if (conn->recvbytes >= 4)
+	  {
+	    m_recvbuf.commit (conn->recvbytes);
+	    conn->recvbytes = 0;
+
+	    if (!this->process_request (conn, msg))
+	      {
+		return false;
+	      }
+	  }
+	break;
+
+      case cubsocket::epoll::iores::peer_reset:
+	if (__builtin_expect (!m_events.remove_descriptor (event.data.fd), 0))
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "[w] fcntl failed.");
+	    assert_release (false);
+	  }
+	break;
+
+      default:
+	/* something was wrong */
+	_er_log_debug (__FILE__, __LINE__, "[w] m_event->recvmsg error %d", result);
+	assert_release (false);
+	break;
+      }
+
+    return true;
+  }
+
+  template <typename T>
+  inline bool master_connector<T>::dispatch_until (struct ::msghdr &msg, struct ::iovec &iov) noexcept
+  {
+    const int MAX_EVENTS = 2;
+    epoll_event events[MAX_EVENTS];
+    int nfds;
+ 
+    while (true)
+      {
+	nfds = m_events.wait (events, MAX_EVENTS, TIMEOUT_INFINITE);
+	if (nfds <= 0)
+	  {
+	    if (errno == EINTR)
+	      {
+                continue;
+	      }
+	    _er_log_debug (__FILE__, __LINE__, "[w] epoll_wait failed: %s", strerror (errno));
+	    return false;
+	  }
+	if (nfds == 0)
+	  {
+	    /* impossible */
+	  }
+	
+	assert (events[0].data.ptr);
+	assert (reinterpret_cast<CSS_CONN_ENTRY *> (events[0].data.ptr)->fd == m_connection->fd);
+
+	if (events[0].events & EPOLLIN)
+	  {
+	    handle_master_connection (master_fd);
+	  }
+	if (events[0].events & EPOLLOUT)
+	  {
+	    if (g_master_ctx.needs_send)
+	      {
+		handle_send_data(master_fd, &g_master_ctx);
+	      }
+	  }
+	if (events[0].events & (EPOLLHUP | EPOLLERR))
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "[w] master connection closed or error: %s", strerror (errno));
+	    reset_connection_state (&g_master_ctx);
+	    break;
+	  }
+      }
+
+    if (!m_events.remove_descriptor (m_connection->fd))
+      {
+	return false;
+      }
+    ::close (m_connection->fd);
+
+    /* normal shutdown */
+    return true;
   }
 }
 
