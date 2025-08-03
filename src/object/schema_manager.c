@@ -16720,7 +16720,7 @@ set_checked_time_with_strategy (MOP op, bool with_fullscan)
     }
 
   class_->checked_time = checked_time;
-  class_->gathering_strategy = (int) with_fullscan;
+  class_->statistics_strategy = (int) with_fullscan;
 
   if (locator_flush_class (op) != NO_ERROR)
     {

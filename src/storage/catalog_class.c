@@ -1063,7 +1063,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   /* tde_algorithm */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_TDE_ALGORITHM_INDEX].value, NULL, -1, true, NULL, 0);
 
-  /* gathering_strategy */
+  /* statistics_strategy */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_GATHERING_STRATEGY_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* created_time */

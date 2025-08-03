@@ -71,11 +71,11 @@ sm_define_view_class_spec (void)
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
 	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
-	  "CASE [c].[gathering_strategy] "
+	  "CASE [c].[statistics_strategy] "
             "WHEN 0 THEN 'SAMPLING' "
             "WHEN 1 THEN 'FULLSCAN' "
             "ELSE NULL "
-            "END AS [gathering_strategy], "
+            "END AS [statistics_strategy], "
 	  "CASE "
 	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
 	    /* CT_PARTITION_NAME */
