@@ -307,8 +307,8 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
   conn->version_string = NULL;
 
-  conn->sendbuf = new cubbase::DMRB_SPSC<true> (16 * 1024);
   conn->recvbuf = new cubbase::DMRB_SPSC<true> (16 * 1024);
+  conn->sendbuf = new cubbase::DMRB_SPSC<true> (16 * 1024);
 
   /* ignore connection handler thread */
   conn->free_queue_list = NULL;
