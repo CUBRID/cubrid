@@ -199,10 +199,13 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/server_support.c
   ${CONNECTION_DIR}/connection_support.c
   ${CONNECTION_DIR}/host_lookup.c
+  ${CONNECTION_DIR}/master_connector.cpp
+  ${CONNECTION_DIR}/buffer.cpp
   )
 
 set(CONNECTION_HEADERS
   ${CONNECTION_DIR}/master_connector.hpp
+  ${CONNECTION_DIR}/buffer.hpp
   )
 
 set(COMMUNICATION_SOURCES

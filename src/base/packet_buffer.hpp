@@ -49,7 +49,7 @@ namespace cubbase
   class packet_buffer
   {
     public:
-      packet_buffer () = delete;
+      packet_buffer ();
       packet_buffer (int size);
       ~packet_buffer ();
 
@@ -60,8 +60,12 @@ namespace cubbase
       template <typename... Spans>
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
+      std::byte *allocate (std::size_t size);
+
       std::vector<cubbase::span<std::byte>> &get_buffer ();
       std::size_t get_length ();
+
+      struct ::msghdr &get_msghdr ();
 
     private:
       const std::size_t m_iovmax;
@@ -69,6 +73,8 @@ namespace cubbase
       std::vector<int> m_header;
       std::vector<cubbase::span<std::byte>> m_buf;
       std::size_t m_length;
+
+      struct ::msghdr m_msg;
   };
 
   template <typename... Spans>
@@ -76,7 +82,7 @@ namespace cubbase
   {
     std::size_t size;
 
-    size = first.size() + (rest.size() + ... + 0);
+    size = first.size () + (rest.size () + ... + 0);
     auto append = [&] (const cubbase::span<std::byte> &s)
     {
       m_buf.push_back (s);
@@ -97,8 +103,6 @@ namespace cubbase
   template <typename... Spans>
   void packet_buffer::push (const cubbase::span<std::byte> &first, const Spans &... rest)
   {
-    std::size_t size;
-
     m_length += first.size() + (rest.size() + ... + 0);
     auto append = [&] (const cubbase::span<std::byte> &s)
     {
