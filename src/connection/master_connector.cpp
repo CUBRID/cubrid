@@ -159,6 +159,21 @@ namespace cubconn
       return true;
     }
 
+  inline master_connector::context *master_connector::make_context ()
+    {
+      context *ctx;
+
+      ctx = new context;
+      if (!ctx)
+	{
+	  _er_log_debug (__FILE__, __LINE__, "memory allocation failed: %s", strerror (errno));
+	  assert_release (false);
+	}
+      ctx->reset ();
+
+      return ctx;
+    }
+
   inline int master_connector::connect_to_master (int port) noexcept
   {
     char hostname[CUB_MAXHOSTNAMELEN];
@@ -285,6 +300,118 @@ namespace cubconn
       return true;
     }
 
+  inline bool master_connector::prepare_switch_to_unix_socket (context *ctx) noexcept
+    {
+      NET_HEADER *header;
+      css_conn_entry *conn;
+
+      conn = ctx->m_conn;
+      /* send the pathname for the datagram */
+      /* be sure to open the datagram first.  */
+      m_unixpath = filesys::temp_directory_path ();
+      m_unixpath += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+      (void) ::unlink (m_unixpath.c_str ());
+
+      /* setup unix domain socket and get the path */
+      if (!css_tcp_setup_server_datagram (m_unixpath.c_str (), &m_unixsocket))
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
+	  return false;
+	}
+
+      /* clear the packet buffer */
+      ctx->m_sendbuf.clear ();
+      header = ctx->allocate<NET_HEADER> ();
+      /* unix path to open new unix connection to master */
+      css_set_net_header (header, DATA_TYPE, 0, conn->request_id, m_unixpath.length () + 1, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error); 
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER) });
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (m_unixpath.c_str ())), m_unixpath.length () + 1 });
+      /* make the packets to msghdr */
+      ctx->m_sendbuf.stamp_msghdr ();
+
+      /* update the events */
+      if (!this->update_epoll_events (ctx))
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->execute: update_epoll_events failed: %s", strerror (errno));
+	  return false;
+	}
+      return true;
+    }
+
+  inline bool master_connector::prepare_reply (context *ctx, int reason) noexcept
+    {
+      css_conn_entry *conn;
+      NET_HEADER *header;
+      int *reason_buffer;
+
+      conn = ctx->m_conn;
+
+      /* clear the packet buffer */
+      ctx->m_sendbuf.clear ();
+      header = ctx->allocate<NET_HEADER> ();
+      reason_buffer = ctx->allocate<int> ();
+
+      css_set_net_header (header, DATA_TYPE, 0, conn->request_id, sizeof (int), conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+      *reinterpret_cast<int *> (reason_buffer) = htonl (reason);
+
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER) });
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (reason_buffer), sizeof (int) });
+
+      /* make the packets to msghdr */
+      ctx->m_sendbuf.stamp_msghdr ();
+
+      if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT, ctx))
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
+	  return false;
+	} 
+      return true;
+    }
+
+  inline bool master_connector::prepare_reply_refuse_connection (context *ctx, int reason) noexcept
+    {
+      NET_HEADER *header[2];
+      css_conn_entry *conn;
+      std::aligned_storage_t<1024, 8> *error_buffer;
+      int *reason_buffer;
+      int error_length;
+
+      conn = ctx->m_conn;
+
+      /* clear the packet buffer */
+      ctx->m_sendbuf.clear ();
+      header[0] = ctx->allocate<NET_HEADER> ();
+      header[1] = ctx->allocate<NET_HEADER> ();
+      reason_buffer = ctx->allocate<int> ();
+      error_buffer = ctx->allocate<std::aligned_storage_t<1024, 8>> ();
+
+      /* set reason */
+      error_length = 1024;
+
+      css_set_net_header (header[0], DATA_TYPE, 0, conn->request_id, sizeof (int), conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+      *reinterpret_cast<int *> (reason_buffer) = htonl (reason);
+
+      er_get_area_error (reinterpret_cast<char *> (error_buffer), &error_length);
+      css_set_net_header (header[1], ERROR_TYPE, 0, conn->request_id, error_length, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (header[0]), sizeof (NET_HEADER) });
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (reason_buffer), sizeof (int) });
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (header[1]), sizeof (NET_HEADER) });
+      ctx->push_for_send ({ reinterpret_cast<std::byte *> (error_buffer), static_cast<std::size_t> (error_length) });
+
+      /* make the packets to msghdr */
+      ctx->m_sendbuf.stamp_msghdr ();
+
+      if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT, ctx))
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
+	  return false;
+	} 
+
+      er_clear ();
+      return true;
+    }
+
   inline bool master_connector::switch_to_unix_socket (context *ctx) noexcept
     {
       int datagram_fd;
@@ -339,44 +466,6 @@ namespace cubconn
       return true;
     }
 
-  inline bool master_connector::prepare_switch_to_unix_socket (context *ctx) noexcept
-    {
-      NET_HEADER *header;
-      css_conn_entry *conn;
-
-      conn = ctx->m_conn;
-      /* send the pathname for the datagram */
-      /* be sure to open the datagram first.  */
-      m_unixpath = filesys::temp_directory_path ();
-      m_unixpath += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
-      (void) ::unlink (m_unixpath.c_str ());
-
-      /* setup unix domain socket and get the path */
-      if (!css_tcp_setup_server_datagram (m_unixpath.c_str (), &m_unixsocket))
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
-	  return false;
-	}
-
-      /* clear the packet buffer */
-      ctx->m_sendbuf.clear ();
-      header = ctx->allocate<NET_HEADER> ();
-      /* unix path to open new unix connection to master */
-      css_set_net_header (header, DATA_TYPE, 0, conn->request_id, m_unixpath.length () + 1, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error); 
-      ctx->push_for_send ({ reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER) });
-      ctx->push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (m_unixpath.c_str ())), m_unixpath.length () + 1 });
-      /* make the packets to msghdr */
-      ctx->m_sendbuf.stamp_msghdr ();
-
-      /* update the events */
-      if (!this->update_epoll_events (ctx))
-	{
-	  _er_log_debug (__FILE__, __LINE__, "master_connector->execute: update_epoll_events failed: %s", strerror (errno));
-	  return false;
-	}
-      return true;
-    }
-
   inline result master_connector::handshake_from_master (context *ctx) noexcept
     {
       const int *buf;
@@ -417,47 +506,67 @@ namespace cubconn
       return result::Ok;
     }
 
-  inline bool master_connector::request_new_client (context *ctx) noexcept
+  inline result master_connector::request_new_client (context *ctx) noexcept
     {
+      context *new_ctx;
       CSS_CONN_ENTRY *conn;
       unsigned short request_id;
       SOCKET new_fd;
-      int error;
 
       /* receive new socket descriptor from the master */
-      /*
       new_fd = css_open_new_socket_from_master (ctx->m_conn->fd, &request_id);
       if (IS_INVALID_SOCKET (new_fd))
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: css_open_new_socket_from_master failed");
-	  return false;
+	  return result::Error;
 	}
 
+      /* make new context and conn */
+      new_ctx = make_context ();
+
+      /* check */
       if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  css_refuse_connection_request (new_fd, request_id, SERVER_INACCESSIBLE_IP, error);
-	  NEXT_STATE (SendRefuseConnection);
-	  return false;
+	  new_ctx->m_conn = new css_conn_entry;
+	  new_ctx->m_conn->fd = new_fd;
+
+	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_INACCESSIBLE_IP))
+	    {
+	      return result::Error;
+	    }
+
+	  NEXT_STATE (new_ctx, SendReplyToClient);
+	  NEXT_STATE (ctx, RecvRequestType);
+	  return result::RefuseConnection;
 	}
 
       conn = css_make_conn (new_fd);
       if (conn == NULL)
 	{
-	  error = ER_CSS_CLIENTS_EXCEEDED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
-	  css_refuse_connection_request (new_fd, request_id, SERVER_CLIENTS_EXCEEDED, error);
-	  return false;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
+
+	  new_ctx->m_conn = new css_conn_entry;
+	  new_ctx->m_conn->fd = new_fd;
+
+	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
+	    {
+	      return result::Error;
+	    }
+
+	  NEXT_STATE (new_ctx, SendReplyToClient);
+	  NEXT_STATE (ctx, RecvRequestType);
+	  return result::RefuseConnection;
 	}
-      */
 
-      //css_send_reply_to_new_client_request (conn, request_id, SERVER_CONNECTED);
+      new_ctx->m_conn = conn;
+      if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
+	{
+	  return result::Error;
+	}
 
-      assert_release (css_Connect_handler);
-
-      (void) (*css_Connect_handler) (conn);
-
-      return true;
+      NEXT_STATE (new_ctx, SendReplyToClient);
+      NEXT_STATE (ctx, RecvRequestType);
+      return result::Ok;
     }
 
   inline result master_connector::handle_request (context *ctx) noexcept
@@ -509,7 +618,8 @@ namespace cubconn
 	  break;
 
 	case SERVER_GET_EOF:
-	  NEXT_STATE (ctx, SendLogEof);
+	  /* TODO: SendLogEof (master_fd); */
+	  NEXT_STATE (ctx, RecvRequestType);
 	  break;
 
 	default:
@@ -522,43 +632,32 @@ namespace cubconn
 
   inline bool master_connector::handle_master_reception (context *ctx) noexcept
     {
-      result status;
+      result status = result::Ok;
 
       switch (ctx->m_state)
 	{
 	case state::RecvInHandshake:
 	  status = this->handshake_from_master (ctx);
-	  if (status == result::PeerReset)
-	    {
-	       _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: reset by peer");
-	      //return false;
-	    }
-	  else if (status == result::Error)
-	    {
-	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: handshake_from_master failed");
-	      return false;
-	    }
 	  NEXT_STATE (ctx, SwitchToUnixSocket);
 	  break;
 
 	case state::RecvRequestType:
-	  if (this->handle_request (ctx) == result::Error)
-	    {
-	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: handle_request failed");
-	      return false;
-	    }
-	  /* next state is set in handle_request */
+	  status = this->handle_request (ctx);
+	  /* next state have already been set in handle_request. */
 	  break;
 
 	case state::RecvNewClient:
-	  //this->request_new_client (ctx);
+	  status = this->request_new_client (ctx);
+	  /* next state have already been set in request_new_client. */
 	  break;
 
 	case state::RecvShutdown:
+	  /* TODO: disconnected with the cub_master and will shut itself down */
 	  break;
 
 	case state::SendInHandshake:
 	case state::SwitchToUnixSocket:
+	case state::SendReplyToClient:
 	  /* these will be handled in handle_master_transmission */
 	  break;
 
@@ -568,43 +667,44 @@ namespace cubconn
 	  break;
 	}
 
+      /* Is there an error */
+      if (status == result::PeerReset)
+	{
+	  /* TODO */
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: reset by peer");
+	}
+      if (status == result::Error)
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: failed");
+	  return false;
+	}
+
       return true;
     }
 
-      /* open a temporary connection to send a reply to client.
-       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
-       */
-  /*
-  inline bool master_connector::refuse_connection () noexcept
+  inline bool master_connector::sent_reply_to_client (context *ctx) noexcept
     {
-      CSS_CONN_ENTRY temp_conn;
-      OR_ALIGNED_BUF (1024) a_buffer;
-      char *buffer;
-      char *area;
-      int length = 1024;
-      int r;
+      assert_release (css_Connect_handler);
 
-      css_initialize_conn (&temp_conn, new_fd);
-      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-      assert (r == NO_ERROR);
+      if (!m_events.remove_descriptor (ctx->m_conn->fd))
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: m_events->remove_descriptor failed: %s", strerror (errno));
+	  return false;
+	}
 
-      css_send_reply_to_new_client_request (&temp_conn, rid, reason);
+      (void) (*css_Connect_handler) (ctx->m_conn);
+      ctx->m_conn = nullptr;
+      delete ctx;
 
-      buffer = OR_ALIGNED_BUF_START (a_buffer);
-
-      area = er_get_area_error (buffer, &length);
-
-      temp_conn.db_error = error;
-      css_send_error (&temp_conn, rid, area, length);
-      css_shutdown_conn (&temp_conn);
-      css_dealloc_conn_rmutex (&temp_conn);
-      er_clear ();
+      return true;
     }
-*/
 
   inline bool master_connector::handle_master_transmission (context *ctx) noexcept
     {
-      assert (ctx->m_state != state::RecvInHandshake);
+      assert (ctx->m_state != state::RecvInHandshake &&
+	      ctx->m_state != state::RecvRequestType &&
+	      ctx->m_state != state::RecvNewClient &&
+	      ctx->m_state != state::RecvShutdown);
 
       if (!ctx->has_data_to_send ())
 	{
@@ -633,22 +733,26 @@ namespace cubconn
 	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: master->switch_to_unix_socket failed");
 	      return false;
 	    }
-	  return false;
 	  NEXT_STATE (ctx, RecvRequestType);
 	  break;
 
-	case state::SendRefuseConnection:
-	  //this->refuse_connection ();
-	  break;
+	case state::SendReplyToClient:
+	  if (!this->sent_reply_to_client (ctx))
+	    {
+	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: sent_reply_to_client failed");
+	      return false;
+	    }
+	  /* return here to avoid segfault */
+	  return true;
 
 	default:
-	  /* TODO: ... */
+	  /* impossible ! */
 	  assert_release (false);
 	  break;
 	}
 
       /* update */
-      if (!this->update_epoll_events (ctx))
+      if (!ctx->has_data_to_send () && !this->update_epoll_events (ctx))
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: update_epoll_events failed: %s", strerror (errno));
 	  return false;
