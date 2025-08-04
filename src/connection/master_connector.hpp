@@ -41,18 +41,20 @@ namespace cubconn
 {
   enum class state
   {
+    /* handshake with master */
     SendInHandshake,
     RecvInHandshake,
 
     SwitchToUnixSocket,
 
+    /* request from master */
     RecvRequestType,
     
     RecvNewClient,
     RecvShutdown,
-    SendLogEof,
 
-    SendRefuseConnection,
+    /* send to clients */
+    SendReplyToClient
   };
 
   class master_connector
@@ -104,6 +106,7 @@ namespace cubconn
 
       inline bool make_nonblocking (int fd) noexcept;
       inline bool update_epoll_events (context *ctx);
+      inline context *make_context ();
 
       /* --------------------------------------------------------------------------- */
       /* connect								     */
@@ -114,9 +117,14 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* packet prepare								     */
       /* --------------------------------------------------------------------------- */
+      /* communication with master */
       inline void set_registrant (css_server_proc_register *proc, std::string &server_name) noexcept;
       inline bool prepare_handshake (std::string &server_name) noexcept;
       inline bool prepare_switch_to_unix_socket (context *ctx) noexcept;
+
+      /* communication with client */
+      inline bool prepare_reply (context *ctx, int reason) noexcept;
+      inline bool prepare_reply_refuse_connection (context *ctx, int reason) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* reception								     */
@@ -125,9 +133,8 @@ namespace cubconn
       inline result handshake_from_master (context *ctx) noexcept;
 
       /* request */
-      inline bool request_new_client (context *ctx) noexcept;
-//      inline result request_shutdown () noexcept;
- //     inline result request_get_eof () noexcept;
+      inline result request_new_client (context *ctx) noexcept;
+      inline result request_shutdown (context *ctx) noexcept;
 
       inline result handle_request (context *ctx) noexcept;
 
@@ -138,7 +145,7 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       inline bool switch_to_unix_socket (context *ctx) noexcept;
 
-      //inline bool refuse_connection () noexcept;
+      inline bool sent_reply_to_client (context *ctx) noexcept;
       
       inline bool handle_master_transmission (context *ctx) noexcept;
 
