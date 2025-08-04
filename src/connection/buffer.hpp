@@ -44,8 +44,9 @@ namespace cubconn
     {
       Ok,
       Error,
+      Pending,
       PeerReset,
-      Pending
+      RefuseConnection
     };
 
   class buffer
