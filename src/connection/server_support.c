@@ -1313,7 +1313,7 @@ css_start_shutdown_server ()
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  cubthread::master_connector<cubsocket::epoll> connector;
+  cubconn::master_connector connector;
   std::string servername (server_name, name_length);
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR; 
@@ -1369,14 +1369,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
   
-  if (!connector.connect (port_id, servername))
+  if (!connector.run (port_id, servername))
   {
-    _er_log_debug (__FILE__, __LINE__, "[w] master connector: connect failed");
+    _er_log_debug (__FILE__, __LINE__, "master connector: failed");
   }
   conn = connector.get_connection ();
+  ///*
   if (conn != NULL)
     {
-      /* insert conn into active conn list */
       css_insert_into_active_conn_list (conn);
 
       css_Master_server_name = strdup (server_name);
@@ -1397,11 +1397,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       if (status == NO_ERROR)
 	{
-	  connector.dispatch_connection ();
 	  // server message loop
-	  //css_setup_server_loop ();
+	  css_setup_server_loop ();
 	}
     }
+    //*/
 
 shutdown:
   /*

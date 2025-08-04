@@ -24,6 +24,14 @@
 
 namespace cubbase
 {
+  packet_buffer::packet_buffer () :
+    m_iovmax (8)
+  {
+    m_header.reserve (8);
+    m_buf.reserve (8);
+    m_length = 0;
+  }
+
   packet_buffer::packet_buffer (int size) :
     m_iovmax (size)
   {
@@ -41,6 +49,12 @@ namespace cubbase
     m_header.clear ();
     m_buf.clear ();
     m_length = 0;
+
+    for (auto p : m_heap)
+      {
+	delete[] p;
+      }
+    m_heap.clear ();
   }
 
   std::vector<cubbase::span<std::byte>> &packet_buffer::get_buffer ()
@@ -51,6 +65,22 @@ namespace cubbase
   std::size_t packet_buffer::get_length ()
   {
     return m_length;
+  }
+
+  struct ::msghdr &packet_buffer::get_msghdr ()
+  {
+    m_msg.msg_name = nullptr;
+    m_msg.msg_namelen = 0;
+    m_msg.msg_control = nullptr;
+    m_msg.msg_controllen = 0;
+    m_msg.msg_flags = 0;
+
+    assert (m_buf.size () != 0);
+
+    m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_buf.data ());
+    m_msg.msg_iovlen = m_buf.size ();
+
+    return m_msg;
   }
 }
 
