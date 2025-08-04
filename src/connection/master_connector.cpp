@@ -45,6 +45,8 @@
 #include <string>
 #include <type_traits>
 
+#define NEXT_STATE(x) (next_state (master_state::x))
+
 namespace cubconn
 {
   master_connector::master_context::master_context () :
@@ -143,6 +145,11 @@ namespace cubconn
 	}
 
       return true;
+    }
+
+  inline void master_connector::next_state (master_state state)
+    {
+      m_context.state = state;
     }
 
   inline int master_connector::connect_to_master (int port) noexcept
@@ -359,7 +366,7 @@ namespace cubconn
       return true;
     }
 
-  inline master_connector::transfer_result master_connector::handshake_from_master () noexcept
+  inline master_connector::result master_connector::handshake_from_master () noexcept
     {
       const int *buf;
       int response;
@@ -368,7 +375,7 @@ namespace cubconn
       if (!buf)
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->execute: partial recv from state %d", m_context.state);
-	  return transfer_result::Pending;
+	  return result::Pending;
 	}
       
       response = ntohl (*buf);
@@ -380,21 +387,122 @@ namespace cubconn
 	{
 	case SERVER_ALREADY_EXISTS:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, "server name");
-	  return transfer_result::Error;
+	  return result::Error;
 
 	case SERVER_REQUEST_ACCEPTED:
 	  er_log_debug (__FILE__, __LINE__, "successfully connected to master\n");
 	  if (!this->prepare_switch_to_unix_socket ())
 	    {
-	      return transfer_result::Error;
+	      return result::Error;
 	    }
 	  break;
 
 	default:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, "server name");
-	  return transfer_result::Error;
+	  return result::Error;
 	}
-      return transfer_result::Ok;
+      return result::Ok;
+    }
+
+  inline bool master_connector::request_new_client () noexcept
+    {
+      CSS_CONN_ENTRY *conn;
+      unsigned short request_id;
+      SOCKET new_fd;
+      int error;
+
+      /* receive new socket descriptor from the master */
+      new_fd = css_open_new_socket_from_master (m_conn->fd, &request_id);
+      if (IS_INVALID_SOCKET (new_fd))
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: css_open_new_socket_from_master failed");
+	  return false;
+	}
+
+      if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  css_refuse_connection_request (new_fd, request_id, SERVER_INACCESSIBLE_IP, error);
+	  NEXT_STATE (SendRefuseConnection);
+	  return false;
+	}
+
+      conn = css_make_conn (new_fd);
+      if (conn == NULL)
+	{
+	  error = ER_CSS_CLIENTS_EXCEEDED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
+	  /* TODO: send refuse conn.. */
+	  css_refuse_connection_request (new_fd, request_id, SERVER_CLIENTS_EXCEEDED, error);
+	  return false;
+	}
+
+      //css_send_reply_to_new_client_request (conn, request_id, SERVER_CONNECTED);
+
+      assert_release (css_Connect_handler);
+
+      (void) (*css_Connect_handler) (conn);
+
+      return true;
+    }
+
+  inline master_connector::result master_connector::handle_request () noexcept
+    {
+      const int *buf;
+      int request;
+
+      buf = buffered_socket::read_fixed_size<int> (m_conn->fd, m_context.m_recvbuf);
+      if (!buf)
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->execute: partial recv from state %d", m_context.state);
+	  return result::Pending;
+	}
+      
+      request = ntohl (*buf);
+      m_context.m_recvbuf.mark_consumed ();
+
+      er_log_debug (__FILE__, __LINE__, "cub_server received %d as request from master\n", request);
+
+      switch (request)
+	{
+	case SERVER_START_NEW_CLIENT:
+	  NEXT_STATE (RecvNewClient);
+	  break;
+
+	case SERVER_START_SHUTDOWN:
+	  NEXT_STATE (RecvShutdown);
+	  break;
+
+	case SERVER_STOP_SHUTDOWN:
+	case SERVER_SHUTDOWN_IMMEDIATE:
+	case SERVER_START_TRACING:
+	case SERVER_STOP_TRACING:
+	case SERVER_HALT_EXECUTION:
+	case SERVER_RESUME_EXECUTION:
+	case SERVER_REGISTER_HA_PROCESS:
+	  NEXT_STATE (RecvRequestType);
+	  break;
+
+	case SERVER_GET_HA_MODE:
+	  /* TODO: css_process_get_server_ha_mode_request (master_fd); */
+	  NEXT_STATE (RecvRequestType);
+	  break;
+
+	case SERVER_CHANGE_HA_MODE:
+	  /* TODO: css_process_change_server_ha_mode_request (master_fd); */
+	  NEXT_STATE (RecvRequestType);
+	  break;
+
+	case SERVER_GET_EOF:
+	  NEXT_STATE (SendLogEof);
+	  break;
+
+	default:
+	  er_log_debug (__FILE__, __LINE__, "cub_server received unexpected request: %d\n", request);
+	  return result::Error;
+	}
+
+      return result::Ok;
     }
 
   inline bool master_connector::handle_master_reception () noexcept
@@ -402,17 +510,33 @@ namespace cubconn
       switch (m_context.state)
 	{
 	case master_state::RecvInHandshake:
-	  if (this->handshake_from_master () == transfer_result::Error)
+	  if (this->handshake_from_master () == result::Error)
 	    {
 	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: handshake_from_master failed");
 	      return false;
 	    }
-	  m_context.state = master_state::SwitchToUnixSocket;
+	  NEXT_STATE (SwitchToUnixSocket);
+	  break;
+
+	case master_state::RecvRequestType:
+	  if (this->handle_request () == result::Error)
+	    {
+	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: handle_request failed");
+	      return false;
+	    }
+	  /* next state is set in handle_request */
+	  break;
+
+	case master_state::RecvNewClient:
+	  this->request_new_client ();
+	  break;
+
+	case master_state::RecvShutdown:
 	  break;
 
 	case master_state::SendInHandshake:
 	case master_state::SwitchToUnixSocket:
-	  /* send only */
+	  /* these will be handled in handle_master_transmission */
 	  break;
 
 	default:
@@ -424,8 +548,39 @@ namespace cubconn
       return true;
     }
 
+  inline bool master_connector::refuse_connection () noexcept
+    {
+      CSS_CONN_ENTRY temp_conn;
+      OR_ALIGNED_BUF (1024) a_buffer;
+      char *buffer;
+      char *area;
+      int length = 1024;
+      int r;
+
+      /* open a temporary connection to send a reply to client.
+       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+       */
+      css_initialize_conn (&temp_conn, new_fd);
+      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
+      assert (r == NO_ERROR);
+
+      css_send_reply_to_new_client_request (&temp_conn, rid, reason);
+
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+
+      area = er_get_area_error (buffer, &length);
+
+      temp_conn.db_error = error;
+      css_send_error (&temp_conn, rid, area, length);
+      css_shutdown_conn (&temp_conn);
+      css_dealloc_conn_rmutex (&temp_conn);
+      er_clear ();
+    }
+
   inline bool master_connector::handle_master_transmission () noexcept
     {
+      assert (m_context.state != master_state::RecvInHandshake);
+
       if (!m_context.has_data_to_send ())
 	{
 	  /* no data to send */
@@ -443,18 +598,26 @@ namespace cubconn
       switch (m_context.state)
 	{
 	case master_state::SendInHandshake:
-	  m_context.state = master_state::RecvInHandshake;
+	  NEXT_STATE (RecvInHandshake);
 	  break;
 
 	case master_state::SwitchToUnixSocket:
 	  /* switching */
-	  this->switch_to_unix_socket ();
-	  m_context.state = master_state::RecvRequestType;
-	  return false;
+	  if (!this->switch_to_unix_socket ())
+	    {
+	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: master->switch_to_unix_socket failed");
+	      return false;
+	    }
+	  NEXT_STATE (RecvRequestType);
+	  break;
+
+	case master_state::SendRefuseConnection:
+	  this->refuse_connection ();
 	  break;
 
 	default:
-	  /* hmm ... */
+	  /* TODO: ... */
+	  assert_release (false);
 	  break;
 	}
 

@@ -224,7 +224,6 @@ static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * 
 static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -2478,7 +2477,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 }
 
 #if defined(SERVER_MODE)
-static int
+int
 css_check_accessibility (SOCKET new_fd)
 {
 #if defined(WINDOWS) || defined(SOLARIS)
