@@ -55,16 +55,18 @@ namespace cubbase
 
       void clear ();
 
+      template <typename T>
+      inline T *allocate ();
+
       template <typename... Spans>
       void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest);
       template <typename... Spans>
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
-      std::byte *allocate (std::size_t size);
-
       std::vector<cubbase::span<std::byte>> &get_buffer ();
       std::size_t get_length ();
 
+      void stamp_msghdr ();
       struct ::msghdr &get_msghdr ();
 
     private:
@@ -72,10 +74,21 @@ namespace cubbase
 
       std::vector<int> m_header;
       std::vector<cubbase::span<std::byte>> m_buf;
+      std::vector<std::byte *> m_heap;
       std::size_t m_length;
 
       struct ::msghdr m_msg;
   };
+
+  template <typename T>
+  inline T *packet_buffer::allocate ()
+  {
+    std::byte *mem;
+
+    mem = new std::byte[sizeof (T)];
+    m_heap.push_back (mem);
+    return reinterpret_cast<T *> (mem);
+  }
 
   template <typename... Spans>
   void packet_buffer::push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)

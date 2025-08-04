@@ -79,6 +79,12 @@ namespace cubconn
 	  {
 	    m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
 	  }
+
+	template <typename T>
+	T *allocate ()
+	  {
+	    return m_sendbuf.allocate<T> ();
+	  }
       };
 
     public:

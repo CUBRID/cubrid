@@ -29,6 +29,7 @@ namespace cubbase
   {
     m_header.reserve (8);
     m_buf.reserve (8);
+    m_heap.reserve (8);
     m_length = 0;
   }
 
@@ -37,6 +38,7 @@ namespace cubbase
   {
     m_header.reserve (size);
     m_buf.reserve (size);
+    m_heap.reserve (size);
     m_length = 0;
   }
 
@@ -67,7 +69,7 @@ namespace cubbase
     return m_length;
   }
 
-  struct ::msghdr &packet_buffer::get_msghdr ()
+  void packet_buffer::stamp_msghdr ()
   {
     m_msg.msg_name = nullptr;
     m_msg.msg_namelen = 0;
@@ -79,7 +81,10 @@ namespace cubbase
 
     m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_buf.data ());
     m_msg.msg_iovlen = m_buf.size ();
+  }
 
+  struct ::msghdr &packet_buffer::get_msghdr ()
+  {
     return m_msg;
   }
 }
