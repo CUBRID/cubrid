@@ -45,7 +45,10 @@
 #include <string>
 #include <type_traits>
 
-#define NEXT_STATE(c, x) (c->m_state = state::x)
+#define NEXT_STATE(c, x) do { \
+    er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
+    (c->m_state = state::x); \
+} while (0)
 
 namespace cubconn
 {
@@ -243,7 +246,7 @@ namespace cubconn
     char *p, *last;
     char **argv;
 
-    memcpy (proc_register->server_name, server_name.c_str (), server_name.length ());
+    memcpy (proc_register->server_name, server_name.c_str (), server_name.length () + 1);
     proc_register->server_name_length = server_name.length ();
     proc_register->pid = getpid ();
     strncpy_bufsize (proc_register->exec_path, css_get_exec_path ());
@@ -515,10 +518,11 @@ namespace cubconn
 
       /* receive new socket descriptor from the master */
       new_fd = css_open_new_socket_from_master (ctx->m_conn->fd, &request_id);
+      _er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: unpack new socket: %d\n", new_fd);
       if (IS_INVALID_SOCKET (new_fd))
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: css_open_new_socket_from_master failed");
-	  return result::Error;
+	  return result::Reset;
 	}
 
       /* make new context and conn */
@@ -528,7 +532,8 @@ namespace cubconn
       if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
 	  new_ctx->m_conn = new css_conn_entry;
-	  new_ctx->m_conn->fd = new_fd;
+	  css_initialize_conn (new_ctx->m_conn, new_fd);
+	  new_ctx->m_conn->request_id = ctx->m_conn->request_id;
 
 	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_INACCESSIBLE_IP))
 	    {
@@ -546,7 +551,8 @@ namespace cubconn
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
 
 	  new_ctx->m_conn = new css_conn_entry;
-	  new_ctx->m_conn->fd = new_fd;
+	  css_initialize_conn (new_ctx->m_conn, new_fd);
+	  new_ctx->m_conn->request_id = ctx->m_conn->request_id;
 
 	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
 	    {
@@ -559,6 +565,7 @@ namespace cubconn
 	}
 
       new_ctx->m_conn = conn;
+      new_ctx->m_conn->request_id = ctx->m_conn->request_id;
       if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
 	{
 	  return result::Error;
@@ -594,7 +601,8 @@ namespace cubconn
 	  break;
 
 	case SERVER_START_SHUTDOWN:
-	  NEXT_STATE (ctx, RecvShutdown);
+	  /* TODO: shutdown here */
+	  exit (0);
 	  break;
 
 	case SERVER_STOP_SHUTDOWN:
@@ -651,10 +659,6 @@ namespace cubconn
 	  /* next state have already been set in request_new_client. */
 	  break;
 
-	case state::RecvShutdown:
-	  /* TODO: disconnected with the cub_master and will shut itself down */
-	  break;
-
 	case state::SendInHandshake:
 	case state::SwitchToUnixSocket:
 	case state::SendReplyToClient:
@@ -668,12 +672,19 @@ namespace cubconn
 	}
 
       /* Is there an error */
-      if (status == result::PeerReset)
+      if (status == result::Reset)
+	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: protocol is messed up somewhere");
+	  ctx->m_recvbuf.reset ();
+	  ctx->m_sendbuf.clear ();
+	  NEXT_STATE (ctx, RecvRequestType);
+	}
+      else if (status == result::PeerReset)
 	{
 	  /* TODO */
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: reset by peer");
 	}
-      if (status == result::Error)
+      else if (status == result::Error)
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: failed");
 	  return false;
@@ -703,8 +714,7 @@ namespace cubconn
     {
       assert (ctx->m_state != state::RecvInHandshake &&
 	      ctx->m_state != state::RecvRequestType &&
-	      ctx->m_state != state::RecvNewClient &&
-	      ctx->m_state != state::RecvShutdown);
+	      ctx->m_state != state::RecvNewClient);
 
       if (!ctx->has_data_to_send ())
 	{
