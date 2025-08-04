@@ -51,7 +51,6 @@ namespace cubconn
     RecvRequestType,
     
     RecvNewClient,
-    RecvShutdown,
 
     /* send to clients */
     SendReplyToClient

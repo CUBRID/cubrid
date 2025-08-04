@@ -44,6 +44,7 @@ namespace cubconn
     {
       Ok,
       Error,
+      Reset,
       Pending,
       PeerReset,
       RefuseConnection
@@ -225,13 +226,15 @@ namespace cubconn
 	  }
 
 	std::tie (space, available) = buffer.remaining_space ();
-	if (!space || !available)
+	if (!space)
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: out of buffer");
 	    return result::Error;
 	  }
-
-	n = ::recv (fd, space, available, 0);
+	
+	assert (buffer.total_size () - buffer.position () <= available);
+	
+	n = ::recv (fd, space, buffer.total_size () - buffer.position (), 0);
 	if (n > 0)
 	  {
 	    buffer.advance (n);
@@ -271,6 +274,10 @@ namespace cubconn
 	  }
 
 	status = recv_partial (fd, buffer);
+	if (status == result::Ok)
+	  {
+	    assert_release (buffer.position () == sizeof (T));
+	  }
 	return { status, buffer.data_as<T> () };
       }
   };

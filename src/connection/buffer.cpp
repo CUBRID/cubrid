@@ -73,6 +73,7 @@ namespace cubconn
 
   void buffer::advance (std::size_t bytes) noexcept
   {
+    assert (m_pos + bytes <= m_size);
     assert (m_pos + bytes <= m_data.size ());
 
     m_pos += bytes;
@@ -80,7 +81,9 @@ namespace cubconn
 
   bool buffer::is_complete () const noexcept
   {
-    return m_pos >= m_size;
+    assert (m_pos <= m_size);
+
+    return m_pos == m_size;
   }
 
   bool buffer::has_data () const noexcept
@@ -105,7 +108,7 @@ namespace cubconn
 
   void buffer::mark_consumed ()
   {
-    reset();
+    reset ();
   }
 
   void buffer::set_target_size (size_t target)
