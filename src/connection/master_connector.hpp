@@ -35,6 +35,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 #include <string>
+#include <type_traits>
 
 namespace cubconn
 {
@@ -46,16 +47,12 @@ namespace cubconn
     SwitchToUnixSocket,
 
     RecvRequestType,
+    
+    RecvNewClient,
+    RecvShutdown,
+    SendLogEof,
 
-    ReadRequestId,
-    WaitScmRights,
-    SendResponse
-  };
-
-  enum class request_type : std::uint32_t
-  {
-    NewClient = 1,
-    Log = 2
+    SendRefuseConnection,
   };
 
   class master_connector
@@ -95,7 +92,7 @@ namespace cubconn
       bool run (int port, std::string &server_name) noexcept;
 
     private:
-      enum class transfer_result
+      enum class result
 	{
 	  Ok,
 	  Error,
@@ -115,18 +112,48 @@ namespace cubconn
 
       inline bool make_nonblocking (int fd) noexcept;
       inline bool update_epoll_events (int fd);
+      inline void next_state (master_state state);
 
+      /* --------------------------------------------------------------------------- */
+      /* connect								     */
+      /* --------------------------------------------------------------------------- */
       inline int connect_to_master (int port) noexcept;
       inline bool connect (int port) noexcept;
 
+      /* --------------------------------------------------------------------------- */
+      /* packet prepare								     */
+      /* --------------------------------------------------------------------------- */
       inline void set_registrant (css_server_proc_register *proc, std::string &server_name) noexcept;
       inline bool prepare_handshake (std::string &server_name) noexcept;
-
-      inline bool switch_to_unix_socket () noexcept;
       inline bool prepare_switch_to_unix_socket () noexcept;
-      inline transfer_result handshake_from_master () noexcept;
+
+      /* --------------------------------------------------------------------------- */
+      /* reception								     */
+      /* --------------------------------------------------------------------------- */
+      /* handshake */
+      inline result handshake_from_master () noexcept;
+
+      /* request */
+      inline bool request_new_client () noexcept;
+      inline result request_shutdown () noexcept;
+      inline result request_get_eof () noexcept;
+
+      inline result handle_request () noexcept;
+
       inline bool handle_master_reception () noexcept;
+
+      /* --------------------------------------------------------------------------- */
+      /* transmission								     */
+      /* --------------------------------------------------------------------------- */
+      inline bool switch_to_unix_socket () noexcept;
+
+      inline bool refuse_connection () noexcept;
+      
       inline bool handle_master_transmission () noexcept;
+
+      /* --------------------------------------------------------------------------- */
+      /* main handler								     */
+      /* --------------------------------------------------------------------------- */
       inline bool execute () noexcept;
   };
 }
