@@ -40,6 +40,14 @@ namespace cubconn
 {
   constexpr size_t BUFFER_SIZE = 1024;
 
+  enum class result
+    {
+      Ok,
+      Error,
+      PeerReset,
+      Pending
+    };
+
   class buffer
   {
     public:
@@ -203,7 +211,7 @@ namespace cubconn
 	return buffer.is_complete ();
       }
 
-      static bool recv_partial (int fd, buffer &buffer)
+      static result recv_partial (int fd, buffer &buffer)
       {
 	std::byte *space;
 	std::size_t available;
@@ -212,13 +220,14 @@ namespace cubconn
 	if (!buffer.has_space ())
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: out of buffer");
-	    assert_release (false);
+	    return result::Error;
 	  }
 
 	std::tie (space, available) = buffer.remaining_space ();
 	if (!space || !available)
 	  {
-	    return true;
+	    _er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: out of buffer");
+	    return result::Error;
 	  }
 
 	n = ::recv (fd, space, available, 0);
@@ -230,28 +239,29 @@ namespace cubconn
 	  {
 	    if (errno == EAGAIN || errno == EWOULDBLOCK)
 	      {
-		return false;
+		return result::Pending;
 	      }
 	    else
 	      {
 		_er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: recv error: %s", strerror (errno));
-		assert_release (false);
+		return result::Error;
 	      }
 	  }
 	else
 	  {
-	    /* master might be dead */
 	    _er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: recv returned 0 - error: %s", strerror (errno));
-	    assert_release (false);
+	    return result::PeerReset;
 	  }
 
-	return buffer.is_complete ();
+	return buffer.is_complete () ? result::Ok : result::Pending;
       }
 
       /* recv helper */
       template<typename T>
-      static const T *read_fixed_size (int fd, buffer &buffer)
+      static std::tuple<result, const T *> read_fixed_size (int fd, buffer &buffer)
       {
+	result status;
+
 	static_assert (std::is_trivially_copyable_v<T>);
 
 	if (buffer.total_size () != sizeof (T))
@@ -259,12 +269,8 @@ namespace cubconn
 	    buffer.set_target_size (sizeof (T));
 	  }
 
-	if (recv_partial (fd, buffer))
-	  {
-	    return buffer.data_as<T> ();
-	  }
-
-	return nullptr;
+	status = recv_partial (fd, buffer);
+	return { status, buffer.data_as<T> () };
       }
   };
 }

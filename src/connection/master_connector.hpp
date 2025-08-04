@@ -39,7 +39,7 @@
 
 namespace cubconn
 {
-  enum class master_state
+  enum class state
   {
     SendInHandshake,
     RecvInHandshake,
@@ -58,15 +58,17 @@ namespace cubconn
   class master_connector
   {
     private:
-      struct master_context
+      struct context
       {
+	css_conn_entry *m_conn;
+
       	buffer m_recvbuf;
 	cubbase::packet_buffer m_sendbuf;
 
-	master_state state { master_state::SendInHandshake };
+	state m_state { state::SendInHandshake };
 
-	master_context ();
-	~master_context ();
+	context ();
+	~context ();
 
 	void reset ();
 	bool has_data_to_send ();
@@ -92,27 +94,16 @@ namespace cubconn
       bool run (int port, std::string &server_name) noexcept;
 
     private:
-      enum class result
-	{
-	  Ok,
-	  Error,
-	  Pending
-	};
-
       cubsocket::epoll m_events;
 
-      css_conn_entry *m_conn;
-      int m_port;
-
-      master_context m_context;
+      context m_context;
 
       /* to open unix domain socket */
       std::string m_unixpath;
       SOCKET m_unixsocket;
 
       inline bool make_nonblocking (int fd) noexcept;
-      inline bool update_epoll_events (int fd);
-      inline void next_state (master_state state);
+      inline bool update_epoll_events (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* connect								     */
@@ -125,31 +116,31 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       inline void set_registrant (css_server_proc_register *proc, std::string &server_name) noexcept;
       inline bool prepare_handshake (std::string &server_name) noexcept;
-      inline bool prepare_switch_to_unix_socket () noexcept;
+      inline bool prepare_switch_to_unix_socket (context *ctx) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* reception								     */
       /* --------------------------------------------------------------------------- */
       /* handshake */
-      inline result handshake_from_master () noexcept;
+      inline result handshake_from_master (context *ctx) noexcept;
 
       /* request */
-      inline bool request_new_client () noexcept;
-      inline result request_shutdown () noexcept;
-      inline result request_get_eof () noexcept;
+      inline bool request_new_client (context *ctx) noexcept;
+//      inline result request_shutdown () noexcept;
+ //     inline result request_get_eof () noexcept;
 
-      inline result handle_request () noexcept;
+      inline result handle_request (context *ctx) noexcept;
 
-      inline bool handle_master_reception () noexcept;
+      inline bool handle_master_reception (context *ctx) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */
       /* --------------------------------------------------------------------------- */
-      inline bool switch_to_unix_socket () noexcept;
+      inline bool switch_to_unix_socket (context *ctx) noexcept;
 
-      inline bool refuse_connection () noexcept;
+      //inline bool refuse_connection () noexcept;
       
-      inline bool handle_master_transmission () noexcept;
+      inline bool handle_master_transmission (context *ctx) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* main handler								     */
