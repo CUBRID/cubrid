@@ -290,6 +290,11 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     {
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
+      query_p->alloc_no++;
+      if (query_p->alloc_no == 0)
+	{
+	  query_p->alloc_no = 1;	// avoid zero
+	}
     }
   else
     {
@@ -308,6 +313,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	    }
 
 	  query_p->list_id = NULL;
+	  query_p->alloc_no = 1;
 
 	  tran_entry_p->num_query_entries++;
 	}
