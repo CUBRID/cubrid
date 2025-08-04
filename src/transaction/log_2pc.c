@@ -77,7 +77,8 @@ struct log_2pc_global_data
 		      void *block_particps_ids, bool collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
-  { dblink_2pc_get_participants, NULL, NULL, NULL, dblink_2pc_send_prepare, dblink_2pc_send_commit,
+  { dblink_2pc_get_participants, NULL, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
+dblink_2pc_send_commit,
   dblink_2pc_send_abort
 };
 

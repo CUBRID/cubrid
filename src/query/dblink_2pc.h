@@ -38,4 +38,5 @@ extern void dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_
 				    void *block_particps_ids);
 extern void dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 				   void *block_particps_ids, bool collect);
+extern void dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
 #endif

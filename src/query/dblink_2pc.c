@@ -198,3 +198,19 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
 
   return;
 }
+
+
+void
+dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids)
+{
+  int i;
+  DBLINK_CONN_INFO *dblink;
+
+
+  for (i = 0; i < block_length; i = i + sizeof (DBLINK_CONN_INFO))
+    {
+      dblink = (DBLINK_CONN_INFO *) ((char *) block_particps_ids + i);
+      fprintf (fp, "  CONN-HANDLE = %d, CONN-URL = %s, USER = %s\n", dblink->conn_handle, dblink->conn_url,
+	       dblink->user_name);
+    }
+}
