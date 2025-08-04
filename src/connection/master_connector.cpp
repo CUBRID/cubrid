@@ -54,6 +54,8 @@ namespace cubconn
 
   master_connector::master_context::~master_context ()
     {
+      m_recvbuf.reset ();
+      m_sendbuf.clear ();
     }
 
   void master_connector::master_context::reset ()
@@ -85,7 +87,6 @@ namespace cubconn
 
   master_connector::~master_connector ()
     {
-      m_context.m_sendbuf.clear ();
     }
 
   bool master_connector::run (int port, std::string &server_name) noexcept
@@ -228,31 +229,36 @@ namespace cubconn
 
   inline bool master_connector::prepare_handshake (std::string &server_name) noexcept
     {
-      NET_HEADER header[3] = { { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, DEFAULT_HEADER_DATA, DEFAULT_HEADER_DATA };
+      NET_HEADER *header[3];
       /* header[0]: magic number packet */
       /* header[1]: command header packet */
       /* header[2]: data header for registrant packet */
-      CSS_SERVER_PROC_REGISTER registrant = CSS_SERVER_PROC_REGISTER_INITIALIZER;
+      CSS_SERVER_PROC_REGISTER *registrant;
       unsigned short request_id;
-
-      /* cub_server magic number to be delivered to cub_master */
-      std::memcpy ((char *) &header[0], css_Net_magic, sizeof (css_Net_magic));
-      /* make the name pakcet to register this server to cub_master */
-      this->set_registrant (&registrant, server_name);
-      /* headers */
-      request_id = css_get_request_id (m_conn);
-      css_set_net_header (&header[1], COMMAND_TYPE, SERVER_REQUEST_FROM_SERVER, request_id, sizeof (CSS_SERVER_PROC_REGISTER),
-			  m_conn->get_tran_index (), m_conn->invalidate_snapshot, m_conn->db_error);
-      css_set_net_header (&header[2], DATA_TYPE, 0, request_id, sizeof (CSS_SERVER_PROC_REGISTER), m_conn->get_tran_index (),
-			  m_conn->invalidate_snapshot, m_conn->db_error);
 
       /* clear the packet buffer */
       m_context.m_sendbuf.clear ();
+      header[0] = m_context.allocate<NET_HEADER> ();
+      header[1] = m_context.allocate<NET_HEADER> ();
+      header[2] = m_context.allocate<NET_HEADER> ();
+      registrant = m_context.allocate<CSS_SERVER_PROC_REGISTER> ();
+      /* cub_server magic number to be delivered to cub_master */
+      std::memcpy ((char *) header[0], css_Net_magic, sizeof (css_Net_magic));
+      /* make the name pakcet to register this server to cub_master */
+      this->set_registrant (registrant, server_name);
+      /* headers */
+      request_id = css_get_request_id (m_conn);
+      css_set_net_header (header[1], COMMAND_TYPE, SERVER_REQUEST_FROM_SERVER, request_id, sizeof (CSS_SERVER_PROC_REGISTER),
+			  m_conn->get_tran_index (), m_conn->invalidate_snapshot, m_conn->db_error);
+      css_set_net_header (header[2], DATA_TYPE, 0, request_id, sizeof (CSS_SERVER_PROC_REGISTER), m_conn->get_tran_index (),
+			  m_conn->invalidate_snapshot, m_conn->db_error);
       /* register the packets */
-      m_context.push_for_send ({ reinterpret_cast<std::byte *> (&header[0]), sizeof (NET_HEADER) });
-      m_context.push_for_send ({ reinterpret_cast<std::byte *> (&header[1]), sizeof (NET_HEADER) });
-      m_context.push_for_send ({ reinterpret_cast<std::byte *> (&header[2]), sizeof (NET_HEADER) });
-      m_context.push_for_send ({ reinterpret_cast<std::byte *> (&registrant), sizeof (CSS_SERVER_PROC_REGISTER) });
+      m_context.push_for_send ({ reinterpret_cast<std::byte *> (header[0]), sizeof (NET_HEADER) });
+      m_context.push_for_send ({ reinterpret_cast<std::byte *> (header[1]), sizeof (NET_HEADER) });
+      m_context.push_for_send ({ reinterpret_cast<std::byte *> (header[2]), sizeof (NET_HEADER) });
+      m_context.push_for_send ({ reinterpret_cast<std::byte *> (registrant), sizeof (CSS_SERVER_PROC_REGISTER) });
+      /* make the packets to msghdr */
+      m_context.m_sendbuf.stamp_msghdr ();
        
       if (!m_events.add_descriptor (m_conn->fd, EPOLLIN | EPOLLOUT, m_conn))
 	{
@@ -270,6 +276,8 @@ namespace cubconn
       /* wait to be reqeusted to connect from master */
       if (!css_tcp_listen_server_datagram (m_unixsocket, &datagram_fd))
 	{
+	  _er_log_debug (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: css_tcp_listen_server_datagram failed: %s", strerror (errno));
+
 	  (void) ::unlink (m_unixpath.c_str ());
 	  ::close (m_unixsocket);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
@@ -310,12 +318,14 @@ namespace cubconn
 	  return false;
 	} 
 
+      er_log_debug (__FILE__, __LINE__, "successfully switched to unix domain socket\n");
+
       return true;
     }
 
   inline bool master_connector::prepare_switch_to_unix_socket () noexcept
     {
-      NET_HEADER header = DEFAULT_HEADER_DATA;
+      NET_HEADER *header;
 
       /* send the pathname for the datagram */
       /* be sure to open the datagram first.  */
@@ -330,12 +340,15 @@ namespace cubconn
 	  return false;
 	}
 
-      /* send unix path to open new unix connection to master */
-      css_set_net_header (&header, DATA_TYPE, 0, m_conn->request_id, m_unixpath.length () + 1, m_conn->get_tran_index (), m_conn->invalidate_snapshot, m_conn->db_error);
       /* clear the packet buffer */
       m_context.m_sendbuf.clear ();
-      m_context.push_for_send ({ reinterpret_cast<std::byte *> (&header), sizeof (NET_HEADER) });
+      header = m_context.allocate<NET_HEADER> ();
+      /* unix path to open new unix connection to master */
+      css_set_net_header (header, DATA_TYPE, 0, m_conn->request_id, m_unixpath.length () + 1, m_conn->get_tran_index (), m_conn->invalidate_snapshot, m_conn->db_error); 
+      m_context.push_for_send ({ reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER) });
       m_context.push_for_send ({ reinterpret_cast<std::byte *> (const_cast<char *> (m_unixpath.c_str ())), m_unixpath.length () + 1 });
+      /* make the packets to msghdr */
+      m_context.m_sendbuf.stamp_msghdr ();
 
       /* update the events */
       if (!this->update_epoll_events (m_conn->fd))
@@ -381,9 +394,6 @@ namespace cubconn
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, "server name");
 	  return transfer_result::Error;
 	}
-
-      /* advance */
-      m_context.state = master_state::SwitchToUnixSocket;
       return transfer_result::Ok;
     }
 
@@ -397,6 +407,7 @@ namespace cubconn
 	      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: handshake_from_master failed");
 	      return false;
 	    }
+	  m_context.state = master_state::SwitchToUnixSocket;
 	  break;
 
 	case master_state::SendInHandshake:
