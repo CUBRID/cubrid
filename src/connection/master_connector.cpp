@@ -697,6 +697,7 @@ namespace cubconn
     {
       assert_release (css_Connect_handler);
 
+      _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
       if (!m_events.remove_descriptor (ctx->m_conn->fd))
 	{
 	  _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: m_events->remove_descriptor failed: %s", strerror (errno));
@@ -715,6 +716,7 @@ namespace cubconn
       assert (ctx->m_state != state::RecvInHandshake &&
 	      ctx->m_state != state::RecvRequestType &&
 	      ctx->m_state != state::RecvNewClient);
+      assert (ctx && ctx->m_conn);
 
       if (!ctx->has_data_to_send ())
 	{
@@ -728,6 +730,7 @@ namespace cubconn
 	  return true;
 	}
       /* fully send */
+      _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: fully sent the data to fd = %d\n", ctx->m_conn->fd);
 
       /* move to next state */
       switch (ctx->m_state)
