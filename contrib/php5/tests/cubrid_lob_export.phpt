@@ -22,32 +22,32 @@ if (!$cubrid_req) {
 
 $fp = fopen('cubrid_logo.png', 'rb');
 
-$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "blob");
+$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "bfile");
 if (!$cubrid_retval) {
-    printf("[002] Can't bind blob type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[002] Can't bind bfile type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
 $cubrid_retval = cubrid_execute($cubrid_req);
 if (!$cubrid_retval) {
-    printf("[003] Blob data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[003] Bfile data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
 $lobs = cubrid_lob_get($cubrid_conn, "select e from php_cubrid_test");
 $ret = cubrid_lob_export($cubrid_conn, $lobs[0], "lob_test.png");
 if (!$ret) {
-    printf("[004] Blob data export failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[004] Bfile data export failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
 if (!file_exists("lob_test.png")) {
-    printf("[005] Blob data export error.\n");
+    printf("[005] Bfile data export error.\n");
     exit(1);
 }
 
 if (filesize("lob_test.png") != filesize("cubrid_logo.png")) {
-    printf("[006] Blob data export error.\n");
+    printf("[006] Bfile data export error.\n");
     exit(1);
 }
 

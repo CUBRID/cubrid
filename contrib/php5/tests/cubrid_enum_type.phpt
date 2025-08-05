@@ -61,7 +61,7 @@ function print_field_info($req_handle, $offset = 0)
     printf("%-30s %d\n", "unique key:", $field->unique_key);
     printf("%-30s %d\n", "multiple key:", $field->multiple_key);
     printf("%-30s %d\n", "numeric:", $field->numeric);
-    printf("%-30s %d\n", "blob:", $field->blob);
+    printf("%-30s %d\n", "bfile:", $field->bfile);
 
     return true;
 }

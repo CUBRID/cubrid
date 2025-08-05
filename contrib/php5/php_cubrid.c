@@ -252,8 +252,8 @@ static const DB_TYPE_INFO db_type_info[] = {
     {"RESULTSET", CCI_U_TYPE_RESULTSET, -1},
 
     {"OBJECT", CCI_U_TYPE_OBJECT, MAX_LEN_OBJECT},
-    {"BLOB", CCI_U_TYPE_BLOB, MAX_LEN_LOB},
-    {"CLOB", CCI_U_TYPE_CLOB, MAX_LEN_LOB},
+    {"BFILE", CCI_U_TYPE_BFILE, MAX_LEN_LOB},
+    {"CFILE", CCI_U_TYPE_CFILE, MAX_LEN_LOB},
     {"ENUM", CCI_U_TYPE_ENUM, -1},
 };
 
@@ -1706,7 +1706,7 @@ ZEND_FUNCTION(cubrid_bind)
         php_error_docref(NULL TSRMLS_CC, E_WARNING, "Bind value type unknown : %s\n", bind_value_type);
         RETURN_FALSE;
     } else {
-        if (u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB) {
+        if (u_type == CCI_U_TYPE_BFILE || u_type == CCI_U_TYPE_CFILE) {
             if (Z_TYPE_P(bind_value) == IS_RESOURCE) {
                 php_stream_from_zval_no_verify(stm, &bind_value);
                 if (!stm) {
@@ -1730,11 +1730,11 @@ ZEND_FUNCTION(cubrid_bind)
         value_len = Z_STRLEN_P(bind_value);
 
         switch (u_type) {
-        case CCI_U_TYPE_BLOB:
-                a_type = CCI_A_TYPE_BLOB;
+        case CCI_U_TYPE_BFILE:
+                a_type = CCI_A_TYPE_BFILE;
                 break;
-        case CCI_U_TYPE_CLOB:
-                a_type = CCI_A_TYPE_CLOB;
+        case CCI_U_TYPE_CFILE:
+                a_type = CCI_A_TYPE_CFILE;
                 break;
         case CCI_U_TYPE_BIT:
         case CCI_U_TYPE_VARBIT:
@@ -1745,7 +1745,7 @@ ZEND_FUNCTION(cubrid_bind)
                 break;
         }
         
-        if (u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB) {
+        if (u_type == CCI_U_TYPE_BFILE || u_type == CCI_U_TYPE_CFILE) {
             if ((cubrid_retval = cubrid_lob_new(request->conn->handle, &lob, u_type, &error)) < 0) {
                 handle_error(cubrid_retval, &error, request->conn);
 
@@ -3579,7 +3579,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
 
     T_CUBRID_REQUEST *request = NULL;
 
-    zend_bool is_numeric = 0, is_blob = 0;
+    zend_bool is_numeric = 0, is_bfile = 0;
     int max_length = 0;
 
     int res = 0;
@@ -3616,7 +3616,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
 
     is_numeric = numeric_type(request->col_info[offset].type);
     max_length = 0;
-    is_blob = (request->col_info[offset].type == CCI_U_TYPE_BLOB)?1:0;
+    is_bfile = (request->col_info[offset].type == CCI_U_TYPE_BFILE)?1:0;
 
     add_assoc_string(return_value, "name", request->col_info[offset].col_name, 1);
     add_assoc_string(return_value, "table", request->col_info[offset].class_name, 1);
@@ -3637,7 +3637,7 @@ ZEND_FUNCTION(cubrid_fetch_field)
     add_assoc_long(return_value, "unique_key", request->col_info[offset].is_unique_key);
     add_assoc_long(return_value, "multiple_key", !request->col_info[offset].is_unique_key);
     add_assoc_long(return_value, "numeric", is_numeric);
-    add_assoc_long(return_value, "blob", is_blob);
+    add_assoc_long(return_value, "bfile", is_bfile);
 
     type2str(&request->col_info[offset], string_type, sizeof(string_type));
     add_assoc_string(return_value, "type", string_type, 1);
@@ -4597,11 +4597,11 @@ ZEND_FUNCTION(cubrid_lob2_new)
     init_error_link(connect);
 
     if (!type) {
-        type = "BLOB";
+        type = "BFILE";
     }
 
     u_type = get_cubrid_u_type_by_name(type);
-    if (!(u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB)) {
+    if (!(u_type == CCI_U_TYPE_BFILE || u_type == CCI_U_TYPE_CFILE)) {
         handle_error(CUBRID_ER_NOT_SUPPORTED_TYPE, NULL, connect);
         RETURN_FALSE;
     }
@@ -4664,7 +4664,7 @@ ZEND_FUNCTION(cubrid_lob2_bind)
     }
 
     if (!bind_value_type) {
-        u_type = CCI_U_TYPE_BLOB;
+        u_type = CCI_U_TYPE_BFILE;
     } else {
         u_type = get_cubrid_u_type_by_name(bind_value_type);
     }
@@ -4683,8 +4683,8 @@ ZEND_FUNCTION(cubrid_lob2_bind)
         value = Z_STRVAL_P(bind_value);
         value_len = Z_STRLEN_P(bind_value);
 
-        if (!(u_type == CCI_U_TYPE_BLOB || u_type == CCI_U_TYPE_CLOB)) {
-            php_error_docref(NULL TSRMLS_CC, E_WARNING, "This function only can be used to bind BLOB/CLOB.");
+        if (!(u_type == CCI_U_TYPE_BFILE || u_type == CCI_U_TYPE_CFILE)) {
+            php_error_docref(NULL TSRMLS_CC, E_WARNING, "This function only can be used to bind BFILE/CFILE.");
             RETURN_FALSE;
         }
 
@@ -4701,11 +4701,11 @@ ZEND_FUNCTION(cubrid_lob2_bind)
     }
     
     switch (u_type) {
-    case CCI_U_TYPE_BLOB:
-        a_type = CCI_A_TYPE_BLOB;
+    case CCI_U_TYPE_BFILE:
+        a_type = CCI_A_TYPE_BFILE;
         break;
-    case CCI_U_TYPE_CLOB:
-        a_type = CCI_A_TYPE_CLOB;
+    case CCI_U_TYPE_CFILE:
+        a_type = CCI_A_TYPE_CFILE;
         break;
     default:
         RETURN_FALSE;
@@ -5245,12 +5245,12 @@ ZEND_FUNCTION(cubrid_lob_get)
 
     u_type = CCI_GET_RESULT_INFO_TYPE(res_col_info, 1);
 
-    if (u_type == CCI_U_TYPE_BLOB) {
-        a_type = CCI_A_TYPE_BLOB; 
-    } else if (u_type == CCI_U_TYPE_CLOB) {
-        a_type = CCI_A_TYPE_CLOB; 
+    if (u_type == CCI_U_TYPE_BFILE) {
+        a_type = CCI_A_TYPE_BFILE; 
+    } else if (u_type == CCI_U_TYPE_CFILE) {
+        a_type = CCI_A_TYPE_CFILE; 
     } else {
-        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Column type is not BLOB or CLOB.");
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "Column type is not BFILE or CFILE.");
         goto ERR_CUBRID_LOB_GET;
     }
 
@@ -5856,17 +5856,17 @@ static int fetch_a_row(zval *arg, T_CUBRID_CONNECT *connect, int req_handle, T_C
 		cci_set_free(res_buf);
 	    }
 
-	} else if ((type & CUBRID_LOB) && (column_type == CCI_U_TYPE_BLOB || column_type == CCI_U_TYPE_CLOB)) {
+	} else if ((type & CUBRID_LOB) && (column_type == CCI_U_TYPE_BFILE || column_type == CCI_U_TYPE_CFILE)) {
             T_CCI_LOB lob = NULL;
             T_CUBRID_LOB2 *cubrid_lob = NULL;
             int res_id = 0;
 
-            if (column_type == CCI_U_TYPE_BLOB) {
-                if ((cubrid_retval = cci_get_data(req_handle, i + 1, CCI_A_TYPE_BLOB, (void *) &lob, &null_indicator)) < 0) {
+            if (column_type == CCI_U_TYPE_BFILE) {
+                if ((cubrid_retval = cci_get_data(req_handle, i + 1, CCI_A_TYPE_BFILE, (void *) &lob, &null_indicator)) < 0) {
                     goto ERR_FETCH_A_ROW;
                 }
             } else {
-                if ((cubrid_retval = cci_get_data(req_handle, i + 1, CCI_A_TYPE_CLOB, (void *) &lob, &null_indicator)) < 0) {
+                if ((cubrid_retval = cci_get_data(req_handle, i + 1, CCI_A_TYPE_CFILE, (void *) &lob, &null_indicator)) < 0) {
                     goto ERR_FETCH_A_ROW;
                 }
             }
@@ -6048,7 +6048,7 @@ static T_CUBRID_LOB *new_cubrid_lob(void)
 
     lob->lob = NULL;
     lob->size = 0;
-    lob->type = CCI_U_TYPE_BLOB;
+    lob->type = CCI_U_TYPE_BFILE;
 
     return lob;
 }
@@ -6061,7 +6061,7 @@ static T_CUBRID_LOB2 *new_cubrid_lob2(void)
 
     lob->connect = NULL;
     lob->pos = 0;
-    lob->type = CCI_U_TYPE_BLOB;
+    lob->type = CCI_U_TYPE_BFILE;
 
     return lob;
 }
@@ -6303,11 +6303,11 @@ static int type2str(T_CCI_COL_INFO * column_info, char *type_name, int type_name
     case CCI_U_TYPE_DATETIME:
         snprintf(buf, sizeof(buf), "datetime");
 	break;
-    case CCI_U_TYPE_BLOB:
-        snprintf(buf, sizeof(buf), "blob");
+    case CCI_U_TYPE_BFILE:
+        snprintf(buf, sizeof(buf), "bfile");
         break;
-    case CCI_U_TYPE_CLOB:
-        snprintf(buf, sizeof(buf), "clob");
+    case CCI_U_TYPE_CFILE:
+        snprintf(buf, sizeof(buf), "cfile");
         break;
     case CCI_U_TYPE_ENUM:
         snprintf(buf, sizeof(buf), "enum");
@@ -6382,33 +6382,33 @@ static int get_cubrid_u_type_len(T_CCI_U_TYPE type)
 
 static int cubrid_lob_new(int con_h_id, T_CCI_LOB *lob, T_CCI_U_TYPE type, T_CCI_ERROR *err_buf)
 {
-    return (type == CCI_U_TYPE_BLOB) ? 
-        cci_blob_new(con_h_id, lob, err_buf) : cci_clob_new(con_h_id, lob, err_buf);
+    return (type == CCI_U_TYPE_BFILE) ? 
+        cci_bfile_new(con_h_id, lob, err_buf) : cci_cfile_new(con_h_id, lob, err_buf);
 }
 
 static php_cubrid_int64_t cubrid_lob_size(T_CCI_LOB lob, T_CCI_U_TYPE type)
 {
-    return (type == CCI_U_TYPE_BLOB) ? cci_blob_size(lob) : cci_clob_size(lob);
+    return (type == CCI_U_TYPE_BFILE) ? cci_bfile_size(lob) : cci_cfile_size(lob);
 }
 
 static int cubrid_lob_write(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, const char *buf, T_CCI_ERROR *err_buf)
 {
-    return (type == CCI_U_TYPE_BLOB) ? 
-        cci_blob_write(con_h_id, lob, start_pos, length, buf, err_buf) : 
-        cci_clob_write(con_h_id, lob, start_pos, length, buf, err_buf);
+    return (type == CCI_U_TYPE_BFILE) ? 
+        cci_bfile_write(con_h_id, lob, start_pos, length, buf, err_buf) : 
+        cci_cfile_write(con_h_id, lob, start_pos, length, buf, err_buf);
 }
 
 static int cubrid_lob_read(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, char *buf, T_CCI_ERROR *err_buf)
 {
-    return (type == CCI_U_TYPE_BLOB) ?
-        cci_blob_read(con_h_id, lob, start_pos, length, buf, err_buf) :
-        cci_clob_read(con_h_id, lob, start_pos, length, buf, err_buf);
+    return (type == CCI_U_TYPE_BFILE) ?
+        cci_bfile_read(con_h_id, lob, start_pos, length, buf, err_buf) :
+        cci_cfile_read(con_h_id, lob, start_pos, length, buf, err_buf);
 }
 
 static int cubrid_lob_free(T_CCI_LOB lob, T_CCI_U_TYPE type)
 {
-    return (type == CCI_U_TYPE_BLOB) ?
-        cci_blob_free(lob) : cci_clob_free(lob);
+    return (type == CCI_U_TYPE_BFILE) ?
+        cci_bfile_free(lob) : cci_cfile_free(lob);
 }
 
 /* method learn from pdo */

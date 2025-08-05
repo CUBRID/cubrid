@@ -18,12 +18,12 @@ if (!is_null($tmp = @cubrid_lob2_seek())) {
 }
 
 @cubrid_execute($conn, 'DROP TABLE IF EXISTS test_lob2');
-cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT, contents CLOB)');
+cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT, contents CFILE)');
 
 $req = cubrid_prepare($conn, 'INSERT INTO test_lob2 VALUES (?, ?)');
 
 cubrid_bind($req, 1, 10);
-cubrid_lob2_bind($req, 2, "Wow, welcome to CUBRID! You are using CLOB now!", "CLOB");
+cubrid_lob2_bind($req, 2, "Wow, welcome to CUBRID! You are using CFILE now!", "CFILE");
 
 cubrid_execute($req);
 

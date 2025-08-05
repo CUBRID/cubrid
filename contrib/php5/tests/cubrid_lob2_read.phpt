@@ -17,7 +17,7 @@ if (!is_null($tmp = @cubrid_lob2_read())) {
     printf('[001] Expecting NULL, got %s/%s\n', gettype($tmp), $tmp);
 }
 
-$lob = cubrid_lob2_new($conn, 'CLOB');
+$lob = cubrid_lob2_new($conn, 'CFILE');
 
 cubrid_lob2_write($lob, "Hello, welcome to CUBRID world! I'm LOB.");
 $pos = cubrid_lob2_tell($lob);

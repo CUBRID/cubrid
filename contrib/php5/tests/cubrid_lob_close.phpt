@@ -22,15 +22,15 @@ if (!$cubrid_req) {
     exit(1);
 }
 
-$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "blob");
+$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "bfile");
 if (!$cubrid_retval) {
-    printf("[002] Can't bind blob type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[002] Can't bind bfile type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
 $cubrid_retval = cubrid_execute($cubrid_req);
 if (!$cubrid_retval) {
-    printf("[003] Blob data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[003] Bfile data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 

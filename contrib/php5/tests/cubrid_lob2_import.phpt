@@ -19,7 +19,7 @@ if (!is_null($tmp = @cubrid_lob2_import())) {
 }
 
 @cubrid_execute($conn, 'DROP TABLE IF EXISTS test_lob2');
-cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT AUTO_INCREMENT, images BLOB)');
+cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT AUTO_INCREMENT, images BFILE)');
 
 $req = cubrid_prepare($conn, "INSERT INTO test_lob2(images) VALUES (?)");
 

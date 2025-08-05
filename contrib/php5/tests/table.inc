@@ -14,7 +14,7 @@ if($retval == -1) {
     cubrid_query('DROP TABLE php_cubrid_test', $conn);
 }
 
-$cubrid_req = cubrid_query("CREATE TABLE php_cubrid_test (a int AUTO_INCREMENT, b set(int), c list(int), d char(30), e blob, f clob)", $conn);
+$cubrid_req = cubrid_query("CREATE TABLE php_cubrid_test (a int AUTO_INCREMENT, b set(int), c list(int), d char(30), e bfile, f cfile)", $conn);
 if (!$cubrid_req) {
     printf("Failed to create test table: [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
