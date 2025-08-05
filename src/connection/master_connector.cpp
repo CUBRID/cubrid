@@ -52,7 +52,8 @@ namespace cubconn
 {
   master_connector::context::context () :
       m_conn (nullptr),
-      m_sendbuf (10)
+      m_sendbuf (10),
+      m_has_error (false)
     {
     }
 
@@ -73,6 +74,7 @@ namespace cubconn
       m_sendbuf.clear ();
 
       m_state = state::SendInHandshake;
+      m_has_error = false;
 
       if (m_conn)
 	{
@@ -402,6 +404,7 @@ namespace cubconn
 
       /* make the packets to msghdr */
       ctx->m_sendbuf.stamp_msghdr ();
+      ctx->m_has_error = true;
 
       if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT, ctx))
 	{
@@ -702,7 +705,16 @@ namespace cubconn
 	  return false;
 	}
 
-      (void) (*css_Connect_handler) (ctx->m_conn);
+      if (!ctx->m_has_error)
+	{
+	  (void) (*css_Connect_handler) (ctx->m_conn);
+	}
+      else
+	{
+	  /* In error context, this conn entry has been temporarily allocated */
+	  delete ctx->m_conn;
+	}
+
       ctx->m_conn = nullptr;
       delete ctx;
 

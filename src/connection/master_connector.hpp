@@ -67,6 +67,7 @@ namespace cubconn
 	cubbase::packet_buffer m_sendbuf;
 
 	state m_state { state::SendInHandshake };
+	bool m_has_error;
 
 	context ();
 	~context ();
