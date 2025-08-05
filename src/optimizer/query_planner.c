@@ -52,6 +52,10 @@
 #include "dbtype.h"
 #include "regu_var.hpp"
 
+#define TEST_DUMP_PLAN_COST 0
+#define TEST_HASH_JOIN_ENABLE 0
+#define TEST_HASH_JOIN_FORCE_ENABLE 0
+
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
 #define TITLE_WIDTH		7
@@ -73,7 +77,7 @@
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_FILE_IO_WEIGHT 0.5
+#define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 100
 
@@ -247,7 +251,6 @@ static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
-static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
@@ -343,13 +346,13 @@ static QO_PLAN_VTBL qo_hash_join_plan_vtbl = {
   qo_hjoin_fprint,
   qo_join_walk,
   qo_join_free,
-#if defined(TEST_HASH_JOIN_FORCE_ENABLE)
+#if TEST_HASH_JOIN_FORCE_ENABLE
   qo_zero_cost,
   qo_zero_cost,
-#else
+#else /* TEST_HASH_JOIN_FORCE_ENABLE */
   qo_hjoin_cost,
   qo_hjoin_cost,
-#endif
+#endif /* TEST_HASH_JOIN_FORCE_ENABLE */
   qo_join_info,
   "Hash join"
 };
@@ -974,7 +977,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
@@ -982,7 +985,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
-	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix);
+	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix, false);
 
 	  if (group_sort_list)
 	    {
@@ -1865,7 +1868,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   assert (plan->plan_un.scan.index != NULL);
@@ -2791,7 +2794,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   qo_plan_compute_cost (plan);
@@ -3076,8 +3079,8 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Nested Loop Cost: \n");
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nNested Loop Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
@@ -3090,7 +3093,7 @@ qo_nljoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3154,8 +3157,8 @@ qo_mjoin_cost (QO_PLAN * planp)
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Sort Merge Cost: \n");
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nSort Merge Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
@@ -3168,7 +3171,7 @@ qo_mjoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3183,9 +3186,6 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   double inner_cardinality, outer_cardinality;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
-
-  /* TODO: Check the system parameters of the server on the client. */
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
   inner_plan_p = plan_p->plan_un.join.inner;
 
@@ -3224,26 +3224,32 @@ qo_hjoin_cost (QO_PLAN * plan_p)
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-
   inner_build_io_cost = 0.0;
-  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-
   outer_build_io_cost = 0.0;
+
+#if 0
+  /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
+
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
+  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    {
+      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
+    }
+
   if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
     {
-      outer_build_io_cost = (inner_cardinality * HJ_FILE_IO_WEIGHT);
+      outer_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
       outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
     }
+#endif
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -3278,8 +3284,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       assert (false);
     }
 
-#if !defined(NDEBUG) && defined(CUBRID_DEBUG_DUMP_PLAN_COST)
-  fprintf (stdout, "\n[DEBUG] Hash Join Cost: \n");
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nHash Join Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", plan_p->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", plan_p->fixed_io_cost);
   fprintf (stdout, "  - Variable CPU Cost: %lf\n", plan_p->variable_cpu_cost);
@@ -3292,7 +3298,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3504,6 +3510,22 @@ qo_follow_cost (QO_PLAN * planp)
   planp->fixed_io_cost = head->fixed_io_cost;
   planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
   planp->variable_io_cost = head->variable_io_cost + fetch_ios;
+
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nFollow Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      qo_plan_lite_print (planp, stdout, 0);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 
@@ -4226,7 +4248,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       {
 	if (qo_is_index_iss_scan (a))
 	  {
-	    b_keys = b_cum->pkeys[a_range];
+	    a_keys = a_cum->pkeys[a_range];
 	  }
 	else
 	  {
@@ -6154,17 +6176,24 @@ static int
 qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
-  int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *inner_node;
-  int t;
-  BITSET_ITERATOR iter;
+  QO_NODE *outer_node, *inner_node;
+  QO_NODE_INDEX *node_index;
   QO_TERM *term;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
+  int i, n = 0;
+
+  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+  if (mem_limit <= 0)
+    {
+      goto exit;		/* give up */
+    }
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
    * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
-  if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
+  if (bitset_intersects (sarged_terms, &info->env->fake_terms))
     {
       goto exit;
     }
@@ -6178,10 +6207,10 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    *        insert into t values (1);
    *        select dual into :dummy_oid from dual limit 1;
    * 
-   *        select * from t1 where t1 = :dummy_oid;
+   *        select * from t where t = :dummy_oid;
    *
    *        -- rewritten query
-   *        select dt_1.da_2.t1.c1 from table({:dummy_oid}) dt_1 (da_2)
+   *        select dt_1.da_2.t.c from table({:dummy_oid}) dt_1 (da_2)
    * 
    *        -- Query plan: follow
    *        There are no results.
@@ -6193,9 +6222,10 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
    * 
    * This code prevents the path join query from being executed as a hash join plan rather than as a follow plan.
    */
-  for (t = bitset_iterate (hash_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
+  for (bitset_index = bitset_iterate (hash_join_terms, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
     {
-      term = QO_ENV_TERM (info->env, t);
+      term = QO_ENV_TERM (info->env, bitset_index);
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
 	{
 	  goto exit;		/* give up */
@@ -6222,11 +6252,42 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   else
     {
       /* default: disable hash-join */
-#if defined(TEST_HASH_JOIN_ENABLE)
+#if TEST_HASH_JOIN_ENABLE
       /* fall through */
-#else
+#else /* TEST_HASH_JOIN_ENABLE */
       goto exit;
-#endif
+#endif /* TEST_HASH_JOIN_ENABLE */
+    }
+
+  /* Check if a key limit is set. */
+  node_index = QO_NODE_INDEXES (inner_node);
+  if (node_index != NULL)
+    {
+      for (i = 0; i < QO_NI_N (node_index); i++)
+	{
+	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
+  for (bitset_index = bitset_iterate (&outer->nodes, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
+    {
+      outer_node = QO_ENV_NODE (outer->env, bitset_index);
+
+      node_index = QO_NODE_INDEXES (outer_node);
+      if (node_index != NULL)
+	{
+	  for (i = 0; i < QO_NI_N (node_index); i++)
+	    {
+	      if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+		{
+		  goto exit;	/* give up */
+		}
+	    }
+	}
     }
 
   outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
@@ -9939,7 +10000,7 @@ qo_classify (PT_NODE * attr)
 	{
 	  return PC_ATTR;
 	}
-      /* fall through */
+      [[fallthrough]];
     default:
       return PC_OTHER;
     }
@@ -11007,8 +11068,9 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
  *   is_index_w_prefix(out):
  *
  */
-static PT_NODE *
-qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix)
+PT_NODE *
+qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
+				 bool for_min_max_optimize)
 {
   QO_PLAN *plan;
   QO_ENV *env;
@@ -11236,7 +11298,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for order_by skip */
 
       /* check for constant col's order node */
-      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
+      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL, for_min_max_optimize);
       if (pos_descr.pos_no > 0)
 	{
 	  col = tree->info.query.q.select.list;
@@ -11352,7 +11414,7 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
-  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix);
+  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix, false);
 
   if (plan->iscan_sort_list == NULL || is_prefix)
     {

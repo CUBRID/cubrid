@@ -64,7 +64,7 @@ SL_INFO sl_Info;
 
 static FILE *log_fp;
 static FILE *catalog_fp;
-static int sql_log_max_cnt = 0;
+static unsigned int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
@@ -179,7 +179,13 @@ sl_init (const char *db_name, const char *repl_log_path)
       return ER_FAILED;
     }
 
-  snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path));
+  if (snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path)) >=
+      PATH_MAX)
+    {
+      assert_release (false);
+      sql_log_base_path[PATH_MAX - 1] = '\0';
+    }
+
   snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", dirname (sql_log_path), db_name);
 
   memset (&sl_Info, 0, sizeof (sl_Info));
@@ -204,7 +210,8 @@ sl_init (const char *db_name, const char *repl_log_path)
       return ER_FAILED;
     }
 
-  sql_log_max_cnt = prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_COUNT);
+  assert (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_COUNT) >= 0);
+  sql_log_max_cnt = (unsigned int) prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_COUNT);
 
   return NO_ERROR;
 }
@@ -649,7 +656,11 @@ sl_delete_oldest_file_if_needed (void)
       oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
     }
 
-  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%u", sql_log_base_path, oldest_file_id);
+  if (snprintf (oldest_file_path, PATH_MAX, "%s.%u", sql_log_base_path, oldest_file_id) >= PATH_MAX)
+    {
+      assert_release (false);
+      oldest_file_path[PATH_MAX - 1] = '\0';
+    }
 
   // step(2) : delete the oldest file if it exists
   unlink (oldest_file_path);
@@ -676,7 +687,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 {
   const char *log_path = NULL, *path_base_name = "sql_log";
   char *p = NULL;
-  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
+  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX + 60];
 
   assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
 
@@ -696,7 +707,7 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
       log_path = repl_log_path;
     }
 
-  if (strlen (log_path) + 1 + strlen (path_base_name) >= path_buf_size)
+  if (strlen (log_path) + 1 + strlen (path_base_name) >= (size_t) path_buf_size)
     {
       snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
 

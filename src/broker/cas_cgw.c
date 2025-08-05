@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "cas_cgw.h"
 #include "cas.h"
 #include "cas_util.h"
@@ -70,7 +75,7 @@
 typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
-  char *dbms_name;
+  const char *dbms_name;
   T_DBMS_TYPE dbms_type;
 };
 
@@ -110,14 +115,12 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
-static void cgw_free_string_array (char **array);
-static char **cgw_split_string (const char *str, const char *delim, int *num);
 static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
 static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
-static char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
+static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
 int
 cgw_init ()
@@ -794,7 +797,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 static char
 cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
 {
-  char code_set = INTL_CODESET_NONE;
+  char code_set = (char) INTL_CODESET_NONE;
 
   switch (odbc_type)
     {
@@ -807,11 +810,11 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_INTEGER:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_TINYINT:
     case SQL_SMALLINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
     case SQL_FLOAT:
       code_set = INTL_CODESET_ASCII;
@@ -861,7 +864,7 @@ cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       code_set = INTL_CODESET_ASCII;
       break;
     case SQL_BIGINT:
-      code_set = (is_unsigned_type) ? cgw_get_charset () : INTL_CODESET_ASCII;
+      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -1314,13 +1317,13 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       {
 	char *value;
 	int val_size;
-	SQLLEN cbValue = SQL_NULL_DATA;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_VARCHAR;
+	c_data_type = SQL_C_WCHAR;
+	sql_bind_type = SQL_WVARCHAR;
 
+	value_list->cbValue = SQL_NULL_DATA;
 	value_list->string_val = value;
 
 	SQL_CHK_ERR (handle->hstmt,
@@ -1329,7 +1332,8 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  bind_num,
 						  SQL_PARAM_INPUT,
 						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0, &cbValue));
+						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0,
+						  &value_list->cbValue));
       }
       break;
 
@@ -1374,7 +1378,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    if (src_type == CCI_U_TYPE_BIGINT)
 	      {
 		net_arg_get_bigint (&bi_val, net_value);
-		snprintf (tmp, sizeof (tmp), "%lld", bi_val);
+		snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
 	      }
 	    else
 	      {
@@ -1452,12 +1456,12 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 			 SQL_HANDLE_DESC,
 			 err_code =
 			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-					  (SQLPOINTER) value_list->ns_val.precision, 0));
+					  (SQLPOINTER) & value_list->ns_val.precision, 0));
 
 	    SQL_CHK_ERR (hdesc,
 			 SQL_HANDLE_DESC,
 			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) value_list->ns_val.scale, 0));
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) & value_list->ns_val.scale, 0));
 
 	    SQL_CHK_ERR (hdesc,
 			 SQL_HANDLE_DESC,
@@ -1905,7 +1909,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
   char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
   char num_val[DECIMAL_DIGIT_MAX_LEN + 1] = { 0 };
   short i;
-  size_t num_add_zero;
+  int num_add_zero;
   UINT64 number = 0;
   char *endptr = NULL;
   int error;
@@ -1947,7 +1951,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
       return ER_CGW_INVALID_NUMERIC_VALUE;
     }
 
-  sprintf (hexstr, "%llX", number);
+  sprintf (hexstr, "%" PRIX64, number);
 
   error = hex_to_numeric_val (numeric, hexstr);
   if (error < 0)
@@ -2734,7 +2738,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   ret = iconv (cd, (char **) &iconv_in, &inlen, &iconv_out, &outlen);
 
-  if (ret == -1)
+  if (ret == (size_t) (-1))
     {
       iconv_close (cd);
       return (-1);
@@ -2782,7 +2786,7 @@ cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t 
       return -1;
     }
 
-  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == -1)
+  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == (size_t) (-1))
     {
       iconv_close (conv);
       return -1;
@@ -2860,7 +2864,7 @@ cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
   return NULL;
 }
 
-static char *
+static const char *
 cgw_get_dbms_name (T_DBMS_TYPE db_type)
 {
   for (int i = 0; i < supported_dbms_max_num; i++)

@@ -965,7 +965,10 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
-  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28)
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
+  PT_PRINT_DBLINK_INFO = (0x1 << 29),	/* If you use DBLINK, specify it when generating the SHA hash value. */
+  /* print lower case */
+  PT_PRINT_LOWER = (0x1 << 30)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -1412,6 +1415,15 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_LEADING  0x2000000000ULL	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE 0x4000000000ULL	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH  0x8000000000ULL	/* disable hash-join */
+#define  PT_HINT_NO_PARALLEL_HEAP_SCAN  0x10000000000ULL	/* disable parallel heap scan */
+#define  PT_HINT_PARALLEL  0x20000000000ULL	/* parallel query execution threads */
+#define  PT_HINT_INLINE_CTE  0x40000000000ULL	/* inline CTE */
+#define  PT_HINT_MATERIALIZE_CTE  0x80000000000ULL	/* materialize CTE */
+#define  PT_HINT_NO_PARALLEL_SUBQUERY  0x100000000000ULL	/* disable parallel subquery */
+
+/* Parallel query execution threads limits */
+#define  PT_MAX_PARALLEL_THREADS  64
+#define  PT_MIN_PARALLEL_THREADS  0
 
 /* Codes for error messages */
 typedef enum
@@ -1744,7 +1756,9 @@ typedef enum
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
   PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
-  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000	/* spec for odku assignment */
+  PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
+  PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x8000,	/* spec for not for parallel heap scan */
+  PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000	/* spec for setted number of parallel query execution threads */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1928,6 +1942,7 @@ struct semantic_chk_info
   int Oracle_outerjoin_path_num;	/* Oracle style outer join check */
   bool donot_fold;		/* false - off, true - on */
   bool system_class;		/* system class(es) is(are) referenced */
+  bool has_dblink;
 };
 
 struct nested_view_version_info
@@ -2202,6 +2217,8 @@ struct pt_cte_info
   PT_NODE *recursive_part;	/* a recursive subquery */
   PT_MISC_TYPE only_all;	/* Type of UNION between non-recursive and recursive parts */
   void *xasl;			/* xasl proc pointer */
+  int referenced_count;		/* The number of times the CTE is referenced */
+  bool is_materialized;
 };
 
 /* CREATE SERIAL INFO */
@@ -2382,6 +2399,7 @@ struct pt_spec_info
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
+  int num_parallel_threads;	/* number of parallel threads for this spec */
 };
 
 /* Info for an EVALUATE object */
@@ -2461,7 +2479,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_do_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -2953,6 +2971,7 @@ struct pt_select_info
   PT_HINT_ENUM hint;
   int flavor;
   int flag;			/* flags */
+  int num_parallel_threads;
   PT_CONNECT_BY_CHECK_CYCLES check_cycles;	/* CONNECT BY CHECK CYCLES */
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
@@ -3845,7 +3864,7 @@ struct parser_node
     unsigned is_hidden_column:1;
     unsigned is_paren:1;
     unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-    unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
+    unsigned force_auto_parameterize:1;	/* forces a call to qo_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
     unsigned do_not_fold:1;	/* disables constant folding on the node */
     unsigned is_cnf_start:1;
@@ -3998,6 +4017,7 @@ struct parser_context
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
+  PARSER_VARCHAR *dblink_server_text;	/* Contains access information to be used in generating SHA hash values ​​when using the Server name in DBLINK. */
 
   struct
   {
@@ -4027,6 +4047,7 @@ struct parser_context
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
     unsigned is_parsing_trigger:1;
+    unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
   } flag;
 };
 

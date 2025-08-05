@@ -120,6 +120,14 @@ static INT64 lf_temps = 0;
 #if defined (UNITTEST_LF) || defined (UNITTEST_CQ)
 #if defined (NDEBUG)
 /* Abort when calling assert even if it is not debug */
+// *INDENT-OFF*
+# if defined assert
+#   undef assert
+# endif
+# if defined assert_release
+#   undef assert_release
+# endif
+// *INDENT-ON*
 #define assert(cond) if (!(cond)) abort ()
 #define assert_release(cond) if (!(cond)) abort ()
 #endif /* NDEBUG */

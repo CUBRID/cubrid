@@ -772,7 +772,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   OR_BUF buf;
   DB_VALUE dbval1, dbval2;
   int length1, length2;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   bool is_copy;
   DB_TYPE type = TP_DOMAIN_TYPE (domain_p);
   int rc;
@@ -1001,7 +1001,7 @@ void
 qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 {
   DB_VALUE dbval;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int i;
   char *tuple_p;
   OR_BUF buf;
@@ -1214,6 +1214,14 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  free_and_init (list_id_p);
 	}
       return NULL;
+    }
+
+  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+    {
+      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
+      list_id_p->tfile_vfid->membuf = NULL;
+      list_id_p->tfile_vfid->membuf_npages = 0;
+      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
@@ -1970,7 +1978,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (v2);
-      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
+      const PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
@@ -2049,7 +2057,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
+      const PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
@@ -3463,7 +3471,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      sort_info_p->fixed_page = page_p;
 	    }
 #else /* not SortCache */
-	  page_p = qmgr_get_old_page (thread_p, &vpid, list_id_p->tfile_vfid);
+	  page_p = qmgr_get_old_page_read_only (thread_p, &vpid, list_id_p->tfile_vfid);
 	  if (page_p == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -3493,7 +3501,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	      error = qfile_add_overflow_tuple_to_list (thread_p, sort_info_p->output_file, page_p, list_id_p);
 	    }
 #if 1				/* not SortCache */
-	  qmgr_free_old_page_and_init (thread_p, page_p, list_id_p->tfile_vfid);
+	  qmgr_free_old_page_ro_and_init (thread_p, page_p, list_id_p->tfile_vfid);
 #endif /* not SortCache */
 	}
       else
@@ -5606,10 +5614,11 @@ QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
-  QFILE_LIST_CACHE_ENTRY *lent;
-  int tran_index;
+  QFILE_LIST_CACHE_ENTRY *lent = NULL;
 #if defined(SERVER_MODE)
+  int tran_index;
   TRAN_ISOLATION tran_isolation;
+  bool new_tran = true;
 #if defined(WINDOWS)
   unsigned int num_elements;
 #else
@@ -5620,7 +5629,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
   size_t i_idx, num_active_users;
 #endif
 
-  bool new_tran = true;
+
 
   *result_cached = false;
 
@@ -5647,7 +5656,10 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 	}
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+#if defined(SERVER_MODE)
+  tran_index =
+#endif
+    LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
   lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
@@ -6310,7 +6322,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   PAGE_PTR page_p;
   QFILE_TUPLE_VALUE_FLAG flag;
   QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_BUF buf;
   char *ptr;
   int length;
@@ -6608,13 +6620,32 @@ void
 qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc)
 {
 #if defined (SERVER_MODE)
-  if (list_p != NULL && list_p->type_list.type_cnt != 0)
+  if (list_p == NULL || list_p->type_list.type_cnt == 0)
     {
-      thread_p->m_qlist_count += inc;
-      if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+      return;
+    }
+
+  THREAD_ENTRY *target_thread_p = thread_p;
+
+  if (thread_p->m_px_orig_thread_entry != NULL)
+    {
+      THREAD_ENTRY *emulate_thread_p = thread_p->m_px_orig_thread_entry;
+      if (emulate_thread_p != NULL)
 	{
-	  er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, thread_p->m_qlist_count);
+	  target_thread_p = emulate_thread_p;
 	}
+      else
+	{
+	  assert (false);
+	}
+    }
+
+  target_thread_p->m_qlist_count.fetch_add (inc);
+
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc,
+			  target_thread_p->m_qlist_count.load ());
     }
 #endif // SERVER_MODE
 }

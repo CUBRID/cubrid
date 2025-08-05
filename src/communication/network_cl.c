@@ -152,7 +152,7 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
@@ -2067,24 +2067,16 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
  */
 int
 net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize, char *replybuf,
-				       int replysize, char *databuf1, int datasize1, char *databuf2, int datasize2,
-				       char **replydata_ptr1, int *replydatasize_ptr1, char **replydata_ptr2,
-				       int *replydatasize_ptr2)
+				       int replysize, char *databuf1, int datasize1, char *databuf2, int datasize2)
 {
   unsigned int rc;
   int size;
-  int error;
+  int error = NO_ERROR;
   int request_error;
   char *reply = NULL, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
   bool do_read;
-
-  error = 0;
-  *replydata_ptr1 = NULL;
-  *replydata_ptr2 = NULL;
-  *replydatasize_ptr1 = 0;
-  *replydatasize_ptr2 = 0;
 
   if (net_Server_name[0] == '\0')
     {
@@ -2209,9 +2201,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 
       if (histo_is_collecting ())
 	{
-	  int recevied = replysize
-	    + (replydatasize_ptr1 ? *replydatasize_ptr1 : 0) + (replydatasize_ptr2 ? *replydatasize_ptr2 : 0);
-	  histo_finish_request (request, recevied);
+	  histo_finish_request (request, replysize);
 	}
     }
   return error;

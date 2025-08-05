@@ -40,7 +40,6 @@ set(EXECUTABLE_HEADERS
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -108,9 +107,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
@@ -166,7 +163,6 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
-  ${BASE_DIR}/semaphore.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -248,7 +244,15 @@ set(OPTIMIZER_SOURCES
   ${OPTIMIZER_DIR}/query_graph.c
   ${OPTIMIZER_DIR}/query_planner.c
   ${OPTIMIZER_DIR}/plan_generation.c
-  ${OPTIMIZER_DIR}/query_rewrite.c
+  )
+
+set(REWRITER_SOURCES
+  ${REWRITER_DIR}/query_rewrite_auto_parameterize.c
+  ${REWRITER_DIR}/query_rewrite_subquery.c
+  ${REWRITER_DIR}/query_rewrite_select.c
+  ${REWRITER_DIR}/query_rewrite_set.c
+  ${REWRITER_DIR}/query_rewrite_term.c
+  ${REWRITER_DIR}/query_rewrite.c
   )
 
 set(QUERY_SOURCES
@@ -265,6 +269,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
+  ${QUERY_DIR}/query_hash_join.c
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -292,6 +297,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
+  ${QUERY_DIR}/query_hash_join.h
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
@@ -368,6 +374,56 @@ set(SP_HEADERS
   ${SP_DIR}/pl_signature.hpp
   ${SP_DIR}/pl_struct_compile.cpp
 )
+
+set(PARALLEL_HEAP_SCAN_SOURCES
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  )
+
+set(PARALLEL_HEAP_SCAN_HEADERS
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  )
+
+set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  )
+
+set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
+  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
+  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_SOURCES
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
+  )
+
+set(PARALLEL_QUERY_EXECUTE_HEADERS
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
+  )
 
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
@@ -602,9 +658,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_DIR}/scanner_support.c
   ${PARSER_DIR}/view_transform.c
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -620,8 +680,6 @@ SET_SOURCE_FILES_PROPERTIES(
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -643,12 +701,19 @@ add_library(cubridsa SHARED
   ${HEAPLAYER_SOURCES}
   ${SP_SOURCES}
   ${SP_HEADERS}
+  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_QUERY_SOURCES}
+  ${PARALLEL_QUERY_HEADERS}
+  ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}
   ${MONITOR_HEADERS}
   ${MONITOR_SOURCES}
   ${OBJECT_HEADERS}
   ${OBJECT_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${REWRITER_SOURCES}
   ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${PARSER_HEADERS}
@@ -679,8 +744,6 @@ if(WIN32)
     ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
     ${LOADER_LEXER_OUTPUT}
-    ${ESQL_GRAMMAR_OUTPUT}
-    ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
   )
   set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")

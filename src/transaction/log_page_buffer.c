@@ -1317,7 +1317,9 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (loghdr != NULL);
 
   /* to also initialize padding bytes */
-  memset (loghdr, 0, sizeof (LOG_HEADER));
+  // Use placement new instead of memset to avoid -Wclass-memaccess.
+  // Do not delete loghdr  
+  loghdr = placement_new (loghdr);
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
@@ -5993,7 +5995,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 {
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
-  int min_arv_required_for_vacuum;
+  int min_arv_required_for_vacuum = 0;
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
@@ -7080,7 +7082,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
 
       /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+      for (i = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
 	  /*
 	   * Don't checkpoint current system transaction. That is, the one of
@@ -7633,6 +7635,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
   size_t read_thread_count = 0;
+  int specified_thread_count = num_threads;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7910,7 +7913,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{

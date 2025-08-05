@@ -1993,12 +1993,71 @@ pt_expr_disallow_op_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   int *op_list = (int *) arg;
   int i;
 
+  if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
   if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
 
+  assert (op_list != NULL);
+
+  for (i = 1; i <= op_list[0]; i++)
+    {
+      if (op_list[i] == node->info.expr.op)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+		      pt_show_binopcode (node->info.expr.op));
+	}
+    }
+  return node;
+}
+
+/*
+ * pt_expr_disallow_op_except_agg () - looks if the expression op is in the list
+ *				       given as argument and throws an error if
+ *				       found except aggregate function
+ *
+ * return: node
+ * parser(in):
+ * node(in):
+ * arg(in): integer list with forbidden operators. arg[0] keeps the number of
+ *	    operators
+ * continue_wals (in/out):
+ */
+PT_NODE *
+pt_expr_disallow_op_except_agg (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *op_list = (int *) arg;
+  int i;
+
   if (*continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type) || pt_is_aggregate_function (parser, node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  if (!PT_IS_EXPR_NODE (node))
     {
       return node;
     }
@@ -4109,6 +4168,31 @@ pt_free_orphans (PARSER_CONTEXT * parser)
 }
 
 /*
+ * pt_free_escape_char () - Frees the escape sequence of a PT_LIKE node and
+ *                          leaves only the LIKE pattern in the parse tree.
+ *   parser(in):
+ *   like(in):
+ *   pattern(in):
+ *   escape(in):
+ */
+void
+pt_free_escape_char (PARSER_CONTEXT * const parser, PT_NODE * const like, PT_NODE * const pattern,
+		     PT_NODE * const escape)
+{
+  PT_NODE *const save_arg2 = like->info.expr.arg2;
+
+  assert (escape != NULL);
+  assert (PT_IS_EXPR_NODE_WITH_OPERATOR (save_arg2, PT_LIKE_ESCAPE));
+  assert (save_arg2->info.expr.arg1 == pattern);
+  assert (save_arg2->info.expr.arg2 == escape);
+
+  save_arg2->info.expr.arg1 = NULL;
+  parser_free_tree (parser, save_arg2);
+
+  like->info.expr.arg2 = pattern;
+}
+
+/*
  * pt_sort_spec_cover () -
  *   return:  true or false
  *   cur_list(in): current PT_SORT_SPEC list pointer
@@ -4156,6 +4240,59 @@ pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list)
     }
 
   return (s2 == NULL) ? true : false;
+}
+
+/*
+ * pt_sort_spec_cover_min_max () -
+ *   return:  true or false
+ *   cur_list(in): current PT_SORT_SPEC list pointer
+ *   new_list(in): new PT_SORT_SPEC list pointer
+ */
+
+bool
+pt_sort_spec_cover_for_min_max (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * cur_list, PT_NODE * new_list)
+{
+  PT_NODE *s1, *s2;
+  QFILE_TUPLE_VALUE_POSITION *p1, p2;
+
+  if (new_list == NULL || cur_list == NULL)
+    {
+      return false;
+    }
+
+  for (s1 = cur_list, s2 = new_list; s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      p1 = &(s1->info.sort_spec.pos_descr);
+      if (s2->node_type != PT_NAME)
+	{
+	  return false;
+	}
+      pt_to_pos_descr (parser, &p2, s2, tree, NULL, true);
+
+      if (p1->pos_no <= 0)
+	{
+	  s1 = NULL;		/* mark as end-of-sort */
+	}
+
+      if (p2.pos_no <= 0)
+	{
+	  s2 = NULL;		/* mark as end-of-sort */
+	}
+
+      /* end-of-sort check */
+      if (s1 == NULL || s2 == NULL)
+	{
+	  break;
+	}
+
+      /* equality check */
+      if (p1->pos_no != p2.pos_no)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /* pt_enter_packing_buf() - mark the beginning of another level of packing
@@ -4529,6 +4666,38 @@ error_exit:
 }
 
 /*
+ * pt_to_null_ordering () - get null ordering from a sort spec
+ * return : null ordering
+ * sort_spec (in) : sort spec
+ */
+SORT_NULLS
+pt_to_null_ordering (PT_NODE * sort_spec)
+{
+  assert_release (sort_spec != NULL);
+  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+
+  switch (sort_spec->info.sort_spec.nulls_first_or_last)
+    {
+    case PT_NULLS_FIRST:
+      return S_NULLS_FIRST;
+
+    case PT_NULLS_LAST:
+      return S_NULLS_LAST;
+
+    case PT_NULLS_DEFAULT:
+    default:
+      break;
+    }
+
+  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
+    {
+      return S_NULLS_FIRST;
+    }
+
+  return S_NULLS_LAST;
+}
+
+/*
  * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
  *                                variable that replaces an existing value
  *   return: the node or NULL on error
@@ -4781,7 +4950,7 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
       goto error_exit;
     }
 
-  /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
+  /* We need the OID PT_VALUE to become a host variable, see qo_rewrite_queries () */
   node->info.update.search_cond->flag.force_auto_parameterize = 1;
 
   /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from
@@ -8554,7 +8723,7 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NOD
 
   while (s1 && s2)
     {
-      pt_to_pos_descr (parser, &pos_descr, s2->info.sort_spec.expr, tree, NULL);
+      pt_to_pos_descr (parser, &pos_descr, s2->info.sort_spec.expr, tree, NULL, false);
       if (pos_descr.pos_no > 0)
 	{
 	  col = tree->info.query.q.select.list;
@@ -9809,18 +9978,16 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   else if (op == PT_BETWEEN)
     {
       PT_NODE *between_and = orderby_for->info.expr.arg2;
-      PT_NODE *between_upper = NULL;
       int between_op;
 
       assert (between_and != NULL && between_and->node_type == PT_EXPR);
-      between_upper = between_and->info.expr.arg2;
       between_op = between_and->info.expr.op;
       switch (between_op)
 	{
 	case PT_BETWEEN_GT_LT:
 	case PT_BETWEEN_GE_LT:
 	  lt = true;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
 	case PT_BETWEEN_GT_LE:
@@ -11469,6 +11636,11 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 
   /* If it is a synonym name, change it to the target name. */
   class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  if (class_name == NULL)
+    {
+      return spec;
+    }
+
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
@@ -11574,6 +11746,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
+
+      /* alias is not needed for remote table */
+      spec->info.spec.range_var = NULL;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -11598,10 +11773,20 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
     {
       for (spec = node->info.delete_.spec; spec; spec = spec->next)
 	{
+	  char *a_name = NULL, *t_name, *r_name;
+
 	  if (spec->info.spec.range_var)
 	    {
+	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+	    }
+
+	  t_name = (char *) target->info.name.original;
+	  r_name = (char *) target->info.name.resolved;
+
+	  if (a_name)
+	    {
 	      /* checking alias for remote/local table */
-	      if (strcmp (spec->info.spec.range_var->info.name.original, target->info.name.original) == 0)
+	      if ((t_name && strcmp (a_name, t_name) == 0) || ((r_name && strcmp (a_name, r_name) == 0)))
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11616,8 +11801,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	    }
 	  else
 	    {
-	      if (spec->info.spec.entity_name
-		  && strcmp (spec->info.spec.entity_name->info.name.original, target->info.name.original) == 0)
+	      if (spec->info.spec.entity_name && t_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, t_name) == 0)
 		{
 		  if (spec->info.spec.remote_server_name)
 		    {
@@ -11731,15 +11916,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
 {
   int i;
-  int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
   PT_NODE *list = NULL;		/* for insert select list */
-  PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
+  PT_NODE *into_spec = NULL, *upd_spec = NULL, *server;
 
-  PARSER_VARCHAR *comment, *dml;
+  PARSER_VARCHAR *comment = NULL, *dml;
 
   switch (node->node_type)
     {
@@ -11902,7 +12086,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  assert (server->node_type == PT_NAME);
+  if (server->node_type == PT_DBLINK_TABLE_DML)
+    {
+      /* already converted */
+      return;
+    }
 
   ct->info.dblink_table.is_name = true;
   ct->info.dblink_table.conn = server;
@@ -12062,6 +12250,14 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   switch (stmt->node_type)
     {
+    case PT_SCOPE:
+      /* for trigger action */
+      stmt = stmt->info.scope.stmt->info.trigger_action.expression;
+      if (stmt == NULL)
+	{
+	  return;
+	}
+      [[fallthrough]];
     case PT_INSERT:
     case PT_DELETE:
     case PT_UPDATE:
@@ -12083,7 +12279,22 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      return;
 	    }
 	}
+      break;
+    case PT_CREATE_TRIGGER:
+      /* for trigger create */
+      if (stmt->info.create_trigger.trigger_action)
+	{
+	  PT_NODE *tr_action = stmt->info.create_trigger.trigger_action;
 
+	  if (tr_action->info.trigger_action.expression)
+	    {
+	      parser_walk_tree (parser, tr_action->info.trigger_action.expression, NULL, NULL, pt_convert_dml, &snl);
+	    }
+	  if (pt_has_error (parser))
+	    {
+	      return;
+	    }
+	}
       break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -12201,4 +12412,26 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
     }
 
   return node;
+}
+
+PT_HINT_ENUM
+pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  assert (query != NULL);
+  assert (pt_is_query (query));
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      return query->info.query.q.select.hint;
+
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+    case PT_UNION:
+      /* for set operations, get the hint from the query on the left side */
+      return pt_get_hint_from_query (parser, query->info.query.q.union_.arg1);
+
+    default:
+      return PT_HINT_NONE;
+    }
 }

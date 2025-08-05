@@ -75,6 +75,7 @@ using PRED_EXPR = cubxasl::pred_expr;
 typedef enum
 {
   S_HEAP_SCAN = 1,
+  S_PARALLEL_HEAP_SCAN,
   S_CLASS_ATTR_SCAN,
   S_INDX_SCAN,
   S_LIST_SCAN,
@@ -118,6 +119,38 @@ struct heap_scan_id
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
   sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
+
+namespace parallel_heap_scan
+{
+  class manager;		// forward declaration
+  class perf_monitor;		// forward declaration
+}
+
+typedef struct parallel_heap_scan_id PARALLEL_HEAP_SCAN_ID;
+struct parallel_heap_scan_id
+{
+  OID curr_oid;			/* current object identifier */
+  OID cls_oid;			/* class object identifier */
+  HFID hfid;			/* heap file identifier */
+  HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
+  HEAP_SCANRANGE scan_range;	/* heap file scan range */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+  SCAN_ATTRS pred_attrs;	/* attr info from predicates */
+  regu_variable_list_node *rest_regu_list;	/* regulator variable list */
+  SCAN_ATTRS rest_attrs;	/* attr info from other than preds */
+  bool caches_inited;		/* are the caches initialized?? */
+  bool scancache_inited;
+  bool scanrange_inited;
+  DB_VALUE **cache_recordinfo;	/* cache for record information */
+  regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+  sampling_info sampling;	/* for sampling statistics */
+  // *INDENT-OFF*
+  #if !WINDOWS
+  parallel_heap_scan::manager * manager;
+  parallel_heap_scan::perf_monitor * perf_monitor;
+  #endif
+  // *INDENT-ON*
+};				/* Heap PARALLEL Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
 struct heap_page_scan_id
@@ -332,6 +365,7 @@ struct scan_stats
   bool index_skip_scan;
   bool loose_index_scan;
   bool noscan;			/* aggregate optimize is not scan */
+  bool min_max_only_scan;
   SCAN_AGL *agl;		/* for multiple aggregate optimize */
 
   /* hash list scan */
@@ -364,6 +398,7 @@ struct scan_id_struct
   {
     LLIST_SCAN_ID llsid;	/* List File Scan Identifier */
     HEAP_SCAN_ID hsid;		/* Regular Heap File Scan Identifier */
+    PARALLEL_HEAP_SCAN_ID phsid;	/* Parallel Heap File Scan Identifier */
     HEAP_PAGE_SCAN_ID hpsid;	/* Scan heap pages without going through records */
     INDX_SCAN_ID isid;		/* Indexed Heap File Scan Identifier */
     INDEX_NODE_SCAN_ID insid;	/* Scan b-tree nodes */
@@ -376,6 +411,7 @@ struct scan_id_struct
   } s;
 
   SCAN_STATS scan_stats;
+  SCAN_STATS *partition_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
 
@@ -426,7 +462,8 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 				 HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id);
+				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+				 bool min_max_optimzied_scan);
 extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					  /* fields of SCAN_ID */
 					  val_list_node * val_list, val_descr * vd,
@@ -503,7 +540,6 @@ extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
-
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);

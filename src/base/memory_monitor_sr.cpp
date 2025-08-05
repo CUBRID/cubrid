@@ -25,7 +25,6 @@
 #include <cstring>
 #include <algorithm>
 
-#include "environment_variable.h"
 #include "memory_monitor_sr.hpp"
 
 bool mmon_disabled = true;
@@ -35,10 +34,8 @@ namespace cubmem
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_stat_name_map {MMON_MAP_RESERVE_SIZE},
-      m_server_name {server_name},
-      m_magic_number {*reinterpret_cast <const int *> ("MMON")},
-      m_total_mem_usage {0},
+    : m_server_name {server_name},
+      m_stat_name_map {MMON_MAP_RESERVE_SIZE},
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       m_stat_alloc_count {},
       m_stat_free_count {},
@@ -47,7 +44,9 @@ namespace cubmem
       m_stat_memory_peak {},
       m_total_memory_peak {0},
 #endif
-      m_meta_alloc_count {0}
+      m_total_mem_usage {0},
+      m_meta_alloc_count {0},
+      m_magic_number {*reinterpret_cast <const int *> ("MMON")}
   {
     std::string filecopy (__FILE__);
     std::string target ("/src/");

@@ -1275,9 +1275,12 @@ cas_main (void)
 	    dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
 	    cgw_set_dbms_type (dbms_type);
 
-	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE);
-	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
-	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
+	    strncpy (tmp_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+	    tmp_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
+	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE - 1);
+	    tmp_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBPASSWD_SIZE - 1);
+	    tmp_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
 	    if (dbms_type == CAS_CGW_DBMS_ORACLE)
 	      {
@@ -2402,7 +2405,8 @@ cas_init ()
       return -1;
     }
 
-  strncpy (broker_name, shm_appl->broker_name, BROKER_NAME_LEN);
+  assert (sizeof (broker_name) == sizeof (shm_appl->broker_name));
+  strcpy (broker_name, shm_appl->broker_name);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
   set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);

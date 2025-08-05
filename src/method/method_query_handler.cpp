@@ -19,7 +19,7 @@
 #include "method_query_handler.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
 #include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
@@ -676,7 +676,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
-    m_query_id = -1;
+    m_query_id = (uint64_t) (-1);
   }
 
   int
