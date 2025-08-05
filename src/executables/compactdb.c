@@ -591,8 +591,8 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
       }
 
     case DB_TYPE_NULL:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     default:
       break;
     }

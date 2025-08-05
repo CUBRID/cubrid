@@ -867,8 +867,8 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_SEQUENCE:
       CHECK_PRINT_ERROR (fprint_special_set (tout, db_get_set (value)));
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
@@ -903,8 +903,8 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
     case DB_TYPE_SEQUENCE:
       print_set (output_ctx, db_get_set (value));
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_PRINT_ELO));
       break;
     default:
