@@ -2520,12 +2520,12 @@ _op_get_set_value (DB_VALUE * val)
       snprintf (result, result_size, "%s%s%s", "X'", return_result, "'");
       break;
 
-    case DB_TYPE_BLOB:
-      snprintf (result, result_size, "%s%s%s", "BLOB'", return_result, "'");
+    case DB_TYPE_BFILE:
+      snprintf (result, result_size, "%s%s%s", "BFILE'", return_result, "'");
       break;
 
-    case DB_TYPE_CLOB:
-      snprintf (result, result_size, "%s%s%s", "CLOB'", return_result, "'");
+    case DB_TYPE_CFILE:
+      snprintf (result, result_size, "%s%s%s", "CFILE'", return_result, "'");
       break;
 
     default:
