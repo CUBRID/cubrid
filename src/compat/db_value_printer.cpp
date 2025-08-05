@@ -169,11 +169,11 @@ void db_value_printer::describe_type (const db_value *value)
 	case DB_TYPE_SEQUENCE:
 	  m_buf ("SEQUENCE");
 	  break;
-	case DB_TYPE_BLOB:
-	  m_buf ("BLOB");
+	case DB_TYPE_BFILE:
+	  m_buf ("BFILE");
 	  break;
-	case DB_TYPE_CLOB:
-	  m_buf ("CLOB");
+	case DB_TYPE_CFILE:
+	  m_buf ("CFILE");
 	  break;
 	case DB_TYPE_TIME:
 	  m_buf ("TIME");
@@ -379,13 +379,13 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_BLOB:
-	  m_buf ("BLOB'");
+	case DB_TYPE_BFILE:
+	  m_buf ("BFILE'");
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_CLOB:
-	  m_buf ("CLOB'");
+	case DB_TYPE_CFILE:
+	  m_buf ("CFILE'");
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
@@ -556,8 +556,8 @@ void db_value_printer::describe_data (const db_value *value)
 	}
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       elo = db_get_elo (value);
       if (elo != NULL)
 	{
