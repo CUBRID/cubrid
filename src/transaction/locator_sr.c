@@ -4419,7 +4419,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      for (i = 0; i < attr_info.num_values; i++)
 			{
 			  value = &attr_info.values[i];
-			  if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+			  if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 			    {
 			      lob_exist = true;
 			      break;
@@ -6448,7 +6448,7 @@ error:
 }
 
 /*
- * locator_delete_lob_force () - Delete all blob which is in the given object
+ * locator_delete_lob_force () - Delete all bfile which is in the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -6487,7 +6487,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
   for (i = 0; i < attr_info.num_values; i++)
     {
       value = &attr_info.values[i];
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+      if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 	{
 	  found = true;
 	  break;
