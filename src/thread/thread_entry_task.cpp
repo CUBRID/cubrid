@@ -91,10 +91,9 @@ namespace cubthread
       {
 	context.end_resource_tracks ();
       }
-    if (context.m_px_stats != NULL)
+    if (context.m_px_stats != NULL && context.m_px_orig_thread_entry != NULL)
       {
 	entry *parent_context = context.m_px_orig_thread_entry;
-	assert (parent_context != NULL);
 
 	int fetches_offset = pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset;
 	int ioreads_offset = pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset;
