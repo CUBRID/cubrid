@@ -28092,8 +28092,22 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
 	{
-	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	  char *str_group = NULL;
 
+	  if (groupby->info.sort_spec.expr->alias_print)
+	    {
+	      if (!node->alias_print)
+		{
+		  /* In order to use an alias in the GROUP BY clause, the alias must be explicitly specified in the select-list. */
+		  continue;
+		}
+	      str_select = (char *) node->alias_print;
+	      str_group = (char *) groupby->info.sort_spec.expr->alias_print;
+	    }
+	  else
+	    {
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	    }
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
 	    {
