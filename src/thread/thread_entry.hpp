@@ -304,6 +304,13 @@ namespace cubthread
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
 
+      struct
+      {
+	bool is_initialized;
+	bool is_watcher_exists;
+	int activation_flag;
+      } m_perfmon_options;
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();

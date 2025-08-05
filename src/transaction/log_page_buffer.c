@@ -814,7 +814,7 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
   logpb_log ("called logpb_locate_page for pageid %lld, fetch_mode=%s", (long long int) pageid,
 	     fetch_mode == NEW_PAGE ? "new_page" : "old_page\n");
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking_local (thread_p);
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -1880,7 +1880,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   logpb_log ("called logpb_copy_page with pageid = %lld\n", (long long int) pageid);
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking_local (thread_p);
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);

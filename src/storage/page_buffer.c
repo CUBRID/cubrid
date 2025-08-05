@@ -1848,7 +1848,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     }
 
   perf.lock_wait_time = 0;
-  perf.is_perf_tracking = perfmon_is_perf_tracking ();
+  perf.is_perf_tracking = perfmon_is_perf_tracking_local (thread_p);
 
   if (perf.is_perf_tracking)
     {
@@ -2397,7 +2397,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = perfmon_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking_local (thread_p);
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2669,7 +2669,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
+  is_perf_tracking = perfmon_is_perf_tracking_local (thread_p);
   if (is_perf_tracking)
     {
       perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
@@ -3394,7 +3394,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool repeated = false;
 #endif /* SERVER_MODE */
   bool is_bcb_locked = false;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   bool assigned_directly = false;
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   bool empty_flushed_bcb_queue = false;
@@ -6308,7 +6308,8 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 		  if (!pgbuf_bcb_avoid_victim (bufptr) && pgbuf_assign_direct_victim (thread_p, bufptr))
 		    {
 		      /* assigned victim directly */
-		      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+		      if (perfmon_is_perf_tracking_and_active_local
+			  (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
 			{
 			  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU);
 			}
@@ -6410,7 +6411,7 @@ pgbuf_unlatch_void_zone_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int threa
       if (!pgbuf_bcb_avoid_victim (bcb) && pgbuf_assign_direct_victim (thread_p, bcb))
 	{
 	  /* assigned victim directly */
-	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+	  if (perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID);
 	    }
@@ -7028,6 +7029,7 @@ pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_ancho
 #endif
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR);
 
 /* one_phase: no hash-chain mutex */
 one_phase:
@@ -7083,14 +7085,14 @@ two_phase:
 
 try_again:
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (detailed_perf)
     {
       tsc_getticks (&start_tick);
     }
 
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (detailed_perf)
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
@@ -7162,19 +7164,17 @@ pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 #endif /* SERVER_MODE */
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR);
 
-  if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
+  if (detailed_perf)
     {
-      if (perfmon_is_perf_tracking ())
-	{
-	  tsc_getticks (&start_tick);
-	}
+      tsc_getticks (&start_tick);
     }
 
   /* Note that the caller is not holding bufptr->mutex */
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (detailed_perf)
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
@@ -7211,13 +7211,11 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif /* SERVER_MODE */
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR);
 
-  if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
+  if (detailed_perf)
     {
-      if (perfmon_is_perf_tracking ())
-	{
-	  tsc_getticks (&start_tick);
-	}
+      tsc_getticks (&start_tick);
     }
 
   /* the caller is holding bufptr->mutex */
@@ -7227,7 +7225,7 @@ pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&(bufptr->vpid))]);
   rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+  if (detailed_perf)
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
@@ -7311,7 +7309,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
   THREAD_ENTRY *cur_thrd_entry;
   TSC_TICKS start_tick, end_tick;
   UINT64 lock_wait_time = 0;
-
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR);
   /* the caller is holding hash_anchor->hash_mutex */
   /* check whether the page is in the Buffer Lock Chain */
 
@@ -7340,14 +7338,14 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 	      THREAD_ENTRY *thrd_entry, *prev_thrd_entry = NULL;
 	      int r;
 
-	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+	      if (detailed_perf)
 		{
 		  tsc_getticks (&start_tick);
 		}
 
 	      r = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-	      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+	      if (detailed_perf)
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
@@ -7428,18 +7426,16 @@ pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, con
   PGBUF_BUFFER_LOCK *prev_buffer_lock, *cur_buffer_lock;
   THREAD_ENTRY *cur_thrd_entry;
 
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR);
   if (need_hash_mutex)
     {
-      if (perfmon_get_activation_flag () & PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR)
+      if (detailed_perf)
 	{
-	  if (perfmon_is_perf_tracking ())
-	    {
-	      tsc_getticks (&start_tick);
-	    }
+	  tsc_getticks (&start_tick);
 	}
       rv = pthread_mutex_lock (&hash_anchor->hash_mutex);
 
-      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR))
+      if (detailed_perf)
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
@@ -7507,7 +7503,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PGBUF_BCB *bufptr;
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
 
@@ -8355,7 +8351,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 #define PERF(id) if (detailed_perf) perfmon_inc_stat (thread_p, id)
 
   PGBUF_BCB *victim = NULL;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   bool has_flush_thread = pgbuf_is_page_flush_daemon_available ();
   int nloops = 0;		/* used as safe-guard against infinite loops */
   int private_lru_idx;
@@ -8610,7 +8606,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PGBUF_BCB *bufptr_start = NULL;
   PGBUF_BCB *victim_hint = NULL;
 
-  bool perf_tracking = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool perf_tracking = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
@@ -8867,7 +8863,7 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 	}
       /* assigned directly */
       PGBUF_BCB_UNLOCK (bcb);
-      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+      if (perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC);
 	}
@@ -9334,6 +9330,7 @@ STATIC_INLINE void
 pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LRU_LIST * lru_list)
 {
   assert (pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_1_ZONE || pgbuf_bcb_get_zone (bcb) == PGBUF_LRU_2_ZONE);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
 
 #if defined (SERVER_MODE)
   /* can we assign this directly as victim? */
@@ -9342,7 +9339,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
     {
       if (pgbuf_bcb_is_to_vacuum (bcb))
 	{
-	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+	  if (detailed_perf)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM);
 	    }
@@ -9358,7 +9355,7 @@ pgbuf_lru_fall_bcb_to_zone_3 (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, PGBUF_LR
 	      VPID vpid_copy = bcb->vpid;
 	      if (pgbuf_is_bcb_victimizable (bcb, true) && pgbuf_assign_direct_victim (thread_p, bcb))
 		{
-		  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+		  if (detailed_perf)
 		    {
 		      perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST);
 		    }
@@ -10018,6 +10015,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
 
 
   PGBUF_BCB_CHECK_OWN (bufptr);
@@ -10201,7 +10199,7 @@ copy_unflushed_lsa:
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
       pgbuf_Page_post_flush_daemon->wakeup ();
-      if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+      if (detailed_perf)
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_DIRTY_TO_POST_FLUSH);
 	}
@@ -10221,7 +10219,7 @@ copy_unflushed_lsa:
 #endif
     }
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+  if (detailed_perf)
     {
       perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_PAGE_FLUSHED);
     }
@@ -13310,8 +13308,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
-	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
-		  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+	      if (pgbuf_lfcq_add_lru_with_victims (lru_list))
 		{
 		  /* added to queue of lru lists having victims. */
 		}
@@ -13356,8 +13353,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
-	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
-		  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+	      if (pgbuf_lfcq_add_lru_with_victims (lru_list))
 		{
 		  /* added to queue of lru lists having victims. */
 		}
@@ -13386,8 +13382,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
       if (lru_list->count_vict_cand > 0)
 	{
 	  /* make sure this is added to victim list */
-	  if (pgbuf_lfcq_add_lru_with_victims (lru_list)
-	      && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+	  if (pgbuf_lfcq_add_lru_with_victims (lru_list))
 	    {
 	      /* added to queue of lru lists having victims. */
 	    }
@@ -14388,7 +14383,7 @@ bool
 pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb_flushed = NULL;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   bool not_empty = false;
   /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */
   int invalidate_flag = (PGBUF_BCB_INVALID_VICTIM_CANDIDATE_MASK & (~PGBUF_BCB_FLUSHING_TO_DISK_FLAG));
@@ -14602,8 +14597,7 @@ pgbuf_lru_add_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_li
   ATOMIC_INC_32 (&lru_list->count_vict_cand, 1);
   if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index) || PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
     {
-      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
-	  && perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION))
+      if (pgbuf_lfcq_add_lru_with_victims (lru_list))
 	{
 	  /* added to queue of lru lists having victims. */
 	}
@@ -15318,7 +15312,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
   int lru_idx;
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *victim = NULL;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
   bool added_back = false;
 
   if (pgbuf_Pool.private_lrus_with_victims == NULL)
@@ -15410,7 +15404,7 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   int lru_idx;
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *victim = NULL;
-  bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
+  bool detailed_perf = perfmon_is_perf_tracking_and_active_local (thread_p, PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
 
   PERF (PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS);
 

@@ -194,6 +194,10 @@ namespace cubthread
     _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
     _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
 
+    m_perfmon_options.is_initialized = false;
+    m_perfmon_options.is_watcher_exists = false;
+    m_perfmon_options.activation_flag = 0;
+
 #if !defined (NDEBUG)
     fi_thread_init (this);
 #endif /* DEBUG */

@@ -3280,6 +3280,12 @@ perfmon_start_watch (THREAD_ENTRY * thread_p)
 
   memset (pstat_Global.tran_stats[tran_index], 0, PERFMON_VALUES_MEMSIZE);
   pstat_Global.is_watching[tran_index] = true;
+  if (thread_p != NULL)
+    {
+      thread_p->m_perfmon_options.is_initialized = true;
+      thread_p->m_perfmon_options.is_watcher_exists = true;
+      thread_p->m_perfmon_options.activation_flag = pstat_Global.activation_flag;
+    }
 }
 
 /*
@@ -3313,6 +3319,12 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 #endif /* !HAVE_ATOMIC_BUILTINS */
 
   pstat_Global.is_watching[tran_index] = false;
+  if (thread_p != NULL)
+    {
+      thread_p->m_perfmon_options.is_initialized = false;
+      thread_p->m_perfmon_options.is_watcher_exists = false;
+      thread_p->m_perfmon_options.activation_flag = 0;
+    }
 }
 
 void

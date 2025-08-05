@@ -845,7 +845,15 @@ extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_local (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_and_active_local (THREAD_ENTRY * thread_p, int activation_flag)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_tracking_force_local (THREAD_ENTRY * thread_p, bool always_collect)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_perf_initialized (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool perfmon_is_watcher_exists (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool perfmon_is_perf_tracking_force (bool always_collect) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int perfmon_get_activation_flag_local (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
@@ -897,7 +905,7 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 {
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
-  if (!perfmon_is_perf_tracking ())
+  if (!perfmon_is_perf_tracking_local (thread_p))
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -1066,7 +1074,7 @@ perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool 
 {
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
-  if (!perfmon_is_perf_tracking_force (always_collect))
+  if (!perfmon_is_perf_tracking_force_local (thread_p, always_collect))
     {
       /* No need to collect statistics since no one is interested. */
       return;
@@ -1326,6 +1334,18 @@ perfmon_get_activation_flag (void)
   return pstat_Global.activation_flag;
 }
 
+STATIC_INLINE int
+perfmon_get_activation_flag_local (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL)
+    {
+      return thread_p->m_perfmon_options.activation_flag;
+    }
+#endif
+  return perfmon_get_activation_flag ();
+}
+
 /*
  * perfmon_is_perf_tracking () - Returns true if there are active threads
  *
@@ -1335,6 +1355,32 @@ STATIC_INLINE bool
 perfmon_is_perf_tracking (void)
 {
   return pstat_Global.initialized && pstat_Global.n_watchers > 0;
+}
+
+
+STATIC_INLINE bool
+perfmon_is_perf_tracking_local (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL)
+    {
+      return thread_p->m_perfmon_options.is_initialized && thread_p->m_perfmon_options.is_watcher_exists;
+    }
+#endif
+  return perfmon_is_perf_tracking ();
+}
+
+STATIC_INLINE bool
+perfmon_is_perf_tracking_and_active_local (THREAD_ENTRY * thread_p, int activation_flag)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL)
+    {
+      return thread_p->m_perfmon_options.is_initialized && thread_p->m_perfmon_options.is_watcher_exists
+	&& (activation_flag & thread_p->m_perfmon_options.activation_flag);
+    }
+#endif
+  return perfmon_is_perf_tracking_and_active (activation_flag);
 }
 
 /*
@@ -1351,6 +1397,30 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
   return perfmon_is_perf_tracking () && (activation_flag & pstat_Global.activation_flag);
 }
 
+STATIC_INLINE bool
+perfmon_is_perf_tracking_force_local (THREAD_ENTRY * thread_p, bool always_collect)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL)
+    {
+      return thread_p->m_perfmon_options.is_initialized && (always_collect
+							    || thread_p->m_perfmon_options.is_watcher_exists);
+    }
+#endif
+  return perfmon_is_perf_tracking_force (always_collect);
+}
+
+STATIC_INLINE bool
+perfmon_is_perf_initialized (void)
+{
+  return pstat_Global.initialized;
+}
+
+STATIC_INLINE bool
+perfmon_is_watcher_exists (void)
+{
+  return pstat_Global.n_watchers > 0;
+}
 
 /*
  * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
@@ -1448,7 +1518,7 @@ struct perf_utime_tracker
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
     { \
-      (track)->is_perf_tracking = perfmon_is_perf_tracking (); \
+      (track)->is_perf_tracking = perfmon_is_perf_tracking_local (thread_p); \
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)

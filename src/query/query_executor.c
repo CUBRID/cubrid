@@ -7438,7 +7438,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
     }
 
   /* monitoring */
-  if (perfmon_is_perf_tracking ())
+  if (perfmon_is_perf_tracking_local (thread_p))
     {
       switch (curr_spec->type)
 	{

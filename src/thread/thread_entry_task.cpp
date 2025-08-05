@@ -27,6 +27,7 @@
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "perf_monitor.h"
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -49,6 +50,10 @@ namespace cubthread
 #endif // SERVER_MODE
 
     context.get_error_context ().register_thread_local ();
+
+    context.m_perfmon_options.is_initialized = perfmon_is_perf_initialized ();
+    context.m_perfmon_options.is_watcher_exists = perfmon_is_watcher_exists ();
+    context.m_perfmon_options.activation_flag = perfmon_get_activation_flag ();
 
     on_create (context);
     return context;
@@ -76,6 +81,9 @@ namespace cubthread
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
     context.m_px_orig_thread_entry = NULL;
+    context.m_perfmon_options.is_initialized = false;
+    context.m_perfmon_options.is_watcher_exists = false;
+    context.m_perfmon_options.activation_flag = 0;
 #endif // SERVER_MODE
 
     get_manager ()->retire_entry (context);
@@ -105,6 +113,9 @@ namespace cubthread
     context._unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
     context._unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
 
+    context.m_perfmon_options.is_initialized = perfmon_is_perf_initialized ();
+    context.m_perfmon_options.is_watcher_exists = perfmon_is_watcher_exists ();
+    context.m_perfmon_options.activation_flag = perfmon_get_activation_flag ();
     on_recycle (context);
   }
 
