@@ -261,4 +261,8 @@ extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* tdes */
+extern void stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */
