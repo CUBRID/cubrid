@@ -6,7 +6,7 @@ con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')
 
 cur = con.cursor()
 
-cur.prepare('create table test_lob (image BLOB)')
+cur.prepare('create table test_lob (image BFILE)')
 cur.execute()
 
 lob_bind = con.lob()

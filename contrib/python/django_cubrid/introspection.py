@@ -20,8 +20,8 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         FIELD_TYPE.SET : 'TextField',
         FIELD_TYPE.MULTISET : 'TextField',
         FIELD_TYPE.SEQUENCE : 'TextField',
-        FIELD_TYPE.BLOB : 'TextField',
-        FIELD_TYPE.CLOB : 'TextField',
+        FIELD_TYPE.BFILE : 'TextField',
+        FIELD_TYPE.CFILE : 'TextField',
     }
 
     def get_table_list(self, cursor):

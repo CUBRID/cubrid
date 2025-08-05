@@ -31,7 +31,7 @@ SET     = 32
 MULTISET    = 64 
 SEQUENCE    = 96 
 
-BLOB        = 254
-CLOB        = 255
+BFILE       = 254
+CFILE       = 255
 
 STRING = VARCHAR

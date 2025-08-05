@@ -51,8 +51,8 @@ NUMBER = DBAPISet([FIELD_TYPE.NUMERIC, FIELD_TYPE.INT, FIELD_TYPE.SMALLINT, FIEL
 DATETIME = DBAPISet([FIELD_TYPE.DATE, FIELD_TYPE.TIME, FIELD_TYPE.TIMESTAMP])
 FLOAT = DBAPISet([FIELD_TYPE.FLOAT, FIELD_TYPE.DOUBLE])
 SET = DBAPISet([FIELD_TYPE.SET, FIELD_TYPE.MULTISET, FIELD_TYPE.SEQUENCE])
-BLOB = DBAPISet([FIELD_TYPE.BLOB])
-CLOB = DBAPISet([FIELD_TYPE.CLOB])
+BFILE = DBAPISet([FIELD_TYPE.BFILE])
+CFILE = DBAPISet([FIELD_TYPE.CFILE])
 ROWID = DBAPISet()
 
 def Connect(*args, **kwargs):
@@ -70,5 +70,5 @@ NotSupportedError = NotSupportedError
 __all__ = [ 'Connect', 'connection', 'connect', 'connections', 'DatabaseError', 
     'Error', 'InterfaceError', 'NotSupportedError', 'apilevel', 'Cursor', 
     'DictCursor', 'paramstyle', 'threadsafety', 'STRING', 'BINARY', 'NUMBER',
-    'DATE', 'TIME', 'TIMESTAMP', 'DATETIME', 'ROWID', 'SET', 'BLOB', 'CLOB'] 
+    'DATE', 'TIME', 'TIMESTAMP', 'DATETIME', 'ROWID', 'SET', 'BFILE', 'CFILE'] 
     
