@@ -533,7 +533,7 @@ namespace cubconn
 	{
 	  new_ctx->m_conn = new css_conn_entry;
 	  css_initialize_conn (new_ctx->m_conn, new_fd);
-	  new_ctx->m_conn->request_id = ctx->m_conn->request_id;
+	  new_ctx->m_conn->request_id = request_id;
 
 	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_INACCESSIBLE_IP))
 	    {
@@ -552,7 +552,7 @@ namespace cubconn
 
 	  new_ctx->m_conn = new css_conn_entry;
 	  css_initialize_conn (new_ctx->m_conn, new_fd);
-	  new_ctx->m_conn->request_id = ctx->m_conn->request_id;
+	  new_ctx->m_conn->request_id = request_id;
 
 	  if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
 	    {
@@ -565,7 +565,7 @@ namespace cubconn
 	}
 
       new_ctx->m_conn = conn;
-      new_ctx->m_conn->request_id = ctx->m_conn->request_id;
+      new_ctx->m_conn->request_id = request_id;
       if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
 	{
 	  return result::Error;
