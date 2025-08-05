@@ -544,7 +544,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_BLOB;
+      sig.arg1_type.val.type = PT_TYPE_BFILE;
       /* return type */
       def->overloads[num++] = sig;
 
@@ -2652,14 +2652,14 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_CLOB_LENGTH:
+    case PT_CFILE_LENGTH:
       num = 0;
 
       /* one overload */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_CLOB;
+      sig.arg1_type.val.type = PT_TYPE_CFILE;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -2669,14 +2669,14 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_BLOB_LENGTH:
+    case PT_BFILE_LENGTH:
       num = 0;
 
       /* one overload */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_BLOB;
+      sig.arg1_type.val.type = PT_TYPE_BFILE;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -2686,7 +2686,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_BIT_TO_BLOB:
+    case PT_BIT_TO_BFILE:
       num = 0;
 
       /* one overload */
@@ -2697,13 +2697,13 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_BLOB;
+      sig.return_type.val.type = PT_TYPE_BFILE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
-    case PT_CHAR_TO_CLOB:
+    case PT_CHAR_TO_CFILE:
       num = 0;
 
       /* one overload */
@@ -2714,13 +2714,13 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_CLOB;
+      sig.return_type.val.type = PT_TYPE_CFILE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
-    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_BFILE:
       num = 0;
 
       /* one overload */
@@ -2731,13 +2731,13 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_BLOB;
+      sig.return_type.val.type = PT_TYPE_BFILE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
-    case PT_BLOB_FROM_FILE:
+    case PT_BFILE_FROM_FILE:
       num = 0;
 
       /* one overload */
@@ -2748,13 +2748,13 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_BLOB;
+      sig.return_type.val.type = PT_TYPE_BFILE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
-    case PT_CLOB_FROM_FILE:
+    case PT_CFILE_FROM_FILE:
       num = 0;
 
       /* one overload */
@@ -2765,20 +2765,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_CLOB;
+      sig.return_type.val.type = PT_TYPE_CFILE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
       break;
 
-    case PT_BLOB_TO_BIT:
+    case PT_BFILE_TO_BIT:
       num = 0;
 
       /* one overload */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_BLOB;
+      sig.arg1_type.val.type = PT_TYPE_BFILE;
 
       /* return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -2788,14 +2788,14 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
-    case PT_CLOB_TO_CHAR:
+    case PT_CFILE_TO_CHAR:
       num = 0;
 
       /* one overload */
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_CLOB;
+      sig.arg1_type.val.type = PT_TYPE_CFILE;
 
       /* arg2 */
       sig.arg2_type.type = pt_arg_type::NORMAL;
@@ -6575,15 +6575,15 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_SYS_GUID:
     case PT_IF:
     case PT_POWER:
-    case PT_BIT_TO_BLOB:
-    case PT_BLOB_FROM_FILE:
-    case PT_BLOB_LENGTH:
-    case PT_BLOB_TO_BIT:
-    case PT_CHAR_TO_BLOB:
-    case PT_CHAR_TO_CLOB:
-    case PT_CLOB_FROM_FILE:
-    case PT_CLOB_LENGTH:
-    case PT_CLOB_TO_CHAR:
+    case PT_BIT_TO_BFILE:
+    case PT_BFILE_FROM_FILE:
+    case PT_BFILE_LENGTH:
+    case PT_BFILE_TO_BIT:
+    case PT_CHAR_TO_BFILE:
+    case PT_CHAR_TO_CFILE:
+    case PT_CFILE_FROM_FILE:
+    case PT_CFILE_LENGTH:
+    case PT_CFILE_TO_CHAR:
     case PT_TYPEOF:
     case PT_INDEX_CARDINALITY:
     case PT_INCR:
@@ -8730,15 +8730,15 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DRAND:
     case PT_RANDOM:
     case PT_DRANDOM:
-    case PT_BIT_TO_BLOB:
-    case PT_BLOB_FROM_FILE:
-    case PT_BLOB_LENGTH:
-    case PT_BLOB_TO_BIT:
-    case PT_CHAR_TO_BLOB:
-    case PT_CHAR_TO_CLOB:
-    case PT_CLOB_FROM_FILE:
-    case PT_CLOB_LENGTH:
-    case PT_CLOB_TO_CHAR:
+    case PT_BIT_TO_BFILE:
+    case PT_BFILE_FROM_FILE:
+    case PT_BFILE_LENGTH:
+    case PT_BFILE_TO_BIT:
+    case PT_CHAR_TO_BFILE:
+    case PT_CHAR_TO_CFILE:
+    case PT_CFILE_FROM_FILE:
+    case PT_CFILE_LENGTH:
+    case PT_CFILE_TO_CHAR:
     case PT_TYPEOF:
     case PT_YEARF:
     case PT_MONTHF:
@@ -11836,19 +11836,19 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       break;
 
-    case PT_BIT_TO_BLOB:
-    case PT_CHAR_TO_BLOB:
-    case PT_BLOB_FROM_FILE:
+    case PT_BIT_TO_BFILE:
+    case PT_CHAR_TO_BFILE:
+    case PT_BFILE_FROM_FILE:
       assert (dt == NULL);
-      dt = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_BFILE);
       if (dt == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       break;
 
-    case PT_BLOB_LENGTH:
-    case PT_CLOB_LENGTH:
+    case PT_BFILE_LENGTH:
+    case PT_CFILE_LENGTH:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
       if (dt == NULL)
@@ -11857,7 +11857,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       break;
 
-    case PT_BLOB_TO_BIT:
+    case PT_BFILE_TO_BIT:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
       if (dt == NULL)
@@ -11865,7 +11865,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       break;
-    case PT_CLOB_TO_CHAR:
+    case PT_CFILE_TO_CHAR:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
       if (dt == NULL)
@@ -11883,10 +11883,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       break;
 
 
-    case PT_CHAR_TO_CLOB:
-    case PT_CLOB_FROM_FILE:
+    case PT_CHAR_TO_CFILE:
+    case PT_CFILE_FROM_FILE:
       assert (dt == NULL);
-      dt = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_CFILE);
       if (dt == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -15796,7 +15796,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
-	  if (o1->type_enum == PT_TYPE_BLOB)
+	  if (o1->type_enum == PT_TYPE_BFILE)
 	    {
 	      DB_VALUE tval;
 
@@ -15829,7 +15829,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (!PT_IS_STRING_TYPE (o1->type_enum))
 	{
-	  if (o1->type_enum == PT_TYPE_BLOB)
+	  if (o1->type_enum == PT_TYPE_BFILE)
 	    {
 	      DB_VALUE tval;
 	      int len = 0;
@@ -16838,8 +16838,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_BIT_TO_BLOB:
-      error = db_bit_to_blob (arg1, result);
+    case PT_BIT_TO_BFILE:
+      error = db_bit_to_bfile (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16850,8 +16850,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_CHAR_TO_BLOB:
-      error = db_char_to_blob (arg1, result);
+    case PT_CHAR_TO_BFILE:
+      error = db_char_to_bfile (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16862,8 +16862,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_BLOB_FROM_FILE:
-      error = db_blob_from_file (arg1, result);
+    case PT_BFILE_FROM_FILE:
+      error = db_bfile_from_file (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16874,8 +16874,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_BLOB_TO_BIT:
-      error = db_blob_to_bit (arg1, arg2, result);
+    case PT_BFILE_TO_BIT:
+      error = db_bfile_to_bit (arg1, arg2, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16886,8 +16886,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_BLOB_LENGTH:
-      error = db_blob_length (arg1, result);
+    case PT_BFILE_LENGTH:
+      error = db_bfile_length (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16898,8 +16898,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_CHAR_TO_CLOB:
-      error = db_char_to_clob (arg1, result);
+    case PT_CHAR_TO_CFILE:
+      error = db_char_to_cfile (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16910,8 +16910,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_CLOB_FROM_FILE:
-      error = db_clob_from_file (arg1, result);
+    case PT_CFILE_FROM_FILE:
+      error = db_cfile_from_file (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16922,8 +16922,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_CLOB_TO_CHAR:
-      error = db_clob_to_char (arg1, arg2, result);
+    case PT_CFILE_TO_CHAR:
+      error = db_cfile_to_char (arg1, arg2, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16934,8 +16934,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
-    case PT_CLOB_LENGTH:
-      error = db_clob_length (arg1, result);
+    case PT_CFILE_LENGTH:
+      error = db_cfile_length (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17930,9 +17930,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
-	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
-	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BFILE || op == PT_CHAR_TO_BFILE
+	   || op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR
+	   || op == PT_CFILE_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
     {
       goto end;
     }
@@ -20612,7 +20612,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
   switch (op)
     {
     case PT_CAST:
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_CLOB || TP_DOMAIN_TYPE (domain) == DB_TYPE_BLOB)
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_CFILE || TP_DOMAIN_TYPE (domain) == DB_TYPE_BFILE)
 	{
 	  return false;
 	}
@@ -22697,7 +22697,7 @@ coerce_arg:
 
   /* step 4: update collation of expression result */
 coerce_result:
-  if (op == PT_CHR || op == PT_CLOB_TO_CHAR)
+  if (op == PT_CHR || op == PT_CFILE_TO_CHAR)
     {
       /* for these operators, we don't want the arguments' collations to infere common collation, but special values of
        * arg2 */
