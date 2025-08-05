@@ -290,13 +290,13 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	{
 	  type = CCI_U_TYPE_BIT;
 	}
-      else if (memcmp (p, "BLOB", 5) == 0)
+      else if (memcmp (p, "BFILE", 5) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
-	  fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
+	  fprintf (stderr, "%s\nBFILE type is not implemented. Replaced with NULL\n", value_p);
 	  value_p = (char *) "";
 	  bind_len = 0;
-	  /* type = CCI_U_TYPE_BLOB; */
+	  /* type = CCI_U_TYPE_BFILE; */
 	}
       break;
 
@@ -305,13 +305,13 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	{
 	  type = CCI_U_TYPE_CHAR;
 	}
-      else if (memcmp (p, "CLOB", 5) == 0)
+      else if (memcmp (p, "CFILE", 5) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
-	  fprintf (stderr, "%s\nCLOB type is not implemented. Replaced with NULL\n", value_p);
+	  fprintf (stderr, "%s\nCFILE type is not implemented. Replaced with NULL\n", value_p);
 	  value_p = (char *) "";
 	  bind_len = 0;
-	  /* type = CCI_U_TYPE_CLOB; */
+	  /* type = CCI_U_TYPE_CFILE; */
 	}
       break;
 

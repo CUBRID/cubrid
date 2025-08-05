@@ -144,8 +144,8 @@ static const char *type_str_tbl[] = {
   "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
   "BIGINT",			/* CCI_U_TYPE_BIGINT */
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
-  "BLOB",			/* CCI_U_TYPE_BLOB */
-  "CLOB",			/* CCI_U_TYPE_CLOB */
+  "BFILE",			/* CCI_U_TYPE_BFILE */
+  "CFILE",			/* CCI_U_TYPE_CFILE */
   "ENUM",			/* CCI_U_TYPE_ENUM */
   "USHORT",			/* CCI_U_TYPE_USHORT */
   "UINT",			/* CCI_U_TYPE_UINT */
@@ -2525,8 +2525,8 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	write2_func ("%d|%d|%d", pageid, slotid, volid);
       }
       break;
-    case CCI_U_TYPE_BLOB:
-    case CCI_U_TYPE_CLOB:
+    case CCI_U_TYPE_BFILE:
+    case CCI_U_TYPE_CFILE:
       {
 	DB_VALUE db_val;
 	DB_ELO *db_elo;
@@ -2534,7 +2534,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	db_elo = db_get_elo (&db_val);
 	if (db_elo)
 	  {
-	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB", db_elo->size, db_elo->locator,
+	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size, db_elo->locator,
 			 db_elo->meta_data, db_elo->type);
 	  }
 	else
@@ -2618,7 +2618,7 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
     }
 
   net_arg_get_int (&lob_type, argv[0]);
-  if (lob_type != CCI_U_TYPE_BLOB && lob_type != CCI_U_TYPE_CLOB)
+  if (lob_type != CCI_U_TYPE_BFILE && lob_type != CCI_U_TYPE_CFILE)
     {
 #if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
