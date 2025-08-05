@@ -1374,39 +1374,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
   
-  if (!connector.run (port_id, servername))
-  {
-    _er_log_debug (__FILE__, __LINE__, "master connector: failed");
-  }
-  conn = connector.get_connection ();
-  ///*
-  if (conn != NULL)
-    {
-      css_insert_into_active_conn_list (conn);
-
-      css_Master_server_name = strdup (server_name);
-      css_Master_port_id = port_id;
-      css_Pipe_to_master = conn->fd;
-      css_Master_conn = conn;
-
-#if !defined(WINDOWS)
-      if (!HA_DISABLED ())
-	{
-	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
-	  if (status != NO_ERROR)
-	    {
-	      fprintf (stderr, "failed to heartbeat register.\n");
-	    }
-	}
-#endif
-
-      if (status == NO_ERROR)
-	{
-	  // server message loop
-	  css_setup_server_loop ();
-	}
-    }
-    //*/
+  /* handshake and dispatch connection */
+  connector.run (port_id, servername);
 
 shutdown:
   /*
