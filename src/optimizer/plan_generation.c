@@ -2646,8 +2646,19 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
   if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
     {
-      hashjoin_xasl->parallelism =
-	(QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN) ? 0 : xasl->parallelism;
+      if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  hashjoin_xasl->parallelism = 0;
+	}
+      else if (PT_SELECT_INFO_IS_FLAGED (QO_ENV_PT_TREE (env), PT_SELECT_INFO_IS_MERGE_QUERY))
+	{
+	  /* TODO: xtran_server_start_topop does not support concurrency. */
+	  hashjoin_xasl->parallelism = 0;
+	}
+      else
+	{
+	  hashjoin_xasl->parallelism = xasl->parallelism;
+	}
     }
   else
     {

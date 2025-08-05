@@ -186,6 +186,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
   assert (xasl != NULL);
   assert (query_id != NULL_QUERY_ID);
 
+  /* monitor */
+  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS);
+
   error = hjoin_init_manager (thread_p, &manager, xasl, query_id, val_descr);
   if (error != NO_ERROR)
     {
@@ -212,11 +215,18 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  break;
 
 	case HASHJOIN_STATUS_PARTITION:
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARTITIONED);
+
 	  error = hjoin_execute_partitions (thread_p, &manager);
 	  break;
 
 #if defined (SERVER_MODE)
 	case HASHJOIN_STATUS_PARALLEL:
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARTITIONED);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARALLEL);
+
 	  // *INDENT-OFF*
 	  error = parallel_query::hash_join::execute_partitions (*thread_p, &manager);
 	  // *INDENT-ON*
