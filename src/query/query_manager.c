@@ -291,10 +291,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
       query_p->alloc_no++;
-      if (query_p->alloc_no == 0)
-	{
-	  query_p->alloc_no = 1;	// avoid zero
-	}
     }
   else
     {
@@ -2301,7 +2297,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       return;
     }
 
-  bool is_pl_session_running = session_has_pl_session (thread_p);
+  bool is_pl_session_running = session_is_pl_session_running (thread_p);
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* there should be no active query */
   for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
