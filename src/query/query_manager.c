@@ -1943,13 +1943,12 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-#endif
-
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
       goto exit_on_error;
     }
+#endif
 
   /* initialize query entry */
   XASL_ID_SET_NULL (&query_p->xasl_id);
