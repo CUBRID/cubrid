@@ -28078,6 +28078,11 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
   PT_NODE *groupby = groupby_list;
   QPROC_DB_VALUE_LIST db_list = vallist->valp;
 
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   int is_pseudocolumn = 0;
   (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
 
