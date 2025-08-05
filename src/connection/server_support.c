@@ -1014,11 +1014,15 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   num_loop = 0;
 
   status = NO_ERRORS;
+  _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: thread_p->shutdown = %s, conn->stop_talk = %d\n", thread_p->shutdown == true ? "true" : "false", conn->stop_talk);
+
   /* check if socket has error or client is down */
   while (thread_p->shutdown == false && conn->stop_talk == false)
     {
       /* check the connection */
       conn_status = conn->status;
+      _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: conn->status = %d\n", conn_status);
+
       if (conn_status == CONN_CLOSING)
 	{
 	  /* There's an interesting race condition among client, worker thread and connection handler.
@@ -1046,6 +1050,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       po[0].events = POLLIN;
       po[0].revents = 0;
       n = poll (po, 1, poll_timeout);
+      _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: poll returned %d\n", n);
       if (n == 0)
 	{
 	  if (num_loop < max_num_loop)
@@ -1098,6 +1103,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	    {
+	      _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: peer down\n");
 	      status = ERROR_ON_READ;
 	      break;
 	    }
