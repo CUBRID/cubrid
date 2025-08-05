@@ -709,16 +709,16 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_D
 static DB_VALUE_COMPARE_RESULT mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					      int *start_colp, int collation);
 
-static void mr_initval_blob (DB_VALUE * value, int precision, int scale);
-static int mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_data_readval_blob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+static void mr_initval_bfile (DB_VALUE * value, int precision, int scale);
+static int mr_getmem_bfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_setval_bfile (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_readval_bfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
 
-static void mr_initval_clob (DB_VALUE * value, int precision, int scale);
-static int mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+static void mr_initval_cfile (DB_VALUE * value, int precision, int scale);
+static int mr_getmem_cfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_setval_cfile (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_readval_cfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
 
 static void mr_initval_variable (DB_VALUE * value, int precision, int scale);
@@ -1383,19 +1383,19 @@ const PR_TYPE tp_Elo = {	/* todo: remove me */
 
 const PR_TYPE *tp_Type_elo = &tp_Elo;
 
-const PR_TYPE tp_Blob = {
-  "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO *), 0, 8,
+const PR_TYPE tp_Bfile = {
+  "bfile", DB_TYPE_BFILE, 1, sizeof (DB_ELO *), 0, 8,
   mr_initmem_elo,
-  mr_initval_blob,
+  mr_initval_bfile,
   mr_setmem_elo,
-  mr_getmem_blob,
-  mr_setval_blob,
+  mr_getmem_bfile,
+  mr_setval_bfile,
   mr_data_lengthmem_elo,
   mr_data_lengthval_elo,
   mr_data_writemem_elo,
   mr_data_readmem_elo,
   mr_data_writeval_elo,
-  mr_data_readval_blob,
+  mr_data_readval_bfile,
   NULL,				/* index_lengthmem */
   NULL,				/* index_lengthval */
   NULL,				/* index_writeval */
@@ -1406,21 +1406,21 @@ const PR_TYPE tp_Blob = {
   mr_cmpval_elo
 };
 
-const PR_TYPE *tp_Type_blob = &tp_Blob;
+const PR_TYPE *tp_Type_bfile = &tp_Bfile;
 
-const PR_TYPE tp_Clob = {
-  "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO *), 0, 8,
+const PR_TYPE tp_Cfile = {
+  "cfile", DB_TYPE_CFILE, 1, sizeof (DB_ELO *), 0, 8,
   mr_initmem_elo,
-  mr_initval_clob,
+  mr_initval_cfile,
   mr_setmem_elo,
-  mr_getmem_clob,
-  mr_setval_clob,
+  mr_getmem_cfile,
+  mr_setval_cfile,
   mr_data_lengthmem_elo,
   mr_data_lengthval_elo,
   mr_data_writemem_elo,
   mr_data_readmem_elo,
   mr_data_writeval_elo,
-  mr_data_readval_clob,
+  mr_data_readval_cfile,
   NULL,				/* index_lengthmem */
   NULL,				/* index_lengthval */
   NULL,				/* index_writeval */
@@ -1431,7 +1431,7 @@ const PR_TYPE tp_Clob = {
   mr_cmpval_elo
 };
 
-const PR_TYPE *tp_Type_clob = &tp_Clob;
+const PR_TYPE *tp_Type_cfile = &tp_Cfile;
 
 const PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,
@@ -1782,8 +1782,8 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Null,
   &tp_Bigint,
   &tp_Datetime,
-  &tp_Blob,
-  &tp_Clob,
+  &tp_Bfile,
+  &tp_Cfile,
   &tp_Enumeration,
   &tp_Timestamptz,
   &tp_Timestampltz,
@@ -2053,8 +2053,8 @@ pr_clear_value (DB_VALUE * value)
 	}
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       if (value->need_clear)
 	{
 	  elo_free_structure (db_get_elo (value));
@@ -5647,19 +5647,19 @@ mr_initval_elo (DB_VALUE * value, int precision, int scale)
 }
 
 static void
-mr_initval_blob (DB_VALUE * value, int precision, int scale)
+mr_initval_bfile (DB_VALUE * value, int precision, int scale)
 {
   DB_ELO *null_elo = NULL;
-  db_value_domain_init (value, DB_TYPE_BLOB, precision, scale);
-  db_make_elo (value, DB_TYPE_BLOB, null_elo);
+  db_value_domain_init (value, DB_TYPE_BFILE, precision, scale);
+  db_make_elo (value, DB_TYPE_BFILE, null_elo);
 }
 
 static void
-mr_initval_clob (DB_VALUE * value, int precision, int scale)
+mr_initval_cfile (DB_VALUE * value, int precision, int scale)
 {
   DB_ELO *null_elo = NULL;
-  db_value_domain_init (value, DB_TYPE_CLOB, precision, scale);
-  db_make_elo (value, DB_TYPE_CLOB, null_elo);
+  db_value_domain_init (value, DB_TYPE_CFILE, precision, scale);
+  db_make_elo (value, DB_TYPE_CFILE, null_elo);
 }
 
 static int
@@ -5749,15 +5749,15 @@ mr_getmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_bfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_BLOB);
+  return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_BFILE);
 }
 
 static int
-mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_cfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_CLOB);
+  return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_CFILE);
 }
 
 static int
@@ -5799,15 +5799,15 @@ mr_setval_elo (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_bfile (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
-  return setval_elo_with_type (dest, src, copy, DB_TYPE_BLOB);
+  return setval_elo_with_type (dest, src, copy, DB_TYPE_BFILE);
 }
 
 static int
-mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_cfile (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
-  return setval_elo_with_type (dest, src, copy, DB_TYPE_CLOB);
+  return setval_elo_with_type (dest, src, copy, DB_TYPE_CFILE);
 }
 
 static int
@@ -5817,8 +5817,8 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 
   if (!disk)
     {
-      assert (tp_Elo.size == tp_Blob.size);
-      assert (tp_Blob.size == tp_Clob.size);
+      assert (tp_Elo.size == tp_Bfile.size);
+      assert (tp_Bfile.size == tp_Cfile.size);
       len = tp_Elo.size;
     }
   else if (memptr != NULL)
@@ -6071,17 +6071,17 @@ mr_data_readval_elo (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 }
 
 static int
-mr_data_readval_blob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_bfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
-  return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_BLOB);
+  return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_BFILE);
 }
 
 static int
-mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_cfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
-  return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CLOB);
+  return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CFILE);
 }
 
 static void

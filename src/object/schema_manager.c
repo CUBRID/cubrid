@@ -5206,14 +5206,14 @@ sm_print (MOP classmop)
  */
 
 const char *
-sm_ch_name (const MOBJ clobj)
+sm_ch_name (const MOBJ cfilej)
 {
   SM_CLASS_HEADER *header;
   const char *ch_name = NULL;
 
-  if (clobj != NULL)
+  if (cfilej != NULL)
     {
-      header = (SM_CLASS_HEADER *) clobj;
+      header = (SM_CLASS_HEADER *) cfilej;
       ch_name = header->ch_name;
 
       assert (header->ch_type == SM_META_ROOT || header->ch_type == SM_META_CLASS);
@@ -5233,18 +5233,18 @@ sm_ch_name (const MOBJ clobj)
  *    This returns a pointer to the heap file identifier in a class.
  *    This will work for either classes or the root class.
  *   return: HFID of class
- *   clobj(in): pointer to class structure in memory
+ *   cfilej(in): pointer to class structure in memory
  */
 
 HFID *
-sm_ch_heap (MOBJ clobj)
+sm_ch_heap (MOBJ cfilej)
 {
   SM_CLASS_HEADER *header;
   HFID *ch_heap = NULL;
 
-  if (clobj != NULL)
+  if (cfilej != NULL)
     {
-      header = (SM_CLASS_HEADER *) clobj;
+      header = (SM_CLASS_HEADER *) cfilej;
       ch_heap = &(header->ch_heap);
     }
 
@@ -5256,18 +5256,18 @@ sm_ch_heap (MOBJ clobj)
  *    This returns a pointer to the oid of representation directory in a class.
  *    This will work for either classes or the root class.
  *   return: oid of representation directory
- *   clobj(in): pointer to class structure in memory
+ *   cfilej(in): pointer to class structure in memory
  */
 
 OID *
-sm_ch_rep_dir (MOBJ clobj)
+sm_ch_rep_dir (MOBJ cfilej)
 {
   SM_CLASS_HEADER *header;
   OID *ch_rep_dir_p = NULL;
 
-  if (clobj != NULL)
+  if (cfilej != NULL)
     {
-      header = (SM_CLASS_HEADER *) clobj;
+      header = (SM_CLASS_HEADER *) cfilej;
       ch_rep_dir_p = &(header->ch_rep_dir);
     }
 

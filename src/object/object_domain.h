@@ -153,8 +153,8 @@ extern TP_DOMAIN tp_Set_domain;
 extern TP_DOMAIN tp_Multiset_domain;
 extern TP_DOMAIN tp_Sequence_domain;
 extern TP_DOMAIN tp_Elo_domain;
-extern TP_DOMAIN tp_Blob_domain;
-extern TP_DOMAIN tp_Clob_domain;
+extern TP_DOMAIN tp_Bfile_domain;
+extern TP_DOMAIN tp_Cfile_domain;
 extern TP_DOMAIN tp_Time_domain;
 extern TP_DOMAIN tp_Utime_domain;
 extern TP_DOMAIN tp_Date_domain;
@@ -244,7 +244,7 @@ typedef enum tp_match
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
 
 #define TP_IS_LOB_TYPE(typeid) \
-  (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
+  (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
 
 #define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))

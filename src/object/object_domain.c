@@ -139,8 +139,8 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_BIT,
   DB_TYPE_VARBIT,
   DB_TYPE_ELO,
-  DB_TYPE_BLOB,
-  DB_TYPE_CLOB,
+  DB_TYPE_BFILE,
+  DB_TYPE_CFILE,
   DB_TYPE_VARIABLE,
   DB_TYPE_SUB,
   DB_TYPE_POINTER,
@@ -268,8 +268,8 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3}
 };
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove me */
-TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
-TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
+TP_DOMAIN tp_Bfile_domain = { NULL, NULL, &tp_Bfile, DOMAIN_INIT };
+TP_DOMAIN tp_Cfile_domain = { NULL, NULL, &tp_Cfile, DOMAIN_INIT };
 TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
 TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
 TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
@@ -368,8 +368,8 @@ static TP_DOMAIN *tp_Domains[] = {
 
   /* beginning of some "padding" built-in domains that can be used as expansion space when new primitive data types are
    * added. */
-  &tp_Blob_domain,
-  &tp_Clob_domain,
+  &tp_Bfile_domain,
+  &tp_Cfile_domain,
   &tp_Enumeration_domain,
   &tp_Timestamptz_domain,
   &tp_Timestampltz_domain,
@@ -544,8 +544,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TABLE */
   tp_Bigint_conv,		/* DB_TYPE_BIGINT */
   NULL,				/* DB_TYPE_DATETIME */
-  NULL,				/* DB_TYPE_BLOB */
-  NULL,				/* DB_TYPE_CLOB */
+  NULL,				/* DB_TYPE_BFILE */
+  NULL,				/* DB_TYPE_CFILE */
   NULL,				/* DB_TYPE_ENUMERATION */
   NULL,				/* DB_TYPE_TIMESTAMPTZ */
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
@@ -1542,8 +1542,8 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
@@ -1958,8 +1958,8 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -2590,8 +2590,8 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
   TP_DOMAIN *dom;
 
   /* tp_domain_find_with_no_param */
-  /* type : DB_TYPE_NULL DB_TYPE_INTEGER DB_TYPE_FLOAT DB_TYPE_DOUBLE DB_TYPE_ELO DB_TYPE_TIME DB_TYPE_BLOB
-   * DB_TYPE_CLOB DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
+  /* type : DB_TYPE_NULL DB_TYPE_INTEGER DB_TYPE_FLOAT DB_TYPE_DOUBLE DB_TYPE_ELO DB_TYPE_TIME DB_TYPE_BFILE
+   * DB_TYPE_CFILE DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
    * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ */
 
   for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
@@ -3249,8 +3249,8 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
+	case DB_TYPE_BFILE:
+	case DB_TYPE_CFILE:
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
@@ -3581,8 +3581,8 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BIGINT:
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_BLOB:
-	    case DB_TYPE_CLOB:
+	    case DB_TYPE_BFILE:
+	    case DB_TYPE_CFILE:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPTZ:
@@ -3725,8 +3725,8 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BIGINT:
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
-	    case DB_TYPE_BLOB:
-	    case DB_TYPE_CLOB:
+	    case DB_TYPE_BFILE:
+	    case DB_TYPE_CFILE:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
@@ -5709,7 +5709,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
      db_val_type == DB_TYPE_NCHAR || db_val_type == DB_TYPE_VARNCHAR)
 
 #define TP_IS_LOB(db_val_type)                                          \
-    (db_val_type == DB_TYPE_BLOB || db_val_type == DB_TYPE_CLOB)
+    (db_val_type == DB_TYPE_BFILE || db_val_type == DB_TYPE_CFILE)
 
 #define TP_IS_DATETIME_TYPE(db_val_type) TP_IS_DATE_OR_TIME_TYPE (db_val_type)
 
@@ -9276,13 +9276,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
-	case DB_TYPE_BLOB:
+	case DB_TYPE_BFILE:
 	  {
 	    DB_VALUE tmpval;
 
 	    db_make_null (&tmpval);
 
-	    err = db_blob_to_bit (src, NULL, &tmpval);
+	    err = db_bfile_to_bit (src, NULL, &tmpval);
 	    if (err == NO_ERROR)
 	      {
 		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
@@ -9663,7 +9663,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 
-	case DB_TYPE_CLOB:
+	case DB_TYPE_CFILE:
 	  switch (desired_type)
 	    {
 	    case DB_TYPE_NCHAR:
@@ -9676,9 +9676,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		DB_VALUE cs;
 
 		db_make_null (&tmpval);
-		/* convert directly from CLOB into charset of desired domain string */
+		/* convert directly from CFILE into charset of desired domain string */
 		db_make_int (&cs, desired_domain->codeset);
-		err = db_clob_to_char (src, &cs, &tmpval);
+		err = db_cfile_to_char (src, &cs, &tmpval);
 		if (err == NO_ERROR)
 		  {
 		    err =
@@ -9718,21 +9718,21 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
-    case DB_TYPE_BLOB:
+    case DB_TYPE_BFILE:
       switch (original_type)
 	{
-	case DB_TYPE_BLOB:
+	case DB_TYPE_BFILE:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  err = db_bit_to_blob (src, target);
+	  err = db_bit_to_bfile (src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  err = db_char_to_blob (src, target);
+	  err = db_char_to_bfile (src, target);
 	  break;
 	case DB_TYPE_ENUMERATION:
 	  {
@@ -9753,15 +9753,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
-    case DB_TYPE_CLOB:
+    case DB_TYPE_CFILE:
       switch (original_type)
 	{
-	case DB_TYPE_CLOB:
+	case DB_TYPE_CFILE:
 	  err = db_value_clone ((DB_VALUE *) src, target);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = db_char_to_clob (src, target);
+	  err = db_char_to_cfile (src, target);
 	  break;
 	case DB_TYPE_ENUMERATION:
 	  {
@@ -9887,8 +9887,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_TIME:
 	  case DB_TYPE_BIT:
 	  case DB_TYPE_VARBIT:
-	  case DB_TYPE_BLOB:
-	  case DB_TYPE_CLOB:
+	  case DB_TYPE_BFILE:
+	  case DB_TYPE_CFILE:
 	    {
 	      status =
 		tp_value_cast_internal (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING), coercion_mode,
