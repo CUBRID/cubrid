@@ -9948,8 +9948,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 				  DB_ELO *elo;
 				  error = NO_ERROR;
 
-				  assert (db_value_type (attr_valp) == DB_TYPE_BLOB
-					  || db_value_type (attr_valp) == DB_TYPE_CLOB);
+				  assert (db_value_type (attr_valp) == DB_TYPE_BFILE
+					  || db_value_type (attr_valp) == DB_TYPE_CFILE);
 				  elo = db_get_elo (attr_valp);
 				  if (elo)
 				    {
@@ -10758,8 +10758,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			      DB_ELO *elo;
 			      error = NO_ERROR;
 
-			      assert (db_value_type (attr_valp) == DB_TYPE_BLOB
-				      || db_value_type (attr_valp) == DB_TYPE_CLOB);
+			      assert (db_value_type (attr_valp) == DB_TYPE_BFILE
+				      || db_value_type (attr_valp) == DB_TYPE_CFILE);
 			      elo = db_get_elo (attr_valp);
 			      if (elo)
 				{
@@ -10802,7 +10802,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  DB_ELO *elo;
 		  int error = NO_ERROR;
 
-		  assert (db_value_type (valp) == DB_TYPE_BLOB || db_value_type (valp) == DB_TYPE_CLOB);
+		  assert (db_value_type (valp) == DB_TYPE_BFILE || db_value_type (valp) == DB_TYPE_CFILE);
 		  elo = db_get_elo (valp);
 		  if (elo)
 		    {
@@ -23336,11 +23336,11 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_VARBIT:
       return "BIT VARYING";
 
-    case DB_TYPE_BLOB:
-      return "BLOB";
+    case DB_TYPE_BFILE:
+      return "BFILE";
 
-    case DB_TYPE_CLOB:
-      return "CLOB";
+    case DB_TYPE_CFILE:
+      return "CFILE";
 
     case DB_TYPE_ENUMERATION:
       return "ENUM";

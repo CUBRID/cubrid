@@ -17912,7 +17912,7 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
   char *cs = NULL;		/* current source string pointer */
   INT64 size = 0LL;
 
-  assert (lob_type == DB_TYPE_BLOB || lob_type == DB_TYPE_CLOB);
+  assert (lob_type == DB_TYPE_BFILE || lob_type == DB_TYPE_CFILE);
 
   elo = db_get_elo (src_value);
   if (elo)
@@ -17935,7 +17935,7 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	{
 	  max_length = DB_MAX_STRING_LENGTH;
 	}
-      if (lob_type == DB_TYPE_BLOB)
+      if (lob_type == DB_TYPE_BFILE)
 	{
 	  /* convert max_length, which is a number of bits, to number of bytes to read */
 	  max_length = QSTR_NUM_BYTES (max_length);
@@ -17972,7 +17972,7 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	}
       cs[max_length] = '\0';
 
-      if (lob_type == DB_TYPE_BLOB)
+      if (lob_type == DB_TYPE_BFILE)
 	{
 	  /* convert the converted max_length to number of bits */
 	  max_length *= 8;
@@ -18003,7 +18003,7 @@ lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_valu
   off_t pos;
   char lob_chunk[LOB_CHUNK_SIZE + 1];
 
-  assert (lob_type == DB_TYPE_BLOB || lob_type == DB_TYPE_CLOB);
+  assert (lob_type == DB_TYPE_BFILE || lob_type == DB_TYPE_CFILE);
 
   elo_init_structure (&temp_elo);
   temp_elo.type = ELO_FBO;
@@ -24784,13 +24784,13 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
 }
 
 /*
- * db_bit_to_blob - convert bit string value to blob value
+ * db_bit_to_bfile - convert bit string value to bfile value
  *   return: NO_ERROR or error code
  *   src_value(in): bit string value
- *   result_value(out): blob value
+ *   result_value(out): bfile value
  */
 int
-db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_bit_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -24808,7 +24808,7 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
     }
   else if (QSTR_IS_BIT (src_type))
     {
-      error_status = db_create_fbo (result_value, DB_TYPE_BLOB);
+      error_status = db_create_fbo (result_value, DB_TYPE_BFILE);
       if (error_status == NO_ERROR)
 	{
 	  elo = db_get_elo (result_value);
@@ -24829,13 +24829,13 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_char_to_blob - convert char string value to blob value
+ * db_char_to_bfile - convert char string value to bfile value
  *   return: NO_ERROR or error code
  *   src_value(in): char string value
- *   result_value(out): blob value
+ *   result_value(out): bfile value
  */
 int
-db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_char_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -24854,7 +24854,7 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if (QSTR_IS_ANY_CHAR (src_type))
     {
-      error_status = db_create_fbo (result_value, DB_TYPE_BLOB);
+      error_status = db_create_fbo (result_value, DB_TYPE_BFILE);
       if (error_status == NO_ERROR)
 	{
 	  elo = db_get_elo (result_value);
@@ -24876,14 +24876,14 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_blob_to_bit - convert blob value to bit string value
+ * db_bfile_to_bit - convert bfile value to bit string value
  *   return: NO_ERROR or error code
- *   src_value(in): blob value
+ *   src_value(in): bfile value
  *   length_value(in): the length to convert
  *   result_value(out): bit string value
  */
 int
-db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VALUE * result_value)
+db_bfile_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VALUE * result_value)
 {
   int error_status = NO_ERROR;
   DB_TYPE src_type, length_type;
@@ -24908,9 +24908,9 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
       return NO_ERROR;
     }
 
-  if (src_type == DB_TYPE_BLOB && length_type == DB_TYPE_INTEGER)
+  if (src_type == DB_TYPE_BFILE && length_type == DB_TYPE_INTEGER)
     {
-      error_status = lob_to_bit_char (src_value, result_value, DB_TYPE_BLOB, max_length);
+      error_status = lob_to_bit_char (src_value, result_value, DB_TYPE_BFILE, max_length);
     }
   else
     {
@@ -24922,13 +24922,13 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
 }
 
 /*
- * db_blob_from_file - construct blob value from the file (char string literal)
+ * db_bfile_from_file - construct bfile value from the file (char string literal)
  *   return: NO_ERROR or error code
  *   src_value(in): char string literal (file path)
- *   result_value(out): blob value
+ *   result_value(out): bfile value
  */
 int
-db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_bfile_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -24969,7 +24969,7 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
       strncat (path_buf, db_get_string (src_value), MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_BLOB);
+      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_BFILE);
     }
   else
     {
@@ -24981,13 +24981,13 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_blob_length - get the length of blob value
+ * db_bfile_length - get the length of bfile value
  *   return: NO_ERROR or error code
- *   src_value(in): blob value
+ *   src_value(in): bfile value
  *   result_value(out): bigint value
  */
 int
-db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_bfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -25001,7 +25001,7 @@ db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  if (src_type == DB_TYPE_BLOB)
+  if (src_type == DB_TYPE_BFILE)
     {
       error_status = lob_length (src_value, result_value);
     }
@@ -25015,13 +25015,13 @@ db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_char_to_clob - convert char string value to clob value
+ * db_char_to_cfile - convert char string value to cfile value
  *   return: NO_ERROR or error code
  *   src_value(in): char string value
- *   result_value(out): clob value
+ *   result_value(out): cfile value
  */
 int
-db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_char_to_cfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -25040,7 +25040,7 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if (QSTR_IS_ANY_CHAR (src_type))
     {
-      error_status = db_create_fbo (result_value, DB_TYPE_CLOB);
+      error_status = db_create_fbo (result_value, DB_TYPE_CFILE);
       if (error_status == NO_ERROR)
 	{
 	  elo = db_get_elo (result_value);
@@ -25062,14 +25062,14 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_clob_to_char - convert clob value to char string value
+ * db_cfile_to_char - convert cfile value to char string value
  *   return: NO_ERROR or error code
- *   src_value(in): clob value
+ *   src_value(in): cfile value
  *   codeset_value(in): the codeset of output string
  *   result_value(out): char string value
  */
 int
-db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value)
+db_cfile_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value)
 {
   int error_status = NO_ERROR;
   DB_TYPE src_type;
@@ -25100,9 +25100,9 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
       return NO_ERROR;
     }
 
-  if (src_type == DB_TYPE_CLOB)
+  if (src_type == DB_TYPE_CFILE)
     {
-      error_status = lob_to_bit_char (src_value, result_value, DB_TYPE_CLOB, max_length);
+      error_status = lob_to_bit_char (src_value, result_value, DB_TYPE_CFILE, max_length);
 
       if (result_value != NULL && DB_VALUE_DOMAIN_TYPE (result_value) == DB_TYPE_VARCHAR)
 	{
@@ -25119,13 +25119,13 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
 }
 
 /*
- * db_clob_from_file - construct clob value from the file (char string literal)
+ * db_cfile_from_file - construct cfile value from the file (char string literal)
  *   return: NO_ERROR or error code
  *   src_value(in): char string literal (file path)
- *   result_value(out): clob value
+ *   result_value(out): cfile value
  */
 int
-db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_cfile_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -25166,7 +25166,7 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
       strncat (path_buf, db_get_string (src_value), MIN (src_size, PATH_MAX - path_buf_len));
       path_buf[path_buf_len + MIN (src_size, PATH_MAX - path_buf_len)] = '\0';
 
-      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_CLOB);
+      error_status = lob_from_file (path_buf, src_value, result_value, DB_TYPE_CFILE);
     }
   else
     {
@@ -25178,13 +25178,13 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
 }
 
 /*
- * db_clob_length - get the length of clob value
+ * db_cfile_length - get the length of cfile value
  *   return: NO_ERROR or error code
- *   src_value(in): clob value
+ *   src_value(in): cfile value
  *   result_value(out): bigint value
  */
 int
-db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
+db_cfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
   DB_TYPE src_type;
   int error_status = NO_ERROR;
@@ -25198,7 +25198,7 @@ db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  if (src_type == DB_TYPE_CLOB)
+  if (src_type == DB_TYPE_CFILE)
     {
       error_status = lob_length (src_value, result_value);
     }

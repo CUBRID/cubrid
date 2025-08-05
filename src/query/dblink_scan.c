@@ -114,9 +114,9 @@ static int type_map[] = {
   CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
   CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
 
-  /* not support for BLOB, CLOB, and ENUM */
-  0,				/* CCI_U_TYPE_BLOB */
-  0,				/* CCI_U_TYPE_CLOB */
+  /* not support for BFILE, CFILE, and ENUM */
+  0,				/* CCI_U_TYPE_BFILE */
+  0,				/* CCI_U_TYPE_CFILE */
   0,				/* CCI_U_TYPE_ENUM */
 
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
@@ -175,10 +175,10 @@ print_utype_to_string (int type)
       return (char *) "sequence";
     case CCI_U_TYPE_OBJECT:
       return (char *) "object";
-    case CCI_U_TYPE_BLOB:
-      return (char *) "blob";
-    case CCI_U_TYPE_CLOB:
-      return (char *) "clob";
+    case CCI_U_TYPE_BFILE:
+      return (char *) "bfile";
+    case CCI_U_TYPE_CFILE:
+      return (char *) "cfile";
     case CCI_U_TYPE_JSON:
       return (char *) "json";
     case CCI_U_TYPE_ENUM:
