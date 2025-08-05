@@ -518,7 +518,11 @@ static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 				     void **logs, char **rec_type, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
-
+static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
+static void la_set_error_sql_log (const char *class_name, DB_VALUE * key_val);
+static int la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj);
+static int la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
+static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
@@ -4935,22 +4939,68 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   return error;
 }
 
+static void
+la_set_error_sql_log (const char *class_name, DB_VALUE * key_val)
+{
+  char sql_log_err[LINE_MAX];
+  string_buffer sb;
+
+  sb.clear ();
+  db_sprint_value (key_val, sb);
+  snprintf (sql_log_err, sizeof (sql_log_err),
+	    "failed to write SQL log. class: %s, key: %s", class_name, sb.get_buffer ());
+
+  er_stack_push ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
+  er_stack_pop ();
+}
+
+static void
+la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error)
+{
+  string_buffer sb;
+  sb.clear ();
+  db_sprint_value (la_get_item_pk_value (item), sb);
+
+#if defined(LA_VERBOSE_DEBUG)
+  er_log_debug (ARG_FILE_LINE,
+		"%s : error %d %s\n\tclass %s key %s\n", op_name, error, er_msg (), item->class_name, sb.get_buffer ());
+#endif
+
+  er_stack_push ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	  err_id, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
+  er_stack_pop ();
+
+  la_Info.fail_counter++;
+}
+
+static int
+la_write_delete_sql_log (LA_ITEM * item, DB_OBJECT * class_obj)
+{
+  MOBJ mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item));
+}
+
 /*
  * la_apply_delete_log() - apply the delete log to the target slave
  *   return: NO_ERROR or error code
  *   item(in): replication item
  *
  * Note:
+ *      . fetch the class info
+ *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_delete_log (LA_ITEM * item)
 {
   DB_OBJECT *class_obj;
-  MOBJ mclass;
-  char buf[256];
-  char sql_log_err[LINE_MAX];
-
-  string_buffer sb;
 
   int error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -4964,52 +5014,84 @@ la_apply_delete_log (LA_ITEM * item)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
+      goto end;
+    }
+
+  if (la_enable_sql_logging)
+    {
+      if (la_write_delete_sql_log (item, class_obj) != NO_ERROR)
+	{
+	  la_set_error_sql_log (item->class_name, &item->key);
+	}
+    }
+
+  error = la_repl_add_object (class_obj, item, NULL);
+
+end:
+  if (error != NO_ERROR)
+    {
+      la_log_apply_error ("apply_delete", ER_HA_LA_FAILED_TO_APPLY_DELETE, item, error);
     }
   else
     {
-      /* get class info */
-      mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-
-      if (la_enable_sql_logging)
-	{
-	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
-	    {
-	      sb.clear ();
-	      db_sprint_value (&item->key, sb);
-	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
-			item->class_name, sb.get_buffer ());
-
-	      er_stack_push ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	      er_stack_pop ();
-	    }
-	}
-
-      error = la_repl_add_object (class_obj, item, NULL);
-      if (error == NO_ERROR)
-	{
-	  la_Info.delete_counter++;
-	  la_Info.num_unflushed++;
-	}
-    }
-
-  if (error != NO_ERROR)
-    {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
+      la_Info.delete_counter++;
+      la_Info.num_unflushed++;
     }
 
   return error;
+}
+
+static int
+la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
+{
+  MOBJ mclass;
+  int au_save;
+  DB_VALUE *key;
+  DB_OTMPL *inst_tp = NULL;
+  int ret = NO_ERROR;
+
+  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  inst_tp = dbt_create_object_internal (class_obj);
+  if (inst_tp == NULL)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  key = la_get_item_pk_value (item);
+
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  if (sl_write_update_sql (inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+end:
+  AU_RESTORE (au_save);
+
+  if (inst_tp)
+    {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
+      dbt_abort_object (inst_tp);
+    }
+
+  return ret;
 }
 
 /*
@@ -5023,21 +5105,17 @@ la_apply_delete_log (LA_ITEM * item)
  *      . get the record description
  *      . fetch the class info
  *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_update_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save;
+  int error = NO_ERROR;
   unsigned int rcvindex;
   RECDES *recdes;
   LOG_PAGE *pgptr = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   DB_OBJECT *class_obj;
-  MOBJ mclass;
-  DB_OTMPL *inst_tp = NULL;
-  char sql_log_err[LINE_MAX];
-
-  string_buffer sb;
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5070,6 +5148,7 @@ la_apply_update_log (LA_ITEM * item)
 
       goto end;
     }
+
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
       && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
@@ -5083,113 +5162,44 @@ la_apply_update_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (error == NO_ERROR)
+      if (er_errid () == NO_ERROR)
 	{
 	  error = ER_FAILED;
 	}
+
       goto end;
     }
-
-  error = la_repl_add_object (class_obj, item, recdes);
 
   /*
    * regardless of the success or failure of obj_repl_update_object,
    * we should write sql log.
    */
+
   if (la_enable_sql_logging)
     {
-      bool sql_logging_failed = false;
-      int rc;
+      int ret;
 
       er_stack_push ();
-      do
-	{
-	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-	  if (mclass == NULL)
-	    {
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_SAVE_AND_DISABLE (au_save);
-
-	  inst_tp = dbt_create_object_internal (class_obj);
-	  if (inst_tp == NULL)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
-	  if (rc != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  if (sl_write_update_sql (inst_tp, &item->key) != NO_ERROR)
-	    {
-	      AU_RESTORE (au_save);
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_RESTORE (au_save);
-	}
-      while (0);
+      ret = la_write_update_sql_log (item, class_obj, recdes);
       er_stack_pop ();
 
-      if (sql_logging_failed == true)
+      if (ret != NO_ERROR)
 	{
-	  sb.clear ();
-	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	  er_stack_pop ();
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
+
+  error = la_repl_add_object (class_obj, item, recdes);
 
 end:
   if (error != NO_ERROR)
     {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
-
-      if (ER_IS_SERVER_DOWN_ERROR (error))
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	}
+      la_log_apply_error ("apply_update", ER_HA_LA_FAILED_TO_APPLY_UPDATE, item, error);
     }
   else
     {
       la_Info.update_counter++;
       la_Info.num_unflushed++;
-    }
-
-  if (inst_tp)
-    {
-      if (inst_tp->object)
-	{
-	  ws_release_user_instance (inst_tp->object);
-	  ws_decache (inst_tp->object);
-	}
-      dbt_abort_object (inst_tp);
     }
 
   la_release_page_buffer (old_pageid);
@@ -5231,6 +5241,60 @@ la_is_mvcc_class (const OID * class_oid)
   return true;
 }
 
+static int
+la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
+{
+  MOBJ mclass;
+  int au_save;
+  DB_VALUE *key;
+  DB_OTMPL *inst_tp = NULL;
+  int ret = NO_ERROR;
+
+  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
+  if (mclass == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  inst_tp = dbt_create_object_internal (class_obj);
+  if (inst_tp == NULL)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  key = la_get_item_pk_value (item);
+
+  /* make object using the record description */
+  if (la_disk_to_obj (mclass, recdes, inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+      goto end;
+    }
+
+  if (sl_write_insert_sql (inst_tp, key) != NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+end:
+  AU_RESTORE (au_save);
+
+  if (inst_tp)
+    {
+      if (inst_tp->object)
+	{
+	  ws_release_user_instance (inst_tp->object);
+	  ws_decache (inst_tp->object);
+	}
+      dbt_abort_object (inst_tp);
+    }
+
+  return ret;
+}
+
 /*
  * la_apply_insert_log() - apply the insert log to the target slave
  *   return: NO_ERROR or error code
@@ -5242,20 +5306,17 @@ la_is_mvcc_class (const OID * class_oid)
  *      . get the record description
  *      . fetch the class info
  *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
  */
 static int
 la_apply_insert_log (LA_ITEM * item)
 {
-  int error = NO_ERROR, au_save;
+  int error = NO_ERROR;
   DB_OBJECT *class_obj;
-  MOBJ mclass;
   LOG_PAGE *pgptr;
   unsigned int rcvindex;
   RECDES *recdes;
-  DB_OTMPL *inst_tp = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
-
-  string_buffer sb;
   bool is_mvcc_class;
 
   error = la_flush_repl_items (false);
@@ -5277,11 +5338,11 @@ la_apply_insert_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      if (error == NO_ERROR)
+      if (er_errid () == NO_ERROR)
 	{
 	  error = ER_FAILED;
 	}
+
       goto end;
     }
 
@@ -5311,104 +5372,30 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  error = la_repl_add_object (class_obj, item, recdes);
-
-  if (la_enable_sql_logging == true)
+  if (la_enable_sql_logging)
     {
-      bool sql_logging_failed = false;
-      int rc;
-      char sql_log_err[LINE_MAX];
+      int ret;
 
       er_stack_push ();
-
-      do
-	{
-	  mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
-	  if (mclass == NULL)
-	    {
-	      sql_logging_failed = true;
-	      break;
-	    }
-
-	  AU_SAVE_AND_DISABLE (au_save);
-
-	  inst_tp = dbt_create_object_internal (class_obj);
-	  if (inst_tp == NULL)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  /* make object using the record description */
-	  rc = la_disk_to_obj (mclass, recdes, inst_tp, la_get_item_pk_value (item));
-	  if (rc != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  if (sl_write_insert_sql (inst_tp, la_get_item_pk_value (item)) != NO_ERROR)
-	    {
-	      sql_logging_failed = true;
-	      AU_RESTORE (au_save);
-	      break;
-	    }
-
-	  AU_RESTORE (au_save);
-	}
-      while (0);
+      ret = la_write_insert_sql_log (item, class_obj, recdes);
       er_stack_pop ();
-
-      if (sql_logging_failed == true)
+      if (ret != NO_ERROR)
 	{
-	  sb.clear ();
-	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
-
-	  er_stack_push ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
-	  er_stack_pop ();
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
 	}
     }
+
+  error = la_repl_add_object (class_obj, item, recdes);
 
 end:
   if (error != NO_ERROR)
     {
-      sb.clear ();
-      db_sprint_value (la_get_item_pk_value (item), sb);
-#if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
-#endif
-      er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
-      er_stack_pop ();
-
-      la_Info.fail_counter++;
-
-      if (ER_IS_SERVER_DOWN_ERROR (error))
-	{
-	  error = ER_NET_CANT_CONNECT_SERVER;
-	}
+      la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
-    }
-
-  if (inst_tp)
-    {
-      if (inst_tp->object)
-	{
-	  ws_release_user_instance (inst_tp->object);
-	  ws_decache (inst_tp->object);
-	}
-      dbt_abort_object (inst_tp);
     }
 
   la_release_page_buffer (old_pageid);
