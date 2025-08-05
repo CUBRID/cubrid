@@ -4810,11 +4810,11 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_DATE:
       fprintf (stdout, "DB_TYPE_DATE \n");
       break;
-    case DB_TYPE_BLOB:
-      fprintf (stdout, "DB_TYPE_BLOB \n");
+    case DB_TYPE_BFILE:
+      fprintf (stdout, "DB_TYPE_BFILE \n");
       break;
-    case DB_TYPE_CLOB:
-      fprintf (stdout, "DB_TYPE_CLOB \n");
+    case DB_TYPE_CFILE:
+      fprintf (stdout, "DB_TYPE_CFILE \n");
       break;
     case DB_TYPE_VARIABLE:
       fprintf (stdout, "DB_TYPE_VARIABLE \n");

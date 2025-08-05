@@ -10469,8 +10469,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	      disk_bound = true;
 	      switch (TP_DOMAIN_TYPE (attrepr->domain))
 		{
-		case DB_TYPE_BLOB:
-		case DB_TYPE_CLOB:
+		case DB_TYPE_BFILE:
+		case DB_TYPE_CFILE:
 		case DB_TYPE_SET:	/* it may be just a little bit fast */
 		case DB_TYPE_MULTISET:
 		case DB_TYPE_SEQUENCE:
@@ -10804,7 +10804,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+      if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
@@ -10817,8 +10817,8 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	  if (!db_value_is_null (&value->dbvalue))
 	    {
 	      DB_ELO *elo;
-	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
-		      || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
+	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BFILE
+		      || db_value_type (&value->dbvalue) == DB_TYPE_CFILE);
 	      elo = db_get_elo (&value->dbvalue);
 	      if (elo)
 		{
@@ -11700,7 +11700,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	    }
 	}
       else if (value->state == HEAP_WRITTEN_ATTRVALUE
-	       && (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB))
+	       && (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE))
 	{
 	  DB_VALUE *save;
 	  save = db_value_copy (&value->dbvalue);
@@ -11716,8 +11716,8 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	    {
 	      DB_ELO *elo;
 
-	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
-		      || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
+	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BFILE
+		      || db_value_type (&value->dbvalue) == DB_TYPE_CFILE);
 	      elo = db_get_elo (&value->dbvalue);
 	      if (elo)
 		{
@@ -12153,13 +12153,13 @@ resize_and_start:
 	      buf->ptr = ptr_varvals;
 
 	      if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-		  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+		  && (pr_type->id == DB_TYPE_BFILE || pr_type->id == DB_TYPE_CFILE))
 		{
 		  DB_ELO dest_elo, *elo_p;
 		  char *save_meta_data, *new_meta_data;
 		  int error;
 
-		  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
+		  assert (db_value_type (dbvalue) == DB_TYPE_BFILE || db_value_type (dbvalue) == DB_TYPE_CFILE);
 
 		  elo_p = db_get_elo (dbvalue);
 
