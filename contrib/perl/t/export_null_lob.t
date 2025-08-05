@@ -13,7 +13,7 @@ my $dbh;
 eval {$dbh = DBI->connect($test_dsn, $test_user, $test_passwd, { RaiseError => 1});};
 
 $dbh -> do("drop table if EXISTS tbl;") or die "drop error: " . $dbh->errstr;
-$dbh -> do("create table tbl(id int, picture BLOB)") or die "create error: " . $dbh->errstr;
+$dbh -> do("create table tbl(id int, picture BFILE)") or die "create error: " . $dbh->errstr;
 $dbh -> do("insert into tbl values(1, NULL);") or die "insert error: " . $dbh->errstr;
 
 plan tests => 1;

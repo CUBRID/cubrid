@@ -91,7 +91,7 @@ SV * _cubrid_foreign_key (SV *dbh, char *pk_table, char *fk_table);
 #define dbd_st_fetch		cubrid_st_fetch
 #define dbd_st_finish		cubrid_st_finish
 #define dbd_st_destroy		cubrid_st_destroy
-#define dbd_st_blob_read	cubrid_st_blob_read
+#define dbd_st_bfile_read	cubrid_st_bfile_read
 #define dbd_st_STORE_attrib	cubrid_st_STORE_attrib
 #define dbd_st_FETCH_attrib	cubrid_st_FETCH_attrib
 #define dbd_describe		cubrid_describe

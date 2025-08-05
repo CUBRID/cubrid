@@ -19,7 +19,7 @@ added to this version such as functions about the lob object.
 - Added type_info_all/type_info: APIS-63
 
 - Implemented foreign_key_info: we just gave an interface not implemented it in last version.
-- Supported BLOB/CLOB in bind_param
+- Supported BFILE/CFILE in bind_param
 
 [BUG FIXES]
 1. APIS-54 - Fixed the bug that Data only be inserted into fixed database
