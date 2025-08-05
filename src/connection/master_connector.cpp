@@ -31,7 +31,6 @@
 #include "tcp.h"
 #include "buffer.hpp"
 #include "packet_buffer.hpp"
-#include "DMRB_SPSC.hpp"
 #include "epoll.hpp"
 #include "span.hpp"
 #include "porting.h"
@@ -41,7 +40,6 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
-#include <optional>
 #include <string>
 #include <type_traits>
 
@@ -601,8 +599,8 @@ namespace cubconn
 	  break;
 
 	case SERVER_START_SHUTDOWN:
-	  /* TODO: shutdown here */
-	  exit (0);
+	  /* nothing here */
+	  NEXT_STATE (ctx, RecvRequestType);
 	  break;
 
 	case SERVER_STOP_SHUTDOWN:
