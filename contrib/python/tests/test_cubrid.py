@@ -380,11 +380,11 @@ class DatabaseTest(unittest.TestCase):
             con.close()
 
     def test_lob_file(self):
-        t_bfile = 'create table test_cubrid (picture bfile)'
+        t_blob = 'create table test_cubrid (picture blob)'
         con = self._connect()
         cur = con.cursor()
         try:
-            cur.prepare(t_bfile)
+            cur.prepare(t_blob)
             cur.execute()
             cur.prepare('insert into test_cubrid values (?)')
             lob = con.lob()
@@ -404,11 +404,11 @@ class DatabaseTest(unittest.TestCase):
             con.close()
 
     def test_lob_string(self):
-        t_cfile = 'create table test_cubrid (content cfile)'
+        t_clob = 'create table test_cubrid (content clob)'
         con = self._connect()
         cur = con.cursor()
         try:
-            cur.prepare(t_cfile)
+            cur.prepare(t_clob)
             cur.execute()
             cur.prepare('insert into test_cubrid values (?)') 
             lob = con.lob()

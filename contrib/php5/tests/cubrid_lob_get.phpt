@@ -22,15 +22,15 @@ if (!$cubrid_req) {
     exit(1);
 }
 
-$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "bfile");
+$cubrid_retval = cubrid_bind($cubrid_req, 1, $fp, "blob");
 if (!$cubrid_retval) {
-    printf("[002] Can't bind bfile type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[002] Can't bind blob type parameter. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
 $cubrid_retval = cubrid_execute($cubrid_req);
 if (!$cubrid_retval) {
-    printf("[003] Bfile data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
+    printf("[003] Blob data insertion failed. [%d] %s\n", cubrid_error_code(), cubrid_error_msg());
     exit(1);
 }
 
@@ -67,7 +67,7 @@ if ($tmp !== false) {
 $lobs = cubrid_lob_get($cubrid_conn, "select e from php_cubrid_test");
 
 if (cubrid_lob_size($lobs[0]) != filesize("cubrid_logo.png")) {
-    printf("[006] Bfile data export error.\n");
+    printf("[006] Blob data export error.\n");
     exit(1);
 }
 
@@ -90,7 +90,7 @@ Warning: Error: DBMS, -424, No statement to execute. in %s on line %d
 
 Warning: cubrid_lob_get(): Get result info fail or sql type is not select in %s on line %d
 
-Warning: cubrid_lob_get(): Column type is not BFILE or CFILE. in %s on line %d
+Warning: cubrid_lob_get(): Column type is not BLOB or CLOB. in %s on line %d
 
 Warning: cubrid_lob_get(): More than one columns returned in %s on line %d
 done!

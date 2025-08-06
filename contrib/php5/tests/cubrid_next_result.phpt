@@ -61,7 +61,7 @@ function print_field_info($req_handle, $offset = 0)
     printf("%-30s %d\n", "unique key:", $field->unique_key);
     printf("%-30s %d\n", "multiple key:", $field->multiple_key);
     printf("%-30s %d\n", "numeric:", $field->numeric);
-    printf("%-30s %d\n", "bfile:", $field->bfile);
+    printf("%-30s %d\n", "blob:", $field->blob);
 
     return true;
 }
@@ -179,7 +179,7 @@ primary key:                   0
 unique key:                    0
 multiple key:                  1
 numeric:                       0
-bfile:                          0
+blob:                          0
 
 ------------ get_result_info --------------------
 Row count:                     4
@@ -212,5 +212,5 @@ primary key:                   1
 unique key:                    1
 multiple key:                  0
 numeric:                       0
-bfile:                          0
+blob:                          0
 done!

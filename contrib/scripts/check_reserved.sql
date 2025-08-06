@@ -3,7 +3,7 @@ SELECT {
  'database', 'day_millisecond', 'day_second', 'day_minute', 'day_hour', 'distinctrow',
  'div', 'do', 'duplicate', 'hour_millisecond', 'hour_second', 'hour_minute', 'localtime',
  'localtimestamp', 'minute_millisecond', 'minute_second', 'mod', 'rollup',
- 'second_millisecond', 'truncate', 'xor', 'year_month', 'bfile', 'cfile',
+ 'second_millisecond', 'truncate', 'xor', 'year_month', 'blob', 'clob',
  -- R4.0
  'mediumint', 'tinyint', 'keylimit'
 } AS "new_reversed_keywords_since_R30"

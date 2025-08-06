@@ -36,8 +36,8 @@
 #define open(file, flag, mode) _open(file, flag, mode)
 #endif
 
-#define CUBRID_CFILE 'C'
-#define CUBRID_BFILE 'B'
+#define CUBRID_CLOB 'C'
+#define CUBRID_BLOB 'B'
 #define CUBRID_LOB_BUF_SIZE 4096
 #define CUBRID_ER_MSG_LEN 1024
 
@@ -1459,7 +1459,7 @@ _cubrid_CursorObject_prepare (_cubrid_CursorObject * self, PyObject * args)
 static char _cubrid_CursorObject_bind_param__doc__[] =
 "bind_param(index, string)\n\
 This function is used to bind values in prepare() variable. You can pass\n\
-any type as string, except BFILE/CFILE type.\n\
+any type as string, except BLOB/CLOB type.\n\
 The following shows the types of substitute values::\n\
   CHAR\n\
   STRING\n\
@@ -1477,8 +1477,8 @@ The following shows the types of substitute values::\n\
   DATE\n\
   TIMESTAMP\n\
   OBJECT\n\
-  BFILE\n\
-  CFILE\n\
+  BLOB\n\
+  CLOB\n\
   NULL\n\
 \n\
 Parameters::\n\
@@ -1521,7 +1521,7 @@ _cubrid_CursorObject_bind_param (_cubrid_CursorObject * self, PyObject * args)
 
 static char _cubrid_CursorObject_bind_lob__doc__[] =
 "bind_lob(n, lob)\n\
-bind BFILE/CFILE type in prepare() variable.\n\
+bind BLOB/CLOB type in prepare() variable.\n\
 \n\
 Parameters::\n\
   index: string, actual value for binding\n\
@@ -1532,20 +1532,20 @@ Example::\n\
   con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')\n\
   cur = con.cursor()\n\
   \n\
-  cur.prepare('create table test_bfile(image BFILE)')\n\
+  cur.prepare('create table test_blob(image BLOB)')\n\
   cur.execute()\n\
-  cur.prepare('create table test_cfile(image CFILE)')\n\
+  cur.prepare('create table test_clob(image CLOB)')\n\
   cur.execute()\n\
   \n\
   lob = con.lob()\n\
   \n\
-  cur.prepare('insert into test_bfile values (?)')\n\
+  cur.prepare('insert into test_blob values (?)')\n\
   lob.imports('123.jpg') # or lob.imports('123.jpg', 'B')\n\
   cur.bind_lob(1, lob)\n\
   cur.execute()\n\
   lob.close()\n\
   \n\
-  cur.prepare('insert into test_cfile values (?)')\n\
+  cur.prepare('insert into test_clob values (?)')\n\
   lob.imports('123.jpg', 'C')\n\
   cur.bind_lob(1, lob)\n\
   cur.execute()\n\
@@ -1565,11 +1565,11 @@ _cubrid_CursorObject_bind_lob (_cubrid_CursorObject * self, PyObject * args)
       return NULL;
     }
 
-  if (lob->type == CUBRID_BFILE)
+  if (lob->type == CUBRID_BLOB)
     {
       res =
-	cci_bind_param (self->handle, index, CCI_A_TYPE_BFILE,
-			(void *) lob->bfile, CCI_U_TYPE_BFILE, CCI_BIND_PTR);
+	cci_bind_param (self->handle, index, CCI_A_TYPE_BLOB,
+			(void *) lob->blob, CCI_U_TYPE_BLOB, CCI_BIND_PTR);
       if (res < 0)
 	{
 	  return handle_error (res, NULL);
@@ -1578,8 +1578,8 @@ _cubrid_CursorObject_bind_lob (_cubrid_CursorObject * self, PyObject * args)
   else
     {
       res =
-	cci_bind_param (self->handle, index, CCI_A_TYPE_CFILE,
-			(void *) lob->cfile, CCI_U_TYPE_CFILE, CCI_BIND_PTR);
+	cci_bind_param (self->handle, index, CCI_A_TYPE_CLOB,
+			(void *) lob->clob, CCI_U_TYPE_CLOB, CCI_BIND_PTR);
       if (res < 0)
 	{
 	  return handle_error (res, NULL);
@@ -2227,7 +2227,7 @@ _cubrid_CursorObject_fetch (_cubrid_CursorObject * self, PyObject * args)
 
 static char _cubrid_CursorObject_fetch_lob__doc__[] =
 "fetch_lob(col, lob)\n\
-get BFILE/CFILE data out from the database server. You need to specify\n\
+get BLOB/CLOB data out from the database server. You need to specify\n\
 which column is lob type.\n\
 \n\
 Parameters::\n\
@@ -2275,12 +2275,12 @@ _cubrid_CursorObject_fetch_lob (_cubrid_CursorObject * self, PyObject * args)
       return handle_error (res, &error);
     }
 
-  if (CCI_GET_RESULT_INFO_TYPE (self->col_info, 1) == CCI_U_TYPE_BFILE)
+  if (CCI_GET_RESULT_INFO_TYPE (self->col_info, 1) == CCI_U_TYPE_BLOB)
     {
-      lob->type = CUBRID_BFILE;
+      lob->type = CUBRID_BLOB;
       res =
-	cci_get_data (self->handle, col, CCI_A_TYPE_BFILE,
-		      (void *) &lob->bfile, &ind);
+	cci_get_data (self->handle, col, CCI_A_TYPE_BLOB,
+		      (void *) &lob->blob, &ind);
       if (res < 0)
 	{
 	  return handle_error (res, NULL);
@@ -2288,10 +2288,10 @@ _cubrid_CursorObject_fetch_lob (_cubrid_CursorObject * self, PyObject * args)
     }
   else
     {
-      lob->type = CUBRID_CFILE;
+      lob->type = CUBRID_CLOB;
       res =
-	cci_get_data (self->handle, col, CCI_A_TYPE_CFILE,
-		      (void *) &lob->cfile, &ind);
+	cci_get_data (self->handle, col, CCI_A_TYPE_CLOB,
+		      (void *) &lob->clob, &ind);
       if (res < 0)
 	{
 	  return handle_error (res, NULL);
@@ -2606,10 +2606,10 @@ _cubrid_LobObject_init (_cubrid_LobObject * self, PyObject * args,
     }
 
   self->connection = conn->handle;
-  self->bfile = NULL;
-  self->cfile = NULL;
+  self->blob = NULL;
+  self->clob = NULL;
   self->pos = 0;
-  self->type = CUBRID_BFILE;
+  self->type = CUBRID_BLOB;
 
   return 0;
 }
@@ -2620,15 +2620,15 @@ static char _cubrid_LobObject_close__doc__[] =
 static PyObject *
 _cubrid_LobObject_close (_cubrid_LobObject * self, PyObject * args)
 {
-  if (self->bfile)
+  if (self->blob)
     {
-      cci_bfile_free (self->bfile);
-      self->bfile = NULL;
+      cci_blob_free (self->blob);
+      self->blob = NULL;
     }
-  if (self->cfile)
+  if (self->clob)
     {
-      cci_bfile_free (self->cfile);
-      self->cfile = NULL;
+      cci_blob_free (self->clob);
+      self->clob = NULL;
     }
   Py_INCREF (Py_None);
   return Py_None;
@@ -2642,21 +2642,21 @@ _cubrid_LobObject_create (_cubrid_LobObject * self, char type)
 
   if (type == 'B' || type == 'b')
     {
-      res = cci_bfile_new (self->connection, &self->bfile, &error);
+      res = cci_blob_new (self->connection, &self->blob, &error);
       if (res < 0)
 	{
 	  return handle_error (res, &error);
 	}
-      self->type = CUBRID_BFILE;
+      self->type = CUBRID_BLOB;
     }
   else if (type == 'C' || type == 'c')
     {
-      res = cci_cfile_new (self->connection, &self->cfile, &error);
+      res = cci_clob_new (self->connection, &self->clob, &error);
       if (res < 0)
 	{
 	  return handle_error (res, &error);
 	}
-      self->type = CUBRID_CFILE;
+      self->type = CUBRID_CLOB;
     }
   else
     {
@@ -2671,22 +2671,22 @@ static int
 _cubrid_LobObject_cci_write (_cubrid_LobObject * self, CUBRID_LONG_LONG pos,
 			     int size, char *buf, T_CCI_ERROR * error)
 {
-  return (self->type == CUBRID_BFILE) ?
-    cci_bfile_write (self->connection, self->bfile, pos, size, buf, error) :
-    cci_cfile_write (self->connection, self->cfile, pos, size, buf, error);
+  return (self->type == CUBRID_BLOB) ?
+    cci_blob_write (self->connection, self->blob, pos, size, buf, error) :
+    cci_clob_write (self->connection, self->clob, pos, size, buf, error);
 }
 
 static CUBRID_LONG_LONG
 _cubrid_LobObject_cci_lob_size (_cubrid_LobObject * self)
 {
-  return (self->type == CUBRID_BFILE) ?
-    cci_bfile_size (self->bfile) : cci_cfile_size (self->cfile);
+  return (self->type == CUBRID_BLOB) ?
+    cci_blob_size (self->blob) : cci_clob_size (self->clob);
 }
 
 static char _cubrid_LobObject_import__doc__[] =
 "imports(file[, type])\n\
 imports file in CUBRID server.\n\
-If not give the type, it will be processed as BFILE.\n";
+If not give the type, it will be processed as BLOB.\n";
 
 static PyObject *
 _cubrid_LobObject_import (_cubrid_LobObject * self, PyObject * args)
@@ -2704,7 +2704,7 @@ _cubrid_LobObject_import (_cubrid_LobObject * self, PyObject * args)
 
   if (type == NULL)
     {
-      _cubrid_LobObject_create (self, CUBRID_BFILE);
+      _cubrid_LobObject_create (self, CUBRID_BLOB);
     }
   else
     {
@@ -2757,13 +2757,13 @@ _cubrid_LobObject_import (_cubrid_LobObject * self, PyObject * args)
 static char _cubrid_LobObject_write__doc__[] =
 "write(string)\n\
 writes a string to the large object.If LOB object does not exist.\n\
-It will be create a BFILE object as default.\n\
+It will be create a BLOB object as default.\n\
 \n\
 Example 1::\n\
   import _cubrid\n\
   con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')\n\
   cur = con.cursor()\n\
-  cur.prepare('insert into test_cfile(content) values (?)')\n\
+  cur.prepare('insert into test_clob(content) values (?)')\n\
   lob = con.lob()\n\
   content = 'CUBRID is a very powerful RDBMS'\n\
   lob.write(content, 'C')\n\
@@ -2777,7 +2777,7 @@ Example 2::\n\
   import _cubrid\n\
   con = _cubrid.connect('CUBRID:localhost:33000:demodb:::', 'public')\n\
   cur = con.cursor()\n\
-  cur.prepare('select * from test_bfile')\n\
+  cur.prepare('select * from test_blob')\n\
   cur.execute()\n\
   lob = con.lob()\n\
   cur.fetch_lob(1, lob)\n\
@@ -2799,11 +2799,11 @@ _cubrid_LobObject_write (_cubrid_LobObject * self, PyObject * args)
       return NULL;
     }
 
-  if (self->bfile == NULL && self->cfile == NULL)
+  if (self->blob == NULL && self->clob == NULL)
     {
       if (type == NULL)
         {
-	  _cubrid_LobObject_create (self, CUBRID_BFILE);
+	  _cubrid_LobObject_create (self, CUBRID_BLOB);
         }
       else
         {
@@ -2833,15 +2833,15 @@ static int
 _cubrid_LobObject_cci_read (_cubrid_LobObject * self, CUBRID_LONG_LONG pos,
 			    int size, char *buf, T_CCI_ERROR * error)
 {
-  return (self->type == CUBRID_BFILE) ?
-    cci_bfile_read (self->connection, self->bfile, pos, size, buf, error) :
-    cci_cfile_read (self->connection, self->cfile, pos, size, buf, error);
+  return (self->type == CUBRID_BLOB) ?
+    cci_blob_read (self->connection, self->blob, pos, size, buf, error) :
+    cci_clob_read (self->connection, self->clob, pos, size, buf, error);
 }
 
 static char _cubrid_LobObject_export__doc__[] =
 "export(file)\n\
-export BFILE/CFILE data to the specified file. To use this function, you must\n\
-use fetch_lob() in cursor class first to get BFILE/CFILE info from CUBRID.\n\
+export BLOB/CLOB data to the specified file. To use this function, you must\n\
+use fetch_lob() in cursor class first to get BLOB/CLOB info from CUBRID.\n\
 \n\
 file: string, support filepath/file\n\
 \n\
@@ -2870,7 +2870,7 @@ _cubrid_LobObject_export (_cubrid_LobObject * self, PyObject * args)
       return NULL;
     }
 
-  if (self->bfile == NULL && self->cfile == NULL)
+  if (self->blob == NULL && self->clob == NULL)
     {
       return handle_error (CUBRID_ER_LOB_NOT_EXIST, NULL);
     }
@@ -2963,7 +2963,7 @@ _cubrid_LobObject_read (_cubrid_LobObject * self, PyObject * args)
       return handle_error (CUBRID_ER_INVALID_PARAM, NULL);
     }
 
-  if (self->bfile == NULL && self->cfile == NULL)
+  if (self->blob == NULL && self->clob == NULL)
     {
       return handle_error (CUBRID_ER_LOB_NOT_EXIST, NULL);
     }
@@ -3092,7 +3092,7 @@ static PyMethodDef _cubrid_LobObject_methods[] = {
 };
 
 static char _cubrid_LobObject__doc__[] = "Lob class.\n\
-Process BFILE/CFILE type";
+Process BLOB/CLOB type";
 
 PyTypeObject _cubrid_LobObject_type = {
 #if PY_MAJOR_VERSION >= 3

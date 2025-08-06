@@ -18,7 +18,7 @@ if (!is_null($tmp = @cubrid_lob2_export())) {
 }
 
 @cubrid_execute($conn, 'DROP TABLE IF EXISTS test_lob2');
-cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT AUTO_INCREMENT, images BFILE, contents CFILE)');
+cubrid_execute($conn, 'CREATE TABLE test_lob2 (id INT AUTO_INCREMENT, images BLOB, contents CLOB)');
 
 prepare_table_for_test($conn);
 
@@ -29,11 +29,11 @@ while ($row = cubrid_fetch_row($req, CUBRID_LOB)) {
     cubrid_lob2_export($row[2], "content_" . $row[0] . ".txt");
 
     if (!file_exists("image_" . $row[0] . ".png")) {
-        printf("[002] BFILE data export error.\n");
+        printf("[002] BLOB data export error.\n");
     }
 
     if (!file_exists("content_" . $row[0] . ".txt")) {
-        printf("[003] CFILE data export error.\n");
+        printf("[003] CLOB data export error.\n");
     }
 
     @unlink("image_" . $row[0] . ".png");
@@ -59,33 +59,33 @@ function prepare_table_for_test($conn) {
 
     $req = cubrid_prepare($conn, 'INSERT INTO test_lob2(images, contents) VALUES (?, ?)');
     
-    $lob_1 = cubrid_lob2_new($conn, 'BFILE');
+    $lob_1 = cubrid_lob2_new($conn, 'BLOB');
     cubrid_lob2_import($lob_1, 'cubrid_logo.png');
     cubrid_lob2_bind($req, 1, $lob_1);
     
-    $lob_2 = cubrid_lob2_new($conn, 'CFILE');
+    $lob_2 = cubrid_lob2_new($conn, 'CLOB');
     cubrid_lob2_import($lob_2, 'connect.inc');
     cubrid_lob2_bind($req, 2, $lob_2);
     
     cubrid_execute($req);
     
-    $lob_1 = cubrid_lob2_new($conn, 'BFILE');
+    $lob_1 = cubrid_lob2_new($conn, 'BLOB');
     cubrid_lob2_import($lob_1, 'cubrid_logo.png');
     cubrid_lob2_bind($req, 1, $lob_1);
     
     
-    $lob_2 = cubrid_lob2_new($conn, 'CFILE');
+    $lob_2 = cubrid_lob2_new($conn, 'CLOB');
     cubrid_lob2_import($lob_2, 'table.inc');
     cubrid_lob2_bind($req, 2, $lob_2);
     
     cubrid_execute($req);
     
-    $lob_1 = cubrid_lob2_new($conn, 'BFILE');
+    $lob_1 = cubrid_lob2_new($conn, 'BLOB');
     cubrid_lob2_import($lob_1, 'cubrid_logo.png');
     cubrid_lob2_bind($req, 1, $lob_1);
     
     
-    $lob_2 = cubrid_lob2_new($conn, 'CFILE');
+    $lob_2 = cubrid_lob2_new($conn, 'CLOB');
     cubrid_lob2_import($lob_2, 'clean_table.inc');
     cubrid_lob2_bind($req, 2, $lob_2);
     

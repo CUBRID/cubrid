@@ -89,8 +89,8 @@ typedef struct
 {
   PyObject_HEAD
   int connection;
-  T_CCI_BFILE bfile;
-  T_CCI_CFILE cfile;
+  T_CCI_BLOB blob;
+  T_CCI_CLOB clob;
   char type;
   CUBRID_LONG_LONG pos;
 } _cubrid_LobObject;

@@ -54,7 +54,7 @@ static struct _error_message {
     {CUBRID_ER_CANNOT_FETCH_DATA, "Cannot fetch data"},
     {CUBRID_ER_WRITE_FILE, "Cannot write file"},
     {CUBRID_ER_READ_FILE, "Cannot read file"},
-    {CUBRID_ER_NOT_LOB_TYPE, "Not a lob type, can only support SQL_BFILE or SQL_CFILE"},
+    {CUBRID_ER_NOT_LOB_TYPE, "Not a lob type, can only support SQL_BLOB or SQL_CLOB"},
     {CUBRID_ER_INVALID_PARAM, "Invalid parameter"},
     {CUBRID_ER_ROW_INDEX_EXCEEDED, "Row index exceeds the allowed range(1 ~ the number of affected rows)"},
     {CUBRID_ER_EXPORT_NULL_LOB_INVALID, "Exporting NULL LOB is invalid"},
@@ -916,14 +916,14 @@ dbd_st_FETCH_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv )
 
 /***************************************************************************
  *
- * Name:    dbd_st_bfile_read (Not implement now)
+ * Name:    dbd_st_blob_read (Not implement now)
  *
- * Purpose: Used for bfile reads if the statement handles bfile
+ * Purpose: Used for blob reads if the statement handles blob 
  *
- * Input:   sth - statement handle from which a bfile will be
+ * Input:   sth - statement handle from which a blob will be 
  *                fetched (currently not supported by DBD::cubrid)
  *          imp_sth - drivers private statement handle data
- *          field - field number of the bfile
+ *          field - field number of the blob
  *          offset - the offset of the field, where to start reading
  *          len - maximum number of bytes to read
  *          destrv - RV* that tells us where to store
@@ -934,7 +934,7 @@ dbd_st_FETCH_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv )
  **************************************************************************/
 
 int
-dbd_st_bfile_read(SV *sth, imp_sth_t *imp_sth,
+dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth,
         int field, long offset, long len, SV *destrv, long destoffset)
 {
     sth = sth;
@@ -1026,8 +1026,8 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
     }
 
     switch(sql_type) {
-    case SQL_BFILE:
-    case SQL_CFILE:
+    case SQL_BLOB:
+    case SQL_CLOB:
         if ((res = _cubrid_lob_bind (sth, 
                                      index, 
                                      sql_type, 
@@ -1168,7 +1168,7 @@ cubrid_st_lob_get( SV *sth, int col )
     }
 
     u_type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, col);
-    if (!(u_type == CCI_U_TYPE_BFILE ||  u_type == CCI_U_TYPE_CFILE)) {
+    if (!(u_type == CCI_U_TYPE_BLOB ||  u_type == CCI_U_TYPE_CLOB)) {
         handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
         return FALSE;
     }
@@ -1209,7 +1209,7 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
     }
 
     u_type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, imp_sth->col_selected);
-    if (!(u_type == CCI_U_TYPE_BFILE ||  u_type == CCI_U_TYPE_CFILE)) {
+    if (!(u_type == CCI_U_TYPE_BLOB ||  u_type == CCI_U_TYPE_CLOB)) {
         handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
         return FALSE;
     }
@@ -1227,21 +1227,21 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
         return FALSE;
     }
 
-    if ( u_type == CCI_U_TYPE_BFILE) {
-        imp_sth->lob[index-1].type = CCI_U_TYPE_BFILE;
+    if ( u_type == CCI_U_TYPE_BLOB) {
+        imp_sth->lob[index-1].type = CCI_U_TYPE_BLOB;
         if ((res = cci_get_data (imp_sth->handle,
                         imp_sth->col_selected,
-                        CCI_A_TYPE_BFILE,
+                        CCI_A_TYPE_BLOB,
                         (void *)&imp_sth->lob[index-1].lob,
                         &ind)) < 0) {
             handle_error (sth, res, NULL);
             return FALSE;
         }
     } else {
-        imp_sth->lob[index-1].type = CCI_U_TYPE_BFILE;
+        imp_sth->lob[index-1].type = CCI_U_TYPE_BLOB;
         if ((res = cci_get_data (imp_sth->handle,
                         imp_sth->col_selected,
-                        CCI_A_TYPE_CFILE,
+                        CCI_A_TYPE_CLOB,
                         (void *)&imp_sth->lob[index-1].lob,
                         (&ind))) < 0) {
             handle_error (sth, res, NULL);
@@ -1318,13 +1318,13 @@ cubrid_st_lob_import( SV *sth,
 
     D_imp_sth (sth);
 
-    if (sql_type == SQL_BFILE) {
-        u_type = CCI_U_TYPE_BFILE;
-        a_type = CCI_A_TYPE_BFILE;
+    if (sql_type == SQL_BLOB) {
+        u_type = CCI_U_TYPE_BLOB;
+        a_type = CCI_A_TYPE_BLOB;
     }
-    else if (sql_type == SQL_CFILE) {
-        u_type = CCI_U_TYPE_CFILE;
-        a_type = CCI_A_TYPE_CFILE;
+    else if (sql_type == SQL_CLOB) {
+        u_type = CCI_U_TYPE_CLOB;
+        a_type = CCI_A_TYPE_CLOB;
     }
     else {
         handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
@@ -1423,12 +1423,12 @@ _cubrid_lob_bind( SV *sth,
 
     D_imp_sth (sth);
    
-    if (sql_type == SQL_BFILE) {
-        u_type = CCI_U_TYPE_BFILE;
-        a_type = CCI_A_TYPE_BFILE;
+    if (sql_type == SQL_BLOB) {
+        u_type = CCI_U_TYPE_BLOB;
+        a_type = CCI_A_TYPE_BLOB;
     } else {
-        u_type = CCI_U_TYPE_CFILE;
-        a_type = CCI_A_TYPE_CFILE;
+        u_type = CCI_U_TYPE_CLOB;
+        a_type = CCI_A_TYPE_CLOB;
     }
 
     if ((res = _cubrid_lob_new (imp_sth->conn, 
@@ -1466,15 +1466,15 @@ _cubrid_lob_new( int conn,
                  T_CCI_U_TYPE type, 
                  T_CCI_ERROR *error )
 {
-    return (type == CCI_U_TYPE_BFILE) ? 
-        cci_bfile_new (conn, lob, error) : cci_cfile_new (conn, lob, error);
+    return (type == CCI_U_TYPE_BLOB) ? 
+        cci_blob_new (conn, lob, error) : cci_clob_new (conn, lob, error);
 }
 
 static long long
 _cubrid_lob_size( T_CCI_LOB lob, T_CCI_U_TYPE type )
 {
-    return (type == CCI_U_TYPE_BFILE) ? 
-        cci_bfile_size (lob) : cci_cfile_size (lob);
+    return (type == CCI_U_TYPE_BLOB) ? 
+        cci_blob_size (lob) : cci_clob_size (lob);
 }
 
 static int
@@ -1486,9 +1486,9 @@ _cubrid_lob_write( int conn,
                    const char *buf,
                    T_CCI_ERROR *error )
 {
-    return (type == CCI_U_TYPE_BFILE) ?
-        cci_bfile_write (conn, lob, start_pos, length, buf, error) :
-        cci_cfile_write (conn, lob, start_pos, length, buf, error);
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_write (conn, lob, start_pos, length, buf, error) :
+        cci_clob_write (conn, lob, start_pos, length, buf, error);
 }
 
 static int
@@ -1500,16 +1500,16 @@ _cubrid_lob_read( int conn,
                   char *buf, 
                   T_CCI_ERROR *error )
 {
-    return (type == CCI_U_TYPE_BFILE) ?
-        cci_bfile_read (conn, lob, start_pos, length, buf, error) :
-        cci_cfile_read (conn, lob, start_pos, length, buf, error);
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_read (conn, lob, start_pos, length, buf, error) :
+        cci_clob_read (conn, lob, start_pos, length, buf, error);
 }
 
 static int 
 _cubrid_lob_free( T_CCI_LOB lob, T_CCI_U_TYPE type )
 {
-    return (type == CCI_U_TYPE_BFILE) ?
-        cci_bfile_free (lob) : cci_cfile_free (lob);
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_free (lob) : cci_clob_free (lob);
 }
 
 /* catalog functions */

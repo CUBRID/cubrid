@@ -32,7 +32,7 @@ ok $dbh->do("DROP TABLE IF EXISTS $table"), "Drop table if exists $table";
 my $create = <<EOT;
 CREATE TABLE $table (
     id INT(3) NOT NULL DEFAULT 0,
-    picture BFILE )
+    picture BLOB )
 EOT
 
 ok ($dbh->do($create));
@@ -43,13 +43,13 @@ my ($sth, $query);
 $query = "INSERT INTO $table VALUES(1, ?)";
 ok ($sth = $dbh->prepare($query));
 my $test_png_file = File::Spec->catfile($volume, $script_directory, "cubrid_logo.png");
-ok ($sth->cubrid_lob_import(1, $test_png_file, DBI::SQL_BFILE), "import cubrid_logo.png");
+ok ($sth->cubrid_lob_import(1, $test_png_file, DBI::SQL_BLOB), "import cubrid_logo.png");
 ok ($sth->execute);
 
 # Insert a NULL row into the test table ......
 $query = "INSERT INTO $table VALUES(2, ?)";
 ok ($sth = $dbh->prepare($query));
-$sth->cubrid_lob_import(1, NULL, DBI::SQL_BFILE);
+$sth->cubrid_lob_import(1, NULL, DBI::SQL_BLOB);
 ok ($sth->execute);
 
 ok ($sth->finish);

@@ -399,12 +399,12 @@ use strict;
                 $info->{COLUMN_SIZE} = 14;
                 $info->{DECIMAL_DIGITS} = 2;
             }
-            elsif ($type =~ /BFILE/) {
-                $info->{DATA_TYPE} = SQL_BFILE;
+            elsif ($type =~ /BLOB/) {
+                $info->{DATA_TYPE} = SQL_BLOB;
                 $info->{COLUMN_SIZE} = 0;
             }
-            elsif ($type =~ /CFILE/) {
-                $info->{DATA_TYPE} = SQL_CFILE;
+            elsif ($type =~ /CLOB/) {
+                $info->{DATA_TYPE} = SQL_CLOB;
                 $info->{COLUMN_SIZE} = 0;
             }
             elsif ($type =~ /FLOAT/) {
@@ -652,10 +652,10 @@ use strict;
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
 ["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
-["BFILE", SQL_BFILE, 0, undef, undef, undef,
-    1, 0, 3, 0, 0, 0, "BFILE", -1, -1, SQL_BFILE, -1, -1, -1],
-["CFILE", SQL_CFILE, 0, undef, undef, undef,
-    1, 0, 3, 0, 0, 0, "CFILE", -1, -1, SQL_CFILE, -1, -1, -1],
+["BLOB", SQL_BLOB, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
+["CLOB", SQL_CLOB, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "CLOB", -1, -1, SQL_CLOB, -1, -1, -1],
         ];
 
         return $type_info_all;
@@ -1090,12 +1090,12 @@ use this function, you need to call B<cubrid_lob_get> first. For example
     $sth->cubrid_lob_import ($index, $filename, $type);
 
 This method will import a file in CUBRID database. The parameter $index is indicated to
-which placeholder you want to bind the file in $filename, and $type can SQL_BFILE or SQL_CFILE.
+which placeholder you want to bind the file in $filename, and $type can SQL_BLOB or SQL_CLOB.
 For example
 
     $sth = $dbh->prepare ("INSERT INTO test_lob VALUES (?, ?)");
     $sth->bind_param (1, 1);
-    $sth->cubrid_lob_import (2, "1.jpg", DBI::SQL_BFILE);
+    $sth->cubrid_lob_import (2, "1.jpg", DBI::SQL_BLOB);
     $sth->execute;
 
 =head3 B<cubrid_lob_close>
@@ -1129,8 +1129,8 @@ Returns the name of the current database.
 Allows the user to bind a value and/or a data type to a placeholder. The value of C<$index>
 is a number of using the '?' style placeholder. Generally, you can bind params without specifying
 the data type. CUBRID will match it automatically. That means, you don't use C<$bind_type> for
-most data types in CUBRID. But it won't work well with some special data types, such as BFILE and
-CFILE. The following are data types supported by CUBRID.
+most data types in CUBRID. But it won't work well with some special data types, such as BLOB and
+CLOB. The following are data types supported by CUBRID.
 
     -----------------------------------------
     | CUBRID        | sql_types             |
@@ -1151,12 +1151,12 @@ CFILE. The following are data types supported by CUBRID.
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
     | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
-    | BFILE         | SQL_BFILE             |
-    | CFILE         | SQL_CFILE             |
+    | BLOB          | SQL_BLOB              |
+    | CLOB          | SQL_CLOB              |
     -----------------------------------------
 
 Note that, DBD:cubrid does not support BIT, SET, MULTISET and SEQUENCE now. And if you want to
-bind BFILE/CFILE data, you must specify C<$bind_type>.
+bind BLOB/CLOB data, you must specify C<$bind_type>.
 
 Examples of use:
 
@@ -1168,10 +1168,10 @@ Examples of use:
     $sth->bind_param (4, 1000.5);
     $sth->execute;
 
-    # CREATE TABLE test_cubrid (id INT, paper CFILE);
+    # CREATE TABLE test_cubrid (id INT, paper CLOB);
     $sth = $dbh->prepare ("INSERT INTO test_cubrid VALUES (?, ?)");
     $sth->bind_param (1, 10);
-    $sth->bind_param (2, "HELLO WORLD", DBI::SQL_CFILE);
+    $sth->bind_param (2, "HELLO WORLD", DBI::SQL_CLOB);
     $sth->execute;
 
 =head3 B<execute>

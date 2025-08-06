@@ -24,7 +24,7 @@ ok $dbh->do("DROP TABLE IF EXISTS $table"), "Drop table if exists $table";
 my $create = <<EOT;
 CREATE TABLE $table (
     id INT(3) NOT NULL DEFAULT 0,
-    name CFILE )
+    name CLOB )
 EOT
 
 ok ($dbh->do($create));
@@ -33,7 +33,7 @@ ok ($dbh->do($create));
 my ($sth, $query);
 $query = "INSERT INTO $table VALUES(1, ?)";
 ok ($sth = $dbh->prepare($query));
-ok ($sth->bind_param(1, "Hello world!", DBI::SQL_CFILE));
+ok ($sth->bind_param(1, "Hello world!", DBI::SQL_CLOB));
 ok ($sth->execute);
 ok ($sth->finish);
 

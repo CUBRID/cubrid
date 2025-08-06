@@ -32,7 +32,7 @@ int ERR_load_PEM_strings(void);
 # define PEM_F_D2I_PKCS8PRIVATEKEY_FP                     121
 # define PEM_F_DO_B2I                                     132
 # define PEM_F_DO_B2I_BIO                                 133
-# define PEM_F_DO_BFILE_HEADER                            134
+# define PEM_F_DO_BLOB_HEADER                             134
 # define PEM_F_DO_I2B                                     146
 # define PEM_F_DO_PK8PKEY                                 126
 # define PEM_F_DO_PK8PKEY_FP                              125
@@ -79,12 +79,12 @@ int ERR_load_PEM_strings(void);
 # define PEM_R_BIO_WRITE_FAILURE                          118
 # define PEM_R_CIPHER_IS_NULL                             127
 # define PEM_R_ERROR_CONVERTING_PRIVATE_KEY               115
-# define PEM_R_EXPECTING_PRIVATE_KEY_BFILE                119
-# define PEM_R_EXPECTING_PUBLIC_KEY_BFILE                 120
+# define PEM_R_EXPECTING_PRIVATE_KEY_BLOB                 119
+# define PEM_R_EXPECTING_PUBLIC_KEY_BLOB                  120
 # define PEM_R_HEADER_TOO_LONG                            128
 # define PEM_R_INCONSISTENT_HEADER                        121
-# define PEM_R_KEYBFILE_HEADER_PARSE_ERROR                122
-# define PEM_R_KEYBFILE_TOO_SHORT                         123
+# define PEM_R_KEYBLOB_HEADER_PARSE_ERROR                 122
+# define PEM_R_KEYBLOB_TOO_SHORT                          123
 # define PEM_R_MISSING_DEK_IV                             129
 # define PEM_R_NOT_DEK_INFO                               105
 # define PEM_R_NOT_ENCRYPTED                              106
