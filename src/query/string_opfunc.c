@@ -237,7 +237,6 @@ static int date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str
 static int number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * number_lang,
 			   DB_VALUE * result_str, const TP_DOMAIN * domain);
 static int lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob_type, int max_length);
-static int lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type);
 static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string, char *format_str, int *length,
@@ -17994,7 +17993,7 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 /*
  * lob_from_file () -
  */
-static int
+int
 lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type)
 {
   int error_status = NO_ERROR;
@@ -18015,12 +18014,14 @@ lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_valu
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, db_get_string (src_value));
       return error_status;
     }
-
+#if defined (SERVER_MODE)
+#else
   error_status = db_create_fbo (lob_value, lob_type);
   if (error_status != NO_ERROR)
     {
       return error_status;
     }
+#endif
   result_elo = db_get_elo (lob_value);
 
   pos = 0;

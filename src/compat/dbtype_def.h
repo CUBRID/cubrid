@@ -1265,6 +1265,14 @@ extern "C"
       unsigned int zone_id;	/* geographical zone id */
     };
   };
+
+  typedef enum
+  {
+    LOB_DIR_CREATE = 0,
+    LOB_COLUMN_ADD = 1,
+    LOB_TABLE_DROP = 2,
+    LOB_COLUMN_DROP = 3
+  } LOB_DIR_MANAGE_MODE;
 /********************************************************/
 
 #ifdef __cplusplus

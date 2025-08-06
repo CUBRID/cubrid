@@ -29,6 +29,9 @@
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "file_manager.h"
 
@@ -58,6 +61,7 @@
 #include "vacuum.h"
 #include "btree_load.h"
 #include "critical_section.h"
+#include "es_posix.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -11859,6 +11863,162 @@ exit:
     }
 
   return error_code;
+}
+
+/*
+ * file_lob_dir_remove () - remove lob directory.
+ */
+int
+file_lob_dir_remove (const char *path)
+{
+  struct stat statbuf;
+  DIR *d; // 전달된 path의 dir open 객체
+  size_t path_len;
+  int r = 0; // 함수 반환 result
+
+  if (stat (path, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
+    {
+      return 0;
+    }
+  d = opendir (path);
+  path_len = strlen (path);
+
+  if (d)
+    {
+      struct dirent *p;
+      while (!r && (p = readdir (d)))
+        {
+          int r2 = 0;
+          char *buf;
+          size_t len;
+
+          if (!strcmp (p->d_name, ".") || !strcmp (p->d_name, "..")) // .이나 ..은 pass
+            {
+              continue;
+            }
+
+          len = path_len + strlen (p->d_name) + 2;
+          buf = (char *) malloc (len);
+
+          if (buf)
+            {
+              if (snprintf (buf, len, "%s/%s", path, p->d_name) >= (int) len)
+                {
+                  // snprintf 실패로 buffer overflow 방지
+                  free (buf);
+                  r = -1;
+                  break;
+                }
+
+              if (!stat (buf, &statbuf))
+                {
+                  if (S_ISDIR(statbuf.st_mode))
+                    {
+                      r2 = file_lob_dir_remove (buf);
+                    }
+                  else
+                    {
+                      r2 = unlink (buf);
+                    }
+                }
+              free (buf);
+            }
+          else
+            {
+              r = -1;
+              break;
+            }
+
+          r = r2;
+        }
+      closedir (d);
+    }
+
+  if (!r)
+    {
+      r = rmdir (path); // 최종 root directory 삭제
+    }
+
+  return r;
+}
+
+void // int로 바꿔주고 에러 결과 반환하는게 맞을듯(todo구현)
+xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+  // THREAD_ENTRY *thread_p = get_thread_entry ();
+  int max_lob_path = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int); // volid(2) + fileid(4) + hpgid(4) + arrid(4)
+  char dirbuf[PATH_MAX];
+  char rv_path[max_lob_path + 4]; // 4 = include /,_
+
+  switch (mode)
+  {
+    case LOB_DIR_CREATE:
+      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      sprintf (dirbuf, "%s/%s", es_base_dir, rv_path); // es_base_dir/fileid_volid_pgid
+      mkdir (dirbuf, 0755);
+      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+    case LOB_COLUMN_ADD:
+      for (int i = 0; i < lob_arr_length; i++)
+        {
+          sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+          sprintf (dirbuf, "%s/%s", es_base_dir, rv_path); // es_base_dir/fileid_volid_pgid/attrid
+          mkdir (dirbuf, 0755);
+          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+        }
+      break;
+
+    case LOB_TABLE_DROP:
+      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      break;
+    case LOB_COLUMN_DROP:
+      sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      break;
+  }
+}
+
+/*
+ * file_lob_rv_destroy () - Recovery function used to destroy files.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This can be used in one of two contexts:
+ *	 1. Logical undo of create file. Should be under a system operation that ends with commit and compensate.
+ *	 2. Run postpone for postponed file destroy. Again, this should be under a system operation, but it should end
+ *	    with a commit and run postpone (of course).
+ */
+int
+file_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  const char *path = rcv->data;
+  int error_code = NO_ERROR;
+
+  // assert (sizeof (*vfid) == rcv->length);
+
+  // assert (log_check_system_op_is_started (thread_p));
+
+  char lob_path[PATH_MAX];
+
+  sprintf(lob_path, "%s/%s", es_base_dir, path);
+
+  error_code = file_lob_dir_remove (lob_path);
+
+  if (error_code != NO_ERROR)
+    {
+      /* Not acceptable. */
+      assert_release (false);
+      return error_code;
+    }
+
+  return NO_ERROR;
 }
 
 /************************************************************************/

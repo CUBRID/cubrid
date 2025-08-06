@@ -339,6 +339,9 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sfile_apply_tde_to_class_files;
 
+  req_p = &net_Requests[NET_SERVER_MANAGE_LOB_DIR];
+  req_p->processing_function = smanage_lob_dir;
+
   /* dblink */
   req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
   req_p->processing_function = sdblink_get_crypt_keys;

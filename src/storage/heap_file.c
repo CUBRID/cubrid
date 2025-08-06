@@ -32,10 +32,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "heap_file.h"
 
 #include "deduplicate_key.h"
+#include "es_posix.h"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
@@ -3345,6 +3349,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
        * set, the interrogation will be corrupted.
        * Make sure an error is not set.
        */
+      int error = er_errid (); // core 발생해서 error 코드 확인용(삭제 예정)
+
       if (er_errid () != NO_ERROR)
 	{
 	  if (er_errid () == ER_INTERRUPTED)
@@ -12157,8 +12163,14 @@ resize_and_start:
 		  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
 		{
 		  DB_ELO dest_elo, *elo_p;
-		  char *save_meta_data, *new_meta_data;
-		  int error;
+                  LOB_DIR_ID cur_lob_id;
+                  char *save_meta_data, *new_meta_data, *pos;
+                  char rv_path[8]; // ces_xxx
+                  int error;
+                  LOG_DATA_ADDR addr;
+                  addr.offset = -1;
+                  addr.pgptr = NULL;
+                  addr.vfid = NULL;
 
 		  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
 
@@ -12175,9 +12187,29 @@ resize_and_start:
 		      status = S_ERROR;
 		      break;
 		    }
+
+                  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &cur_lob_id.hfid, NULL, NULL);
+                  cur_lob_id.attrid = attr_info->values[i].attrid;
+                  thread_p->lob_id = cur_lob_id;
+
+                  error = lob_locator_change_state (dbvalue->data.elo.locator, NULL, LOB_PERMANENT_CREATED);
+                  if (error != NO_ERROR)
+                    {
+                      goto exit_on_error;
+                    }
+
 		  save_meta_data = elo_p->meta_data;
-		  elo_p->meta_data = new_meta_data;
+                  elo_p->meta_data = new_meta_data;
 		  error = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
+                  
+                  pos = strrchr(dbvalue->data.elo.locator, ':');
+                  if (pos)
+                    {
+                      strncpy(rv_path, pos + 1, 7);
+                      rv_path[7] = '\0';
+                    }
+                  log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+                  log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
 
 		  free_and_init (elo_p->meta_data);
 		  elo_p->meta_data = save_meta_data;

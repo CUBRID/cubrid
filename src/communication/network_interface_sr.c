@@ -11572,3 +11572,42 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
+
+ /* smanage_lob_dir - create or delete lob dir
+ *
+ * return:
+ *
+ *  rid(in):
+ *  request(in):
+ *  reqlen(in):
+ */
+void
+smanage_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  HFID hfid;
+  int *lob_attrid_arr  = NULL;
+  int arr_length = 0;
+  int mode = 0;
+  int error = NO_ERROR;
+
+  ptr = or_unpack_hfid (request, &hfid);
+  ptr = or_unpack_int (ptr, &mode);
+  ptr = or_unpack_int (ptr, &arr_length);
+  ptr = or_unpack_int_array (ptr, arr_length, &lob_attrid_arr);
+
+  xmanage_lob_dir (&hfid, lob_attrid_arr, arr_length, (LOB_DIR_MANAGE_MODE) mode);
+
+  if (error != NO_ERROR)
+  {
+    (void) return_error_to_client (thread_p, rid);
+  }
+
+  db_private_free (thread_p, lob_attrid_arr);
+
+  ptr = or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+

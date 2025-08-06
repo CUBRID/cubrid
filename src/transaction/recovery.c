@@ -835,6 +835,12 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVFL_LOB_DIR_DESTROY,
+   "RVFL_LOB_DIR_DESTROY",
+   file_lob_rv_destroy,
+   file_lob_rv_destroy,
+   NULL,
+   NULL},
 };
 
 /*

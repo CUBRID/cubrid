@@ -15714,6 +15714,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
   DB_OBJLIST *subs;
+  SM_ATTRIBUTE *attr;
+  int *lob_attrid_arr = NULL;
+  int lob_arr_length = 0;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15749,8 +15752,24 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
+  lob_attrid_arr = (int*) malloc (sizeof(int) * class_->att_count);
+
+  for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
+    {
+      if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+        {
+          lob_attrid_arr[lob_arr_length++] = attr->id;
+        }
+    }
+
   /* Destroy the heap */
   error = heap_destroy_newly_created (insts_hfid, oid, true);
+  /* Destroy the lob dir if need */
+  if (lob_arr_length)
+    {
+      HFID lob_hfid = *insts_hfid;
+      error = manage_lob_dir (insts_hfid, NULL, 0, LOB_TABLE_DROP);
+    }
   if (error != NO_ERROR)
     {
       return error;
@@ -15767,10 +15786,17 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
+  if (lob_arr_length)
+    {
+      HFID lob_hfid = *insts_hfid;
+      error = manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_DIR_CREATE);
+    }
   if (error != NO_ERROR)
     {
       return error;
     }
+
+    free (lob_attrid_arr);
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);

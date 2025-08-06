@@ -12224,7 +12224,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		    }
 
-
 		  rc = heap_attrinfo_set (NULL, insert->att_id[k], insert->vals[k], &attr_info);
 		  if (rc != NO_ERROR)
 		    {
@@ -12346,6 +12345,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
 	      regu_list->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
+
 	      if (fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, &class_oid, NULL, NULL, &valp) !=
 		  NO_ERROR)
 		{

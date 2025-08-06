@@ -331,6 +331,7 @@ extern int db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset
 extern int db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_get_date_quarter (const DB_VALUE * src_date, DB_VALUE * result);
+extern int lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type);
 #if !defined (SERVER_MODE)
 extern int db_get_date_weekday (const DB_VALUE * src_date, const int type, DB_VALUE * result);
 #endif /* !defined (SERVER_MODE) */

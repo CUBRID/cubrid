@@ -11602,3 +11602,57 @@ tdes_reset_query_start_info (PT_NODE * node)
     }
 #endif
 }
+
+/* manager_lob_dir -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *   class_oid(in):
+ *   reuse_oid(in):
+ *
+ * NOTE:
+ * manage_lob_dir - request to server to create or delete lob dir
+ */
+int
+manage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (4096) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_int (ptr, (int) mode);
+  ptr = or_pack_int_array (ptr, lob_arr_length, attrid_arr);
+
+  req_error =
+    net_client_request (NET_SERVER_MANAGE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_hfid (ptr, hfid);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success = 0;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode); // xmanage_lob_dir() 반환타입 int로 바꾸고 success에 반환해야 함(todo구현)
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+

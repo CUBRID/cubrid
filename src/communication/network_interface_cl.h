@@ -466,4 +466,6 @@ extern int mmon_disable_force ();
 /* tdes */
 extern void tdes_set_query_start_info (char *sql_user_text);
 extern void tdes_reset_query_start_info (PT_NODE * node);
+/* lob dir */
+extern int manage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

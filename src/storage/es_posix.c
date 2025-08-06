@@ -44,7 +44,8 @@ typedef int mode_t;
 #include "system_parameter.h"
 #include "error_code.h"
 #include "es_posix.h"
-#if defined (SERVER_MODE)
+#include "storage_common.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
@@ -53,7 +54,7 @@ typedef int mode_t;
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */
-static char es_base_dir[PATH_MAX];
+char es_base_dir[PATH_MAX] = {0};
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
@@ -585,10 +586,16 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
-  int rd_fd, wr_fd, n;
+  int rd_fd, wr_fd, n = 0;
   ssize_t ret;
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
+  char new_dir[PATH_MAX];
+  LOB_DIR_ID cur_lob_id = {{{-1, -1}, -1}, -1};
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  cur_lob_id = thread_p->lob_id;
+#endif
 
   /* open a source file */
 #if defined (WINDOWS)
@@ -608,9 +615,11 @@ retry:
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
+#elif defined (SERVER_MODE) || defined (SA_MODE)
+  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d%c%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
+                PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename); // 0_4288_4289/1/ces_xxx/file
 #else
   /* default */
-  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s", dirname1, PATH_SEPARATOR, filename);
 #endif
   if (n < 0)
     {
@@ -629,7 +638,9 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  ret = es_make_dirs (dirname1, dirname2);
+          snprintf (new_dir, PATH_MAX -1, "%d_%d_%d%c%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
+                    PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);
+          ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
