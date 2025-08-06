@@ -2695,7 +2695,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   char *classname;
   const char *attr_name;
   DB_VALUE def_dbvalue;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int disk_length;
   OR_BUF buf;
   bool copy;
@@ -6821,10 +6821,31 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
+#if defined(SERVER_MODE)
+	  THREAD_ENTRY *orig_thread_p = NULL;
+	  if (thread_p->m_px_orig_thread_entry != NULL)
+	    {
+	      orig_thread_p = thread_p->m_px_orig_thread_entry;
+	      assert (orig_thread_p != NULL);
+	      pthread_mutex_lock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK) != LK_GRANTED)
 	    {
+#if defined(SERVER_MODE)
+	      if (orig_thread_p != NULL)
+		{
+		  pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+		}
+#endif
 	      goto exit_on_error;
 	    }
+#if defined(SERVER_MODE)
+	  if (orig_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	}
 
       ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);
@@ -8207,8 +8228,9 @@ heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid, 
     }
   else
     {
-      scan_cache->page_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE, S_LOCK, NULL,
-								    &scan_cache->page_watcher);
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL,
+				     &scan_cache->page_watcher);
       if (scan_cache->page_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
@@ -8347,13 +8369,13 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		{
 		  /* must be last slot of page, end scanning */
 		  OID_SET_NULL (next_oid);
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	      else
 		{
 		  /* Error, stop scanning */
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	    }
@@ -10368,7 +10390,7 @@ static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   OR_ATTRIBUTE *attrepr;
   char *disk_data = NULL;
   int disk_bound = false;
@@ -11518,7 +11540,7 @@ int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
@@ -11852,7 +11874,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   char *ptr_bound, *ptr_varvals;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   DB_VALUE temp_dbvalue;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   unsigned int repid_bits;
   SCAN_CODE status;
   int i;
@@ -25356,6 +25378,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
+		  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+
 		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
 		      SNAPSHOT_SATISFIED)
 		    {

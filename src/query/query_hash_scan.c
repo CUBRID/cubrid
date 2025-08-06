@@ -417,7 +417,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   DB_VALUE dbval;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int i;
   char *tuple_p;
   OR_BUF buf;

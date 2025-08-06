@@ -1097,7 +1097,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat;
   SM_ATTRIBUTE **attmap;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   char *obj, *bits, *start;
   int *vars = NULL, rc = NO_ERROR;
   int i, total, offset, offset2, bytes, att_index, padded_size, fixed_size;
