@@ -209,9 +209,9 @@ extern int sm_object_size_quick (SM_CLASS * class_, MOBJ obj);
 extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
 /* Locator support functions */
-extern const char *sm_ch_name (const MOBJ cfilej);
-extern HFID *sm_ch_heap (MOBJ cfilej);
-extern OID *sm_ch_rep_dir (MOBJ cfilej);
+extern const char *sm_ch_name (const MOBJ clobj);
+extern HFID *sm_ch_heap (MOBJ clobj);
+extern OID *sm_ch_rep_dir (MOBJ clobj);
 
 extern bool sm_has_indexes (MOBJ class_);
 
