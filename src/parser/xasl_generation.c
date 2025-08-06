@@ -28105,7 +28105,7 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
 
 	  groupby->info.sort_spec.expr->info.expr.paren_type =
-	    (tmp_paren_type != 0) ? tmp_paren_type : groupby->info.sort_spec.expr->info.expr.paren_type;
+	    (tmp_paren_type != -1) ? tmp_paren_type : groupby->info.sort_spec.expr->info.expr.paren_type;
 
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
