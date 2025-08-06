@@ -33,6 +33,7 @@
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 #include "master_connector.hpp"
+#include "connection_pool.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1319,6 +1320,7 @@ int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
   cubconn::master_connector connector;
+  cubconn::connection_pool connections;
   std::string servername (server_name, name_length);
   CSS_CONN_ENTRY *conn;
   int status = NO_ERROR; 
@@ -1372,8 +1374,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
-  css_Server_connection_socket = INVALID_SOCKET;
-  
+  /* init epoll worker pool */
+  connections.init (MAX_CONNECTIONS);
+
+  /* attach pool */
+  connector.attach (connections);
   /* handshake and dispatch connection */
   connector.run (port_id, servername);
 

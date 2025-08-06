@@ -92,11 +92,6 @@ namespace cubconn
       return false;
     }
 
-  css_conn_entry *master_connector::get_connection () noexcept
-    {
-      return m_context.m_conn;
-    }
-
   master_connector::master_connector ()
     {
       m_context.reset ();
@@ -104,6 +99,16 @@ namespace cubconn
 
   master_connector::~master_connector ()
     {
+    }
+
+  bool master_connector::attach (connection_pool &pool) noexcept
+    {
+      m_connection_pool = &pool;
+      if (!m_connection_pool)
+	{
+	  assert_release (false);
+	}
+      return true;
     }
 
   bool master_connector::run (int port, std::string &server_name) noexcept
@@ -708,6 +713,9 @@ namespace cubconn
       if (!ctx->m_has_error)
 	{
 	  (void) (*css_Connect_handler) (ctx->m_conn);
+
+	  /* dispatch here */
+	  //m_connection_pool->dispatch (ctx->m_conn);
 	}
       else
 	{
