@@ -24,7 +24,6 @@
 #define _CONNECTION_WORKER_HPP_
 
 #include <cstring>
-#include <cstddef>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
@@ -34,15 +33,14 @@ namespace cubconn
   class connection_worker
   {
     public:
-      connection_worker ();
+      connection_worker (std::size_t index, int fd);
       ~connection_worker ();
 
-      void init ();
       void run ();
 
     private:
-      std::size_t m_pos = 0;
-      std::size_t m_size = 0;
+      std::size_t m_index;
+      int m_eventfd;
   };
 }
 

@@ -24,6 +24,7 @@
 #define _CONNECTION_POOL_HPP_
 
 #include "server_support.h"
+#include "connection_worker.hpp"
 
 #include <cstring>
 #include <cstdint>
@@ -40,13 +41,16 @@ namespace cubconn
       connection_pool ();
       ~connection_pool ();
 
-      void init (std::uint32_t max_connections);
+      void initialize (std::uint32_t max_connections);
       void run ();
 
       void dispatch (css_conn_entry *conn);
 
     private:
       std::uint32_t m_max_connections;
+      std::vector<connection_worker> m_workers;
+
+      void initialize_worker ();
   };
 }
 

@@ -1375,7 +1375,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* init epoll worker pool */
-  connections.init (MAX_CONNECTIONS);
+  connections.initialize (MAX_CONNECTIONS);
 
   /* attach pool */
   connector.attach (connections);
