@@ -1606,7 +1606,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 116 잘못된 형식의 chr 함수입니다.\n  CHR ( number [using charset] )\n
 117 잘못된 형식의 charset 함수입니다.\n  CHARSET ( expression )\n
 118 잘못된 형식의 collation 함수입니다.\n  COLLATION ( expression )\n
-119 잘못된 형식의 clob_to_char 함수입니다.\n  CLOB_TO_CHAR ( expression [using charset] )\n
+119 잘못된 형식의 cfile_to_char 함수입니다.\n  CFILE_TO_CHAR ( expression [using charset] )\n
 120 잘못된 형식의 index_prefix 함수입니다.\n  INDEX_PREFIX ( expression, expression, expression )\n
 121 잘못 사용된 UNION과 ORDER BY 형식입니다.
 122 ON 절이 요구됩니다. 외부 조인은 조인 조건식을 필요로 합니다.
