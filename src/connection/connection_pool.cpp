@@ -27,7 +27,6 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <fcntl.h>
-#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
@@ -52,15 +51,16 @@ namespace cubconn
 
       for (i = 0; i < max_connections; i++)
 	{
-	  fd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
-	  if (fd == -1)
-	    {
-	      assert_release (false);
-	    }
-	  m_workers.emplace_back (i, fd);
+	  m_workers.emplace_back (this, i);
 	}
 
       m_max_connections = max_connections;
+    }
+
+  void connection_pool::finalize ()
+    {
+      m_max_connections = -1;
+      m_workers.clear ();
     }
 
   void connection_pool::run ()
