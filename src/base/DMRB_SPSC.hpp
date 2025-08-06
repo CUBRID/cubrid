@@ -104,6 +104,8 @@ namespace cubbase
 	return { nullptr, 0 };
       }
 
+    assert (length <= this->m_size);
+
     ptr = static_cast<const std::byte *> (this->m_base) + (tail & this->m_mask);
     return { ptr, length };
   }

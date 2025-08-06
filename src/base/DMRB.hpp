@@ -131,7 +131,7 @@ namespace cubbase
       assert (capacity > 0);
 
       page = sysconf (_SC_PAGESIZE);
-      if ((m_size & m_mask) != 0 || (m_size % page) != 0)
+      if (m_size % page != 0)
 	{
 	  assert_release (false);
 	}
@@ -192,6 +192,9 @@ namespace cubbase
 
       head = value_load (m_head, std::memory_order_acquire);
       tail = value_load (m_tail, std::memory_order_acquire);
+      
+      assert (head - tail <= m_size);
+
       return m_size - static_cast<std::size_t> (head - tail);
     }
 
@@ -202,6 +205,9 @@ namespace cubbase
 
       head = value_load (m_head, std::memory_order_acquire);
       tail = value_load (m_tail, std::memory_order_acquire);
+
+      assert (head - tail <= m_size);
+
       return static_cast<std::size_t> (head - tail);
     }
 
