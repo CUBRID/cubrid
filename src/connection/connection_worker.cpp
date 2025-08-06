@@ -24,15 +24,13 @@
 
 namespace cubconn
 {
-  connection_worker::connection_worker ()
+  connection_worker::connection_worker (std::size_t index, int fd) :
+      m_index (index),
+      m_eventfd (fd)
     {
     }
 
   connection_worker::~connection_worker ()
-    {
-    }
-
-  void connection_worker::init ()
     {
     }
 

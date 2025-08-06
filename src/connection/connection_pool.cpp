@@ -24,37 +24,50 @@
 #include "connection_worker.hpp"
 
 #include <cstdint>
+#include <unistd.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
-#include <fcntl.h>
 
 namespace cubconn
 {
-    connection_pool::connection_pool ()
-      {
-      }
+  connection_pool::connection_pool () :
+      m_max_connections (-1)
+    {
+    }
 
-    connection_pool::~connection_pool ()
-      {
-      }
+  connection_pool::~connection_pool ()
+    {
+    }
 
-    void connection_pool::init (std::uint32_t max_connections)
-      {
-	std::uint32_t i;
-	
-	for (i = 0; i < max_connections; i++)
-	  {
-	    new connection_worker ();
-	  }
+  void connection_pool::initialize (std::uint32_t max_connections)
+    {
+      std::uint32_t i;
+      int fd;
 
-	m_max_connections = max_connections;
-      }
+      /* TODO: consider dynamic increses */
+      m_workers.reserve (max_connections + 1);
 
-    void connection_pool::run ()
-      {
-      }
+      for (i = 0; i < max_connections; i++)
+	{
+	  fd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
+	  if (fd == -1)
+	    {
+	      assert_release (false);
+	    }
+	  m_workers.emplace_back (i, fd);
+	}
 
-    void connection_pool::dispatch (css_conn_entry *conn)
-      {
-      }
+      m_max_connections = max_connections;
+    }
+
+  void connection_pool::run ()
+    {
+    }
+
+  void connection_pool::dispatch (css_conn_entry *conn)
+    {
+    }
 }
