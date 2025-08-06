@@ -206,8 +206,8 @@ static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_fla
 			     char column_type_flag);
 static void dbobj_to_casobj (DB_OBJECT * obj, T_OBJECT * cas_obj);
 static void casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj);
-static void dbfile_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob);
-static void caslob_to_dbfile (T_LOB_HANDLE * cas_lob, DB_VALUE * lob);
+static void dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob);
+static void caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * lob);
 static int get_attr_name (DB_OBJECT * obj, char ***ret_attr_name);
 static int get_attr_name_from_argv (int argc, void **argv, char ***ret_attr_name);
 static int oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int num_attr, char **attr_name);
@@ -4843,7 +4843,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	T_LOB_HANDLE cas_lob;
 
 	net_arg_get_lob_handle (&cas_lob, net_value);
-	caslob_to_dbfile (&cas_lob, &db_val);
+	caslob_to_dblob (&cas_lob, &db_val);
 	coercion_flag = FALSE;
       }
       break;
@@ -5519,7 +5519,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       {
 	T_LOB_HANDLE cas_lob;
 
-	dbfile_to_caslob (val, &cas_lob);
+	dblob_to_caslob (val, &cas_lob);
 	add_res_data_lob_handle (net_buf, &cas_lob, ext_col_type, &data_size);
       }
       break;
@@ -5580,7 +5580,7 @@ casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj)
 }
 
 static void
-dbfile_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob)
+dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob)
 {
   DB_ELO *elo;
 
@@ -5603,7 +5603,7 @@ dbfile_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob)
 }
 
 static void
-caslob_to_dbfile (T_LOB_HANDLE * cas_lob, DB_VALUE * db_lob)
+caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * db_lob)
 {
   DB_ELO elo;
 
@@ -11235,7 +11235,7 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
     }
 
   /* set result */
-  dbfile_to_caslob (&lob_dbval, &cas_lob);
+  dblob_to_caslob (&lob_dbval, &cas_lob);
   lob_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + cas_lob.locator_size;
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
