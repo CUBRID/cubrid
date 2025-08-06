@@ -9877,7 +9877,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      icard = qo_index_cardinality (env, lhs);
 	      if (icard > 0.0)
 		{
-		  equal_selectivity /= icard;
+		  equal_selectivity *= (1.0 / icard);
 		}
 	      else
 		{
@@ -9892,7 +9892,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  icard = qo_index_cardinality (env, arg1);
 	  if (icard > 0.0)
 	    {
-	      equal_selectivity /= icard;
+	      equal_selectivity *= (1.0 / icard);
 	    }
 	  else
 	    {
