@@ -713,13 +713,13 @@ static void mr_initval_bfile (DB_VALUE * value, int precision, int scale);
 static int mr_getmem_bfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
 static int mr_setval_bfile (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_readval_bfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				 char *copy_buf, int copy_buf_len);
+				  char *copy_buf, int copy_buf_len);
 
 static void mr_initval_cfile (DB_VALUE * value, int precision, int scale);
 static int mr_getmem_cfile (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
 static int mr_setval_cfile (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_readval_cfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				 char *copy_buf, int copy_buf_len);
+				  char *copy_buf, int copy_buf_len);
 
 static void mr_initval_variable (DB_VALUE * value, int precision, int scale);
 static int mr_setval_variable (DB_VALUE * dest, const DB_VALUE * src, bool copy);
@@ -6072,14 +6072,14 @@ mr_data_readval_elo (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 
 static int
 mr_data_readval_bfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-		      int copy_buf_len)
+		       int copy_buf_len)
 {
   return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_BFILE);
 }
 
 static int
 mr_data_readval_cfile (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-		      int copy_buf_len)
+		       int copy_buf_len)
 {
   return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CFILE);
 }

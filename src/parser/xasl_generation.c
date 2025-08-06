@@ -5688,7 +5688,8 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_lis
       /* GROUP BY ? or ORDER BY ? are not allowed */
       dom_type = TP_DOMAIN_TYPE (node->info.sort_spec.pos_descr.dom);
 
-      if (is_analytic_window && (dom_type == DB_TYPE_BFILE || dom_type == DB_TYPE_CFILE || dom_type == DB_TYPE_VARIABLE))
+      if (is_analytic_window
+	  && (dom_type == DB_TYPE_BFILE || dom_type == DB_TYPE_CFILE || dom_type == DB_TYPE_VARIABLE))
 	{
 	  /* analytic sort spec expressions have been moved to select list; check for host variable there */
 	  for (col = col_list, k = 1; col; col = col->next, k++)

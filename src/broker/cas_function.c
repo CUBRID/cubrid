@@ -2534,8 +2534,8 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	db_elo = db_get_elo (&db_val);
 	if (db_elo)
 	  {
-	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size, db_elo->locator,
-			 db_elo->meta_data, db_elo->type);
+	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size,
+			 db_elo->locator, db_elo->meta_data, db_elo->type);
 	  }
 	else
 	  {
