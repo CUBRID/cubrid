@@ -41,8 +41,8 @@
 #include "memory_wrapper.hpp"
 
 #if defined (WINDOWS)
-static BYTE des_Keybfile[] = {
-  0x08, 0x02, 0x00, 0x00, 0x01, 0x66, 0x00, 0x00,	// BFILE header
+static BYTE des_Keyblob[] = {
+  0x08, 0x02, 0x00, 0x00, 0x01, 0x66, 0x00, 0x00,	// BLOB header
   0x08, 0x00, 0x00, 0x00,	// key length, in bytes
   'U', '9', 'a', '$', 'y', '1', '@', 'z'	// DES key with parity
 };
@@ -72,7 +72,7 @@ crypt_seed (const char *key)
     }
 #if defined(WINDOWS)
   /* key size must be large than 8 byte */
-  memcpy (des_Keybfile + 12, key, 8);
+  memcpy (des_Keyblob + 12, key, 8);
 #elif defined (HAVE_RPC_DES_CRYPT_H)
   memcpy (crypt_Key, key, 8);
   des_setparity (crypt_Key);
@@ -105,7 +105,7 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   if (CryptAcquireContext (&hProv, NULL, MS_ENHANCED_PROV, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
     {
       /* Import PlainText Key */
-      if (!CryptImportKey (hProv, des_Keybfile, sizeof (des_Keybfile), 0, CRYPT_EXPORTABLE, &hKey))
+      if (!CryptImportKey (hProv, des_Keyblob, sizeof (des_Keyblob), 0, CRYPT_EXPORTABLE, &hKey))
 	{
 	  return -1;
 	}
