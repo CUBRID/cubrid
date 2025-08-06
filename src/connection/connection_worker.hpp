@@ -23,6 +23,10 @@
 #ifndef _CONNECTION_WORKER_HPP_
 #define _CONNECTION_WORKER_HPP_
 
+#include "epoll.hpp"
+#include "MPSCQueue.hpp"
+
+#include <thread>
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -30,17 +34,34 @@
 
 namespace cubconn
 {
+  class connection_pool;
+
   class connection_worker
   {
     public:
-      connection_worker (std::size_t index, int fd);
+      connection_worker (connection_pool *pool, std::size_t index);
       ~connection_worker ();
+
+      /* used for control from other threads */
+      void enqueue ();
+      void notify ();
 
       void run ();
 
     private:
+      /* thread handle */
+      std::thread m_thread;
+      /* connection pool */
+      connection_pool *m_parent;
+
       std::size_t m_index;
+      cubsocket::epoll m_events;
       int m_eventfd;
+
+      /* this is a multi-producer single-consumer queue, so */
+      /* data can be put into the queue from anywhere, but  */
+      /* consumption must happen from only one thread.	    */
+      cubbase::MPSCQueue<int> m_queue;
   };
 }
 
