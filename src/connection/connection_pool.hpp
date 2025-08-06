@@ -49,7 +49,7 @@ namespace cubconn
 
     private:
       std::uint32_t m_max_connections;
-      std::vector<connection_worker> m_workers;
+      std::vector<std::unique_ptr<connection_worker>> m_workers;
 
       void initialize_worker ();
   };

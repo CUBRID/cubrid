@@ -68,8 +68,7 @@ namespace cubconn
     {
       std::array<epoll_event, 32> events;
 
-      while (true)
-	{
-	}
+      sleep (1);
+      _er_log_debug (__FILE__, __LINE__, "connectionr_worker->run: %d\n", m_index);
     }
 }

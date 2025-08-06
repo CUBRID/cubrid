@@ -51,7 +51,7 @@ namespace cubconn
 
       for (i = 0; i < max_connections; i++)
 	{
-	  m_workers.emplace_back (this, i);
+	  m_workers.emplace_back (std::make_unique<connection_worker> (this, i));
 	}
 
       m_max_connections = max_connections;

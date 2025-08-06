@@ -87,7 +87,7 @@ namespace cubbase
 
       node = new Node (item);
       prev = m_head.exchange (node, std::memory_order_acq_rel);
-      prev->next.store (node, std::memory_order_release);
+      prev->m_next.store (node, std::memory_order_release);
     }
       
   template <typename T>
@@ -96,13 +96,13 @@ namespace cubbase
       T result;
       Node* next;
 
-      next = m_tail->next.load (std::memory_order_acquire);
+      next = m_tail->m_next.load (std::memory_order_acquire);
       if (next == nullptr)
 	{
 	  return std::nullopt;
 	}
       
-      result = std::move (next->data);
+      result = std::move (next->m_data);
       delete m_tail;
       m_tail = next;
       return result;
@@ -111,7 +111,7 @@ namespace cubbase
   template <typename T>
   bool MPSCQueue<T>::empty () const
     {
-      return m_tail->next.load (std::memory_order_acquire) == nullptr;
+      return m_tail->m_next.load (std::memory_order_acquire) == nullptr;
     }
 }
 
