@@ -177,6 +177,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
   ${BASE_DIR}/DMRB_SPSC.hpp
+  ${BASE_DIR}/MPSCQueue.hpp
   ${BASE_DIR}/nonblocking.hpp
   ${BASE_DIR}/epoll.hpp
   )
