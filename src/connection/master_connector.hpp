@@ -24,6 +24,7 @@
 #define _CONNECTION_MASTER_CONNECTOR_HPP_
 
 #include "connection_globals.h"
+#include "connection_pool.hpp"
 #include "packet_buffer.hpp"
 #include "buffer.hpp"
 #include "epoll.hpp"
@@ -92,7 +93,7 @@ namespace cubconn
       master_connector ();
       ~master_connector ();
 
-      css_conn_entry *get_connection () noexcept;
+      bool attach (connection_pool &pool) noexcept;
       bool run (int port, std::string &server_name) noexcept;
 
     private:
@@ -103,6 +104,9 @@ namespace cubconn
       /* to open unix domain socket */
       std::string m_unixpath;
       SOCKET m_unixsocket;
+
+      /* dispatch */
+      connection_pool *m_connection_pool;
 
       inline bool make_nonblocking (int fd) noexcept;
       inline bool update_epoll_events (context *ctx);
