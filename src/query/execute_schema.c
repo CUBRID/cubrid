@@ -551,80 +551,112 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  PT_END;
 	}
 #endif
-      error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-      if (error == NO_ERROR)
-	{
-	  error =
-	    do_add_attributes (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.attr_def_list,
-			       alter->info.alter.constraint_list, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+      {
+        SM_CLASS *class_ = ctemplate->current;
+        SM_ATTRIBUTE *attr;
+        int new_attr_count = 0;
+        int old_attr_count = class_->att_count;
+        int type_id = 0;
+        int arr_length;
+        int *lob_attrid_arr;
 
+        error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+        if (error == NO_ERROR)
+          {
+            error =
+              do_add_attributes (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.attr_def_list,
+                                alter->info.alter.constraint_list, NULL);
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
 
-	  vclass = dbt_finish_class (ctemplate);
-	  if (vclass == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+            vclass = dbt_finish_class (ctemplate);
 
-	  ctemplate = dbt_edit_class (vclass);
-	  if (ctemplate == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+            new_attr_count = class_->att_count;
+            lob_attrid_arr = (int*) malloc (sizeof (int) * (new_attr_count - old_attr_count));
 
-	  error = do_add_constraints (ctemplate, alter->info.alter.constraint_list);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+            for (int i = old_attr_count; i < new_attr_count; i++)
+              {
+                attr = &class_->attributes[i];
+                type_id = attr->type->id;
 
-	  error = do_check_fk_constraints (ctemplate, alter->info.alter.constraint_list);
-	  if (error != NO_ERROR)
-	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+                if (type_id == DB_TYPE_CLOB || type_id == DB_TYPE_BLOB)
+                  {
+                    lob_attrid_arr[arr_length++] = attr->id;
+                  }
+              }
 
-	  if (alter->info.alter.alter_clause.attr_mthd.mthd_def_list != NULL)
-	    {
-	      error = do_add_methods (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.mthd_def_list);
-	    }
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+            if (arr_length)
+              {
+                HFID lob_hfid = class_->header.ch_heap;
+                manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_COLUMN_ADD);
+              }
 
-	  if (alter->info.alter.alter_clause.attr_mthd.mthd_file_list != NULL)
-	    {
-	      error = do_add_method_files (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.mthd_file_list);
-	    }
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-	      return error;
-	    }
+            free (lob_attrid_arr);
 
-	  assert (alter->info.alter.create_index == NULL);
-	}
-      break;
+            if (vclass == NULL)
+              {
+                assert (er_errid () != NO_ERROR);
+                error = er_errid ();
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            ctemplate = dbt_edit_class (vclass);
+            if (ctemplate == NULL)
+              {
+                assert (er_errid () != NO_ERROR);
+                error = er_errid ();
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            error = do_add_constraints (ctemplate, alter->info.alter.constraint_list);
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            error = do_check_fk_constraints (ctemplate, alter->info.alter.constraint_list);
+            if (error != NO_ERROR)
+              {
+                (void) dbt_abort_class (ctemplate);
+                (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            if (alter->info.alter.alter_clause.attr_mthd.mthd_def_list != NULL)
+              {
+                error = do_add_methods (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.mthd_def_list);
+              }
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            if (alter->info.alter.alter_clause.attr_mthd.mthd_file_list != NULL)
+              {
+                error = do_add_method_files (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.mthd_file_list);
+              }
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
+              }
+
+            assert (alter->info.alter.create_index == NULL);
+          }
+        break;
+      }
 
     case PT_RESET_QUERY:
       {
@@ -713,6 +745,28 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (found_attr)
 		{
 		  error = dbt_drop_attribute (ctemplate, attr_mthd_name);
+
+                  SM_CLASS *class_ = ctemplate->current;
+                  int *lob_attrid_arr;
+
+                  for (int i = 0; i < class_->att_count; i++)
+                    {
+                      SM_ATTRIBUTE attr = class_->attributes[i];
+
+                      if (strcmp(attr.header.name, attr_mthd_name) == 0)
+                        {
+                          if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
+                            {
+                              HFID lob_hfid = class_->header.ch_heap;
+                              lob_attrid_arr = (int*) malloc (sizeof(int));
+
+                              lob_attrid_arr[0] = attr.id;
+
+                              manage_lob_dir (&lob_hfid, lob_attrid_arr, 1, LOB_COLUMN_DROP);
+                            }
+                        }
+                    }
+                  free (lob_attrid_arr);
 		}
 	      else
 		{

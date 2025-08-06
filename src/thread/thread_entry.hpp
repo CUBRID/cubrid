@@ -29,6 +29,7 @@
 
 #include "error_context.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "storage_common.h"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -281,6 +282,9 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool is_cdc_daemon;
+
+      /* for lob_dir_path */
+      LOB_DIR_ID lob_id;
 
       /* support multi-process unloaddb
        * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
