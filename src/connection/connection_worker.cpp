@@ -21,20 +21,56 @@
  */
 
 #include "connection_worker.hpp"
+#include "error_manager.h"
+
+#include <array>
+#include <thread>
+#include <unistd.h>
+#include <sys/eventfd.h>
 
 namespace cubconn
 {
-  connection_worker::connection_worker (std::size_t index, int fd) :
-      m_index (index),
-      m_eventfd (fd)
+  connection_worker::connection_worker (connection_pool *pool, std::size_t index) :
+      m_parent (),
+      m_index (index)
     {
+      m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
+      if (m_eventfd == -1)
+	{
+	  assert_release (false);
+	}
+
+      m_thread = std::thread (&connection_worker::run, this);
     }
 
   connection_worker::~connection_worker ()
     {
+      if (m_thread.joinable ())
+	{
+	  m_thread.join ();
+	}
+      ::close (m_eventfd);
+    }
+
+  void connection_worker::enqueue ()
+    {
+      m_queue.enqueue ();
+    }
+
+  void connection_worker::notify ()
+    {
+      std::uint64_t u;
+
+      u = 1;
+      ::write (m_eventfd, &u, sizeof (u));
     }
 
   void connection_worker::run ()
     {
+      std::array<epoll_event, 32> events;
+
+      while (true)
+	{
+	}
     }
 }

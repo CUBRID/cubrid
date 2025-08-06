@@ -28,7 +28,6 @@
 
 #include <cstring>
 #include <cstdint>
-#include <cstddef>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
@@ -42,6 +41,8 @@ namespace cubconn
       ~connection_pool ();
 
       void initialize (std::uint32_t max_connections);
+      void finalize ();
+
       void run ();
 
       void dispatch (css_conn_entry *conn);
