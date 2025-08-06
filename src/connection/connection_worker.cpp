@@ -54,7 +54,6 @@ namespace cubconn
 
   void connection_worker::enqueue ()
     {
-      m_queue.enqueue ();
     }
 
   void connection_worker::notify ()
