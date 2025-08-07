@@ -3823,7 +3823,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	    if (expr->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
 	      {
 		// CUBVEC todo: not yet analyzed
-		// // ASSERT_CUBVEC (false);
+		ASSERT_CUBVEC (false);
 	      }
 	    [[fallthrough]];
 	  }
