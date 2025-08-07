@@ -555,6 +555,10 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
+set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+)
+
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
@@ -762,6 +766,8 @@ endif(WIN32)
 
 # include target_external_dependencies function
 include (expand_dependency)
+
+target_link_libraries(cubridsa PRIVATE usearch::usearch)
 
 if(UNIX)
 target_external_dependencies(cubridsa

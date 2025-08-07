@@ -15,6 +15,8 @@
 #   limitations under the License.
 # 
 
+include(FetchContent)
+
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
 set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
@@ -697,35 +699,18 @@ list(APPEND EP_TARGETS ${LIBFAISS_TARGET})
 list(APPEND EP_INCLUDES ${LIBFAISS_INCLUDES})
 list(APPEND EP_LIBS ${LIBFAISS_LIBS})
 
-set(USEARCH_TARGET usearch)
-if(WITH_USEARCH STREQUAL "EXTERNAL")
-  ExternalProject_Add(
-        ${USEARCH_TARGET}
-        GIT_REPOSITORY ${WITH_USEARCH_URL}
-        GIT_TAG        v2.17.8
 
-        CONFIGURE_COMMAND ${CMAKE_COMMAND} -B <BINARY_DIR> -S <SOURCE_DIR>
-        -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}/usearch
-        -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-        -DUSEARCH_INSTALL=OFF
-        -DUSEARCH_USE_FP16LIB=ON
-        -DUSEARCH_USE_OPENMP=OFF
-        -DUSEARCH_USE_SIMSIMD=ON
+# USEARCH (header-only)
+# Set options BEFORE calling MakeAvailable
+set(USEARCH_USE_OPENMP ON CACHE BOOL "" FORCE)
+set(USEARCH_USE_SIMSIMD OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_JEMALLOC OFF CACHE BOOL "" FORCE)
+set(USEARCH_USE_FP16LIB ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_LIB_C ON CACHE BOOL "" FORCE)
+# set(USEARCH_BUILD_TEST_C ON CACHE BOOL "" FORCE)
+FetchContent_Declare(usearch GIT_REPOSITORY https://github.com/unum-cloud/usearch.git GIT_TAG v2.17.8)
+FetchContent_MakeAvailable(usearch)
 
-        BUILD_COMMAND ""
-        INSTALL_COMMAND ""
-        "${USEARCH_BYPRODUCTS}"
-  )
-  set(USEARCH_INCLUDES "${3RDPARTY_LIBS_DIR}/Source/usearch/include")
-  list(APPEND USEARCH_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/usearch/fp16/include)
-  list(APPEND USEARCH_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/usearch/simsimd/include)
-  ADD_BY_PRODUCTS_VARIABLE ("USEARCH" ${USEARCH_INCLUDES})
-else()
-  message(FATAL_ERROR "Invalid WITH_USEARCH option value ${WITH_USEARCH}")
-endif()
-list(APPEND EP_TARGETS ${USEARCH_TARGET})
-list(APPEND EP_INCLUDES ${USEARCH_INCLUDES})
 
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
