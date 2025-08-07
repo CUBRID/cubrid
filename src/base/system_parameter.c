@@ -9143,10 +9143,7 @@ sysprm_find_and_set_to_shared_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM
   const PARAM_ID *ptr = NULL;
   int i, k, max = 0;
 
-  k = DIM (PARAM_VALUE_SHARE) >> 1;
-  i = ((PARAM_ID) (PARAM_VALUE_SHARE[k][1]) <= prm->id) ? k : 0;
-
-  while (PARAM_VALUE_SHARE[i] != NULL)
+  for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
     {
       max = PARAM_VALUE_SHARE[i][0];
       ptr = (PARAM_ID *) PARAM_VALUE_SHARE[i];
@@ -9165,7 +9162,6 @@ sysprm_find_and_set_to_shared_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM
 		}
 	    }
 	}
-      i++;
     }
 
   return;
