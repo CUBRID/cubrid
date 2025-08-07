@@ -522,13 +522,6 @@ set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GEN
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
-if(UNIX)
-  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
-endif(UNIX)
-
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_SOURCES}
   ${COMMUNICATION_SOURCES}
@@ -551,8 +544,16 @@ SET_SOURCE_FILES_PROPERTIES(
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
-  PROPERTIES LANGUAGE CXX
+  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-Werror"
   )
+
+if(UNIX)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_vector.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 set (CUBRID_LIB_SOURCES
   ${BASE_SOURCES}
