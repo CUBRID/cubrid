@@ -31,44 +31,44 @@
 namespace cubconn
 {
   connection_worker::connection_worker (connection_pool *pool, std::size_t index) :
-      m_parent (),
-      m_index (index)
-    {
-      m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
-      if (m_eventfd == -1)
-	{
-	  assert_release (false);
-	}
+    m_parent (),
+    m_index (index)
+  {
+    m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (m_eventfd == -1)
+      {
+	assert_release (false);
+      }
 
-      m_thread = std::thread (&connection_worker::run, this);
-    }
+    m_thread = std::thread (&connection_worker::run, this);
+  }
 
   connection_worker::~connection_worker ()
-    {
-      if (m_thread.joinable ())
-	{
-	  m_thread.join ();
-	}
-      ::close (m_eventfd);
-    }
+  {
+    if (m_thread.joinable ())
+      {
+	m_thread.join ();
+      }
+    ::close (m_eventfd);
+  }
 
   void connection_worker::enqueue ()
-    {
-    }
+  {
+  }
 
   void connection_worker::notify ()
-    {
-      std::uint64_t u;
+  {
+    std::uint64_t u;
 
-      u = 1;
-      ::write (m_eventfd, &u, sizeof (u));
-    }
+    u = 1;
+    ::write (m_eventfd, &u, sizeof (u));
+  }
 
   void connection_worker::run ()
-    {
-      std::array<epoll_event, 32> events;
+  {
+    std::array<epoll_event, 32> events;
 
-      sleep (1);
-      _er_log_debug (__FILE__, __LINE__, "connectionr_worker->run: %d\n", m_index);
-    }
+    sleep (1);
+    _er_log_debug (__FILE__, __LINE__, "connectionr_worker->run: %d\n", m_index);
+  }
 }

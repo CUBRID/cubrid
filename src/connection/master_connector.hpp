@@ -40,31 +40,31 @@
 
 namespace cubconn
 {
-  enum class state
-  {
-    /* handshake with master */
-    SendInHandshake,
-    RecvInHandshake,
-
-    SwitchToUnixSocket,
-
-    /* request from master */
-    RecvRequestType,
-    
-    RecvNewClient,
-
-    /* send to clients */
-    SendReplyToClient
-  };
-
   class master_connector
   {
     private:
+      enum class state
+      {
+	/* handshake with master */
+	SendInHandshake,
+	RecvInHandshake,
+
+	SwitchToUnixSocket,
+
+	/* request from master */
+	RecvRequestType,
+
+	RecvNewClient,
+
+	/* send to clients */
+	SendReplyToClient
+      };
+
       struct context
       {
 	css_conn_entry *m_conn;
 
-      	buffer m_recvbuf;
+	buffer m_recvbuf;
 	cubbase::packet_buffer m_sendbuf;
 
 	state m_state { state::SendInHandshake };
@@ -78,15 +78,15 @@ namespace cubconn
 
 	template <typename... Spans>
 	void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
-	  {
-	    m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	  }
+	{
+	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
+	}
 
 	template <typename T>
 	T *allocate ()
-	  {
-	    return m_sendbuf.allocate<T> ();
-	  }
+	{
+	  return m_sendbuf.allocate<T> ();
+	}
       };
 
     public:
@@ -150,7 +150,7 @@ namespace cubconn
       inline bool switch_to_unix_socket (context *ctx) noexcept;
 
       inline bool sent_reply_to_client (context *ctx) noexcept;
-      
+
       inline bool handle_master_transmission (context *ctx) noexcept;
 
       /* --------------------------------------------------------------------------- */

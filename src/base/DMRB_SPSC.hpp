@@ -36,16 +36,16 @@ namespace cubbase
   template <bool ThreadSafe>
   class DMRB_SPSC : public DMRB<ThreadSafe>
   {
-  public:
-    DMRB_SPSC (std::size_t capacity);
-    ~DMRB_SPSC ();
+    public:
+      DMRB_SPSC (std::size_t capacity);
+      ~DMRB_SPSC ();
 
-    cubbase::span<std::byte> reserve (std::size_t length);
-    void commit (std::size_t length);
+      cubbase::span<std::byte> reserve (std::size_t length);
+      void commit (std::size_t length);
 
-    void consume (std::size_t length);
+      void consume (std::size_t length);
 
-    cubbase::span<const std::byte> peek () const;
+      cubbase::span<const std::byte> peek () const;
   };
 
   template <bool T>

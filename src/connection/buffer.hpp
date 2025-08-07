@@ -41,14 +41,14 @@ namespace cubconn
   constexpr size_t BUFFER_SIZE = 1024;
 
   enum class result
-    {
-      Ok,
-      Error,
-      Reset,
-      Pending,
-      PeerReset,
-      RefuseConnection
-    };
+  {
+    Ok,
+    Error,
+    Reset,
+    Pending,
+    PeerReset,
+    RefuseConnection
+  };
 
   class buffer
   {
@@ -231,9 +231,9 @@ namespace cubconn
 	    _er_log_debug (__FILE__, __LINE__, "socket_io->recv_partial: out of buffer");
 	    return result::Error;
 	  }
-	
+
 	assert (buffer.total_size () - buffer.position () <= available);
-	
+
 	n = ::recv (fd, space, buffer.total_size () - buffer.position (), 0);
 	if (n > 0)
 	  {
