@@ -42,13 +42,16 @@ namespace cubconn
     public:
       enum class message_type
       {
-	NEW_CLIENT
+	NEW_CLIENT,
+	SHUTDOWN
       };
-      
+
       struct message
       {
 	message_type type;
-	int fd;
+
+	/* NEW_CLIENT */
+	css_conn_entry *conn;
       };
 
     private:
@@ -75,11 +78,12 @@ namespace cubconn
       void enqueue (const message &item);
       void notify ();
 
-      void run ();
+      bool run ();
 
     private:
       /* thread handle */
       std::thread m_thread;
+      bool m_stop;
       /* connection pool */
       connection_pool *m_parent;
 
@@ -91,6 +95,13 @@ namespace cubconn
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
       cubbase::MPSCQueue<message> m_queue;
+
+      bool handle_mq_new_client (message &item);
+      bool handle_message_queue ();
+
+      bool handle_reception (context *ctx);
+
+      bool handle_transmission (context *ctx);
   };
 }
 

@@ -33,7 +33,8 @@
 namespace cubconn
 {
   connection_pool::connection_pool () :
-    m_max_connections (-1)
+    m_max_connections (-1),
+    m_counter (0)
   {
   }
 
@@ -58,15 +59,33 @@ namespace cubconn
 
   void connection_pool::finalize ()
   {
+    connection_worker::message request;
+
+    request.type = connection_worker::message_type::SHUTDOWN;
+    for (auto &worker : m_workers)
+      {
+	worker->enqueue (request);
+      }
     m_max_connections = -1;
     m_workers.clear ();
   }
 
-  void connection_pool::run ()
-  {
-  }
-
   void connection_pool::dispatch (css_conn_entry *conn)
   {
+    /* TODO: in this function, we can take some kind of strategies how	      */
+    /* the connection pool distributes the connections to connection workers. */
+    /* but now, just uses round robin					      */
+    connection_worker::message request;
+
+    request.type = connection_worker::message_type::NEW_CLIENT;
+    request.conn = conn;
+    m_workers[m_counter]->enqueue (request);
+    m_workers[m_counter]->notify ();
+
+    m_counter++;
+    if (m_counter == m_workers.size ())
+      {
+	m_counter = 0;
+      }
   }
 }
