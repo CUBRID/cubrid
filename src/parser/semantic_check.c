@@ -47,6 +47,7 @@
 #include "object_primitive.h"
 #include "db_client_type.hpp"
 #include "msgcat_glossary.hpp"
+#include "network_interface_cl.h"
 
 #include "cubvec_assert.h"
 
@@ -875,6 +876,49 @@ end:
       free_and_init (cinfo);
     }
   return result;
+}
+
+/*
+ * pt_check_compatible_node_for min(), max()
+ */
+bool
+pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column)
+{
+  PT_NODE *arg1;
+  PT_TYPE_ENUM type1;
+
+  /* only min(), max() is allowed */
+  if (order == NULL || column == NULL || order->node_type != PT_FUNCTION)
+    {
+      return false;
+    }
+
+  if (order->info.function.function_type != PT_MIN && order->info.function.function_type != PT_MAX)
+    {
+      return false;
+    }
+
+  arg1 = order->info.function.arg_list;
+  if (arg1->node_type != column->node_type || arg1->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  if (pt_check_path_eq (parser, arg1, column) != 0)
+    {
+      return false;
+    }
+
+  /* only numeric, string, date-time type is allowed
+   * Only string type : Do not consider 'CAST (enum_col as VARCHAR)' equal to 'enum_col' */
+  type1 = arg1->type_enum;
+
+  if (PT_IS_NUMERIC_TYPE (type1) || PT_IS_STRING_TYPE (type1) || PT_IS_DATE_TIME_TYPE (type1))
+    {
+      return true;
+    }
+
+  return false;
 }
 
 /*
@@ -4487,8 +4531,7 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	  find = node;
 	  break;
 	}
-
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_EXPR:
     case PT_MERGE:
@@ -4921,7 +4964,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
 
-      /* FALL THRU */
+      [[fallthrough]];
 
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -5139,8 +5182,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      AU_SET_USER (me);
 	    }
 	}
+      [[fallthrough]];
 
-      /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
 	{
@@ -12095,6 +12138,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   next = node->next;
   node->next = NULL;
 
+  if (pt_is_ddl_statement (node))
+    {
+      tdes_set_query_start_info (node->sql_user_text);
+    }
+
   switch (node->node_type)
     {
     case PT_UPDATE:
@@ -12107,7 +12155,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  pt_resolve_object (parser, node);
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_HOST_VAR:
     case PT_EXPR:
@@ -12465,6 +12513,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
   if (pt_has_error (parser))
     {
+      tdes_reset_query_start_info (node);
       pt_register_orphan (parser, node);
       return NULL;
     }
@@ -14443,7 +14492,7 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  /* check for after group by position */
-	  pt_to_pos_descr (parser, &pos, r, node, &referred_node);
+	  pt_to_pos_descr (parser, &pos, r, node, &referred_node, false);
 	  if (pos.pos_no > 0)
 	    {
 	      /* set after group by position num, domain info */

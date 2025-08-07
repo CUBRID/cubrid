@@ -73,7 +73,7 @@ typedef struct tp_domain
 {
   struct tp_domain *next;	/* next in the same domain list */
   struct tp_domain *next_list;	/* next domain list */
-  struct pr_type *type;
+  const struct pr_type *type;
 
   int precision;
   int scale;

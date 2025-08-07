@@ -511,7 +511,7 @@ struct cte_proc_node
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	      0x40000	/* subquery uses result cache */
-
+#define XASL_NO_PARALLEL_SUBQUERY      0x80000	/* disable parallel subquery */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -764,7 +764,8 @@ typedef enum
   ACCESS_SPEC_FLAG_FOR_UPDATE = 0x01,	/* used with FOR UPDATE clause. The spec that will be locked. */
   ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x02,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x04,	/* used with parallel heap scan. */
-  ACCESS_SPEC_FLAG_MERGED_LIST = 0x08	/* used with parallel heap scan. */
+  ACCESS_SPEC_FLAG_MERGED_LIST = 0x08,	/* used with parallel heap scan. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x10	/* used with min/max aggregate. */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node

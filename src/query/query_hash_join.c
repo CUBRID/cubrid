@@ -364,7 +364,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       break;
 
     case HASHJOIN_STATUS_ERROR:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);
@@ -2296,7 +2296,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;
 
     case HASH_METH_NOT_USE:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);
@@ -2999,7 +2999,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;			/* HASH_METH_HASH_FILE */
 
     case HASH_METH_NOT_USE:
-      /* fall through */
+      [[fallthrough]];
     default:
       /* impossible case */
       assert_release (false);
@@ -3100,7 +3100,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
   QFILE_TUPLE outer_record_end, inner_record_end, tuple_record_end;
   QFILE_TUPLE tuple_value;
   INT32 unbound_value[2] = { 0, 0 };	/* QFILE_TUPLE_VALUE_HEADER */
-  int realloc_size, offset, value_size;
+  int available_size, realloc_size, offset, value_size;
   int pos_index, value_index, skip_index;
 
   int error = NO_ERROR;
@@ -3139,7 +3139,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 
       if (tuple_record != NULL)
 	{
-	  value_index = merge_info->ls_outer_inner_list[pos_index];
+	  value_index = merge_info->ls_pos_list[pos_index];
 
 	  tuple_value = tuple_record->tpl + QFILE_TUPLE_LENGTH_SIZE;
 	  for (skip_index = 0; skip_index < value_index; skip_index++)
@@ -3162,10 +3162,11 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 	}
 
       value_size = QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple_value);
+      available_size = overflow_record->size - offset;
 
-      if ((overflow_record->size - offset) < value_size)
+      if (value_size > available_size)
 	{
-	  realloc_size = overflow_record->size + CEIL_PTVDIV (value_size, DB_PAGESIZE);
+	  realloc_size = CEIL_PTVDIV (overflow_record->size + (value_size - available_size), DB_PAGESIZE) * DB_PAGESIZE;
 
 	  /* overflow_record is managed and cleaned up by the caller. */
 	  error = qfile_reallocate_tuple (overflow_record, realloc_size);

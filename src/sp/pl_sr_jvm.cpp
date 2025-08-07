@@ -340,7 +340,10 @@ pl_get_create_java_vm_function_ptr ()
       err_msgs.append ("\n\tFailed to load libjvm from 'CUBRID_JAVA_HOME' environment variable: ");
 
       // under jdk 11
-      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
+      if (snprintf (jvm_library_path, PATH_MAX, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE) >= PATH_MAX)
+	{
+	  return NULL;
+	}
       libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
       if (libVM_p != NULL)
 	{
@@ -353,7 +356,10 @@ pl_get_create_java_vm_function_ptr ()
 	}
 
       // from jdk 11
-      snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE);
+      if (snprintf (jvm_library_path, PATH_MAX, "%s/%s/%s", java_home, JVM_LIB_PATH_JDK11, JVM_LIB_FILE) >= PATH_MAX)
+	{
+	  return NULL;
+	}
       libVM_p = dlopen (jvm_library_path, RTLD_NOW | RTLD_LOCAL);
       if (libVM_p != NULL)
 	{

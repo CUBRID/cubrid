@@ -91,6 +91,7 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
+#include "network.h"
 #include "cubvec_assert.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -4155,6 +4156,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+  tdes_reset_query_start_info (statement);
+
   /* enable data replication log */
   if (need_stmt_based_repl)
     {
@@ -5478,7 +5481,7 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
 	  tran_get_tran_settings (&dummy_lktimeout, tran_isolation, &dummy_aws);
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case 1:			/* unsupported ones */
     case 2:
     case 3:
@@ -20780,8 +20783,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (owner_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -21253,7 +21255,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
