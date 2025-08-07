@@ -240,7 +240,6 @@ struct dwb_slots_hash_entry
 
   DWB_SLOT *slot;		/* DWB slot containing a page. */
 
-  // *INDENT-OFF*
   dwb_slots_hash_entry ()
   {
     pthread_mutex_init (&mutex, NULL);
@@ -249,13 +248,10 @@ struct dwb_slots_hash_entry
   {
     pthread_mutex_destroy (&mutex);
   }
-  // *INDENT-ON*
 };
 
 /* Hash that store all pages in DWB. */
-// *INDENT-OFF*
 using dwb_hashmap_type = cubthread::lockfree_hashmap<VPID, dwb_slots_hash_entry>;
-// *INDENT-ON*
 
 /* The double write buffer structure. */
 typedef struct double_write_buffer DOUBLE_WRITE_BUFFER;
@@ -281,7 +277,6 @@ struct double_write_buffer
 
   DWB_BLOCK *volatile file_sync_helper_block;	/* The block that will be sync by helper thread. */
 
-  // *INDENT-OFF*
   double_write_buffer ()
     : logging_enabled (false)
     , blocks (NULL)
@@ -299,7 +294,6 @@ struct double_write_buffer
     , file_sync_helper_block (NULL)
   {
   }
-  // *INDENT-ON*
 };
 
 /* DWB volume name. */
@@ -400,12 +394,10 @@ STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB
 __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY *thread_p, DWB_SLOT *slot);
 
-// *INDENT-OFF*
 #if defined (SERVER_MODE)
 static cubthread::daemon *dwb_flush_block_daemon = NULL;
 static cubthread::daemon *dwb_file_sync_helper_daemon = NULL;
 #endif
-// *INDENT-ON*
 
 static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_file_sync_helper_daemon_available (void);
@@ -3916,7 +3908,6 @@ dwb_read_page (THREAD_ENTRY *thread_p, const VPID *vpid, void *io_page, bool *su
   return NO_ERROR;
 }
 
-// *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class dwb_flush_block_daemon_task
 //
@@ -4021,7 +4012,6 @@ dwb_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (dwb_file_sync_helper_daemon);
 }
 #endif /* SERVER_MODE */
-// *INDENT-ON*
 
 /*
  * dwb_is_flush_block_daemon_available () - Check if flush block daemon is available
