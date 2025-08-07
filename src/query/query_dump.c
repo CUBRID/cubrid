@@ -1835,7 +1835,7 @@ qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
       return false;
     }
 
-  fprintf (foutput, "(optimize:%d)", aggptr->flag_agg_optimize);
+  fprintf (foutput, "(optimize:%d)", aggptr->flag.agg_optimized);
 
   if (!qdump_print_btid (aggptr->btid))
     {

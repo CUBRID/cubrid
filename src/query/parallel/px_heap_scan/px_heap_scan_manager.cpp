@@ -526,7 +526,10 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 	{
 	  return ret;
 	}
-      thread_p->m_px_orig_thread_entry = thread_p;
+      if (thread_p->m_px_orig_thread_entry == NULL)
+	{
+	  thread_p->m_px_orig_thread_entry = thread_p;
+	}
       scan_id->type = S_PARALLEL_HEAP_SCAN;
       orig_heap_id = db_change_private_heap (thread_p, 0);
       if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE)

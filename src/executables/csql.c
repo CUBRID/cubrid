@@ -419,7 +419,7 @@ csql_pipe_handler (int sig_no)
 static void
 display_buffer (void)
 {
-  int l = 1;
+  volatile int l = 1;
   FILE *pf;
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int);
