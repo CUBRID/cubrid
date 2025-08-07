@@ -191,7 +191,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    vimkim_log ("fetch peek arith.\n");
 	  }
-	  [[fallthrough]];
+	[[fallthrough]];
       }
     case T_POSITION:
     case T_FINDINSET:

@@ -1616,14 +1616,14 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      break;
 
 	    case PT_DISTANCE_OP_EUCLIDEAN:
-		{
-	      if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
-		{
-		  // CUBVEC todo: not yet analyzed
-		  ASSERT_CUBVEC (false);
-		}
+	      {
+		if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+		  {
+		    // CUBVEC todo: not yet analyzed
+		    ASSERT_CUBVEC (false);
+		  }
 		[[fallthrough]];
-		}
+	      }
 	    case PT_NULLSAFE_EQ:
 	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NULLSAFE_EQ, data_type);
 	      break;
