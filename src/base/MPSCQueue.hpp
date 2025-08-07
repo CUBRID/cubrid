@@ -83,7 +83,7 @@ namespace cubbase
   template <typename T>
   void MPSCQueue<T>::enqueue (const T &item)
   {
-    Node *prev, node;
+    Node *prev, *node;
 
     node = new Node (item);
     prev = m_head.exchange (node, std::memory_order_acq_rel);
