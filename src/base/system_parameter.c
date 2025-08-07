@@ -5757,7 +5757,6 @@ sysprm_check_id_order ()
 
 	  if (i > 0)
 	    {
-	      assert (ptr[1] > last);
 	      assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
 	    }
 
