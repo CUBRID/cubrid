@@ -28094,18 +28094,21 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 	{
 	  char *str_group = NULL;
 
-	  /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
-	  int tmp_paren_type = -1;
 	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
 	    {
+	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	      int tmp_paren_type = -1;
 	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
 	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
 	    }
-
-	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
-
-	  groupby->info.sort_spec.expr->info.expr.paren_type =
-	    (tmp_paren_type != -1) ? tmp_paren_type : groupby->info.sort_spec.expr->info.expr.paren_type;
+	  else
+	    {
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	    }
 
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
