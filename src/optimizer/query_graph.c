@@ -3819,14 +3819,14 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_BETWEEN_GT_INF:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_DISTANCE_OP_EUCLIDEAN:
-	  {
+    {
 	    if (expr->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
-	      {
-		// CUBVEC todo: not yet analyzed
-		ASSERT_CUBVEC (false);
-  }
-  [[fallthrough]];
-	  }
+        {
+          // CUBVEC todo: not yet analyzed
+          // // ASSERT_CUBVEC (false);
+        }
+        [[fallthrough]];
+    }
 	case PT_MODULUS:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;

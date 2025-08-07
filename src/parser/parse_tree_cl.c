@@ -17858,12 +17858,12 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_LT:
 	case PT_LE:
 	case PT_DISTANCE_OP_EUCLIDEAN:
-  {
-	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
-	    {
-	      // CUBVEC todo: not yet analyzed
-	      ASSERT_CUBVEC (false);
-	    }
+    {
+      if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	      {
+	        // CUBVEC todo: not yet analyzed
+	        ASSERT_CUBVEC (false);
+	      }
       [[fallthrough]];
     }
 
