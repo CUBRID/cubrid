@@ -680,8 +680,8 @@ extern "C"
     unsigned int static_flag;	/* bitmask flag representing status words */
     SYSPRM_DATATYPE datatype;	/* value data type */
     unsigned int dynamic_flag;	/* shared by both original and duplicated */
-    const SYSPRM_PARAM_VALUE default_value;	/* address of (pointer to) default value */
-    SYSPRM_PARAM_VALUE value;	/* address of (pointer to) current value */
+    const SYSPRM_PARAM_VALUE default_value;	/* default value */
+    SYSPRM_PARAM_VALUE value;	/* current value */
     const SYSPRM_PARAM_VALUE upper_limit;	/* highest allowable value */
     const SYSPRM_PARAM_VALUE lower_limit;	/* lowest allowable value */
     char *force_value;		/* address of (pointer to) force value string */
