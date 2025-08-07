@@ -104,10 +104,6 @@ namespace cubconn
   bool master_connector::attach (connection_pool &pool) noexcept
   {
     m_connection_pool = &pool;
-    if (!m_connection_pool)
-      {
-	assert_release (false);
-      }
     return true;
   }
 
@@ -729,8 +725,7 @@ namespace cubconn
       {
 	(void) (*css_Connect_handler) (ctx->m_conn);
 
-	/* dispatch here */
-	//m_connection_pool->dispatch (ctx->m_conn);
+	m_connection_pool->dispatch (ctx->m_conn);
       }
     else
       {
