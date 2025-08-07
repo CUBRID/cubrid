@@ -3733,7 +3733,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    {
 	      fprintf (fp, ")\n");
 	      fprintf (fp, "%*c", indent + 8, ' ');
-	      fprintf (fp, "(parallel workers: %zu", ostats->parallel_num);
+	      fprintf (fp, "(parallel workers: %d", ostats->parallel_num);
 	      fprintf (fp, ", orderby time: %lu..%lu", ostats->px_min_orderby_time, ostats->px_max_orderby_time);
 	      fprintf (fp, ", pages: %lu..%lu", ostats->px_min_orderby_pages, ostats->px_max_orderby_pages);
 	      fprintf (fp, ", ioreads: %lu..%lu", ostats->px_min_orderby_ioreads, ostats->px_max_orderby_ioreads);
