@@ -39,48 +39,32 @@ namespace cubconn
 
   class connection_worker
   {
+    public:
+      enum class message_type
+      {
+	NEW_CLIENT
+      };
+      
+      struct message
+      {
+	message_type type;
+	int fd;
+      };
+
     private:
       enum class state
       {
-	/* handshake with master */
-	SendInHandshake,
-	RecvInHandshake,
-
-	SwitchToUnixSocket,
-
-	/* request from master */
-	RecvRequestType,
-
-	RecvNewClient,
-
-	/* send to clients */
-	SendReplyToClient
+	Somestate
       };
 
       struct context
       {
 	css_conn_entry *m_conn;
 
-	state m_state { state::SendInHandshake };
-	bool m_has_error;
+	state m_state { state::Somestate };
 
 	context ();
 	~context ();
-
-	void reset ();
-	bool has_data_to_send ();
-
-	template <typename... Spans>
-	void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
-	{
-	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	}
-
-	template <typename T>
-	T *allocate ()
-	{
-	  return m_sendbuf.allocate<T> ();
-	}
       };
 
     public:
@@ -88,7 +72,7 @@ namespace cubconn
       ~connection_worker ();
 
       /* used for control from other threads */
-      void enqueue ();
+      void enqueue (const message &item);
       void notify ();
 
       void run ();
@@ -106,7 +90,7 @@ namespace cubconn
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
-      cubbase::MPSCQueue<int> m_queue;
+      cubbase::MPSCQueue<message> m_queue;
   };
 }
 

@@ -41,15 +41,14 @@ namespace cubconn
   {
   }
 
-  void connection_pool::initialize (std::uint32_t max_connections)
+  void connection_pool::initialize (unsigned int worker_count, std::uint32_t max_connections)
   {
     std::uint32_t i;
-    int fd;
 
     /* TODO: consider dynamic increses */
-    m_workers.reserve (max_connections + 1);
+    m_workers.reserve (worker_count + 1);
 
-    for (i = 0; i < max_connections; i++)
+    for (i = 0; i < worker_count; i++)
       {
 	m_workers.emplace_back (std::make_unique<connection_worker> (this, i));
       }

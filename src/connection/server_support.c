@@ -1376,7 +1376,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* init epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS);
+  connections.initialize (std::thread::hardware_concurrency () / 2, MAX_CONNECTIONS);
 
   /* attach pool */
   connector.attach (connections);
