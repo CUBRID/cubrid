@@ -9853,77 +9853,80 @@ static double
 qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PRED_CLASS pc_lhs, pc_rhs;
-  double list_card = 0, icard;
+  double list_card = 0.0, icard = 0.0;
+  double equal_selectivity = 1.0;
   PT_NODE *lhs;
-  double equal_selectivity, in_selectivity, selectivity;
+  PT_NODE *arg1, *arg2;
+
+  /* To avoid repeated dereferencing */
+  arg1 = pt_expr->info.expr.arg1;
+  arg2 = pt_expr->info.expr.arg2;
 
   /* determine the class of each side of the range */
-  pc_lhs = qo_classify (pt_expr->info.expr.arg1);
-  pc_rhs = qo_classify (pt_expr->info.expr.arg2);
+  pc_lhs = qo_classify (arg1);
+  pc_rhs = qo_classify (arg2);
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
   if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
     {
       if (pc_lhs == PC_MULTI_ATTR)
 	{
-	  lhs = pt_expr->info.expr.arg1->info.function.arg_list;
-	  equal_selectivity = 1;
-	  for ( /* none */ ; lhs; lhs = lhs->next)
+	  for (lhs = arg1->info.function.arg_list; lhs; lhs = lhs->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, lhs);
-	      if (icard != 0)
+	      if (icard > 0.0)
 		{
-		  selectivity = (1.0 / icard);
+		  equal_selectivity *= (1.0 / icard);
 		}
 	      else
 		{
-		  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+		  /* If no index, multiply by default selectivity for each attribute */
+		  equal_selectivity *= DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      equal_selectivity *= selectivity;
 	    }
 	}
       else if (pc_lhs == PC_ATTR)
 	{
 	  /* check for index on the attribute.  */
-	  icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
-
-	  if (icard != 0)
+	  icard = qo_index_cardinality (env, arg1);
+	  if (icard > 0.0)
 	    {
-	      equal_selectivity = (1.0 / icard);
+	      equal_selectivity *= (1.0 / icard);
 	    }
 	  else
 	    {
 	      equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
 	    }
 	}
+
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
 	{
-	  if (pt_is_function (pt_expr->info.expr.arg2))
+	  if (pt_is_function (arg2))
 	    {
-	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	      list_card = pt_length_of_list (arg2->info.function.arg_list);
 	    }
 	  else
 	    {
-	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
+	      list_card = pt_length_of_list (arg2->info.value.data_value.set);
 	    }
 	}
       else if (pc_rhs == PC_SUBQUERY)
 	{
-	  if (pt_expr->info.expr.arg2->info.query.xasl)
+	  if (arg2->info.query.xasl)
 	    {
-	      list_card = ((XASL_NODE *) pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
+	      list_card = ((XASL_NODE *) arg2->info.query.xasl)->cardinality;
 	    }
 	  else
 	    {
 	      /* legacy default list_card is 1000. Maybe it won't come in here */
-	      list_card = 1000;
+	      list_card = 1000.0;
 	    }
 	}
 
       /* compute selectivity--cap at 0.5 */
-      in_selectivity = list_card * equal_selectivity;
+      double in_selectivity = list_card * equal_selectivity;
       return in_selectivity > 0.5 ? 0.5 : in_selectivity;
     }
 
