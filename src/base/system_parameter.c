@@ -5736,7 +5736,7 @@ sysprm_check_id_order ()
   static bool is_first = true;
   if (is_first)
     {
-      int i, k, last;
+      int i, k;
       const int *ptr;
       assert (GET_PRM (0)->id == PRM_FIRST_ID);
       for (i = 1; i < MAX_SYSTEM_PARAMS; i++)
@@ -5745,7 +5745,6 @@ sysprm_check_id_order ()
 	  assert (GET_PRM (i)->id == (PARAM_ID) i);
 	}
 
-      last = 0;
       for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
 	{
 	  ptr = PARAM_VALUE_SHARE[i];
@@ -5759,8 +5758,6 @@ sysprm_check_id_order ()
 	    {
 	      assert (ptr[1] > PARAM_VALUE_SHARE[i - 1][1]);
 	    }
-
-	  last = ptr[ptr[0]];
 	}
 
       is_first = false;
