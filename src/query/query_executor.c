@@ -1316,8 +1316,10 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	    }
 
-	  if (qdata_evaluate_aggregate_list (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd, NULL) !=
-	      NO_ERROR)
+	  bool is_desc_index = (xasl->curr_spec
+				&& xasl->curr_spec->indexptr) ? xasl->curr_spec->indexptr->use_desc_index : false;
+	  if (qdata_evaluate_aggregate_list
+	      (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd, NULL, is_desc_index) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -4262,8 +4264,8 @@ qexec_gby_agg_tuple (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_TUP
     {
       assert (gbstate->g_dim[i].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-      if (qdata_evaluate_aggregate_list (thread_p, gbstate->g_dim[i].d_agg_list, &gbstate->xasl_state->vd, NULL) !=
-	  NO_ERROR)
+      if (qdata_evaluate_aggregate_list (thread_p, gbstate->g_dim[i].d_agg_list, &gbstate->xasl_state->vd, NULL, false)
+	  != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4400,7 +4402,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       /* eval aggregate functions */
       if (rc == NO_ERROR)
 	{
-	  rc = qdata_evaluate_aggregate_list (thread_p, proc->g_agg_list, &xasl_state->vd, value->accumulators);
+	  rc = qdata_evaluate_aggregate_list (thread_p, proc->g_agg_list, &xasl_state->vd, value->accumulators, false);
 	}
 
       /* compute size */
@@ -7291,7 +7293,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					     curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					     curr_spec->s.cls_node.cache_rest, curr_spec->s.cls_node.num_attrs_range,
 					     curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
-					     iscan_oid_order, query_id);
+					     iscan_oid_order, query_id,
+					     (curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -8561,7 +8564,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 			      spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
 			      spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
 			      spec->s.cls_node.num_attrs_range, spec->s.cls_node.attrids_range,
-			      spec->s.cls_node.cache_range, iscan_oid_order, query_id);
+			      spec->s.cls_node.cache_range, iscan_oid_order, query_id,
+			      (spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 
     }
   else if (spec->type == TARGET_CLASS_ATTR)
@@ -8638,6 +8642,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   bool max_recursive_iterations_reached = false;
   bool cte_start_new_iteration = false;
   static bool enable_agg_optimization = prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION);
+  bool need_restore_index_scan_direction = false;
 
   if (xasl->type == BUILDVALUE_PROC)
     {
@@ -8710,7 +8715,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  for (agg_ptr = xasl->proc.buildlist.g_agg_list; agg_ptr; agg_ptr = agg_ptr->next)
 	    {
-	      agg_ptr->flag_agg_optimize = false;
+	      agg_ptr->flag.agg_optimized = false;
 	    }
 	}
     }
@@ -8922,6 +8927,36 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 				    {
 				      return S_ERROR;
+				    }
+				  if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN)
+				    {
+				      assert (xasl->curr_spec->indexptr != NULL);
+				      if (xasl->proc.buildvalue.agg_list != NULL)
+					{
+					  if (qdata_evaluate_aggregate_min_max_finished
+					      (thread_p, xasl->proc.buildvalue.agg_list))
+					    {
+					      /* restore index scan direction */
+					      if (need_restore_index_scan_direction)
+						{
+						  xasl->curr_spec->indexptr->use_desc_index =
+						    !xasl->curr_spec->indexptr->use_desc_index;
+						}
+					      xasl->curr_spec->s_id.scan_stats.min_max_only_scan = true;
+					      return S_SUCCESS;
+					    }
+					  else
+					    {
+					      need_restore_index_scan_direction = true;
+					      xasl->curr_spec->indexptr->use_desc_index =
+						!xasl->curr_spec->indexptr->use_desc_index;
+
+
+					      BTREE_SCAN *bts = &xasl->curr_spec->s_id.s.isid.bt_scan;
+					      bts_reset_scan (thread_p, bts);
+					      xasl->curr_spec->s_id.position = S_GO_BACKWARD;
+					    }
+					}
 				    }
 				}
 			    }
@@ -24698,7 +24733,7 @@ qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * sp
   agg_count = 0;
   while (agg)
     {
-      if (!agg->flag_agg_optimize)
+      if (!agg->flag.agg_optimized)
 	{
 	  agg = agg->next;
 	  continue;
@@ -24749,7 +24784,7 @@ qexec_init_agg_hierarchy_helpers (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * sp
   i = 0;
   while (agg != NULL)
     {
-      if (!agg->flag_agg_optimize)
+      if (!agg->flag.agg_optimized)
 	{
 	  agg = agg->next;
 	  continue;
@@ -24820,14 +24855,14 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE *
   i = 0;
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
-      if (!agg_ptr->flag_agg_optimize)
+      if (!agg_ptr->flag.agg_optimized)
 	{
 	  continue;
 	}
 
       if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
 	{
-	  agg_ptr->flag_agg_optimize = false;
+	  agg_ptr->flag.agg_optimized = false;
 	  i++;
 	  continue;
 	}
@@ -24835,7 +24870,7 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE *
       error = qdata_evaluate_aggregate_hierarchy (thread_p, agg_ptr, &ACCESS_SPEC_HFID (spec), &root_btid, &helpers[i]);
       if (error != NO_ERROR)
 	{
-	  agg_ptr->flag_agg_optimize = false;
+	  agg_ptr->flag.agg_optimized = false;
 	  *is_scan_needed = true;
 	  goto cleanup;
 	}
@@ -24881,7 +24916,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
-      if (!agg_ptr->flag_agg_optimize)
+      if (!agg_ptr->flag.agg_optimized)
 	{
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
@@ -24897,7 +24932,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 								     true);
 	  if (class_cos == NULL)
 	    {
-	      agg_ptr->flag_agg_optimize = false;
+	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
 	      continue;
 	    }
@@ -24905,7 +24940,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      if (class_cos->count_state != COS_LOADED)
 		{
-		  agg_ptr->flag_agg_optimize = false;
+		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
 		  continue;
 		}
@@ -24914,7 +24949,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      if (logtb_tran_find_btid_stats (thread_p, &agg_ptr->btid, true) == NULL)
 		{
-		  agg_ptr->flag_agg_optimize = false;
+		  agg_ptr->flag.agg_optimized = false;
 		  *is_scan_needed = true;
 		  continue;
 		}
@@ -24987,17 +25022,17 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 
   for (agg_ptr = agg_list; agg_ptr; agg_ptr = agg_ptr->next)
     {
-      if (agg_ptr->flag_agg_optimize)
+      if (agg_ptr->flag.agg_optimized)
 	{
 	  if (agg_ptr->function == PT_COUNT_STAR && *is_scan_needed)
 	    {
 	      /* If scan is needed, do not optimize PT_COUNT_STAR. */
-	      agg_ptr->flag_agg_optimize = false;
+	      agg_ptr->flag.agg_optimized = false;
 	      continue;
 	    }
 	  if (qdata_evaluate_aggregate_optimize (thread_p, agg_ptr, &ACCESS_SPEC_HFID (spec), &super_oid) != NO_ERROR)
 	    {
-	      agg_ptr->flag_agg_optimize = false;
+	      agg_ptr->flag.agg_optimized = false;
 	      *is_scan_needed = true;
 	    }
 	}

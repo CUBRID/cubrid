@@ -89,7 +89,6 @@ namespace cubxasl
     DB_TYPE original_opr_dbtype;	/* Original operand values data type */
     regu_variable_list_node *operands;	/* list of operands (one operand per function argument) */
     qfile_list_id *list_id;	/* used for distinct handling */
-    int flag_agg_optimize;
     BTID btid;
     SORT_LIST *sort_list;		/* for sorting elements before aggregation; used by GROUP_CONCAT */
     aggregate_specific_function_info info;	/* variables for specific functions */
@@ -97,6 +96,14 @@ namespace cubxasl
 #if defined (SERVER_MODE) || defined (SA_MODE)
     aggregate_accumulator_domain accumulator_domain;	/* holds domain info on accumulator */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
+    struct
+    {
+      bool agg_optimized;	/* true, if the aggregate is optimized */
+      bool min_max_optimized;	/* true, if the aggregate is min/max optimized */
+      bool part_key_descending;	/* true, if the aggregate is part key descending */
+      bool dummy; /* for alignment, free space for future use */
+    } flag;
+    int is_ended;		/* true, if the aggregate is ended */
   };
 };
 

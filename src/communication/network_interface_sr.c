@@ -11591,6 +11591,8 @@ stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 	  tdes_p->ddl_sql_user_text = strdup (sql_user_text);
 	}
     }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
 
 /*
@@ -11614,6 +11616,11 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   if (tdes_p)
     {
       tdes_p->query_start_time = 0;
-      free_and_init (tdes_p->ddl_sql_user_text);
+      if (tdes_p->ddl_sql_user_text != NULL)
+	{
+	  free_and_init (tdes_p->ddl_sql_user_text);
+	}
     }
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
