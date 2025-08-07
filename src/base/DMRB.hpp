@@ -141,14 +141,17 @@ namespace cubbase
     m_fd = ::shm_open (name.c_str (), O_RDWR | O_CREAT | O_EXCL, 0600);
     if (m_fd < 0)
       {
+	_er_log_debug (ARG_FILE_LINE, "shm_open failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
     if (::shm_unlink (name.c_str ()) < 0)
       {
+	_er_log_debug (ARG_FILE_LINE, "shm_unlink failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
     if (::ftruncate (m_fd, m_size))
       {
+	_er_log_debug (ARG_FILE_LINE, "ftruncate failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
 
@@ -157,6 +160,7 @@ namespace cubbase
     m_base = ::mmap (nullptr, m_size * 2, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (m_base == MAP_FAILED)
       {
+	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
     /* map virtual address to physical memory */
@@ -164,11 +168,13 @@ namespace cubbase
 	::mmap (static_cast<char *> (m_base) + m_size, m_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, m_fd,
 		0) == MAP_FAILED)
       {
+	_er_log_debug (ARG_FILE_LINE, "mmap failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
 
     if (::madvise (m_base, m_size * 2, MADV_DONTFORK) < 0)
       {
+	_er_log_debug (ARG_FILE_LINE, "madvise failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
   }

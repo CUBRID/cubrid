@@ -52,8 +52,9 @@ namespace cubconn
     ::close (m_eventfd);
   }
 
-  void connection_worker::enqueue ()
+  void connection_worker::enqueue (const message &item)
   {
+    m_queue.enqueue (item);
   }
 
   void connection_worker::notify ()
