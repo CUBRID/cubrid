@@ -5118,8 +5118,7 @@ static const int *PARAM_VALUE_SHARE[] = {
    * 3) All columns in a row, except the first one, must be sorted in ascending order.
    * 4) The columns from the second onward in each row contain PARAM_ID values.
    * 5) The PARAM_IDs in each row must be consecutive. If they are not, adjust the PARAM_ID enum order and the definition order in prm_Def.
-   * 6) The last row must be NULL.
-   * 7) All rows, except for the last one, must be sorted in ascending order based on the value in the second column. (i.e., the first PARAM_ID in each row).
+   * 6) The last row must be NULL.   
    *
    * For the logic behind these rules, refer to the sysprm_check_id_order() function.
    */
