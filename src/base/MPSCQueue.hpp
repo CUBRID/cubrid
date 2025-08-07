@@ -36,12 +36,12 @@ namespace cubbase
   {
     private:
       struct Node
-	{
-	  Node (const T &data);
+      {
+	Node (const T &data);
 
-	  T m_data;
-	  std::atomic<Node *> m_next;
-	};
+	T m_data;
+	std::atomic<Node *> m_next;
+      };
 
     public:
       MPSCQueue ();
@@ -53,66 +53,66 @@ namespace cubbase
 
     private:
       std::atomic<Node *> m_head;
-      Node* m_tail;
-    };
+      Node *m_tail;
+  };
 
   template <typename T>
-  MPSCQueue<T>::Node::Node (const T &data) : 
-      m_data (data),
-      m_next (nullptr)
-    {
-    }
+  MPSCQueue<T>::Node::Node (const T &data) :
+    m_data (data),
+    m_next (nullptr)
+  {
+  }
 
   template <typename T>
   MPSCQueue<T>::MPSCQueue ()
-    {
-      Node *dummy;
+  {
+    Node *dummy;
 
-      dummy = new Node (T { });
-      m_head.store (dummy);
-      m_tail = dummy;
-    }
+    dummy = new Node (T { });
+    m_head.store (dummy);
+    m_tail = dummy;
+  }
 
   template <typename T>
   MPSCQueue<T>::~MPSCQueue ()
-    {
-      while (dequeue ().has_value ());
-      delete m_tail;
-    }
-      
+  {
+    while (dequeue ().has_value ());
+    delete m_tail;
+  }
+
   template <typename T>
   void MPSCQueue<T>::enqueue (const T &item)
-    {
-      Node* prev, node;
+  {
+    Node *prev, node;
 
-      node = new Node (item);
-      prev = m_head.exchange (node, std::memory_order_acq_rel);
-      prev->m_next.store (node, std::memory_order_release);
-    }
-      
+    node = new Node (item);
+    prev = m_head.exchange (node, std::memory_order_acq_rel);
+    prev->m_next.store (node, std::memory_order_release);
+  }
+
   template <typename T>
   std::optional<T> MPSCQueue<T>::dequeue ()
-    {
-      T result;
-      Node* next;
+  {
+    T result;
+    Node *next;
 
-      next = m_tail->m_next.load (std::memory_order_acquire);
-      if (next == nullptr)
-	{
-	  return std::nullopt;
-	}
-      
-      result = std::move (next->m_data);
-      delete m_tail;
-      m_tail = next;
-      return result;
-    }
-      
+    next = m_tail->m_next.load (std::memory_order_acquire);
+    if (next == nullptr)
+      {
+	return std::nullopt;
+      }
+
+    result = std::move (next->m_data);
+    delete m_tail;
+    m_tail = next;
+    return result;
+  }
+
   template <typename T>
   bool MPSCQueue<T>::empty () const
-    {
-      return m_tail->m_next.load (std::memory_order_acquire) == nullptr;
-    }
+  {
+    return m_tail->m_next.load (std::memory_order_acquire) == nullptr;
+  }
 }
 
 #endif

@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_WORKER_HPP_
 #define _CONNECTION_WORKER_HPP_
 
+#include "server_support.h"
 #include "epoll.hpp"
 #include "MPSCQueue.hpp"
 
@@ -38,6 +39,50 @@ namespace cubconn
 
   class connection_worker
   {
+    private:
+      enum class state
+      {
+	/* handshake with master */
+	SendInHandshake,
+	RecvInHandshake,
+
+	SwitchToUnixSocket,
+
+	/* request from master */
+	RecvRequestType,
+
+	RecvNewClient,
+
+	/* send to clients */
+	SendReplyToClient
+      };
+
+      struct context
+      {
+	css_conn_entry *m_conn;
+
+	state m_state { state::SendInHandshake };
+	bool m_has_error;
+
+	context ();
+	~context ();
+
+	void reset ();
+	bool has_data_to_send ();
+
+	template <typename... Spans>
+	void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
+	{
+	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
+	}
+
+	template <typename T>
+	T *allocate ()
+	{
+	  return m_sendbuf.allocate<T> ();
+	}
+      };
+
     public:
       connection_worker (connection_pool *pool, std::size_t index);
       ~connection_worker ();

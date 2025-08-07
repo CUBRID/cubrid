@@ -33,41 +33,41 @@
 namespace cubconn
 {
   connection_pool::connection_pool () :
-      m_max_connections (-1)
-    {
-    }
+    m_max_connections (-1)
+  {
+  }
 
   connection_pool::~connection_pool ()
-    {
-    }
+  {
+  }
 
   void connection_pool::initialize (std::uint32_t max_connections)
-    {
-      std::uint32_t i;
-      int fd;
+  {
+    std::uint32_t i;
+    int fd;
 
-      /* TODO: consider dynamic increses */
-      m_workers.reserve (max_connections + 1);
+    /* TODO: consider dynamic increses */
+    m_workers.reserve (max_connections + 1);
 
-      for (i = 0; i < max_connections; i++)
-	{
-	  m_workers.emplace_back (std::make_unique<connection_worker> (this, i));
-	}
+    for (i = 0; i < max_connections; i++)
+      {
+	m_workers.emplace_back (std::make_unique<connection_worker> (this, i));
+      }
 
-      m_max_connections = max_connections;
-    }
+    m_max_connections = max_connections;
+  }
 
   void connection_pool::finalize ()
-    {
-      m_max_connections = -1;
-      m_workers.clear ();
-    }
+  {
+    m_max_connections = -1;
+    m_workers.clear ();
+  }
 
   void connection_pool::run ()
-    {
-    }
+  {
+  }
 
   void connection_pool::dispatch (css_conn_entry *conn)
-    {
-    }
+  {
+  }
 }
