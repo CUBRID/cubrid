@@ -40,7 +40,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#include "strict_warnings_on.hpp"
 // TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
@@ -528,5 +527,3 @@ static OID decode_oid (faiss::idx_t encoded_oid)
 
   return oid;
 }
-
-#include "strict_warnings_off.hpp"

@@ -25,7 +25,6 @@
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "strict_warnings_on.hpp"
 
 static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim);
 static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim);
@@ -221,5 +220,3 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
   return distance;
 
 }
-
-#include "strict_warnings_off.hpp"
