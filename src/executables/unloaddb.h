@@ -58,17 +58,20 @@ extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_
 #define PRINT_IDENTIFIER_WITH_QUOTE(s) "\"", (s), "\""
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-#define PRINT_OWNER_NAME(owner, print, output_owner, output_len) \
-do \
-  { \
-  size_t total_len = strlen (owner) + 4; \
-  assert (strlen ((owner)) < STATIC_CAST (int, output_len)); \
-  if (print) \
-      snprintf (output_owner, total_len, "%s%s%s%s", PRINT_IDENTIFIER (owner), "."); \
-  else \
-    strcpy(output_owner, ""); \
-  } \
-while (0)
+#define PRINT_OWNER_NAME(owner, print, output_owner, output_len)              \
+  do {                                                                         \
+    if ((print) && (owner) != NULL)                                            \
+      {                                                                        \
+        /* Truncate owner safely to fit into buffer */                         \
+        size_t max_owner_len = (output_len > 4 ? (output_len - 4) : 0);        \
+        snprintf ((output_owner), (output_len), "[%.*s].",                     \
+                  (int) max_owner_len, (owner));                               \
+      }                                                                        \
+    else                                                                       \
+      {                                                                        \
+        (output_owner)[0] = '\0';                                              \
+      }                                                                        \
+  } while (0)
 
 /* 
  * name is user_specified_name.
