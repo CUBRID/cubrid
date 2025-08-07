@@ -3928,21 +3928,21 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) override
     {
       if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
-      {
-        return;
-      }
+	{
+	  return;
+	}
 
       /* performance tracking */
       PERF_UTIME_TRACKER_TIME (NULL, &m_perf_track, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT);
 
       /* flush pages as long as necessary */
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-        {
+	{
 	  if (dwb_flush_next_block (&thread_ref) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-        }
+	}
 
       PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
     }
@@ -3957,9 +3957,9 @@ void
 dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
-      {
-        return;
-      }
+    {
+      return;
+    }
 
   /* flush pages as long as necessary */
   if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
