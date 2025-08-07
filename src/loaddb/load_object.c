@@ -707,7 +707,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat, *found;
   SM_ATTRIBUTE *att;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   int *vars = NULL;
   int i, offset, offset2, total, bytes, att_index, padded_size, fixed_size;
   SM_ATTRIBUTE **attmap = NULL;

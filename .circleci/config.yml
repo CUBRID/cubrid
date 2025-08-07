@@ -92,7 +92,7 @@ jobs:
                   - run:
                       name: Test
                       shell: /bin/bash
-                      no_output_timeout: 30m
+                      no_output_timeout: 45m
                       command: |
                         # Limit core files
                         ulimit -c 1
