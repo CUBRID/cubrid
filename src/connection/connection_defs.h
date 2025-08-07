@@ -449,8 +449,8 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  cubbase::DMRB_SPSC<true> *recvbuf;
-  cubbase::DMRB_SPSC<true> *sendbuf;
+    cubbase::DMRB_SPSC < true > *recvbuf;
+    cubbase::DMRB_SPSC < true > *sendbuf;
 
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;

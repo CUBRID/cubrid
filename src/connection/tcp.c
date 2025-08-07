@@ -1071,7 +1071,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   msg.msg_iov = &iov;
   msg.msg_iovlen = 1;
   msg.msg_control = cmsgbuf.buf;
-  msg.msg_controllen = sizeof(cmsgbuf.buf);
+  msg.msg_controllen = sizeof (cmsgbuf.buf);
 
   rc = recvmsg (fd, &msg, 0);
   if (rc < 0)
@@ -1083,9 +1083,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 
   for (cmsg = CMSG_FIRSTHDR (&msg); cmsg; cmsg = CMSG_NXTHDR (&msg, cmsg))
     {
-      if (cmsg->cmsg_level == SOL_SOCKET &&
-	  cmsg->cmsg_type == SCM_RIGHTS &&
-	  cmsg->cmsg_len >= CMSG_LEN (sizeof (int)))
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS && cmsg->cmsg_len >= CMSG_LEN (sizeof (int)))
 	{
 	  memcpy (&new_fd, CMSG_DATA (cmsg), sizeof (new_fd));
 	  break;

@@ -1015,7 +1015,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   num_loop = 0;
 
   status = NO_ERRORS;
-  _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: thread_p->shutdown = %s, conn->stop_talk = %d\n", thread_p->shutdown == true ? "true" : "false", conn->stop_talk);
+  _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: thread_p->shutdown = %s, conn->stop_talk = %d\n",
+		 thread_p->shutdown == true ? "true" : "false", conn->stop_talk);
 
   /* check if socket has error or client is down */
   while (thread_p->shutdown == false && conn->stop_talk == false)
@@ -1323,7 +1324,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   cubconn::connection_pool connections;
   std::string servername (server_name, name_length);
   CSS_CONN_ENTRY *conn;
-  int status = NO_ERROR; 
+  int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
