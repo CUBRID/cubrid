@@ -8679,11 +8679,14 @@ pt_is_operator_logical (PT_OP_TYPE op)
     case PT_LE_ALL:
     case PT_LE_SOME:
     case PT_DISTANCE_OP_EUCLIDEAN:
+    {
       if (op == PT_DISTANCE_OP_EUCLIDEAN)
 	{
 	  vimkim_log ("PT_DISTANCE_OP_EUCLIDEAN is not logical.\n");
 	  return false;
 	}
+  [[fallthrough]];
+    }
     case PT_NULLSAFE_EQ:
     case PT_IS_NOT_NULL:
     case PT_IS_NULL:

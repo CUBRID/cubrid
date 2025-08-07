@@ -3198,11 +3198,14 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ORDERBY_NUM:
 
     case PT_DISTANCE_OP_EUCLIDEAN:
+    {
       if (opcode == PT_DISTANCE_OP_EUCLIDEAN)
 	{
 	  // CUBVEC todo: not yet analyzed
 	  ASSERT_CUBVEC (false);
 	}
+  [[fallthrough]];
+    }
     case PT_MODULUS:
     case PT_RAND:
     case PT_DRAND:
@@ -3821,7 +3824,8 @@ pt_is_pseudo_const (PT_NODE * expr)
 	      {
 		// CUBVEC todo: not yet analyzed
 		ASSERT_CUBVEC (false);
-	      }
+  }
+  [[fallthrough]];
 	  }
 	case PT_MODULUS:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
