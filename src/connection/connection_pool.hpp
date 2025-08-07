@@ -43,13 +43,13 @@ namespace cubconn
       void initialize (unsigned int worker_count, std::uint32_t max_connections);
       void finalize ();
 
-      void run ();
-
       void dispatch (css_conn_entry *conn);
 
     private:
       std::uint32_t m_max_connections;
       std::vector<std::unique_ptr<connection_worker>> m_workers;
+
+      std::size_t m_counter;
 
       void initialize_worker ();
   };
