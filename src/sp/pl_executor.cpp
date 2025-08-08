@@ -369,7 +369,6 @@ exit:
   {
     int error = NO_ERROR;
 
-    SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
     m_stack->set_java_command (SP_CODE_INVOKE);
@@ -418,7 +417,6 @@ exit:
 	    break;
 	  }
 
-	cubpacking::unpacker unpacker (response_blk);
 	if (!response_blk.is_valid ())
 	  {
 	    error_code = ER_SP_NETWORK_ERROR;
@@ -426,6 +424,7 @@ exit:
 	    break;
 	  }
 
+	cubpacking::unpacker unpacker (response_blk);
 	unpacker.unpack_int (start_code);
 
 	(void) m_stack->read_payload_block (unpacker);

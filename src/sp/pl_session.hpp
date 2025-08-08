@@ -50,7 +50,6 @@ namespace cubthread
 
 namespace cubmethod
 {
-  class method_invoke_group;
   struct db_parameter_info;
 }
 
@@ -173,8 +172,6 @@ namespace cubpl
       void set_session_param (const sys_param &param);
 
     private:
-      execution_stack *top_stack_internal ();
-      void destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
