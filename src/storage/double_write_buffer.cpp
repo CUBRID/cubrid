@@ -17,7 +17,7 @@
  */
 
 /*
- * double_write_buffer.c - double write buffer
+ * double_write_buffer.cpp - double write buffer
  */
 
 #ident "$Id$"
@@ -25,7 +25,7 @@
 #include <assert.h>
 #include <math.h>
 
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -240,7 +240,6 @@ struct dwb_slots_hash_entry
 
   DWB_SLOT *slot;		/* DWB slot containing a page. */
 
-  // *INDENT-OFF*
   dwb_slots_hash_entry ()
   {
     pthread_mutex_init (&mutex, NULL);
@@ -249,13 +248,10 @@ struct dwb_slots_hash_entry
   {
     pthread_mutex_destroy (&mutex);
   }
-  // *INDENT-ON*
 };
 
 /* Hash that store all pages in DWB. */
-// *INDENT-OFF*
 using dwb_hashmap_type = cubthread::lockfree_hashmap<VPID, dwb_slots_hash_entry>;
-// *INDENT-ON*
 
 /* The double write buffer structure. */
 typedef struct double_write_buffer DOUBLE_WRITE_BUFFER;
@@ -281,7 +277,6 @@ struct double_write_buffer
 
   DWB_BLOCK *volatile file_sync_helper_block;	/* The block that will be sync by helper thread. */
 
-  // *INDENT-OFF*
   double_write_buffer ()
     : logging_enabled (false)
     , blocks (NULL)
@@ -299,7 +294,6 @@ struct double_write_buffer
     , file_sync_helper_block (NULL)
   {
   }
-  // *INDENT-ON*
 };
 
 /* DWB volume name. */
@@ -322,71 +316,71 @@ static DOUBLE_WRITE_BUFFER dwb_Global;
 #endif /* !SERVER_MODE */
 
 /* DWB wait queue functions */
-STATIC_INLINE void dwb_init_wait_queue (DWB_WAIT_QUEUE * wait_queue) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *dwb_make_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue,
-							       void *data) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue,
-								    void *data) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_init_wait_queue (DWB_WAIT_QUEUE *wait_queue) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *dwb_make_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue,
+    void *data) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue,
+    void *data) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *dwb_block_disconnect_wait_queue_entry (DWB_WAIT_QUEUE *
-									   wait_queue, void *data)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue,
-						    DWB_WAIT_QUEUE_ENTRY * wait_queue_entry,
-						    int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex,
-						void *data, int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex);
+    wait_queue, void *data)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue,
+    DWB_WAIT_QUEUE_ENTRY *wait_queue_entry,
+    int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex,
+    void *data, int (*func) (void *)) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_signal_waiting_threads (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_destroy_wait_queue (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex);
 
 /* DWB functions */
 STATIC_INLINE void dwb_power2_ceil (unsigned int min, unsigned int max, unsigned int *p_value)
-  __attribute__ ((ALWAYS_INLINE));
+__attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_load_buffer_size (unsigned int *p_double_write_buffer_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool dwb_load_block_count (unsigned int *p_num_blocks) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_wait_for_block_completion (THREAD_ENTRY *thread_p, unsigned int block_no)
+__attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_signal_waiting_thread (void *data) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_set_status_resumed (void *data) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slots,
-						  unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_signal_block_completion (THREAD_ENTRY *thread_p, DWB_BLOCK *dwb_block)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK *block, DWB_SLOT **p_dwb_ordered_slots,
+    unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
 static int dwb_compare_vol_fd (const void *v1, const void *v2);
-STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
-								     int vol_fd) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
+STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block,
+    int vol_fd) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_slots,
 				   unsigned int ordered_slots_length, bool file_sync_helper_can_flush,
 				   bool remove_from_hash) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_helper_can_flush,
-				   UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_init_slot (DWB_SLOT * slot) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY * thread_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot,
-				      FILEIO_PAGE * io_page_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_signal_structure_modificated (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_position_with_flags)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page,
+STATIC_INLINE int dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper_can_flush,
+				   UINT64 *current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_init_slot (DWB_SLOT *slot) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY *thread_p, bool can_wait, DWB_SLOT **p_dwb_slot)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot,
+				      FILEIO_PAGE *io_page_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_signal_structure_modificated (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_ends_structure_modification (THREAD_ENTRY *thread_p, UINT64 current_position_with_flags)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_initialize_slot (DWB_SLOT *slot, FILEIO_PAGE *io_page,
 					unsigned int position_in_block, unsigned int block_no)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no,
-					 unsigned int count_wb_pages, char *write_buffer, DWB_SLOT * slots,
-					 FLUSH_VOLUME_INFO * flush_volumes_info, unsigned int count_flush_volumes_info,
-					 unsigned int max_to_flush_vdes) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned int num_block_pages,
-				     DWB_BLOCK ** p_blocks) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_finalize_block (DWB_BLOCK * block) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
-				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
-  __attribute__ ((ALWAYS_INLINE));
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_initialize_block (DWB_BLOCK *block, unsigned int block_no,
+    unsigned int count_wb_pages, char *write_buffer, DWB_SLOT *slots,
+    FLUSH_VOLUME_INFO *flush_volumes_info, unsigned int count_flush_volumes_info,
+    unsigned int max_to_flush_vdes) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_create_blocks (THREAD_ENTRY *thread_p, unsigned int num_blocks, unsigned int num_block_pages,
+				     DWB_BLOCK **p_blocks) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_finalize_block (DWB_BLOCK *block) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name,
+				       UINT64 *current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY *thread_p, unsigned int *block_no)
+__attribute__ ((ALWAYS_INLINE));
 
 /* Slots hash functions. */
 static void *dwb_slots_hash_entry_alloc (void);
@@ -396,16 +390,14 @@ static int dwb_slots_hash_key_copy (void *src, void *dest);
 static int dwb_slots_hash_compare_key (void *key1, void *key2);
 static unsigned int dwb_slots_hash_key (void *key, int hash_table_size);
 
-STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bool * inserted)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot);
+STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB_SLOT *slot, bool *inserted)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY *thread_p, DWB_SLOT *slot);
 
-// *INDENT-OFF*
 #if defined (SERVER_MODE)
 static cubthread::daemon *dwb_flush_block_daemon = NULL;
 static cubthread::daemon *dwb_file_sync_helper_daemon = NULL;
 #endif
-// *INDENT-ON*
 
 static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_file_sync_helper_daemon_available (void);
@@ -413,17 +405,18 @@ static bool dwb_is_file_sync_helper_daemon_available (void);
 static bool dwb_flush_block_daemon_is_running (void);
 static bool dwb_file_sync_helper_daemon_is_running (void);
 
-static int dwb_file_sync_helper (THREAD_ENTRY * thread_p);
-static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
+static int dwb_file_sync_helper (THREAD_ENTRY *thread_p);
+static int dwb_flush_next_block (THREAD_ENTRY *thread_p);
 
 #if !defined (NDEBUG)
-static int dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, unsigned int num_pages);
+static int dwb_debug_check_dwb (THREAD_ENTRY *thread_p, DWB_SLOT *p_dwb_ordered_slots, unsigned int num_pages);
 #endif // DEBUG
-static int dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots,
+static int dwb_check_data_page_is_sane (THREAD_ENTRY *thread_p, DWB_BLOCK *rcv_block, DWB_SLOT *p_dwb_ordered_slots,
 					int *p_num_recoverable_pages);
 
 /* Slots entry descriptor */
-static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
+static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor =
+{
   /* offsets */
   offsetof (DWB_SLOTS_HASH_ENTRY, stack),
   offsetof (DWB_SLOTS_HASH_ENTRY, next),
@@ -452,7 +445,7 @@ static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
  * wait_queue (in/out) : The wait queue.
  */
 STATIC_INLINE void
-dwb_init_wait_queue (DWB_WAIT_QUEUE * wait_queue)
+dwb_init_wait_queue (DWB_WAIT_QUEUE *wait_queue)
 {
   wait_queue->head = NULL;
   wait_queue->tail = NULL;
@@ -470,7 +463,7 @@ dwb_init_wait_queue (DWB_WAIT_QUEUE * wait_queue)
  * data (in): The data.
  */
 STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *
-dwb_make_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
+dwb_make_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, void *data)
 {
   DWB_WAIT_QUEUE_ENTRY *wait_queue_entry;
 
@@ -507,7 +500,7 @@ dwb_make_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
  *  Note: Is user responsibility to protect against queue concurrent access.
  */
 STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *
-dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
+dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, void *data)
 {
   DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL;
 
@@ -542,7 +535,7 @@ dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
  *   Note: If data is NULL, then first entry will be disconnected.
  */
 STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *
-dwb_block_disconnect_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
+dwb_block_disconnect_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, void *data)
 {
   DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL, *prev_wait_queue_entry = NULL;
 
@@ -604,7 +597,7 @@ dwb_block_disconnect_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
  * func(in): The function to apply on entry.
  */
 STATIC_INLINE void
-dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, DWB_WAIT_QUEUE_ENTRY * wait_queue_entry,
+dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, DWB_WAIT_QUEUE_ENTRY *wait_queue_entry,
 				 int (*func) (void *))
 {
   if (wait_queue_entry == NULL)
@@ -635,7 +628,7 @@ dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, DWB_WAIT_QUEUE_ENT
  *  Note: If the data is NULL, the first entry will be removed.
  */
 STATIC_INLINE void
-dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex, void *data, int (*func) (void *))
+dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex, void *data, int (*func) (void *))
 {
   DWB_WAIT_QUEUE_ENTRY *wait_queue_entry = NULL;
 
@@ -664,7 +657,7 @@ dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mute
  * mutex(in): The mutex to protect the queue.
  */
 STATIC_INLINE void
-dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
+dwb_signal_waiting_threads (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex)
 {
   assert (wait_queue != NULL);
 
@@ -692,7 +685,7 @@ dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex
  * mutex(in): The mutex to protect the queue.
  */
 STATIC_INLINE void
-dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
+dwb_destroy_wait_queue (DWB_WAIT_QUEUE *wait_queue, pthread_mutex_t *mutex)
 {
   DWB_WAIT_QUEUE_ENTRY *wait_queue_entry;
 
@@ -823,7 +816,7 @@ dwb_load_block_count (unsigned int *p_num_blocks)
  *  Note: This function must be called before changing structure of DWB.
  */
 STATIC_INLINE int
-dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
+dwb_starts_structure_modification (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
 {
   UINT64 local_current_position_with_flags, new_position_with_flags, min_version;
   unsigned int block_no;
@@ -892,7 +885,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
 	{
 	  /* Flush all pages from current block. I must flush all remaining data. */
 	  error_code =
-	    dwb_flush_block (thread_p, &dwb_Global.blocks[block_no], false, &local_current_position_with_flags);
+		  dwb_flush_block (thread_p, &dwb_Global.blocks[block_no], false, &local_current_position_with_flags);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Something wrong happened. */
@@ -925,7 +918,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
  * current_position_with_flags(in): The current position with flags.
  */
 STATIC_INLINE void
-dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_position_with_flags)
+dwb_ends_structure_modification (THREAD_ENTRY *thread_p, UINT64 current_position_with_flags)
 {
   UINT64 new_position_with_flags;
 
@@ -950,7 +943,7 @@ dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_positio
  * block_no(in): The number of the block where the slot reside.
  */
 STATIC_INLINE void
-dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int position_in_block, unsigned int block_no)
+dwb_initialize_slot (DWB_SLOT *slot, FILEIO_PAGE *io_page, unsigned int position_in_block, unsigned int block_no)
 {
   assert (slot != NULL && io_page != NULL);
 
@@ -979,8 +972,8 @@ dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int positi
  * max_to_flush_vdes(in): The maximum volumes to flush.
  */
 STATIC_INLINE void
-dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no, unsigned int count_wb_pages, char *write_buffer,
-		      DWB_SLOT * slots, FLUSH_VOLUME_INFO * flush_volumes_info, unsigned int count_flush_volumes_info,
+dwb_initialize_block (DWB_BLOCK *block, unsigned int block_no, unsigned int count_wb_pages, char *write_buffer,
+		      DWB_SLOT *slots, FLUSH_VOLUME_INFO *flush_volumes_info, unsigned int count_flush_volumes_info,
 		      unsigned int max_to_flush_vdes)
 {
   assert (block != NULL);
@@ -1010,8 +1003,8 @@ dwb_initialize_block (DWB_BLOCK * block, unsigned int block_no, unsigned int cou
  * p_blocks(out): The created blocks.
  */
 STATIC_INLINE int
-dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned int num_block_pages,
-		   DWB_BLOCK ** p_blocks)
+dwb_create_blocks (THREAD_ENTRY *thread_p, unsigned int num_blocks, unsigned int num_block_pages,
+		   DWB_BLOCK **p_blocks)
 {
   DWB_BLOCK *blocks = NULL;
   char *blocks_write_buffer[DWB_MAX_BLOCKS];
@@ -1132,7 +1125,7 @@ exit_on_error:
  * block (in) : Double write buffer block.
  */
 STATIC_INLINE void
-dwb_finalize_block (DWB_BLOCK * block)
+dwb_finalize_block (DWB_BLOCK *block)
 {
   if (block->slots != NULL)
     {
@@ -1164,7 +1157,7 @@ dwb_finalize_block (DWB_BLOCK * block)
  *  Note: Is user responsibility to ensure that no other transaction can access DWB structure, during creation.
  */
 STATIC_INLINE int
-dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT64 * current_position_with_flags)
+dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name, UINT64 *current_position_with_flags)
 {
   int error_code = NO_ERROR;
   unsigned int double_write_buffer_size, num_blocks = 0;
@@ -1381,7 +1374,7 @@ dwb_slots_hash_key (void *key, int hash_table_size)
  * inserted (out): 1, if slot inserted in hash.
  */
 STATIC_INLINE int
-dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bool * inserted)
+dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB_SLOT *slot, bool *inserted)
 {
   int error_code = NO_ERROR;
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
@@ -1394,7 +1387,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bo
   assert (slots_hash_entry->vpid.pageid == slot->io_page->prv.pageid
 	  && slots_hash_entry->vpid.volid == slot->io_page->prv.volid);
 
-  if (!(*inserted))
+  if (! (*inserted))
     {
       assert (slots_hash_entry->slot != NULL);
 
@@ -1472,7 +1465,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, bo
  *  Note: Is user responsibility to ensure that no other transaction can access DWB structure, during destroy.
  */
 STATIC_INLINE void
-dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
+dwb_destroy_internal (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
 {
   UINT64 new_position_with_flags;
   unsigned int block_no;
@@ -1550,7 +1543,7 @@ dwb_set_status_resumed (void *data)
  * dwb_block (in): The DWB block number.
  */
 STATIC_INLINE int
-dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
+dwb_wait_for_block_completion (THREAD_ENTRY *thread_p, unsigned int block_no)
 {
 #if defined (SERVER_MODE)
   int error_code = NO_ERROR;
@@ -1674,7 +1667,7 @@ dwb_signal_waiting_thread (void *data)
  * dwb_block (in): The double write buffer block.
  */
 STATIC_INLINE void
-dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
+dwb_signal_block_completion (THREAD_ENTRY *thread_p, DWB_BLOCK *dwb_block)
 {
   assert (dwb_block != NULL);
 
@@ -1689,7 +1682,7 @@ dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
  * thread_p (in): The thread entry.
  */
 STATIC_INLINE void
-dwb_signal_structure_modificated (THREAD_ENTRY * thread_p)
+dwb_signal_structure_modificated (THREAD_ENTRY *thread_p)
 {
   /* There are blocked threads. Destroy the wait queue and release the blocked threads. */
   dwb_signal_waiting_threads (&dwb_Global.wait_queue, &dwb_Global.mutex);
@@ -1702,7 +1695,7 @@ dwb_signal_structure_modificated (THREAD_ENTRY * thread_p)
  * thread_p (in): The thread entry.
  */
 STATIC_INLINE int
-dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
+dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)
   int error_code = NO_ERROR;
@@ -1843,7 +1836,7 @@ dwb_compare_slots (const void *arg1, const void *arg2)
  * p_ordered_slots_length(out): The ordered slots array length.
  */
 STATIC_INLINE int
-dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slots,
+dwb_block_create_ordered_slots (DWB_BLOCK *block, DWB_SLOT **p_dwb_ordered_slots,
 				unsigned int *p_ordered_slots_length)
 {
   DWB_SLOT *p_local_dwb_ordered_slots = NULL;
@@ -1881,7 +1874,7 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
  * slot(in): The DWB slot.
  */
 STATIC_INLINE int
-dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
+dwb_slots_hash_delete (THREAD_ENTRY *thread_p, DWB_SLOT *slot)
 {
   int error_code = NO_ERROR;
   VPID *vpid;
@@ -1902,12 +1895,12 @@ dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
       return NO_ERROR;
     }
 
-  assert (VPID_ISNULL (&(slots_hash_entry->slot->vpid)) || VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+  assert (VPID_ISNULL (& (slots_hash_entry->slot->vpid)) || VPID_EQ (& (slots_hash_entry->slot->vpid), vpid));
 
   /* Check the slot. */
   if (slots_hash_entry->slot == slot)
     {
-      assert (VPID_EQ (&(slots_hash_entry->slot->vpid), vpid));
+      assert (VPID_EQ (& (slots_hash_entry->slot->vpid), vpid));
       assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
 	      && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
 
@@ -1957,7 +1950,7 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
  * Note: The volume is added if is not already in block flush area.
  */
 STATIC_INLINE FLUSH_VOLUME_INFO *
-dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd)
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, int vol_fd)
 {
   FLUSH_VOLUME_INFO *flush_new_volume_info;
 #if !defined (NDEBUG)
@@ -2003,7 +1996,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
  *  Note: This function fills to_flush_vdes array with the volumes that must be flushed.
  */
 STATIC_INLINE int
-dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
+dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_ordered_slots,
 		 unsigned int ordered_slots_length, bool file_sync_helper_can_flush, bool remove_from_hash)
 {
   VOLID last_written_volid;
@@ -2182,8 +2175,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
  *  Note: The block pages can't be modified by others during flush.
  */
 STATIC_INLINE int
-dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_helper_can_flush,
-		 UINT64 * current_position_with_flags)
+dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper_can_flush,
+		 UINT64 *current_position_with_flags)
 {
   UINT64 local_current_position_with_flags, new_position_with_flags;
   int error_code = NO_ERROR;
@@ -2238,7 +2231,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
 	  VPID_SET_NULL (&s1->vpid);
 
 	  assert (s1->position_in_block < DWB_BLOCK_NUM_PAGES);
-	  VPID_SET_NULL (&(block->slots[s1->position_in_block].vpid));
+	  VPID_SET_NULL (& (block->slots[s1->position_in_block].vpid));
 
 	  fileio_initialize_res (thread_p, s1->io_page, IO_PAGESIZE);
 	}
@@ -2280,7 +2273,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
 	    {
 	      assert (dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes != NULL_VOLDES);
 
-	      if (ATOMIC_INC_32 (&(dwb_Global.file_sync_helper_block->flush_volumes_info[i].num_pages), 0) >= 0)
+	      if (ATOMIC_INC_32 (& (dwb_Global.file_sync_helper_block->flush_volumes_info[i].num_pages), 0) >= 0)
 		{
 		  (void) fileio_synchronize (thread_p,
 					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL,
@@ -2338,7 +2331,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool file_sync_help
 
   /* Now, write and flush the original location. */
   error_code =
-    dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, file_sync_helper_can_flush, true);
+	  dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, file_sync_helper_can_flush, true);
   if (error_code != NO_ERROR)
     {
       assert (false);
@@ -2455,7 +2448,7 @@ end:
  * p_dwb_slot(out): The pointer to the next slot in DWB.
  */
 STATIC_INLINE int
-dwb_acquire_next_slot (THREAD_ENTRY * thread_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
+dwb_acquire_next_slot (THREAD_ENTRY *thread_p, bool can_wait, DWB_SLOT **p_dwb_slot)
 {
   UINT64 current_position_with_flags, current_position_with_block_write_started, new_position_with_flags;
   unsigned int current_block_no, position_in_current_block;
@@ -2556,7 +2549,7 @@ start:
       assert (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, current_block_no));
 
       current_position_with_block_write_started =
-	DWB_STARTS_BLOCK_WRITING (current_position_with_flags, current_block_no);
+	      DWB_STARTS_BLOCK_WRITING (current_position_with_flags, current_block_no);
 
       new_position_with_flags = DWB_GET_NEXT_POSITION_WITH_FLAGS (current_position_with_block_write_started);
     }
@@ -2582,7 +2575,7 @@ start:
   *p_dwb_slot = block->slots + position_in_current_block;
 
   /* Invalidate slot content. */
-  VPID_SET_NULL (&(*p_dwb_slot)->vpid);
+  VPID_SET_NULL (& (*p_dwb_slot)->vpid);
 
   assert ((*p_dwb_slot)->position_in_block == position_in_current_block);
 
@@ -2598,7 +2591,7 @@ start:
  * io_page_p(in): The data.
  */
 STATIC_INLINE void
-dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * io_page_p)
+dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
@@ -2626,7 +2619,7 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
  * slot (in/out) : The DWB slot.
  */
 STATIC_INLINE void
-dwb_init_slot (DWB_SLOT * slot)
+dwb_init_slot (DWB_SLOT *slot)
 {
   assert (slot != NULL);
 
@@ -2643,7 +2636,7 @@ dwb_init_slot (DWB_SLOT * slot)
  * block_no(out): The next block for flush if found, otherwise DWB_NUM_TOTAL_BLOCKS.
  */
 STATIC_INLINE void
-dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
+dwb_get_next_block_for_flush (THREAD_ENTRY *thread_p, unsigned int *block_no)
 {
   assert (block_no != NULL);
 
@@ -2669,7 +2662,7 @@ dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
  * p_dwb_slot(out): Pointer to the next free DWB slot.
  */
 int
-dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
+dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait, DWB_SLOT **p_dwb_slot)
 {
   int error_code;
 
@@ -2707,7 +2700,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, boo
  *  Note: thread may flush the block, if flush thread is not available or we are in stand alone.
  */
 int
-dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot)
+dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SLOT **p_dwb_slot)
 {
   unsigned int count_wb_pages;
   int error_code = NO_ERROR;
@@ -2833,7 +2826,7 @@ dwb_is_created (void)
  * db_name_p (in) : The database name.
  */
 int
-dwb_create (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
+dwb_create (THREAD_ENTRY *thread_p, const char *dwb_path_p, const char *db_name_p)
 {
   UINT64 current_position_with_flags;
   int error_code = NO_ERROR;
@@ -2875,7 +2868,7 @@ end:
  * thread_p (in): The thread entry.
  */
 int
-dwb_recreate (THREAD_ENTRY * thread_p)
+dwb_recreate (THREAD_ENTRY *thread_p)
 {
   int error_code = NO_ERROR;
   UINT64 current_position_with_flags;
@@ -2921,7 +2914,7 @@ end:
  *
  */
 static int
-dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, unsigned int num_dwb_pages)
+dwb_debug_check_dwb (THREAD_ENTRY *thread_p, DWB_SLOT *p_dwb_ordered_slots, unsigned int num_dwb_pages)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -2999,7 +2992,7 @@ dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, un
  *
  */
 static int
-dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots,
+dwb_check_data_page_is_sane (THREAD_ENTRY *thread_p, DWB_BLOCK *rcv_block, DWB_SLOT *p_dwb_ordered_slots,
 			     int *p_num_recoverable_pages)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -3107,7 +3100,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
  *    Currently we use a DWB block in memory to recover corrupted page.
  */
 int
-dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
+dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, const char *db_name_p)
 {
   int error_code = NO_ERROR, read_fd = NULL_VOLDES;
   unsigned int num_dwb_pages, ordered_slots_length, i;
@@ -3247,7 +3240,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	    {
 	      /* Replace the corrupted pages in data volume with the DWB content. */
 	      error_code =
-		dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false, false);
+		      dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false, false);
 	      if (error_code != NO_ERROR)
 		{
 		  goto end;
@@ -3311,7 +3304,7 @@ end:
  * thread_p (in): The thread entry.
  */
 int
-dwb_destroy (THREAD_ENTRY * thread_p)
+dwb_destroy (THREAD_ENTRY *thread_p)
 {
   int error_code = NO_ERROR;
   UINT64 current_position_with_flags;
@@ -3367,7 +3360,7 @@ dwb_get_volume_name (void)
  * thread_p (in): The thread entry.
  */
 static int
-dwb_flush_next_block (THREAD_ENTRY * thread_p)
+dwb_flush_next_block (THREAD_ENTRY *thread_p)
 {
   unsigned int block_no;
   DWB_BLOCK *flush_block = NULL;
@@ -3422,7 +3415,7 @@ start:
  * all_sync (out): True, if everything synchronized.
  */
 int
-dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
+dwb_flush_force (THREAD_ENTRY *thread_p, bool *all_sync)
 {
   UINT64 initial_position_with_flags, current_position_with_flags, prev_position_with_flags;
   UINT64 initial_block_version, current_block_version;
@@ -3674,7 +3667,7 @@ end:
  * thread_p (in): Thread entry.
  */
 static int
-dwb_file_sync_helper (THREAD_ENTRY * thread_p)
+dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 {
   unsigned int i;
   int num_pages, num_pages2, num_pages_to_sync;
@@ -3877,7 +3870,7 @@ dwb_file_sync_helper (THREAD_ENTRY * thread_p)
  * success(out): True, if found and read from DWB.
  */
 int
-dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool * success)
+dwb_read_page (THREAD_ENTRY *thread_p, const VPID *vpid, void *io_page, bool *success)
 {
   DWB_SLOTS_HASH_ENTRY *slots_hash_entry = NULL;
   int error_code = NO_ERROR;
@@ -3915,7 +3908,6 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
   return NO_ERROR;
 }
 
-// *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class dwb_flush_block_daemon_task
 //
@@ -3936,21 +3928,21 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) override
     {
       if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
-      {
-        return;
-      }
+	{
+	  return;
+	}
 
       /* performance tracking */
       PERF_UTIME_TRACKER_TIME (NULL, &m_perf_track, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT);
 
       /* flush pages as long as necessary */
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-        {
+	{
 	  if (dwb_flush_next_block (&thread_ref) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-        }
+	}
 
       PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
     }
@@ -3965,9 +3957,9 @@ void
 dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 {
   if (!BO_IS_FLUSH_DAEMON_AVAILABLE ())
-      {
-        return;
-      }
+    {
+      return;
+    }
 
   /* flush pages as long as necessary */
   if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
@@ -4020,7 +4012,6 @@ dwb_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (dwb_file_sync_helper_daemon);
 }
 #endif /* SERVER_MODE */
-// *INDENT-ON*
 
 /*
  * dwb_is_flush_block_daemon_available () - Check if flush block daemon is available
