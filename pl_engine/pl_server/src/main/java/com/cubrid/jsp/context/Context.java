@@ -111,7 +111,7 @@ public class Context {
         return connection;
     }
 
-    public void closeConnection(Connection conn) throws SQLException {
+    public void closeConnection() throws SQLException {
         if (connection != null) {
             connection.close();
         }
@@ -181,7 +181,7 @@ public class Context {
 
     private void clear() {
         try {
-            closeConnection(connection);
+            closeConnection();
         } catch (Exception e) {
             // ignore
         } finally {

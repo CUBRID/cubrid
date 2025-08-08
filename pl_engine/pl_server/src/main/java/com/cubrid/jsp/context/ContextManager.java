@@ -87,16 +87,9 @@ public class ContextManager {
         }
     }
 
-    public static Long getContextIdByThreadId(long threadId) {
-        if (contextThreadMap.containsKey(threadId)) {
-            return contextThreadMap.get(threadId);
-        }
-        return null;
-    }
-
     public static Context getContextofCurrentThread() {
         Thread t = Thread.currentThread();
-        Long ctxId = ContextManager.getContextIdByThreadId(t.getId());
+        Long ctxId = contextThreadMap.get(t.getId());
         return ContextManager.getContext(ctxId);
     }
 }

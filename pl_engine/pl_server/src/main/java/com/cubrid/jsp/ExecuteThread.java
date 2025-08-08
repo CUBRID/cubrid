@@ -144,7 +144,6 @@ public class ExecuteThread extends Thread {
                         case RequestCode.INVOKE_SP:
                             {
                                 processStoredProcedure();
-                                ctx = null;
                                 break;
                             }
 
@@ -218,7 +217,6 @@ public class ExecuteThread extends Thread {
                                 // requestCode);
                             }
                     }
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
                 } catch (Throwable e) {
                     if (e instanceof IOException) {
                         /*
@@ -287,7 +285,7 @@ public class ExecuteThread extends Thread {
 
         /* read header */
         Header header = new Header(unpacker);
-        ctx = ContextManager.getContext(header.id);
+        ctx = ContextManager.getContext(header.sessionId);
         ctx.checkHeader(header);
 
         int startOffset = unpacker.getCurrentPosition();
