@@ -24,6 +24,7 @@
 
 #include "object_representation.h"	/* QFILE_GET_TUPLE_COUNT, QFILE_GET_NEXT_VPID */
 #include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
+#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_reserver */
 #include "query_manager.h"	/* qmgr_get_old_page, qfile_has_next_page, qmgr_set_dirty_page, ... */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -733,7 +734,6 @@ namespace parallel_query
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
       UINT32 task_cnt, task_index;
-      UINT32 part_cnt;
 
       assert (manager != nullptr);
       assert (split_info != nullptr);
@@ -746,7 +746,6 @@ namespace parallel_query
       inner = &split_info->inner;
 
       task_cnt = manager->max_parallel_workers;
-      part_cnt = manager->context_cnt;
 
       if (hjoin_init_shared_split_info (&thread_ref, manager, &shared_info) != NO_ERROR)
 	{

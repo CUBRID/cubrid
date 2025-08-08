@@ -27,7 +27,6 @@
 #include <mutex>
 
 #include "error_context.hpp"		/* cuberr::context */
-#include "px_worker_manager.hpp"	/* parallel_query::worker_manager_with_dedicated_pool */
 #include "query_hash_join.h"
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */

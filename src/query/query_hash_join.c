@@ -186,9 +186,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
   assert (xasl != NULL);
   assert (query_id != NULL_QUERY_ID);
 
-  /* monitor */
-  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS);
-
   error = hjoin_init_manager (thread_p, &manager, xasl, query_id, val_descr);
   if (error != NO_ERROR)
     {
@@ -211,6 +208,9 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       switch (part_status)
 	{
 	case HASHJOIN_STATUS_SINGLE:
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS);
+
 	  error = hjoin_execute (thread_p, &manager, single_context);
 	  break;
 
@@ -224,7 +224,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 #if defined (SERVER_MODE)
 	case HASHJOIN_STATUS_PARALLEL:
 	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARTITIONED);
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARALLEL);
 
 	  // *INDENT-OFF*
@@ -327,7 +326,6 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (manager != NULL);
 
   HASHJOIN_STATS *stats = manager->single_context.stats;
-  HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #if HASHJOIN_PROFILE_TIME
   HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #endif /* HASHJOIN_PROFILE_TIME */
@@ -957,7 +955,6 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   int *outer_value_indexes, *inner_value_indexes;
   int outer_value_index, inner_value_index;
   int domain_cnt, domain_index;
-  int skip_index;
   bool need_coerce_domains;
 
   DB_TYPE outer_type, inner_type, common_type;
@@ -1876,8 +1873,7 @@ error_exit:
 static HASHJOIN_STATUS
 hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
-  UINT32 context_index;
-  int error = NO_ERROR;
+  THREAD_ENTRY *main_thread_p = NULL;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -1896,24 +1892,16 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   // *INDENT-ON*
   if (manager->px_worker_pool_manager != NULL)
     {
+      main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
+
       do
 	{
 	  try
 	  {
 #undef new
-	    if (thread_p->m_px_orig_thread_entry == NULL)
-	      {
-		// *INDENT-OFF*
-		new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p);
-		// *INDENT-ON*
-	      }
-	    else
-	      {
-		// *INDENT-OFF*
-		new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*thread_p->m_px_orig_thread_entry);
-		// *INDENT-ON*
-	      }
-
+	    // *INDENT-OFF*
+	    new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
+	    // *INDENT-ON*
 #define new new(__FILE__, __LINE__)
 
 	    if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
@@ -1932,15 +1920,15 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  }
 	}
       while (false);
-    }
 
-  if (manager->px_worker_pool_manager != NULL)
-    {
-      db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+      if (manager->px_worker_pool_manager != NULL)
+	{
+	  db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
+	}
     }
 #endif /* defined (SERVER_MODE) */
 
-  if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
+  if (er_errid () == ER_INTERRUPTED)
     {
       return HASHJOIN_STATUS_ERROR;
     }
@@ -1964,7 +1952,7 @@ hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 {
   HASHJOIN_CONTEXT *single_context;
   HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
-  UINT32 part_cnt, part_index;
+  UINT32 part_cnt;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -2051,7 +2039,7 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	      qfile_destroy_list (thread_p, outer->part_list_id[part_index]);
 	      QFILE_FREE_AND_INIT_LIST_ID (outer->part_list_id[part_index]);
 
-	      if (&manager->contexts != NULL)
+	      if (manager->contexts != NULL)
 		{
 		  manager->contexts[part_index].outer.list_id = NULL;
 		}
@@ -2070,7 +2058,7 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	      qfile_destroy_list (thread_p, inner->part_list_id[part_index]);
 	      QFILE_FREE_AND_INIT_LIST_ID (inner->part_list_id[part_index]);
 
-	      if (&manager->contexts != NULL)
+	      if (manager->contexts != NULL)
 		{
 		  manager->contexts[part_index].inner.list_id = NULL;
 		}
@@ -2506,7 +2494,7 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
       break;
     }
 
-  hash_scan->hash_list_scan_type == HASH_METH_NOT_USE;
+  hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;
 }
 
 /*
@@ -2535,13 +2523,13 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
    * it checks the results from outer_xasl and inner_xasl in merge_info.
    * If either has no result, the other is skipped,
    * and the skipped node can have a type count of 0 in list_id.type_list. */
-  if (context->outer.list_id == NULL || context->inner.list_id == NULL)
+  if (outer->list_id == NULL || inner->list_id == NULL)
     {
       return HASHJOIN_STATUS_END;
     }
 
-  outer_tuple_cnt = context->outer.list_id->tuple_cnt;
-  inner_tuple_cnt = context->inner.list_id->tuple_cnt;
+  outer_tuple_cnt = outer->list_id->tuple_cnt;
+  inner_tuple_cnt = inner->list_id->tuple_cnt;
 
   /* HASHJOIN_STATUS_END must be checked first. */
 

@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include <functional>
 #include <unordered_map>
 
 #include "dbtype_def.h"
