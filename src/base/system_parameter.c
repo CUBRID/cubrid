@@ -5474,7 +5474,7 @@ static SESSION_PARAM *sysprm_alloc_session_parameters (void);
 static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 					     SYSPRM_VALUE * new_value);
 static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
-static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value);
+static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag);
 static int sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_t len,
 				      PRM_PRINT_MODE print_mode);
 
@@ -5489,9 +5489,9 @@ static char *sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value, SYSPRM_DAT
 static int sysprm_packed_sysprm_value_length (SYSPRM_VALUE value, SYSPRM_DATATYPE datatype, int offset);
 static char *sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value, SYSPRM_DATATYPE datatype);
 
-static bool sysprm_set_system_parameter_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value);
 static bool prm_set_default_internal (SYSPRM_PARAM * prm);
-static void sysprm_find_and_set_to_shared_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE * value);
+static int sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
+static const int *sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm);
 
 #if defined (SERVER_MODE)
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
@@ -6559,6 +6559,7 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SY
       UINT64 page_value = *(int *) in_val;
 
       *size_value = (UINT64) (page_value * LOG_PAGESIZE);
+      fprintf (stdout, "page_value=%lld LOG_PAGESIZE=%d, *size_value=%lld\n", page_value, LOG_PAGESIZE, *size_value);
     }
   else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
@@ -8942,18 +8943,9 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
   return sysprm_set_value (prm, new_value, set_flag, false);
 }
 
-/*
- * sysprm_set_value () - Set a new value for parameter.
- *
- * return	  : SYSPRM_ERR code
- * prm (in)       : system parameter that will have its value changed.
- * value (in)     : new values as sysprm_value
- * set_flag (in)  : updates PRM_SET flag.
- * duplicate (in) : duplicate values for data types that need memory
- *		    allocation.
- */
+
 static int
-sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate)
+sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate)
 {
 #if defined (SERVER_MODE)
   THREAD_ENTRY *thread_p;
@@ -9050,7 +9042,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
    * on server */
 #endif /* SERVER_MODE */
 
-  sysprm_set_system_parameter_value (prm, value);
+  sysprm_set_system_parameter_value (prm, value, set_flag);
 
   /* Set the cached parsed system timezone region on the server */
   if (prm->id == PRM_ID_SERVER_TIMEZONE)
@@ -9094,8 +9086,87 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
   return PRM_ERR_NO_ERROR;
 }
 
-static bool
-sysprm_set_system_parameter_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
+/*
+ * sysprm_set_value () - Set a new value for parameter.
+ *
+ * return	  : SYSPRM_ERR code
+ * prm (in)       : system parameter that will have its value changed.
+ * value (in)     : new values as sysprm_value
+ * set_flag (in)  : updates PRM_SET flag.
+ * duplicate (in) : duplicate values for data types that need memory
+ *		    allocation.
+ */
+static int
+sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate)
+{
+  int ret = PRM_ERR_NO_ERROR;
+
+  ret = sysprm_set_value_internal (prm, value, set_flag, duplicate);
+  if (ret == PRM_ERR_NO_ERROR)
+    {
+      const PARAM_ID *ptr = (PARAM_ID *) sysprm_find_shared_system_parameter (prm);
+      if (ptr)
+	{
+	  SYSPRM_VALUE tmp_value = value;
+	  int max = *(int *) ptr;
+	  for (int k = 1; k <= max; k++)
+	    {
+	      if (prm->id != ptr[k])
+		{
+		  ret = sysprm_set_value_internal (GET_PRM (ptr[k]), tmp_value, set_flag, true);
+		  if (ret != PRM_ERR_NO_ERROR)
+		    {
+		      return ret;
+		    }
+		}
+	    }
+	}
+    }
+
+  return PRM_ERR_NO_ERROR;
+}
+
+
+static const int *
+sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm)
+{
+  const PARAM_ID *ptr = NULL;
+  int i, k, max = 0;
+
+  for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
+    {
+      max = PARAM_VALUE_SHARE[i][0];
+      ptr = (PARAM_ID *) PARAM_VALUE_SHARE[i];
+
+      if (prm->id < ptr[1])
+	{
+	  break;
+	}
+      else if (prm->id <= ptr[max])
+	{
+	  for (k = 1; k <= max; k++)
+	    {
+	      if (prm->id == ptr[k])
+		{
+		  return PARAM_VALUE_SHARE[i];
+		}
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * sysprm_set_system_parameter_value () - change a parameter value in prm_Def
+ *					  array.
+ *
+ * return     : void.
+ * prm (in)   : parameter that needs changed.
+ * value (in) : new value.
+ */
+static void
+sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag)
 {
   switch (prm->datatype)
     {
@@ -9126,74 +9197,7 @@ sysprm_set_system_parameter_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE val
 
     default:
       assert_release (0);
-      return false;
-    }
-
-  return true;
-}
-
-
-static void
-sysprm_find_and_set_to_shared_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE * value)
-{
-  const PARAM_ID *ptr = NULL;
-  int i, k, max = 0;
-
-  for (i = 0; PARAM_VALUE_SHARE[i] != NULL; i++)
-    {
-      max = PARAM_VALUE_SHARE[i][0];
-      ptr = (PARAM_ID *) PARAM_VALUE_SHARE[i];
-
-      if (prm->id < ptr[1])
-	{
-	  break;
-	}
-      else if (prm->id <= ptr[max])
-	{
-	  for (k = 1; k <= max; k++)
-	    {
-	      if (prm->id == ptr[k])
-		{
-		  goto found_it;
-		}
-	    }
-	}
-    }
-
-  return;
-
-found_it:
-  assert (ptr != NULL && max >= 2);
-  for (k = 1; k <= max; k++)
-    {
-      if (prm->id != ptr[k])
-	{
-	  if (value)
-	    {
-	      sysprm_set_system_parameter_value_internal (GET_PRM (ptr[k]), *value);
-	    }
-	  else
-	    {
-	      prm_set_default_internal (GET_PRM (ptr[k]));
-	    }
-	}
-    }
-}
-
-/*
- * sysprm_set_system_parameter_value () - change a parameter value in prm_Def
- *					  array.
- *
- * return     : void.
- * prm (in)   : parameter that needs changed.
- * value (in) : new value.
- */
-static void
-sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value)
-{
-  if (sysprm_set_system_parameter_value_internal (prm, value))
-    {
-      sysprm_find_and_set_to_shared_system_parameter_value (prm, &value);
+      break;
     }
 }
 
@@ -9285,6 +9289,14 @@ prm_set_default_internal (SYSPRM_PARAM * prm)
       return false;
     }
 
+  /* Indicate that the default value was used */
+  PRM_SET_BIT (PRM_DEFAULT_USED, prm->dynamic_flag);
+
+  if (PRM_IS_FOR_QRY_STRING (prm))
+    {
+      PRM_CLEAR_BIT (PRM_DIFFERENT, prm->dynamic_flag);
+    }
+
   return true;
 }
 
@@ -9322,14 +9334,20 @@ prm_set_default (SYSPRM_PARAM * prm)
       return ER_FAILED;
     }
 
-  sysprm_find_and_set_to_shared_system_parameter_value (prm, NULL);
-
-  /* Indicate that the default value was used */
-  PRM_SET_BIT (PRM_DEFAULT_USED, prm->dynamic_flag);
-
-  if (PRM_IS_FOR_QRY_STRING (prm))
+  const PARAM_ID *ptr = (PARAM_ID *) sysprm_find_shared_system_parameter (prm);
+  if (ptr)
     {
-      PRM_CLEAR_BIT (PRM_DIFFERENT, prm->dynamic_flag);
+      int max = *(int *) ptr;
+      for (int k = 1; k <= max; k++)
+	{
+	  if (prm->id != ptr[k])
+	    {
+	      if (!prm_set_default_internal (GET_PRM (ptr[k])))
+		{
+		  return ER_FAILED;
+		}
+	    }
+	}
     }
 
   return NO_ERROR;
