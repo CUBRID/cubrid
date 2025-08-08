@@ -22,7 +22,6 @@
 
 #include "thread_entry.hpp"
 
-#include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
 #include "error_manager.h"
@@ -90,7 +89,6 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-    , cnv_adj_buffer ()
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -136,7 +134,9 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_parallel_stats (NULL)
+    , m_px_lock ()
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
       // private:
     , m_id ()
     , m_error ()
@@ -164,12 +164,13 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
+    if (pthread_mutex_init (&m_px_lock, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
 
     private_heap_id = db_create_private_heap ();
-
-    cnv_adj_buffer[0] = NULL;
-    cnv_adj_buffer[1] = NULL;
-    cnv_adj_buffer[2] = NULL;
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -231,13 +232,7 @@ namespace cubthread
       {
 	return;
       }
-    for (int i = 0; i < 3; i++)
-      {
-	if (cnv_adj_buffer[i] != NULL)
-	  {
-	    adj_ar_free (cnv_adj_buffer[i]);
-	  }
-      }
+
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);
@@ -248,6 +243,11 @@ namespace cubthread
       }
     if (pthread_cond_destroy (&wakeup_cond) != 0)
       {
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_lock) != 0)
+      {
+	// cannot recover from this
 	assert (false);
       }
 

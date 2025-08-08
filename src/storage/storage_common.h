@@ -474,6 +474,7 @@ typedef enum
 {
   S_BEFORE = 1,
   S_ON,
+  S_GO_BACKWARD,
   S_AFTER
 } SCAN_POSITION;
 

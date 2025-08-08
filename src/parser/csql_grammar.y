@@ -555,6 +555,22 @@ static int g_plcsql_text_pos;
 	PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                                   \
 } while (0)
 
+/* TODO: 
+ * For now, I've set it to ignore warnings in the automatically generated code. 
+ * If possible, let's remove warnings normally instead of setting it to ignore. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
+    _Pragma("GCC diagnostic push")                      \
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+
+  #define END_SUPPRESS_WARNING_BISON_FLEX               \
+    _Pragma("GCC diagnostic pop")
+#else
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
+  #define END_SUPPRESS_WARNING_BISON_FLEX
+#endif
+
+BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %}
 
 %locations
@@ -12407,6 +12423,20 @@ opt_using
 		execute_using_list
 		{ parser_restore_hvar (); }
 		{{ DBG_TRACE_GRAMMAR(opt_using, | USING execute_using_list);
+
+                        int arg[2];
+                        arg[0] = PT_SELECT;
+                        arg[1] = 0;
+
+			PT_NODE *node = $3;
+                        (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                        if(arg[1] == 1)
+                        {
+                                PT_ERRORf (this_parser, node,
+				"check syntax at '%s', subqueries are not allowed in using clause.",
+				pt_short_print_l (this_parser, node));
+                        }
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -25737,6 +25767,9 @@ vector_distance_metric
 
 %%
 
+END_SUPPRESS_WARNING_BISON_FLEX
+
+
 extern FILE *yyin;
 
 void
@@ -27086,6 +27119,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
   INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),

@@ -18,7 +18,6 @@
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_function.cpp
@@ -74,13 +73,11 @@ set(THREAD_HEADERS
   )
 
 set(BASE_SOURCES
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -454,6 +451,10 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/vpid.hpp
 )
 
+set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+)
+
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
@@ -622,6 +623,8 @@ if(WIN32)
   set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
+
+target_link_libraries(cubrid PRIVATE usearch::usearch)
 
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)

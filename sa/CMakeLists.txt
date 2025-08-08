@@ -40,7 +40,6 @@ set(EXECUTABLE_HEADERS
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -109,9 +108,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
@@ -422,11 +419,13 @@ set(PARALLEL_QUERY_HEADERS
 set(PARALLEL_QUERY_EXECUTE_SOURCES
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
   )
 
 set(METHOD_SOURCES
@@ -551,6 +550,10 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+)
+
+set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
 )
 
 set(SESSION_SOURCES
@@ -760,6 +763,8 @@ endif(WIN32)
 
 # include target_external_dependencies function
 include (expand_dependency)
+
+target_link_libraries(cubridsa PRIVATE usearch::usearch)
 
 if(UNIX)
 target_external_dependencies(cubridsa
