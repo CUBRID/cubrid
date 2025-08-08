@@ -57,8 +57,10 @@ extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, D
 				 bool * is_fp_numeric_op);
 extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				 bool * is_fp_numeric_op);
-extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
-extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				 bool * is_fp_numeric_op);
+extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				 bool * is_fp_numeric_op);
 extern int numeric_db_value_negate (DB_VALUE * answer);
 extern void numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num);
 extern int numeric_db_value_increase (DB_VALUE * arg);

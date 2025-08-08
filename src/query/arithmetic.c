@@ -4496,13 +4496,13 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3);
+	      er_status = numeric_db_value_div (&n2, value4, &n3, &is_fp_numeric_op);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4);
+	      er_status = numeric_db_value_div (&n1, &n3, &n4, &is_fp_numeric_op);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
@@ -4561,13 +4561,13 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3);
+	      er_status = numeric_db_value_div (&n2, value4, &n3, &is_fp_numeric_op);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4);
+	      er_status = numeric_db_value_div (&n1, &n3, &n4, &is_fp_numeric_op);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;

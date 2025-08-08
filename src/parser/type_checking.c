@@ -14059,7 +14059,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  return 0;
 		}
 
-	      // 임시!
+	      // 38자리 이상의 연산을 수행 할때, 38자리로 자리를 줄이고 39자리에서 반올림하며 미리 계산한 domain 과 달라져 강제로 수정해야함함 
+	      // 여기는 항상 domain이 있음
 	      if (is_fp_numeric_op)
 		{
 		  domain->precision = result->domain.numeric_info.precision;
@@ -14745,7 +14746,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  return 0;
 		}
 
-	      // 임시!
+	      // 38자리 이상의 연산을 수행 할때, 38자리로 자리를 줄이고 39자리에서 반올림하며 미리 계산한 domain 과 달라져 강제로 수정해야함함 
+	      // 여기는 항상 domain이 있음
 	      if (is_fp_numeric_op)
 		{
 		  domain->precision = result->domain.numeric_info.precision;
@@ -15143,7 +15145,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      error = numeric_db_value_mul (arg1, arg2, result);
+	      error = numeric_db_value_mul (arg1, arg2, result, &is_fp_numeric_op);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
@@ -15153,6 +15155,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+
+	      // 38자리 이상의 연산을 수행 할때, 38자리로 자리를 줄이고 39자리에서 반올림하며 미리 계산한 domain 과 달라져 강제로 수정해야함함 
+	      // 여기는 항상 domain이 있음
+	      if (is_fp_numeric_op)
+		{
+		  domain->precision = result->domain.numeric_info.precision;
+		  domain->scale = result->domain.numeric_info.scale;
+		}
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -15247,7 +15258,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_NUMERIC:
 	      if (!numeric_db_value_is_zero (arg2))
 		{
-		  error = numeric_db_value_div (arg1, arg2, result);
+		  error = numeric_db_value_div (arg1, arg2, result, &is_fp_numeric_op);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
@@ -15257,6 +15268,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		      PT_ERRORc (parser, o1, er_msg ());
 		      return 0;
 		    }
+
+		  // 38자리 이상의 연산을 수행 할때, 38자리로 자리를 줄이고 39자리에서 반올림하며 미리 계산한 domain 과 달라져 강제로 수정해야함함 
+		  // 여기는 항상 domain이 있음
+		  if (is_fp_numeric_op)
+		    {
+		      domain->precision = result->domain.numeric_info.precision;
+		      domain->scale = result->domain.numeric_info.scale;
+		    }
+
 
 		  dom_status = tp_value_coerce (result, result, domain);
 		  if (dom_status != DOMAIN_COMPATIBLE)

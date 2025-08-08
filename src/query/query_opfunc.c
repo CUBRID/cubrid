@@ -107,7 +107,8 @@ static int qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_
 				      TP_DOMAIN * domain_p);
 static int qdata_add_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
+static int qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
+				       TP_DOMAIN * domain_p);
 static int qdata_add_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p);
 static int qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
@@ -145,7 +146,8 @@ static int qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p
 static int qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_subtract_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_subtract_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
+static int qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
+					    TP_DOMAIN * domain_p);
 static int qdata_subtract_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_subtract_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 					     TP_DOMAIN * domain_p);
@@ -195,7 +197,8 @@ static int qdata_divide_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, 
 static int qdata_divide_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_divide_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
+static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
+					  tp_domain * domain_p);
 static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
@@ -1980,7 +1983,7 @@ qdata_add_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VALUE
 }
 
 static int
-qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
+qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   DB_TYPE type;
   bool is_fp_numeric_op = false;
@@ -1999,6 +2002,11 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
+	}
+      if (domain_p != NULL && is_fp_numeric_op)
+	{
+	  domain_p->precision = result_p->domain.numeric_info.precision;
+	  domain_p->scale = result_p->domain.numeric_info.scale;
 	}
       break;
 
@@ -2541,8 +2549,9 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       break;
 
     case DB_TYPE_NUMERIC:
-      error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
-      // PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없네? 그냥 result_p 쓰면되네!
+      // 1) PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없음
+      // 2) cast 연산 후 여기를 타는데, domain이 있음
+      error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
     case DB_TYPE_MONETARY:
@@ -3589,7 +3598,8 @@ qdata_subtract_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_
 }
 
 static int
-qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
+qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
+				 TP_DOMAIN * domain_p)
 {
   DB_TYPE type;
   DB_VALUE dbval_tmp;
@@ -3616,6 +3626,11 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
+	}
+      if (domain_p != NULL && is_fp_numeric_op)
+	{
+	  domain_p->precision = result_p->domain.numeric_info.precision;
+	  domain_p->scale = result_p->domain.numeric_info.scale;
 	}
       break;
 
@@ -4634,7 +4649,9 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       break;
 
     case DB_TYPE_NUMERIC:
-      error = qdata_subtract_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      // 1) PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없음
+      // 2) cast 연산 후 여기를 타는데, domain이 있음
+      error = qdata_subtract_numeric_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
     case DB_TYPE_MONETARY:
@@ -4826,10 +4843,11 @@ static int
 qdata_multiply_numeric (DB_VALUE * numeric_val_p, DB_VALUE * dbval, DB_VALUE * result_p)
 {
   DB_VALUE dbval_tmp;
+  bool is_fp_numeric_op = false;
 
   qdata_coerce_dbval_to_numeric (dbval, &dbval_tmp);
 
-  if (numeric_db_value_mul (numeric_val_p, &dbval_tmp, result_p) != NO_ERROR)
+  if (numeric_db_value_mul (numeric_val_p, &dbval_tmp, result_p, &is_fp_numeric_op) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_FAILED;
@@ -5047,9 +5065,11 @@ qdata_multiply_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_
 }
 
 static int
-qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
+qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
+				 TP_DOMAIN * domain_p)
 {
   DB_TYPE type2;
+  bool is_fp_numeric_op = false;
 
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
@@ -5061,10 +5081,15 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       return qdata_multiply_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_mul (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_mul (numeric_val_p, dbval_p, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
+	}
+      if (domain_p != NULL && is_fp_numeric_op)
+	{
+	  domain_p->precision = result_p->domain.numeric_info.precision;	// DB_VALUE_PRECISION (result_p);
+	  domain_p->scale = result_p->domain.numeric_info.scale;	// DB_VALUE_SCALE (result_p);
 	}
       break;
 
@@ -5253,7 +5278,9 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       break;
 
     case DB_TYPE_NUMERIC:
-      error = qdata_multiply_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      // 1) PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없음
+      // 2) cast 연산 후 여기를 타는데, domain이 있음
+      error = qdata_multiply_numeric_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
     case DB_TYPE_MONETARY:
@@ -5436,6 +5463,7 @@ qdata_divide_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALU
   short s;
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
+  bool is_fp_numeric_op = false;
 
   s = db_get_short (short_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -5459,7 +5487,7 @@ qdata_divide_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALU
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (short_val_p, &dbval_tmp);
-      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -5483,6 +5511,7 @@ qdata_divide_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * 
   int i;
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
+  bool is_fp_numeric_op = false;
 
   i = db_get_int (int_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -5506,7 +5535,7 @@ qdata_divide_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * 
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (int_val_p, &dbval_tmp);
-      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -5530,6 +5559,7 @@ qdata_divide_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VA
   DB_BIGINT bi;
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
+  bool is_fp_numeric_op = false;
 
   bi = db_get_bigint (bigint_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -5553,7 +5583,7 @@ qdata_divide_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VA
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (bigint_val_p, &dbval_tmp);
-      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_div (&dbval_tmp, dbval_p, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -5652,10 +5682,11 @@ qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VA
 }
 
 static int
-qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
+qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
+  bool is_fp_numeric_op = false;
 
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
@@ -5665,7 +5696,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
       qdata_coerce_dbval_to_numeric (dbval_p, &dbval_tmp);
-      if (numeric_db_value_div (numeric_val_p, &dbval_tmp, result_p) != NO_ERROR)
+      if (numeric_db_value_div (numeric_val_p, &dbval_tmp, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -5673,10 +5704,15 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_div (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (numeric_db_value_div (numeric_val_p, dbval_p, result_p, &is_fp_numeric_op) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
+	}
+      if (domain_p != NULL && is_fp_numeric_op)
+	{
+	  domain_p->precision = result_p->domain.numeric_info.precision;	// DB_VALUE_PRECISION (result_p);
+	  domain_p->scale = result_p->domain.numeric_info.scale;	// DB_VALUE_SCALE (result_p);
 	}
       break;
 
@@ -5875,7 +5911,9 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       break;
 
     case DB_TYPE_NUMERIC:
-      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      // 1) PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없음
+      // 2) cast 연산 후 여기를 타는데, domain이 있음
+      error = qdata_divide_numeric_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
     case DB_TYPE_MONETARY:
@@ -6153,7 +6191,9 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       break;
 
     case DB_TYPE_NUMERIC:
-      error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p);
+      error = qdata_add_numeric_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      // 1) PREPARE 와 execute 사용할 때 여기를 타는데, domain이 없음
+      // 2) cast 연산 후 여기를 타는데, domain이 있음
       break;
 
     case DB_TYPE_MONETARY:

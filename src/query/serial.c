@@ -1037,7 +1037,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
     {
       numeric_coerce_int_to_num (nth, num);
       db_make_numeric (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-      numeric_db_value_mul (inc_val, &tmp_val, &add_val);
+      numeric_db_value_mul (inc_val, &tmp_val, &add_val, &is_fp_numeric_op);
     }
   else
     {

@@ -1751,7 +1751,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* ABS (cache_num * inc_val) */
-      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val);
+      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val, &is_fp_numeric_op);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2715,7 +2715,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* ABS (cache_num * inc_val) */
-      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val);
+      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val, &is_fp_numeric_op);
       if (error != NO_ERROR)
 	{
 	  goto end;
