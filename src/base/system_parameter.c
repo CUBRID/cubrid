@@ -6559,7 +6559,6 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SY
       UINT64 page_value = *(int *) in_val;
 
       *size_value = (UINT64) (page_value * LOG_PAGESIZE);
-      fprintf (stdout, "page_value=%lld LOG_PAGESIZE=%d, *size_value=%lld\n", page_value, LOG_PAGESIZE, *size_value);
     }
   else if (out_type == PRM_BIGINT && in_type == PRM_FLOAT)
     {
