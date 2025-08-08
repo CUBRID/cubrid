@@ -7048,7 +7048,7 @@ hnsw_load_index (BTID * btid, OID * class_oids, int n_classes, int n_attrs, int 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error =
+  btid =
     xhnsw_load_index (thread_p, btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, m, ef_construction,
 		      metric);
 
