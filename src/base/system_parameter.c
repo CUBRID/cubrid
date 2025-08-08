@@ -68,7 +68,7 @@
 #include "vacuum.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
