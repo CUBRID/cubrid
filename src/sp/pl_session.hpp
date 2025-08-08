@@ -186,7 +186,6 @@ namespace cubpl
 
       exec_stack_map_type m_stack_map; // method executor storage
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
-      exec_stack_id_type m_deferred_free_stack;
 
       cursor_map_type m_cursor_map; // server-side cursor storage
 

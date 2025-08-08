@@ -413,7 +413,7 @@ namespace cubpl
   int
   session::get_depth ()
   {
-    return m_stack_map.size () - m_deferred_free_stack.size ();
+    return m_stack_map.size ();
   }
 
   SESSION_ID
