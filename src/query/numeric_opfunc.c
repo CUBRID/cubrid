@@ -158,6 +158,7 @@ static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC ans
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
+static int fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2);
 static int numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num);
 static int numeric_scale_dec (const DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer);
 static int numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num);
@@ -1365,6 +1366,51 @@ numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2)
 	  return -numeric_compare_pos (narg1, narg2);
 	}
     }
+}
+
+static int
+fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2)
+{
+  int common_prec, common_scale;
+  int exponent1, exponent2;
+  int calc_bytes;
+  int cmp_rez = 0;
+
+  /* 1) 지수 정렬 계산 */
+  common_scale = MAX (scale1, scale2);
+  common_prec = MAX (prec1 - scale1, prec2 - scale2) + common_scale;
+  exponent1 = common_scale - scale1;
+  exponent2 = common_scale - scale2;
+
+  // 2) 필요한 바이트 수 계산
+  calc_bytes = calc_bytes_from_prec (common_prec) + 1;
+  if (calc_bytes < 1)
+    {
+      return ER_FAILED;
+    }
+
+  // 3) 새로운 계산 버퍼 초기화
+  uint8_t arg1_buf[calc_bytes];
+  uint8_t arg2_buf[calc_bytes];
+
+  (void) fp_numeric_pad (arg1, arg1_buf, calc_bytes);
+  (void) fp_numeric_pad (arg2, arg2_buf, calc_bytes);
+
+  // 4) scale 보정
+  if (exponent1)
+    {
+      fp_numeric_mul_pow10 (arg1_buf, calc_bytes, exponent1);
+    }
+  if (exponent2)
+    {
+      fp_numeric_mul_pow10 (arg2_buf, calc_bytes, exponent2);
+    }
+
+  // 5) 비교 수행
+  cmp_rez = fp_numeric_cmp_base256 (arg1_buf, arg2_buf, calc_bytes);
+
+  // 6) 결과 반환
+  return cmp_rez;
 }
 
 /*
@@ -3393,6 +3439,71 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       db_make_int (answer, cmp_rez);
       return NO_ERROR;
     }
+  else if (scale1 > 38 || scale2 > 38 || scale1 < 0 || scale2 < 0)
+    {
+      // scale 범위 확장을 위한 처리 구간 (-84 ~ 127)
+      // 해당 조건에서 부호를 확인하는 이유 : 
+      // fp_numeric_compare 내부에서 scale 보정시 버퍼가 커짐으로 반전 비용이 클 것으로 예상됨
+      // 따라서, 부호를 먼저 비교하고 scale 보정하여 비교함
+
+      // 1) 부호 확인
+      unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+      unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+      bool arg1_sign = false, arg2_sign = false;
+
+      arg1_sign = numeric_is_negative (db_locate_numeric (dbv1)) ? true : false;
+      arg2_sign = numeric_is_negative (db_locate_numeric (dbv2)) ? true : false;
+
+      if (arg1_sign == false && arg2_sign == true)
+	{
+	  // 1) 양수 vs 음수
+	  // - 양수가 항상 큼
+	  cmp_rez = 1;
+	  db_make_int (answer, cmp_rez);
+	  return NO_ERROR;
+	}
+      else if (arg1_sign == true && arg2_sign == false)
+	{
+	  // 2) 음수 vs 양수
+	  // - 음수가 항상 작음
+	  cmp_rez = -1;
+	  db_make_int (answer, cmp_rez);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  // 3) 양수 vs 양수, 음수 vs 음수
+	  // scale 보정 후 비교 필요
+	  // 3-1) 절대 값 변경
+	  if (arg1_sign)
+	    {
+	      numeric_negate (dbv1_copy);
+	    }
+	  if (arg2_sign)
+	    {
+	      numeric_negate (dbv2_copy);
+	    }
+
+	  // 3-2) 함수 내부에서 보정해서 비교하는 걸로
+	  // -1   if  arg1 < arg2
+	  // 0   if   arg1 = arg2 and
+	  // 1   if   arg1 > arg2.
+	  cmp_rez = fp_numeric_compare (dbv1_copy, dbv2_copy, prec1, scale1, prec2, scale2);
+
+	  // 3-3) 부호 복구
+	  // arg1_sign 과 arg2_sign 중 하나라도 음수이면 treu임
+	  // 그래서 둘 중 아무거나 비교해도 동일함
+	  if (arg1_sign)
+	    {
+	      cmp_rez = -cmp_rez;
+	    }
+	}
+
+      // 밑에보니까 정수 와 소수 를 나눠서 비교하네?
+      // 그런데 문자로 비교하네?
+      db_make_int (answer, cmp_rez);
+      return NO_ERROR;
+    }
   else
     {
       DB_VALUE dbv1_common, dbv2_common;
@@ -3425,18 +3536,6 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 	    {
 	      prec_common = prec1 - scale1;
 	    }
-
-	  // [임시] 일단, 음수를 양수로 변환,
-	  // 음.. 정수로 변환 하지 않고 0으로 변경해보니 비교 결과가 안나옴..
-	  // 버퍼 크기를 늘려주니, 음수도 잘 처리하네..? 일단 다시 주석처리!
-	  //   if (scale1 < 0)
-	  //     {
-	  //       scale1 *= -1;
-	  //     }
-	  //   else if (scale2 < 0)
-	  //     {
-	  //       scale2 *= -1;
-	  //     }
 
 	  if (scale1 > scale2)
 	    {
