@@ -257,6 +257,8 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric);
+extern int hnsw_load_index (BTID * btid, OID * class_oids, int n_classes, int n_attrs, int *attr_ids, HFID * hfids,
+			    int dimension, int hnsw_M, int hnsw_efConstruction, int metric);
 extern int hnsw_delete_index (BTID * btid);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
 extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);

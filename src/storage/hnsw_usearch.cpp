@@ -31,6 +31,8 @@
 #include "db_vector.hpp"
 #include "porting.h"
 #include "vector_distance_enum.h"
+#include "heap_file.h"
+#include <cstddef>
 #include <fstream>
 #include <filesystem>
 
@@ -156,6 +158,68 @@ int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
     }
 
   return NO_ERROR;
+}
+
+BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
+			HFID *hfids, int dimension, int m, int ef_construction, int metric)
+{
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan_result;
+  RECDES in_recdes;
+  DB_VALUE key_dbvalue;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID cur_oid;
+  int cur_class = 0;
+  int attr_offset = 0;
+  OID_SET_NULL (&cur_oid);
+
+  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+
+  while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
+    {
+      cur_class++;
+    }
+
+  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &oid[cur_class], true, NULL) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  attr_offset = cur_class * n_attrs;
+
+  if (heap_attrinfo_start (thread_p, &oid[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  do
+    {
+      attr_offset = cur_class * n_attrs;
+
+      scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
+			       &in_recdes, &scan_cache,
+			       scan_cache.cache_last_fix_page ? PEEK : COPY);
+
+      switch (scan_result)
+	{
+	case S_SUCCESS:
+	  heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &in_recdes, &attr_info);
+	  key_dbvalue = attr_info.values[0].dbvalue;
+	  hnsw_add_element (new_btid, &cur_oid, &key_dbvalue);
+	  continue;
+	case S_END:
+	  heap_attrinfo_end (thread_p, &attr_info);
+	  (void) heap_scancache_end (thread_p, &scan_cache);
+	  return new_btid;
+	  break;
+	default:
+	  assert (false);
+	  return NULL;
+	}
+    }
+  while (true);
+
+  return new_btid;
 }
 
 int hnsw_print_index_info (BTID *btid)

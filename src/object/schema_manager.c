@@ -10847,23 +10847,38 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
     {
-      if (function_index)
+      if (con->type == SM_CONSTRAINT_VECTOR_INDEX)
 	{
-	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
-				    function_index->expr_stream_size, function_index->col_id,
-				    function_index->attr_index_start, index_status);
+	  auto m = hnsw::vindex_info.hnsw_m;
+	  auto ef_construction = hnsw::vindex_info.hnsw_ef_construction;
+	  auto metric = hnsw::vindex_info.metric;
+	  fprintf (stderr, "dimension: %d, m: %d, ef_construction: %d, metric: %d\n", domain->precision, m,
+		   ef_construction, metric);
+	  error =
+	    hnsw_load_index (index, oids, n_classes, n_attrs, attr_ids, hfids, domain->precision, m, ef_construction,
+			     (int) metric);
 	}
       else
 	{
-	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1, index_status);
+	  if (function_index)
+	    {
+	      error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+					(int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+					fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+					SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
+					function_index->expr_stream_size, function_index->col_id,
+					function_index->attr_index_start, index_status);
+	    }
+	  else
+	    {
+	      error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+					(int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+					fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+					SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1, index_status);
+	    }
 	}
     }
+
 
   free_and_init (attr_ids);
   free_and_init (oids);

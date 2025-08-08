@@ -4673,6 +4673,55 @@ shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+void
+shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  BTID *return_btid = NULL;
+  int dimension, hnsw_M, hnsw_efConstruction, metric_type;
+  OID *class_oids = NULL;
+  HFID *hfids = NULL;
+  int n_classes, n_attrs, *attr_ids = NULL;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &n_classes);
+  ptr = or_unpack_int (ptr, &n_attrs);
+  ptr = or_unpack_int (ptr, &dimension);
+  ptr = or_unpack_int (ptr, &hnsw_M);
+  ptr = or_unpack_int (ptr, &hnsw_efConstruction);
+  ptr = or_unpack_int (ptr, &metric_type);
+
+  ptr = or_unpack_oid_array (ptr, n_classes, &class_oids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+  ptr = or_unpack_int_array (ptr, (n_classes * n_attrs), &attr_ids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+  ptr = or_unpack_hfid_array (ptr, n_classes, &hfids);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  return_btid =
+    xhnsw_load_index (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, hnsw_M,
+		      hnsw_efConstruction, metric_type);
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  ptr = or_pack_btid (ptr, return_btid);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 /*
  * sdk_totalpgs -
  *
