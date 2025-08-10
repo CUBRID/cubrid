@@ -232,12 +232,6 @@ namespace cubconn
 	close (fd);
 	return false;
       }
-    /* will never be used */
-    delete conn->recvbuf;
-    conn->recvbuf = nullptr;
-    delete conn->sendbuf;
-    conn->sendbuf = nullptr;
-
     m_context.m_conn = conn;
 
     return true;
@@ -457,11 +451,6 @@ namespace cubconn
 
     /* new connection */
     ctx->m_conn = css_make_conn (datagram_fd);
-    /* will never be used */
-    delete ctx->m_conn->recvbuf;
-    ctx->m_conn->recvbuf = nullptr;
-    delete ctx->m_conn->sendbuf;
-    ctx->m_conn->sendbuf = nullptr;
 
     /* make new socket non-blocking */
     assert (!this->m_events.is_nonblocking (datagram_fd));

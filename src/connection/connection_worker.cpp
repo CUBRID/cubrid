@@ -21,6 +21,7 @@
  */
 
 #include "connection_worker.hpp"
+#include "buffer.hpp"
 #include "error_manager.h"
 
 #include <array>
@@ -100,7 +101,7 @@ namespace cubconn
     _er_log_debug (__FILE__, __LINE__, "reqeusted to wake up the worker index = %d\n", m_index);
   }
 
-  bool connection_worker::handle_mq_new_client (message &item)
+  bool connection_worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
 
@@ -124,11 +125,12 @@ namespace cubconn
   bool connection_worker::handle_message_queue ()
   {
     std::optional<message> request;
-    uint64_t tmp;
+    uint64_t u;
 
     assert (!m_queue.empty ());
 
-    ::read (m_eventfd, &tmp, 8);
+    /* read counter */
+    ::read (m_eventfd, &u, sizeof (u));
 
     do
       {
@@ -143,7 +145,7 @@ namespace cubconn
 	switch (request->type)
 	  {
 	  case message_type::NEW_CLIENT:
-	    if (!this->handle_mq_new_client (*request))
+	    if (!this->handle_message_queue_new_client (*request))
 	      {
 		return false;
 	      }
@@ -165,8 +167,15 @@ namespace cubconn
     return true;
   }
 
+  bool connection_worker::recv_with_buffer (context *ctx)
+  {
+    
+    //buffered_socket::recv_drain (ctx->m_conn->fd,);
+  }
+
   bool connection_worker::handle_reception (context *ctx)
   {
+
     return true;
   }
 

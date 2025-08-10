@@ -26,6 +26,7 @@
 #include "server_support.h"
 #include "epoll.hpp"
 #include "MPSCQueue.hpp"
+#include "DMRB_SPSC.hpp"
 
 #include <thread>
 #include <cstring>
@@ -36,6 +37,13 @@
 namespace cubconn
 {
   class connection_pool;
+
+  class transmitter
+  {
+  public:
+    transmitter ();
+    ~transmitter ();
+  };
 
   class connection_worker
   {
@@ -63,6 +71,8 @@ namespace cubconn
       struct context
       {
 	css_conn_entry *m_conn;
+
+	cubbase::DMRB_SPSC<true> m_sendbuf;
 
 	state m_state { state::Somestate };
 
@@ -96,11 +106,21 @@ namespace cubconn
       /* consumption must happen from only one thread.	    */
       cubbase::MPSCQueue<message> m_queue;
 
-      bool handle_mq_new_client (message &item);
+      /* --------------------------------------------------------------------------- */
+      /* message queue based interface						     */
+      /* --------------------------------------------------------------------------- */
+      bool handle_message_queue_new_client (message &item);
       bool handle_message_queue ();
 
+      /* --------------------------------------------------------------------------- */
+      /* reception								     */
+      /* --------------------------------------------------------------------------- */
+      bool recv_with_buffer (context *ctx);
       bool handle_reception (context *ctx);
 
+      /* --------------------------------------------------------------------------- */
+      /* transmission								     */
+      /* --------------------------------------------------------------------------- */
       bool handle_transmission (context *ctx);
   };
 }
