@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_BUFFER_HPP_
 #define _CONNECTION_BUFFER_HPP_
 
+#include "DMRB_SPSC.hpp"
 #include "packet_buffer.hpp"
 #include "error_manager.h"
 
@@ -43,6 +44,7 @@ namespace cubconn
   enum class result
   {
     Ok,
+    Partial,
     Error,
     Reset,
     Pending,
@@ -116,6 +118,7 @@ namespace cubconn
   class buffered_socket
   {
     public:
+      [[gnu::hot]]
       static bool send_partial (int fd, cubbase::packet_buffer &buffer) noexcept
       {
 	struct ::msghdr *msg;
@@ -168,6 +171,7 @@ namespace cubconn
 	return true;
       }
 
+      [[gnu::hot]]
       static bool send_partial (int fd, buffer &buffer) noexcept
       {
 	const std::byte *data;
@@ -213,6 +217,7 @@ namespace cubconn
 	return buffer.is_complete ();
       }
 
+      [[gnu::hot]]
       static result recv_partial (int fd, buffer &buffer)
       {
 	std::byte *space;
@@ -260,8 +265,60 @@ namespace cubconn
 	return buffer.is_complete () ? result::Ok : result::Pending;
       }
 
+      [[gnu::hot]]
+      static result recv_drain (int fd, cubbase::DMRB_SPSC<true> &buffer)
+      {
+	cubbase::span<std::byte> available;
+	std::byte *ptr;
+	std::size_t length, total;
+	ssize_t bytes;
+
+	available = buffer.reserve_all ();
+	ptr = available.data ();
+	length = available.size ();
+	assert (ptr && length > 0);
+
+	total = 0;
+	while (true)
+	  {
+	    bytes = ::recv (fd, ptr, length, 0);
+	    if (bytes > 0)
+	      {
+		ptr += static_cast<std::size_t> (bytes);
+		length -= static_cast<std::size_t> (bytes);
+		total += static_cast<std::size_t> (bytes);
+		continue;
+	      }
+
+	    if (__builtin_expect (bytes == 0, 0))
+	      {
+		_er_log_debug (__FILE__, __LINE__, "buffered_socket->recv_drain: reset by peer", strerror (errno));
+		return result::PeerReset;
+	      }
+
+	    switch (errno)
+	      {
+	      case EINTR:
+		continue;
+	      case EAGAIN:
+		/* case EWOULDBLOCK: */
+		return result::Pending;
+	      case ECONNRESET:
+		_er_log_debug (__FILE__, __LINE__, "buffered_socket->recv_drain: reset by peer", strerror (errno));
+		return result::PeerReset;
+	      default:
+		return result::Error;
+	      }
+	  }
+
+	/* impossible ! */
+	assert_release (false);
+	return result::Error;
+      }
+
       /* recv helper */
       template<typename T>
+      [[gnu::hot]]
       static std::tuple<result, const T *> read_fixed_size (int fd, buffer &buffer)
       {
 	result status;
