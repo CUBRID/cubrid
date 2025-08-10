@@ -132,6 +132,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/packet_buffer.cpp
+  ${BASE_DIR}/hardware_topology.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
   )
@@ -174,6 +175,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/hardware_topology.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
   ${BASE_DIR}/DMRB_SPSC.hpp

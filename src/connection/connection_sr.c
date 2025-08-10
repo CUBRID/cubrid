@@ -307,9 +307,6 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
   conn->version_string = NULL;
 
-  conn->recvbuf = new cubbase::DMRB_SPSC < true > (16 * 1024);
-  conn->sendbuf = new cubbase::DMRB_SPSC < true > (16 * 1024);
-
   /* ignore connection handler thread */
   conn->free_queue_list = NULL;
   conn->free_queue_count = 0;
@@ -389,15 +386,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       if (conn->version_string)
 	{
 	  free_and_init (conn->version_string);
-	}
-
-      if (conn->sendbuf)
-	{
-	  delete conn->sendbuf;
-	}
-      if (conn->recvbuf)
-	{
-	  delete conn->recvbuf;
 	}
 
       css_remove_all_unexpected_packets (conn);

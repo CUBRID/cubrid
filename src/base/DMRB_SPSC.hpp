@@ -41,6 +41,7 @@ namespace cubbase
       ~DMRB_SPSC ();
 
       cubbase::span<std::byte> reserve (std::size_t length);
+      cubbase::span<std::byte> reserve_all ();
       void commit (std::size_t length);
 
       void consume (std::size_t length);
@@ -73,6 +74,21 @@ namespace cubbase
 	return { nullptr, 0 };
       }
 
+    ptr = static_cast<std::byte *> (this->m_base) + (head & this->m_mask);
+    return { ptr, length };
+  }
+
+  template <bool T>
+  cubbase::span<std::byte> DMRB_SPSC<T>::reserve_all ()
+  {
+    std::uint64_t head, tail;
+    std::size_t length;
+    std::byte *ptr;
+
+    head = DMRB<T>::value_load (this->m_head, std::memory_order_relaxed);
+    tail = DMRB<T>::value_load (this->m_tail, std::memory_order_acquire);
+
+    length = this->m_size - (head - tail);
     ptr = static_cast<std::byte *> (this->m_base) + (head & this->m_mask);
     return { ptr, length };
   }
