@@ -1024,7 +1024,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int inc_val_flag;
   int ret;
-  bool is_fp_numeric_op = false;
+  NUMERIC_OPERATION_TYPE num_op_type = NUMERIC_SERIAL;
 
   inc_val_flag = numeric_db_value_is_positive (inc_val);
   if (inc_val_flag < 0)
@@ -1037,7 +1037,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
     {
       numeric_coerce_int_to_num (nth, num);
       db_make_numeric (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
-      numeric_db_value_mul (inc_val, &tmp_val, &add_val, &is_fp_numeric_op);
+      numeric_db_value_mul (inc_val, &tmp_val, &add_val, &num_op_type);
     }
   else
     {
@@ -1047,7 +1047,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   /* inc_val_flag (1 or 0) */
   if (inc_val_flag > 0)
     {
-      ret = numeric_db_value_sub (max_val, &add_val, &tmp_val, &is_fp_numeric_op);
+      ret = numeric_db_value_sub (max_val, &add_val, &tmp_val, &num_op_type);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1073,12 +1073,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
       else
 	{
-	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &is_fp_numeric_op);
+	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &num_op_type);
 	}
     }
   else
     {
-      ret = numeric_db_value_sub (min_val, &add_val, &tmp_val, &is_fp_numeric_op);
+      ret = numeric_db_value_sub (min_val, &add_val, &tmp_val, &num_op_type);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1104,7 +1104,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
       else
 	{
-	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &is_fp_numeric_op);
+	  (void) numeric_db_value_add (cur_val, &add_val, result_val, &num_op_type);
 	}
     }
 

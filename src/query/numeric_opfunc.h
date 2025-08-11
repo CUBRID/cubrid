@@ -40,6 +40,13 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
+typedef enum
+{
+  NUMERIC_GENERAL = 0,
+  NUMERIC_FLOATING_POINT = 1,
+  NUMERIC_SERIAL = 2
+} NUMERIC_OPERATION_TYPE;
+
 // numeric 출력 문자열 크기 최대 값 : 300 = 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
 #define NUMERIC_MAX_STRING_SIZE (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 13
 
@@ -54,13 +61,13 @@ extern void numeric_init_power_value_string (void);
 
 /* Arithmetic routines */
 extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				 bool * is_fp_numeric_op);
+				 NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				 bool * is_fp_numeric_op);
+				 NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				 bool * is_fp_numeric_op);
+				 NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				 bool * is_fp_numeric_op);
+				 NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_negate (DB_VALUE * answer);
 extern void numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num);
 extern int numeric_db_value_increase (DB_VALUE * arg);

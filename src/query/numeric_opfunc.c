@@ -1770,7 +1770,8 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
  *
  */
 int
-numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, bool * is_fp_numeric_op)
+numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+		      NUMERIC_OPERATION_TYPE * num_op_type)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1814,7 +1815,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   result_scale = MAX (scale1, scale2);
   result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
 
-  if (result_prec >= DB_MAX_NUMERIC_PRECISION)
+  if (*num_op_type != NUMERIC_SERIAL && result_prec >= DB_MAX_NUMERIC_PRECISION)
     {
       /* 1바이트 씩 계산하는 새로운 함수 테스트 */
 //       {
@@ -1847,7 +1848,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	{
 	  goto exit_on_error;
 	}
-      *is_fp_numeric_op = true;
+      *num_op_type = NUMERIC_FLOATING_POINT;
     }
   else
     {
@@ -2008,12 +2009,9 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
   // 7-1) 0이 될때까지 10으로 나누며 몇 번 나눴는지 카운트 -- 제거
   //calc_prec = count_digits_by_division (calc_buf, calc_bytes);
 
-  // 7-2) 미리 계산된 테이블 과 이진 탐색 사용
+  // 7-2) 미리 계산된 테이블 과 유효 바이트를 검색하여 자릿수 확인
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
-  if (calc_prec > *result_prec)
-    {
-      (*result_prec) = calc_prec;
-    }
+  (*result_prec) = calc_prec;
 
 //   fprintf(stderr, "[DEBUG] calc_prec=%d\n", calc_prec);
 //   fprintf(stderr, "\n");
@@ -2121,7 +2119,7 @@ fp_numeric_init_pow10_table (void)
 static int
 fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes)
 {
-  int start_idx, idx;
+  int i, j, start_idx, idx;
   int calc_first_nonzero = 0;
   const uint8_t *tmp;
   int tmp_first_nonzero;
@@ -2130,13 +2128,20 @@ fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes)
   fp_numeric_init_pow10_table ();
 
   // calc_buf의 유효 바이트 수 계산
-  for (int i = 0; i < calc_bytes; i++)
+  for (i = 0; i < calc_bytes; i++)
     {
       if (calc_buf[i] != 0)
 	{
 	  calc_first_nonzero = calc_bytes - i;
 	  break;
 	}
+    }
+
+  // 값이 0인 경우, 그런데 음수인 경우는 모르겠네?
+  if (calc_first_nonzero <= 0)
+    {
+      assert (calc_first_nonzero >= 0);
+      return 1;
     }
 
   // 그 유효바이트의 첫 등장 지수
@@ -2150,11 +2155,11 @@ fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes)
 
       // pow10[idx]의 유효 바이트 계산
       tmp_first_nonzero = calc_bytes;
-      for (int i = 0; i < calc_bytes; i++)
+      for (j = 0; j < calc_bytes; j++)
 	{
-	  if (tmp[i] != 0)
+	  if (tmp[j] != 0)
 	    {
-	      tmp_first_nonzero = calc_bytes - i;
+	      tmp_first_nonzero = calc_bytes - j;
 	      break;
 	    }
 	}
@@ -2285,7 +2290,8 @@ fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val)
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, bool * is_fp_numeric_op)
+numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+		      NUMERIC_OPERATION_TYPE * num_op_type)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -2329,14 +2335,14 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   result_scale = MAX (scale1, scale2);
   result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
 
-  if (result_prec >= DB_MAX_NUMERIC_PRECISION)
+  if (*num_op_type != NUMERIC_SERIAL && result_prec >= DB_MAX_NUMERIC_PRECISION)
     {
       ret = floating_point_numeric_sub (dbv1, dbv2, &result_prec, &result_scale, answer);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-      *is_fp_numeric_op = true;
+      *num_op_type = NUMERIC_FLOATING_POINT;
     }
   else
     {
@@ -2477,10 +2483,7 @@ floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 
   // 7) 뺄셈 이후 prec 재계산
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
-  if (calc_prec > *result_prec)
-    {
-      (*result_prec) = calc_prec;
-    }
+  (*result_prec) = calc_prec;
 
   // 8) 반올림 & 다시 16바이트로 pack
   fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale);
@@ -2539,7 +2542,8 @@ fp_numeric_sub (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * ca
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, bool * is_fp_numeric_op)
+numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+		      NUMERIC_OPERATION_TYPE * num_op_type)
 {
   int ret = NO_ERROR;
   int prec;
@@ -2592,14 +2596,14 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   result_scale = scale1 + scale2;
   result_prec = prec1 + prec2;
 
-  if (result_prec >= DB_MAX_NUMERIC_PRECISION)
+  if (*num_op_type != NUMERIC_SERIAL && result_prec >= DB_MAX_NUMERIC_PRECISION)
     {
       ret = floating_point_numeric_mul (dbv1, dbv2, &result_prec, &result_scale, answer);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-      *is_fp_numeric_op = true;
+      *num_op_type = NUMERIC_FLOATING_POINT;
     }
   else
     {
@@ -2722,10 +2726,7 @@ floating_point_numeric_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 
   // 7) 곱셈 이후 prec 재계산
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
-  if (calc_prec > *result_prec)
-    {
-      (*result_prec) = calc_prec;
-    }
+  (*result_prec) = calc_prec;
 
 //   fprintf(stderr, "[DEBUG] calc_prec=%d\n", calc_prec);
 //   fprintf(stderr, "\n");
@@ -2810,7 +2811,8 @@ fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * ca
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, bool * is_fp_numeric_op)
+numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+		      NUMERIC_OPERATION_TYPE * num_op_type)
 {
   int prec;
   int max_scale, scale1, scale2;
@@ -2862,14 +2864,14 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   result_scale = MAX (scale1, scale2);
   result_prec = calc_prec1 + (scale2 == 0 ? scale1 : scale2) + result_scale;
 
-  if (result_prec >= DB_MAX_NUMERIC_PRECISION)
+  if (*num_op_type != NUMERIC_SERIAL && result_prec >= DB_MAX_NUMERIC_PRECISION)
     {
       ret = floating_point_numeric_div (dbv1, dbv2, &result_prec, &result_scale, answer);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-      *is_fp_numeric_op = true;
+      *num_op_type = NUMERIC_FLOATING_POINT;
     }
   else
     {

@@ -25708,7 +25708,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  /* add 1 so we can use R_LE */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
-	  error = qdata_subtract_dbval (val, &one_val, ubound, rhs->domain);
+	  error = qdata_subtract_dbval (val, &one_val, ubound, &rhs->domain);
 	}
       else
 	{

@@ -4434,7 +4434,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
   DB_VALUE cmp_result;
   DB_VALUE n1, n2, n3, n4;
   double res = 0.0;
-  bool is_fp_numeric_op = false;
+  NUMERIC_OPERATION_TYPE num_op_type = NUMERIC_GENERAL;
 
   assert (value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL && result != NULL);
 
@@ -4484,25 +4484,25 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  else
 	    {
 	      /* floor ((v1-v2)/((v3-v2)/v4)) + 1 */
-	      er_status = numeric_db_value_sub (value1, value2, &n1, &is_fp_numeric_op);
+	      er_status = numeric_db_value_sub (value1, value2, &n1, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_sub (value3, value2, &n2, &is_fp_numeric_op);
+	      er_status = numeric_db_value_sub (value3, value2, &n2, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3, &is_fp_numeric_op);
+	      er_status = numeric_db_value_div (&n2, value4, &n3, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4, &is_fp_numeric_op);
+	      er_status = numeric_db_value_div (&n1, &n3, &n4, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
@@ -4549,25 +4549,25 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  else
 	    {
 	      /* floor ((v2-v1)/((v2-v3)/v4)) + 1 */
-	      er_status = numeric_db_value_sub (value2, value1, &n1, &is_fp_numeric_op);
+	      er_status = numeric_db_value_sub (value2, value1, &n1, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_sub (value2, value3, &n2, &is_fp_numeric_op);
+	      er_status = numeric_db_value_sub (value2, value3, &n2, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3, &is_fp_numeric_op);
+	      er_status = numeric_db_value_div (&n2, value4, &n3, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4, &is_fp_numeric_op);
+	      er_status = numeric_db_value_div (&n1, &n3, &n4, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;

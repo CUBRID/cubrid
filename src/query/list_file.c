@@ -6265,6 +6265,13 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	    }
 	}
 
+      // client(cas) 쪽에는 domain이 수정됐는지 알 수 없음으로, 지금 아래와 같이 수정된 값을 넣어줘야
+      // cas에서 정확한 값을 출력할 수 있음.
+      if (TP_DOMAIN_TYPE (list_id_p->type_list.domp[count]) == DB_TYPE_NUMERIC)
+	{
+	  list_id_p->type_list.domp[count] = reg_var_p->value.domain;
+	}
+
       if (list_id_p->type_list.domp[count]->collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  if (reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL)

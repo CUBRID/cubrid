@@ -92,6 +92,7 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+#include "numeric_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1404,7 +1405,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool au_disable_flag = false;
   size_t name_size;
   const char *comment = NULL;
-  bool is_fp_numeric_op = false;
+  NUMERIC_OPERATION_TYPE num_op_type = NUMERIC_SERIAL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1719,7 +1720,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * initialized from a constant, not inputted by user,  in this case, we don't
    * expect max_val should be responsible for the violation.
    */
-  error = numeric_db_value_sub (&max_val, &min_val, &range_val, &is_fp_numeric_op);
+  error = numeric_db_value_sub (&max_val, &min_val, &range_val, &num_op_type);
   if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
@@ -1751,7 +1752,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* ABS (cache_num * inc_val) */
-      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val, &is_fp_numeric_op);
+      error = numeric_db_value_mul (&inc_val, &cached_num_val, &tmp_val, &num_op_type);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2335,7 +2336,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
-  bool is_fp_numeric_op = false;
+  NUMERIC_OPERATION_TYPE num_op_type = NUMERIC_SERIAL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2680,7 +2681,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 			       ER_INVALID_SERIAL_VALUE);
 
   /* invariant for abs(inc_val) <= (max_val - min_val). */
-  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val, &is_fp_numeric_op);
+  error = numeric_db_value_sub (&new_max_val, &new_min_val, &range_val, &num_op_type);
   if (error == ER_IT_DATA_OVERFLOW)
     {
       // max - min might be flooded. Regard the range is big enough.
@@ -2715,7 +2716,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* ABS (cache_num * inc_val) */
-      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val, &is_fp_numeric_op);
+      error = numeric_db_value_mul (&new_inc_val, &cached_num_val, &tmp_val, &num_op_type);
       if (error != NO_ERROR)
 	{
 	  goto end;
