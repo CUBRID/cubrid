@@ -3632,9 +3632,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 * acquired at the time of the crash
 		 */
 
-		/* Get the DATA HEADER */
-		redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
-
 		if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
 		  {
 		    /* The transaction was still prepared_to_commit state at the time of crash. So, read the global
@@ -3664,8 +3661,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			/* The transaction was still alive at the time of crash. So, copy the coordinator information
 			 * from the log record to the transaction descriptor. */
 
-			/* Get the DATA HEADER */
-			redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
 			redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_START));
 			/* Start 2PC commit log record */
 			// *INDENT-OFF*
