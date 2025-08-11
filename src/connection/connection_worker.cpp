@@ -32,8 +32,7 @@
 
 namespace cubconn
 {
-  connection_worker::context::context () :
-    m_conn (nullptr)
+  connection_worker::context::context ()
   {
   }
 

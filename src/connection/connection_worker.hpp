@@ -72,8 +72,6 @@ namespace cubconn
       {
 	css_conn_entry *m_conn;
 
-	cubbase::DMRB_SPSC<true> m_sendbuf;
-
 	state m_state { state::Somestate };
 
 	context ();

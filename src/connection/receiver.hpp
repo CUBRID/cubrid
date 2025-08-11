@@ -23,8 +23,9 @@
 #ifndef _CONNECTION_RECEIVER_HPP_
 #define _CONNECTION_RECEIVER_HPP_
 
+#include "span.hpp"
 #include "buffer.hpp"
-#include "DMRB_SPSC.hpp"
+#include "DMRBMemoryPool.hpp"
 
 #include <cstring>
 #include <sys/socket.h>
@@ -38,8 +39,10 @@ namespace cubconn
   private:
     enum class state
     {
-      RecvSize,
-      RecvData
+      Recv,
+      RecvInAllocated,
+      RecvSizeInTmp,
+      ParseSize
     };
 
   public:
@@ -47,24 +50,30 @@ namespace cubconn
     ~receiver ();
 
     result drain (int fd);
+    void release (cubbase::span<std::byte> &mem);
+
+    std::vector<cubbase::span<std::byte>> &get_result ();
 
   private:
     state m_state;
-    cubbase::DMRB_SPSC<false> m_buf;
+    cubbase::DMRBMemoryPool m_buf;
 
-    int m_sizebuf;
-    std::byte *m_bufptr;
     std::size_t m_received;
-    std::size_t m_target;
+    std::size_t m_size;
+    std::byte *m_bufptr;
+    std::size_t m_bufsize;
+
+    int m_tmpsize;
+    
+#if !defined (NDEBUG)
+    std::vector<std::byte *> m_allocated;
+#endif
 
     /* output */
-    std::vector<std::byte *> m_result;
+    std::vector<cubbase::span<std::byte>> m_result;
 
-    void reset ();
-
-    bool received_size ();
-    bool received_data ();
-    bool received ();
+    void parse_packet (bool is_buffer);
+    result parse_size ();
 
     result receive (int fd);
   };
