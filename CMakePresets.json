@@ -76,6 +76,22 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Profile"
       }
+    },
+    {
+      "name": "release_native",
+      "inherits": "release",
+      "description": "Release build with native SIMD optimizations",
+      "cacheVariables": {
+        "USE_SIMD_NATIVE": "ON"
+      }
+    },
+    {
+      "name": "debug_native",
+      "inherits": "debug",
+      "description": "Debug build with native SIMD optimizations",
+      "cacheVariables": {
+        "USE_SIMD_NATIVE": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -115,6 +131,14 @@
     {
       "name": "profile",
       "configurePreset": "profile"
+    },
+    {
+      "name": "release_native",
+      "configurePreset": "release_native"
+    },
+    {
+      "name": "debug_native",
+      "configurePreset": "debug_native"
     }
   ]
 }

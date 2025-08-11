@@ -552,9 +552,15 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
-set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
-    PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
-)
+if(USE_SIMD_NATIVE)
+  set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+      PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+  )
+else()
+  set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+      PROPERTIES COMPILE_FLAGS "-O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+  )
+endif()
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c

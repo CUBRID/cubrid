@@ -81,6 +81,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+option(USE_SIMD_NATIVE "Enable native SIMD optimizations with -march=native" OFF)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
