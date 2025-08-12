@@ -92,6 +92,7 @@ extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE 
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 
 extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
+extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 extern void css_get_thread_stats (UINT64 * stats_out);
 extern size_t css_get_num_request_workers (void);
 extern size_t css_get_num_connection_workers (void);

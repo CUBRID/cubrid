@@ -233,7 +233,6 @@ static int css_process_new_connection_request (void);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
-static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
 static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
@@ -1350,21 +1349,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 						   css_get_server_request_thread_pooling_configuration (),
 						   css_get_server_request_thread_timeout_configuration ());
   if (css_Server_request_worker_pool == NULL)
-    {
-      assert (false);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      status = ER_FAILED;
-      goto shutdown;
-    }
-
-  // create connection worker pool
-  css_Connection_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, "connection threads", NULL, 1,
-						   cubthread::is_logging_configured
-						   (cubthread::LOG_WORKER_POOL_CONNECTIONS),
-						   css_get_connection_thread_pooling_configuration (),
-						   css_get_connection_thread_timeout_configuration ());
-  if (css_Connection_worker_pool == NULL)
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -2717,7 +2701,7 @@ css_get_current_conn_entry (void)
  *
  * TODO: this is also used externally due to legacy design; should be internalized completely
  */
-static void
+void
 css_push_server_task (CSS_CONN_ENTRY &conn_ref)
 {
   // push the task

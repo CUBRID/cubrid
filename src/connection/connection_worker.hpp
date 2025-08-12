@@ -39,13 +39,6 @@ namespace cubconn
 {
   class connection_pool;
 
-  class transmitter
-  {
-  public:
-    transmitter ();
-    ~transmitter ();
-  };
-
   class connection_worker
   {
     public:
@@ -67,7 +60,6 @@ namespace cubconn
       enum class state
       {
 	HEADER,
-	COMMAND,
 	DATA,
 	ERROR
       };
@@ -78,8 +70,12 @@ namespace cubconn
 	state m_state;
 	receiver m_receiver;
 
-	NET_HEADER *m_header;
+	cubbase::span<std::byte> m_header;
 	int m_request_id;
+
+	/* if received command packet, task will be pushed into worker pool */
+	/* when data packet is completely received. */
+	bool m_command;
 
 	context (std::size_t capacity);
 	~context ();
@@ -91,7 +87,7 @@ namespace cubconn
 
       /* used for control from other threads */
       void enqueue (const message &item);
-      void notify ();
+      bool notify ();
 
       bool run ();
 
@@ -111,6 +107,11 @@ namespace cubconn
       /* consumption must happen from only one thread.	    */
       cubbase::MPSCQueue<message> m_queue;
 
+      /* to use a recursive mutex */
+      cubthread::entry m_entry;
+
+      void push_task_into_worker_pool (context *ctx);
+
       bool handle_connection_error (context *ctx);
       result handle_unexpected_packet (context *ctx);
 
@@ -123,8 +124,17 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* reception								     */
       /* --------------------------------------------------------------------------- */
+      /* error */
+      result handle_error_packet (context *ctx, cubbase::span<std::byte> &packet);
+
+      /* data */
+      result handle_data_packet (context *ctx, cubbase::span<std::byte> &packet);
+
+      /* header */
+      result handle_command_header_packet (context *ctx);
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
+      /* reception */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_reception (context *ctx);
 
