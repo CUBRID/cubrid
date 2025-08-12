@@ -1104,6 +1104,10 @@ void
 perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount)
 {
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   perfmon_add_stat (thread_p, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
   assert (lock_mode >= NA_LOCK && lock_mode <= SCH_M_LOCK);
@@ -1167,6 +1171,10 @@ perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, in
   int offset;
 
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   module = perfmon_get_module_type (thread_p);
 
@@ -1194,6 +1202,10 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
   int offset;
 
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   module = perfmon_get_module_type (thread_p);
 
@@ -1223,6 +1235,10 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
   int offset;
 
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   module = perfmon_get_module_type (thread_p);
 
@@ -1250,6 +1266,10 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
   int offset;
 
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   module = perfmon_get_module_type (thread_p);
 
@@ -1278,7 +1298,10 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
   int offset;
 
   assert (pstat_Global.initialized);
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   module = perfmon_get_module_type (thread_p);
 
   assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
@@ -1305,7 +1328,10 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
   int offset;
 
   assert (pstat_Global.initialized);
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   module = perfmon_get_module_type (thread_p);
 
   assert (module >= PERF_MODULE_SYSTEM && module < PERF_MODULE_CNT);
@@ -1331,7 +1357,10 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   int offset;
 
   assert (pstat_Global.initialized);
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   assert (snapshot >= PERF_SNAPSHOT_SATISFIES_DELETE && snapshot < PERF_SNAPSHOT_CNT);
   assert (rec_type >= PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED && rec_type < PERF_SNAPSHOT_RECORD_TYPE_CNT);
   assert (visibility >= PERF_SNAPSHOT_INVISIBLE && visibility < PERF_SNAPSHOT_VISIBILITY_CNT);
@@ -3267,7 +3296,10 @@ perfmon_start_watch (THREAD_ENTRY * thread_p)
       return;
     }
   assert (pstat_Global.initialized);
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
 
@@ -3367,6 +3399,10 @@ STATIC_INLINE void
 perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset, UINT64 amount)
 {
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   /* Update statistics. */

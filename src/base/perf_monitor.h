@@ -984,6 +984,11 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
 
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
+
   /* Update global statistic. */
   ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 
@@ -1023,6 +1028,10 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
@@ -1056,6 +1065,10 @@ perfmon_add_at_offset_to_global (int offset, UINT64 amount)
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
 
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   /* Update global statistic. */
   ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 }
@@ -1103,7 +1116,10 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool al
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   /* Update global statistic. */
   ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
 
@@ -1153,6 +1169,10 @@ perfmon_set_at_offset_to_global (int offset, int statval)
 {
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   /* Update global statistic. */
   ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
@@ -1170,6 +1190,11 @@ STATIC_INLINE void
 perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
 {
   assert (pstat_Global.initialized);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
@@ -1199,6 +1224,11 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
@@ -1250,6 +1280,11 @@ STATIC_INLINE void
 perfmon_time_bulk_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff, UINT64 count)
 {
   assert (pstat_Global.initialized);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
 
   assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
@@ -1281,6 +1316,11 @@ perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timedif
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
   assert (pstat_Global.initialized);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   if (count == 0)
     {
