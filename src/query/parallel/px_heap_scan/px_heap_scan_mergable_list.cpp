@@ -77,6 +77,7 @@ namespace parallel_heap_scan
     m_outptr_list = outptr_list;
     m_tpl_buf.tpl = (char *) malloc (DB_PAGESIZE);
     m_tpl_buf.size = DB_PAGESIZE;
+    m_is_list_id_domain_resolved = false;
   }
 
   mergable_list_writer::~mergable_list_writer()
@@ -112,9 +113,9 @@ namespace parallel_heap_scan
   {
     int err_code = NO_ERROR;
     QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p);
-    if (m_error_code != NO_ERROR)
+    if (tplrec == nullptr)
       {
-	return m_error_code;
+	return ER_FAILED;
       }
     err_code = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
     return err_code;
@@ -122,27 +123,17 @@ namespace parallel_heap_scan
 
   QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p)
   {
-    REGU_VARIABLE_LIST p;
-    int n_preds, n_rests, n_all;
-    char *tuple_p;
-    int i = 0, tval_size = 0, tlen, tpl_size;
-    int type_list_index = 0;
-    DB_TYPE dom_type;
-    int n_size, toffset;
-    bool clear_compressed_string = true;
-    int ret;
-    REGU_VARIABLE_LIST outptr_list_p = NULL, m_outptr_list_p = NULL;
-    DB_VALUE *peek_value_p = NULL;
-    m_error_code = NO_ERROR;
+    int error_code = NO_ERROR;
 
-    m_error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
-    if (m_error_code != NO_ERROR)
+    error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
+    if (error_code != NO_ERROR)
       {
 	return nullptr;
       }
-    if (! (*m_list_id_p)->is_domain_resolved)
+    if (!m_is_list_id_domain_resolved)
       {
 	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
+	m_is_list_id_domain_resolved = (*m_list_id_p)->is_domain_resolved;
       }
 
     return &m_tpl_buf;

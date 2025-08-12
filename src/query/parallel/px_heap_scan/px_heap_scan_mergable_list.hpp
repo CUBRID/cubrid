@@ -67,7 +67,7 @@ namespace parallel_heap_scan
       QFILE_TUPLE_RECORD m_tpl_buf;
       QUERY_ID m_query_id;
       VAL_DESCR *m_vd;
-      int m_error_code;
+      bool m_is_list_id_domain_resolved;
 
       QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p);
   };

@@ -437,10 +437,12 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 				 qfile_tuple_record * tuple_record_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
+  REGU_VARIABLE *regu_var_p;
   DB_VALUE *dbval_p;
   char *tuple_p;
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
+  int flags;
   bool clear_compressed_string = false;
 
   tpl_size = 0;
@@ -455,22 +457,17 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   reg_var_p = valptr_list_p->valptrp;
   for (k = 0; k < valptr_list_p->valptr_cnt; k++, reg_var_p = reg_var_p->next)
     {
-      if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+      regu_var_p = &reg_var_p->value;
+      flags = regu_var_p->flags;
+      if (!(flags & REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
+	  dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
 	  if (dbval_p == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 
-	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-	    {
-	      clear_compressed_string = false;
-	    }
-	  else
-	    {
-	      clear_compressed_string = true;
-	    }
+	  clear_compressed_string = (bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 
 	  n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
 	  if (n_size == ER_FAILED)
