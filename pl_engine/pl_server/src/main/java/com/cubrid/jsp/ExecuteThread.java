@@ -38,7 +38,6 @@ import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.compiler.MemoryJavaCompiler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
-import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;

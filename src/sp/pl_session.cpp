@@ -174,7 +174,7 @@ namespace cubpl
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);
 
-    assert (m_stack_idx > -1);  
+    assert (m_stack_idx > -1);
     m_exec_stack[m_stack_idx] = -1;
     m_stack_idx--;
 

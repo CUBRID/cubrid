@@ -40,7 +40,6 @@ import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
 import com.cubrid.jsp.classloader.SessionClassLoaderManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
-import com.cubrid.jsp.protocol.Header;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
