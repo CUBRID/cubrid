@@ -498,6 +498,19 @@ private:
 };
 
 /*
+ * This data structure is the waiter to receive data
+ */
+typedef struct css_wait_queue_entry
+{
+  char **buffer;
+  int *size;
+  int *rc;
+  THREAD_ENTRY *thrd_entry;	/* thread waiting for data */
+  struct css_wait_queue_entry *next;
+  unsigned int key;
+} CSS_WAIT_QUEUE_ENTRY;
+
+/*
  * This is the mapping entry from a host/key to/from the entry id.
  */
 typedef struct css_mapping_entry CSS_MAP_ENTRY;
