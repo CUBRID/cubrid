@@ -427,7 +427,7 @@ struct session_state;
 typedef struct css_conn_entry CSS_CONN_ENTRY;
 struct css_conn_entry
 {
-  SOCKET fd;
+  SOCKET fd;			/* this must be first */
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int invalidate_snapshot;

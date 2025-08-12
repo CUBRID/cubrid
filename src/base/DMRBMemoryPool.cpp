@@ -101,6 +101,7 @@ namespace cubbase
   cubbase::span<std::byte> DMRBMemoryPool::reserve (std::size_t length)
   {
     assert_release (false);
+    return { nullptr, 0 };
   }
 
   void DMRBMemoryPool::commit (std::size_t length)
@@ -118,6 +119,7 @@ namespace cubbase
   cubbase::span<const std::byte> DMRBMemoryPool::peek () const
   {
     assert_release (false);
+    return { nullptr, 0 };
   }
 }
 

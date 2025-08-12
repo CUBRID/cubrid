@@ -49,7 +49,9 @@ namespace cubconn
     Reset,
     Pending,
     PeerReset,
-    RefuseConnection
+    RefuseConnection,
+    ClosedConnection,
+    Skewed
   };
 
   class buffer
