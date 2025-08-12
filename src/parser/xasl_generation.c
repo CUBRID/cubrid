@@ -66,6 +66,7 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
+#include "dbtype_def.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
@@ -6508,6 +6509,13 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, cons
 
   regu_dbval_type_init (dbval, TP_DOMAIN_TYPE (domain));
   arith->domain = (TP_DOMAIN *) domain;
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC)
+    {
+      // scale에 음수가 허용되면서, dbval에 DB_DEFAULT_SCALE(-1)로 초기화 하는 경우 scale이 -1로 저장됨.
+      // 기존에는 -1 -> 0 으로 바꿔줬으나, db_value_domain_init 에서 그걸 판단하기가 어려움.
+      // 따라서, 여기서 다시 0으로 초기화 해줘야함.
+      dbval->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+    }
   arith->value = dbval;
   arith->opcode = op;
   arith->leftptr = (REGU_VARIABLE *) arg1;

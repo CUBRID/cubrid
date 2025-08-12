@@ -143,7 +143,8 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	if (s)
 	  {
 	    unsigned char num[DB_NUMERIC_BUF_SIZE];
-	    char num_str[DB_MAX_NUMERIC_PRECISION * 4 + 2] = { '\0' };
+	    //char num_str[DB_MAX_NUMERIC_PRECISION * 4 + 2] = { '\0' };
+	    char num_str[NUMERIC_MAX_STRING_SIZE + 2] = { '\0' };
 	    char *num_str_p;
 	    int num_str_len;
 	    bool decrement = false;
@@ -309,7 +310,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
 	if (s)
 	  {
-	    char num_str[DB_MAX_NUMERIC_PRECISION * 4 + 2] = { '\0' };
+	    //char num_str[DB_MAX_NUMERIC_PRECISION * 4 + 2] = { '\0' };
+	    char num_str[NUMERIC_MAX_STRING_SIZE + 2] = { '\0' };
 	    char *num_str_p;
 	    int num_str_len = 0;
 	    bool increment = false;

@@ -48,6 +48,7 @@ typedef enum
 } NUMERIC_OPERATION_TYPE;
 
 // numeric 출력 문자열 크기 최대 값 : 300 = 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
+// TWICE_NUM_MAX_PREC 값을 175 에서 288 까지 늘려서, 나중에 NUMERIC_MAX_STRING_SIZE 값도 더 늘려야할 수 있음.
 #define NUMERIC_MAX_STRING_SIZE (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 13
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
