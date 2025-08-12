@@ -553,13 +553,15 @@ set(STORAGE_HEADERS
 )
 
 if(USE_SIMD_NATIVE)
-  set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
-      PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
-  )
-else()
-  set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
-      PROPERTIES COMPILE_FLAGS "-O3 -ftree-vectorize -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
-  )
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+        PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+        PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+    )
+  endif()
 endif()
 
 set(SESSION_SOURCES
