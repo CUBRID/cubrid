@@ -574,9 +574,6 @@ exit:
       case METHOD_CALLBACK_END_TRANSACTION:
 	error_code = callback_end_transaction (thread_ref, unpacker);
 	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error_code = callback_change_auth_rights (thread_ref, unpacker);
-	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
@@ -960,26 +957,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client_recv (java_lambda, code, command);
-    return error;
-  }
-
-  int
-  executor::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
-
-    int command;
-    std::string auth_name;
-
-    unpacker.unpack_all (command, auth_name);
-
-    auto java_lambda = [&] (const cubmem::block & b)
-    {
-      return m_stack->send_data_to_java (b);
-    };
-
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, auth_name);
     return error;
   }
 

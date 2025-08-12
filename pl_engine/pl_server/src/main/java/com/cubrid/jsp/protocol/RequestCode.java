@@ -17,7 +17,6 @@ public class RequestCode {
     public static final int REQUEST_GLOBAL_SEMANTICS = 0xA1;
     public static final int REQUEST_BUILTIN_FUNCTION = 0xA4;
 
-    public static final int REQUEST_CHANGE_AUTH_RIGHTS = 0xC8;
     public static final int REQUEST_CODE_ATTR = 0xC9;
 
     public static final int UTIL_BOOTSTRAP = 0xDD;

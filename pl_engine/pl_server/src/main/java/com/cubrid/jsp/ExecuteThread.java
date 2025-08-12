@@ -564,20 +564,4 @@ public class ExecuteThread extends Thread {
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
     }
-
-    private void sendAuthCommand(int command, String authName) throws Exception {
-        AuthInfo info = new AuthInfo(command, authName);
-        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(128));
-        packer.packInt(RequestCode.REQUEST_CHANGE_AUTH_RIGHTS);
-        info.pack(packer);
-        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
-
-        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
-        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
-        /* read header, dummy */
-        Header header = new Header(unpacker);
-        ByteBuffer payload = unpacker.unpackBuffer();
-        unpacker.setBuffer(payload);
-        int responseCode = unpacker.unpackInt();
-    }
 }
