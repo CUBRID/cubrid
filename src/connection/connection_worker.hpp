@@ -24,9 +24,9 @@
 #define _CONNECTION_WORKER_HPP_
 
 #include "server_support.h"
+#include "receiver.hpp"
 #include "epoll.hpp"
 #include "MPSCQueue.hpp"
-#include "DMRB_SPSC.hpp"
 
 #include <thread>
 #include <cstring>
@@ -65,16 +65,21 @@ namespace cubconn
     private:
       enum class state
       {
-	Somestate
+	HEADER,
+	CLOSE,
+	ABORT,
+	DATA,
+	ERROR,
+	COMMAND
       };
 
       struct context
       {
 	css_conn_entry *m_conn;
+	state m_state;
+	receiver m_receiver;
 
-	state m_state { state::Somestate };
-
-	context ();
+	context (std::size_t capacity);
 	~context ();
       };
 
@@ -104,6 +109,8 @@ namespace cubconn
       /* consumption must happen from only one thread.	    */
       cubbase::MPSCQueue<message> m_queue;
 
+      bool handle_connection_error (context *ctx);
+
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
@@ -113,8 +120,10 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* reception								     */
       /* --------------------------------------------------------------------------- */
-      bool recv_with_buffer (context *ctx);
-      bool handle_reception (context *ctx);
+      result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
+
+      result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
+      result handle_reception (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */

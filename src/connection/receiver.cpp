@@ -80,7 +80,8 @@ namespace cubconn
 
     while (m_received >= SIZE_HEADER + m_size)
     {
-      _er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_size = %d.\n", m_bufptr + SIZE_HEADER, m_size);
+      _er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_received = %d, m_size = %d, after parse = %d\n",
+		     m_bufptr + SIZE_HEADER, m_received, m_size, m_received - SIZE_HEADER - m_size);
 
       m_result.emplace_back (m_bufptr + SIZE_HEADER, m_size);
       m_received -= SIZE_HEADER + m_size;
@@ -155,6 +156,7 @@ namespace cubconn
 	{
 	  return result::Error;
 	}
+      _er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n", m_bufsize, m_size);
 	std::memcpy (ptr, m_bufptr, m_received);
 
 #if !defined (NDEBUG)
@@ -194,7 +196,7 @@ namespace cubconn
     if (bytes > 0)
     {
       m_received += bytes;
-
+      _er_log_debug (ARG_FILE_LINE, "receiver->receiver: received = %d, accumulated = %d\n", bytes, m_received);
       if (m_state == state::RecvInAllocated)
       {
 	if (m_received < SIZE_HEADER + m_size)
@@ -320,8 +322,8 @@ namespace cubconn
     }
   }
 
-  std::vector<cubbase::span<std::byte>> &receiver::get_result ()
+  std::vector<cubbase::span<std::byte>> *receiver::get_result ()
   {
-    return m_result;
+    return &m_result;
   }
 }

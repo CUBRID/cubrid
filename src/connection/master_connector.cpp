@@ -700,8 +700,6 @@ namespace cubconn
 
   inline bool master_connector::sent_reply_to_client (context *ctx) noexcept
   {
-    assert_release (css_Connect_handler);
-
     _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
@@ -824,6 +822,12 @@ namespace cubconn
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
+	    if (events[i].events & (EPOLLHUP | EPOLLERR))
+	      {
+		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
+		/* TODO: reestablish the connection */
+		return false;
+	      }
 	    if (events[i].events & EPOLLIN)
 	      {
 		if (!this->handle_master_reception (ctx))
@@ -839,11 +843,6 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_transmission failed");
 		    return false;
 		  }
-	      }
-	    if (events[i].events & (EPOLLHUP | EPOLLERR))
-	      {
-		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
-		return false;
 	      }
 	  }
       }
