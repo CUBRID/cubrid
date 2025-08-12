@@ -270,7 +270,7 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
+    cubmethod::header header (m_id, SP_CODE_DESTROY);
 
     m_last_conn_epoch = -1;
 

@@ -57,9 +57,6 @@ public class Context {
     // transaction Id
     private int tranactionId = -1;
 
-    // request Id (for future)
-    private int prevRequestId = 0;
-
     // charset
     private Charset sessionCharset = null;
 
@@ -136,15 +133,6 @@ public class Context {
             systemParameters = new HashMap<Integer, SysParam>();
         }
         return systemParameters;
-    }
-
-    public void checkHeader(Header header) {
-        if (prevRequestId > header.requestId) {
-            // not incremented
-            // a new session is started with the same session Id or the trasaction is ended
-            clear();
-        }
-        prevRequestId = header.requestId;
     }
 
     public void checkTranId(int tid) {

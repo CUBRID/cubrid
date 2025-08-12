@@ -286,7 +286,6 @@ public class ExecuteThread extends Thread {
         /* read header */
         Header header = new Header(unpacker);
         ctx = ContextManager.getContext(header.sessionId);
-        ctx.checkHeader(header);
 
         int startOffset = unpacker.getCurrentPosition();
         int payloadSize = unpacker.getCurrentLimit() - startOffset;
