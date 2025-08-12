@@ -241,8 +241,8 @@ struct upddel_class_info
   int needs_pruning;		/* perform partition pruning */
   int has_uniques;		/* whether there are unique constraints */
 
-  int *num_lob_attrs;		/* number of lob attributes for each subclass */
-  int **lob_attr_ids;		/* list of log attribute ids for each subclass */
+  int *num_lobfile_attrs;	/* number of lobfile attributes for each subclass */
+  int **lobfile_attr_ids;	/* list of log attribute ids for each subclass */
 
   int num_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
   int *mvcc_extra_assign_reev;	/* indexes of classes in the select list that are referenced in assignments to the

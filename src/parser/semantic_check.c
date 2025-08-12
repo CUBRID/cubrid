@@ -15674,7 +15674,7 @@ pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
 	  continue;
 	}
 
-      if (PT_IS_LOB_TYPE (r->type_enum))
+      if (PT_IS_LOBFILE_TYPE (r->type_enum))
 	{
 	  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_ORDERBY_ALLOWED,
 		      pt_short_print (parser, r));
@@ -15898,7 +15898,7 @@ pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * fun
       /* check order by */
       order_expr = order->info.sort_spec.expr;
       if (order->node_type != PT_SORT_SPEC || (order_expr->node_type != PT_NAME && order_expr->node_type != PT_VALUE)
-	  || PT_IS_LOB_TYPE (order_expr->type_enum))
+	  || PT_IS_LOBFILE_TYPE (order_expr->type_enum))
 	{
 	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_ORDERBY, func_name);
 	  goto error_exit;

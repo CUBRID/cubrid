@@ -2559,8 +2559,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	}
 
       /*
-       * The following code block is for handling LOB type.
-       * If the client is the log applier, it doesn't care LOB type.
+       * The following code block is for handling LOBFILE type.
+       * If the client is the log applier, it doesn't care LOBFILE type.
        */
       if (db_get_client_type () != DB_CLIENT_TYPE_LOG_APPLIER)
 	{

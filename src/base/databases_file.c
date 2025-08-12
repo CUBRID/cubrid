@@ -452,7 +452,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		    }
 
 		  str = cfg_pop_token (str, &db->logpath);
-		  str = cfg_pop_token (str, &db->lobpath);
+		  str = cfg_pop_token (str, &db->lobfilepath);
 
 		  if (databases == NULL)
 		    {
@@ -464,7 +464,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		    }
 		  last = db;
 		  if (db->name == NULL || db->pathname == NULL || db->hosts == NULL || db->logpath == NULL
-		      /* skip to check above to support backward compatibility || db->lobpath == NULL */ )
+		      /* skip to check above to support backward compatibility || db->lobfilepath == NULL */ )
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_INVALID_DATABASES, 1, DATABASES_FILENAME);
 		      if (databases != NULL)
@@ -551,7 +551,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		  free_and_init (primary_host);
 		}
 	      str = cfg_pop_linetoken (str, &db->logpath);
-	      str = cfg_pop_linetoken (str, &db->lobpath);
+	      str = cfg_pop_linetoken (str, &db->lobfilepath);
 
 	      if (databases == NULL)
 		{
@@ -563,7 +563,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		}
 	      last = db;
 	      if (db->name == NULL || db->pathname == NULL || db->hosts == NULL || db->logpath == NULL
-		  /* skip to check above to support backward compatibility || db->lobpath == NULL */ )
+		  /* skip to check above to support backward compatibility || db->lobfilepath == NULL */ )
 
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_INVALID_DATABASES, 1, DATABASES_FILENAME);
@@ -620,7 +620,7 @@ cfg_write_directory (const DB_INFO * databases)
       sigprocmask (SIG_SETMASK, &new_mask, &old_mask);
 #endif /* !WINDOWS */
 
-      fprintf (file_p, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
+      fprintf (file_p, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlobfile-base-path\n");
       for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
 	  bool t = (strlen (db_info_p->name) < 8);
@@ -656,9 +656,9 @@ cfg_write_directory (const DB_INFO * databases)
 #endif /* WINDOWS */
 	    }
 
-	  if (db_info_p->lobpath != NULL)
+	  if (db_info_p->lobfilepath != NULL)
 	    {
-	      fprintf (file_p, "\t%s ", db_info_p->lobpath);
+	      fprintf (file_p, "\t%s ", db_info_p->lobfilepath);
 	    }
 
 	  fprintf (file_p, "\n");
@@ -711,7 +711,7 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 #endif /* !WINDOWS */
 
   lseek (vdes, 0L, SEEK_SET);
-  n = sprintf (line, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
+  n = sprintf (line, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlobfile-base-path\n");
   write (vdes, line, n);
   for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
     {
@@ -736,9 +736,9 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 	{
 	  s += sprintf (s, "\t%s", db_info_p->logpath);
 	}
-      if (db_info_p->lobpath)
+      if (db_info_p->lobfilepath)
 	{
-	  s += sprintf (s, "\t%s", db_info_p->lobpath);
+	  s += sprintf (s, "\t%s", db_info_p->lobfilepath);
 	}
       s += sprintf (s, "\n");
       n = (int) (s - line);
@@ -783,9 +783,9 @@ cfg_free_directory (DB_INFO * databases)
 	{
 	  free_and_init (db_info_p->logpath);
 	}
-      if (db_info_p->lobpath != NULL)
+      if (db_info_p->lobfilepath != NULL)
 	{
-	  free_and_init (db_info_p->lobpath);
+	  free_and_init (db_info_p->lobfilepath);
 	}
       free_and_init (db_info_p);
     }
@@ -827,9 +827,9 @@ cfg_dump_directory (const DB_INFO * databases)
 	{
 	  fprintf (stdout, "%s ", db_info_p->logpath);
 	}
-      if (db_info_p->lobpath != NULL)
+      if (db_info_p->lobfilepath != NULL)
 	{
-	  fprintf (stdout, "%s", db_info_p->lobpath);
+	  fprintf (stdout, "%s", db_info_p->lobfilepath);
 	}
       fprintf (stdout, "\n");
     }
@@ -846,7 +846,7 @@ cfg_dump_directory (const DB_INFO * databases)
  *    host(in): server host name
  */
 void
-cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const char *lobpath, const char *host)
+cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const char *lobfilepath, const char *host)
 {
   char **ptr_p;
 
@@ -870,13 +870,13 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const
 	  db_info_p->logpath = strdup (logpath);
 	}
 
-      if (lobpath != NULL)
+      if (lobfilepath != NULL)
 	{
-	  if (db_info_p->lobpath != NULL)
+	  if (db_info_p->lobfilepath != NULL)
 	    {
-	      free_and_init (db_info_p->lobpath);
+	      free_and_init (db_info_p->lobfilepath);
 	    }
-	  db_info_p->lobpath = strdup (lobpath);
+	  db_info_p->lobfilepath = strdup (lobfilepath);
 	}
 
       if (host != NULL)
@@ -899,11 +899,11 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const
  *    name(in): database name
  *    path(in):
  *    logpath(in): log path
- *    lobpath(in): lob path
+ *    lobfilepath(in): lobfile path
  *    hosts(in):
  */
 DB_INFO *
-cfg_new_db (const char *name, const char *path, const char *logpath, const char *lobpath, const char **hosts)
+cfg_new_db (const char *name, const char *path, const char *logpath, const char *lobfilepath, const char **hosts)
 {
   DB_INFO *db_info_p;
 
@@ -915,7 +915,7 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
 
   db_info_p->pathname = NULL;
   db_info_p->logpath = NULL;
-  db_info_p->lobpath = NULL;
+  db_info_p->lobfilepath = NULL;
   db_info_p->hosts = NULL;
   db_info_p->num_hosts = 0;
 
@@ -961,9 +961,9 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
       goto error;
     }
 
-  if (lobpath != NULL)
+  if (lobfilepath != NULL)
     {
-      db_info_p->lobpath = strdup (lobpath);
+      db_info_p->lobfilepath = strdup (lobfilepath);
     }
 
   db_info_p->next = NULL;
@@ -985,9 +985,9 @@ error:
 	{
 	  free_and_init (db_info_p->logpath);
 	}
-      if (db_info_p->lobpath != NULL)
+      if (db_info_p->lobfilepath != NULL)
 	{
-	  free_and_init (db_info_p->lobpath);
+	  free_and_init (db_info_p->lobfilepath);
 	}
       if (db_info_p->hosts != NULL)
 	{
@@ -1031,10 +1031,10 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
  *    name(in): database name
  *    path(in): directory path
  *    logpath(in): log path
- *    lobpath(in): lob path
+ *    lobfilepath(in): lobfile path
  */
 DB_INFO *
-cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logpath, const char *lobpath,
+cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logpath, const char *lobfilepath,
 	    const char *host)
 {
   DB_INFO *db_info_p;
@@ -1044,11 +1044,11 @@ cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logp
       const char *hosts[2];
       hosts[0] = host;
       hosts[1] = NULL;
-      db_info_p = cfg_new_db (name, path, logpath, lobpath, hosts);
+      db_info_p = cfg_new_db (name, path, logpath, lobfilepath, hosts);
     }
   else
     {
-      db_info_p = cfg_new_db (name, path, logpath, lobpath, NULL);
+      db_info_p = cfg_new_db (name, path, logpath, lobfilepath, NULL);
     }
 
   if (db_info_p != NULL)
@@ -1097,13 +1097,14 @@ cfg_find_db (const char *db_name)
 	    {
 	      if (db_info_p->hosts != NULL)
 		{
-		  db_info_p = cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
-					  (const char **) db_info_p->hosts);
+		  db_info_p =
+		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobfilepath,
+				(const char **) db_info_p->hosts);
 		}
 	      else
 		{
-		  db_info_p = cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
-					  NULL);
+		  db_info_p =
+		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobfilepath, NULL);
 		}
 	    }
 	  cfg_free_directory (dir_info_p);

@@ -3470,31 +3470,31 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
   /* has_uniques */
   ptr = or_unpack_int (ptr, &upd_cls->has_uniques);
 
-  /* num_lob_attrs */
+  /* num_lobfile_attrs */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || upd_cls->num_subclasses == 0)
     {
-      upd_cls->num_lob_attrs = NULL;
+      upd_cls->num_lobfile_attrs = NULL;
     }
   else
     {
-      upd_cls->num_lob_attrs =
+      upd_cls->num_lobfile_attrs =
 	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_subclasses);
-      if (upd_cls->num_lob_attrs == NULL)
+      if (upd_cls->num_lobfile_attrs == NULL)
 	{
 	  return NULL;
 	}
     }
-  /* lob_attr_ids */
+  /* lobfile_attr_ids */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || upd_cls->num_subclasses == 0)
     {
-      upd_cls->lob_attr_ids = NULL;
+      upd_cls->lobfile_attr_ids = NULL;
     }
   else
     {
-      upd_cls->lob_attr_ids = (int **) stx_alloc_struct (thread_p, upd_cls->num_subclasses * sizeof (int *));
-      if (!upd_cls->lob_attr_ids)
+      upd_cls->lobfile_attr_ids = (int **) stx_alloc_struct (thread_p, upd_cls->num_subclasses * sizeof (int *));
+      if (!upd_cls->lobfile_attr_ids)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
@@ -3503,23 +3503,24 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
       for (i = 0; i < upd_cls->num_subclasses; i++)
 	{
 	  p = or_unpack_int (p, &offset);
-	  if (offset == 0 || upd_cls->num_lob_attrs[i] == 0)
+	  if (offset == 0 || upd_cls->num_lobfile_attrs[i] == 0)
 	    {
-	      upd_cls->lob_attr_ids[i] = NULL;
+	      upd_cls->lobfile_attr_ids[i] = NULL;
 	    }
 	  else
 	    {
-	      upd_cls->lob_attr_ids[i] =
-		stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_lob_attrs[i]);
-	      if (upd_cls->lob_attr_ids[i] == NULL)
+	      upd_cls->lobfile_attr_ids[i] =
+		stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_lobfile_attrs[i]);
+	      if (upd_cls->lobfile_attr_ids[i] == NULL)
 		{
 		  return NULL;
 		}
 	    }
 	}
     }
-  /* make sure num_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
-  assert ((upd_cls->num_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->num_lob_attrs && !upd_cls->lob_attr_ids));
+  /* make sure num_lobfile_attrs and lobfile_attr_ids are both NULL or are both not NULL */
+  assert ((upd_cls->num_lobfile_attrs && upd_cls->lobfile_attr_ids)
+	  || (!upd_cls->num_lobfile_attrs && !upd_cls->lobfile_attr_ids));
 
   /* num_extra_assign_reev & mvcc_extra_assign_reev */
   ptr = or_unpack_int (ptr, &upd_cls->num_extra_assign_reev);

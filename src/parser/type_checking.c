@@ -3294,10 +3294,10 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads[num++] = sig;
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
 
       sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
 
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_LOGICAL;
@@ -3439,18 +3439,18 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.type = PT_TYPE_VARCHAR;
       def->overloads[num++] = sig;
 
-      /* arg1 : generic lob, arg2 : generic lob */
+      /* arg1 : generic lobfile, arg2 : generic lobfile */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       def->overloads[num++] = sig;
 
       /* arg1 : generic sequence, arg2 : generic type any */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -3627,20 +3627,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.type = PT_TYPE_VARCHAR;
       def->overloads[num++] = sig;
 
-      /* arg1, arg2, arg3 : generic lob */
+      /* arg1, arg2, arg3 : generic lobfile */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.arg2_type.type = pt_arg_type::GENERIC;
-      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.arg3_type.type = pt_arg_type::GENERIC;
-      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg3_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.return_type.type = pt_arg_type::GENERIC;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       def->overloads[num++] = sig;
 
-      /* arg1 : generic lob, arg2, arg3 : generic type any */
+      /* arg1 : generic lobfile, arg2, arg3 : generic type any */
       sig.arg1_type.type = pt_arg_type::GENERIC;
-      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOB;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_LOBFILE;
       sig.arg2_type.type = pt_arg_type::GENERIC;
       sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_ANY;
       sig.arg3_type.type = pt_arg_type::GENERIC;

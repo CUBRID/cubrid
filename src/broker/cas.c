@@ -220,9 +220,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_check_cas,			/* CAS_FC_CHECK_CAS */
   fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
   fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
-  fn_not_supported,		/* CAS_FC_LOB_NEW */
-  fn_not_supported,		/* CAS_FC_LOB_WRITE */
-  fn_not_supported,		/* CAS_FC_LOB_READ */
+  fn_not_supported,		/* CAS_FC_LOBFILE_NEW */
+  fn_not_supported,		/* CAS_FC_LOBFILE_WRITE */
+  fn_not_supported,		/* CAS_FC_LOBFILE_READ */
   fn_not_supported,		/* CAS_FC_END_SESSION */
   fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
   fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
@@ -267,9 +267,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_check_cas,			/* CAS_FC_CHECK_CAS */
   fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
   fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
-  fn_not_supported,		/* CAS_FC_LOB_NEW */
-  fn_not_supported,		/* CAS_FC_LOB_WRITE */
-  fn_not_supported,		/* CAS_FC_LOB_READ */
+  fn_not_supported,		/* CAS_FC_LOBFILE_NEW */
+  fn_not_supported,		/* CAS_FC_LOBFILE_WRITE */
+  fn_not_supported,		/* CAS_FC_LOBFILE_READ */
   fn_not_supported,		/* CAS_FC_END_SESSION */
   fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
   fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
@@ -314,9 +314,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_check_cas,			/* CAS_FC_CHECK_CAS */
   fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
   fn_get_generated_keys,	/* CAS_FC_GET_GENERATED_KEYS */
-  fn_lob_new,			/* CAS_FC_LOB_NEW */
-  fn_lob_write,			/* CAS_FC_LOB_WRITE */
-  fn_lob_read,			/* CAS_FC_LOB_READ */
+  fn_lobfile_new,		/* CAS_FC_LOBFILE_NEW */
+  fn_lobfile_write,		/* CAS_FC_LOBFILE_WRITE */
+  fn_lobfile_read,		/* CAS_FC_LOBFILE_READ */
   fn_end_session,		/* CAS_FC_END_SESSION */
   fn_get_row_count,		/* CAS_FC_GET_ROW_COUNT */
   fn_get_last_insert_id,	/* CAS_FC_GET_LAST_INSERT_ID */
@@ -363,9 +363,9 @@ static const char *server_func_name[] = {
   "check_cas",
   "fn_make_out_rs",
   "fn_get_generated_keys",
-  "fn_lob_new",
-  "fn_lob_write",
-  "fn_lob_read",
+  "fn_lobfile_new",
+  "fn_lobfile_write",
+  "fn_lobfile_read",
   "fn_end_session",
   "fn_get_row_count",
   "fn_get_last_insert_id",

@@ -413,8 +413,8 @@ regu_init (upddel_class_info &upddel)
   upddel.num_subclasses = 0;
   upddel.num_attrs = 0;
   upddel.needs_pruning = DB_NOT_PARTITIONED_CLASS;
-  upddel.num_lob_attrs = NULL;
-  upddel.lob_attr_ids = NULL;
+  upddel.num_lobfile_attrs = NULL;
+  upddel.lobfile_attr_ids = NULL;
   upddel.num_extra_assign_reev = 0;
   upddel.mvcc_extra_assign_reev = NULL;
 }

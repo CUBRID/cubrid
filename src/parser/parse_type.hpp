@@ -41,7 +41,7 @@ enum pt_generic_type_enum
   PT_GENERIC_TYPE_DATE, // date, datetime or timestamp
   PT_GENERIC_TYPE_DATETIME, // any date or time type
   PT_GENERIC_TYPE_SEQUENCE, // any type of sequence
-  PT_GENERIC_TYPE_LOB, // BFILE or CFILE
+  PT_GENERIC_TYPE_LOBFILE, // BFILE or CFILE
   PT_GENERIC_TYPE_QUERY, // Sub query (for range operators)
   PT_GENERIC_TYPE_PRIMITIVE, // primitive types
   PT_GENERIC_TYPE_ANY, // any type

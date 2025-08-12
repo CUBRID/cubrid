@@ -243,7 +243,7 @@ struct json_t;
 	  ((t) == PT_TYPE_BIT)	    || \
 	  ((t) == PT_TYPE_ENUMERATION))
 
-#define PT_IS_LOB_TYPE(t) \
+#define PT_IS_LOBFILE_TYPE(t) \
         ( ((t) == PT_TYPE_BFILE)  || \
 	  ((t) == PT_TYPE_CFILE))
 

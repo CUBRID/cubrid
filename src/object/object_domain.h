@@ -243,7 +243,7 @@ typedef enum tp_match
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
 
-#define TP_IS_LOB_TYPE(typeid) \
+#define TP_IS_LOBFILE_TYPE(typeid) \
   (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
 
 #define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \

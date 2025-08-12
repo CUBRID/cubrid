@@ -7167,7 +7167,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    PT_NODE *elem;
 		    for (elem = dtyp; elem != NULL; elem = elem->next)
 		      {
-			if (PT_IS_LOB_TYPE (elem->type_enum))
+			if (PT_IS_LOBFILE_TYPE (elem->type_enum))
 			  {
 			    PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
 					 MSGCAT_SEMANTIC_INVALID_SET_ELEMENT, pt_show_type_enum (attribute->type_enum),

@@ -69,7 +69,7 @@ static ARG_MAP_TABLE ua_Copy_map[] = {
   {"-tf", "--" COPY_CONTROL_FILE_L},
   {"-r", "--" COPY_REPLACE_L},
   {"-m", "--" COPY_DELETE_SOURCE_L},
-  {"-B", "--" COPY_LOB_PATH_L},
+  {"-B", "--" COPY_LOBFILE_PATH_L},
   {0, 0}
 };
 

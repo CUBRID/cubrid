@@ -228,9 +228,9 @@ extern void reset_optimization_level_as_saved (void);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
-extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
-extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
+extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
+extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
+extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);

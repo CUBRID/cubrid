@@ -39,7 +39,7 @@ const char *pt_generic_type_to_string (pt_generic_type_enum type)
     "GENERIC DATE TYPE",
     "GENERIC DATETIME TYPE",
     "GENERIC SEQUENCE TYPE",
-    "GENERIC LOB TYPE",
+    "GENERIC LOBFILE TYPE",
     "GENERIC QUERY TYPE",    // what is this?
     "GENERIC PRIMITIVE TYPE",
     "GENERIC ANY TYPE",

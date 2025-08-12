@@ -4040,7 +4040,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
-	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
+	  ptr = or_unpack_string (ptr, &server_credential->lobfile_path);
 	  ptr = or_unpack_int (ptr, &server_credential->process_id);
 	  ptr = or_unpack_oid (ptr, &server_credential->root_class_oid);
 	  ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
@@ -5612,7 +5612,7 @@ boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
  *   newlog_path(in): Directory where the log volumes of the new database will reside
- *   new_lob_path(in): Directory where the lob volumes of the new database will reside
+ *   new_lobfile_path(in): Directory where the lobfile volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
  *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
  *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
@@ -5626,7 +5626,7 @@ boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *
  */
 int
 boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_path, const char *new_log_path,
-	   const char *new_lob_path, const char *new_db_server_host,
+	   const char *new_lobfile_path, const char *new_db_server_host,
 	   const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
 {
 #if defined(CS_MODE)
@@ -5638,7 +5638,7 @@ boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_
   THREAD_ENTRY *thread_p = enter_server ();
 
   error_code =
-    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
+    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lobfile_path, new_db_server_host,
 		new_volext_path, fileof_vols_and_copypaths, new_db_overwrite);
   assert (thread_p == NULL);
 

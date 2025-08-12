@@ -290,7 +290,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	{
 	  type = CCI_U_TYPE_BIT;
 	}
-      else if (memcmp (p, "BFILE", 5) == 0)
+      else if (memcmp (p, "BFILE", 6) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
 	  fprintf (stderr, "%s\nBFILE type is not implemented. Replaced with NULL\n", value_p);
@@ -305,7 +305,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	{
 	  type = CCI_U_TYPE_CHAR;
 	}
-      else if (memcmp (p, "CFILE", 5) == 0)
+      else if (memcmp (p, "CFILE", 6) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
 	  fprintf (stderr, "%s\nCFILE type is not implemented. Replaced with NULL\n", value_p);

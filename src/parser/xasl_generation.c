@@ -9344,7 +9344,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOB_LENGTH, domain);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOBFILE_LENGTH, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
@@ -20612,7 +20612,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* append LOB type attributes to select_list */
+      /* append LOBFILE type attributes to select_list */
       node = statement->info.delete_.spec;
       while (node)
 	{
@@ -20632,7 +20632,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  if (attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 		    {
-		      /* add lob to select list */
+		      /* add lobfile to select list */
 		      select_node = pt_name (parser, attr->header.name);
 		      if (select_node)
 			{
@@ -20787,7 +20787,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * must match the order of OID's in the generated SELECT statement */
       for (i = num_classes - 1, node = statement->info.delete_.spec; i >= 0 && node != NULL; node = node->next)
 	{
-	  bool found_lob = false;
+	  bool found_lobfile = false;
 
 	  if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 	    {
@@ -20831,21 +20831,21 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (!class_info->needs_pruning)
 	    {
-	      class_info->num_lob_attrs = regu_int_array_alloc (num_subclasses);
-	      if (class_info->num_lob_attrs == NULL)
+	      class_info->num_lobfile_attrs = regu_int_array_alloc (num_subclasses);
+	      if (class_info->num_lobfile_attrs == NULL)
 		{
 		  goto error_return;
 		}
-	      regu_array_alloc (&class_info->lob_attr_ids, num_subclasses);
-	      if (class_info->lob_attr_ids == NULL)
+	      regu_array_alloc (&class_info->lobfile_attr_ids, num_subclasses);
+	      if (class_info->lobfile_attr_ids == NULL)
 		{
 		  goto error_return;
 		}
 	    }
 	  else
 	    {
-	      class_info->num_lob_attrs = NULL;
-	      class_info->lob_attr_ids = NULL;
+	      class_info->num_lobfile_attrs = NULL;
+	      class_info->lobfile_attr_ids = NULL;
 	    }
 
 	  j = 0;
@@ -20869,12 +20869,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      if (!class_info->needs_pruning)
 		{
-		  class_info->num_lob_attrs[j] = 0;
-		  class_info->lob_attr_ids[j] = NULL;
+		  class_info->num_lobfile_attrs[j] = 0;
+		  class_info->lobfile_attr_ids[j] = NULL;
 
 		  if (cl_name_node != node->info.spec.flat_entity_list)
 		    {
-		      /* lob attributes from root table are already handled */
+		      /* lobfile attributes from root table are already handled */
 		      DB_ATTRIBUTE *attrs, *attr;
 
 		      attrs = db_get_attributes (class_obj);
@@ -20883,18 +20883,18 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  if ((attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 			      && (attr->class_mop != node->info.spec.flat_entity_list->info.name.db_object))
 			    {
-			      /* count lob attributes that don't belong to the root table */
-			      class_info->num_lob_attrs[j]++;
-			      found_lob = true;
+			      /* count lobfile attributes that don't belong to the root table */
+			      class_info->num_lobfile_attrs[j]++;
+			      found_lobfile = true;
 			    }
 			}
-		      if (class_info->num_lob_attrs[j] > 0)
+		      if (class_info->num_lobfile_attrs[j] > 0)
 			{
-			  /* some lob attributes were found, save their ids */
+			  /* some lobfile attributes were found, save their ids */
 			  int count = 0;
 
-			  class_info->lob_attr_ids[j] = regu_int_array_alloc (class_info->num_lob_attrs[j]);
-			  if (!class_info->lob_attr_ids[j])
+			  class_info->lobfile_attr_ids[j] = regu_int_array_alloc (class_info->num_lobfile_attrs[j]);
+			  if (!class_info->lobfile_attr_ids[j])
 			    {
 			      goto error_return;
 			    }
@@ -20903,7 +20903,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			      if ((attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 				  && (attr->class_mop != node->info.spec.flat_entity_list->info.name.db_object))
 				{
-				  class_info->lob_attr_ids[j][count++] = attr->id;
+				  class_info->lobfile_attr_ids[j][count++] = attr->id;
 				}
 			    }
 			}
@@ -20914,12 +20914,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      j++;
 	    }
 
-	  if (!found_lob)
+	  if (!found_lobfile)
 	    {
-	      /* no lob attributes were found, num_lob_attrs and lob_attr_ids can be set to NULL. this avoids keeping
+	      /* no lobfile attributes were found, num_lobfile_attrs and lobfile_attr_ids can be set to NULL. this avoids keeping
 	       * useless information in xasl */
-	      class_info->num_lob_attrs = NULL;
-	      class_info->lob_attr_ids = NULL;
+	      class_info->num_lobfile_attrs = NULL;
+	      class_info->lobfile_attr_ids = NULL;
 	    }
 	}
 

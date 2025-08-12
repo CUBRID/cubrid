@@ -255,7 +255,7 @@ typedef enum
 {
   SPACEDB_OUTPUT_TITLE = 10,
   SPACEDB_MSG_BAD_OUTPUT = 11,
-  SPACEDB_OUTPUT_TITLE_LOB = 12,
+  SPACEDB_OUTPUT_TITLE_LOBFILE = 12,
 
   SPACEDB_MSG_ALL_HEADER_PAGES = 20,
   SPACEDB_MSG_ALL_HEADER_SIZE = 21,
@@ -1032,8 +1032,8 @@ typedef struct _ha_config
 #define CREATE_FILE_PATH_L                      "file-path"
 #define CREATE_LOG_PATH_S                       'L'
 #define CREATE_LOG_PATH_L                       "log-path"
-#define CREATE_LOB_PATH_S                       'B'
-#define CREATE_LOB_PATH_L                       "lob-base-path"
+#define CREATE_LOBFILE_PATH_S                       'B'
+#define CREATE_LOBFILE_PATH_L                       "lobfile-base-path"
 #define CREATE_SERVER_NAME_S                    10105
 #define CREATE_SERVER_NAME_L                    "server-name"
 #define CREATE_REPLACE_S                        'r'
@@ -1086,10 +1086,10 @@ typedef struct _ha_config
 #define COPY_REPLACE_L                          "replace"
 #define COPY_DELETE_SOURCE_S                    'd'
 #define COPY_DELETE_SOURCE_L                    "delete-source"
-#define COPY_LOB_PATH_S				'B'
-#define COPY_LOB_PATH_L				"lob-base-path"
-#define COPY_COPY_LOB_PATH_S			10308
-#define COPY_COPY_LOB_PATH_L			"copy-lob-path"
+#define COPY_LOBFILE_PATH_S				'B'
+#define COPY_LOBFILE_PATH_L				"lobfile-base-path"
+#define COPY_COPY_LOBFILE_PATH_S			10308
+#define COPY_COPY_LOBFILE_PATH_L			"copy-lobfile-path"
 
 /* deletedb option list */
 #define DELETE_OUTPUT_FILE_S                    'o'

@@ -623,7 +623,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_BIT_TO_BFILE:
     case T_CHAR_TO_CFILE:
-    case T_LOB_LENGTH:
+    case T_LOBFILE_LENGTH:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
 	  goto error;
@@ -2253,7 +2253,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       break;
 
-    case T_LOB_LENGTH:
+    case T_LOBFILE_LENGTH:
       if (DB_IS_NULL (peek_left))
 	{
 	  PRIM_SET_NULL (arithptr->value);

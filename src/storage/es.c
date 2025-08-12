@@ -169,8 +169,8 @@ es_create_file (char *out_uri)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   return ret;
@@ -198,8 +198,8 @@ es_write_file (const char *uri, const void *buf, size_t count, off_t offset)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (uri);
@@ -254,8 +254,8 @@ es_read_file (const char *uri, void *buf, size_t count, off_t offset)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (uri);
@@ -309,8 +309,8 @@ es_delete_file (const char *uri)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (uri);
@@ -363,8 +363,8 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (in_uri);
@@ -427,8 +427,8 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (in_uri);
@@ -487,8 +487,8 @@ es_get_file_size (const char *uri)
 
   if (es_initialized_type == ES_NONE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-      return ER_ES_NO_LOB_PATH;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
+      return ER_ES_NO_LOBFILE_PATH;
     }
 
   es_type = es_get_type (uri);

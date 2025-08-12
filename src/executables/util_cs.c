@@ -1109,8 +1109,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   if (!summarize)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOB),
-	       boot_get_lob_path ());
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOBFILE),
+	       boot_get_lobfile_path ());
     }
 
   db_shutdown ();

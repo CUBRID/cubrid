@@ -106,9 +106,9 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_check_cas,	/* fn_check_cas */
   fn_proxy_client_not_supported,	/* fn_make_out_rs */
   fn_proxy_client_not_supported,	/* fn_get_generated_keys */
-  fn_proxy_client_not_supported,	/* fn_lob_new */
-  fn_proxy_client_not_supported,	/* fn_lob_write */
-  fn_proxy_client_not_supported,	/* fn_lob_read */
+  fn_proxy_client_not_supported,	/* fn_lobfile_new */
+  fn_proxy_client_not_supported,	/* fn_lobfile_write */
+  fn_proxy_client_not_supported,	/* fn_lobfile_read */
   fn_proxy_client_not_supported,	/* fn_end_session */
   fn_proxy_client_not_supported,	/* fn_get_row_count */
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
@@ -153,9 +153,9 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_check_cas,	/* fn_check_cas */
   fn_proxy_cas_relay_only,	/* fn_make_out_rs */
   fn_proxy_cas_relay_only,	/* fn_get_generated_keys */
-  fn_proxy_cas_relay_only,	/* fn_lob_new */
-  fn_proxy_cas_relay_only,	/* fn_lob_write */
-  fn_proxy_cas_relay_only,	/* fn_lob_read */
+  fn_proxy_cas_relay_only,	/* fn_lobfile_new */
+  fn_proxy_cas_relay_only,	/* fn_lobfile_write */
+  fn_proxy_cas_relay_only,	/* fn_lobfile_read */
   fn_proxy_cas_relay_only,	/* fn_end_session */
   fn_proxy_cas_relay_only,	/* fn_get_row_count */
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */

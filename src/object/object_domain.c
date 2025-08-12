@@ -5708,7 +5708,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
     (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR ||	\
      db_val_type == DB_TYPE_NCHAR || db_val_type == DB_TYPE_VARNCHAR)
 
-#define TP_IS_LOB(db_val_type)                                          \
+#define TP_IS_LOBFILE(db_val_type)                                          \
     (db_val_type == DB_TYPE_BFILE || db_val_type == DB_TYPE_CFILE)
 
 #define TP_IS_DATETIME_TYPE(db_val_type) TP_IS_DATE_OR_TIME_TYPE (db_val_type)
@@ -5720,7 +5720,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 				      dest_type == DB_TYPE_ENUMERATION)) ||\
     (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
      TP_IS_CHAR_STRING(dest_type)) ||					\
-    (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
+    (TP_IS_LOBFILE(src_type) || TP_IS_LOBFILE(dest_type)))
 
 /*
  * tp_value_string_to_double - Coerce a string to a double.

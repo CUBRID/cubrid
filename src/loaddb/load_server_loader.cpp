@@ -641,7 +641,7 @@ namespace cubload
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
+	if (heap_attrinfo_transform_to_disk_except_lobfile (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
 	    != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
