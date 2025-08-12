@@ -1048,9 +1048,12 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
 {
   if (to_stats)
     {
-      perfmon_get_peek_stats (pstat_Global.global_stats);
-      perfmon_copy_values (to_stats, pstat_Global.global_stats);
-      perfmon_server_calc_stats (to_stats);
+      if (pstat_Global.initialized)
+	{
+	  perfmon_get_peek_stats (pstat_Global.global_stats);
+	  perfmon_copy_values (to_stats, pstat_Global.global_stats);
+	  perfmon_server_calc_stats (to_stats);
+	}
     }
 }
 
@@ -3094,6 +3097,7 @@ perfmon_initialize (int num_trans)
   pstat_Global.is_watching = NULL;
   pstat_Global.n_watchers = 0;
   pstat_Global.initialized = false;
+  return NO_ERROR;
   pstat_Global.activation_flag = prm_get_integer_value (PRM_ID_EXTENDED_STATISTICS_ACTIVATION);
 
 #if defined (SERVER_MODE)
@@ -3258,7 +3262,10 @@ void
 perfmon_start_watch (THREAD_ENTRY * thread_p)
 {
   int tran_index;
-
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
   assert (pstat_Global.initialized);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -3300,6 +3307,10 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
   int tran_index;
 
   assert (pstat_Global.initialized);
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
