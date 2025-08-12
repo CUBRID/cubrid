@@ -51,6 +51,7 @@ namespace cubconn
     PeerReset,
     RefuseConnection,
     ClosedConnection,
+    Aborted,
     Skewed
   };
 

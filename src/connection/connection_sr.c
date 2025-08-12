@@ -94,17 +94,6 @@
 #define TRACE(string, arg)
 #endif /* PACKET_TRACE */
 
-/* data wait queue */
-typedef struct css_wait_queue_entry
-{
-  char **buffer;
-  int *size;
-  int *rc;
-  THREAD_ENTRY *thrd_entry;	/* thread waiting for data */
-  struct css_wait_queue_entry *next;
-  unsigned int key;
-} CSS_WAIT_QUEUE_ENTRY;
-
 typedef struct queue_search_arg
 {
   CSS_QUEUE_ENTRY *entry_ptr;
@@ -186,21 +175,14 @@ static void css_free_net_header_list (CSS_CONN_ENTRY * conn);
 static CSS_QUEUE_ENTRY *css_make_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char *buffer,
 					      int size, int rc, int transid, int invalidate_snapshot, int db_error);
 static void css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry);
-static css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id,
-					   char *buffer, int buffer_size, int rc, int transid, int invalidate_snapshot,
-					   int db_error);
 static CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_LIST * list, unsigned int key);
 static CSS_QUEUE_ENTRY *css_find_and_remove_queue_entry (CSS_LIST * list, unsigned int key);
 static CSS_WAIT_QUEUE_ENTRY *css_make_wait_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char **buffer,
 							int *size, int *rc);
-static void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
 static CSS_WAIT_QUEUE_ENTRY *css_add_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list,
 						       unsigned short request_id, char **buffer, int *buffer_size,
 						       int *rc);
-static CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
-
 static void css_process_close_packet (CSS_CONN_ENTRY * conn);
-static bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid,
 						    char **bufferp);
 static int css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char **buffer, int *bufsize,
@@ -1965,7 +1947,7 @@ css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry)
  *   transid(in):
  *   db_error(in):
  */
-static css_error_code
+css_error_code
 css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id, char *buffer, int buffer_size,
 		     int rc, int transid, int invalidate_snapshot, int db_error)
 {
@@ -2099,7 +2081,7 @@ css_make_wait_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char **buffe
  *   conn(in): connection entry
  *   entry(in): wait queue entry
  */
-static void
+void
 css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry)
 {
   if (entry == NULL)
@@ -2185,7 +2167,7 @@ find_wait_queue_entry_by_key (void *data, void *user)
  *   list(in): wait queue list
  *   key(in):
  */
-static CSS_WAIT_QUEUE_ENTRY *
+CSS_WAIT_QUEUE_ENTRY *
 css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key)
 {
   CSS_WAIT_QUEUE_SEARCH_ARG arg;
@@ -2592,7 +2574,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
  *   conn(in): connection entry
  *   request_id(in): request id
  */
-static bool
+bool
 css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *p;

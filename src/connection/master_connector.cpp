@@ -148,7 +148,7 @@ namespace cubconn
   {
     std::uint32_t flags;
 
-    flags = EPOLLIN;
+    flags = EPOLLIN | EPOLLRDHUP;
     if (ctx->has_data_to_send ())
       {
 	flags |= EPOLLOUT;
@@ -220,7 +220,7 @@ namespace cubconn
     if (!this->make_nonblocking (fd))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: make_nonblocking failed - error: %s", strerror (errno));
-	close (fd);
+	::close (fd);
 	return false;
       }
 
@@ -229,7 +229,7 @@ namespace cubconn
     if (!conn)
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: malloc failed: CSS_CONN_ENTRY");
-	close (fd);
+	::close (fd);
 	return false;
       }
     m_context.m_conn = conn;
@@ -291,7 +291,7 @@ namespace cubconn
     /* make the packets to msghdr */
     m_context.m_sendbuf.stamp_msghdr ();
 
-    if (!m_events.add_descriptor (conn->fd, EPOLLIN | EPOLLOUT, &m_context))
+    if (!m_events.add_descriptor (conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, &m_context))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_handshake: m_events->add_descriptor failed: %s",
 		       strerror (errno));
@@ -363,7 +363,7 @@ namespace cubconn
     /* make the packets to msghdr */
     ctx->m_sendbuf.stamp_msghdr ();
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT, ctx))
+    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
       {
 	_er_log_debug (__FILE__, __LINE__,
 		       "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
@@ -409,7 +409,7 @@ namespace cubconn
     ctx->m_sendbuf.stamp_msghdr ();
     ctx->m_has_error = true;
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT, ctx))
+    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
       {
 	_er_log_debug (__FILE__, __LINE__,
 		       "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
@@ -461,7 +461,7 @@ namespace cubconn
 	return false;
       }
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN, ctx))
+    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLRDHUP, ctx))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: m_events->add_descriptor failed: %s",
 		       strerror (errno));
@@ -527,6 +527,13 @@ namespace cubconn
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: css_open_new_socket_from_master failed");
 	return result::Reset;
+      }
+
+    if (!this->make_nonblocking (new_fd))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: request_new_client failed - error: %s", strerror (errno));
+	::close (new_fd);
+	return result::Error;
       }
 
     /* make new context and conn */
@@ -710,9 +717,9 @@ namespace cubconn
 
     if (!ctx->m_has_error)
       {
-	(void) (*css_Connect_handler) (ctx->m_conn);
+	css_insert_into_active_conn_list (ctx->m_conn);
 
-	//m_connection_pool->dispatch (ctx->m_conn);
+	m_connection_pool->dispatch (ctx->m_conn);
       }
     else
       {
@@ -822,7 +829,7 @@ namespace cubconn
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
-	    if (events[i].events & (EPOLLHUP | EPOLLERR))
+	    if (events[i].events & EPOLLERR)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
 		/* TODO: reestablish the connection */
@@ -843,6 +850,12 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_transmission failed");
 		    return false;
 		  }
+	      }
+	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP))
+	      {
+		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
+		/* TODO: reestablish the connection */
+		return false;
 	      }
 	  }
       }
