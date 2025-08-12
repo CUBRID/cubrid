@@ -4337,7 +4337,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (type == DB_TYPE_NUMERIC)
 	{
-	  snprintf (buf, 128, "%s (%u, %u)", type_name, value->domain.numeric_info.precision,
+	  snprintf (buf, 128, "%s (%u, %d)", type_name, value->domain.numeric_info.precision,
 		    value->domain.numeric_info.scale);
 	}
       else
