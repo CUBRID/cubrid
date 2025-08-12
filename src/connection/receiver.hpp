@@ -49,6 +49,8 @@ namespace cubconn
     receiver (std::size_t capacity);
     ~receiver ();
 
+    void reset ();
+
     result drain (int fd);
     void release (cubbase::span<std::byte> &mem);
 

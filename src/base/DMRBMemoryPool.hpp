@@ -39,6 +39,8 @@ namespace cubbase
       DMRBMemoryPool (std::size_t capacity);
       ~DMRBMemoryPool ();
 
+      void reset ();
+
       cubbase::span<std::byte> buffer ();
       void restore (cubbase::span<std::byte> &span);
       bool is_in (cubbase::span<std::byte> &span);
