@@ -116,8 +116,8 @@ extern unsigned int db_on_server;
  * Ultimately they may be of variable size based on the precision and scale,
  * in antipication of that move, use the followign function for copying.
  */
-#define OR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE + 3
-#define MR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE + 3
+#define OR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
+#define MR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
 
 #define STR_SIZE(prec, codeset)                                             \
      (((codeset) == INTL_CODESET_RAW_BITS) ? ((prec+7)/8) :		    \
