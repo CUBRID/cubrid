@@ -195,20 +195,6 @@ public class ExecuteThread extends Thread {
                                 writeBuffer(resultBuffer);
                                 break;
                             }
-                        case RequestCode.UTIL_TERMINATE_THREAD:
-                            {
-                                // hacky way.. If thread is terminated and socket is closed
-                                // immediately,
-                                // "ping" or "status" command does not work properly
-                                sleep(100);
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                        case RequestCode.UTIL_TERMINATE_SERVER:
-                            {
-                                Server.stop(0);
-                                break;
-                            }
 
                             /* invalid request */
                         default:
