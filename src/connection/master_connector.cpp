@@ -712,7 +712,7 @@ namespace cubconn
       {
 	(void) (*css_Connect_handler) (ctx->m_conn);
 
-	m_connection_pool->dispatch (ctx->m_conn);
+	//m_connection_pool->dispatch (ctx->m_conn);
       }
     else
       {

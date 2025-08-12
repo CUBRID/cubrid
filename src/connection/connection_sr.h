@@ -195,6 +195,7 @@ extern void css_free_user_access_status (void);
 extern void css_set_exec_path (char *exec_path);
 extern void css_set_argv (char **argv);
 
+extern void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 char *css_get_exec_path (void);
 char **css_get_argv (void);
