@@ -92,7 +92,7 @@ namespace cubpl
   size_t
   invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_int_size (size); // tran_id
+    size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
