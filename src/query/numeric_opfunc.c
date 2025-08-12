@@ -212,6 +212,7 @@ static int count_digits_by_division (const uint8_t * calc_buf, int calc_bytes);
 static void fp_numeric_init_pow10_table (void);
 static int fp_numeric_cmp_base256 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static int fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes);
+static int fp_numeric_get_precision_digits (const uint8_t * calc_buf, int calc_bytes);
 static void fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
 				       int *result_scale, int exponent);
 static uint16_t fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
@@ -1821,8 +1822,8 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   //prec1 = DB_VALUE_PRECISION (dbv1);
   //prec2 = DB_VALUE_PRECISION (dbv2);
   // 더 정확한 계산을 해야함, fp_numeric으로 계산할 경우 도메인을 바꾸는 작업을 해야함으로 비용이 꽤 생김.
-  prec1 = fp_numeric_overflow2 (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-  prec2 = fp_numeric_overflow2 (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+  prec1 = fp_numeric_get_precision_digits (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2197,6 +2198,20 @@ fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes)
   return idx;
 }
 
+static int
+fp_numeric_get_precision_digits (const uint8_t * calc_buf, int calc_bytes)
+{
+  uint8_t calc_buf_copy[calc_bytes];
+
+  memcpy (calc_buf_copy, calc_buf, calc_bytes);
+  if (calc_bytes == DB_NUMERIC_BUF_SIZE && numeric_is_negative (calc_buf_copy))
+    {
+      numeric_negate (calc_buf_copy);
+    }
+
+  return fp_numeric_overflow2 (calc_buf_copy, calc_bytes);
+}
+
 /*
  * buf : big-endian base-256 동적 버퍼
  * bytes : buf 길이
@@ -2350,8 +2365,8 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   //prec1 = DB_VALUE_PRECISION (dbv1);
   //prec2 = DB_VALUE_PRECISION (dbv2);
   // 더 정확한 계산을 해야함, fp_numeric으로 계산할 경우 도메인을 바꾸는 작업을 해야함으로 비용이 꽤 생김.
-  prec1 = fp_numeric_overflow2 (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-  prec2 = fp_numeric_overflow2 (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+  prec1 = fp_numeric_get_precision_digits (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2606,8 +2621,8 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   //prec1 = DB_VALUE_PRECISION (dbv1);
   //prec2 = DB_VALUE_PRECISION (dbv2);
   // 더 정확한 계산을 해야함, fp_numeric으로 계산할 경우 도메인을 바꾸는 작업을 해야함으로 비용이 꽤 생김.
-  prec1 = fp_numeric_overflow2 (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-  prec2 = fp_numeric_overflow2 (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+  prec1 = fp_numeric_get_precision_digits (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
   if (scale1 < 0)
     {
       prec1 -= scale1;
@@ -2886,8 +2901,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   //prec1 = DB_VALUE_PRECISION (dbv1);
   //prec2 = DB_VALUE_PRECISION (dbv2);
   // 더 정확한 계산을 해야함, fp_numeric으로 계산할 경우 도메인을 바꾸는 작업을 해야함으로 비용이 꽤 생김.
-  prec1 = fp_numeric_overflow2 (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
-  prec2 = fp_numeric_overflow2 (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
+  prec1 = fp_numeric_get_precision_digits (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE);
 
   calc_prec1 = prec1 - scale1;
   result_scale = MAX (scale1, scale2);
