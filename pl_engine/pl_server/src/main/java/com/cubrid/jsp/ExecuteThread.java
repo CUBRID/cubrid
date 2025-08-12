@@ -344,7 +344,6 @@ public class ExecuteThread extends Thread {
             prepareArgs.readArgs(unpacker);
         }
 
-        long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
 
         ctx.checkTranId(tid);

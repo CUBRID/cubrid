@@ -41,9 +41,8 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (uint64_t id, int tid, pl_signature *sig, bool tc)
-    : g_id (id)
-    , tran_id (tid)
+  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+    : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
     auth.assign (sig->auth);
@@ -67,7 +66,6 @@ namespace cubpl
   void
   invoke_java::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_bigint (g_id);
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
     serializator.pack_string (auth);
@@ -94,8 +92,7 @@ namespace cubpl
   size_t
   invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
-    size += serializator.get_packed_int_size (size); // tran_id
+    size_t size = serializator.get_packed_int_size (size); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
@@ -383,7 +380,7 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig,
+    invoke_java invoke_arg (tid, &m_sig,
 			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
