@@ -207,6 +207,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/master_connector.cpp
   ${CONNECTION_DIR}/connection_pool.cpp
   ${CONNECTION_DIR}/connection_worker.cpp
+  ${CONNECTION_DIR}/receiver.cpp
   ${CONNECTION_DIR}/buffer.cpp
   )
 
@@ -214,6 +215,7 @@ set(CONNECTION_HEADERS
   ${CONNECTION_DIR}/master_connector.hpp
   ${CONNECTION_DIR}/connection_pool.hpp
   ${CONNECTION_DIR}/connection_worker.hpp
+  ${CONNECTION_DIR}/receiver.hpp
   ${CONNECTION_DIR}/buffer.hpp
   )
 

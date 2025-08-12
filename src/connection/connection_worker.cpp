@@ -21,6 +21,7 @@
  */
 
 #include "network.h"
+#include "network_interface_sr.h"
 #include "connection_worker.hpp"
 #include "buffer.hpp"
 #include "error_manager.h"
@@ -31,11 +32,17 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
+#define NEXT_STATE(c, x) do { \
+    er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
+    (c->m_state = state::x); \
+} while (0)
+
 namespace cubconn
 {
   connection_worker::context::context (std::size_t capacity) :
     m_state (state::HEADER),
-    m_receiver (capacity)
+    m_receiver (capacity),
+    m_request_id (-1)
   {
   }
 
@@ -106,17 +113,58 @@ namespace cubconn
   bool connection_worker::handle_connection_error (context *ctx)
   {
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
-      {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: remove_descriptor failed\n");
-	return false;
-      }
+    {
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: remove_descriptor failed\n");
+      return false;
+    }
 
-    ::close (ctx->m_conn->fd);
+    css_end_server_request (ctx->m_conn);
+    /* TODO: net_server_conn_down */
     css_free_conn (ctx->m_conn);
     delete ctx;
 
-    /* TODO: error handling */
     return true;
+  }
+
+  result connection_worker::handle_unexpected_packet (context *ctx)
+  {
+    char buffer[1024];
+    ssize_t bytes;
+
+    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_unexpected_packet: fd = %d\n", ctx->m_conn->fd);
+
+    ctx->m_state = state::HEADER;
+    ctx->m_receiver.reset ();
+    while (true)
+    {
+      bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
+      if (bytes > 0)
+      {
+	continue;
+      }
+      
+      if (__builtin_expect (bytes == 0, 0))
+      {
+	return result::PeerReset;
+      }
+
+      switch (errno)
+      {
+      case EINTR:
+	break;
+      case EAGAIN:
+	/* case EWOULDBLOCK: */
+	/* pending (= successfully drained all) */
+	return result::Ok;
+      case EPIPE:
+      case ECONNRESET:
+	return result::PeerReset;
+      default:
+	return result::Error;
+      }
+    }
+
+    return result::Error;
   }
 
   bool connection_worker::handle_message_queue_new_client (message &item)
@@ -187,7 +235,9 @@ namespace cubconn
 
   result connection_worker::handle_header_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
-    NET_HEADER header = DEFAULT_HEADER_DATA;
+    NET_HEADER *header;
+    css_conn_entry *conn;
+    unsigned short flags;
 
     assert (ctx->m_conn);
 
@@ -200,8 +250,47 @@ namespace cubconn
       /* the next request properly.				    */
       return result::Skewed;
     }
+    
+    ctx->m_header = reinterpret_cast<NET_HEADER *> (packet.data ());
 
-    rc = css_read_header (ctx->m_conn, &header);
+    conn = ctx->m_conn;
+    header = ctx->m_header;
+
+    conn->set_tran_index (ntohl (header->transaction_id));
+    conn->db_error = (int) ntohl (header->db_error);
+    flags = ntohs (header->flags);
+    conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+    conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
+
+    ctx->m_request_id = ntohl (header->request_id);
+
+    switch (ntohl (header->type))
+    {
+      case COMMAND_TYPE:
+	NEXT_STATE (ctx, COMMAND);
+	break;
+
+      case DATA_TYPE:
+	NEXT_STATE (ctx, DATA);
+	break;
+
+      case ABORT_TYPE:
+	/* no more packets are reqeusted */
+	css_process_abort_packet (ctx->m_conn, ctx->m_request_id);
+	break;
+
+      case CLOSE_TYPE:
+	/* no more packets are reqeusted */
+	return result::ClosedConnection;
+
+      case ERROR_TYPE:
+	NEXT_STATE (ctx, ERROR);
+	break;
+
+      default:
+	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_header_packet: unknown state\n");
+	return result::Skewed;
+    }
 
     return result::Ok;
   }
@@ -214,6 +303,15 @@ namespace cubconn
     {
       case state::HEADER:
 	status = this->handle_header_packet (ctx, packet);
+	break;
+
+      case state::COMMAND:
+	break;
+
+      case state::DATA:
+	break;
+
+      case state::ERROR:
 	break;
 
       default:
@@ -246,19 +344,36 @@ namespace cubconn
 
     assert (status == result::Ok || status == result::Pending);
 
-    if (status == result::Ok)
+    if (status != result::Ok)
     {
-      packets = ctx->m_receiver.get_result ();
-      for (auto &packet : *packets)
+      return result::Ok;
+    }
+
+    /* received at least one packet */
+    packets = ctx->m_receiver.get_result ();
+    for (auto &packet : *packets)
+    {
+      status = this->handle_packet (ctx, packet);
+
+      if (status == result::Skewed)
       {
-	status = this->handle_packet (ctx, packet);
-	if (status == result::Skewed)
+	/* drain all and reset the context */
+	status = this->handle_unexpected_packet (ctx);
+	if (status == result::PeerReset || status == result::Error)
 	{
-	  /* drain all and reset the context */
+	  _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
+	  handle_connection_error (ctx);
+	  return status;
 	}
       }
-      packets->clear ();
+      else if (status == result::ClosedConnection)
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
+	handle_connection_error (ctx);
+	return status;
+      }
     }
+    packets->clear ();
 
     return result::Ok;
   }
@@ -298,8 +413,8 @@ namespace cubconn
 	    if (events[i].events & (EPOLLHUP | EPOLLERR))
 	      {
 		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
-		/* TODO: DO NOT END THIS LOOP, JUST SHUTDOWN THE SOCKET ! */
-		return false;
+		handle_connection_error (ctx);
+		continue;
 	      }
 	    if (events[i].events & EPOLLIN)
 	      {

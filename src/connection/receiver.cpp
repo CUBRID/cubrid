@@ -40,24 +40,10 @@ constexpr std::size_t SIZE_HEADER = sizeof (int);
 namespace cubconn
 {
   receiver::receiver (std::size_t capacity) :
-    m_state (state::Recv),
-    m_buf (capacity),
-    m_received (0),
-    m_size (0),
-    m_bufptr (nullptr),
-    m_bufsize (0),
-    m_tmpsize (-1)
+    m_buf (capacity)
   {
-    cubbase::span<std::byte> buffer;
-
     m_result.reserve (8);
-
-    m_received = 0;
-    m_size = 0;
-
-    buffer = m_buf.buffer ();
-    m_bufptr = buffer.data ();
-    m_bufsize = buffer.size ();
+    this->reset ();
   }
 
   receiver::~receiver ()
@@ -69,6 +55,25 @@ namespace cubconn
       assert (false);
     }
 #endif
+  }
+
+  void receiver::reset ()
+  {
+    cubbase::span<std::byte> buffer;
+
+    m_state = state::Recv;
+
+    m_received = 0;
+    m_size = 0;
+
+    buffer = m_buf.buffer ();
+    m_bufptr = buffer.data ();
+    m_bufsize = buffer.size ();
+    m_tmpsize = -1;
+    
+    m_result.clear ();
+    /* if m_buf is already in use, it may be corrupted by subsequent reception. */
+    m_buf.reset ();
   }
 
   void receiver::parse_packet (bool is_buffer)

@@ -200,7 +200,6 @@ static CSS_WAIT_QUEUE_ENTRY *css_add_wait_queue_entry (CSS_CONN_ENTRY * conn, CS
 static CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
 
 static void css_process_close_packet (CSS_CONN_ENTRY * conn);
-static void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid,
 						    char **bufferp);
@@ -2326,7 +2325,7 @@ css_process_close_packet (CSS_CONN_ENTRY * conn)
  *   conn(in): connection entry
  *   request_id(in): request id
  */
-static void
+void
 css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *request, *data;

@@ -36,6 +36,13 @@ namespace cubbase
   {
   }
 
+  void DMRBMemoryPool::reset ()
+  {
+    m_head = 0;
+    m_tail = 0;
+    m_free.clear ();
+  }
+
   cubbase::span<std::byte> DMRBMemoryPool::buffer ()
   {
     std::size_t length;

@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_WORKER_HPP_
 #define _CONNECTION_WORKER_HPP_
 
+#include "connection_defs.h"
 #include "server_support.h"
 #include "receiver.hpp"
 #include "epoll.hpp"
@@ -66,11 +67,9 @@ namespace cubconn
       enum class state
       {
 	HEADER,
-	CLOSE,
-	ABORT,
+	COMMAND,
 	DATA,
-	ERROR,
-	COMMAND
+	ERROR
       };
 
       struct context
@@ -78,6 +77,9 @@ namespace cubconn
 	css_conn_entry *m_conn;
 	state m_state;
 	receiver m_receiver;
+
+	NET_HEADER *m_header;
+	int m_request_id;
 
 	context (std::size_t capacity);
 	~context ();
@@ -110,6 +112,7 @@ namespace cubconn
       cubbase::MPSCQueue<message> m_queue;
 
       bool handle_connection_error (context *ctx);
+      result handle_unexpected_packet (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
