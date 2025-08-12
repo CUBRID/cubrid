@@ -52,7 +52,7 @@ namespace cubconn
     result drain (int fd);
     void release (cubbase::span<std::byte> &mem);
 
-    std::vector<cubbase::span<std::byte>> &get_result ();
+    std::vector<cubbase::span<std::byte>> *get_result ();
 
   private:
     state m_state;
