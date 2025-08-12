@@ -70,6 +70,7 @@
  */
 #define SORT_MAX_HALF_FILES      4
 #define SORT_MAX_TOT_FILES      SORT_MAX_HALF_FILES * 2
+#define SORT_PX_MERGE_FILES      4
 
 /* Lower limit on the half of the total number of the temporary files.
  * The exact lower limit on total number of temp files is twice this number.
@@ -141,6 +142,13 @@
 	} \
       pthread_mutex_unlock (sort_param->px_mtx); \
     } while (0)
+
+typedef struct result_run RESULT_RUN;
+struct result_run
+{
+  VFID temp_file;
+  int num_pages;
+};
 
 enum parallel_type
 {
@@ -234,6 +242,7 @@ struct sort_param
   SORT_PARALLEL_TYPE px_type;
   SORT_PARAM *ori_sort_param;
   int px_parallel_num;
+  RESULT_RUN *px_result_run;
   ORDERBY_STATS orderby_stats;
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
@@ -294,13 +303,6 @@ struct sort_stack
   SRUN *srun;
 };
 
-typedef struct result_run RESULT_RUN;
-struct result_run
-{
-  VFID temp_file;
-  int num_pages;
-};
-
 typedef void FIND_RUN_FN (char **, long *, SORT_STACK *, long, SORT_CMP_FUNC *, void *);
 typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void *);
 
@@ -318,12 +320,12 @@ static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * des
 				       int parallel_num);
 static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
 					int parallel_num);
-static int sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM * sort_param, int first_idx,
-			     int remaining_run, int level);
+static int sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
 static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
 static void sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
+static void sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static void sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
 static void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 				 int parallel_num);
@@ -3382,12 +3384,16 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
 static void
 sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
 {
-  int result_file_idx = sort_param->px_result_file_idx;
-  int total_pages = sort_param->file_contents[result_file_idx].num_pages[0];
-  int pages_per_thread = total_pages / parallel_num;
-  int remaining_pages = total_pages % parallel_num;
+  int result_file_idx, total_pages, pages_per_thread, remaining_pages;
   int start_index = 0;
   int cp_pages, read_pages;
+
+  result_file_idx = sort_param->px_result_file_idx = px_sort_param[0].px_result_file_idx;
+  total_pages = sort_param->file_contents[result_file_idx].num_pages[0] =
+    px_sort_param[0].file_contents[result_file_idx].num_pages[0];
+  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
+  pages_per_thread = total_pages / parallel_num;
+  remaining_pages = total_pages % parallel_num;
 
   for (int i = 0; i < parallel_num; i++)
     {
@@ -4664,21 +4670,51 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   /* merge result run */
   while (remaining_run > 1)
     {
-      merge_num = (remaining_run + (SORT_MAX_HALF_FILES - 1)) / SORT_MAX_HALF_FILES;
+      merge_num = (remaining_run + (SORT_PX_MERGE_FILES - 1)) / SORT_PX_MERGE_FILES;
 
       for (i = 0; i < merge_num; i++)
 	{
-	  idx = i * pow (SORT_MAX_HALF_FILES, level + 1);
-	  error = sort_merge_nruns (thread_p, result_run, sort_param, idx, remaining_run, level);
-	  if (error != NO_ERROR)
+	  int first_idx = i * pow (SORT_PX_MERGE_FILES, level + 1);
+
+	  /* init file info */
+	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].half_files = half_files;
+	  px_sort_param[i].tot_tempfiles = half_files * 2;
+	  px_sort_param[i].in_half = 0;
+
+	  /* copy temp file and file contents */
+	  for (int j = 0; j < px_sort_param[i].half_files; j++)
 	    {
-	      return error;
+	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
+	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
+	      /* copy the number of pages for one run */
+	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[j].first_run = 0;
+	      px_sort_param[i].file_contents[j].last_run = 0;
 	    }
+	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      /* init temp file and contents */
+	      px_sort_param[i].temp[j].volid = NULL_VOLID;
+	      px_sort_param[i].file_contents[j].first_run = -1;
+	      px_sort_param[i].file_contents[j].last_run = -1;
+	    }
+	  px_sort_param[i].px_result_run = &result_run[first_idx];
+	  px_sort_param[i].px_status = PX_PROGRESS;
+
+	  parallel_query::callable_task * task =
+	    new parallel_query::callable_task (&parallel_query::worker_manager::get_manager (),
+					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
+							  &px_sort_param[i]));
+	  parallel_query::worker_manager::get_manager ().push_task (task);
 	}
 
+      SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
       remaining_run = merge_num;
       level++;
     }
+  assert (sort_get_numpages_of_active_infiles (&px_sort_param[0]) == 1);
 
   /* split last run into px_sort_param */
   sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
@@ -4729,41 +4765,15 @@ cleanup:
  *   parallel_num(in):
  */
 static int
-sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM * sort_param, int first_idx,
-		  int remaining_run, int level)
+sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
   int i = 0, idx = 0, file_pg_cnt_est;
-  int half_files = MIN (remaining_run - (first_idx / pow (SORT_MAX_HALF_FILES, level)), SORT_MAX_HALF_FILES);
 
-  if (half_files > remaining_run)
-    {
-      return ER_FAILED;
-    }
-
-  /* init file info */
-  sort_param->px_result_file_idx = 0;
-  sort_param->half_files = half_files;
-  sort_param->tot_tempfiles = half_files * 2;
-  sort_param->in_half = 0;
-
-  /* copy temp file and file contents */
-  for (i = 0; i < sort_param->half_files; i++)
-    {
-      idx = (level == 0) ? (i + first_idx) : ((i * pow (SORT_MAX_HALF_FILES, level)) + first_idx);
-      sort_param->temp[i] = result_run[idx].temp_file;
-      /* copy the number of pages for one run */
-      sort_param->file_contents[i].num_pages[0] = result_run[idx].num_pages;
-      sort_param->file_contents[i].first_run = 0;
-      sort_param->file_contents[i].last_run = 0;
-    }
-  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
-    {
-      /* init temp file and contents */
-      sort_param->temp[i].volid = NULL_VOLID;
-      sort_param->file_contents[i].first_run = -1;
-      sort_param->file_contents[i].last_run = -1;
-    }
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  struct timeval orderby_time = { 0, };
+  tsc_getticks (&start_tick);
 
   /* Create output temporary files make file and temporary volume page count estimates */
   file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
@@ -4790,8 +4800,8 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
     }
 
   /* save result run */
-  result_run[first_idx].temp_file = sort_param->temp[sort_param->px_result_file_idx];
-  result_run[first_idx].num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
+  sort_param->px_result_run->temp_file = sort_param->temp[sort_param->px_result_file_idx];
+  sort_param->px_result_run->num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
 
   /* retire temp file */
   for (i = 0; i < sort_param->tot_tempfiles; i++)
@@ -4802,6 +4812,15 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, RESULT_RUN * result_run, SORT_PARAM *
 	  VFID_SET_NULL (&sort_param->temp[i]);
 	}
     }
+
+
+
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
+  printf ("%d\n", TO_MSEC (orderby_time));
+
+
 
   return error;
 }
@@ -4934,6 +4953,68 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 }
 
 /*
+ * sort_merge_nruns_parallel () - merge nruns for parallel
+ *   return:
+ *   thread_p(in):
+ *   sort_param(in):
+ */
+static void
+sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
+{
+  THREAD_ENTRY *thread_p = &thread_ref;
+  SORT_INFO *sort_info_p, *ori_sort_info_p;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  int error = NO_ERROR;
+
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
+
+  thread_p->push_resource_tracks ();
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      thread_set_sort_stats_active (thread_p, true);
+      thread_ref.on_trace = true;
+      perfmon_initialize_parallel_stats (&thread_ref, sort_param->px_orig_thread_p);
+      tsc_getticks (&start_tick);
+    }
+
+  sort_param->px_status = PX_PROGRESS;
+
+  error = sort_merge_nruns (thread_p, sort_param);
+  if (error != NO_ERROR)
+    {
+      sort_param->px_status = PX_ERR_FAILED;
+    }
+  else
+    {
+      sort_param->px_status = PX_DONE;
+    }
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+      sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+      sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+
+      thread_set_sort_stats_active (thread_p, false);
+      perfmon_destroy_parallel_stats (&thread_ref);
+    }
+  thread_p->pop_resource_tracks ();
+
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
+
+}
+
+/*
  * sort_start_parallelism () - start parallelism
  *   return: NO_ERROR
  *   px_sort_param(in):
@@ -5037,7 +5118,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	{
 	  return ER_FAILED;
 	}
-      assert (sort_get_numpages_of_active_infiles (sort_param) == 1);
 
       if (thread_is_on_trace (thread_p))
 	{
