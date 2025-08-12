@@ -22,6 +22,8 @@
 
 #include "network.h"
 #include "network_interface_sr.h"
+#include "connection_sr.h"
+#include "connection_defs.h"
 #include "connection_worker.hpp"
 #include "buffer.hpp"
 #include "error_manager.h"
@@ -42,7 +44,8 @@ namespace cubconn
   connection_worker::context::context (std::size_t capacity) :
     m_state (state::HEADER),
     m_receiver (capacity),
-    m_request_id (-1)
+    m_request_id (-1),
+    m_command (false)
   {
   }
 
@@ -52,7 +55,7 @@ namespace cubconn
 
   connection_worker::connection_worker (connection_pool *pool, std::size_t index) :
     m_stop (false),
-    m_parent (),
+    m_parent (pool),
     m_index (index)
   {
     context *ctx;
@@ -78,9 +81,11 @@ namespace cubconn
     if (!m_events.add_descriptor (m_eventfd, EPOLLET | EPOLLIN, ctx))
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker: add_descriptor failed\n");
+	delete ctx->m_conn;
 	assert_release (false);
       }
 
+    m_entry.register_id ();
     m_thread = std::thread (&connection_worker::run, this);
   }
 
@@ -91,6 +96,7 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
+    m_entry.unregister_id ();
   }
 
   void connection_worker::enqueue (const message &item)
@@ -100,14 +106,46 @@ namespace cubconn
     _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d\n", item.type, m_index);
   }
 
-  void connection_worker::notify ()
+  bool connection_worker::notify ()
   {
     std::uint64_t u;
+    ssize_t bytes;
 
     u = 1;
-    ::write (m_eventfd, &u, sizeof (u));
+    while (true)
+    {
+      bytes = ::write (m_eventfd, &u, sizeof (u));
+      if (bytes == sizeof (u))
+      {
+	break;
+      }
 
-    _er_log_debug (__FILE__, __LINE__, "reqeusted to wake up the worker index = %d\n", m_index);
+      if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
+      {
+	return false;
+      }
+
+      assert (bytes < 0);
+
+      if (errno == EINTR)
+      {
+	continue;
+      }
+      if (errno == EAGAIN)
+      {
+	break;
+      }
+      return false;
+    }
+
+    _er_log_debug (__FILE__, __LINE__, "requested to wake up the worker index = %d\n", m_index);
+    return true;
+  }
+
+  void connection_worker::push_task_into_worker_pool (context *ctx)
+  {
+    /* push new task into worker pool */
+    css_push_server_task (*ctx->m_conn);
   }
 
   bool connection_worker::handle_connection_error (context *ctx)
@@ -128,13 +166,14 @@ namespace cubconn
 
   result connection_worker::handle_unexpected_packet (context *ctx)
   {
-    char buffer[1024];
+    char buffer[4096];
     ssize_t bytes;
 
     _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_unexpected_packet: fd = %d\n", ctx->m_conn->fd);
 
     ctx->m_state = state::HEADER;
     ctx->m_receiver.reset ();
+    ctx->m_command = false;
     while (true)
     {
       bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
@@ -178,8 +217,9 @@ namespace cubconn
 	return false;
       }
     ctx->m_conn = item.conn;
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN, ctx))
+    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
+	delete ctx;
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: add_descriptor failed\n");
 	return false;
       }
@@ -191,12 +231,37 @@ namespace cubconn
   bool connection_worker::handle_message_queue ()
   {
     std::optional<message> request;
+    ssize_t bytes;
     uint64_t u;
 
     assert (!m_queue.empty ());
 
     /* read counter */
-    ::read (m_eventfd, &u, sizeof (u));
+    while (true)
+    {
+      bytes = ::read (m_eventfd, &u, sizeof (u));
+      if (bytes == sizeof (u))
+      {
+	break;
+      }
+
+      if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
+      {
+	return false;
+      }
+
+      assert (bytes < 0);
+
+      if (errno == EINTR)
+      {
+	continue;
+      }
+      if (errno == EAGAIN)
+      {
+	break;
+      }
+      return false;
+    }
 
     do
       {
@@ -233,11 +298,177 @@ namespace cubconn
     return true;
   }
 
+  result connection_worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
+  {
+    css_conn_entry *conn;
+    css_error_code error;
+    NET_HEADER *header;
+    int size;
+
+    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+
+    conn = ctx->m_conn;
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+
+    size = ntohl (header->buffer_size);
+    if (static_cast<std::size_t> (size) != packet.size ())
+    {
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
+      return result::Skewed;
+    }
+
+    if (!css_is_request_aborted (conn, ctx->m_request_id))
+    {
+      error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+			   packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+      if (error != NO_ERRORS)
+      {
+	ctx->m_receiver.release (packet);
+	return result::Error;
+      }
+    }
+    ctx->m_command = false;
+    NEXT_STATE (ctx, HEADER);
+    return result::Ok;
+  }
+
+  result connection_worker::handle_data_packet (context *ctx, cubbase::span<std::byte> &packet)
+  {
+    THREAD_ENTRY *waiter_thread;
+    css_wait_queue_entry *waiter;
+    css_conn_entry *conn;
+    css_error_code error;
+    NET_HEADER *header;
+    int size;
+
+    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+
+    conn = ctx->m_conn;
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+
+    size = ntohl (header->buffer_size);
+    if (static_cast<std::size_t> (size) != packet.size ())
+    {
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
+      return result::Skewed;
+    }
+
+    /* check if there is thread waiting for data */
+    waiter_thread = NULL;
+    waiter = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue, ctx->m_request_id);
+    if (waiter != NULL)
+    {
+      waiter_thread = waiter->thrd_entry;
+      waiter_thread->next_wait_thrd = NULL;
+    }
+
+    if (!css_is_request_aborted (conn, ctx->m_request_id))
+    {
+      if (waiter)
+      {
+	*waiter->buffer = reinterpret_cast<char *> (packet.data ());
+	*waiter->size = packet.size ();
+	*waiter->rc = NO_ERRORS;
+	waiter->thrd_entry = NULL;
+	css_free_wait_queue_entry (conn, waiter);     
+      }
+      else
+      {
+	/* if waiter not exists, add to data queue */
+	error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+			     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+	if (error != NO_ERRORS)
+	{
+	  ctx->m_receiver.release (packet);
+	  return result::Error;
+	}
+      }
+    }
+    else
+    {
+      if (waiter)
+      {
+	*waiter->buffer = NULL;
+	*waiter->size = 0;
+	*waiter->rc = SERVER_ABORTED;
+      }
+    }
+
+    if (waiter_thread)
+    {
+      thread_lock_entry (waiter_thread);
+
+      assert (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED || waiter_thread->resume_status == THREAD_CSECT_WRITER_SUSPENDED);
+      assert (waiter_thread->next_wait_thrd == NULL);
+
+      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the
+       * data queue. Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that the thread was timed out, is
+       * trying to clear its queue buffer (see clear_wait_queue_entry_and_free_buffer function), and waiting for its
+       * conn->csect. We don't need to wakeup the thread for this case. We may send useless signal for it, but it may
+       * bring other anomalies: the thread may sleep on another resources which we don't know at this moment. */
+      if (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED)
+      {
+	thread_wakeup_already_had_mutex (waiter_thread, THREAD_CSS_QUEUE_RESUMED);
+      }
+
+      thread_unlock_entry (waiter_thread);
+    }
+
+    if (ctx->m_command)
+    {
+      this->push_task_into_worker_pool (ctx);
+      ctx->m_command = false;
+    }
+
+    NEXT_STATE (ctx, HEADER);
+    return result::Ok;
+  }
+
+  result connection_worker::handle_command_header_packet (context *ctx)
+  {
+    css_conn_entry *conn;
+    NET_HEADER *header;
+    css_error_code error;
+
+    if (css_is_request_aborted (ctx->m_conn, ctx->m_request_id))
+    {
+      return result::Aborted;
+    }
+
+    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+
+    conn = ctx->m_conn;
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+
+    error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_request_id, reinterpret_cast<char *> (ctx->m_header.data ()), ctx->m_header.size (), NO_ERRORS,
+			  conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+    if (error != NO_ERRORS)
+    {
+      ctx->m_receiver.release (ctx->m_header);
+      return result::Error;
+    }
+
+    if (ntohl (header->buffer_size) > 0)
+    {
+      /* data packet will be received belongs to this command */
+      ctx->m_command = true;
+    }
+    else
+    {
+      /* there is a request without no data following.		    */
+      /* e.g. NET_SERVER_LOG_CHECKPOINT, NET_SERVER_TM_SERVER_ABORT.  */
+      this->push_task_into_worker_pool (ctx);
+    }
+
+    return result::Ok;
+  }
+
   result connection_worker::handle_header_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
-    NET_HEADER *header;
     css_conn_entry *conn;
+    NET_HEADER *header;
     unsigned short flags;
+    result status;
 
     assert (ctx->m_conn);
 
@@ -248,13 +479,21 @@ namespace cubconn
       /* in this case, we must reset the context and drain all data */
       /* from the socket to recover this state machine and handle   */
       /* the next request properly.				    */
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
       return result::Skewed;
     }
     
-    ctx->m_header = reinterpret_cast<NET_HEADER *> (packet.data ());
+    ctx->m_header = packet;
 
     conn = ctx->m_conn;
-    header = ctx->m_header;
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+
+    ctx->m_request_id = ntohl (header->request_id);
+    
+    if (conn->stop_talk)
+    {
+      return result::ClosedConnection;
+    }
 
     conn->set_tran_index (ntohl (header->transaction_id));
     conn->db_error = (int) ntohl (header->db_error);
@@ -262,12 +501,12 @@ namespace cubconn
     conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
     conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
 
-    ctx->m_request_id = ntohl (header->request_id);
-
+    status = result::Ok;
     switch (ntohl (header->type))
     {
       case COMMAND_TYPE:
-	NEXT_STATE (ctx, COMMAND);
+	/* no more packets are requested */
+	status = this->handle_command_header_packet (ctx);
 	break;
 
       case DATA_TYPE:
@@ -275,24 +514,27 @@ namespace cubconn
 	break;
 
       case ABORT_TYPE:
-	/* no more packets are reqeusted */
+	/* no more packets are requested */
+	ctx->m_command = false;
 	css_process_abort_packet (ctx->m_conn, ctx->m_request_id);
 	break;
 
       case CLOSE_TYPE:
-	/* no more packets are reqeusted */
-	return result::ClosedConnection;
+	/* no more packets are requested */
+	status = result::ClosedConnection;
+	break;
 
       case ERROR_TYPE:
 	NEXT_STATE (ctx, ERROR);
 	break;
 
       default:
-	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_header_packet: unknown state\n");
-	return result::Skewed;
+	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
+	status = result::Skewed;
+	break;
     }
-
-    return result::Ok;
+ 
+    return status;
   }
 
   result connection_worker::handle_packet (context *ctx, cubbase::span<std::byte> &packet)
@@ -305,13 +547,12 @@ namespace cubconn
 	status = this->handle_header_packet (ctx, packet);
 	break;
 
-      case state::COMMAND:
-	break;
-
       case state::DATA:
+	status = this->handle_data_packet (ctx, packet);
 	break;
 
       case state::ERROR:
+	status = this->handle_error_packet (ctx, packet);
 	break;
 
       default:
@@ -327,6 +568,7 @@ namespace cubconn
   {
     std::vector<cubbase::span<std::byte>> *packets;
     result status;
+    int mtx;
 
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
     {
@@ -349,6 +591,13 @@ namespace cubconn
       return result::Ok;
     }
 
+    /* hold m_conn */
+    mtx = rmutex_lock (&m_entry, &ctx->m_conn->rmutex);
+    if (mtx != NO_ERROR)
+    {
+      return result::Error;
+    }
+
     /* received at least one packet */
     packets = ctx->m_receiver.get_result ();
     for (auto &packet : *packets)
@@ -362,6 +611,11 @@ namespace cubconn
 	if (status == result::PeerReset || status == result::Error)
 	{
 	  _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
+	  mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+	  if (mtx != NO_ERROR)
+	  {
+	    return result::Error;
+	  }
 	  handle_connection_error (ctx);
 	  return status;
 	}
@@ -369,10 +623,23 @@ namespace cubconn
       else if (status == result::ClosedConnection)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
+	mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+	if (mtx != NO_ERROR)
+	{
+	  return result::Error;
+	}
 	handle_connection_error (ctx);
 	return status;
       }
     }
+
+    /* release m_conn */
+    mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+    if (mtx != NO_ERROR)
+    {
+      return result::Error;
+    }
+
     packets->clear ();
 
     return result::Ok;
@@ -410,7 +677,7 @@ namespace cubconn
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
-	    if (events[i].events & (EPOLLHUP | EPOLLERR))
+	    if ((events[i].events & EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
 		handle_connection_error (ctx);
@@ -437,6 +704,12 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_reception failed");
 		    return false;
 		  }
+	      }
+	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP)) && ctx->m_conn->fd != m_eventfd)
+	      {
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
+		handle_connection_error (ctx);
+		continue;
 	      }
 	    if (events[i].events & EPOLLOUT)
 	      {

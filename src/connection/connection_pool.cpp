@@ -80,7 +80,10 @@ namespace cubconn
     request.type = connection_worker::message_type::NEW_CLIENT;
     request.conn = conn;
     m_workers[m_counter]->enqueue (request);
-    m_workers[m_counter]->notify ();
+    if (!m_workers[m_counter]->notify ())
+      {
+	assert_release (false);
+      }
 
     m_counter++;
     if (m_counter == m_workers.size ())

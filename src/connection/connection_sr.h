@@ -26,8 +26,9 @@
 
 #ident "$Id$"
 
-#include "connection_defs.h"
 #include "connection_support.h"
+#include "connection_list_sr.h"
+#include "connection_defs.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "porting.h"
@@ -196,6 +197,13 @@ extern void css_set_exec_path (char *exec_path);
 extern void css_set_argv (char **argv);
 
 extern void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
+extern bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
+
+extern css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id,
+					   char *buffer, int buffer_size, int rc, int transid, int invalidate_snapshot,
+					   int db_error);
+extern CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
+extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
 
 char *css_get_exec_path (void);
 char **css_get_argv (void);
