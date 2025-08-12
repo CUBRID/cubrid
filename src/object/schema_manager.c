@@ -10852,8 +10852,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	  auto m = hnsw::vindex_info.hnsw_m;
 	  auto ef_construction = hnsw::vindex_info.hnsw_ef_construction;
 	  auto metric = hnsw::vindex_info.metric;
-	  fprintf (stderr, "dimension: %d, m: %d, ef_construction: %d, metric: %d\n", domain->precision, m,
-		   ef_construction, metric);
+
 	  error =
 	    hnsw_load_index (index, oids, n_classes, n_attrs, attr_ids, hfids, domain->precision, m, ef_construction,
 			     (int) metric);
