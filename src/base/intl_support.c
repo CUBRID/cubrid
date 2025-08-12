@@ -974,6 +974,14 @@ intl_convert_charset (const unsigned char *src, int length_in_chars, INTL_CODESE
 int
 intl_char_count (const unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count)
 {
+  /* no need to check codeset for NULL string */
+  if (src == NULL)
+    {
+      assert (length_in_bytes == 0);
+
+      return *char_count = 0;
+    }
+
   switch (src_codeset)
     {
     case INTL_CODESET_ISO88591:

@@ -1,0 +1,15 @@
+
+Time: 07/23/25 06:14:36.869 - DEBUG *** file /home/cubrid/work/cubrid/src/transaction/boot_cl.c, line 1662
+trying to connect 'demodb@localhost'
+
+Time: 07/23/25 06:14:36.869 - DEBUG *** file /home/cubrid/work/cubrid/src/transaction/boot_cl.c, line 1684
+ping server with handshake
+
+Time: 07/23/25 06:14:36.869 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_cl.c, line 1084  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 200595) connected to database server 'demodb' on the host 'localhost' (port 1523).
+
+Time: 07/23/25 06:14:36.870 - DEBUG *** file /home/cubrid/work/cubrid/src/transaction/boot_cl.c, line 1134
+boot_restart_client: register client { type 2 db demodb user dba password (null) program csql login cubrid host bwkim193 pid 200595 }
+
+Time: 07/23/25 06:15:53.311 - DEBUG *** file /home/cubrid/work/cubrid/src/communication/network_interface_cl.c, line 7213
+qmgr_execute_query requested: EXECUTION_WITHOUT_AUTOCOMMIT
