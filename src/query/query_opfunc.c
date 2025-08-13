@@ -459,7 +459,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
     {
       regu_var_p = &reg_var_p->value;
       flags = regu_var_p->flags;
-      if (__builtin_expect((flags & REGU_VARIABLE_HIDDEN_COLUMN), 0))
+      if (__builtin_expect (flags & REGU_VARIABLE_HIDDEN_COLUMN, 0))
 	{
 	  continue;
 	}
@@ -540,8 +540,10 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
+  REGU_VARIABLE *regu_var_p;
   int i;
   int value_size;
+  int flags;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_TYPE dbval_type;
 
@@ -550,55 +552,51 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 
   /* copy each value pointer into the each tdp field */
   reg_var_p = valptr_list_p->valptrp;
-  for (i = 0; i < valptr_list_p->valptr_cnt; i++)
+  for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
     {
-      if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
+      regu_var_p = &reg_var_p->value;
+      flags = regu_var_p->flags;
+      if (__builtin_expect (flags & REGU_VARIABLE_HIDDEN_COLUMN, 0))
 	{
-	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
-	    qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
+	  continue;
+	}
+      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
+	qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
 
-	  if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
-	    {
-	      status = QPROC_TPLDESCR_FAILURE;
-	      goto exit_with_status;
-	    }
-
-	  /* Set clear_f_val_at_clone_decache to avoid memory issues */
-	  assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
-	  if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-	    {
-	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = true;
-	    }
-	  else
-	    {
-	      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] = false;
-	    }
-
-	  dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
-
-	  /* SET data-type cannot use tuple descriptor */
-	  if (pr_is_set_type (dbval_type))
-	    {
-	      status = QPROC_TPLDESCR_RETRY_SET_TYPE;
-	      goto exit_with_status;
-	    }
-
-	  /* add aligned field size to tuple size */
-	  value_size = qdata_get_tuple_value_size_from_dbval (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
-	  if (value_size == ER_FAILED)
-	    {
-	      status = QPROC_TPLDESCR_FAILURE;
-	      goto exit_with_status;
-	    }
-
-	  /* The compressed string will be deallocated later, after copying db_value into tuple. */
-
-	  tuple_desc_p->tpl_size += value_size;
-	  tuple_desc_p->f_cnt += 1;	/* increase field number */
+      if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
+	{
+	  status = QPROC_TPLDESCR_FAILURE;
+	  goto exit_with_status;
 	}
 
-      reg_var_p = reg_var_p->next;
+      /* Set clear_f_val_at_clone_decache to avoid memory issues */
+      assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
+      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] =
+	(bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+
+      dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
+
+      /* SET data-type cannot use tuple descriptor */
+      if (__builtin_expect (pr_is_set_type (dbval_type), 0))
+	{
+	  status = QPROC_TPLDESCR_RETRY_SET_TYPE;
+	  goto exit_with_status;
+	}
+
+      /* add aligned field size to tuple size */
+      value_size = qdata_get_tuple_value_size_from_dbval (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
+      if (value_size == ER_FAILED)
+	{
+	  status = QPROC_TPLDESCR_FAILURE;
+	  goto exit_with_status;
+	}
+
+      /* The compressed string will be deallocated later, after copying db_value into tuple. */
+
+      tuple_desc_p->tpl_size += value_size;
+      tuple_desc_p->f_cnt += 1;	/* increase field number */
     }
+
 
   /* BIG RECORD cannot use tuple descriptor */
   if (tuple_desc_p->tpl_size >= QFILE_MAX_TUPLE_SIZE_IN_PAGE)

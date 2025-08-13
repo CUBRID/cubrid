@@ -19,6 +19,7 @@
 /*
  * px_heap_scan_mergable_list.cpp - mergable list for parallel heap scan
  */
+#include "xasl.h"
 #if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_mergable_list.hpp"
@@ -91,14 +92,39 @@ namespace parallel_heap_scan
     QFILE_TUPLE_VALUE_TYPE_LIST type_list;
     REGU_VARIABLE_LIST valptr, orig_pred_regu, new_pred_regu, orig_rest_regu, new_rest_regu;
     int valptr_idx;
+    size_t size;
+    QFILE_LIST_ID *list_id;
+    int i;
     m_vd = vd;
     qdata_get_valptr_type_list (thread_p, m_outptr_list, &type_list);
 
     (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL);
 
-    if ((*m_list_id_p) == NULL)
+    if (!*m_list_id_p)
       {
 	return false;
+      }
+    list_id = *m_list_id_p;
+
+    size = list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
+
+    list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
+    if (list_id->tpl_descr.f_valp == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	return false;
+      }
+
+    size = list_id->type_list.type_cnt * sizeof (bool);
+    list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
+    if (list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	return false;
+      }
+    for (i = 0; i < list_id->type_list.type_cnt; i++)
+      {
+	list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
       }
 
     return true;
@@ -112,13 +138,42 @@ namespace parallel_heap_scan
   int mergable_list_writer::write (THREAD_ENTRY *thread_p)
   {
     int err_code = NO_ERROR;
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p);
-    if (tplrec == nullptr)
+    QPROC_TPLDESCR_STATUS status;
+    QFILE_TUPLE_RECORD *tplrec;
+
+    status = qdata_generate_tuple_desc_for_valptr_list (thread_p, m_outptr_list, m_vd, & ((*m_list_id_p)->tpl_descr));
+
+    if (__builtin_expect (!m_is_list_id_domain_resolved, 0))
+      {
+	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
+	m_is_list_id_domain_resolved = (*m_list_id_p)->is_domain_resolved;
+      }
+
+    if (__builtin_expect (status == QPROC_TPLDESCR_SUCCESS, 1))
+      {
+	if (qfile_generate_tuple_into_list (thread_p, (*m_list_id_p), T_NORMAL) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+
+	return NO_ERROR;
+      }
+    else if (__builtin_expect (status == QPROC_TPLDESCR_FAILURE, 0))
       {
 	return ER_FAILED;
       }
-    err_code = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
-    return err_code;
+    else if (__builtin_expect (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC, 0))
+      {
+	tplrec = make_tuple_record (thread_p);
+	if (tplrec == nullptr)
+	  {
+	    return ER_FAILED;
+	  }
+	err_code = qfile_add_tuple_to_list (thread_p, (*m_list_id_p), tplrec->tpl);
+	return err_code;
+      }
+    assert (0);
+    return ER_FAILED;
   }
 
   QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p)
