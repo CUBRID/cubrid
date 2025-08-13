@@ -459,59 +459,61 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
     {
       regu_var_p = &reg_var_p->value;
       flags = regu_var_p->flags;
-      if (!(flags & REGU_VARIABLE_HIDDEN_COLUMN))
+      if (__builtin_expect((flags & REGU_VARIABLE_HIDDEN_COLUMN), 0))
 	{
-	  dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
-	  if (dbval_p == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  clear_compressed_string = (bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
-
-	  n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
-	  if (n_size == ER_FAILED)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  if ((tuple_record_p->size - toffset) < n_size)
-	    {
-	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
-	       * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
-	       * that we can at least get the next value into the tuple. */
-	      tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
-	      tpl_size += MAX (n_size, DB_PAGESIZE);
-	      if (tuple_record_p->size == 0)
-		{
-		  tuple_record_p->tpl = (char *) db_private_alloc (thread_p, tpl_size);
-		  if (tuple_record_p->tpl == NULL)
-		    {
-		      return ER_FAILED;
-		    }
-		}
-	      else
-		{
-		  tuple_record_p->tpl = (char *) db_private_realloc (thread_p, tuple_record_p->tpl, tpl_size);
-		  if (tuple_record_p->tpl == NULL)
-		    {
-		      return ER_FAILED;
-		    }
-		}
-
-	      tuple_record_p->size = tpl_size;
-	      tuple_p = (char *) (tuple_record_p->tpl) + toffset;
-	    }
-
-	  if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  tlen += tval_size;
-	  tuple_p += tval_size;
-	  toffset += tval_size;
+	  continue;
 	}
+      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      if (dbval_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      clear_compressed_string = (bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+
+      n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
+      if (n_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+
+      if ((tuple_record_p->size - toffset) < n_size)
+	{
+	  /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
+	   * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
+	   * that we can at least get the next value into the tuple. */
+	  tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
+	  tpl_size += MAX (n_size, DB_PAGESIZE);
+	  if (tuple_record_p->size == 0)
+	    {
+	      tuple_record_p->tpl = (char *) db_private_alloc (thread_p, tpl_size);
+	      if (tuple_record_p->tpl == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      tuple_record_p->tpl = (char *) db_private_realloc (thread_p, tuple_record_p->tpl, tpl_size);
+	      if (tuple_record_p->tpl == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  tuple_record_p->size = tpl_size;
+	  tuple_p = (char *) (tuple_record_p->tpl) + toffset;
+	}
+
+      if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      tlen += tval_size;
+      tuple_p += tval_size;
+      toffset += tval_size;
+
     }
 
   /* now that we know the tuple size, set it. */
