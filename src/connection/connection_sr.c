@@ -184,7 +184,7 @@ static CSS_WAIT_QUEUE_ENTRY *css_add_wait_queue_entry (CSS_CONN_ENTRY * conn, CS
 						       int *rc);
 static void css_process_close_packet (CSS_CONN_ENTRY * conn);
 static void clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid,
-						    char **bufferp);
+						    char **bufferp, int *sizep);
 static int css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char **buffer, int *bufsize,
 					   int *rc, int waitsec);
 
@@ -1929,7 +1929,7 @@ css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry)
 
   if (entry->buffer != NULL)
     {
-      free_and_init (entry->buffer);
+      conn->release_packet (entry->buffer, entry->size);
     }
 
   css_retire_queue_entry (conn, entry);
@@ -2653,9 +2653,10 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
  *   conn(in): connection entry
  *   rid(in): request id
  *   bufferp(in): data buffer
+ *   sizep(in): data buffer size
  */
 static void
-clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid, char **bufferp)
+clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid, char **bufferp, int *sizep)
 {
   CSS_WAIT_QUEUE_ENTRY *data_wait;
   int r;
@@ -2679,7 +2680,7 @@ clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * c
        * the buffer. */
       if (*bufferp != NULL)
 	{
-	  free_and_init (*bufferp);
+	  thrdp->conn_entry->release_packet (*bufferp, *sizep);
 	}
     }
 
@@ -2789,7 +2790,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		    {
 		      assert (thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT);
 
-		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer, bufsize);
 		      *buffer = NULL;
 		      *bufsize = -1;
 		      return NO_DATA_AVAILABLE;
@@ -2811,7 +2812,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 
 		  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
 		    {
-		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer, bufsize);
 		      *rc = TIMEDOUT_ON_QUEUE;
 		      *buffer = NULL;
 		      *bufsize = -1;
@@ -2821,7 +2822,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		    {
 		      assert (thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT);
 
-		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
+		      clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer, bufsize);
 		      *buffer = NULL;
 		      *bufsize = -1;
 		      return NO_DATA_AVAILABLE;
@@ -2839,7 +2840,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 
 	      if (*rc == CONNECTION_CLOSED)
 		{
-		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
+		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer, bufsize);
 		}
 
 	      return NO_ERRORS;
