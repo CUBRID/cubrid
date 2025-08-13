@@ -91,6 +91,7 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
+#include "network.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -100,6 +101,8 @@
 #define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
+
+#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
 /*
  * Function Group:
  * Do create/alter/drop serial statement
@@ -180,7 +183,7 @@ typedef struct reserved_class_info
 {
   OID oid;
   CDC_DDL_OBJECT_TYPE objtype;
-  char name[1024];
+  char name[DB_MAX_IDENTIFIER_LENGTH];
 } RESERVED_CLASS_INFO;
 
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
@@ -4125,6 +4128,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
+  tdes_reset_query_start_info (statement);
+
   /* enable data replication log */
   if (need_stmt_based_repl)
     {
@@ -5448,7 +5453,7 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
 	  tran_get_tran_settings (&dummy_lktimeout, tran_isolation, &dummy_aws);
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case 1:			/* unsupported ones */
     case 2:
     case 3:
@@ -5983,6 +5988,13 @@ check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func, PARSER_CONTEXT * pa
 	PT_ASSIGNMENTS_HELPER ea;
 	PT_NODE *assign = NULL;
 	PT_SPEC_FLAG flag;
+
+	/* do not check it in case of dblink */
+	if (statement->info.update.spec && statement->info.update.spec->info.spec.remote_server_name)
+	  {
+	    result = NO_ERROR;
+	    break;
+	  }
 
 	columns = (char **) (malloc (count * sizeof (char *)));
 	if (columns == NULL)
@@ -8541,7 +8553,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  xasl = statement_to_update_xasl (parser, statement, non_null_attrs);
+  xasl = pt_to_update_xasl (parser, statement, non_null_attrs);
+
   if (xasl)
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
@@ -8829,7 +8842,14 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       /* Safety check: make sure that we have access to the class. We're only setting a weak lock here which guarantees
        * that the schema for the classes which are updated in this query is not changed. The correct lock for this
        * operation will be set server side when the SELECT part of the operation is being performed. */
-      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+      if (spec->info.spec.remote_server_name)
+	{
+	  /* always server update for dblink query */
+	  server_allowed = 1;
+	  break;
+	}
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec->info.spec.flat_entity_list)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 	  if (!locator_fetch_class (class_obj, DB_FETCH_READ))
@@ -8840,7 +8860,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       spec = spec->next;
     }
 
-  if (is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
+  if (!server_allowed
+      && is_server_update_allowed (parser, &non_null_attrs, &has_uniques, &server_allowed, statement) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -9308,8 +9329,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -9675,7 +9695,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
 
-	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
+	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
 	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
@@ -10263,7 +10283,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  node = statement->info.delete_.spec;
 	  while (node && error == NO_ERROR)
 	    {
-	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	      if (node->info.spec.flat_entity_list && (node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
 		  if (statement->flag.use_auto_commit && tran_was_latest_query_committed ())
@@ -10351,7 +10371,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   spec = statement->info.delete_.spec;
   while (spec)
     {
-      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && !spec->info.spec.remote_server_name)
 	{
 	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
@@ -10672,8 +10692,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.dont_prt_long_string = 1;
 	  parser->flag.long_string_skipped = 0;
 	  parser->flag.print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-				  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -11320,8 +11339,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.dont_prt_long_string = 1;
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
-  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -11466,6 +11484,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
+
   xasl = pt_to_insert_xasl (parser, statement);
 
   if (xasl)
@@ -13744,8 +13763,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   row_count_total = 0;
 
-
-
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
   AU_ENABLE (save);
@@ -13789,7 +13806,15 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  error = insert_local (parser, statement);
+  if (statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      error = do_insert_at_server (parser, statement);
+    }
+  else
+    {
+      error = insert_local (parser, statement);
+    }
+
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);
@@ -14538,8 +14563,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.print_type_ambiguity = 0;
 
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER |
-			   PT_PRINT_HOST_VAR_COUNT));
+			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err =
@@ -15415,6 +15439,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
 
+	  assert ((int) sizeof (cls_info[count]->name) > strlen (classname));
 	  strcpy (cls_info[count]->name, classname);
 
 	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
@@ -15441,39 +15466,23 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
-  static const char *unknown_name = "-";
   char stmt_separator;
   char *stmt_end = NULL;
   char *sbr_text = NULL;
   char *stmt_text = NULL;
-
-  int num_class = 0;
-  int num_object = 0;
-
-  int drop_stmt_length = 0, pre_drop_length = 0;
-  int drop_copied_length = 0;
   char *drop_stmt = NULL;
-  const char *drop_prefix = "drop table ";
-  const char *drop_view_prefix = "drop view ";
-  const char *if_exist_statement = "if exists ";
-  const char *cascade_statement = " cascade constraints";
 
   const char *classname = NULL;
   const char *objname = NULL;
 
   CDC_DDL_TYPE ddl_type;
   CDC_DDL_OBJECT_TYPE objtype;
-
-  PT_NODE *entity = NULL;
-  PT_NODE *entity_spec = NULL;
   PT_NODE *target = NULL;
-
   OID *classoid = NULL;
-  OID *classoid_list[1024];
-  OID *oid = NULL;
+  OID oid_tmp = OID_INITIALIZER;
+  OID *oid = &oid_tmp;
   OID null_oid = OID_INITIALIZER;
 
-  int stmt_length = 0;
 
   bool supp_appended = false;
 
@@ -15590,74 +15599,93 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP:
       {
+	int drop_stmt_length = 0, pre_drop_length = 0;
+	int drop_copied_length = 0, name_len = 0;
+	const char *drop_prefix = "drop table ";
+	const char *drop_view_prefix = "drop view ";
+	const char *if_exist_statement = "if exists ";
+	const char *cascade_statement = " cascade constraints";
+	const int drop_prefix_len = strlen (drop_prefix);
+	const int drop_view_prefix_len = strlen (drop_view_prefix);
+	const int if_exist_statement_len = strlen (if_exist_statement);
+	const int cascade_statement_len = strlen (cascade_statement);
+
 	if (statement->info.drop.if_exists && statement->info.drop.spec_list == NULL)
 	  {
 	    goto end;
 	  }
 
 	ddl_type = CDC_DROP;
+	pre_drop_length =
+	  MAX (drop_prefix_len, drop_view_prefix_len) + if_exist_statement_len + cascade_statement_len + 2;
 
 	if (cls_info != NULL)
 	  {
-	    while (cls_info[num_class] != NULL)
+	    for (int i = 0; cls_info[i] != NULL; i++)
 	      {
-		num_class++;
+		name_len = strlen (cls_info[i]->name);
+		drop_copied_length = pre_drop_length + name_len;
+
+		if (drop_stmt_length < drop_copied_length)
+		  {
+		    if (drop_stmt)
+		      {
+			free (drop_stmt);
+		      }
+		    else
+		      {
+			drop_copied_length += 32;	// Ensure sufficient size to avoid reallocation of memory.
+		      }
+
+		    drop_stmt_length = drop_copied_length;
+		    drop_stmt = (char *) malloc (drop_stmt_length);
+		    if (drop_stmt == NULL)
+		      {
+			error = ER_OUT_OF_VIRTUAL_MEMORY;
+			goto end;
+		      }
+		  }
+
+		if (cls_info[i]->objtype == CDC_TABLE)
+		  {
+		    memcpy (drop_stmt, drop_prefix, drop_prefix_len);
+		    drop_copied_length = drop_prefix_len;
+		  }
+		else if (cls_info[i]->objtype == CDC_VIEW)
+		  {
+		    memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
+		    drop_copied_length = drop_view_prefix_len;
+		  }
+		else
+		  {
+		    assert (false);
+		    error = ER_FAILED;
+		    goto end;
+		  }
+
+		if (statement->info.drop.if_exists)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
+		    drop_copied_length += if_exist_statement_len;
+		  }
+
+		memcpy (drop_stmt + drop_copied_length, cls_info[i]->name, name_len);
+		drop_copied_length += name_len;
+
+		if (statement->info.drop.is_cascade_constraints)
+		  {
+		    memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
+		    drop_copied_length += cascade_statement_len;
+		  }
+
+		drop_stmt[drop_copied_length] = '\0';
+
+		error =
+		  log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
+					    drop_stmt);
+
+		free_and_init (cls_info[i]);
 	      }
-	  }
-
-
-	for (int i = 0; i < num_class; i++)
-	  {
-	    pre_drop_length =
-	      ((cls_info[i]->objtype ==
-		CDC_TABLE) ? strlen (drop_prefix) : strlen (drop_view_prefix)) + strlen (if_exist_statement) +
-	      strlen (cascade_statement) + 2;
-
-	    drop_stmt_length = pre_drop_length + strlen (cls_info[i]->name);
-	    drop_stmt = (char *) malloc (drop_stmt_length * 2);
-	    if (drop_stmt == NULL)
-	      {
-		goto end;
-	      }
-
-	    if (cls_info[i]->objtype == CDC_TABLE)
-	      {
-		strncpy (drop_stmt, drop_prefix, strlen (drop_prefix));
-		drop_copied_length = strlen (drop_prefix);
-	      }
-	    else if (cls_info[i]->objtype == CDC_VIEW)
-	      {
-		strncpy (drop_stmt, drop_view_prefix, strlen (drop_view_prefix));
-		drop_copied_length = strlen (drop_view_prefix);
-	      }
-	    else
-	      {
-		assert (false);
-	      }
-
-	    if (statement->info.drop.if_exists)
-	      {
-		strncpy (drop_stmt + drop_copied_length, if_exist_statement, strlen (if_exist_statement));
-		drop_copied_length += strlen (if_exist_statement);
-	      }
-
-	    strncpy (drop_stmt + drop_copied_length, cls_info[i]->name, strlen (cls_info[i]->name));
-	    drop_copied_length += strlen (cls_info[i]->name);
-
-	    if (statement->info.drop.is_cascade_constraints)
-	      {
-		strncpy (drop_stmt + drop_copied_length, cascade_statement, strlen (cascade_statement));
-		drop_copied_length += strlen (cascade_statement);
-	      }
-
-	    drop_stmt[drop_copied_length] = '\0';
-
-	    error =
-	      log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					drop_stmt);
-
-	    free_and_init (drop_stmt);
-	    free_and_init (cls_info[i]);
 	  }
 
 	supp_appended = true;
@@ -15668,13 +15696,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       {
 	BTID index;
 	MOP classop;
-
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15695,13 +15716,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15721,13 +15735,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	BTID index;
 	MOP classop;
 
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
 
@@ -15744,12 +15751,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
@@ -15767,13 +15768,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_SERIAL:
       {
-	oid = (OID *) malloc (sizeof (OID));
-	if (oid == NULL)
-	  {
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-	  }
-
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
 	objname = (char *) PT_NODE_SR_NAME (statement);
@@ -15795,7 +15789,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	  }
 	else
 	  {
-	    oid = (OID *) malloc (sizeof (OID));
 	    OID_SET_NULL (oid);
 	  }
 
@@ -15892,6 +15885,17 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	break;
       }
     case PT_REMOVE_TRIGGER:
+      {
+	/* TODO: Further review and action are needed in the future.
+	 *   This function is called from do_statement() and do_execute_statement().
+	 *  In the case of PT_REMOVE_TRIGGER, the initialization of ddl_type and objtype is not performed.
+	 *  As a result, the behavior after exiting the switch statement becomes unclear.
+	 *  As a temporary measure, assert_release(0); is added.
+	 */
+	assert_release (0);
+	error = ER_FAILED;
+	goto end;
+      }
       break;
 
     case PT_ALTER_TRIGGER:
@@ -16040,11 +16044,6 @@ end:
   if (host_val)
     {
       free (host_val);
-    }
-
-  if (oid != NULL)
-    {
-      free_and_init (oid);
     }
 
   if (drop_stmt != NULL)
@@ -17330,7 +17329,7 @@ int
 do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat, *spec;
+  PT_NODE *non_nulls_upd = NULL, *non_nulls_ins = NULL, *lhs, *flat = NULL, *spec;
   int has_unique = 0, has_trigger = 0, has_virt = 0, au_save;
   bool server_insert, server_update, server_op, insert_only = false;
 
@@ -17542,8 +17541,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->flag.dont_prt_long_string = 1;
       parser->flag.long_string_skipped = 0;
       parser->flag.print_type_ambiguity = 0;
-      PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			      (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT));
+      PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
       contextp->sql_hash_text = (char *) statement->alias_print;
       err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -17598,7 +17596,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_enter_packing_buf ();
 
 	  /* generate MERGE XASL */
+	  /* Note: Autoparameterization is redundant as the merge XASL generation is already performed. Therefore, this step can be safely omitted. */
+	  bool backup_flag = parser->flag.is_skip_auto_parameterize;
+	  parser->flag.is_skip_auto_parameterize = 1;
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
+	  parser->flag.is_skip_auto_parameterize = backup_flag;
 
 	  stream.buffer = NULL;
 
@@ -17766,7 +17768,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   INT64 result = 0;
   int error = NO_ERROR;
-  PT_NODE *flat, *spec = NULL, *values_list = NULL;
+  PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
@@ -20753,8 +20755,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (owner_obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -21226,7 +21227,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
+	  if (ER_IS_SERVER_DOWN_ERROR (error))
 	    {
 	      error = ER_NET_CANT_CONNECT_SERVER;
 	    }
@@ -21609,9 +21610,13 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
 	}
       else
 	{
-	  sprintf ((char *) private_key, "%04d%02d%02d%02d%02d%02d%06ld",
-		   lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		   check_time.tv_usec);
+	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+			check_time.tv_usec) >= (int) sizeof (private_key))
+	    {
+	      assert_release (0);
+	      private_key[sizeof (private_key) - 1] = '\0';
+	    }
 	}
     }
 

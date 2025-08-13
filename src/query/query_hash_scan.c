@@ -417,7 +417,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   DB_VALUE dbval;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int i;
   char *tuple_p;
   OR_BUF buf;
@@ -1357,9 +1357,9 @@ fhs_destroy (THREAD_ENTRY * thread_p, FHSID * fhsid_p)
       return ER_FAILED;
     }
 
-#if !defined(NDEBUG) && defined(DEBUG_HASH_LIST_SCAN_DUMP_FILE_HASH)
+#if !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH
   fhs_dump (thread_p, fhsid_p);
-#endif /* for debug */
+#endif /* !defined(NDEBUG) && HASH_LIST_SCAN_DUMP_FILE_HASH */
 
   if (file_destroy (thread_p, &(fhsid_p->bucket_file), true) != NO_ERROR)
     {

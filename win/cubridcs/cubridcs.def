@@ -430,6 +430,7 @@ EXPORTS
     prm_get_integer_value
     prm_get_bigint_value
     prm_get_string_value
+    prm_get_value
     prm_set_integer_value
     prm_Def
     rel_copy_version_string

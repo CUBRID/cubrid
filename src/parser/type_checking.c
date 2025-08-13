@@ -7886,7 +7886,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   switch (node->node_type)
     {
     case PT_EXPR:
-      node = pt_eval_expr_type (parser, node);
+      if (sc_info->has_dblink == false)
+	{
+	  node = pt_eval_expr_type (parser, node);
+	}
 #if 1				//original code but it doesn't check for errors
       if (node == NULL)
 	{
@@ -11413,7 +11416,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
    * then the resulting type MUST be integer. Otherwise strange things happen
    * while generating xasl: predicate expressions with wrong operators.
    */
-  if (t1 == PT_TYPE_LOGICAL && t2 == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
+  if (result_type == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
     {
       result_type = PT_TYPE_INTEGER;
     }
@@ -12008,7 +12011,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_TYPEOF:
     case PT_HEX:
       do_detect_collation = false;
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -13335,7 +13338,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  db_make_null (result);
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_CONCAT:
       if (typ1 == DB_TYPE_NULL || (typ2 == DB_TYPE_NULL && o2))
 	{
@@ -17163,7 +17166,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      break;
 	    }
 
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_SETEQ:
 	  cmp_result = (DB_VALUE_COMPARE_RESULT) db_value_compare (arg1, arg2);
 	  cmp = (cmp_result == DB_UNK) ? -1 : (cmp_result == DB_EQ) ? 1 : 0;
@@ -17272,7 +17275,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      cmp = 1;
 	      break;
 	    }
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_NE_ALL:
 	  cmp = set_issome (arg1, db_get_set (arg2), PT_EQ_SOME, 1);
 	  if (cmp == 1)
@@ -17360,10 +17363,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 	      case NO_ERROR:
 		break;
-	      case ER_REGEX_COMPILE_ERROR:	/* fall through */
+	      case ER_REGEX_COMPILE_ERROR:
 	      case ER_REGEX_EXEC_ERROR:
 		PT_ERRORc (parser, o1, er_msg ());
-		/* FALLTHRU */
+		[[fallthrough]];
 	      default:
 		return 0;
 	      }
@@ -17803,7 +17806,7 @@ pt_is_dblink_related (PT_NODE * p)
 static PT_NODE *
 pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 {
-  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3, result_type;
+  PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3 = PT_TYPE_NONE, result_type;
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL, *result = NULL;
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;
@@ -18092,7 +18095,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       /* a NULL OID is returned; the resulting PT_VALUE node will be replaced with a PT_HOST_VAR by the auto
        * parameterization step because of the special force_auto_parameterize flag. Also see and pt_dup_key_update_stmt
-       * () and qo_optimize_queries () */
+       * () and qo_rewrite_queries () */
       tmp_value->type_enum = PT_TYPE_OBJECT;
       OID_SET_NULL (&null_oid);
       db_make_oid (&tmp_value->info.value.db_value, &null_oid);
@@ -18293,7 +18296,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    expr->info.expr.arg3 = opd3;
 	  }
 
-	  /* fall through */
+	  [[fallthrough]];
 	default:
 	  db_make_null (&dummy);
 	  arg2 = &dummy;
@@ -19265,7 +19268,8 @@ end:
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false };
+  PT_NODE *spec = NULL;
+  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
 
   if (pt_has_error (parser))
     {
@@ -19275,6 +19279,32 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       sc_info_ptr = &sc_info;
     }
+
+  sc_info_ptr->has_dblink = false;
+
+  if (tree)
+    {
+      switch (tree->node_type)
+	{
+	case PT_DELETE:
+	  spec = tree->info.delete_.spec;
+	  break;
+	case PT_INSERT:
+	  spec = tree->info.insert.spec;
+	  break;
+	case PT_UPDATE:
+	  spec = tree->info.update.spec;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (spec && spec->info.spec.remote_server_name)
+    {
+      sc_info_ptr->has_dblink = true;
+    }
+
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   if (pt_has_error (parser))
@@ -19569,7 +19599,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  return NO_ERROR;
 	}
 
-      /* FALLTHRU */
+      [[fallthrough]];
 
     case PT_VALUE:
       {
@@ -20497,7 +20527,7 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
   if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_hv_late_bind (expr->info.expr.op)
       && expr->expected_domain != NULL)
     {
-      PT_NODE *new_expr = NULL;
+      PT_NODE *new_expr = NULL, *cast_type = NULL;
 
       if (expr->type_enum == PT_TYPE_ENUMERATION)
 	{
@@ -20507,9 +20537,15 @@ pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
 	  return NULL;
 	}
 
+      /* for session variable, it needs to cast the expected domain */
+      if (expr->info.expr.op == PT_EVALUATE_VARIABLE && expr->expected_domain)
+	{
+	  cast_type = pt_domain_to_data_type (parser, expr->expected_domain);
+	}
+
       new_expr =
 	pt_wrap_with_cast_op (parser, expr, pt_db_to_type_enum (expr->expected_domain->type->id),
-			      expr->expected_domain->precision, expr->expected_domain->scale, NULL);
+			      expr->expected_domain->precision, expr->expected_domain->scale, cast_type);
 
       if (new_expr != NULL)
 	{
@@ -20879,7 +20915,7 @@ pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
 	    }
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_SELECT:
     case PT_UNION:
     case PT_DIFFERENCE:
@@ -20922,7 +20958,7 @@ pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
 	  coll_infer->coerc_level = PT_COLLATION_L5_COERC;
 	  break;
 	}
-      /* Fall through */
+      [[fallthrough]];
     case PT_DOT_:
       if (coll_infer->coll_id == LANG_COLL_BINARY)
 	{
@@ -22740,7 +22776,7 @@ coerce_result:
 	  expr = new_node;
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_PLUS:
       if (expr->type_enum == PT_TYPE_MAYBE)
 	{
@@ -22753,7 +22789,7 @@ coerce_result:
 	{
 	  break;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_CONCAT:
     case PT_CONCAT_WS:
     case PT_RPAD:
@@ -23320,7 +23356,7 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
 	  parser_free_tree (parser, arg2);
 	  arg2 = node;
 
-	  /* fall through */
+	  [[fallthrough]];
 
 	case PT_FUNCTION:
 	  list = arg2->info.function.arg_list;

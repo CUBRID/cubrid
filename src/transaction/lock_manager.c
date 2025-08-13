@@ -22,6 +22,11 @@
 
 #ident "$Id$"
 
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 
 #include <array>
@@ -3246,7 +3251,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
-  TRAN_ISOLATION isolation;
   int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
   LK_RES *res_ptr;
@@ -3314,9 +3318,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 	       wait_msecs);
     }
 #endif /* LK_DUMP */
-
-  /* isolation */
-  isolation = logtb_find_isolation (tran_index);
 
   /* initialize */
   *entry_addr_ptr = NULL;
@@ -3947,6 +3948,11 @@ end:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (entry_ptr != NULL && ret_val == LK_GRANTED)
+    {
+      lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
+    }
 
   return ret_val;
 }
@@ -5982,7 +5988,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
   int granted;
@@ -6064,7 +6069,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     {
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* check if the given oid is root class oid */
   if (OID_IS_ROOTOID (oid))
@@ -6196,7 +6200,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   int granted;
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -6235,7 +6238,6 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
     {
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* get the intentional lock mode to be acquired on class oid */
   if (lock <= S_LOCK)
@@ -6343,7 +6345,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
@@ -6375,7 +6376,6 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
       assert (cond_flag == LK_UNCOND_LOCK);
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
-  isolation = logtb_find_isolation (tran_index);
 
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
@@ -6432,7 +6432,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #else /* !SERVER_MODE */
   int tran_index;
   int wait_msecs;
-  TRAN_ISOLATION isolation;
   LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
   LK_LOCKINFO *cls_lockinfo;
   LK_ENTRY *root_class_entry = NULL;
@@ -6469,7 +6468,6 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   wait_msecs = logtb_find_wait_msecs (tran_index);
-  isolation = logtb_find_isolation (tran_index);
 
   /* We do not want to rollback the transaction in the event of a deadlock. For now, let's just wait a long time. If
    * deadlock, the transaction is going to be notified of lock timeout instead of aborted. */
@@ -8306,8 +8304,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r = lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid, &acqlocks->obj[i].class_oid,
-					     acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      r =
+	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
+					   OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid,
+					   acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8494,7 +8494,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   int tran_index;
   LK_RES *res_ptr;
   int num_locked, num_entry_alloc, num_resource_alloc;
-  UINT64 size_alloc;
+  size_t size_alloc;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 
@@ -8558,7 +8558,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
   num_resource_alloc = (int) lk_Gl.m_obj_hash_table.get_alloc_element_count ();
   num_entry_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
-  size_alloc = ((UINT64) num_entry_alloc * sizeof (LK_ENTRY)) + ((UINT64) num_resource_alloc * sizeof (LK_RES));
+  size_alloc = (num_entry_alloc * sizeof (LK_ENTRY)) + (num_resource_alloc * sizeof (LK_RES));
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
@@ -8566,15 +8566,15 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < ONE_K)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %llu\n\n", size_alloc);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "\n\n", size_alloc);
     }
   else if (size_alloc >= ONE_K && size_alloc < ONE_M)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluK\n\n", size_alloc / ONE_K);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "K\n\n", size_alloc / ONE_K);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %lluM\n\n", size_alloc / ONE_M);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %" PRIu64 "M\n\n", size_alloc / ONE_M);
     }
 
   // *INDENT-OFF*
@@ -9512,6 +9512,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
   LK_RES *res_ptr = NULL;
   LOCK_COMPATIBILITY compat1, compat2;
   int rv, indent = 2;
+  bool is_other_waiter = false;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -9554,6 +9555,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
     {
       if (entry == wait_entry)
 	{
+	  is_other_waiter = true;
 	  continue;
 	}
 
@@ -9562,9 +9564,16 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
       if (compat1 == LOCK_COMPAT_NO)
 	{
+	  if (is_other_waiter)
+	    {
+	      /* first time for other waiter */
+	      fprintf (log_fp, "other waiters:\n");
+	      is_other_waiter = false;
+	    }
+
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 

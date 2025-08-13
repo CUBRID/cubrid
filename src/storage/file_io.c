@@ -85,6 +85,8 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
+#include "thread_worker_pool.hpp"
+
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
@@ -102,7 +104,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "page_buffer.h"
 #include "xserver_interface.h"
 #endif /* !defined (CS_MODE) */
@@ -9047,7 +9049,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			  /* Probably a tape device, let user mount new one */
 			  if (next_vol_p != NULL)
 			    {
-			      strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			      if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+				{
+				  return ER_FAILED;
+				}
 			    }
 			  if (fileio_find_restore_volume (thread_p, session_p->bkup.bkuphdr->db_fullname,
 							  session_p->bkup.name, session_p->bkup.bkuphdr->unit_num + 1,
@@ -9059,7 +9064,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			}
 		      else
 			{
-			  strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			  if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+			    {
+			      return ER_FAILED;
+			    }
 			}
 
 		      /* Reset session count, etc */
@@ -10967,7 +10975,10 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
 	}
     }
 
-  strncpy (node_p->bkvol_name, name_p, PATH_MAX - 1);
+  if (snprintf (node_p->bkvol_name, PATH_MAX, "%s", name_p) >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
   node_p->unit_num = unit_num;
 
   /* Put it on the queue for that level */
@@ -11523,6 +11534,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset, int whence, off_t l
 }
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * fileio_os_sysconf () -
@@ -11552,6 +11564,7 @@ fileio_os_sysconf (void)
   return (nprocs > 1) ? (int) nprocs : 1;
 }
 #endif /* SERVER_MODE */
+#endif
 
 /*
  * fileio_initialize_res () -

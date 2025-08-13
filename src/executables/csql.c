@@ -65,7 +65,7 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "cas_log.h"
 #include "ddl_log.h"
 #include "network_histogram.hpp"
@@ -163,8 +163,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
-static char csql_Prompt_offline[100];
-static char csql_Name[100];
+static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warning
 
 /*
  * Handles for the various files
@@ -420,7 +419,7 @@ csql_pipe_handler (int sig_no)
 static void
 display_buffer (void)
 {
-  int l = 1;
+  volatile int l = 1;
   FILE *pf;
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int);
@@ -1921,7 +1920,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
   er_clear ();
@@ -2016,7 +2014,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
       char stmt_msg[LINE_BUFFER_SIZE];
-      PT_NODE *statement = NULL;
 
       /* Start the execution of stms */
       stmt_msg[0] = '\0';
@@ -2949,7 +2946,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       strncat (csql_Prompt, " ", avail_size);
     }
   snprintf (csql_Prompt_offline, sizeof (csql_Prompt_offline), "!%s", csql_Prompt);
-  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */

@@ -1570,7 +1570,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
-
+  if (tdes->ddl_sql_user_text != NULL)
+    {
+      free_and_init (tdes->ddl_sql_user_text);
+    }
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);
@@ -1655,6 +1658,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
+  tdes->ddl_sql_user_text = NULL;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -2323,6 +2327,15 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  else
 	    {
 	      XASL_ID_SET_NULL (&query_exec_info[i].xasl_id);
+
+	      if (tdes->query_start_time > 0 && tdes->ddl_sql_user_text)
+		{
+		  query_exec_info[i].query_stmt = strdup (tdes->ddl_sql_user_text);
+		}
+	      else
+		{
+		  query_exec_info[i].query_stmt = NULL;
+		}
 	    }
 
 	  size += (2 * OR_FLOAT_SIZE	/* query time + tran time */
@@ -6197,5 +6210,75 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       log_Gl.mvcc_table.unlock_global_oldest_visible ();
       block_global_oldest_active_until_commit = false;
     }
+}
+
+void
+log_tdes::copy_to (LOG_TDES & dest) const
+{
+#define REPLACE_COPY_2_DEST(d, _name) ((d)._name = this->_name)
+
+  this->mvccinfo.copy_to (dest.mvccinfo);	// MVCC_INFO
+
+  REPLACE_COPY_2_DEST (dest, tran_index);
+  REPLACE_COPY_2_DEST (dest, trid);
+  REPLACE_COPY_2_DEST (dest, isloose_end);
+  REPLACE_COPY_2_DEST (dest, state);
+  REPLACE_COPY_2_DEST (dest, isolation);
+  REPLACE_COPY_2_DEST (dest, wait_msecs);
+
+  REPLACE_COPY_2_DEST (dest, head_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_lsa);
+  REPLACE_COPY_2_DEST (dest, undo_nxlsa);
+  REPLACE_COPY_2_DEST (dest, posp_nxlsa);
+  REPLACE_COPY_2_DEST (dest, savept_lsa);
+  REPLACE_COPY_2_DEST (dest, topop_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_topresult_lsa);
+  REPLACE_COPY_2_DEST (dest, commit_abort_lsa);
+  
+  REPLACE_COPY_2_DEST (dest, client_id);
+  REPLACE_COPY_2_DEST (dest, gtrid);
+  REPLACE_COPY_2_DEST (dest, client);	// CLIENTIDS  
+  REPLACE_COPY_2_DEST (dest, rmutex_topop);	// SYNC_RMUTEX
+  REPLACE_COPY_2_DEST (dest, topops);	// LOG_TOPOPS_STACK
+  REPLACE_COPY_2_DEST (dest, gtrinfo);
+  REPLACE_COPY_2_DEST (dest, coord);
+  REPLACE_COPY_2_DEST (dest, num_unique_btrees);
+  REPLACE_COPY_2_DEST (dest, max_unique_btrees);
+
+  this->m_multiupd_stats.copy_to (dest.m_multiupd_stats);	// multi_index_unique_stats
+  REPLACE_COPY_2_DEST (dest, interrupt);	// sig_atomic_t
+  REPLACE_COPY_2_DEST (dest, m_modified_classes);	// tx_transient_class_registry
+  REPLACE_COPY_2_DEST (dest, num_transient_classnames);
+  REPLACE_COPY_2_DEST (dest, num_repl_records);
+  REPLACE_COPY_2_DEST (dest, cur_repl_record);
+  REPLACE_COPY_2_DEST (dest, append_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, fl_mark_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, repl_records);
+  REPLACE_COPY_2_DEST (dest, repl_insert_lsa);
+  REPLACE_COPY_2_DEST (dest, repl_update_lsa);
+  REPLACE_COPY_2_DEST (dest, first_save_entry);
+  REPLACE_COPY_2_DEST (dest, suppress_replication);
+  REPLACE_COPY_2_DEST (dest, lob_locator_root);
+  REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, query_start_time);
+  REPLACE_COPY_2_DEST (dest, tran_start_time);
+  REPLACE_COPY_2_DEST (dest, xasl_id);
+  REPLACE_COPY_2_DEST (dest, waiting_for_res);
+  REPLACE_COPY_2_DEST (dest, disable_modifications);
+  REPLACE_COPY_2_DEST (dest, tran_abort_reason);
+  REPLACE_COPY_2_DEST (dest, num_exec_queries);
+
+  memcpy (dest.bind_history, this->bind_history, sizeof (dest.bind_history));
+
+  REPLACE_COPY_2_DEST (dest, num_log_records_written);
+  REPLACE_COPY_2_DEST (dest, log_upd_stats);
+  REPLACE_COPY_2_DEST (dest, has_deadlock_priority);
+  REPLACE_COPY_2_DEST (dest, block_global_oldest_active_until_commit);
+  REPLACE_COPY_2_DEST (dest, is_user_active);
+  REPLACE_COPY_2_DEST (dest, rcv);
+
+  this->m_log_postpone_cache.copy_to (dest.m_log_postpone_cache);	// log_postpone_cache
+
+  REPLACE_COPY_2_DEST (dest, has_supplemental_log);
 }
 // *INDENT-ON*

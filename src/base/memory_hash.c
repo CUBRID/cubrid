@@ -2448,6 +2448,22 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	    hashcode = mht_get_shiftmult32 (x, ht_size);
 	  }
 	  break;
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
+	  {
+	    DB_ELO *elo = db_get_elo (val);
+	    if (elo == NULL && elo->type != ELO_FBO)
+	      {
+		hashcode = 0;
+		break;
+	      }
+
+	    /* Memory addresses are compared in mr_cmpval_elo,
+	     * so no additional processing is needed. */
+	    hashcode = GET_PTR_FOR_HASH (val);
+	    hashcode %= ht_size;
+	  }
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  hashcode = mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
 	  break;

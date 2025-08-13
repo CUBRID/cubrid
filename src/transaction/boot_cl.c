@@ -92,6 +92,8 @@
 
 #include "authenticate_context.hpp"
 
+#include <signal.h>
+
 #if defined(CS_MODE)
 #include "network.h"
 #include "connection_cl.h"
@@ -1486,6 +1488,15 @@ boot_server_die_or_changed (void)
 void
 boot_client_all_finalize (int final_level)
 {
+  void (*sigterm_handler) (int);
+  void (*sigabrt_handler) (int);
+  void (*sigint_handler) (int);
+
+  /* to prevent duplicate calls by signal handlers during execution of the function. */
+  sigterm_handler = signal (SIGTERM, SIG_IGN);
+  sigabrt_handler = signal (SIGABRT, SIG_IGN);
+  sigint_handler = signal (SIGINT, SIG_IGN);
+
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
       if (boot_Server_credential.db_full_name)
@@ -1538,22 +1549,20 @@ boot_client_all_finalize (int final_level)
       lang_final ();
       tz_unload ();
 
-      /* adj_arrays & lex buffers in the cnv formatting library. */
-      cnv_cleanup ();
-
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
-
-      /* Clean up stuff allocated by the utilities library too. Not really necessary but avoids warnings from memory
-       * tracking tools that customers might be using. */
-      co_final ();
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
       memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);
 
       boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
       boot_Is_client_all_final = true;
+
+      /* restore the signals that was blocked, when the function started. */
+      signal (SIGTERM, sigterm_handler);
+      signal (SIGABRT, sigabrt_handler);
+      signal (SIGINT, sigint_handler);
     }
 }
 
@@ -1684,7 +1693,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	case ER_NET_SERVER_HAND_SHAKE:
 	case ER_NET_HS_UNKNOWN_SERVER_REL:
 	  cap_error = true;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case ER_NET_DIFFERENT_RELEASE:
 	case ER_NET_NO_SERVER_HOST:
 	case ER_NET_CANT_CONNECT_SERVER:
