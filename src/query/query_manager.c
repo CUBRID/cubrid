@@ -291,6 +291,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
       pthread_mutex_lock (&tran_entry_p->mutex);
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
+      query_p->alloc_no++;
     }
   else if (max_query_entry <= tran_entry_p->num_query_entries)
     {
@@ -306,6 +307,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	}
 
       query_p->list_id = NULL;
+      query_p->alloc_no = 1;
 
       tran_entry_p->num_query_entries++;
     }
@@ -1938,13 +1940,12 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-#endif
-
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
       goto exit_on_error;
     }
+#endif
 
   /* initialize query entry */
   XASL_ID_SET_NULL (&query_p->xasl_id);
@@ -2292,7 +2293,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       return;
     }
 
-  bool is_pl_session_running = session_has_pl_session (thread_p);
+  bool is_pl_session_running = session_is_pl_session_running (thread_p);
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* there should be no active query */
   for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
