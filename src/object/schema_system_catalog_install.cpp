@@ -262,18 +262,18 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
   ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
   ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ());
-  ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition());
-  ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code());
-  ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial());
-  ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info());
-  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations());
-  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charsets());
-  ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual());
-  ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym());
-  ADD_TABLE_DEFINITION (CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server());
+  ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition ());
+  ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code ());
+  ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial ());
+  ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info ());
+  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations ());
+  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charsets ());
+  ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
+  ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
+  ADD_TABLE_DEFINITION (CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ());
@@ -291,6 +291,8 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ());
+  ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
+  ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
   ADD_VIEW_DEFINITION (CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ());
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
@@ -981,12 +983,8 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {}
     },
 // initializer
     nullptr
@@ -1040,12 +1038,8 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {}
     },
 // initializer
     nullptr
@@ -1799,6 +1793,104 @@ namespace cubschema
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
     },
 // constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_serial ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SERIAL_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"owner", format_varchar (255)},
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"cyclic", "integer"},
+      {"started", "integer"},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"cached_num", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()},
+      /*
+       * Temporary: class method support in system view class for compatibility.
+       * To be removed when class/instance method support is officially dropped.
+       */
+      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_ha_apply_info ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_HA_APPLY_INFO_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"db_creation_time", "datetime"},
+      {"copied_log_path", format_varchar (4096)},
+      {"committed_lsa_pageid", "bigint"},
+      {"committed_lsa_offset", "integer"},
+      {"committed_rep_pageid", "bigint"},
+      {"committed_rep_offset", "integer"},
+      {"append_lsa_pageid", "bigint"},
+      {"append_lsa_offset", "integer"},
+      {"eof_lsa_pageid", "bigint"},
+      {"eof_lsa_offset", "integer"},
+      {"final_lsa_pageid", "bigint"},
+      {"final_lsa_offset", "integer"},
+      {"required_lsa_pageid", "bigint"},
+      {"required_lsa_offset", "integer"},
+      {"log_record_time", "datetime"},
+      {"log_commit_time", "datetime"},
+      {"last_access_time", "datetime"},
+      {"status", "integer"},
+      {"insert_counter", "bigint"},
+      {"update_counter", "bigint"},
+      {"delete_counter", "bigint"},
+      {"schema_counter", "bigint"},
+      {"commit_counter", "bigint"},
+      {"fail_counter", "bigint"},
+      {"start_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_ha_apply_info_spec ()},
+    },
+// constraints
     {},
 // authorization
     {

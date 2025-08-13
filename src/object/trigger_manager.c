@@ -128,7 +128,8 @@ static const char *OLD_REFERENCE_NAME = "old";
 const char *EVAL_PREFIX = "EVALUATE ( ";
 const char *EVAL_SUFFIX = " ) ";
 
-const char *TR_CLASS_NAME = "db_trigger";
+// TODO: move trigger system catalog code to schema_system_catalog_install.cpp
+const char *TR_CLASS_NAME = CT_TRIGGER_NAME;
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
@@ -4365,7 +4366,7 @@ tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const cha
  *    This is used to see if a particular authorization is enabled for a trigger object.
  *    It is intended to be called by do_trigger to make sure that statement operations involving multiple triggers
  *    can be performed without authorization errors.
- *    Since trigger objects are individually authorized, we can't use db_check_authorization because the db_trigger class
+ *    Since trigger objects are individually authorized, we can't use db_check_authorization because the _db_trigger class
  *    is normally completely protected.
  *    If the alter-flag is zero, we just check for basic read authorization
  *    if the flag is non-zero, we also check for ALTER authorization on the associated class.
