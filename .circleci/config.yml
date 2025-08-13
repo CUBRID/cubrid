@@ -164,7 +164,7 @@ jobs:
                       when: always
                   - store_artifacts:
                       path: /tmp/logs
-                      when: on_fail
+                      when: always
 
               collect-build-logs:
                 description: "Collect build logs and store them"
