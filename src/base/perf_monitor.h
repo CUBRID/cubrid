@@ -1427,6 +1427,9 @@ perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeva
 #define TO_MSEC(elapsed) \
   ((int)(((elapsed).tv_sec * 1000) + (int) ((elapsed).tv_usec / 1000)))
 
+#define TO_MSEC_DOUBLE(elapsed) \
+  (((double)(elapsed).tv_sec * 1000.0) + ((double)(elapsed).tv_usec / 1000.0))
+
 #if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elapsed) \
     (prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD) > 0 \
