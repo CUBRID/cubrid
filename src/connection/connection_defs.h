@@ -445,6 +445,7 @@ struct css_conn_entry
   bool stop_talk;		/* block and stop this connection */
   bool ignore_repl_delay;	/* don't do reset_on_commit by the delay of replication */
   unsigned short stop_phase;
+  int current_request_id;
 
   char *version_string;		/* client version string */
 

@@ -268,4 +268,5 @@ extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char
 /* tdes */
 extern void stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
 #endif /* _NETWORK_INTERFACE_SR_H_ */
