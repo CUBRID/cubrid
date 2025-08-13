@@ -36,48 +36,48 @@ namespace cubconn
 {
   class receiver
   {
-  private:
-    enum class state
-    {
-      Recv,
-      RecvInAllocated,
-      RecvSizeInTmp,
-      ParseSize
-    };
+    private:
+      enum class state
+      {
+	Recv,
+	RecvInAllocated,
+	RecvSizeInTmp,
+	ParseSize
+      };
 
-  public:
-    receiver (std::size_t capacity);
-    ~receiver ();
+    public:
+      receiver (std::size_t capacity);
+      ~receiver ();
 
-    void reset ();
+      void reset ();
 
-    result drain (int fd);
-    void release (cubbase::span<std::byte> &mem);
+      result drain (int fd);
+      void release (cubbase::span<std::byte> &mem);
 
-    std::vector<cubbase::span<std::byte>> *get_result ();
+      std::vector<cubbase::span<std::byte>> *get_result ();
 
-  private:
-    state m_state;
-    cubbase::DMRBMemoryPool m_buf;
+    private:
+      state m_state;
+      cubbase::DMRBMemoryPool m_buf;
 
-    std::size_t m_received;
-    std::size_t m_size;
-    std::byte *m_bufptr;
-    std::size_t m_bufsize;
+      std::size_t m_received;
+      std::size_t m_size;
+      std::byte *m_bufptr;
+      std::size_t m_bufsize;
 
-    int m_tmpsize;
-    
+      int m_tmpsize;
+
 #if !defined (NDEBUG)
-    std::vector<std::byte *> m_allocated;
+      std::vector<std::byte *> m_allocated;
 #endif
 
-    /* output */
-    std::vector<cubbase::span<std::byte>> m_result;
+      /* output */
+      std::vector<cubbase::span<std::byte>> m_result;
 
-    void parse_packet (bool is_buffer);
-    result parse_size ();
+      void parse_packet (bool is_buffer);
+      result parse_size ();
 
-    result receive (int fd);
+      result receive (int fd);
   };
 }
 

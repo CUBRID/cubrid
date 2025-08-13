@@ -34,11 +34,11 @@ namespace cubbase
 {
   class hardware_topology
   {
-  public:
-    hardware_topology ();
-    ~hardware_topology ();
+    public:
+      hardware_topology ();
+      ~hardware_topology ();
 
-  private:
+    private:
 
   };
 }

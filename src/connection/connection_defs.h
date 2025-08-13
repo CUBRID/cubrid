@@ -449,7 +449,7 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  cubconn::receiver *receiver;
+    cubconn::receiver * receiver;
 
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
