@@ -48,16 +48,14 @@ public class ContextManager {
         return contextMap.containsKey(id);
     }
 
-    public static Context getContext(long id) {
+    public static synchronized Context getContext(long id) {
         if (hasContext(id)) {
             return contextMap.get(id);
         } else {
-            synchronized (ContextManager.class) {
-                Context newCtx = new Context(id);
-                contextMap.put(id, newCtx);
-                // System.out.println ("new session =" + id); // for debug
-                return newCtx;
-            }
+            Context newCtx = new Context(id);
+            contextMap.put(id, newCtx);
+            // System.out.println ("new session =" + id); // for debug
+            return newCtx;
         }
     }
 
