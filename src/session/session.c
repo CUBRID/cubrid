@@ -71,6 +71,8 @@ static int rv;
 #define MAX_SESSION_VARIABLES_COUNT 20
 #define MAX_PREPARED_STATEMENTS_COUNT 20
 
+class net_histo_ctx;
+
 typedef struct session_info SESSION_INFO;
 struct session_info
 {
@@ -132,6 +134,8 @@ struct session_state
   SESSION_PARAM *session_parameters;
   char *trace_stats;
   char *plan_string;
+  char *comm_histo_cl;
+  char *comm_histo_sr;
   int trace_format;
   int ref_count;
   TZ_REGION session_tz_region;
@@ -139,6 +143,8 @@ struct session_state
 
   load_session *load_session_p;
   PL_SESSION *pl_session_p;
+
+  net_histo_ctx *net_histo_ctx_p;
 
   // *INDENT-OFF*
   session_state ();
@@ -313,12 +319,15 @@ session_state_init (void *st)
   session_p->session_parameters = NULL;
   session_p->trace_stats = NULL;
   session_p->plan_string = NULL;
+  session_p->comm_histo_cl = NULL;
+  session_p->comm_histo_sr = NULL;
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
+  session_p->net_histo_ctx_p = NULL;
 
   return NO_ERROR;
 }
@@ -399,6 +408,16 @@ session_state_uninit (void *st)
   if (session->trace_stats != NULL)
     {
       free_and_init (session->trace_stats);
+    }
+
+  if (session->comm_histo_cl != NULL)
+    {
+      free_and_init (session->comm_histo_cl);
+    }
+
+  if (session->comm_histo_sr != NULL)
+    {
+      free_and_init (session->comm_histo_sr);
     }
 
   if (session->plan_string != NULL)
@@ -1122,6 +1141,15 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 	{
 	  perfmon_stop_watch (NULL);
 	}
+    }
+  else if (strncasecmp (name_str, "comm_histo", 10) == 0)
+    {
+      if (state_p->comm_histo_cl != NULL)
+	{
+	  free_and_init (state_p->comm_histo_cl);
+	}
+
+      state_p->comm_histo_cl = strdup (db_get_string (value));
     }
   else if (strncasecmp (name_str, "trace_plan", 10) == 0)
     {
@@ -2901,9 +2929,47 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
       fp = port_open_memstream (&trace_str, &sizeloc);
       if (fp)
 	{
+
 	  if (state_p->plan_string != NULL)
 	    {
 	      fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
+	    }
+
+	  if (state_p->comm_histo_cl != NULL)
+	    {
+	      fprintf (fp, "\nClient Communication Histogram:\n%s", state_p->comm_histo_cl);
+	    }
+
+	  if (state_p->comm_histo_sr == NULL)
+	    {
+	      // server histogram
+	      char *histo_str = NULL;
+	      size_t sizeloc2;
+	      FILE *fp2;
+
+	      fp2 = port_open_memstream (&histo_str, &sizeloc2);
+	      if (fp2)
+		{
+		  net_histo_ctx *net_histo_ctx_p = NULL;
+		  session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
+		  if (net_histo_ctx_p != NULL)
+		    {
+		      net_histo_ctx_p->print_histogram (fp2);
+		      net_histo_ctx_p->stop_collect ();
+		      net_histo_ctx_p->clear ();
+		    }
+		  port_close_memstream (fp2, &histo_str, &sizeloc2);
+		}
+
+	      if (histo_str != NULL)
+		{
+		  session_set_comm_histo_sr (thread_p, histo_str);
+		}
+	    }
+
+	  if (state_p->comm_histo_sr != NULL)
+	    {
+	      fprintf (fp, "\nServer Communication Histogram:\n%s", state_p->comm_histo_sr);
 	    }
 
 	  if (state_p->trace_stats != NULL)
@@ -2954,6 +3020,49 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     }
 
   thread_set_clear_trace (thread_p, true);
+
+  return NO_ERROR;
+}
+
+int
+session_set_comm_histo_cl (THREAD_ENTRY * thread_p, char *histo)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->comm_histo_cl != NULL)
+    {
+      free_and_init (state_p->comm_histo_cl);
+    }
+
+  state_p->comm_histo_cl = histo;
+
+  return NO_ERROR;
+}
+
+int
+session_set_comm_histo_sr (THREAD_ENTRY * thread_p, char *histo)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  if (state_p->comm_histo_sr != NULL)
+    {
+      free_and_init (state_p->comm_histo_sr);
+    }
+
+  state_p->comm_histo_sr = histo;
 
   return NO_ERROR;
 }
@@ -3013,6 +3122,16 @@ session_clear_trace_stats (THREAD_ENTRY * thread_p)
   if (state_p->trace_stats != NULL)
     {
       free_and_init (state_p->trace_stats);
+    }
+
+  if (state_p->comm_histo_sr != NULL)
+    {
+      free_and_init (state_p->comm_histo_sr);
+    }
+
+  if (state_p->comm_histo_cl != NULL)
+    {
+      free_and_init (state_p->comm_histo_cl);
     }
 
   thread_set_clear_trace (thread_p, false);
@@ -3265,6 +3384,27 @@ session_has_pl_session (THREAD_ENTRY * thread_p)
     }
 
   return state_p->pl_session_p != NULL;
+}
+
+int
+session_get_net_histo_ctx (THREAD_ENTRY * thread_p, REFPTR (net_histo_ctx, net_histo_ctx_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (state_p->net_histo_ctx_p == NULL)
+    {
+      state_p->net_histo_ctx_p = new net_histo_ctx ();
+    }
+
+  net_histo_ctx_ref_ptr = state_p->net_histo_ctx_p;
+
+  return NO_ERROR;
 }
 
 int

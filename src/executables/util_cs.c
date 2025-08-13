@@ -2494,7 +2494,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (histo_start (true) != NO_ERROR)
+  if (histo_start (true, true) != NO_ERROR)
     {
       goto error_exit;
     }
