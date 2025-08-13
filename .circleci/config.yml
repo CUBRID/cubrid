@@ -147,7 +147,7 @@ jobs:
                         fi
                   - run:
                       name: Collect Logs
-                      when: on_fail
+                      when: always
                       command: |
                         mkdir -p /tmp/logs
                         cp -f /tmp/tests/* /tmp/logs || true
