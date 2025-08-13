@@ -62,7 +62,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

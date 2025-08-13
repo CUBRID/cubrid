@@ -695,8 +695,8 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
-  cas_default_ansi_quotes = PRM_GET_BOOL (prm_get_value (PRM_ID_ANSI_QUOTES));
-  cas_default_no_backslash_escapes = PRM_GET_BOOL (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+  cas_default_ansi_quotes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_ANSI_QUOTES));
+  cas_default_no_backslash_escapes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
   return;
 }
