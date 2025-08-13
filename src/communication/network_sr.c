@@ -899,7 +899,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 end:
   if (buffer != NULL && size > 0)
     {
-      free_and_init (buffer);
+      thread_p->release_packet (buffer, size);
     }
 
   /* clear memory to be used at request handling */

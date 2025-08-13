@@ -29,7 +29,7 @@
 
 #include "boot.h"
 #if defined(SERVER_MODE)
-#include "DMRB_SPSC.hpp"
+#include "receiver.hpp"
 #include "connection_list_sr.h"
 #include "critical_section.h"
 #endif
@@ -449,6 +449,8 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
+  cubconn::receiver *receiver;
+
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;
@@ -485,6 +487,8 @@ struct css_conn_entry
   void start_request ();
   bool has_pending_request () const;
   void init_pending_request ();
+
+  void release_packet (void *buffer, int size);
 
 private:
   // note - I want to protect this.
