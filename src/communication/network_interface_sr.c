@@ -4721,6 +4721,20 @@ shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_btid (ptr, return_btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (attr_ids != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_ids);
+    }
+  if (class_oids != NULL)
+    {
+      db_private_free_and_init (thread_p, class_oids);
+    }
+  if (hfids != NULL)
+    {
+      db_private_free_and_init (thread_p, hfids);
+    }
+
 }
 
 /*
