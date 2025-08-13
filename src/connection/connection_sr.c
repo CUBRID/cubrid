@@ -981,7 +981,7 @@ css_shutdown_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
 }
 
 void
-css_free_conn_tmp (void * thread_p, CSS_CONN_ENTRY * conn)
+css_free_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
 {
   CSS_CONN_ENTRY *p, *prev = NULL, *next;
   int r;
@@ -2696,7 +2696,8 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
  *   sizep(in): data buffer size
  */
 static void
-clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid, char **bufferp, int *sizep)
+clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * conn, unsigned short rid, char **bufferp,
+					int *sizep)
 {
   CSS_WAIT_QUEUE_ENTRY *data_wait;
   int r;

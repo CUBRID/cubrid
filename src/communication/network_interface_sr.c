@@ -4233,7 +4233,8 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
       ptr = or_unpack_int (ptr, &pred_stream_size);
       if (pred_stream_size > 0)
 	{
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, (char **) &pred_stream, &pred_stream_received);
+	  csserror =
+	    css_receive_data_from_client (thread_p->conn_entry, rid, (char **) &pred_stream, &pred_stream_received);
 	  if (csserror)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
@@ -4250,7 +4251,8 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 
       if (expr_stream_size > 0)
 	{
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, (char **) &expr_stream, &expr_stream_received);
+	  csserror =
+	    css_receive_data_from_client (thread_p->conn_entry, rid, (char **) &expr_stream, &expr_stream_received);
 	  if (csserror)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);

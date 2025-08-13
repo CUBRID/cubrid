@@ -531,7 +531,8 @@ namespace cubconn
 
     if (!this->make_nonblocking (new_fd))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: request_new_client failed - error: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: request_new_client failed - error: %s",
+		       strerror (errno));
 	::close (new_fd);
 	return result::Error;
       }
