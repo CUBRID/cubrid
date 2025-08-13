@@ -56,6 +56,7 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
+#include "network_histogram.hpp"
 
 #define BUF_SIZE 1024
 
@@ -103,6 +104,8 @@ static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NOD
 						 int *continue_walk);
 
 static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
+
+static void do_send_comm_histo_to_session (void);
 
 int g_open_buffer_control_flags = 0;
 
@@ -854,6 +857,11 @@ db_compile_statement (DB_SESSION * session)
   er_clear ();
 
   CHECK_CONNECT_MINUSONE ();
+
+  if (histo_is_supported ())
+    {
+      histo_start (false, true);
+    }
 
   statement_id = db_compile_statement_local (session);
 
@@ -3134,6 +3142,34 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
   return cls_status;
 }
 
+static void
+do_send_comm_histo_to_session ()
+{
+  DB_VALUE var[2];
+  char *histo_str = NULL;
+  int i = 0;
+  size_t sizeloc;
+  FILE *fp;
+
+  fp = port_open_memstream (&histo_str, &sizeloc);
+
+  if (fp)
+    {
+      histo_print (fp);
+
+      port_close_memstream (fp, &histo_str, &sizeloc);
+    }
+
+  if (histo_str != NULL)
+    {
+      db_make_char (&var[0], 10, "comm_histo", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      db_make_string (&var[1], histo_str);
+
+      csession_set_session_variables (var, 2);
+      free_and_init (histo_str);
+    }
+}
+
 /*
  * db_execute_and_keep_statement() - Please refer to the
  *         db_execute_and_keep_statement_local() function
@@ -3153,7 +3189,19 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
 
   db_invalidate_mvcc_snapshot_before_statement ();
 
+  if (histo_is_supported ())
+    {
+      histo_start (false, true);
+    }
+
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+
+  if (histo_is_supported ())
+    {
+      histo_stop ();
+      do_send_comm_histo_to_session ();
+      histo_clear ();
+    }
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -3189,7 +3237,19 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
+  if (histo_is_supported ())
+    {
+      histo_start (false, true);
+    }
+
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+
+  if (histo_is_supported ())
+    {
+      histo_stop ();
+      do_send_comm_histo_to_session ();
+      histo_clear ();
+    }
 
   statement = session->statements[stmt_ndx - 1];
   if (statement != NULL)

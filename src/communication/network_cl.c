@@ -1146,6 +1146,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
   char *reply = NULL, *replydata, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
+  int histo_received_size = 0;
 
   error = NO_ERROR;
   *replydata_listid = NULL;
@@ -1191,6 +1192,12 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 	      return set_server_error (error);
 	    }
+
+	  if (histo_is_collecting ())
+	    {
+	      histo_received_size += size;
+	    }
+
 #if 0
 	  else
 	    {
@@ -1726,9 +1733,10 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
       if (histo_is_collecting ())
 	{
-	  int recevied = replysize
+	  int received_size = replysize
 	    + (replydatasize_listid ? *replydatasize_listid : 0)
 	    + (replydatasize_page ? *replydatasize_page : 0) + (replydatasize_plan ? *replydatasize_plan : 0);
+	  received_size += histo_received_size;
 	  histo_finish_request (request, recevied);
 	}
 
@@ -2372,6 +2380,12 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 
   if (packed_desc_size == 0 && content_size == 0)
     {
+      if (histo_is_collecting ())
+	{
+	  int recevied = replysize + content_size + packed_desc_size;
+	  histo_finish_request (request, recevied);
+	}
+
       return error;
     }
 
@@ -3212,6 +3226,12 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
   *reply_copy_area = NULL;
   if (packed_desc_size == 0 && content_size == 0)
     {
+      if (histo_is_collecting ())
+	{
+	  int recevied = replysize + (recvbuffer_size ? *recvbuffer_size : 0) + content_size + packed_desc_size;
+	  histo_finish_request (request, recevied);
+	}
+
       return error;
     }
 
