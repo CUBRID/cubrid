@@ -2974,6 +2974,7 @@ css_conn_entry::release_packet (void *buffer, int size)
 #if defined(SERVER_MODE)
   cubbase::span<std::byte> mem ((std::byte *) buffer, size);
 
+  assert (receiver);
   receiver->release (mem);
 #endif
 }

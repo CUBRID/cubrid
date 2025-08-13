@@ -453,10 +453,8 @@ struct css_conn_entry
 
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
-  char *free_net_header_list;
   int free_queue_count;
   int free_wait_queue_count;
-  int free_net_header_count;
 
   CSS_LIST request_queue;	/* list of requests */
   CSS_LIST data_queue;		/* list of data packets */
