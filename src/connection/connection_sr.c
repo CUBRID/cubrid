@@ -168,10 +168,6 @@ static CSS_WAIT_QUEUE_ENTRY *css_claim_wait_queue_entry (CSS_CONN_ENTRY * conn);
 static void css_retire_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
 static void css_free_wait_queue_list (CSS_CONN_ENTRY * conn);
 
-static NET_HEADER *css_claim_net_header_entry (CSS_CONN_ENTRY * conn);
-static void css_retire_net_header_entry (CSS_CONN_ENTRY * conn, NET_HEADER * entry);
-static void css_free_net_header_list (CSS_CONN_ENTRY * conn);
-
 static CSS_QUEUE_ENTRY *css_make_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char *buffer,
 					      int size, int rc, int transid, int invalidate_snapshot, int db_error);
 static void css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry);
@@ -295,9 +291,6 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->free_wait_queue_list = NULL;
   conn->free_wait_queue_count = 0;
 
-  conn->free_net_header_list = NULL;
-  conn->free_net_header_count = 0;
-
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
@@ -389,12 +382,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       assert (conn->free_wait_queue_count > 0);
       css_free_wait_queue_list (conn);
-    }
-
-  if (conn->free_net_header_list != NULL)
-    {
-      assert (conn->free_net_header_count > 0);
-      css_free_net_header_list (conn);
     }
 
 #if defined(SERVER_MODE)
@@ -908,6 +895,142 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 
   END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
+
+void
+css_remove_all_unexpected_packets_tmp (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
+{
+  int r;
+
+  r = rmutex_lock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  css_traverse_list (&conn->request_queue, css_remove_and_free_queue_entry, conn);
+
+  css_traverse_list (&conn->data_queue, css_remove_and_free_queue_entry, conn);
+
+  css_traverse_list (&conn->data_wait_queue, css_remove_and_free_wait_queue_entry, conn);
+
+  css_traverse_list (&conn->abort_queue, css_remove_and_free_queue_entry, conn);
+
+  css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry, conn);
+
+  r = rmutex_unlock (thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+void
+css_shutdown_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
+{
+  int r;
+
+  r = rmutex_lock ((THREAD_ENTRY *) thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  if (!IS_INVALID_SOCKET (conn->fd))
+    {
+      /* if this is the PC, it also shuts down Winsock */
+      css_shutdown_socket (conn->fd);
+      conn->fd = INVALID_SOCKET;
+    }
+
+  if (conn->status == CONN_OPEN || conn->status == CONN_CLOSING)
+    {
+      conn->status = CONN_CLOSED;
+      conn->stop_talk = false;
+      conn->in_flashback = false;
+      conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
+
+      if (conn->version_string)
+	{
+	  free_and_init (conn->version_string);
+	}
+
+      css_remove_all_unexpected_packets_tmp ((THREAD_ENTRY *) thread_p, conn);
+
+      css_finalize_list (&conn->request_queue);
+      css_finalize_list (&conn->data_queue);
+      css_finalize_list (&conn->data_wait_queue);
+      css_finalize_list (&conn->abort_queue);
+      css_finalize_list (&conn->buffer_queue);
+      css_finalize_list (&conn->error_queue);
+    }
+
+  if (conn->free_queue_list != NULL)
+    {
+      assert (conn->free_queue_count > 0);
+      css_free_queue_entry_list (conn);
+    }
+
+  if (conn->free_wait_queue_list != NULL)
+    {
+      assert (conn->free_wait_queue_count > 0);
+      css_free_wait_queue_list (conn);
+    }
+
+#if defined(SERVER_MODE)
+  if (conn->session_p)
+    {
+      session_state_decrease_ref_count (NULL, conn->session_p);
+      conn->session_p = NULL;
+      conn->session_id = DB_EMPTY_SESSION;
+    }
+#endif
+
+  r = rmutex_unlock ((THREAD_ENTRY *) thread_p, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+void
+css_free_conn_tmp (void * thread_p, CSS_CONN_ENTRY * conn)
+{
+  CSS_CONN_ENTRY *p, *prev = NULL, *next;
+  int r;
+
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+  /* find and remove from active conn list */
+  for (p = css_Active_conn_anchor; p != NULL; p = next)
+    {
+      next = p->next;
+
+      if (p == conn)
+	{
+	  if (prev == NULL)
+	    {
+	      css_Active_conn_anchor = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+
+	  css_Num_active_conn--;
+
+	  assert (css_Num_active_conn >= 0);
+	  assert (css_Num_active_conn < css_Num_max_conn);
+
+	  CSS_LOG_STACK ("css_free_conn - removed conn = %d from " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+			 CSS_ACTIVE_CONN_ARGS);
+
+	  break;
+	}
+
+      prev = p;
+    }
+
+  if (p == NULL)
+    {
+      CSS_LOG_STACK ("css_free_conn - not found conn = %p in " CSS_ACTIVE_CONN_MSG, conn, CSS_ACTIVE_CONN_ARGS);
+    }
+
+  css_shutdown_conn_tmp (thread_p, conn);
+  css_dealloc_conn (conn);
+  css_decrement_num_conn (conn->client_type);
+
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+}
+
+
 
 /*
  * css_print_conn_entry_info() - print connection entry information to stderr
@@ -1800,78 +1923,6 @@ css_free_wait_queue_list (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * css_claim_net_header_entry() - claim a net header entry from free list.
- *   return: NET_HEADER *
- *   conn(in): connection entry
- *
- * TODO - rewrite this to avoid ugly
- */
-static NET_HEADER *
-css_claim_net_header_entry (CSS_CONN_ENTRY * conn)
-{
-  NET_HEADER *p;
-
-  assert (conn != NULL);
-
-  p = (NET_HEADER *) conn->free_net_header_list;
-  if (p == NULL)
-    {
-      return NULL;
-    }
-
-  conn->free_net_header_list = (char *) (*(UINTPTR *) p);
-
-  conn->free_net_header_count--;
-  assert (0 <= conn->free_net_header_count);
-
-  return p;
-}
-
-/*
- * css_retire_net_header_entry() - retire a net header entry to free list.
- *   return: void
- *   conn(in): connection entry
- *   entry(in): NET_HEADER * to be retired
- */
-static void
-css_retire_net_header_entry (CSS_CONN_ENTRY * conn, NET_HEADER * entry)
-{
-  assert (conn != NULL && entry != NULL);
-
-  *(UINTPTR *) entry = (UINTPTR) conn->free_net_header_list;
-  conn->free_net_header_list = (char *) entry;
-
-  conn->free_net_header_count++;
-  assert (0 < conn->free_net_header_count);
-}
-
-/*
- * css_free_net_header_list() - free all entries of free net header list
- *   return: void
- *   conn(in): connection entry
- */
-static void
-css_free_net_header_list (CSS_CONN_ENTRY * conn)
-{
-  char *p;
-
-  assert (conn != NULL);
-
-  while (conn->free_net_header_list != NULL)
-    {
-      p = conn->free_net_header_list;
-
-      conn->free_net_header_list = (char *) (*(UINTPTR *) p);
-      conn->free_net_header_count--;
-
-      free (p);
-    }
-
-  conn->free_net_header_list = NULL;
-  assert (conn->free_net_header_count == 0);
-}
-
-/*
  * css_make_queue_entry() - make queue entey
  *   return: queue entry
  *   conn(in): connection entry
@@ -2525,15 +2576,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
       return NO_ERRORS;
     }
 
-  if (conn->free_net_header_list != NULL)
-    {
-      p = css_claim_net_header_entry (conn);
-    }
-  else
-    {
-      p = (NET_HEADER *) malloc (sizeof (NET_HEADER));
-    }
-
+  p = (NET_HEADER *) malloc (sizeof (NET_HEADER));
   if (p == NULL)
     {
       assert (false);
@@ -2546,7 +2589,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
 			    conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
   if (rc != NO_ERRORS)
     {
-      css_retire_net_header_entry (conn, p);
+      free (p);
       return rc;
     }
 
@@ -2616,7 +2659,6 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 	  *rid = p->key;
 
 	  buffer = (NET_HEADER *) p->buffer;
-	  p->buffer = NULL;
 
 	  *request = ntohs (buffer->function_code);
 	  *buffer_size = ntohl (buffer->buffer_size);
@@ -2625,8 +2667,6 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 	  conn->invalidate_snapshot = p->invalidate_snapshot;
 	  conn->in_method = p->in_method;
 	  conn->db_error = p->db_error;
-
-	  css_retire_net_header_entry (conn, buffer);
 
 	  css_free_queue_entry (conn, p);
 	  rc = NO_ERRORS;
