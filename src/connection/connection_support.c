@@ -66,6 +66,7 @@
 #include "tcp.h"
 #endif /* !WINDOWS */
 #if defined(SERVER_MODE)
+#include "span.hpp"
 #include "connection_sr.h"
 #else
 #include "connection_list_cl.h"
@@ -2965,5 +2966,15 @@ void
 css_conn_entry::init_pending_request ()
 {
   pending_request_count = 0;
+}
+
+void
+css_conn_entry::release_packet (void *buffer, int size)
+{
+#if defined(SERVER_MODE)
+  cubbase::span<std::byte> mem ((std::byte *) buffer, size);
+
+  receiver->release (mem);
+#endif
 }
 // *INDENT-ON*

@@ -217,6 +217,7 @@ namespace cubconn
 	return false;
       }
     ctx->m_conn = item.conn;
+    ctx->m_conn->receiver = &ctx->m_receiver;
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
 	delete ctx;
