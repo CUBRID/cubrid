@@ -7037,6 +7037,7 @@ classobj_make_class (const char *name)
   class_->comment = NULL;
 
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
+  class_->statistics_strategy = -1;
 
   // *INDENT-OFF*
   class_->created_time = (DB_DATETIME){0, 0};

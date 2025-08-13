@@ -443,7 +443,7 @@ static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, in
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 static int sm_set_class_timestamps (SM_CLASS * class_);
-static int sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_);
+static int set_checked_time_with_strategy (MOP op, bool with_fullscan);
 
 
 /*
@@ -4254,7 +4254,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      return error;
 		    }
 
-		  error = sm_set_checked_time_from_stats (classop, class_);
+		  error = set_checked_time_with_strategy (classop, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -4367,9 +4367,9 @@ sm_update_all_statistics (bool with_fullscan)
 	  if (!WS_IS_DELETED (cl->op))
 	    {
 	      /* uncache statistics only if object is cached - MOP trickery */
-	      if (cl->op->object != NULL)
+	      class_ = (SM_CLASS *) cl->op->object;
+	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 		{
-		  class_ = (SM_CLASS *) cl->op->object;
 		  if (class_->stats != NULL)
 		    {
 		      stats_free_statistics (class_->stats);
@@ -4387,7 +4387,7 @@ sm_update_all_statistics (bool with_fullscan)
 		      return error;
 		    }
 
-		  error = sm_set_checked_time_from_stats (cl->op, class_);
+		  error = set_checked_time_with_strategy (cl->op, with_fullscan);
 		  if (error != NO_ERROR)
 		    {
 		      return error;
@@ -4411,17 +4411,16 @@ sm_update_all_catalog_statistics (bool with_fullscan)
 {
   int error = NO_ERROR;
   int i;
-
   const char *classes[] = {
     CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
-    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
-    CT_SERIAL_NAME, CT_USER_NAME, CT_AUTHORIZATION_NAME,
-    CT_TRIGGER_NAME, CT_PASSWORD_NAME, CT_HA_APPLY_INFO_NAME,
-    CT_DB_SERVER_NAME, NULL
+    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_STORED_PROC_CODE_NAME,
+    CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
+    CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
+    CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
+    CT_DB_SERVER_NAME, CT_SYNONYM_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -16696,23 +16695,19 @@ sm_update_class_timestamp (SM_CLASS * class_)
 }
 
 static int
-sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
+set_checked_time_with_strategy (MOP op, bool with_fullscan)
 {
-  DB_VALUE timestamp, current_datetime;
+  SM_CLASS *class_ = NULL;
   time_t sec;
+  DB_VALUE timestamp, current_datetime;
+  DB_DATETIME checked_time = (DB_DATETIME) { 0, 0 };
 
   if (au_fetch_class_force (op, &class_, AU_FETCH_UPDATE) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (class_->stats == NULL || class_->stats->time_stamp == 0)
-    {
-      // *INDENT-OFF*
-      class_->checked_time = (DB_DATETIME){0, 0};
-      // *INDENT-ON*
-    }
-  else
+  if (class_->stats != NULL && class_->stats->time_stamp != 0)
     {
       sec = (time_t) class_->stats->time_stamp;
       db_make_timestamp (&timestamp, (DB_TIMESTAMP) sec);
@@ -16721,8 +16716,11 @@ sm_set_checked_time_from_stats (MOP op, SM_CLASS * class_)
 	  return ER_FAILED;
 	}
 
-      class_->checked_time = *db_get_datetime (&current_datetime);
+      checked_time = *db_get_datetime (&current_datetime);
     }
+
+  class_->checked_time = checked_time;
+  class_->statistics_strategy = (int) with_fullscan;
 
   if (locator_flush_class (op) != NO_ERROR)
     {

@@ -4447,9 +4447,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       // CLASS LISTS
-
       PT_NODE *cls = NULL;
       DB_OBJECT *class_mop;
+      int class_type;
 
       // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
@@ -4479,9 +4479,13 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
 	  class_mop = cls->info.name.db_object;
+	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
 
-	  error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
-						    ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	  if (class_type == SM_CLASS_CT)
+	    {
+	      error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
+							? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	    }
 	}
 
       return error;

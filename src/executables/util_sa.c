@@ -1468,7 +1468,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	}
 
       if ((class_mop = db_find_class (class_name_p)) == NULL
-	  || sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR)
+	  || (db_is_class (class_mop) && sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR))
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
