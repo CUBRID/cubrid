@@ -156,9 +156,9 @@ namespace cubconn
       return false;
     }
 
-    css_end_server_request (ctx->m_conn);
+    //css_end_server_request (ctx->m_conn);
     /* TODO: net_server_conn_down */
-    css_free_conn (ctx->m_conn);
+    css_free_conn_tmp (&m_entry, ctx->m_conn);
     delete ctx;
 
     return true;
