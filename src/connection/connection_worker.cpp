@@ -113,30 +113,30 @@ namespace cubconn
 
     u = 1;
     while (true)
-    {
-      bytes = ::write (m_eventfd, &u, sizeof (u));
-      if (bytes == sizeof (u))
       {
-	break;
-      }
+	bytes = ::write (m_eventfd, &u, sizeof (u));
+	if (bytes == sizeof (u))
+	  {
+	    break;
+	  }
 
-      if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
-      {
+	if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
+	  {
+	    return false;
+	  }
+
+	assert (bytes < 0);
+
+	if (errno == EINTR)
+	  {
+	    continue;
+	  }
+	if (errno == EAGAIN)
+	  {
+	    break;
+	  }
 	return false;
       }
-
-      assert (bytes < 0);
-
-      if (errno == EINTR)
-      {
-	continue;
-      }
-      if (errno == EAGAIN)
-      {
-	break;
-      }
-      return false;
-    }
 
     _er_log_debug (__FILE__, __LINE__, "requested to wake up the worker index = %d\n", m_index);
     return true;
@@ -151,10 +151,10 @@ namespace cubconn
   bool connection_worker::handle_connection_error (context *ctx)
   {
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
-    {
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: remove_descriptor failed\n");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: remove_descriptor failed\n");
+	return false;
+      }
 
     //css_end_server_request (ctx->m_conn);
     /* TODO: net_server_conn_down */
@@ -175,33 +175,33 @@ namespace cubconn
     ctx->m_receiver.reset ();
     ctx->m_command = false;
     while (true)
-    {
-      bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
-      if (bytes > 0)
       {
-	continue;
-      }
-      
-      if (__builtin_expect (bytes == 0, 0))
-      {
-	return result::PeerReset;
-      }
+	bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
+	if (bytes > 0)
+	  {
+	    continue;
+	  }
 
-      switch (errno)
-      {
-      case EINTR:
-	break;
-      case EAGAIN:
-	/* case EWOULDBLOCK: */
-	/* pending (= successfully drained all) */
-	return result::Ok;
-      case EPIPE:
-      case ECONNRESET:
-	return result::PeerReset;
-      default:
-	return result::Error;
+	if (__builtin_expect (bytes == 0, 0))
+	  {
+	    return result::PeerReset;
+	  }
+
+	switch (errno)
+	  {
+	  case EINTR:
+	    break;
+	  case EAGAIN:
+	    /* case EWOULDBLOCK: */
+	    /* pending (= successfully drained all) */
+	    return result::Ok;
+	  case EPIPE:
+	  case ECONNRESET:
+	    return result::PeerReset;
+	  default:
+	    return result::Error;
+	  }
       }
-    }
 
     return result::Error;
   }
@@ -239,30 +239,30 @@ namespace cubconn
 
     /* read counter */
     while (true)
-    {
-      bytes = ::read (m_eventfd, &u, sizeof (u));
-      if (bytes == sizeof (u))
       {
-	break;
-      }
+	bytes = ::read (m_eventfd, &u, sizeof (u));
+	if (bytes == sizeof (u))
+	  {
+	    break;
+	  }
 
-      if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
-      {
+	if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
+	  {
+	    return false;
+	  }
+
+	assert (bytes < 0);
+
+	if (errno == EINTR)
+	  {
+	    continue;
+	  }
+	if (errno == EAGAIN)
+	  {
+	    break;
+	  }
 	return false;
       }
-
-      assert (bytes < 0);
-
-      if (errno == EINTR)
-      {
-	continue;
-      }
-      if (errno == EAGAIN)
-      {
-	break;
-      }
-      return false;
-    }
 
     do
       {
@@ -313,21 +313,22 @@ namespace cubconn
 
     size = ntohl (header->buffer_size);
     if (static_cast<std::size_t> (size) != packet.size ())
-    {
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
-      return result::Skewed;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
+	return result::Skewed;
+      }
 
     if (!css_is_request_aborted (conn, ctx->m_request_id))
-    {
-      error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
-			   packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
-      if (error != NO_ERRORS)
       {
-	ctx->m_receiver.release (packet);
-	return result::Error;
+	error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+				     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+	if (error != NO_ERRORS)
+	  {
+	    ctx->m_receiver.release (packet);
+	    return result::Error;
+	  }
       }
-    }
     ctx->m_command = false;
     NEXT_STATE (ctx, HEADER);
     return result::Ok;
@@ -349,77 +350,79 @@ namespace cubconn
 
     size = ntohl (header->buffer_size);
     if (static_cast<std::size_t> (size) != packet.size ())
-    {
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
-      return result::Skewed;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
+	return result::Skewed;
+      }
 
     /* check if there is thread waiting for data */
     waiter_thread = NULL;
     waiter = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue, ctx->m_request_id);
     if (waiter != NULL)
-    {
-      waiter_thread = waiter->thrd_entry;
-      waiter_thread->next_wait_thrd = NULL;
-    }
+      {
+	waiter_thread = waiter->thrd_entry;
+	waiter_thread->next_wait_thrd = NULL;
+      }
 
     if (!css_is_request_aborted (conn, ctx->m_request_id))
-    {
-      if (waiter)
       {
-	*waiter->buffer = reinterpret_cast<char *> (packet.data ());
-	*waiter->size = packet.size ();
-	*waiter->rc = NO_ERRORS;
-	waiter->thrd_entry = NULL;
-	css_free_wait_queue_entry (conn, waiter);     
+	if (waiter)
+	  {
+	    *waiter->buffer = reinterpret_cast<char *> (packet.data ());
+	    *waiter->size = packet.size ();
+	    *waiter->rc = NO_ERRORS;
+	    waiter->thrd_entry = NULL;
+	    css_free_wait_queue_entry (conn, waiter);
+	  }
+	else
+	  {
+	    /* if waiter not exists, add to data queue */
+	    error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+					 packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+	    if (error != NO_ERRORS)
+	      {
+		ctx->m_receiver.release (packet);
+		return result::Error;
+	      }
+	  }
       }
-      else
-      {
-	/* if waiter not exists, add to data queue */
-	error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
-			     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
-	if (error != NO_ERRORS)
-	{
-	  ctx->m_receiver.release (packet);
-	  return result::Error;
-	}
-      }
-    }
     else
-    {
-      if (waiter)
       {
-	*waiter->buffer = NULL;
-	*waiter->size = 0;
-	*waiter->rc = SERVER_ABORTED;
+	if (waiter)
+	  {
+	    *waiter->buffer = NULL;
+	    *waiter->size = 0;
+	    *waiter->rc = SERVER_ABORTED;
+	  }
       }
-    }
 
     if (waiter_thread)
-    {
-      thread_lock_entry (waiter_thread);
-
-      assert (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED || waiter_thread->resume_status == THREAD_CSECT_WRITER_SUSPENDED);
-      assert (waiter_thread->next_wait_thrd == NULL);
-
-      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the
-       * data queue. Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that the thread was timed out, is
-       * trying to clear its queue buffer (see clear_wait_queue_entry_and_free_buffer function), and waiting for its
-       * conn->csect. We don't need to wakeup the thread for this case. We may send useless signal for it, but it may
-       * bring other anomalies: the thread may sleep on another resources which we don't know at this moment. */
-      if (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED)
       {
-	thread_wakeup_already_had_mutex (waiter_thread, THREAD_CSS_QUEUE_RESUMED);
+	thread_lock_entry (waiter_thread);
+
+	assert (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED
+		|| waiter_thread->resume_status == THREAD_CSECT_WRITER_SUSPENDED);
+	assert (waiter_thread->next_wait_thrd == NULL);
+
+	/* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the
+	 * data queue. Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that the thread was timed out, is
+	 * trying to clear its queue buffer (see clear_wait_queue_entry_and_free_buffer function), and waiting for its
+	 * conn->csect. We don't need to wakeup the thread for this case. We may send useless signal for it, but it may
+	 * bring other anomalies: the thread may sleep on another resources which we don't know at this moment. */
+	if (waiter_thread->resume_status == THREAD_CSS_QUEUE_SUSPENDED)
+	  {
+	    thread_wakeup_already_had_mutex (waiter_thread, THREAD_CSS_QUEUE_RESUMED);
+	  }
+
+	thread_unlock_entry (waiter_thread);
       }
 
-      thread_unlock_entry (waiter_thread);
-    }
-
     if (ctx->m_command)
-    {
-      this->push_task_into_worker_pool (ctx);
-      ctx->m_command = false;
-    }
+      {
+	this->push_task_into_worker_pool (ctx);
+	ctx->m_command = false;
+      }
 
     NEXT_STATE (ctx, HEADER);
     return result::Ok;
@@ -432,34 +435,35 @@ namespace cubconn
     css_error_code error;
 
     if (css_is_request_aborted (ctx->m_conn, ctx->m_request_id))
-    {
-      return result::Aborted;
-    }
+      {
+	return result::Aborted;
+      }
 
     assert (ctx->m_header.size () == sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
     header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
 
-    error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_request_id, reinterpret_cast<char *> (ctx->m_header.data ()), ctx->m_header.size (), NO_ERRORS,
-			  conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
+    error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_request_id,
+				 reinterpret_cast<char *> (ctx->m_header.data ()), ctx->m_header.size (), NO_ERRORS,
+				 conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     if (error != NO_ERRORS)
-    {
-      ctx->m_receiver.release (ctx->m_header);
-      return result::Error;
-    }
+      {
+	ctx->m_receiver.release (ctx->m_header);
+	return result::Error;
+      }
 
     if (ntohl (header->buffer_size) > 0)
-    {
-      /* data packet will be received belongs to this command */
-      ctx->m_command = true;
-    }
+      {
+	/* data packet will be received belongs to this command */
+	ctx->m_command = true;
+      }
     else
-    {
-      /* there is a request without no data following.		    */
-      /* e.g. NET_SERVER_LOG_CHECKPOINT, NET_SERVER_TM_SERVER_ABORT.  */
-      this->push_task_into_worker_pool (ctx);
-    }
+      {
+	/* there is a request without no data following.		    */
+	/* e.g. NET_SERVER_LOG_CHECKPOINT, NET_SERVER_TM_SERVER_ABORT.  */
+	this->push_task_into_worker_pool (ctx);
+      }
 
     return result::Ok;
   }
@@ -474,27 +478,28 @@ namespace cubconn
     assert (ctx->m_conn);
 
     if (packet.size () != sizeof (NET_HEADER))
-    {
-      /* 1. the state was wrong or				    */
-      /* 2. the incoming packet was wrong			    */
-      /* in this case, we must reset the context and drain all data */
-      /* from the socket to recover this state machine and handle   */
-      /* the next request properly.				    */
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
-      return result::Skewed;
-    }
-    
+      {
+	/* 1. the state was wrong or				    */
+	/* 2. the incoming packet was wrong			    */
+	/* in this case, we must reset the context and drain all data */
+	/* from the socket to recover this state machine and handle   */
+	/* the next request properly.				    */
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
+	return result::Skewed;
+      }
+
     ctx->m_header = packet;
 
     conn = ctx->m_conn;
     header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
 
     ctx->m_request_id = ntohl (header->request_id);
-    
+
     if (conn->stop_talk)
-    {
-      return result::ClosedConnection;
-    }
+      {
+	return result::ClosedConnection;
+      }
 
     conn->set_tran_index (ntohl (header->transaction_id));
     conn->db_error = (int) ntohl (header->db_error);
@@ -504,7 +509,7 @@ namespace cubconn
 
     status = result::Ok;
     switch (ntohl (header->type))
-    {
+      {
       case COMMAND_TYPE:
 	/* no more packets are requested */
 	status = this->handle_command_header_packet (ctx);
@@ -530,11 +535,12 @@ namespace cubconn
 	break;
 
       default:
-	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
+	_er_log_debug (ARG_FILE_LINE,
+		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
 	break;
-    }
- 
+      }
+
     return status;
   }
 
@@ -543,7 +549,7 @@ namespace cubconn
     result status;
 
     switch (ctx->m_state)
-    {
+      {
       case state::HEADER:
 	status = this->handle_header_packet (ctx, packet);
 	break;
@@ -560,7 +566,7 @@ namespace cubconn
 	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_packet: unknown state\n");
 	assert_release (false);
 	break;
-    }
+      }
 
     return status;
   }
@@ -572,74 +578,74 @@ namespace cubconn
     int mtx;
 
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
-    {
-      handle_connection_error (ctx);
-      return result::ClosedConnection;
-    }
+      {
+	handle_connection_error (ctx);
+	return result::ClosedConnection;
+      }
 
     status = ctx->m_receiver.drain (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
-    {
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
-      handle_connection_error (ctx);
-      return status;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
+	handle_connection_error (ctx);
+	return status;
+      }
 
     assert (status == result::Ok || status == result::Pending);
 
     if (status != result::Ok)
-    {
-      return result::Ok;
-    }
+      {
+	return result::Ok;
+      }
 
     /* hold m_conn */
     mtx = rmutex_lock (&m_entry, &ctx->m_conn->rmutex);
     if (mtx != NO_ERROR)
-    {
-      return result::Error;
-    }
+      {
+	return result::Error;
+      }
 
     /* received at least one packet */
     packets = ctx->m_receiver.get_result ();
     for (auto &packet : *packets)
-    {
-      status = this->handle_packet (ctx, packet);
+      {
+	status = this->handle_packet (ctx, packet);
 
-      if (status == result::Skewed)
-      {
-	/* drain all and reset the context */
-	status = this->handle_unexpected_packet (ctx);
-	if (status == result::PeerReset || status == result::Error)
-	{
-	  _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
-	  mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
-	  if (mtx != NO_ERROR)
+	if (status == result::Skewed)
 	  {
-	    return result::Error;
+	    /* drain all and reset the context */
+	    status = this->handle_unexpected_packet (ctx);
+	    if (status == result::PeerReset || status == result::Error)
+	      {
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
+		mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+		if (mtx != NO_ERROR)
+		  {
+		    return result::Error;
+		  }
+		handle_connection_error (ctx);
+		return status;
+	      }
 	  }
-	  handle_connection_error (ctx);
-	  return status;
-	}
+	else if (status == result::ClosedConnection)
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
+	    mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+	    if (mtx != NO_ERROR)
+	      {
+		return result::Error;
+	      }
+	    handle_connection_error (ctx);
+	    return status;
+	  }
       }
-      else if (status == result::ClosedConnection)
-      {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
-	mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
-	if (mtx != NO_ERROR)
-	{
-	  return result::Error;
-	}
-	handle_connection_error (ctx);
-	return status;
-      }
-    }
 
     /* release m_conn */
     mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
     if (mtx != NO_ERROR)
-    {
-      return result::Error;
-    }
+      {
+	return result::Error;
+      }
 
     packets->clear ();
 
