@@ -10651,7 +10651,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
   int ret = NO_ERROR;
 
   /* check to make sure the attr_info has been used */
-  if (attr_info->num_values == -1)
+  if (__builtin_expect (attr_info->num_values == -1, 0))
     {
       return NO_ERROR;
     }
