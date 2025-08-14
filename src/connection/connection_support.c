@@ -2969,13 +2969,17 @@ css_conn_entry::init_pending_request ()
 }
 
 void
-css_conn_entry::release_packet (void *buffer, int size)
+css_conn_entry::release_packet_origin (void *buffer, int size)
 {
 #if defined(SERVER_MODE)
-  cubbase::span<std::byte> mem ((std::byte *) buffer, size);
-
-  assert (receiver);
-  receiver->release (mem);
+  css_release_packet (this, buffer, size);
 #endif
+}
+
+/* remove this */
+void
+css_conn_entry::release_packet (void *buffer, int size)
+{
+  delete[] (std::byte *) buffer;
 }
 // *INDENT-ON*
