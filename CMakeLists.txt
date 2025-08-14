@@ -807,6 +807,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     PATTERN "cmake" EXCLUDE
     PATTERN "src" EXCLUDE
     PATTERN "output" EXCLUDE
+    PATTERN "release" EXCLUDE
   )
 endif()
 
