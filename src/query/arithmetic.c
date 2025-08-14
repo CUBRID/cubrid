@@ -1798,10 +1798,16 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (d1, d2);
-	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
-						 &s);
-	  db_make_numeric (result, num, p, s);
+	  //   dtmp = fmod (d1, d2);
+	  //   (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
+	  //                                       &s);
+	  //   db_make_numeric (result, num, p, s);
+
+	  er_status = floating_point_numeric_mod (value1, value2, result);
+	  if (er_status != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
       break;
     case DB_TYPE_MONETARY:

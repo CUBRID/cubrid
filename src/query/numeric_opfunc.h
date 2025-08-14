@@ -91,6 +91,8 @@ extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *a
 extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 
+extern int floating_point_numeric_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale);
 #endif
