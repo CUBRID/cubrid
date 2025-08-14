@@ -720,6 +720,7 @@ namespace cubconn
       {
 	css_insert_into_active_conn_list (ctx->m_conn);
 
+	ctx->m_conn->request_id = 0;
 	m_connection_pool->dispatch (ctx->m_conn);
       }
     else
