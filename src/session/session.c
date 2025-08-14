@@ -3307,6 +3307,7 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
   return error;
 }
 
+/*
 #if defined (SERVER_MODE)
 void
 session_notify_pl_task_completion (const SESSION_STATE * session)
@@ -3319,6 +3320,7 @@ session_notify_pl_task_completion (const SESSION_STATE * session)
 #endif
 }
 #endif
+ */
 
 /* 
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
@@ -3348,7 +3350,7 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg, bool 
       if (thread_p && thread_p->type == TT_WORKER)
 	{
 	  session->pl_session_p->set_interrupt (er_errid ());
-	  session->pl_session_p->wait_for_interrupt ();
+	  session->pl_session_p->wait_until_pl_session_done ();
 	}
 
       if (is_destory)

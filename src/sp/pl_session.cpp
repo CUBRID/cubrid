@@ -85,9 +85,9 @@ namespace cubpl
   session::~session ()
   {
     er_log_debug (ARG_FILE_LINE, "pl_session (delete): %d\n", m_id);
-
     destroy_pl_context_jvm ();
 
+    std::unique_lock<std::mutex> lock (m_mutex_connection);
     m_session_connections.clear ();
   }
 
@@ -98,7 +98,6 @@ namespace cubpl
       {
 	thread_p = thread_get_thread_entry_info ();
       }
-
 
     std::unique_lock<std::mutex> lock (m_mutex_stack);
 
@@ -112,30 +111,31 @@ namespace cubpl
 
     if (m_stack_idx == -1)
       {
-	// clear previous interrupt state
-	clear_interrupt ();
-      }
+        assert (m_interrupt_id == 0);
+      } else {
 
-    // check interrupt
-    if (is_interrupted () && m_stack_idx > -1)
-      {
-	// block creating a new stack
-	set_local_error_for_interrupt ();
-	m_cond_var.notify_all ();
-	return nullptr;
+        assert(m_stack_idx >= 0);
+
+        // check interrupt
+        if (m_interrupt_id)
+          {
+            // block creating a new stack
+            set_local_error_for_interrupt ();
+            return nullptr;
+          }
       }
 
     execution_stack *stack = new execution_stack (thread_p);
     if (stack)
       {
-	m_stack_map [stack->get_id ()] = stack;
-
 	// update stack index
 	m_stack_idx++;
 
 	// push to exec_stack
-	int stack_size = (int) m_exec_stack.size ();
 	PL_STACK_ID stack_id = stack->get_id ();
+	m_stack_map [stack_id] = stack;
+
+	int stack_size = (int) m_exec_stack.size ();
 	if (m_stack_idx < stack_size)
 	  {
 	    m_exec_stack [m_stack_idx] = stack_id;
@@ -156,37 +156,30 @@ namespace cubpl
   void
   session::pop_and_destroy_stack (const PL_STACK_ID sid)
   {
-    if (m_stack_idx == -1)
-      {
-	// interrupted
-	return;
-      }
-
-    auto pred = [&] () -> bool
+    auto target_stack_is_at_top = [&] () -> bool
     {
       // condition to check
       return m_exec_stack[m_stack_idx] == sid;
     };
 
-    // Guaranteed to be removed from the topmost element
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
-    m_cond_var.wait (ulock, pred);
 
-    if (pred ())
+    // Guaranteed to be removed from the topmost element
+    m_cond_target_stack_at_top.wait (ulock, target_stack_is_at_top);
+
+    assert (m_stack_idx >= 0);
+    m_exec_stack[m_stack_idx] = -1;
+    m_stack_idx--;
+    m_cond_target_stack_at_top.notify_all();
+
+    m_stack_map.erase (sid);
+
+    if (m_stack_idx == -1)
       {
-	if (m_stack_idx > -1)
-	  {
-	    m_exec_stack[m_stack_idx] = -1;
-	    m_stack_idx--;
-	  }
-
-	m_stack_map.erase (sid);
-      }
-
-    if (m_stack_idx < 0)
-      {
-	// clear interrupt
-	clear_interrupt ();
+        clear_interrupt ();
+        m_cond_pl_session_done.notify_all();
+      } else {
+        assert(m_stack_idx >= 0);
       }
   }
 
@@ -195,13 +188,47 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex_stack);
 
-    return top_stack_internal ();
+    if (m_stack_idx == -1) {
+	return nullptr;
+    }
+
+    assert (m_stack_idx >= 0);
+
+    PL_STACK_ID top = m_exec_stack[m_stack_idx];
+    const auto &it = m_stack_map.find (top);
+    if (it == m_stack_map.end ())
+      {
+	// should not happended
+	assert (false);
+	return nullptr;
+      }
+
+    return it->second;
   }
 
+  /*
   void
   session::notify_waiting_stacks ()
   {
     m_cond_var.notify_all ();
+  }
+   */
+
+  bool
+  session::is_thread_involved (thread_id_t id)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
+
+    for (const auto &it : m_stack_map)
+      {
+	execution_stack *stack = it.second;
+	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 
   connection_view
@@ -270,43 +297,6 @@ namespace cubpl
 	  }
 	release_connection (cv);
       }
-  }
-
-  execution_stack *
-  session::top_stack_internal ()
-  {
-    if (m_exec_stack.empty())
-      {
-	return nullptr;
-      }
-
-    PL_STACK_ID top = m_exec_stack[m_stack_idx];
-    const auto &it = m_stack_map.find (top);
-    if (it == m_stack_map.end ())
-      {
-	// should not happended
-	assert (false);
-	return nullptr;
-      }
-
-    return it->second;
-  }
-
-  bool
-  session::is_thread_involved (thread_id_t id)
-  {
-    std::lock_guard<std::mutex> lock (m_mutex_stack);
-
-    for (const auto &it : m_stack_map)
-      {
-	execution_stack *stack = it.second;
-	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
-	  {
-	    return true;
-	  }
-      }
-
-    return false;
   }
 
   void
@@ -384,28 +374,22 @@ namespace cubpl
   }
 
   void
-  session::wait_for_interrupt ()
+  session::wait_until_pl_session_done ()
   {
-    auto pred = [this] () -> bool
+    auto pl_session_is_not_running = [this] () -> bool
     {
       // condition of finish
-      return is_running () == false;
+      return m_stack_idx == -1; // not running
     };
 
-    if (pred ())
-      {
-	return;
-      }
-
-    m_cond_var.notify_all ();
-
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
-    m_cond_var.wait (ulock, pred);
+    m_cond_pl_session_done.wait (ulock, pl_session_is_not_running);
   }
 
   int
   session::get_depth ()
   {
+    std::unique_lock<std::mutex> ulock (m_mutex_stack);
     return m_stack_map.size () - m_deferred_free_stack.size ();
   }
 
@@ -418,6 +402,7 @@ namespace cubpl
   bool
   session::is_running ()
   {
+    std::unique_lock<std::mutex> ulock (m_mutex_stack);
     return m_stack_idx >= 0;
   }
 
