@@ -447,5 +447,11 @@ histo_finish_request (int request, int received)
     {
       net_histo_ctx_p->finish_request (request, received);
     }
+
+  if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
+    {
+      // stop collect
+      net_histo_ctx_p->stop_collect ();
+    }
 }
 #endif /* !SERVER_MODE */

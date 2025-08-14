@@ -6374,17 +6374,22 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   if (visid->oidp == NULL)
     {
+		if (thread_is_on_trace (thread_p))
+	    {
+	      tsc_getticks (&start_tick);
+	    }
+
+	  if (visid->query_dbvalue == NULL)
+	    {
+	      return S_END;
+	    }
+		
       int k = db_get_int (visid->k_dbvalue);
       if (k > 0)
 	{
 	  visid->oidp = (OID *) db_private_alloc (thread_p, k * sizeof (OID));
 	  visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
 	  visid->oid_cnt = k;
-
-	  if (thread_is_on_trace (thread_p))
-	    {
-	      tsc_getticks (&start_tick);
-	    }
 
 	  if (hnsw_search_element (visid->hnsw_id, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
 	    {

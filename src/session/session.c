@@ -2957,7 +2957,6 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 		      session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
 		      if (net_histo_ctx_p != NULL)
 			{
-			  net_histo_ctx_p->cancel_last_request ();
 			  net_histo_ctx_p->print_histogram (fp2);
 			  net_histo_ctx_p->stop_collect ();
 			  net_histo_ctx_p->clear ();
