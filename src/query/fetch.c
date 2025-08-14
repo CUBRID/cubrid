@@ -4771,6 +4771,10 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
+	  if (DB_NEED_CLEAR (regup->value.vfetch_to))
+	    {
+	      pr_clear_value (regup->value.vfetch_to);
+	    }
 	  rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid, obj_oid, tpl, &tmp);
 
 	  if (rc != NO_ERROR)

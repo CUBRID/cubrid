@@ -10397,7 +10397,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   int disk_length = -1;
   int ret = NO_ERROR;
 
-  if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
+  if (__builtin_expect (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid), 0))
     {
       /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */

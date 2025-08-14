@@ -244,24 +244,23 @@ namespace parallel_heap_scan
       }
 
     /* set data filter information */
-    scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			   &hsidp->cls_oid, 0, NULL, NULL, NULL);
+    data_filter.scan_pred = &hsidp->scan_pred;
+    data_filter.scan_attrs = &hsidp->pred_attrs;
+    data_filter.val_list = scan_id->val_list;
+    data_filter.val_descr = scan_id->vd;
+    data_filter.class_oid = &hsidp->cls_oid;
+    data_filter.btree_num_attrs = 0;
+    data_filter.btree_attr_ids = NULL;
+    data_filter.num_vstr_ptr = NULL;
+    data_filter.vstr_ids = NULL;
+    data_filter.func_idx_col_id = -1;
+    data_filter.matched_attid_idx_4_keyflt = NULL;
+    data_filter.matched_attid_idx_4_readval = NULL;
 
     is_peeking = scan_id->fixed;
     if (scan_id->grouped)
       {
 	is_peeking = PEEK;
-      }
-
-    if (data_filter.val_list)
-      {
-	for (p = data_filter.scan_pred->regu_list; p; p = p->next)
-	  {
-	    if (DB_NEED_CLEAR (p->value.vfetch_to))
-	      {
-		pr_clear_value (p->value.vfetch_to);
-	      }
-	  }
       }
 
     while (1)
