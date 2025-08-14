@@ -552,8 +552,10 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 
   /* copy each value pointer into the each tdp field */
   reg_var_p = valptr_list_p->valptrp;
+  __builtin_prefetch (&reg_var_p->value, 0, 0);
   for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
     {
+      __builtin_prefetch (&reg_var_p->next->value, 0, 2);
       regu_var_p = &reg_var_p->value;
       flags = regu_var_p->flags;
       if (__builtin_expect (flags & REGU_VARIABLE_HIDDEN_COLUMN, 0))
