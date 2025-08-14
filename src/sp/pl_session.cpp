@@ -76,8 +76,7 @@ namespace cubpl
     , m_all_session_params_required {true}
     , m_last_conn_epoch (-1)
     , m_stack_idx {-1}
-    , m_is_interrupted (false)
-    , m_interrupt_id (NO_ERROR)
+    , m_interrupt_id (0)
     , m_id (id)
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
@@ -313,7 +312,7 @@ namespace cubpl
   void
   session::set_interrupt (int reason, std::string msg)
   {
-    if (m_is_interrupted)
+    if (m_interrupt_id)
       {
 	// do not overwrite interrupt
 	return;
@@ -327,7 +326,6 @@ namespace cubpl
       case ER_NET_SERVER_SHUTDOWN:
       case ER_SP_NOT_RUNNING_PL_SERVER:
       case ER_SES_SESSION_EXPIRED:
-	m_is_interrupted = true;
 	m_interrupt_id = reason;
 	m_interrupt_msg.assign ("");
 	break;
@@ -336,7 +334,6 @@ namespace cubpl
       case ER_SP_CANNOT_CONNECT_PL_SERVER:
       case ER_SP_NETWORK_ERROR:
       case ER_OUT_OF_VIRTUAL_MEMORY:
-	m_is_interrupted = true;
 	m_interrupt_id = reason;
 	m_interrupt_msg.assign (msg);
 	break;
@@ -346,7 +343,7 @@ namespace cubpl
       }
 
 #if !defined (NDEBUG)
-    if (m_is_interrupted)
+    if (m_interrupt_id)
       {
 	er_log_debug (ARG_FILE_LINE, "pl_session (interrupted): %d\n", m_id);
       }
@@ -364,7 +361,7 @@ namespace cubpl
   bool
   session::is_interrupted ()
   {
-    return m_is_interrupted;
+    return m_interrupt_id != 0;
   }
 
   int
@@ -382,8 +379,7 @@ namespace cubpl
   void
   session::clear_interrupt ()
   {
-    m_is_interrupted = false;
-    m_interrupt_id = NO_ERROR;
+    m_interrupt_id = 0;
     m_interrupt_msg.clear ();
   }
 

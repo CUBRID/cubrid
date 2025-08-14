@@ -208,7 +208,6 @@ namespace cubpl
       int m_stack_idx;
 
       // interrupt
-      bool m_is_interrupted;
       int m_interrupt_id;
       std::string m_interrupt_msg;
 
