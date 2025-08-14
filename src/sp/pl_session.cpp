@@ -111,18 +111,20 @@ namespace cubpl
 
     if (m_stack_idx == -1)
       {
-        assert (m_interrupt_id == 0);
-      } else {
+	assert (m_interrupt_id == 0);
+      }
+    else
+      {
 
-        assert(m_stack_idx >= 0);
+	assert (m_stack_idx >= 0);
 
-        // check interrupt
-        if (m_interrupt_id)
-          {
-            // block creating a new stack
-            set_local_error_for_interrupt ();
-            return nullptr;
-          }
+	// check interrupt
+	if (m_interrupt_id)
+	  {
+	    // block creating a new stack
+	    set_local_error_for_interrupt ();
+	    return nullptr;
+	  }
       }
 
     execution_stack *stack = new execution_stack (thread_p);
@@ -176,10 +178,12 @@ namespace cubpl
 
     if (m_stack_idx == -1)
       {
-        clear_interrupt ();
-        m_cond_pl_session_done.notify_all();
-      } else {
-        assert(m_stack_idx >= 0);
+	clear_interrupt ();
+	m_cond_pl_session_done.notify_all();
+      }
+    else
+      {
+	assert (m_stack_idx >= 0);
       }
   }
 
@@ -188,9 +192,10 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex_stack);
 
-    if (m_stack_idx == -1) {
+    if (m_stack_idx == -1)
+      {
 	return nullptr;
-    }
+      }
 
     assert (m_stack_idx >= 0);
 
