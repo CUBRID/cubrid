@@ -64,12 +64,13 @@ sm_define_view_class_spec (void)
   static char stmt [2048];
 
   // *INDENT-OFF*
+  /* class_flags bitmask; see SM_CLASS_FLAG for bit definitions in class_object.h */
   sprintf (stmt,
 	"SELECT "
 	  "[c].[class_name] AS [class_name], "
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
-	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+	  "CASE WHEN ([c].[class_flags] & 1) <> 0 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE [c].[statistics_strategy] "
             "WHEN 0 THEN 'SAMPLING' "
@@ -81,7 +82,7 @@ sm_define_view_class_spec (void)
 	    /* CT_PARTITION_NAME */
 	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
 	    "END AS [partitioned], "
-	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
+	  "CASE WHEN ([c].[class_flags] & 8) <> 0 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
 	  "[coll].[coll_name] AS [collation], "
 	  "[c].[comment] AS [comment], "
           "[c].[created_time] AS [created_time], "
