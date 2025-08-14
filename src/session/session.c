@@ -2935,41 +2935,46 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 	      fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
 	    }
 
-	  if (state_p->comm_histo_cl != NULL)
+	  bool is_query_comm_trace = prm_get_bool_value (PRM_ID_ENABLE_HISTO);
+	  if (is_query_comm_trace)
 	    {
-	      fprintf (fp, "\nClient Communication Histogram:\n%s", state_p->comm_histo_cl);
-	    }
-
-	  if (state_p->comm_histo_sr == NULL)
-	    {
-	      // server histogram
-	      char *histo_str = NULL;
-	      size_t sizeloc2;
-	      FILE *fp2;
-
-	      fp2 = port_open_memstream (&histo_str, &sizeloc2);
-	      if (fp2)
+	      if (state_p->comm_histo_cl != NULL)
 		{
-		  net_histo_ctx *net_histo_ctx_p = NULL;
-		  session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
-		  if (net_histo_ctx_p != NULL)
+		  fprintf (fp, "\nClient Communication Histogram:\n%s", state_p->comm_histo_cl);
+		}
+
+	      if (state_p->comm_histo_sr == NULL)
+		{
+		  // server histogram
+		  char *histo_str = NULL;
+		  size_t sizeloc2;
+		  FILE *fp2;
+
+		  fp2 = port_open_memstream (&histo_str, &sizeloc2);
+		  if (fp2)
 		    {
-		      net_histo_ctx_p->print_histogram (fp2);
-		      net_histo_ctx_p->stop_collect ();
-		      net_histo_ctx_p->clear ();
+		      net_histo_ctx *net_histo_ctx_p = NULL;
+		      session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
+		      if (net_histo_ctx_p != NULL)
+			{
+			  net_histo_ctx_p->cancel_last_request ();
+			  net_histo_ctx_p->print_histogram (fp2);
+			  net_histo_ctx_p->stop_collect ();
+			  net_histo_ctx_p->clear ();
+			}
+		      port_close_memstream (fp2, &histo_str, &sizeloc2);
 		    }
-		  port_close_memstream (fp2, &histo_str, &sizeloc2);
+
+		  if (histo_str != NULL)
+		    {
+		      session_set_comm_histo_sr (thread_p, histo_str);
+		    }
 		}
 
-	      if (histo_str != NULL)
+	      if (state_p->comm_histo_sr != NULL)
 		{
-		  session_set_comm_histo_sr (thread_p, histo_str);
+		  fprintf (fp, "\nServer Communication Histogram:\n%s", state_p->comm_histo_sr);
 		}
-	    }
-
-	  if (state_p->comm_histo_sr != NULL)
-	    {
-	      fprintf (fp, "\nServer Communication Histogram:\n%s", state_p->comm_histo_sr);
 	    }
 
 	  if (state_p->trace_stats != NULL)

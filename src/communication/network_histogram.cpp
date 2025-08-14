@@ -23,6 +23,11 @@
 #include "perf_monitor.h"
 #include "system_parameter.h"
 
+#if defined (SERVER_MODE)
+#include "session.h"
+#include "thread_manager.hpp"
+#endif
+
 #if defined (CS_MODE)
 /* histogram context */
 static struct net_histo_ctx net_histo_context;
@@ -50,6 +55,7 @@ net_histo_ctx::net_histo_ctx ()
   , last_call_tick {}
   , total_server_time (0)
   , histogram_entries {}
+  , last_request_id (-1)
 {
   //
 }
@@ -211,6 +217,23 @@ net_histo_ctx::add_request (int request, int data_sent)
   tsc_getticks (&last_call_tick);
 
   call_cnt++;
+
+  last_request_id = request;
+}
+
+void
+net_histo_ctx::cancel_last_request (void)
+{
+  if (last_request_id >= 0)
+    {
+      net_histogram_entry &entry = histogram_entries[last_request_id];
+      entry.request_count--;
+      call_cnt--;
+      last_request_id = -1;
+
+      // clear TSC_TICKS (last_call_tick)
+      memset (&last_call_tick, 0, sizeof (last_call_tick));
+    }
 }
 
 /*
@@ -414,4 +437,15 @@ histo_finish_request (int request, int received)
 #endif /* !CS_MODE */
 }
 
+#else
+void
+histo_finish_request (int request, int received)
+{
+  net_histo_ctx *net_histo_ctx_p = NULL;
+  session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
+  if (net_histo_ctx_p != NULL)
+    {
+      net_histo_ctx_p->finish_request (request, received);
+    }
+}
 #endif /* !SERVER_MODE */

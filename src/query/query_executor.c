@@ -25876,6 +25876,35 @@ qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       session_set_trace_stats (thread_p, trace_str, thread_p->trace_format);
     }
 
+  /*
+     bool is_query_comm_trace = prm_get_bool_value (PRM_ID_ENABLE_HISTO);
+     if (is_query_comm_trace)
+     {
+     // server histogram
+     char* histo_str = NULL;
+     size_t sizeloc2;
+     FILE *fp2;
+
+     fp2 = port_open_memstream (&histo_str, &sizeloc2);
+     if (fp2)
+     {
+     net_histo_ctx *net_histo_ctx_p = NULL;
+     session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
+     if (net_histo_ctx_p != NULL)
+     {
+     net_histo_ctx_p->print_histogram (fp2);
+     net_histo_ctx_p->stop_collect();
+     // net_histo_ctx_p->clear();
+     }
+     port_close_memstream (fp2, &histo_str, &sizeloc2);
+     }
+
+     if (histo_str != NULL)
+     {
+     session_set_comm_histo_sr (thread_p, histo_str);
+     }
+     }
+   */
 /*
    // server histogram
    char* histo_str = NULL;

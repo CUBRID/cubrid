@@ -1476,12 +1476,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ENABLE_HISTO))
     {
-      net_histo_ctx *net_histo_ctx_p = NULL;
-      session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
-      if (net_histo_ctx_p != NULL)
-	{
-	  net_histo_ctx_p->finish_request (conn->current_request_id, buffer_size);
-	}
+      histo_finish_request (conn->current_request_id, buffer_size);
     }
 #endif /* SERVER_MODE */
 
@@ -1521,12 +1516,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ENABLE_HISTO))
     {
-      net_histo_ctx *net_histo_ctx_p = NULL;
-      session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
-      if (net_histo_ctx_p != NULL)
-	{
-	  net_histo_ctx_p->finish_request (conn->current_request_id, reply_size + buffer_size);
-	}
+      histo_finish_request (conn->current_request_id, reply_size + buffer_size);
     }
 #endif /* SERVER_MODE */
 
@@ -1644,12 +1634,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ENABLE_HISTO))
     {
-      net_histo_ctx *net_histo_ctx_p = NULL;
-      session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
-      if (net_histo_ctx_p != NULL)
-	{
-	  net_histo_ctx_p->finish_request (conn->current_request_id, reply_size + buffer1_size + buffer2_size);
-	}
+      histo_finish_request (conn->current_request_id, reply_size + buffer1_size + buffer2_size);
     }
 #endif /* SERVER_MODE */
 
@@ -1694,13 +1679,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ENABLE_HISTO))
     {
-      net_histo_ctx *net_histo_ctx_p = NULL;
-      session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
-      if (net_histo_ctx_p != NULL)
-	{
-	  net_histo_ctx_p->finish_request (conn->current_request_id,
-					   reply_size + buffer1_size + buffer2_size + buffer3_size);
-	}
+      histo_finish_request (conn->current_request_id, reply_size + buffer1_size + buffer2_size + buffer3_size);
     }
 #endif
 
@@ -1730,12 +1709,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ENABLE_HISTO))
     {
-      net_histo_ctx *net_histo_ctx_p = NULL;
-      session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
-      if (net_histo_ctx_p != NULL)
-	{
-	  net_histo_ctx_p->finish_request (conn->current_request_id, buffer_size);
-	}
+      histo_finish_request (conn->current_request_id, buffer_size);
     }
 #endif /* SERVER_MODE */
 
