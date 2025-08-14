@@ -206,36 +206,10 @@ namespace cubconn
     return result::Error;
   }
 
-  bool connection_worker::handle_message_queue_new_client (message &item)
+  bool connection_worker::clear_event ()
   {
-    context *ctx;
-
-    ctx = new context (32 * 1024);
-    if (!ctx)
-      {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: failed to allocate memory\n");
-	return false;
-      }
-    ctx->m_conn = item.conn;
-    ctx->m_conn->receiver = &ctx->m_receiver;
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
-      {
-	delete ctx;
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: add_descriptor failed\n");
-	return false;
-      }
-
-    _er_log_debug (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
-    return true;
-  }
-
-  bool connection_worker::handle_message_queue ()
-  {
-    std::optional<message> request;
     ssize_t bytes;
     uint64_t u;
-
-    assert (!m_queue.empty ());
 
     /* read counter */
     while (true)
@@ -263,6 +237,53 @@ namespace cubconn
 	  }
 	return false;
       }
+    return true;
+  }
+
+  bool connection_worker::handle_message_queue_release_packet (message &item)
+  {
+    assert (item.conn && item.mem.data ());
+
+    item.conn->receiver->release (item.mem);
+
+    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.mem.data ());
+    return true;
+  }
+
+  bool connection_worker::handle_message_queue_new_client (message &item)
+  {
+    context *ctx;
+
+    ctx = new context (32 * 1024);
+    if (!ctx)
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: failed to allocate memory\n");
+	return false;
+      }
+    ctx->m_conn = item.conn;
+    ctx->m_conn->worker = this;
+    ctx->m_conn->receiver = &ctx->m_receiver;
+    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+      {
+	delete ctx;
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: add_descriptor failed\n");
+	return false;
+      }
+
+    _er_log_debug (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    return true;
+  }
+
+  bool connection_worker::handle_message_queue ()
+  {
+    std::optional<message> request;
+
+    assert (!m_queue.empty ());
+
+    if (!this->clear_event ())
+      {
+	return false;
+      }
 
     do
       {
@@ -285,6 +306,13 @@ namespace cubconn
 
 	  case message_type::SHUTDOWN:
 	    m_stop = true;
+	    break;
+
+	  case message_type::RELEASE_PACKET:
+	    if (!this->handle_message_queue_release_packet (*request))
+	      {
+		return false;
+	      }
 	    break;
 
 	  default:

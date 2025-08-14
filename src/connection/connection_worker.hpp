@@ -45,15 +45,17 @@ namespace cubconn
       enum class message_type
       {
 	NEW_CLIENT,
-	SHUTDOWN
+	SHUTDOWN,
+	
+	RELEASE_PACKET
       };
 
       struct message
       {
 	message_type type;
 
-	/* NEW_CLIENT */
 	css_conn_entry *conn;
+	cubbase::span<std::byte> mem;
       };
 
     private:
@@ -118,6 +120,9 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
+      bool clear_event ();
+
+      bool handle_message_queue_release_packet (message &item);
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue ();
 
