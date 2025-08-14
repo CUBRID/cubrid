@@ -76,7 +76,6 @@ namespace cubpl
     , m_stack_idx {-1}
     , m_is_interrupted (false)
     , m_interrupt_id (NO_ERROR)
-    , m_is_running (false)
     , m_id (id)
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
@@ -110,7 +109,7 @@ namespace cubpl
 	return nullptr;
       }
 
-    if (m_is_running == false && m_stack_idx == -1)
+    if (m_stack_idx == -1)
       {
 	// clear previous interrupt state
 	clear_interrupt ();
@@ -144,8 +143,6 @@ namespace cubpl
 	  {
 	    m_exec_stack.emplace_back (stack_id);
 	  }
-
-	m_is_running = true;
       }
     else
       {
@@ -187,8 +184,6 @@ namespace cubpl
 
     if (m_stack_idx < 0)
       {
-	m_is_running = false;
-
 	// clear interrupt
 	clear_interrupt ();
       }
@@ -425,7 +420,7 @@ namespace cubpl
   bool
   session::is_running ()
   {
-    return m_is_running;
+    return m_stack_idx >= 0;
   }
 
   query_cursor *

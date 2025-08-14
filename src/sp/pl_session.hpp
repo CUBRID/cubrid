@@ -210,8 +210,6 @@ namespace cubpl
       int m_interrupt_id;
       std::string m_interrupt_msg;
 
-      bool m_is_running;
-
       SESSION_ID m_id;
   };
 
