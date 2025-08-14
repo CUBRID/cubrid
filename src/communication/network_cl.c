@@ -1737,7 +1737,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	    + (replydatasize_listid ? *replydatasize_listid : 0)
 	    + (replydatasize_page ? *replydatasize_page : 0) + (replydatasize_plan ? *replydatasize_plan : 0);
 	  received_size += histo_received_size;
-	  histo_finish_request (request, recevied);
+	  histo_finish_request (request, received_size);
 	}
 
     }

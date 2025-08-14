@@ -272,14 +272,14 @@ net_histo_ctx::print_histogram (FILE *stream)
 	  if (entry.request_count > 0)
 	    {
 	      // average server time per request in seconds (align with csql double formatting)
-	      server_time_sec = (double)entry.elapsed_time / 1'000'000.0 / (double)entry.request_count;
+	      server_time_sec = (double) entry.elapsed_time / 1'000'000.0;
 	      fprintf (stream, "%-29s %6d X %10d+%10d b, %10.6f s\n",
 		       get_net_request_name (i), entry.request_count,
 		       entry.total_size_sent, entry.total_size_received, server_time_sec);
 	      total_requests += entry.request_count;
 	      total_size_sent += entry.total_size_sent;
 	      total_size_received += entry.total_size_received;
-	      total_server_time_sec += (server_time_sec * entry.request_count);
+	      total_server_time_sec += server_time_sec;
 	    }
 	}
 
