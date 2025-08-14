@@ -214,7 +214,7 @@ static int fp_numeric_cmp_base256 (const uint8_t * dbv1_buf, const uint8_t * dbv
 static int fp_numeric_overflow2 (const uint8_t * calc_buf, int calc_bytes);
 static int fp_numeric_get_precision_digits (const uint8_t * calc_buf, int calc_bytes);
 static void fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-				       int *result_scale, int exponent);
+				       int *result_scale);
 static uint16_t fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
 static void fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
 
@@ -1926,7 +1926,7 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 			    DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int calc_bytes, calc_prec;
+  int calc_bytes, calc_prec, calc_scale;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
   /* 1) 지수 정렬 계산 */
@@ -1961,6 +1961,13 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
     {
       return ER_FAILED;
     }
+  // 덧셈의 경우 소수부가 크게 커질 수 있나?
+//   calc_bytes = calc_bytes_from_prec (*result_prec) * 2;
+//   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+//     {
+//       // 16바이트 이하인 경우, 38자리 까지 보여주기 위해 16바이트로 늘림.
+//       calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
+//     }
 
   // 4) 새로운 계산 버퍼 초기화
   uint8_t dbv1_buf[calc_bytes];
@@ -2020,26 +2027,39 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 //     fprintf(stderr, "%02X", calc_buf[i]);
 //   fprintf(stderr, "\n");
 
-  // 7) 덧셈 이후 prec 재계산
+  // 7) 덧셈 이후 prec, scale 재계산
   // 7-1) 0이 될때까지 10으로 나누며 몇 번 나눴는지 카운트 -- 제거
   //calc_prec = count_digits_by_division (calc_buf, calc_bytes);
 
   // 7-2) 미리 계산된 테이블 과 유효 바이트를 검색하여 자릿수 확인
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
   (*result_prec) = calc_prec;
+  calc_scale = *result_scale;
+  *result_scale = calc_scale - (calc_prec - DB_MAX_NUMERIC_PRECISION);
 
 //   fprintf(stderr, "[DEBUG] calc_prec=%d\n", calc_prec);
 //   fprintf(stderr, "\n");
 
-  // 8) 반올림 & 다시 16바이트로 pack
-  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, exponent1 + exponent2);
+  // 8) 만약 38자리 이하인 얘가 여기에 올 경우, scale 보정을 하기 위한 작업 만큼 다시 제거가 필요함.
+  if (calc_prec - DB_MAX_NUMERIC_PRECISION <= 0)
+    {
+      int i = 0, calc_exponent = 0;
+      calc_exponent = exponent1 + exponent2;
+      for (i = 0; i < calc_exponent; i++)
+	{
+	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
+	}
+    }
+
+  // 9) 반올림 & 다시 16바이트로 pack
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale);
 
 //   fprintf(stderr, "[DEBUG] final mantissa_hex: ");
 //   for (int i = 0; i < 16; i++)
 //     fprintf(stderr, "%02X", result_buf[i]);
 //   fprintf(stderr, "\n");
 
-  // 9) 결과
+  // 10) 결과
   if (result_sign)
     {
       // 결과가 음수인 경우
@@ -2221,23 +2241,16 @@ fp_numeric_get_precision_digits (const uint8_t * calc_buf, int calc_bytes)
  */
 static void
 fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-			   int *result_scale, int exponent)
+			   int *result_scale)
 {
-  int keep = DB_MAX_NUMERIC_PRECISION;
   uint16_t rem10 = 0;
   int drop = 0;
   int i = 0;
   int round_prec = 0;
 
-  drop = *result_prec - keep;
+  drop = *result_prec - DB_MAX_NUMERIC_PRECISION;
   if (drop <= 0)
     {
-      // 만약 38자리 이하인 얘가 여기에 올 경우, scale 보정을 하기 위한 작업 만큼 다시 제거가 필요함.
-      for (i = 0; i < exponent; i++)
-	{
-	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
-	}
-
       // 38자리 이하면, 잘라내거나 반올림 전 단계가 전혀 없이 끝남. 
       memcpy (result_buf, calc_buf + (calc_bytes - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
       return;
@@ -2245,9 +2258,8 @@ fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_
 
   // 39자리 이상이면, 38자리까지 잘라내고, 39자리에서 반올림 처리
 
-  // 1) prec, scale 재조정
-  *result_prec = keep;
-  *result_scale = *result_scale - drop;
+  // 1) prec 값을 DB_MAX_NUMERIC_PRECISION으로 재조정
+  *result_prec = DB_MAX_NUMERIC_PRECISION;
 
   // 2) 38 자리 까지 값을 나눠서 짜르고, 39자리는 rem10에 저장(반올림 여부 확인용)
   for (i = 0; i < drop; i++)
@@ -2261,7 +2273,7 @@ fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_
       (void) fp_numeric_increment (calc_buf, calc_bytes, 1);
       //round_prec = count_digits_by_division (calc_buf, calc_bytes);
       round_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
-      if (round_prec > keep)
+      if (round_prec > DB_MAX_NUMERIC_PRECISION)
 	{
 	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
 	  (*result_scale)--;
@@ -2443,7 +2455,7 @@ floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 			    DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int calc_bytes, calc_prec;
+  int calc_bytes, calc_prec, calc_scale;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
   /* 1) 지수 정렬 계산 */
@@ -2478,6 +2490,13 @@ floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
     {
       return ER_FAILED;
     }
+  // 뺄셈의 경우 소수부가 크게 커질 수 있나?
+//   calc_bytes = calc_bytes_from_prec (*result_prec) * 2;
+//   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+//     {
+//       // 16바이트 이하인 경우, 38자리 까지 보여주기 위해 16바이트로 늘림.
+//       calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
+//     }
 
   // 4) 새로운 계산 버퍼 초기화
   uint8_t dbv1_buf[calc_bytes];
@@ -2519,15 +2538,27 @@ floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
       result_sign = arg1_sign;	// 결과 부호 = 입력 부호
     }
 
-  // 7) 뺄셈 이후 prec 재계산
+  // 7) 뺄셈 이후 prec, scale 재계산
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
   (*result_prec) = calc_prec;
+  calc_scale = *result_scale;
+  *result_scale = calc_scale - (calc_prec - DB_MAX_NUMERIC_PRECISION);
 
-  // 8) 반올림 & 다시 16바이트로 pack
-  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, exponent1 + exponent2);
+  // 8) 만약 38자리 이하인 얘가 여기에 올 경우, scale 보정을 하기 위한 작업 만큼 다시 제거가 필요함.
+  if (calc_prec - DB_MAX_NUMERIC_PRECISION <= 0)
+    {
+      int i = 0, calc_exponent = 0;
+      calc_exponent = exponent1 + exponent2;
+      for (i = 0; i < calc_exponent; i++)
+	{
+	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
+	}
+    }
 
+  // 9) 반올림 & 다시 16바이트로 pack
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale);
 
-  // 9) 결과 저장
+  // 10) 결과 저장
   if (result_sign)
     {
       // 결과가 음수인 경우
@@ -2682,7 +2713,7 @@ floating_point_numeric_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 			    DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int calc_bytes, calc_prec;
+  int calc_bytes, calc_prec, calc_scale;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
   /* 1) 지수 정렬 계산 */
@@ -2719,10 +2750,12 @@ floating_point_numeric_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
   result_sign = arg1_sign ^ arg2_sign;
 
   // 3) 필요한 바이트 수 계산
-  calc_bytes = calc_bytes_from_prec (*result_prec) + 1;
-  if (calc_bytes < 1)
+  // 곱셈의 경우 소수부가 크게 커질 수 있음.
+  calc_bytes = calc_bytes_from_prec (*result_prec) * 2;
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
-      return ER_FAILED;
+      // 16바이트 이하인 경우, 38자리 까지 보여주기 위해 16바이트로 늘림.
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
     }
 
   // 4) 새로운 계산 버퍼 초기화
@@ -2765,15 +2798,17 @@ floating_point_numeric_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 //   fprintf(stderr, "[DEBUG] result_scale=%d\n", *result_scale);
 //   fprintf(stderr, "\n");
 
-  // 7) 곱셈 이후 prec 재계산
+  // 7) 곱셈 이후 prec, scale 재계산
   calc_prec = fp_numeric_overflow2 (calc_buf, calc_bytes);
   (*result_prec) = calc_prec;
+  calc_scale = *result_scale;
+  *result_scale = calc_scale - ((calc_prec - DB_MAX_NUMERIC_PRECISION) - calc_scale);
 
 //   fprintf(stderr, "[DEBUG] calc_prec=%d\n", calc_prec);
 //   fprintf(stderr, "\n");
 
   // 8) 반올림 & 다시 16바이트로 pack
-  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, exponent1 + exponent2);
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale);
 
 //   fprintf(stderr, "[DEBUG] final result: ");
 //   for (int i = 0; i < 16; i++)
@@ -3052,7 +3087,7 @@ floating_point_numeric_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 			    DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int calc_bytes, calc_prec;
+  int calc_bytes, calc_prec, calc_scale;
   int cmp;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
@@ -3092,6 +3127,7 @@ floating_point_numeric_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
   result_sign = arg1_sign ^ arg2_sign;
 
   // 3) 필요한 바이트 수 계산
+  // 나눗셈의 경우 소수부가 크게 커질 수 있음.
   calc_bytes = calc_bytes_from_prec (*result_prec) * 2;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
@@ -3164,7 +3200,9 @@ floating_point_numeric_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 	{
 	  // 7-1-b) 몫의 자릿수가 39 이상인 경우, 소수 자리는 없음
 	  *result_prec = calc_prec;
-	  *result_scale = 0;
+	  //*result_scale = 0;
+	  calc_scale = *result_scale;
+	  *result_scale = -(calc_prec - DB_MAX_NUMERIC_PRECISION);
 	  memcpy (calc_buf, quo_buf, calc_bytes);
 	}
       else
@@ -3254,7 +3292,7 @@ floating_point_numeric_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
 //   fprintf(stderr, "\n");
 
   // 8) 반올림 & 다시 16바이트로 pack
-  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale, exponent1 + exponent2);
+  fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, result_prec, result_scale);
 
   // 9) 나머지 자릿수 계산을 해야하는데, trailing zero 를 제거해야함.
   if (*result_scale > 0)
@@ -4708,20 +4746,41 @@ parse_decimal_string4 (const char *astring, int astring_length, INTL_CODESET cod
 	}
     }
 
+  // 최대 자리수 초과 처리 (122(38 +84) + 165(38 + 127) = 287)
+  // 아 우리는 254 까지의 numeric 문자가 가능하며, 255이상의 문자 값이 있으면 그냥 254로 짤려서 parsing을 진행함.
+  // 그래서 굳이 아래 조건 까지는 필요 없어보임.
+//   if (int_count + frac_count > (int_parse_limit + frac_parse_limit))
+//     {
+//       return DOMAIN_INCOMPATIBLE;
+//     }
+
   if (pad_character_zero)
     {
       // 4) 0 처리
-      // 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
-      // 00000 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
-      // 0.0000 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1 이상)
-      // 0.000001 : pad_character_zero(f), has_digit(t), int_count(0), frac_count(1 이상)
-      // 0009000000 : pad_character_zero(?), has_digit(t), int_count(6), frac_count(0)
-      int_digits[0] = '\0';
-      frac_digits[0] = '\0';
-      *int_first_nz = -1;
-      *int_last_nz = -1;
-      *int_len = 1;
-      *frac_len = 0;
+      // 0009000000.00 : pad_character_zero(t), has_digit(t), int_count(6), frac_count(2)
+      // 0.000001 : pad_character_zero(f), has_digit(t), int_count(0), frac_count(6)
+      if (int_count == 0 && frac_count > 0)
+	{
+	  // 0.0 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1)
+	  // 0.0000 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(4)
+	  int_digits[0] = '\0';
+	  frac_digits[0] = '\0';
+	  *int_first_nz = -1;
+	  *int_last_nz = -1;
+	  *int_len = 1;
+	  *frac_len = frac_count;
+	}
+      else
+	{
+	  // 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+	  // 00000 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+	  int_digits[0] = '\0';
+	  frac_digits[0] = '\0';
+	  *int_first_nz = -1;
+	  *int_last_nz = -1;
+	  *int_len = 1;
+	  *frac_len = 0;
+	}
     }
   else if (!has_digit && (int_count + frac_count) == 0)
     {
@@ -5149,7 +5208,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       // 4) 0 처리
       prec = 1;
-      scale = 0;
+      scale = frac_len;
       num_string[0] = '0';
       num_string[1] = '\0';
     }

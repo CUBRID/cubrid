@@ -2577,7 +2577,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
-      if (domain_p == NULL)
+      if (*domain_p == NULL)
 	{
 	  if (type1 == type2)
 	    {
