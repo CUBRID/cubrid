@@ -1837,7 +1837,14 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
     }
 
   page_p = (char *) cur_page_p + list_id_p->last_offset;
-  if (qfile_save_tuple (tuple_descr_p, tuple_type, page_p, &tuple_length) != NO_ERROR)
+  if (tuple_type == T_NORMAL)
+    {
+      if (qfile_save_normal_tuple (tuple_descr_p, page_p + QFILE_TUPLE_LENGTH_SIZE, page_p, tuple_length) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else if (qfile_save_tuple (tuple_descr_p, tuple_type, page_p, &tuple_length) != NO_ERROR)
     {
       return ER_FAILED;
     }

@@ -141,7 +141,8 @@ namespace parallel_heap_scan
     QPROC_TPLDESCR_STATUS status;
     QFILE_TUPLE_RECORD *tplrec;
 
-    __builtin_prefetch ((*m_list_id_p), 0, 2);
+    __builtin_prefetch ((*m_list_id_p), 1, 2);
+    __builtin_prefetch ((*m_list_id_p)->tpl_descr, 1, 2);
 
     status = qdata_generate_tuple_desc_for_valptr_list (thread_p, m_outptr_list, m_vd, & ((*m_list_id_p)->tpl_descr));
 
