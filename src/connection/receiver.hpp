@@ -65,6 +65,7 @@ namespace cubconn
       std::byte *m_bufptr;
       std::size_t m_bufsize;
 
+      bool m_use_tmpsize;
       int m_tmpsize;
 
 #if !defined (NDEBUG)

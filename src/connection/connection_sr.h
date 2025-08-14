@@ -206,7 +206,8 @@ extern css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * lis
 extern CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
 extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
 
-char *css_get_exec_path (void);
-char **css_get_argv (void);
+extern char *css_get_exec_path (void);
+extern char **css_get_argv (void);
+extern void css_release_packet (css_conn_entry *conn, void *buffer, int size);
 
 #endif /* _CONNECTION_SR_H_ */

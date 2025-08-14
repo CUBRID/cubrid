@@ -31,7 +31,7 @@
 #include <sys/epoll.h>
 
 #define NEXT_STATE(x) do { \
-    _er_log_debug (__FILE__, __LINE__, "receiver set state = %d\n", state::x); \
+    _er_log_debug (__FILE__, __LINE__, "receiver state %d -> state = %d\n", m_state, state::x); \
     (m_state = state::x); \
 } while (0)
 
@@ -65,15 +65,17 @@ namespace cubconn
 
     m_received = 0;
     m_size = 0;
+ 
+    m_result.clear ();
+
+    /* if m_buf is already in use, it may be corrupted by subsequent reception. */
+    m_buf.reset ();
 
     buffer = m_buf.buffer ();
     m_bufptr = buffer.data ();
     m_bufsize = buffer.size ();
-    m_tmpsize = -1;
-
-    m_result.clear ();
-    /* if m_buf is already in use, it may be corrupted by subsequent reception. */
-    m_buf.reset ();
+    m_use_tmpsize = false;
+    m_tmpsize = 0;
   }
 
   void receiver::parse_packet (bool is_buffer)
@@ -96,12 +98,6 @@ namespace cubconn
 	  }
 
 	buffer = m_buf.buffer ();
-#if !defined (NDEBUG)
-	if (is_buffer)
-	  {
-	    assert (m_bufptr + SIZE_HEADER + m_size == buffer.data ());
-	  }
-#endif
 	m_bufptr = buffer.data ();
 	m_bufsize = buffer.size ();
 
@@ -122,7 +118,7 @@ namespace cubconn
 
     assert (m_received >= SIZE_HEADER);
 
-    if (__builtin_expect (m_tmpsize < 0, 1))
+    if (__builtin_expect (!m_use_tmpsize, 1))
       {
 	std::memcpy (&aligned, m_bufptr, sizeof (std::uint32_t));
 	m_size = ntohl (aligned);
@@ -130,7 +126,6 @@ namespace cubconn
     else
       {
 	m_size = ntohl (m_tmpsize);
-	m_tmpsize = -1;
       }
     if (m_size == 0)
       {
@@ -148,13 +143,13 @@ namespace cubconn
 	if (m_received < SIZE_HEADER && m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
 	  {
 	    /* need to recv the size header but the buffer was not large enough */
-	    std::memcpy (reinterpret_cast<std::byte *> (&m_tmpsize) + m_received, m_bufptr, SIZE_HEADER - m_received);
+	    std::memcpy (&m_tmpsize, m_bufptr, m_received);
 	    NEXT_STATE (RecvSizeInTmp);
 	  }
       }
     else
       {
-	if (SIZE_HEADER + m_size > m_bufsize)
+	if (m_use_tmpsize || SIZE_HEADER + m_size > m_bufsize)
 	  {
 	    ptr = new std::byte[SIZE_HEADER + m_size];
 	    if (!ptr)
@@ -163,20 +158,35 @@ namespace cubconn
 	      }
 	    _er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
 			   m_bufsize, m_size);
-	    std::memcpy (ptr, m_bufptr, m_received);
+	    if (__builtin_expect (!m_use_tmpsize, 1))
+	      {
+		std::memcpy (ptr, m_bufptr, m_received);
+	      }
+	    else
+	      {
+		assert (m_received == SIZE_HEADER);
+		std::memcpy (ptr, &m_tmpsize, m_received);
+	      }
 
 #if !defined (NDEBUG)
 	    m_allocated.push_back (ptr);
 
-	    std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
-	    assert (m_size == ntohl (aligned));
+	    if (__builtin_expect (!m_use_tmpsize, 1))
+	      {
+		std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
+		assert (m_size == ntohl (aligned));
+	      }
+	    else
+	      {
+		assert (m_size == ntohl (m_tmpsize));
+	      }
 #endif
-
 	    m_bufptr = ptr;
 	    m_bufsize = SIZE_HEADER + m_size;
 	    NEXT_STATE (RecvInAllocated);
 	  }
       }
+    m_use_tmpsize = false;
     return result::Partial;
   }
 
@@ -197,12 +207,17 @@ namespace cubconn
 	buf = m_bufptr + m_received;
 	length = m_bufsize - m_received;
       }
+    _er_log_debug (ARG_FILE_LINE, "receiver->receiver: state = %d\n", m_state);
+    _er_log_debug (ARG_FILE_LINE, "receiver->receiver: buf = %p, length = %d\n", reinterpret_cast<std::byte *> (&m_tmpsize) + m_received, SIZE_HEADER - m_received);
+    _er_log_debug (ARG_FILE_LINE, "receiver->receiver: buf = %p, length = %d\n", m_bufptr + m_received, m_bufsize - m_received);
+    _er_log_debug (ARG_FILE_LINE, "receiver->receiver: buf = %p, length = %d\n", buf, length);
     /* receive */
     bytes = ::recv (fd, buf, length, 0);
+    _er_log_debug (ARG_FILE_LINE, "receiver->receiver: bytes = %d, m_tmpsize = %d\n", bytes, m_tmpsize);
     if (bytes > 0)
       {
 	m_received += bytes;
-	_er_log_debug (ARG_FILE_LINE, "receiver->receiver: received = %d, accumulated = %d\n", bytes, m_received);
+	_er_log_debug (ARG_FILE_LINE, "receiver->receiver: state = %d, received = %d, accumulated = %d\n", m_state, bytes, m_received);
 	if (m_state == state::RecvInAllocated)
 	  {
 	    if (m_received < SIZE_HEADER + m_size)
@@ -212,6 +227,10 @@ namespace cubconn
 	    assert (m_received == SIZE_HEADER + m_size);
 	    this->parse_packet (false);
 	    assert (m_received == 0);
+
+	    assert (m_bufptr == m_buf.buffer ().data ());
+	    assert (m_bufsize == m_buf.buffer ().size ());
+
 	    if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
 	      {
 		NEXT_STATE (RecvSizeInTmp);
@@ -226,6 +245,10 @@ namespace cubconn
 	    if (m_received < SIZE_HEADER)
 	      {
 		return result::Partial;
+	      }
+	    if (m_state == state::RecvSizeInTmp)
+	      {
+		m_use_tmpsize = true;
 	      }
 	    NEXT_STATE (ParseSize);
 	  }
