@@ -178,7 +178,9 @@ namespace cubpl
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
-      std::mutex m_mutex;
+      std::mutex m_mutex_stack;
+      std::mutex m_mutex_connection;
+      std::mutex m_mutex_cursor;
       std::condition_variable m_cond_var;
 
       std::unordered_set <QUERY_ID> m_session_cursors;
