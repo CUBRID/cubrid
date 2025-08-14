@@ -357,6 +357,7 @@ restart_scan_oid:
 
 	if (hsidp->rest_regu_list)
 	  {
+	    __builtin_prefetch (hsidp->rest_attrs.attr_cache, 1, 2);
 	    /* read the rest of the values from the heap into the attribute cache */
 	    if (heap_attrinfo_read_dbvalues (thread_p, p_current_oid, &recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
 	      {
