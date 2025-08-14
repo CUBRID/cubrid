@@ -50,7 +50,7 @@ namespace parallel_query
       cubthread::entry_manager::on_create (context);
 
       emulate_main_thread (context);
-      context.skip_end_resource_tracks_in_recycle = true;
+      context.m_skip_end_resource_tracks_in_recycle = true;
 
       /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
        * function in net_server_request. Since parallel threads are not called through net_server_request,
@@ -70,7 +70,7 @@ namespace parallel_query
       perfmon_destroy_parallel_stats (&context);	/* meaningless */
 
       context.m_px_orig_thread_entry = nullptr;
-      context.skip_end_resource_tracks_in_recycle = false;
+      context.m_skip_end_resource_tracks_in_recycle = false;
 
       cubthread::entry_manager::on_retire (context);
     }
@@ -85,7 +85,7 @@ namespace parallel_query
       assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] == 0);
 
       emulate_main_thread (context);
-      context.skip_end_resource_tracks_in_recycle = true;
+      context.m_skip_end_resource_tracks_in_recycle = true;
     }
 
     void

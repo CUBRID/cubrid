@@ -1894,32 +1894,28 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
 
-      do
-	{
-	  try
-	  {
+      try
+      {
 #undef new
-	    // *INDENT-OFF*
-	    new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
-	    // *INDENT-ON*
+	// *INDENT-OFF*
+	new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
+	// *INDENT-ON*
 #define new new(__FILE__, __LINE__)
 
-	    if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
-	      {
-		/* fallback to HASHJOIN_STATUS_PARTITION */
-		break;
-	      }
-	    assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
-
-	    return HASHJOIN_STATUS_PARALLEL;
-	  }
-	  catch ( ...)
+	if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
 	  {
 	    /* fallback to HASHJOIN_STATUS_PARTITION */
-	    break;
+	    throw std::runtime_error ("failed to reserve workers");
 	  }
-	}
-      while (false);
+	assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
+
+	return HASHJOIN_STATUS_PARALLEL;
+      }
+      catch ( ...)
+      {
+	/* fallback to HASHJOIN_STATUS_PARTITION */
+	/* nothing to do */
+      }
 
       if (manager->px_worker_pool_manager != NULL)
 	{

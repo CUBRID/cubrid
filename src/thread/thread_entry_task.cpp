@@ -64,7 +64,7 @@ namespace cubthread
     context.get_error_context ().deregister_thread_local ();
 
     context.end_resource_tracks ();
-    context.skip_end_resource_tracks_in_recycle = false;
+    context.m_skip_end_resource_tracks_in_recycle = false;
     if (context.m_px_stats != NULL)
       {
 	free_and_init (context.m_px_stats);
@@ -87,7 +87,7 @@ namespace cubthread
   entry_manager::recycle_context (entry &context)
   {
     er_clear ();    // clear errors
-    if (!context.skip_end_resource_tracks_in_recycle)
+    if (!context.m_skip_end_resource_tracks_in_recycle)
       {
 	context.end_resource_tracks ();
       }

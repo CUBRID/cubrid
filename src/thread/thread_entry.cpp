@@ -137,7 +137,7 @@ namespace cubthread
     , m_px_lock ()
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
-    , skip_end_resource_tracks_in_recycle (false)
+    , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
