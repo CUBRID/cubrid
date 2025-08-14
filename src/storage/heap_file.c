@@ -8400,13 +8400,35 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
       if (scan == S_SUCCESS)
 	{
-	  assert (class_oid != NULL && !OID_ISNULL (class_oid) && !OID_IS_ROOTOID (&oid));
-	  *next_oid = oid;
-	  break;
+	  /*
+	   * Make sure that the found object is an instance of the desired
+	   * class. If it isn't then continue looking.
+	   */
+	  if (class_oid == NULL || OID_ISNULL (class_oid) || !OID_IS_ROOTOID (&oid))
+	    {
+	      /* stop */
+	      *next_oid = oid;
+	      break;
+	    }
+	  else
+	    {
+	      /* continue looking */
+	      if (is_null_recdata)
+		{
+		  /* reset recdes->data before getting next record */
+		  recdes->data = NULL;
+		}
+	      continue;
+	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_DOESNT_EXIST)
 	{
 	  /* the record does not satisfies snapshot or was deleted - continue */
+	  if (is_null_recdata)
+	    {
+	      /* reset recdes->data before getting next record */
+	      recdes->data = NULL;
+	    }
 	  continue;
 	}
 
