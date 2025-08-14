@@ -447,7 +447,7 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan_result;
   RECDES in_recdes;
-  DB_VALUE key_dbvalue;
+  DB_VALUE *key_dbvalue;
   HEAP_CACHE_ATTRINFO attr_info;
   OID cur_oid;
   int cur_class = 0;
@@ -485,15 +485,11 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 	{
 	case S_SUCCESS:
 	  heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &in_recdes, &attr_info);
-	  for (int i = 0; i < attr_info.num_values; i++)
-	    {
-	      key_dbvalue = attr_info.values[i].dbvalue;
-	      if (db_value_type (&key_dbvalue) == DB_TYPE_VECTOR)
-		{
-		  hnsw_add_element (new_btid, &cur_oid, &key_dbvalue);
-		  break;
-		}
-	    }
+
+	  key_dbvalue = &attr_info.values[0].dbvalue;
+	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
+
+	  hnsw_add_element (new_btid, &cur_oid, key_dbvalue);
 	  continue;
 	case S_END:
 	  heap_attrinfo_end (thread_p, &attr_info);
