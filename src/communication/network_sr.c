@@ -788,9 +788,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       goto end;
     }
 
-  _er_log_debug (__FILE__, __LINE__, "net_server_request: fd = %d, request = %s\n", thread_p->conn_entry->fd,
-		 get_net_request_name (request));
-
   /* handle some special requests */
   if (request == NET_SERVER_PING_WITH_HANDSHAKE)
     {

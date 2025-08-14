@@ -420,6 +420,11 @@ struct css_queue_entry
 struct session_state;
 #endif
 
+namespace cubconn
+{
+  class connection_worker;
+};
+
 /*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.
@@ -449,6 +454,7 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
+    cubconn::connection_worker * worker;
     cubconn::receiver * receiver;
 
   CSS_QUEUE_ENTRY *free_queue_list;
@@ -486,6 +492,7 @@ struct css_conn_entry
   bool has_pending_request () const;
   void init_pending_request ();
 
+  void release_packet_origin (void *buffer, int size);
   void release_packet (void *buffer, int size);
 
 private:

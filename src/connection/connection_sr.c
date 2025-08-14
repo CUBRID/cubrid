@@ -78,6 +78,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "connection_worker.hpp"
 #include "connection_sr.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -2005,7 +2006,16 @@ css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short requ
   CSS_QUEUE_ENTRY *p;
   int r;
 
-  p = css_make_queue_entry (conn, request_id, buffer, buffer_size, rc, transid, invalidate_snapshot, db_error);
+  /* for alignment */
+  /* TODO: remove this and handle this problem in other way */
+  char *buf;
+  buf = (char *) new std::byte[buffer_size];
+  std::memcpy (buf, buffer, buffer_size);
+  conn->release_packet_origin (buffer, buffer_size);
+
+  p = css_make_queue_entry (conn, request_id, buf, buffer_size, rc, transid, invalidate_snapshot, db_error);
+
+  //p = css_make_queue_entry (conn, request_id, buffer, buffer_size, rc, transid, invalidate_snapshot, db_error);
   if (p == NULL)
     {
       return CANT_ALLOC_BUFFER;
@@ -3226,4 +3236,19 @@ css_get_argv (void)
 {
   assert (css_Server_argv != NULL);
   return css_Server_argv;
+}
+
+void css_release_packet (css_conn_entry *conn, void *buffer, int size)
+{
+  cubbase::span<std::byte> mem ((std::byte *) buffer, size);
+  cubconn::connection_worker::message request;
+
+  request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
+  request.conn = conn;
+  request.mem = mem;
+  conn->worker->enqueue (request);
+  if (!conn->worker->notify ())
+    {
+      assert_release (false);
+    }
 }
