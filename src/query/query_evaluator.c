@@ -2724,7 +2724,6 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
-      __builtin_prefetch (scan_attrsp->attr_cache, 1, 2);
       /* read the predicate values from the heap into the attribute cache */
       if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
 	{
