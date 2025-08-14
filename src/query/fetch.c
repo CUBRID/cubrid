@@ -4767,7 +4767,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
+	  if (__builtin_expect (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)), 0))
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
