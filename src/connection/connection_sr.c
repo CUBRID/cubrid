@@ -2012,10 +2012,9 @@ css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short requ
   buf = (char *) new std::byte[buffer_size];
   std::memcpy (buf, buffer, buffer_size);
   conn->release_packet_origin (buffer, buffer_size);
-
   p = css_make_queue_entry (conn, request_id, buf, buffer_size, rc, transid, invalidate_snapshot, db_error);
 
-  //p = css_make_queue_entry (conn, request_id, buffer, buffer_size, rc, transid, invalidate_snapshot, db_error);
+//  p = css_make_queue_entry (conn, request_id, buffer, buffer_size, rc, transid, invalidate_snapshot, db_error);
   if (p == NULL)
     {
       return CANT_ALLOC_BUFFER;
