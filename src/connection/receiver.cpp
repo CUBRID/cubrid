@@ -52,7 +52,7 @@ namespace cubconn
     if (m_allocated.size () > 0)
       {
 	_er_log_debug (ARG_FILE_LINE, "receiver: found unreleased memory first = %p\n", m_allocated[0]);
-	assert (false);
+	//assert (false);
       }
 #endif
   }
@@ -130,47 +130,8 @@ namespace cubconn
       }
     if (m_size == 0)
       {
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: zero-length frame: consume and continue.\n");
-
-	assert (m_received >= SIZE_HEADER);
-	m_received -= SIZE_HEADER;
-
-	if (__builtin_expect (!m_use_tmpsize, 1))
-	  {
-	    mem = cubbase::span<std::byte> (m_bufptr, SIZE_HEADER);
-	    m_buf.commit (SIZE_HEADER);
-	    m_buf.restore (mem);
-
-	    buffer = m_buf.buffer ();
-	    m_bufptr = buffer.data ();
-	    m_bufsize = buffer.size ();
-
-	    if (m_received >= SIZE_HEADER)
-	      {
-		NEXT_STATE (ParseSize);
-		return result::Partial;
-	      }
-	  }
-	else
-	  {
-	    assert (m_received == 0);
-	    m_use_tmpsize = false;
-	  }
-
-	if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
-	  {
-	    if (m_received > 0 && m_received < SIZE_HEADER)
-	      {
-		/* m_received > 0 means m_use_tmpsize was false */
-		std::memcpy (&m_tmpsize, m_bufptr, m_received);
-	      }
-	    NEXT_STATE (RecvSizeInTmp);
-	  }
-	else
-	  {
-	    NEXT_STATE (Recv);
-	  }
-	return result::Partial;
+	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: zero-length frame: peer sent a size of 0.\n");
+	assert_release (false);
       }
 
     NEXT_STATE (Recv);
