@@ -1079,6 +1079,7 @@ css_net_send_with_socket (SOCKET & socket, const char *buff, int len, int timeou
   int total_len;
 
   css_set_io_vector (&(iov[0]), &(iov[1]), buff, len, &templen);
+  assert (templen != 0);
   total_len = len + sizeof (int);
 
   return css_send_io_vector_with_socket (socket, iov, total_len, 2, timeout);
@@ -1105,6 +1106,9 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
 
   css_set_io_vector (&(iov[0]), &(iov[1]), buff1, len1, &templen1);
   css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
 
   total_len = len1 + len2 + sizeof (int) * 2;
 
@@ -1145,6 +1149,10 @@ css_net_send3_with_socket (SOCKET & socket, const char *buff1, int len1, const c
   css_set_io_vector (&(iov[2]), &(iov[3]), buff2, len2, &templen2);
   css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
 
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+
   total_len = len1 + len2 + len3 + sizeof (int) * 3;
 
   /* timeout in milli-second in css_send_io_vector() */
@@ -1180,6 +1188,11 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
   css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
   css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
 
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
+
   total_len = len1 + len2 + len3 + len4 + sizeof (int) * 4;
 
   /* timeout in milli-second in css_send_io_vector() */
@@ -1207,6 +1220,12 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
   css_set_io_vector (&(iov[4]), &(iov[5]), buff3, len3, &templen3);
   css_set_io_vector (&(iov[6]), &(iov[7]), buff4, len4, &templen4);
   css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
+  assert (templen5 != 0);
 
   total_len = len1 + len2 + len3 + len4 + len5 + sizeof (int) * 5;
 
@@ -1250,6 +1269,13 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
   css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
   css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
 
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
+  assert (templen5 != 0);
+  assert (templen6 != 0);
+
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + sizeof (int) * 6;
 
   /* timeout in milli-second in css_send_io_vector() */
@@ -1280,6 +1306,14 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
   css_set_io_vector (&(iov[8]), &(iov[9]), buff5, len5, &templen5);
   css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
   css_set_io_vector (&(iov[12]), &(iov[13]), buff7, len7, &templen7);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
+  assert (templen5 != 0);
+  assert (templen6 != 0);
+  assert (templen7 != 0);
 
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + sizeof (int) * 7;
 
@@ -1329,6 +1363,15 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, const char *b
   css_set_io_vector (&(iov[10]), &(iov[11]), buff6, len6, &templen6);
   css_set_io_vector (&(iov[12]), &(iov[13]), buff7, len7, &templen7);
   css_set_io_vector (&(iov[14]), &(iov[15]), buff8, len8, &templen8);
+
+  assert (templen1 != 0);
+  assert (templen2 != 0);
+  assert (templen3 != 0);
+  assert (templen4 != 0);
+  assert (templen5 != 0);
+  assert (templen6 != 0);
+  assert (templen7 != 0);
+  assert (templen8 != 0);
 
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + len8 + sizeof (int) * 8;
 
@@ -1596,6 +1639,11 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *r
   *request_id = css_get_request_id (conn);
   css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
+
+  if (arg_size == 0)
+    {
+      return css_net_send (conn, (char *) &req_header, sizeof (NET_HEADER), -1);
+    }
 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
