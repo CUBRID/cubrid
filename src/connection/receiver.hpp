@@ -68,9 +68,7 @@ namespace cubconn
       bool m_use_tmpsize;
       int m_tmpsize;
 
-#if !defined (NDEBUG)
       std::vector<std::byte *> m_allocated;
-#endif
 
       /* output */
       std::vector<cubbase::span<std::byte>> m_result;
