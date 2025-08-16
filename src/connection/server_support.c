@@ -1439,6 +1439,26 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   assert (conn != NULL);
 
   rc = css_send_data (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+
+
+
+
+  /*
+  NET_HEADER *header;
+
+  if (!conn || conn->status == CONN_CLOSED)
+    {
+      return (CONNECTION_CLOSED);
+    }
+
+
+  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+
+  return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
+  */
+
+
   return (rc == NO_ERRORS) ? 0 : rc;
 }
 
