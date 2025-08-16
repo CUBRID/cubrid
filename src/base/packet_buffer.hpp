@@ -51,7 +51,7 @@ namespace cubbase
     public:
       packet_buffer ();
       packet_buffer (int size);
-      ~packet_buffer ();
+      virtual ~packet_buffer ();
 
       void clear ();
 
@@ -63,7 +63,6 @@ namespace cubbase
       template <typename... Spans>
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
-      std::vector<cubbase::span<std::byte>> &get_buffer ();
       std::size_t get_length ();
 
       void stamp_msghdr ();
@@ -76,8 +75,11 @@ namespace cubbase
       std::vector<cubbase::span<std::byte>> m_buf;
       std::vector<std::byte *> m_heap;
       std::size_t m_length;
+      std::size_t m_index;
 
       struct ::msghdr m_msg;
+
+      void save_index ();
   };
 
   template <typename T>
@@ -94,6 +96,8 @@ namespace cubbase
   void packet_buffer::push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
   {
     std::size_t size;
+
+    this->save_index ();
 
     size = first.size () + (rest.size () + ... + 0);
     auto append = [&] (const cubbase::span<std::byte> &s)
@@ -116,6 +120,8 @@ namespace cubbase
   template <typename... Spans>
   void packet_buffer::push (const cubbase::span<std::byte> &first, const Spans &... rest)
   {
+    this->save_index ();
+
     m_length += first.size() + (rest.size() + ... + 0);
     auto append = [&] (const cubbase::span<std::byte> &s)
     {

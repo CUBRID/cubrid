@@ -17,38 +17,37 @@
  */
 
 /*
- * epoll.hpp
+ * transmitter.hpp
  */
 
-#ifndef _CONNECTION_EPOLL_HPP_
-#define _CONNECTION_EPOLL_HPP_
+#ifndef _CONNECTION_TRANSMITTER_HPP_
+#define _CONNECTION_TRANSMITTER_HPP_
 
-#include "nonblocking.hpp"
 #include "packet_buffer.hpp"
 
+#include <cstring>
 #include <sys/socket.h>
-#include <sys/types.h>
-#include <cstdint>
+#include <sys/epoll.h>
+#include <fcntl.h>
 
-#define TIMEOUT_INFINITE -1
-#define TIMEOUT_NOWAIT 0
-
-namespace cubsocket
+namespace cubconn
 {
-  class epoll : public nonblocking
+  class transmitter
   {
-    public:
-      epoll ();
-      ~epoll ();
-      epoll (const epoll &other) = delete;
-      epoll &operator= (const epoll &other) = delete;
-
-      int wait (void *events, int maxevents, int timeout) noexcept;
-      bool add_descriptor (int fd, std::uint32_t flags, void *ptr = nullptr) noexcept;
-      bool modify_descriptor (int fd, std::uint32_t flags, void *ptr = nullptr) noexcept;
-      bool remove_descriptor (int fd) noexcept;
     private:
-      int m_epoll;
+      enum class state
+      {
+      };
+
+    public:
+      transmitter ();
+      ~transmitter ();
+
+      void reset ();
+
+    private:
+      state m_state;
+      cubbase::packet_buffer m_buf;
   };
 }
 

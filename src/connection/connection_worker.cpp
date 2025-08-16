@@ -34,18 +34,24 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
-#define NEXT_STATE(c, x) do { \
-    er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
-    (c->m_state = state::x); \
+#define NEXT_STATE(ctx, sel, x) do { \
+    er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
+    (ctx->sel.m_state = state::x); \
 } while (0)
 
 namespace cubconn
 {
   connection_worker::context::context (std::size_t capacity) :
-    m_state (state::HEADER),
-    m_receiver (capacity),
-    m_request_id (-1),
-    m_command (false)
+    m_recv {
+      .m_state = state::HEADER,
+      .m_receiver = receiver (capacity),
+      .m_header = { nullptr, 0 },
+      .m_request_id = -1,
+      .m_command = false
+    },
+    m_send {
+      .m_state = state::HEADER
+    }
   {
   }
 
@@ -171,9 +177,9 @@ namespace cubconn
 
     _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_unexpected_packet: fd = %d\n", ctx->m_conn->fd);
 
-    ctx->m_state = state::HEADER;
-    ctx->m_receiver.reset ();
-    ctx->m_command = false;
+    ctx->m_recv.m_state = state::HEADER;
+    ctx->m_recv.m_receiver.reset ();
+    ctx->m_recv.m_command = false;
     while (true)
       {
 	bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
@@ -262,7 +268,8 @@ namespace cubconn
       }
     ctx->m_conn = item.conn;
     ctx->m_conn->worker = this;
-    ctx->m_conn->receiver = &ctx->m_receiver;
+    ctx->m_conn->receiver = &ctx->m_recv.m_receiver;
+    ctx->m_conn->transmitter = &ctx->m_send.m_transmitter;
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
 	delete ctx;
@@ -334,10 +341,10 @@ namespace cubconn
     NET_HEADER *header;
     int size;
 
-    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
     size = ntohl (header->buffer_size);
     if (static_cast<std::size_t> (size) != packet.size ())
@@ -347,18 +354,18 @@ namespace cubconn
 	return result::Skewed;
       }
 
-    if (!css_is_request_aborted (conn, ctx->m_request_id))
+    if (!css_is_request_aborted (conn, ctx->m_recv.m_request_id))
       {
-	error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+	error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_recv.m_request_id, reinterpret_cast<char *> (packet.data ()),
 				     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	if (error != NO_ERRORS)
 	  {
-	    ctx->m_receiver.release (packet);
+	    ctx->m_recv.m_receiver.release (packet);
 	    return result::Error;
 	  }
       }
-    ctx->m_command = false;
-    NEXT_STATE (ctx, HEADER);
+    ctx->m_recv.m_command = false;
+    NEXT_STATE (ctx, m_recv, HEADER);
     return result::Ok;
   }
 
@@ -371,10 +378,10 @@ namespace cubconn
     NET_HEADER *header;
     int size;
 
-    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
     size = ntohl (header->buffer_size);
     if (static_cast<std::size_t> (size) != packet.size ())
@@ -386,14 +393,14 @@ namespace cubconn
 
     /* check if there is thread waiting for data */
     waiter_thread = NULL;
-    waiter = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue, ctx->m_request_id);
+    waiter = css_find_and_remove_wait_queue_entry (&conn->data_wait_queue, ctx->m_recv.m_request_id);
     if (waiter != NULL)
       {
 	waiter_thread = waiter->thrd_entry;
 	waiter_thread->next_wait_thrd = NULL;
       }
 
-    if (!css_is_request_aborted (conn, ctx->m_request_id))
+    if (!css_is_request_aborted (conn, ctx->m_recv.m_request_id))
       {
 	if (waiter)
 	  {
@@ -406,11 +413,11 @@ namespace cubconn
 	else
 	  {
 	    /* if waiter not exists, add to data queue */
-	    error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_request_id, reinterpret_cast<char *> (packet.data ()),
+	    error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_recv.m_request_id, reinterpret_cast<char *> (packet.data ()),
 					 packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	    if (error != NO_ERRORS)
 	      {
-		ctx->m_receiver.release (packet);
+		ctx->m_recv.m_receiver.release (packet);
 		return result::Error;
 	      }
 	  }
@@ -446,13 +453,13 @@ namespace cubconn
 	thread_unlock_entry (waiter_thread);
       }
 
-    if (ctx->m_command)
+    if (ctx->m_recv.m_command)
       {
 	this->push_task_into_worker_pool (ctx);
-	ctx->m_command = false;
+	ctx->m_recv.m_command = false;
       }
 
-    NEXT_STATE (ctx, HEADER);
+    NEXT_STATE (ctx, m_recv, HEADER);
     return result::Ok;
   }
 
@@ -462,29 +469,29 @@ namespace cubconn
     NET_HEADER *header;
     css_error_code error;
 
-    if (css_is_request_aborted (ctx->m_conn, ctx->m_request_id))
+    if (css_is_request_aborted (ctx->m_conn, ctx->m_recv.m_request_id))
       {
 	return result::Aborted;
       }
 
-    assert (ctx->m_header.size () == sizeof (NET_HEADER));
+    assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
-    error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_request_id,
-				 reinterpret_cast<char *> (ctx->m_header.data ()), ctx->m_header.size (), NO_ERRORS,
+    error = css_add_queue_entry (conn, &conn->request_queue, ctx->m_recv.m_request_id,
+				 reinterpret_cast<char *> (ctx->m_recv.m_header.data ()), ctx->m_recv.m_header.size (), NO_ERRORS,
 				 conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     if (error != NO_ERRORS)
       {
-	ctx->m_receiver.release (ctx->m_header);
+	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header);
 	return result::Error;
       }
 
     if (ntohl (header->buffer_size) > 0)
       {
 	/* data packet will be received belongs to this command */
-	ctx->m_command = true;
+	ctx->m_recv.m_command = true;
       }
     else
       {
@@ -517,12 +524,12 @@ namespace cubconn
 	return result::Skewed;
       }
 
-    ctx->m_header = packet;
+    ctx->m_recv.m_header = packet;
 
     conn = ctx->m_conn;
-    header = reinterpret_cast<NET_HEADER *> (ctx->m_header.data ());
+    header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
-    ctx->m_request_id = ntohl (header->request_id);
+    ctx->m_recv.m_request_id = ntohl (header->request_id);
 
     if (conn->stop_talk)
       {
@@ -544,13 +551,13 @@ namespace cubconn
 	break;
 
       case DATA_TYPE:
-	NEXT_STATE (ctx, DATA);
+	NEXT_STATE (ctx, m_recv, DATA);
 	break;
 
       case ABORT_TYPE:
 	/* no more packets are requested */
-	ctx->m_command = false;
-	css_process_abort_packet (ctx->m_conn, ctx->m_request_id);
+	ctx->m_recv.m_command = false;
+	css_process_abort_packet (ctx->m_conn, ctx->m_recv.m_request_id);
 	break;
 
       case CLOSE_TYPE:
@@ -559,7 +566,7 @@ namespace cubconn
 	break;
 
       case ERROR_TYPE:
-	NEXT_STATE (ctx, ERROR);
+	NEXT_STATE (ctx, m_recv, ERROR);
 	break;
 
       default:
@@ -576,7 +583,7 @@ namespace cubconn
   {
     result status;
 
-    switch (ctx->m_state)
+    switch (ctx->m_recv.m_state)
       {
       case state::HEADER:
 	status = this->handle_header_packet (ctx, packet);
@@ -611,7 +618,7 @@ namespace cubconn
 	return result::ClosedConnection;
       }
 
-    status = ctx->m_receiver.drain (ctx->m_conn->fd);
+    status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
@@ -634,7 +641,7 @@ namespace cubconn
       }
 
     /* received at least one packet */
-    packets = ctx->m_receiver.get_result ();
+    packets = ctx->m_recv.m_receiver.get_result ();
     for (auto &packet : *packets)
       {
 	status = this->handle_packet (ctx, packet);
@@ -682,6 +689,7 @@ namespace cubconn
 
   bool connection_worker::handle_transmission (context *ctx)
   {
+    
     return true;
   }
 

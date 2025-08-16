@@ -26,6 +26,7 @@
 #include "connection_defs.h"
 #include "server_support.h"
 #include "receiver.hpp"
+#include "transmitter.hpp"
 #include "epoll.hpp"
 #include "MPSCQueue.hpp"
 
@@ -69,15 +70,31 @@ namespace cubconn
       struct context
       {
 	css_conn_entry *m_conn;
-	state m_state;
-	receiver m_receiver;
 
-	cubbase::span<std::byte> m_header;
-	int m_request_id;
+	/* --------------------------------------------------------------------------- */
+	/* reception								       */
+	/* --------------------------------------------------------------------------- */
+	struct
+	{
+	  state m_state;
+	  receiver m_receiver;
 
-	/* if received command packet, task will be pushed into worker pool */
-	/* when data packet is completely received. */
-	bool m_command;
+	  cubbase::span<std::byte> m_header;
+	  int m_request_id;
+
+	  /* if received command packet, task will be pushed into worker pool */
+	  /* when data packet is completely received. */
+	  bool m_command;
+	} m_recv;
+
+	/* --------------------------------------------------------------------------- */
+	/* transmission								       */
+	/* --------------------------------------------------------------------------- */
+	struct
+	{
+	  state m_state;
+	  transmitter m_transmitter;
+	} m_send;
 
 	context (std::size_t capacity);
 	~context ();
