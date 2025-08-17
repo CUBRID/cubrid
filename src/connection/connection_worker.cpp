@@ -48,9 +48,6 @@ namespace cubconn
       .m_header = { nullptr, 0 },
       .m_request_id = -1,
       .m_command = false
-    },
-    m_send {
-      .m_state = state::HEADER
     }
   {
   }
@@ -162,6 +159,7 @@ namespace cubconn
 	return false;
       }
 
+    ctx->m_send.m_transmitter.clear ();
     //css_end_server_request (ctx->m_conn);
     /* TODO: net_server_conn_down */
     css_free_conn_tmp (&m_entry, ctx->m_conn);
@@ -196,7 +194,7 @@ namespace cubconn
 	switch (errno)
 	  {
 	  case EINTR:
-	    break;
+	    continue;
 	  case EAGAIN:
 	    /* case EWOULDBLOCK: */
 	    /* pending (= successfully drained all) */
@@ -246,11 +244,40 @@ namespace cubconn
     return true;
   }
 
+  bool connection_worker::handle_message_queue_send_packet (message &item)
+  {
+    context *ctx;
+
+    assert (item.conn && item.conn->context);
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+
+    for (auto &packet : item.packet)
+    {
+      ctx->m_send.m_transmitter.push_for_send ({ packet.data (), packet.size () });
+    }
+    ctx->m_send.m_transmitter.stamp ();
+    ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
+
+    if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
+    {
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
+      return false;
+    }
+    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
+
+    return true;
+  }
+
   bool connection_worker::handle_message_queue_release_packet (message &item)
   {
-    assert (item.conn && item.mem.data ());
+    context *ctx;
 
-    item.conn->receiver->release (item.mem);
+    assert (item.conn && item.conn->context);
+    assert (item.mem.data ());
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+    ctx->m_recv.m_receiver.release (item.mem);
 
     _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.mem.data ());
     return true;
@@ -263,17 +290,16 @@ namespace cubconn
     ctx = new context (32 * 1024);
     if (!ctx)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: failed to allocate memory\n");
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: failed to allocate memory\n");
 	return false;
       }
     ctx->m_conn = item.conn;
     ctx->m_conn->worker = this;
-    ctx->m_conn->receiver = &ctx->m_recv.m_receiver;
-    ctx->m_conn->transmitter = &ctx->m_send.m_transmitter;
+    ctx->m_conn->context = ctx;
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
 	delete ctx;
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_mq_new_client: add_descriptor failed\n");
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
 
@@ -313,6 +339,13 @@ namespace cubconn
 
 	  case message_type::SHUTDOWN:
 	    m_stop = true;
+	    break;
+
+	  case message_type::SEND_PACKET:
+	    if (!this->handle_message_queue_send_packet (*request))
+	      {
+		return false;
+	      }
 	    break;
 
 	  case message_type::RELEASE_PACKET:
@@ -687,10 +720,38 @@ namespace cubconn
     return result::Ok;
   }
 
-  bool connection_worker::handle_transmission (context *ctx)
+  result connection_worker::handle_transmission (context *ctx)
   {
-    
-    return true;
+    result status;
+
+    if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
+      {
+	handle_connection_error (ctx);
+	return result::ClosedConnection;
+      }
+
+    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
+    if (status == result::PeerReset || status == result::Error)
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
+	handle_connection_error (ctx);
+	return status;
+      }
+
+    assert (status == result::Ok || status == result::Pending || status == result::Partial);
+
+    if (status == result::Ok)
+      {
+	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
+	    handle_connection_error (ctx);
+	    return result::Error;
+	  }
+	ctx->m_send.m_transmitter.clear ();
+	_er_log_debug (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+      }
+    return status;
   }
 
   bool connection_worker::run ()
@@ -722,7 +783,7 @@ namespace cubconn
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
 	    if ((events[i].events & EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: EPOLLERR");
 		handle_connection_error (ctx);
 		continue;
 	      }
@@ -756,7 +817,12 @@ namespace cubconn
 	      }
 	    if (events[i].events & EPOLLOUT)
 	      {
-		if (!this->handle_transmission (ctx))
+		status = this->handle_transmission (ctx);
+		if (status == result::ClosedConnection || status == result::PeerReset)
+		  {
+		    continue;
+		  }
+		if (status == result::Error)
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
 		    return false;

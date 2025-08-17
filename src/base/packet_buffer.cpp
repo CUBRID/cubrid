@@ -28,7 +28,6 @@ namespace cubbase
   packet_buffer::packet_buffer () :
     m_iovmax (8)
   {
-    m_header.reserve (8);
     m_buf.reserve (8);
     m_heap.reserve (8);
 
@@ -38,7 +37,6 @@ namespace cubbase
   packet_buffer::packet_buffer (int size) :
     m_iovmax (size)
   {
-    m_header.reserve (size);
     m_buf.reserve (size);
     m_heap.reserve (size);
 
