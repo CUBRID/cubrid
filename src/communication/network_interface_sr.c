@@ -725,16 +725,22 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
   if (copy_area == NULL)
     {
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      if (desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
     }
   else
     {
+      auto deleter = [copy_area, desc_ptr]() noexcept {
+	locator_free_copy_area (copy_area);
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
-					   desc_size, content_ptr, content_size);
-      locator_free_copy_area (copy_area);
-    }
-  if (desc_ptr)
-    {
-      free_and_init (desc_ptr);
+					   desc_size, content_ptr, content_size, std::move (deleter));
     }
 }
 
@@ -803,17 +809,22 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (copy_area == NULL)
     {
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      if (desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
     }
   else
     {
+      auto deleter = [copy_area, desc_ptr]() noexcept {
+	locator_free_copy_area (copy_area);
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
-					   desc_size, content_ptr, content_size);
-      locator_free_copy_area (copy_area);
-    }
-
-  if (desc_ptr)
-    {
-      free_and_init (desc_ptr);
+					   desc_size, content_ptr, content_size, std::move (deleter));
     }
 }
 
@@ -925,17 +936,22 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (copy_area == NULL)
     {
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      if (encode_endian && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
     }
   else
     {
+      auto deleter = [copy_area, encode_endian, desc_ptr]() noexcept {
+	locator_free_copy_area (copy_area);
+	if (encode_endian && desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
-					   desc_size, content_ptr, content_size);
-      locator_free_copy_area (copy_area);
-    }
-
-  if (encode_endian && desc_ptr)
-    {
-      free_and_init (desc_ptr);
+					   desc_size, content_ptr, content_size, std::move (deleter));
     }
 }
 
@@ -1010,16 +1026,22 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (copy_area == NULL)
     {
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      if (desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
     }
   else
     {
+      auto deleter = [copy_area, desc_ptr]() noexcept {
+	locator_free_copy_area (copy_area);
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
-					   desc_size, content_ptr, content_size);
-      locator_free_copy_area (copy_area);
-    }
-  if (desc_ptr)
-    {
-      free_and_init (desc_ptr);
+					   desc_size, content_ptr, content_size, std::move (deleter));
     }
 }
 
@@ -1078,17 +1100,24 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid, cha
   if (copy_area == NULL)
     {
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      if (desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
     }
   else
     {
+      auto deleter = [copy_area, desc_ptr]() noexcept {
+	locator_free_copy_area (copy_area);
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
-					   desc_size, content_ptr, content_size);
-      locator_free_copy_area (copy_area);
+					   desc_size, content_ptr, content_size, std::move (deleter));
     }
-  if (desc_ptr)
-    {
-      free_and_init (desc_ptr);
-    }
+
 }
 
 /*
@@ -1140,7 +1169,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  goto end;
+	  goto exit_on_error;
 	}
       else
 	{
@@ -1162,7 +1191,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
 		  css_send_abort_to_client (thread_p->conn_entry, rid);
-		  goto end;
+		  goto exit_on_error;
 		}
 
 	      /* make copy_area (estimated size) to report errors */
@@ -1191,12 +1220,33 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      (void) return_error_to_client (thread_p, rid);
 	    }
 
+	  auto deleter = [desc_ptr, reply_copy_area]() noexcept {
+	    if (reply_copy_area)
+	      {
+		locator_free_copy_area (reply_copy_area);
+	      }
+	    if (desc_ptr)
+	      {
+		free (desc_ptr);
+	      }
+	  };
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					       desc_ptr, desc_size, reply_content_ptr, content_size);
+					       desc_ptr, desc_size, reply_content_ptr, content_size, std::move (deleter));
 	}
     }
 
-end:
+  if (packed_desc)
+    {
+      thread_p->release_packet (packed_desc, packed_size);
+      packed_desc = NULL;
+    }
+  if (copy_area != NULL)
+    {
+      locator_free_copy_area (copy_area);
+    }
+  return ;
+
+exit_on_error:
   if (packed_desc)
     {
       thread_p->release_packet (packed_desc, packed_size);
@@ -1320,15 +1370,22 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 	      (void) return_error_to_client (thread_p, rid);
 	    }
 
+	  auto deleter = [conn = thread_p->conn_entry, packed_desc, packed_size]() noexcept {
+	    if (packed_desc)
+	      {
+		conn->release_packet (packed_desc, packed_size);
+	      }
+	  };
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					       packed_desc, packed_desc_size, NULL, 0);
-	  if (packed_desc)
-	    {
-	      thread_p->release_packet (packed_desc, packed_size);
-	      packed_desc = NULL;
-	    }
+					       packed_desc, packed_desc_size, NULL, 0, std::move (deleter));
 	}
     }
+
+  if (copy_area != NULL)
+    {
+      locator_free_copy_area (copy_area);
+    }
+  return ;
 
 end:
   if (packed_desc)
@@ -1443,31 +1500,35 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       if (copy_area == NULL && lockset == NULL)
 	{
 	  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+	  if (desc_ptr)
+	    {
+	      free_and_init (desc_ptr);
+	    }
 	}
       else
 	{
+	  auto deleter = [copy_area, desc_ptr, lockset]() noexcept {
+	    if (copy_area)
+	      {
+		locator_free_copy_area (copy_area);
+	      }
+	    if (desc_ptr)
+	      {
+		free (desc_ptr);
+	      }
+	    if (lockset)
+	      {
+		locator_free_lockset (lockset);
+	      }
+	  };
 	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
-					       send_size, desc_ptr, desc_size, content_ptr, content_size);
+					       send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
 	}
-      if (copy_area != NULL)
-	{
-	  locator_free_copy_area (copy_area);
-	}
-      if (desc_ptr)
-	{
-	  free_and_init (desc_ptr);
-	}
-
       first_call = false;
     }
   while (copy_area && lockset
 	 && ((lockset->num_classes_of_reqobjs > lockset->num_classes_of_reqobjs_processed)
 	     || (lockset->num_reqobjs > lockset->num_reqobjs_processed)));
-
-  if (lockset)
-    {
-      locator_free_lockset (lockset);
-    }
 }
 
 /*
@@ -1567,22 +1628,22 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
     }
   else
     {
+      auto deleter = [copy_area, desc_ptr, lockset]() noexcept {
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
+	  }
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+	if (lockset)
+	  {
+	    locator_free_lockset (lockset);
+	  }
+      };
       css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
-					   send_size, desc_ptr, desc_size, content_ptr, content_size);
-      if (copy_area != NULL)
-	{
-	  locator_free_copy_area (copy_area);
-	}
-
-      if (lockset != NULL)
-	{
-	  locator_free_lockset (lockset);
-	}
-
-      if (desc_ptr)
-	{
-	  free_and_init (desc_ptr);
-	}
+					   send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
     }
 }
 
@@ -1855,13 +1916,14 @@ sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 
   (void) or_pack_int (reply, buffer_length);
 
+  auto deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_length);
-  if (buffer != NULL)
-    {
-      /* since this was copied to the client, we don't need it on the server */
-      free_and_init (buffer);
-    }
+				     buffer_length, std::move (deleter));
 }
 
 /*
@@ -2116,7 +2178,8 @@ void
 slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *locator;
-  ES_URI real_locator;
+  /*ES_URI real_locator;*/
+  std::byte *real_locator;
   int real_loc_size;
   LOB_LOCATOR_STATE state;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
@@ -2125,13 +2188,21 @@ slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_string_nocopy (request, &locator);
 
-  state = xtx_find_lob_locator (thread_p, locator, real_locator);
-  real_loc_size = strlen (real_locator) + 1;
+  real_locator = new std::byte[ES_MAX_URI_LEN + 1];
+  state = xtx_find_lob_locator (thread_p, locator, (char *) real_locator);
+  real_loc_size = strlen ((char *) real_locator) + 1;
 
   ptr = or_pack_int (reply, real_loc_size);
   (void) or_pack_int (ptr, (int) state);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), real_locator,
-				     real_loc_size);
+
+  auto deleter = [real_locator]() noexcept {
+    if (real_locator != NULL)
+      {
+	delete[] real_locator;
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), (char *) real_locator,
+				     real_loc_size, std::move (deleter));
 }
 
 /*
@@ -2727,7 +2798,7 @@ sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   else
     {
       area_size = OR_INT_SIZE + or_packed_stream_length (length);
-      area = (char *) db_private_alloc (thread_p, area_size);
+      area = (char *) malloc (area_size);
       if (area == NULL)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -2742,12 +2813,14 @@ sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, err);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  if (area != NULL)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 }
 
 void
@@ -2771,7 +2844,7 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       area_size = 3 * or_packed_stream_length (TDE_DATA_KEY_LENGTH);
 
-      area = (char *) db_private_alloc (thread_p, area_size);
+      area = (char *) malloc (area_size);
       if (area == NULL)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -2787,12 +2860,14 @@ stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, err);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  if (area != NULL)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 }
 
 /*
@@ -2844,7 +2919,7 @@ stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   area_size = or_packed_string_length (mk_path, &pathlen);
 
-  area = (char *) db_private_alloc (thread_p, area_size);
+  area = (char *) malloc (area_size);
   if (area == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2857,12 +2932,14 @@ stde_get_mk_file_path (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, err);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  if (area != NULL)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 }
 
 /*
@@ -3328,9 +3405,15 @@ stran_server_get_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
   ptr = or_pack_int (reply, size);
   ptr = or_pack_int (ptr, success);
+
+  auto deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), (char *) buffer,
-				     size);
-  free_and_init (buffer);
+				     size, std::move (deleter));
 }
 
 /*
@@ -3616,7 +3699,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		   + OR_INT_SIZE	/* db_charset */
 		   + or_packed_string_length (server_credential.db_lang, &strlen4) /* db_lang */ );
 
-      area = (char *) db_private_alloc (thread_p, area_size);
+      area = (char *) malloc (area_size);
       if (area == NULL)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -3642,12 +3725,14 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 
   ptr = or_pack_int (reply, area_size);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  if (area != NULL)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 }
 
 /*
@@ -4486,6 +4571,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 void
 sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   OID class_oid;
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *ptr = NULL, *area = NULL;
@@ -4542,7 +4628,7 @@ sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
     {
       /* area size is (int:number of OIDs) + size of packed OIDs */
       area_size = OR_INT_SIZE + (found * sizeof (OID));
-      area = (char *) db_private_alloc (thread_p, area_size);
+      area = (char *) malloc (area_size);
       if (area == NULL)
 	{
 	  error = ER_FAILED;
@@ -4565,8 +4651,14 @@ sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   /* pack error (should be NO_ERROR here) */
   ptr = or_pack_int (ptr, error);
 
+  deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
-				     OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
+				     OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 
 cleanup:
   if (btids != NULL)
@@ -4585,10 +4677,6 @@ cleanup:
     {
       db_private_free (thread_p, oids);
     }
-  if (area != NULL)
-    {
-      db_private_free (thread_p, area);
-    }
 
   if (error != NO_ERROR)
     {
@@ -4597,7 +4685,7 @@ cleanup:
       ptr = or_pack_int (ptr, error);
       ptr = or_pack_int (ptr, 0);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0);
+					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, []() noexcept {});
     }
 }
 
@@ -4729,7 +4817,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   else
     {
       area_length = or_packed_string_length (remark, &strlen);
-      area = (char *) db_private_alloc (thread_p, area_length);
+      area = (char *) malloc (area_length);
       if (area == NULL)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -4742,17 +4830,19 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
     }
 
   (void) or_pack_int (reply, area_length);
+
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-				     area_length);
+				     area_length, std::move (deleter));
   if (remark != NULL)
     {
-
       /* since this was copied to the client, we don't need it on the server */
       free_and_init (remark);
-    }
-  if (area)
-    {
-      db_private_free_and_init (thread_p, area);
     }
 }
 
@@ -4789,7 +4879,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
   else
     {
       area_length = or_packed_string_length (vol_fullname, &strlen);
-      area = (char *) db_private_alloc (thread_p, area_length);
+      area = (char *) malloc (area_length);
       if (area == NULL)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -4802,12 +4892,15 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
     }
 
   (void) or_pack_int (reply, area_length);
+
+  auto deleter = [area]() noexcept {
+    if (area != NULL)
+      {
+	free (area);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-				     area_length);
-  if (area)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
+				     area_length, std::move (deleter));
 }
 
 /*
@@ -4824,16 +4917,23 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
 void
 sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   QUERY_ID query_id;
   int volid, pageid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
+  char *aligned_page_buf;
   int page_size;
   int error = NO_ERROR;
 
-  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
+  deleter = [aligned_page_buf]() noexcept {
+    if (aligned_page_buf != NULL)
+      {
+	free (aligned_page_buf);
+      }
+  };
 
   ptr = or_unpack_ptr (request, &query_id);
   ptr = or_unpack_int (ptr, &volid);
@@ -4858,8 +4958,9 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
+
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), aligned_page_buf,
-				     page_size);
+				     page_size, std::move (deleter));
   return;
 
 empty_page:
@@ -4869,7 +4970,7 @@ empty_page:
   ptr = or_pack_int (reply, page_size);
   ptr = or_pack_int (ptr, error);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), aligned_page_buf,
-				     page_size);
+				     page_size, std::move (deleter));
 }
 
 /*
@@ -5019,14 +5120,15 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       OR_PACK_XASL_ID (ptr, stream.xasl_id);
     }
 
+  auto deleter = [reply_buffer]() noexcept {
+    if (reply_buffer != NULL)
+      {
+	free (reply_buffer);
+      }
+  };
   /* send reply and data to the client */
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_buffer,
-				     reply_buffer_size);
-
-  if (reply_buffer != NULL)
-    {
-      free_and_init (reply_buffer);
-    }
+				     reply_buffer_size, std::move (deleter));
 }
 
 /*
@@ -5176,13 +5278,15 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 void
 sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
+
   XASL_ID xasl_id;
   QFILE_LIST_ID *list_id;
   int csserror, dbval_cnt, data_size, replydata_size, page_size;
   QUERY_ID query_id = NULL_QUERY_ID;
   char *ptr, *data = NULL, *reply, *replydata = NULL;
   PAGE_PTR page_ptr;
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
+  char *aligned_page_buf;
   QUERY_FLAG query_flag;
   OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
   CACHE_TIME clt_cache_time;
@@ -5198,7 +5302,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   TSCTIMEVAL tv_diff;
 
   int queryinfo_string_length = 0;
-  char queryinfo_string[QUERY_INFO_BUF_SIZE];
+  char *queryinfo_string = NULL;
 
   UINT64 *base_stats = NULL;
   UINT64 *current_stats = NULL;
@@ -5246,7 +5350,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
-  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5434,7 +5538,7 @@ null_list:
   if (0 < replydata_size)
     {
       /* pack list file id as a reply data */
-      replydata = (char *) db_private_alloc (thread_p, replydata_size);
+      replydata = (char *) malloc (replydata_size);
       if (replydata != NULL)
 	{
 	  (void) or_pack_listid (replydata, list_id);
@@ -5492,6 +5596,7 @@ null_list:
 
 	  if (response_time >= trace_slow_msec)
 	    {
+	      queryinfo_string = (char *) malloc (QUERY_INFO_BUF_SIZE);
 	      queryinfo_string_length =
 		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
 	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
@@ -5576,14 +5681,24 @@ null_list:
   memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
 
+  deleter = [replydata, page_ptr, queryinfo_string]() noexcept {
+    if (replydata)
+      {
+	free (replydata);
+      }
+    if (page_ptr)
+      {
+	free (page_ptr);
+      }
+    if (queryinfo_string)
+      {
+	free (queryinfo_string);
+      }
+  };
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), replydata,
-				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length);
+				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length, std::move (deleter));
 
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
-  if (replydata != NULL)
-    {
-      db_private_free_and_init (thread_p, replydata);
-    }
   if (list_id != NULL)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
@@ -5811,6 +5926,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 void
 sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   int var_count, var_datasize, var_actual_datasize;
   QUERY_ID query_id;
   QFILE_LIST_ID *q_result;
@@ -5823,12 +5939,12 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   PAGE_PTR page_ptr;
   int page_size;
   int dummy_plan_size = 0;
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
+  char *aligned_page_buf = NULL;
   QUERY_FLAG flag;
   int query_timeout;
   bool is_tran_auto_commit;
 
-  aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
 
   xasl_stream = NULL;
   xasl_stream_size = 0;
@@ -5950,7 +6066,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 
       if (listid_length > 0)
 	{
-	  list_data = (char *) db_private_alloc (thread_p, listid_length);
+	  list_data = (char *) malloc (listid_length);
 	  if (list_data == NULL)
 	    {
 	      listid_length = 0;
@@ -5981,8 +6097,18 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
 
-  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), list_data,
-				       listid_length, aligned_page_buf, page_size, NULL, dummy_plan_size);
+  deleter = [list_data, aligned_page_buf]() noexcept {
+    if (list_data)
+      {
+	free (list_data);
+      }
+    if (aligned_page_buf)
+      {
+	free (aligned_page_buf);
+      }
+  };
+  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), list_data,
+				       listid_length, aligned_page_buf, page_size, std::move (deleter));
 
 cleanup:
   if (xasl_stream)
@@ -5993,10 +6119,6 @@ cleanup:
   if (var_data)
     {
       thread_p->release_packet (var_data, var_actual_datasize);
-    }
-  if (list_data)
-    {
-      db_private_free_and_init (thread_p, list_data);
     }
 
   /* since the listid was copied over to the client, we don't need this one on the server */
@@ -6346,7 +6468,7 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   else
     {
       buffer_length = or_db_value_size (&cur_val);
-      buffer = (char *) db_private_alloc (thread_p, buffer_length);
+      buffer = (char *) malloc (buffer_length);
       if (buffer == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -6367,13 +6489,14 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
       db_value_clear (&cur_val);
     }
 
+  auto deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_length);
-  if (buffer != NULL)
-    {
-      /* since this was copied to the client, we don't need it on the server */
-      db_private_free_and_init (thread_p, buffer);
-    }
+				     buffer_length, std::move (deleter));
 }
 
 /*
@@ -6418,7 +6541,7 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   else
     {
       buffer_length = or_db_value_size (&next_val);
-      buffer = (char *) db_private_alloc (thread_p, buffer_length);
+      buffer = (char *) malloc (buffer_length);
       if (buffer == NULL)
 	{
 	  buffer_length = 0;
@@ -6438,13 +6561,14 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       db_value_clear (&next_val);
     }
 
+  auto deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_length);
-  if (buffer != NULL)
-    {
-      /* since this was copied to the client, we don't need it on the server */
-      db_private_free_and_init (thread_p, buffer);
-    }
+				     buffer_length, std::move (deleter));
 }
 
 /*
@@ -6913,22 +7037,22 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
     }
   else
     {
+      auto deleter = [copy_area, found_lockhint, desc_ptr]() noexcept {
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
+	  }
+	if (found_lockhint)
+	  {
+	    locator_free_lockhint (found_lockhint);
+	  }
+	if (desc_ptr)
+	  {
+	    free (desc_ptr);
+	  }
+      };
       css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
-					   send_size, desc_ptr, desc_size, content_ptr, content_size);
-      if (copy_area != NULL)
-	{
-	  locator_free_copy_area (copy_area);
-	}
-
-      if (found_lockhint != NULL)
-	{
-	  locator_free_lockhint (found_lockhint);
-	}
-
-      if (desc_ptr)
-	{
-	  free_and_init (desc_ptr);
-	}
+					   send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
     }
 
   if (malloc_area)
@@ -7040,18 +7164,19 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char
 	}
       else
 	{
+	  auto deleter = [copy_area, desc_ptr]() noexcept {
+	    if (copy_area)
+	      {
+		locator_free_copy_area (copy_area);
+	      }
+	    if (desc_ptr)
+	      {
+		free (desc_ptr);
+	      }
+	  };
 	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
-					       send_size, desc_ptr, desc_size, content_ptr, content_size);
+					       send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
 	}
-      if (copy_area != NULL)
-	{
-	  locator_free_copy_area (copy_area);
-	}
-      if (desc_ptr)
-	{
-	  free_and_init (desc_ptr);
-	}
-
       first_call = false;
     }
   while (copy_area && lockhint && ((lockhint->num_classes > lockhint->num_classes_processed)));
@@ -7380,17 +7505,23 @@ xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
   ptr = or_pack_int (ptr, NO_ERROR);
   ptr = or_pack_int (ptr, data_len);
 
-  databuf = (char *) db_private_alloc (thread_p, data_len);
+  databuf = (char *) malloc (data_len);
   if (databuf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) data_len);
       return ER_FAILED;
     }
   ptr = or_pack_string_with_length (databuf, print_str, print_len);
+
+  auto deleter = [buffer = databuf]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   rc =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf,
-				       data_len);
-  db_private_free_and_init (thread_p, databuf);
+				       data_len, std::move (deleter));
 
   if (rc)
     {
@@ -7444,7 +7575,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   ptr = or_pack_int (ptr, (int) prompt_id);
   ptr = or_pack_int (ptr, prompt_length);
 
-  databuf = (char *) db_private_alloc (thread_p, prompt_length);
+  databuf = (char *) malloc (prompt_length);
   if (databuf == NULL)
     {
       return ER_FAILED;
@@ -7457,10 +7588,15 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   ptr = or_pack_string_with_length (ptr, secondary_prompt, strlen3);
   ptr = or_pack_int (ptr, reprompt_value);
 
+  auto deleter = [buffer = databuf]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   rc =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf,
-				       prompt_length);
-  db_private_free_and_init (thread_p, databuf);
+				       prompt_length, std::move (deleter));
 
   if (rc)
     {
@@ -7494,9 +7630,15 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p, char *logpg_area, int ar
   ptr = or_pack_int (reply, (int) GET_NEXT_LOG_PAGES);
   ptr = or_pack_int (ptr, (int) area_size);
 
+  auto deleter = [buffer = logpg_area]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   rc =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), logpg_area,
-				       area_size);
+				       area_size, std::move (deleter));
   if (rc)
     {
       return ER_FAILED;
@@ -7688,13 +7830,14 @@ sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_pack_int (reply, reply_data_size);
   ptr = or_pack_int (ptr, error);
 
+  auto deleter = [buffer = reply_data]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
-				     reply_data_size);
-
-  if (reply_data != NULL)
-    {
-      free_and_init (reply_data);
-    }
+				     reply_data_size, std::move (deleter));
 }
 
 /*
@@ -7711,6 +7854,7 @@ sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   int success = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7746,7 +7890,7 @@ sqp_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       buffer_length += OR_VALUE_ALIGNED_SIZE (&lt_dbval);
     }
 
-  buffer = (char *) db_private_alloc (thread_p, buffer_length);
+  buffer = (char *) malloc (buffer_length);
   if (buffer == NULL)
     {
       success = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -7775,13 +7919,14 @@ exit:
   ptr = or_pack_int (reply, buffer_length);
   ptr = or_pack_int (ptr, success);
 
+  deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_length);
-  if (buffer != NULL)
-    {
-      db_private_free_and_init (thread_p, buffer);
-    }
-
+				     buffer_length, std::move (deleter));
   return;
 
 error_exit:
@@ -7856,12 +8001,14 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid, cha
   ptr = or_pack_int (ptr, er_errid ());
 
   (void) sysprm_pack_assign_values (area, change_values);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
 
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
+  auto deleter = [buffer = area]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
   sysprm_free_assign_values (&change_values);
 }
 
@@ -7901,12 +8048,15 @@ sprm_server_obtain_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   ptr = or_pack_int (reply, reply_data_size);
   ptr = or_pack_int (ptr, rc);
+
+  auto deleter = [buffer = reply_data]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
-				     reply_data_size);
-  if (reply_data != NULL)
-    {
-      free_and_init (reply_data);
-    }
+				     reply_data_size, std::move (deleter));
   if (prm_values != NULL)
     {
       sysprm_free_assign_values (&prm_values);
@@ -8569,12 +8719,13 @@ sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 void
 ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char new_path[PATH_MAX];
+  char *new_path;
   int path_size = 0, ret;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
+  new_path = (char *) malloc (PATH_MAX);
   ret = xes_posix_create_file (new_path);
   if (ret != NO_ERROR)
     {
@@ -8587,8 +8738,15 @@ ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_pack_int (reply, path_size);
   ptr = or_pack_int (ptr, ret);
+
+  auto deleter = [buffer = new_path]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), new_path,
-				     path_size);
+				     path_size, std::move (deleter));
 }
 
 /*
@@ -8673,7 +8831,7 @@ ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int64 (ptr, &tmp_int64);
   count = (size_t) tmp_int64;
 
-  buf = db_private_alloc (thread_p, count);
+  buf = (char *) malloc (count);
   if (buf == NULL)
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -8687,9 +8845,15 @@ ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
 
       ptr = or_pack_int64 (reply, (INT64) ret);
+
+      auto deleter = [buffer = buf]() noexcept {
+	if (buffer != NULL)
+	  {
+	    free (buffer);
+	  }
+      };
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), (char *) buf,
-					 (int) count);
-      db_private_free_and_init (thread_p, buf);
+					 (int) count, std::move (deleter));
     }
 }
 
@@ -8739,7 +8903,7 @@ ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *src_path, *metaname, new_path[PATH_MAX];
+  char *src_path, *metaname, *new_path;
   int path_size = 0, ret;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -8748,6 +8912,7 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_string_nocopy (request, &src_path);
   ptr = or_unpack_string_nocopy (ptr, &metaname);
 
+  new_path = (char *) malloc (PATH_MAX);
   ret = xes_posix_copy_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
@@ -8760,8 +8925,15 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   ptr = or_pack_int (reply, path_size);
   ptr = or_pack_int (ptr, ret);
+
+  auto deleter = [buffer = new_path]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), new_path,
-				     path_size);
+				     path_size, std::move (deleter));
 }
 
 /*
@@ -8778,7 +8950,7 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *src_path, *metaname, new_path[PATH_MAX];
+  char *src_path, *metaname, *new_path;
   int path_size = 0, ret;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -8787,6 +8959,7 @@ ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_string_nocopy (request, &src_path);
   ptr = or_unpack_string_nocopy (ptr, &metaname);
 
+  new_path = (char *) malloc (PATH_MAX);
   ret = xes_posix_rename_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
@@ -8799,8 +8972,15 @@ ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_pack_int (reply, path_size);
   ptr = or_pack_int (ptr, ret);
+
+  auto deleter = [buffer = new_path]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), new_path,
-				     path_size);
+				     path_size, std::move (deleter));
 }
 
 /*
@@ -8994,11 +9174,14 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   ptr = or_pack_int (reply, area_size);
   ptr = or_pack_int (ptr, error);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
+
+  auto deleter = [buffer = area]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size, std::move (deleter));
 }
 
 /*
@@ -9122,7 +9305,7 @@ ssession_get_last_insert_id (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 
   data_size = OR_VALUE_ALIGNED_SIZE (&lid);
 
-  data_reply = (char *) db_private_alloc (thread_p, data_size);
+  data_reply = (char *) malloc (data_size);
   if (data_reply == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -9136,13 +9319,14 @@ end:
   ptr = or_pack_int (reply, data_size);
   ptr = or_pack_int (ptr, err);
 
+  auto deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
-				     OR_ALIGNED_BUF_SIZE (a_reply), data_reply, data_size);
-
-  if (data_reply != NULL)
-    {
-      db_private_free (thread_p, data_reply);
-    }
+				     OR_ALIGNED_BUF_SIZE (a_reply), data_reply, data_size, std::move (deleter));
 }
 
 /*
@@ -9282,6 +9466,7 @@ error:
 void
 ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   char *name = NULL, *stmt_info = NULL;
   int info_len = 0;
   char *reply = NULL, *ptr = NULL, *data_reply = NULL;
@@ -9336,9 +9521,15 @@ ssession_get_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, char
   ptr = or_pack_int (ptr, err);
   OR_PACK_XASL_ID (ptr, &xasl_id);
 
+  deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   err =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
-				       OR_ALIGNED_BUF_SIZE (a_reply), data_reply, reply_size);
+				       OR_ALIGNED_BUF_SIZE (a_reply), data_reply, reply_size, std::move (deleter));
   goto cleanup;
 
 error:
@@ -9355,14 +9546,10 @@ error:
 
   err =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
-				       OR_ALIGNED_BUF_SIZE (a_reply), data_reply, reply_size);
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, []() noexcept { });
   goto cleanup;
 
 cleanup:
-  if (data_reply != NULL)
-    {
-      free_and_init (data_reply);
-    }
   if (stmt_info != NULL)
     {
       free_and_init (stmt_info);
@@ -9569,15 +9756,16 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *
   ptr = or_pack_int (reply, size);
   ptr = or_pack_int (ptr, err);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size);
+  auto deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size, std::move (deleter));
 
   pr_clear_value (&result);
   pr_clear_value (&name);
-
-  if (data_reply != NULL)
-    {
-      free_and_init (data_reply);
-    }
 }
 
 /*
@@ -9925,12 +10113,13 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_pack_int (reply, size);
   ptr = or_pack_int (ptr, err);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size);
-
-  if (data_reply != NULL)
-    {
-      free_and_init (data_reply);
-    }
+  auto deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size, std::move (deleter));
 }
 
 /*
@@ -9976,12 +10165,13 @@ sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   ptr = or_pack_int (reply, size);
   ptr = or_pack_int (ptr, err);
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size);
-
-  if (data_reply != NULL)
-    {
-      free_and_init (data_reply);
-    }
+  auto deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply, size, std::move (deleter));
 }
 
 /*
@@ -10186,7 +10376,7 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
     {
       /* success. pack space info */
       data_reply_length = or_packed_spacedb_size (all, vols, filesp);
-      data_reply = (char *) db_private_alloc (thread_p, data_reply_length);
+      data_reply = (char *) malloc (data_reply_length);
       ptr = or_pack_spacedb (data_reply, all, vols, filesp);
       assert (ptr - data_reply == data_reply_length);
     }
@@ -10200,16 +10390,17 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   ptr = or_pack_int (reply, data_reply_length);
   ptr = or_pack_int (ptr, error_code);
 
+  auto deleter = [buffer = data_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
-				     data_reply_length);
-
+				     data_reply_length, std::move (deleter));
   if (vols != NULL)
     {
       free_and_init (vols);
-    }
-  if (data_reply != NULL)
-    {
-      db_private_free_and_init (thread_p, data_reply);
     }
 }
 
@@ -10304,8 +10495,19 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_pack_int (ptr, error_code);
   ptr = or_pack_int (ptr, (is_ignored ? 1 : 0));
 
+  char *mem_cls_name = NULL;
+
+  mem_cls_name = (char *) malloc (cls_name.length () + 1);
+  std::memcpy (mem_cls_name, (char *) cls_name.c_str (), cls_name.length () + 1);
+
+  auto deleter = [buffer = mem_cls_name]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				     (char *) cls_name.c_str (), buf_sz);
+				     (char *) mem_cls_name, buf_sz, std::move (deleter));
 }
 
 void
@@ -10364,9 +10566,21 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_pack_int (ptr, error_code);
   or_pack_int (ptr, (is_batch_accepted ? 1 : 0));
 
+  char *mem_reply = NULL;
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
-				     reply_data_size);
+  if (reply_data_size > 0)
+    {
+      mem_reply = (char *) malloc (reply_data_size);
+      std::memcpy (mem_reply, reply_data, reply_data_size);
+    }
+  auto deleter = [buffer = mem_reply]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), mem_reply,
+				     reply_data_size, std::move (deleter));
 }
 
 void
@@ -10402,10 +10616,23 @@ sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *mem_buffer = NULL;
 
   or_pack_int (reply, buffer_size);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_size);
+
+  if (buffer_size > 0)
+    {
+      mem_buffer = (char *) malloc (buffer_size);
+      std::memcpy (mem_buffer, buffer, buffer_size);
+    }
+  auto deleter = [buffer = mem_buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), mem_buffer,
+				     buffer_size, std::move (deleter));
 }
 
 void
@@ -10489,7 +10716,7 @@ for (const cubload::class_entry * class_entry:class_entries)
   /* start packing result */
   /* buffer_size is (int:number of OIDs) + size of packed OIDs */
   buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
-  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  buffer = (char *) malloc (buffer_size);
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
@@ -10509,13 +10736,15 @@ for (const cubload::class_entry * class_entry:class_entries)
 end:
   char *ptr2 = or_pack_int (reply, buffer_size);
   ptr2 = or_pack_int (ptr2, error_code);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
-				     buffer_size);
 
-  if (buffer != NULL)
-    {
-      db_private_free_and_init (thread_p, buffer);
-    }
+  auto deleter = [buffer]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size, std::move (deleter));
 }
 
 void
@@ -10605,8 +10834,22 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   //    top_on_stack->end ();
   //  }
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_data,
-				     reply_data_size);
+  char *mem_reply = NULL;
+
+  if (reply_data_size > 0)
+    {
+      mem_reply = (char *) malloc (reply_data_size);
+      std::memcpy (mem_reply, reply_data, reply_data_size);
+    }
+
+  auto deleter = [buffer = reply_data]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), mem_reply,
+				     reply_data_size, std::move (deleter));
 
 /*
   if (top_on_stack)
@@ -11065,6 +11308,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 void
 sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
@@ -11139,7 +11383,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
     + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
 
-  area = (char *) db_private_alloc (thread_p, area_size);
+  area = (char *) malloc (area_size);
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
@@ -11174,11 +11418,15 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       or_pack_int (num_ptr, tmp_num);
     }
 
+  deleter = [buffer = area]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   error_code =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-				       area_size);
-
-  db_private_free_and_init (thread_p, area);
+				       area_size, std::move (deleter));
 
   if (error_code != NO_ERROR)
     {
@@ -11193,20 +11441,34 @@ error:
       ptr = or_pack_int (reply, strlen (classname));
       or_pack_int (ptr, error_code);
 
-      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), classname,
-					 strlen (classname));
+      char *mem_classname = (char *) malloc (strlen (classname) + 1);
+      std::memcpy (mem_classname, classname, strlen (classname) + 1);
+      deleter = [buffer = mem_classname]() noexcept {
+	if (buffer != NULL)
+	  {
+	    free (buffer);
+	  }
+      };
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), mem_classname,
+					 strlen (classname), std::move (deleter));
     }
   else if (error_code == ER_FLASHBACK_INVALID_TIME)
     {
-      OR_ALIGNED_BUF (OR_INT64_SIZE) area_buf;
-      area = OR_ALIGNED_BUF_START (area_buf);
+      area = (char *) malloc (OR_INT64_SIZE);
 
-      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      ptr = or_pack_int (reply, OR_INT64_SIZE);
       or_pack_int (ptr, error_code);
 
       or_pack_int64 (area, log_Gl.hdr.db_creation);
+
+      deleter = [buffer = area]() noexcept {
+	if (buffer != NULL)
+	  {
+	    free (buffer);
+	  }
+      };
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-					 OR_ALIGNED_BUF_SIZE (area_buf));
+					 OR_INT64_SIZE, std::move (deleter));
     }
   else
     {
@@ -11234,6 +11496,7 @@ css_send_error:
 void
 sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  std::function<void ()> deleter;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
@@ -11279,7 +11542,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
 
-  area = (char *) db_private_alloc (thread_p, area_size);
+  area = (char *) malloc (area_size);
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
@@ -11298,12 +11561,15 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = flashback_pack_loginfo (thread_p, ptr, context);
 
+  deleter = [buffer = area]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   error_code =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-				       area_size);
-
-  db_private_free_and_init (thread_p, area);
-
+				       area_size, std::move (deleter));
   if (error_code != NO_ERROR)
     {
       goto css_send_error;
@@ -11327,14 +11593,20 @@ error:
 
   if (error_code == ER_FLASHBACK_SCHEMA_CHANGED)
     {
-      OR_ALIGNED_BUF (OR_OID_SIZE) area_buf;
-      area = OR_ALIGNED_BUF_START (area_buf);
+      area = (char *) malloc (OR_OID_SIZE);
 
-      ptr = or_pack_int (reply, OR_ALIGNED_BUF_SIZE (area_buf));
+      ptr = or_pack_int (reply, OR_OID_SIZE);
       or_pack_int (ptr, error_code);
       or_pack_oid (area, &context.invalid_class);
+
+      deleter = [buffer = area]() noexcept {
+	if (buffer != NULL)
+	  {
+	    free (buffer);
+	  }
+      };
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area,
-					 OR_ALIGNED_BUF_SIZE (area_buf));
+					 OR_OID_SIZE, std::move (deleter));
     }
   else
     {
@@ -11372,8 +11644,20 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_pack_int (ptr, ext_blk.get_size ());
   ptr = or_pack_int (ptr, error);
 
+  char *mem_ext_blk = NULL;
+  if (ext_blk.get_size () > 0)
+    {
+      mem_ext_blk = (char *) malloc (ext_blk.get_size ());
+      std::memcpy (mem_ext_blk, ext_blk.get_ptr (), ext_blk.get_size ());
+    }
+  auto deleter = [buffer = mem_ext_blk]() noexcept {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
+				     mem_ext_blk, ext_blk.get_size (), std::move (deleter));
 }
 
 /*
@@ -11433,7 +11717,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   // *INDENT-ON*
 
-  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  buffer_a = (char *) malloc (size + MAX_ALIGNMENT);
   if (buffer_a == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
@@ -11466,14 +11750,21 @@ end:
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      free (buffer_a);
     }
   else
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
+
+      auto deleter = [buffer = buffer_a]() noexcept {
+	if (buffer != NULL)
+	  {
+	    free (buffer);
+	  }
+      };
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size, std::move (deleter));
     }
-  db_private_free_and_init (thread_p, buffer_a);
 #else // WINDOWS
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
   error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
