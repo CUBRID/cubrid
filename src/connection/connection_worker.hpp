@@ -48,6 +48,7 @@ namespace cubconn
 	NEW_CLIENT,
 	SHUTDOWN,
 	
+	SEND_PACKET,
 	RELEASE_PACKET
       };
 
@@ -56,6 +57,12 @@ namespace cubconn
 	message_type type;
 
 	css_conn_entry *conn;
+
+	/* send packet */
+	std::vector<cubbase::span<std::byte>> packet;
+	std::function<void ()> deleter;
+
+	/* release packet */
 	cubbase::span<std::byte> mem;
       };
 
@@ -92,7 +99,6 @@ namespace cubconn
 	/* --------------------------------------------------------------------------- */
 	struct
 	{
-	  state m_state;
 	  transmitter m_transmitter;
 	} m_send;
 
@@ -139,7 +145,9 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       bool clear_event ();
 
+      bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
+
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue ();
 
@@ -163,7 +171,7 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* transmission								     */
       /* --------------------------------------------------------------------------- */
-      bool handle_transmission (context *ctx);
+      result handle_transmission (context *ctx);
   };
 }
 

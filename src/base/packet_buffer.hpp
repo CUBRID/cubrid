@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <type_traits>
+#include <deque>
 #include <vector>
 #include <cstddef>
 
@@ -71,7 +72,7 @@ namespace cubbase
     private:
       const std::size_t m_iovmax;
 
-      std::vector<int> m_header;
+      std::deque<int> m_header;
       std::vector<cubbase::span<std::byte>> m_buf;
       std::vector<std::byte *> m_heap;
       std::size_t m_length;
@@ -100,9 +101,16 @@ namespace cubbase
     this->save_index ();
 
     size = first.size () + (rest.size () + ... + 0);
+    if (size == 0)
+    {
+      return ;
+    }
     auto append = [&] (const cubbase::span<std::byte> &s)
     {
-      m_buf.push_back (s);
+      if (s.size () != 0)
+      {
+	m_buf.push_back (s);
+      }
     };
 
     m_header.push_back (htonl (static_cast<int> (size)));

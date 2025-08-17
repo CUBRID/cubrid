@@ -23,8 +23,10 @@
 #ifndef _CONNECTION_TRANSMITTER_HPP_
 #define _CONNECTION_TRANSMITTER_HPP_
 
+#include "buffer.hpp"
 #include "packet_buffer.hpp"
 
+#include <functional>
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -34,21 +36,29 @@ namespace cubconn
 {
   class transmitter
   {
-    private:
-      enum class state
-      {
-      };
-
     public:
       transmitter ();
       ~transmitter ();
+      
+      result fill (int fd);
 
-      void reset ();
+      template <typename... Spans>
+      void push_for_send (const cubbase::span<std::byte> &&first, const Spans &&... rest);
+      void push_for_deleter (std::function<void ()> &&deleter);
+      void stamp ();
+
+      void clear ();
 
     private:
-      state m_state;
       cubbase::packet_buffer m_buf;
+      std::vector<std::function<void ()>> m_deleter;
   };
+
+  template <typename... Spans>
+  void transmitter::push_for_send (const cubbase::span<std::byte> &&first, const Spans &&... rest)
+  {
+    m_buf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
+  }
 }
 
 #endif
