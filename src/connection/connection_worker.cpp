@@ -104,7 +104,7 @@ namespace cubconn
 
   void connection_worker::enqueue (const message &item)
   {
-    m_queue.enqueue (item);
+    m_queue.push (std::move (item));
 
     _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d\n", item.type, m_index);
   }
@@ -309,29 +309,22 @@ namespace cubconn
 
   bool connection_worker::handle_message_queue ()
   {
-    std::optional<message> request;
-
-    assert (!m_queue.empty ());
+    message request;
 
     if (!this->clear_event ())
       {
 	return false;
       }
 
-    do
+    while (m_queue.try_pop (request))
       {
-	request = m_queue.dequeue ();
-	if (!request)
-	  {
-	    break;
-	  }
-
-	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request->type,
+	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
 		       m_index);
-	switch (request->type)
+
+	switch (request.type)
 	  {
 	  case message_type::NEW_CLIENT:
-	    if (!this->handle_message_queue_new_client (*request))
+	    if (!this->handle_message_queue_new_client (request))
 	      {
 		return false;
 	      }
@@ -342,14 +335,14 @@ namespace cubconn
 	    break;
 
 	  case message_type::SEND_PACKET:
-	    if (!this->handle_message_queue_send_packet (*request))
+	    if (!this->handle_message_queue_send_packet (request))
 	      {
 		return false;
 	      }
 	    break;
 
 	  case message_type::RELEASE_PACKET:
-	    if (!this->handle_message_queue_release_packet (*request))
+	    if (!this->handle_message_queue_release_packet (request))
 	      {
 		return false;
 	      }
@@ -362,7 +355,6 @@ namespace cubconn
 	    break;
 	  }
       }
-    while (true);
 
     return true;
   }
