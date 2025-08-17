@@ -28,7 +28,7 @@
 #include "receiver.hpp"
 #include "transmitter.hpp"
 #include "epoll.hpp"
-#include "MPSCQueue.hpp"
+#include "tbb/concurrent_queue.h"
 
 #include <thread>
 #include <cstring>
@@ -130,7 +130,7 @@ namespace cubconn
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
-      cubbase::MPSCQueue<message> m_queue;
+      tbb::concurrent_queue<message> m_queue;
 
       /* to use a recursive mutex */
       cubthread::entry m_entry;
