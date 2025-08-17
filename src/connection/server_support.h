@@ -46,17 +46,19 @@ extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
-						       int reply_size, char *buffer, int buffer_size);
+						       int reply_size, char *buffer, int buffer_size, std::function<void ()> &&deleter);
+extern unsigned int css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
+				   int buffer_size);
 #if 0
 extern unsigned int css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size,
 							     char *buffer, INT64 buffer_size);
 #endif
 extern unsigned int css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 							 int reply_size, char *buffer1, int buffer1_size, char *buffer2,
-							 int buffer2_size);
+							 int buffer2_size, std::function<void ()> &&deleter);
 extern unsigned int css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 							 int reply_size, char *buffer1, int buffer1_size, char *buffer2,
-							 int buffer2_size, char *buffer3, int buffer3_size);
+							 int buffer2_size, char *buffer3, int buffer3_size, std::function<void ()> &&deleter);
 extern unsigned int css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size);
 extern unsigned int css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer,
 							       int *size, int timeout);

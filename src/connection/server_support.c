@@ -1435,35 +1435,59 @@ unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   cubconn::connection_worker::message request;
-  NET_HEADER *header;
-  std::byte *allocated;
+  NET_HEADER *mem_header;
+  std::byte *mem_reply;
 
   assert (conn != NULL);
   assert (buffer && buffer_size > 0);
 
-  header = new NET_HEADER;
-  allocated = new std::byte[buffer_size];
-
-  css_set_net_header (header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-  std::memcpy (allocated, buffer, buffer_size);
-
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
-
   request.packet.clear ();
-  request.packet.emplace_back (reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER));
-  request.packet.emplace_back (allocated, (std::size_t) buffer_size);
-  request.deleter = [header, allocated]() noexcept {
-      delete header;
-      delete[] allocated;
+
+  /* header */
+  mem_header = new NET_HEADER;
+  css_set_net_header (mem_header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
+
+  /* reply */
+  mem_reply = new std::byte[buffer_size];
+  std::memcpy (mem_reply, buffer, buffer_size);
+  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
+
+  /* deleter */
+  request.deleter = [mem_header, mem_reply]() noexcept {
+      delete mem_header;
+      delete[] mem_reply;
   };
+
   conn->worker->enqueue (std::move (request));
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
     }
   return 0;
+}
+
+unsigned int
+css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
+				   int buffer_size)
+{
+  int rc = 0;
+
+  assert (conn != NULL);
+
+  if (buffer_size > 0 && buffer != NULL)
+    {
+      rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer, buffer_size);
+    }
+  else
+    {
+      rc = css_send_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size);
+    }
+
+  return (rc == NO_ERRORS) ? NO_ERROR : rc;
 }
 
 /*
@@ -1481,22 +1505,68 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
  */
 unsigned int
 css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
-				   int buffer_size)
+				   int buffer_size, std::function<void ()> &&deleter)
 {
-  int rc = 0;
+  cubconn::connection_worker::message request;
+  NET_HEADER *mem_header[2] = { nullptr, nullptr };
+  std::byte *mem_reply;
 
   assert (conn != NULL);
+  assert (reply && reply_size > 0);
 
-  if (buffer_size > 0 && buffer != NULL)
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
+  request.packet.clear ();
+
+  /* header */
+  mem_header[0] = new NET_HEADER;
+  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[0]), sizeof (NET_HEADER));
+
+  /* reply */
+  mem_reply = new std::byte[reply_size];
+  std::memcpy (mem_reply, reply, reply_size);
+  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
+
+  if (buffer && buffer_size > 0)
     {
-      rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer, buffer_size);
-    }
-  else
-    {
-      rc = css_send_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size);
+      /* header */
+      mem_header[1] = new NET_HEADER;
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[1]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer), static_cast<std::size_t> (buffer_size));
     }
 
-  return (rc == NO_ERRORS) ? NO_ERROR : rc;
+  /* deleter */
+  request.deleter = [
+    header1 = mem_header[0],
+    header2 = mem_header[1],
+    body1 = mem_reply,
+    deleter = std::move (deleter)
+  ]() noexcept {
+    delete header1;
+    delete[] body1;
+
+    if (header2)
+      {
+	delete header2;
+      }
+    if (deleter)
+      {
+	deleter ();
+      }
+  };
+
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+  return 0;
 }
 
 #if 0
@@ -1593,20 +1663,85 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int repl
  */
 unsigned int
 css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
-				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size)
+				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, std::function<void ()> &&deleter)
 {
-  int rc = 0;
+  cubconn::connection_worker::message request;
+  NET_HEADER *mem_header[3] = { nullptr, nullptr, nullptr };
+  std::byte *mem_reply;
 
   assert (conn != NULL);
+  assert (reply && reply_size > 0);
 
-  if (buffer2 == NULL || buffer2_size <= 0)
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
+  request.packet.clear ();
+
+  /* header */
+  mem_header[0] = new NET_HEADER;
+  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[0]), sizeof (NET_HEADER));
+
+  /* reply */
+  mem_reply = new std::byte[reply_size];
+  std::memcpy (mem_reply, reply, reply_size);
+  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
+
+  if (buffer1 && buffer1_size > 0)
     {
-      return (css_send_reply_and_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size));
+      /* header */
+      mem_header[1] = new NET_HEADER;
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[1]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer1), static_cast<std::size_t> (buffer1_size));
     }
-  rc =
-    css_send_three_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size);
 
-  return (rc == NO_ERRORS) ? 0 : rc;
+  if (buffer2 && buffer2_size > 0)
+    {
+      /* header */
+      mem_header[2] = new NET_HEADER;
+      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[2]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer2), static_cast<std::size_t> (buffer2_size));
+    }
+
+  /* deleter */
+  request.deleter = [
+    header1 = mem_header[0],
+    header2 = mem_header[1],
+    header3 = mem_header[2],
+    body1 = mem_reply,
+    deleter = std::move (deleter)
+  ]() noexcept {
+    delete header1;
+    delete[] body1;
+
+    if (header2)
+      {
+	delete header2;
+      }
+    if (header3)
+      {
+	delete header3;
+      }
+    if (deleter)
+      {
+	deleter ();
+      }
+  };
+
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+  return 0;
 }
 
 /*
@@ -1629,22 +1764,102 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 unsigned int
 css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
-				     int buffer3_size)
+				     int buffer3_size, std::function<void ()> &&deleter)
 {
-  int rc = 0;
+  cubconn::connection_worker::message request;
+  NET_HEADER *mem_header[4] = { nullptr, nullptr, nullptr, nullptr };
+  std::byte *mem_reply;
 
   assert (conn != NULL);
+  assert (reply && reply_size > 0);
 
-  if (buffer3 == NULL || buffer3_size <= 0)
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
+  request.packet.clear ();
+
+  /* header */
+  mem_header[0] = new NET_HEADER;
+  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[0]), sizeof (NET_HEADER));
+
+  /* reply */
+  mem_reply = new std::byte[reply_size];
+  std::memcpy (mem_reply, reply, reply_size);
+  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
+
+  if (buffer1 && buffer1_size > 0)
     {
-      return (css_send_reply_and_2_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2,
-						   buffer2_size));
+      /* header */
+      mem_header[1] = new NET_HEADER;
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[1]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer1), static_cast<std::size_t> (buffer1_size));
     }
 
-  rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2,
-			   buffer2_size, buffer3, buffer3_size);
+  if (buffer2 && buffer2_size > 0)
+    {
+      /* header */
+      mem_header[2] = new NET_HEADER;
+      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[2]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer2), static_cast<std::size_t> (buffer2_size));
+    }
 
-  return (rc == NO_ERRORS) ? 0 : rc;
+  if (buffer3 && buffer3_size > 0)
+    {
+      /* header */
+      mem_header[3] = new NET_HEADER;
+      css_set_net_header (mem_header[3], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer3_size, conn->get_tran_index (), conn->invalidate_snapshot,
+			  conn->db_error);
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (mem_header[3]), sizeof (NET_HEADER));
+      
+      /* buffer */
+      request.packet.emplace_back (reinterpret_cast<std::byte *> (buffer3), static_cast<std::size_t> (buffer3_size));
+    }
+
+  /* deleter */
+  request.deleter = [
+    header1 = mem_header[0],
+    header2 = mem_header[1],
+    header3 = mem_header[2],
+    header4 = mem_header[3],
+    body1 = mem_reply,
+    deleter = std::move (deleter)
+  ]() noexcept {
+    delete header1;
+    delete[] body1;
+
+    if (header2)
+      {
+	delete header2;
+      }
+    if (header3)
+      {
+	delete header3;
+      }
+    if (header4)
+      {
+	delete header4;
+      }
+    if (deleter)
+      {
+	deleter ();
+      }
+  };
+
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+  return 0;
 }
 
 /*
@@ -1662,29 +1877,33 @@ unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   cubconn::connection_worker::message request;
-  NET_HEADER *header;
-  std::byte *allocated;
+  NET_HEADER *mem_header;
+  std::byte *mem_reply;
 
   assert (conn != NULL);
   assert (buffer && buffer_size > 0);
 
-  header = new NET_HEADER;
-  allocated = new std::byte[buffer_size];
-
-  css_set_net_header (header, ERROR_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
-		      conn->db_error);
-  std::memcpy (allocated, buffer, buffer_size);
-
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
-
   request.packet.clear ();
-  request.packet.emplace_back (reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER));
-  request.packet.emplace_back (allocated, (std::size_t) buffer_size);
-  request.deleter = [header, allocated]() noexcept {
-      delete header;
-      delete[] allocated;
+
+  /* header */
+  mem_header = new NET_HEADER;
+  css_set_net_header (mem_header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
+
+  /* reply */
+  mem_reply = new std::byte[buffer_size];
+  std::memcpy (mem_reply, buffer, buffer_size);
+  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
+
+  /* deleter */
+  request.deleter = [mem_header, mem_reply]() noexcept {
+      delete mem_header;
+      delete[] mem_reply;
   };
+
   conn->worker->enqueue (std::move (request));
   if (!conn->worker->notify ())
     {
