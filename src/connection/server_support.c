@@ -1434,32 +1434,36 @@ shutdown:
 unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
-  int rc = 0;
+  cubconn::connection_worker::message request;
+  NET_HEADER *header;
+  std::byte *allocated;
 
   assert (conn != NULL);
+  assert (buffer && buffer_size > 0);
 
-  rc = css_send_data (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  header = new NET_HEADER;
+  allocated = new std::byte[buffer_size];
 
-
-
-
-  /*
-  NET_HEADER *header;
-
-  if (!conn || conn->status == CONN_CLOSED)
-    {
-      return (CONNECTION_CLOSED);
-    }
-
-
-  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+  css_set_net_header (header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
+  std::memcpy (allocated, buffer, buffer_size);
 
-  return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
-  */
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
 
-
-  return (rc == NO_ERRORS) ? 0 : rc;
+  request.packet.clear ();
+  request.packet.emplace_back (reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER));
+  request.packet.emplace_back (allocated, (std::size_t) buffer_size);
+  request.deleter = [header, allocated]() noexcept {
+      delete header;
+      delete[] allocated;
+  };
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+  return 0;
 }
 
 /*
@@ -1657,13 +1661,36 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
-  int rc;
+  cubconn::connection_worker::message request;
+  NET_HEADER *header;
+  std::byte *allocated;
 
   assert (conn != NULL);
+  assert (buffer && buffer_size > 0);
 
-  rc = css_send_error (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  header = new NET_HEADER;
+  allocated = new std::byte[buffer_size];
 
-  return (rc == NO_ERRORS) ? 0 : rc;
+  css_set_net_header (header, ERROR_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+  std::memcpy (allocated, buffer, buffer_size);
+
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
+
+  request.packet.clear ();
+  request.packet.emplace_back (reinterpret_cast<std::byte *> (header), sizeof (NET_HEADER));
+  request.packet.emplace_back (allocated, (std::size_t) buffer_size);
+  request.deleter = [header, allocated]() noexcept {
+      delete header;
+      delete[] allocated;
+  };
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+  return 0;
 }
 
 /*

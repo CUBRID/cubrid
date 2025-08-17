@@ -37,18 +37,88 @@
 
 namespace cubconn
 {
-  transmitter::transmitter ()
+  transmitter::transmitter () :
+    m_buf (16)
   {
-    m_buf.reserve (16);
-    this->reset ();
+    m_deleter.reserve (16);
   }
 
   transmitter::~transmitter ()
   {
   }
 
-  void transmitter::reset ()
+  result transmitter::fill (int fd)
   {
+    struct ::msghdr *msg;
+    std::size_t advance;
+    ssize_t bytes;
+
+    msg = &m_buf.get_msghdr ();
+    while (msg->msg_iovlen)
+      {
+	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
+	if (bytes > 0)
+	  {
+	    advance = static_cast<std::size_t> (bytes);
+	    while (advance && msg->msg_iovlen)
+	      {
+		if (advance < msg->msg_iov->iov_len)
+		  {
+		    msg->msg_iov->iov_base = static_cast<std::byte *> (msg->msg_iov->iov_base) + advance;
+		    msg->msg_iov->iov_len -= advance;
+		    advance = 0;
+		  }
+		else
+		  {
+		    advance -= msg->msg_iov->iov_len;
+		    ++msg->msg_iov;
+		    --msg->msg_iovlen;
+		  }
+	      }
+	    continue;
+	  }
+
+	if (__builtin_expect (bytes == 0, 0))
+	  {
+	    return result::PeerReset;
+	  }
+
+	switch (errno)
+	  {
+	  case EINTR:
+	    /* retry */
+	    continue;
+	  case EAGAIN:
+	    /* case EWOULDBLOCK: */
+	    return result::Pending;
+	  case EPIPE:
+	  case ECONNRESET:
+	    return result::PeerReset;
+	  default:
+	    return result::Error;
+	  }
+      }
+    return result::Ok;
+  }
+
+  void transmitter::push_for_deleter (std::function<void ()> &&deleter)
+  {
+    m_deleter.push_back (std::move (deleter));
+  }
+
+  void transmitter::stamp ()
+  {
+    m_buf.stamp_msghdr ();
+  }
+
+  void transmitter::clear ()
+  {
+    for (auto &deleter : m_deleter)
+    {
+      deleter ();
+    }
+    m_deleter.clear ();
+    m_buf.clear ();
   }
 }
 
