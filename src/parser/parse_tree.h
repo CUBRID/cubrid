@@ -42,6 +42,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "hide_password.h"
+#include "tsc_timer.h"
 
 #include "vector_distance_enum.h"
 
@@ -4042,6 +4043,10 @@ struct parser_context
 
   HIDE_PWD_INFO hide_pwd_info;
   PARSER_VARCHAR *dblink_server_text;	/* Contains access information to be used in generating SHA hash values ​​when using the Server name in DBLINK. */
+
+  TSCTIMEVAL parsing_time;
+  TSCTIMEVAL compile_time;
+  TSCTIMEVAL execution_time;
 
   struct
   {

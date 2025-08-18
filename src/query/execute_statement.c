@@ -135,7 +135,6 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
-static void do_send_comm_histo_to_session (PARSER_CONTEXT * parser);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
 			     PT_NODE ** update, PT_NODE * values);

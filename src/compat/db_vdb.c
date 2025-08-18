@@ -105,7 +105,7 @@ static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NOD
 
 static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
-static void do_send_comm_histo_to_session (void);
+static void do_send_comm_histo_to_session (PARSER_CONTEXT * parser);
 
 int g_open_buffer_control_flags = 0;
 
@@ -219,6 +219,12 @@ db_open_buffer_local (const char *buffer)
 
   CHECK_1ARG_NULL (buffer);
 
+  TSC_TICKS start_tick;
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+    {
+      tsc_getticks (&start_tick);
+    }
+
   session = db_open_local ();
 
   if (session)
@@ -231,8 +237,15 @@ db_open_buffer_local (const char *buffer)
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{
-	  return initialize_session (session);
+	  session = initialize_session (session);
 	}
+    }
+
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+    {
+      TSC_TICKS end_tick;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&session->parser->parsing_time, end_tick, start_tick);
     }
 
   return session;
@@ -540,6 +553,7 @@ db_compile_statement_local (DB_SESSION * session)
   CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
+  TSC_TICKS start_tick;
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -599,6 +613,11 @@ db_compile_statement_local (DB_SESSION * session)
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
     {
       return stmt_ndx + 1;
+    }
+
+  if (parser->query_trace == true)
+    {
+      tsc_getticks (&start_tick);
     }
 
   /* forget about any previous parsing errors, if any */
@@ -835,6 +854,13 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* so now, the statement is prepared */
   session->stage[stmt_ndx] = StatementPreparedStage;
+
+  if (parser->query_trace == true)
+    {
+      TSC_TICKS end_tick;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&parser->compile_time, end_tick, start_tick);
+    }
 
   return stmt_ndx + 1;
 }
@@ -3143,7 +3169,7 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
 }
 
 static void
-do_send_comm_histo_to_session ()
+do_send_comm_histo_to_session (PARSER_CONTEXT * parser)
 {
   DB_VALUE var[2];
   char *histo_str = NULL;
@@ -3155,6 +3181,12 @@ do_send_comm_histo_to_session ()
 
   if (fp)
     {
+      fprintf (fp, "\n[Query Execution Time]\n");
+      fprintf (fp, "Parsing time: (%ld.%06ld sec)\n", parser->parsing_time.tv_sec, parser->parsing_time.tv_usec);
+      fprintf (fp, "Compile time: (%ld.%06ld sec)\n", parser->compile_time.tv_sec, parser->compile_time.tv_usec);
+      fprintf (fp, "Execution time: (%ld.%06ld sec)\n", parser->execution_time.tv_sec, parser->execution_time.tv_usec);
+
+      fprintf (fp, "\n[Communication Histogram]\n");
       histo_print (fp);
 
       port_close_memstream (fp, &histo_str, &sizeloc);
@@ -3193,13 +3225,25 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
     {
       histo_start (false, true);
     }
+  TSC_TICKS start_tick;
+  if (session->parser->query_trace == true)
+    {
+      tsc_getticks (&start_tick);
+    }
 
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+
+  if (session->parser->query_trace == true)
+    {
+      TSC_TICKS end_tick;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&session->parser->execution_time, end_tick, start_tick);
+    }
 
   if (histo_is_supported ())
     {
       histo_stop ();
-      do_send_comm_histo_to_session ();
+      do_send_comm_histo_to_session (session->parser);
       histo_clear ();
     }
 
@@ -3242,12 +3286,25 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
       histo_start (false, true);
     }
 
+  TSC_TICKS start_tick;
+  if (session->parser->query_trace == true)
+    {
+      tsc_getticks (&start_tick);
+    }
+
   err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+
+  if (session->parser->query_trace == true)
+    {
+      TSC_TICKS end_tick;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&session->parser->execution_time, end_tick, start_tick);
+    }
 
   if (histo_is_supported ())
     {
       histo_stop ();
-      do_send_comm_histo_to_session ();
+      do_send_comm_histo_to_session (session->parser);
       histo_clear ();
     }
 
