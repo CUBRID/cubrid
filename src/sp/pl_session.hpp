@@ -132,7 +132,6 @@ namespace cubpl
       execution_stack *create_and_push_stack (cubthread::entry *thread_p);
       void pop_and_destroy_stack (const PL_STACK_ID sid);
       execution_stack *top_stack ();
-      //void notify_waiting_stacks ();
 
       /* connection management */
       connection_view claim_connection ();

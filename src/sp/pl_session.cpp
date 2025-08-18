@@ -211,14 +211,6 @@ namespace cubpl
     return it->second;
   }
 
-  /*
-  void
-  session::notify_waiting_stacks ()
-  {
-    m_cond_var.notify_all ();
-  }
-   */
-
   bool
   session::is_thread_involved (thread_id_t id)
   {
