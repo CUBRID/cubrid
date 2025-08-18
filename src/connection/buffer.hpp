@@ -304,7 +304,9 @@ namespace cubconn
 	      case EINTR:
 		continue;
 	      case EAGAIN:
-		/* case EWOULDBLOCK: */
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+	      case EWOULDBLOCK:
+#endif
 		return result::Pending;
 	      case ECONNRESET:
 		_er_log_debug (__FILE__, __LINE__, "buffered_socket->recv_drain: reset by peer", strerror (errno));

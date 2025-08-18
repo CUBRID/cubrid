@@ -981,58 +981,6 @@ css_shutdown_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
   assert (r == NO_ERROR);
 }
 
-void
-css_free_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
-{
-  CSS_CONN_ENTRY *p, *prev = NULL, *next;
-  int r;
-
-  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-  /* find and remove from active conn list */
-  for (p = css_Active_conn_anchor; p != NULL; p = next)
-    {
-      next = p->next;
-
-      if (p == conn)
-	{
-	  if (prev == NULL)
-	    {
-	      css_Active_conn_anchor = next;
-	    }
-	  else
-	    {
-	      prev->next = next;
-	    }
-
-	  css_Num_active_conn--;
-
-	  assert (css_Num_active_conn >= 0);
-	  assert (css_Num_active_conn < css_Num_max_conn);
-
-	  CSS_LOG_STACK ("css_free_conn - removed conn = %d from " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
-			 CSS_ACTIVE_CONN_ARGS);
-
-	  break;
-	}
-
-      prev = p;
-    }
-
-  if (p == NULL)
-    {
-      CSS_LOG_STACK ("css_free_conn - not found conn = %p in " CSS_ACTIVE_CONN_MSG, conn, CSS_ACTIVE_CONN_ARGS);
-    }
-
-  css_shutdown_conn_tmp (thread_p, conn);
-  css_dealloc_conn (conn);
-  css_decrement_num_conn (conn->client_type);
-
-  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-}
-
-
-
 /*
  * css_print_conn_entry_info() - print connection entry information to stderr
  *   return: void
