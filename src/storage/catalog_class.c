@@ -1049,7 +1049,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_CLASS_ATTR_COUNT_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* flags */
-  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_IS_SYSTEM_CLASS_INDEX].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_FLAGS_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* class_type */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_CLASS_TYPE_INDEX].value, NULL, -1, true, NULL, 0);

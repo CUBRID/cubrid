@@ -419,7 +419,7 @@ namespace cubschema
       {"unique_name", format_varchar (255)},
       {"class_name", format_varchar (255)},
       {"class_type", "integer"},
-      {"is_system_class", "integer"},
+      {"flags", "integer"},
       {"owner", AU_USER_CLASS_NAME},
       {"inst_attr_count", "integer"},
       {"class_attr_count", "integer"},
