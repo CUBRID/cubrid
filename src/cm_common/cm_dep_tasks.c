@@ -49,6 +49,7 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "release_string.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -150,6 +151,14 @@ static void _op_get_db_user_groups (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
+
+static void get_authorization_base (void);
+static int cubrid_version = -1;
+static int grant_base = 0;
+
+#define GRANT_ENTRY_LENGTH	(3 + grant_base)
+#define GRANT_ENTRY_CLASS(index)  ((index) + grant_base)
+#define GRANT_ENTRY_CACHE(index)  ((index) + grant_base + 2)
 
 #if defined(WINDOWS)
 static void
@@ -2786,11 +2795,16 @@ revoke_all_from_user (DB_OBJECT * user)
   int num_class = 0;
   DB_COLLECTION *col;
 
+  if (cubrid_version < 0)
+    {
+      get_authorization_base ();
+    }
+
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
       if (db_is_system_class (obj))
 	{
@@ -2823,6 +2837,27 @@ _op_get_db_user_name (nvplist * res, DB_OBJECT * user)
   db_value_clear (&v);
 }
 
+static void get_authorization_base (void)
+{
+  char curid_version_string[256];
+
+  char *p;
+
+  rel_copy_version_string (curid_version_string, sizeof (curid_version_string));
+  p = strchr (curid_version_string, ' ');
+
+  cubrid_version = atoi (p + 1) * 100;
+  p = strchr (p + 1, '.');
+  if (p)
+    {
+      cubrid_version += atoi (p + 1);
+    }
+
+  if (cubrid_version >= 1104)
+    {
+      grant_base = 1;
+    }
+}
 static void
 _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 {
@@ -2832,13 +2867,18 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
   char buf[20];
   int i;
 
+  if (cubrid_version < 0)
+    {
+      get_authorization_base ();
+    }
+
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      db_seq_get (col, i + 2, &v);
+      db_seq_get (col, GRANT_ENTRY_CACHE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
       nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
