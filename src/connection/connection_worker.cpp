@@ -34,6 +34,11 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
+#ifdef _er_log_debug
+#undef _er_log_debug
+#endif
+#define _er_log_debug(x, ...) do { } while (0)
+
 #define NEXT_STATE(ctx, sel, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
     (ctx->sel.m_state = state::x); \
