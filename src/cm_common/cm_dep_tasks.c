@@ -2837,7 +2837,8 @@ _op_get_db_user_name (nvplist * res, DB_OBJECT * user)
   db_value_clear (&v);
 }
 
-static void get_authorization_base (void)
+static void
+get_authorization_base (void)
 {
   char curid_version_string[256];
 
@@ -2858,6 +2859,7 @@ static void get_authorization_base (void)
       grant_base = 1;
     }
 }
+
 static void
 _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 {
