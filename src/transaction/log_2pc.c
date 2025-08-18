@@ -78,7 +78,7 @@ struct log_2pc_global_data
 };
 struct log_2pc_global_data log_2pc_Userfun =
   { dblink_2pc_get_participants, NULL, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
-dblink_2pc_send_commit,
+  dblink_2pc_send_commit,
   dblink_2pc_send_abort
 };
 
@@ -145,26 +145,6 @@ log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
 }
 
 /*
- * log_2pc_sprintf_particp - A STRING VERSION OF PARTICIPANT-ID
- *
- * return:
- *
- *   particp_id(in): Desired participant identifier
- *
- * NOTE:Return a string version of the given participant that can be
- *              printed using the quilifier %s of printf.
- */
-char *
-log_2pc_sprintf_particp (void *particp_id)
-{
-  if (log_2pc_Userfun.sprintf_participant == NULL)
-    {
-      return NULL;
-    }
-  return (*log_2pc_Userfun.sprintf_participant) (particp_id);
-}
-
-/*
  * log_2pc_dump_participants - Dump all participants
  *
  * return: nothing..
@@ -218,7 +198,9 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
 
   thread_p = thread_get_thread_entry_info ();
 
-  return (*log_2pc_Userfun.send_prepare) (thread_p, gtrid, num_particps, block_particps_ids);
+  (void) (*log_2pc_Userfun.send_prepare) (thread_p, gtrid, num_particps, block_particps_ids);
+  sleep (10);
+  exit (-1);
 }
 
 /*

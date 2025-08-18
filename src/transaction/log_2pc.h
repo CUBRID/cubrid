@@ -70,7 +70,6 @@ struct log_2pc_coordinator
   bool *ack_received;		/* Acknowledgment received vector */
 };
 
-char *log_2pc_sprintf_particp (void *particp_id);
 void log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
 bool log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids);
 void log_2pc_send_commit_decision (int gtrid, int num_particps, bool * particps_ack, void *block_particps_ids);
