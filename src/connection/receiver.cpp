@@ -31,8 +31,13 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
+#ifdef _er_log_debug
+#undef _er_log_debug
+#endif
+#define _er_log_debug(x, ...) do { } while (0)
+
 #define NEXT_STATE(x) do { \
-    _er_log_debug (__FILE__, __LINE__, "receiver state %d -> state = %d\n", m_state, state::x); \
+    _er_log_debug (__FILE__, __LINE__, "receiver (%p) state %d -> state = %d\n", this, m_state, state::x); \
     (m_state = state::x); \
 } while (0)
 
@@ -187,43 +192,61 @@ namespace cubconn
 	assert_release (false);
       }
 
-    NEXT_STATE (Recv);
     if (m_received >= SIZE_HEADER + m_size)
       {
 	this->parse_packet (true);
 
-	/* 1. there are only less than 4 bytes.. */
-	/* 2. m_received < m_size (= need recv) */
-	if (m_received < SIZE_HEADER && m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
+	if (m_received >= SIZE_HEADER)
+	  {
+	    NEXT_STATE (ParseSize);
+	    return result::Partial;
+	  }
+
+	/* m_received < SIZE_HEADER */
+
+	if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
 	  {
 	    /* need to recv the size header but the buffer was not large enough */
 	    std::memcpy (&m_tmpsize, m_bufptr, m_received);
 	    NEXT_STATE (RecvSizeInTmp);
+	    return result::Partial;
 	  }
-      }
-    else
-      {
-	if (SIZE_HEADER + m_size > m_bufsize)
-	  {
-	    ptr = new std::byte[SIZE_HEADER + m_size];
-	    if (!ptr)
-	      {
-		return result::Error;
-	      }
-	    _er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
-			   m_bufsize, m_size);
-	    std::memcpy (ptr, m_bufptr, m_received);
 
-	    m_allocated.push_back (ptr);
-#if !defined (NDEBUG)
-	    std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
-	    assert (m_size == ntohl (aligned));
-#endif
-	    m_bufptr = ptr;
-	    m_bufsize = SIZE_HEADER + m_size;
-	    NEXT_STATE (RecvInAllocated);
-	  }
+	/* m_received < SIZE_HEADER */
+	/* m_bufsize >= SIZE_HEADER + sizeof (NET_HEADER) */
+	
+	NEXT_STATE (Recv);
+	return result::Partial;
       }
+
+    /* m_received < SIZE_HEADER + m_size */
+
+    if (SIZE_HEADER + m_size > m_bufsize)
+      {
+	ptr = new std::byte[SIZE_HEADER + m_size];
+	if (!ptr)
+	  {
+	    return result::Error;
+	  }
+	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
+		       m_bufsize, m_size);
+	std::memcpy (ptr, m_bufptr, m_received);
+
+	m_allocated.push_back (ptr);
+#if !defined (NDEBUG)
+	std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
+	assert (m_size == ntohl (aligned));
+#endif
+	m_bufptr = ptr;
+	m_bufsize = SIZE_HEADER + m_size;
+	NEXT_STATE (RecvInAllocated);
+	return result::Partial;
+      }
+
+    assert (m_bufsize - m_received != 0);
+
+    /* m_bufsize >= SIZE_HEADER + m_size */
+    NEXT_STATE (Recv);
     return result::Partial;
   }
 
@@ -232,6 +255,7 @@ namespace cubconn
     ssize_t bytes;
 
     /* receive data from socket */
+    assert (m_bufsize - m_received > 0);
     bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
     if (bytes > 0)
       {
@@ -270,6 +294,7 @@ namespace cubconn
     ssize_t bytes;
 
     /* receive data from socket */
+    assert (SIZE_HEADER - m_received > 0);
     bytes = ::recv (fd, reinterpret_cast<char *> (&m_tmpsize) + m_received, SIZE_HEADER - m_received, 0);
     if (bytes > 0)
       {
@@ -292,7 +317,9 @@ namespace cubconn
   {
     ssize_t bytes;
 
+    _er_log_debug (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd); \
     /* receive data from socket */
+    assert (m_bufsize - m_received > 0);
     bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
     if (bytes > 0)
       {

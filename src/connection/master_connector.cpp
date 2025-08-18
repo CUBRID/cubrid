@@ -43,6 +43,11 @@
 #include <string>
 #include <type_traits>
 
+#ifdef _er_log_debug
+#undef _er_log_debug
+#endif
+#define _er_log_debug(x, ...) do { } while (0)
+
 #define NEXT_STATE(c, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
     (c->m_state = state::x); \
