@@ -565,7 +565,7 @@ catcls_guess_record_length (OR_VALUE * value_p)
 {
   int length;
   DB_TYPE data_type;
-  PR_TYPE *map_p;
+  const PR_TYPE *map_p;
   OR_VALUE *attrs_p;
   int n_attrs, i;
 
@@ -1773,7 +1773,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     {
       /* enumerations are stored as a collection of strings */
       TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_STRING);
-      PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
+      const PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
 
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)
@@ -4785,7 +4785,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (lang_str != NULL);
 		  assert (lang_buf_size > 0);
-		  strncpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+		  memcpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
 		}
 	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
 	    }

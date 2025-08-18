@@ -695,8 +695,8 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
-  cas_default_ansi_quotes = PRM_GET_BOOL (prm_get_value (PRM_ID_ANSI_QUOTES));
-  cas_default_no_backslash_escapes = PRM_GET_BOOL (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+  cas_default_ansi_quotes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_ANSI_QUOTES));
+  cas_default_no_backslash_escapes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
   return;
 }
@@ -2597,7 +2597,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 {
   DB_VALUE *value_list = NULL;
   int err_code;
-  int i, num_bind_params, num_bind = 0;
+  int i, num_bind_params = 0, num_bind = 0;
   int num_markers;
   int stmt_id = -1;
   int first_value;
@@ -8196,13 +8196,13 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_SET:
       collection_str = "set";
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_MULTISET:
       if (collection_str == NULL)
 	{
 	  collection_str = "multiset";
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       if (collection_str == NULL)
 	{
@@ -8258,7 +8258,7 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_NUMERIC:
       sprintf (scale_str, "%d", scale);
-      /* fall through */
+      [[fallthrough]];
     default:
       p = (char *) db_get_type_name (dtype);
       if (p == NULL)
@@ -8598,6 +8598,7 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
   if (schema_name[0] == '\0')
     {
       strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
+      schema_name[DB_MAX_SCHEMA_LENGTH - 1] = '\0';
     }
 
   if (schema_name[0] != '\0' && class_name_only != NULL)

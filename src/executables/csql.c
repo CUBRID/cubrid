@@ -419,7 +419,7 @@ csql_pipe_handler (int sig_no)
 static void
 display_buffer (void)
 {
-  int l = 1;
+  volatile int l = 1;
   FILE *pf;
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int);
@@ -1920,7 +1920,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
   er_clear ();
@@ -2015,7 +2014,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
       char stmt_msg[LINE_BUFFER_SIZE];
-      PT_NODE *statement = NULL;
 
       /* Start the execution of stms */
       stmt_msg[0] = '\0';

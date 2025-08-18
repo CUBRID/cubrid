@@ -3910,7 +3910,7 @@ static void
 emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains)
 {
   DB_TYPE type;
-  PR_TYPE *prtype;
+  const PR_TYPE *prtype;
   DB_DOMAIN *domain;
   DB_OBJECT *class_;
   int precision;
@@ -3960,7 +3960,7 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_VARNCHAR:
 	      has_collation = 1;
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      precision = db_domain_precision (domain);

@@ -523,7 +523,7 @@ void db_value_printer::describe_data (const db_value *value)
 
     case DB_TYPE_VOBJ:
       m_buf ("vid:");
-    /* FALLTHRU */
+      [[fallthrough]];
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:

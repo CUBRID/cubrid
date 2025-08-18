@@ -73,7 +73,6 @@ namespace parallel_query
       {
 	m_active_tasks--;
       }
-
     private:
       int m_reserved_workers;
       std::atomic<int> m_active_tasks;

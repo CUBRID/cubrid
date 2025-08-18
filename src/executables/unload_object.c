@@ -1471,10 +1471,8 @@ unload_extractor_thread (void *param)
 
 #if defined(WINDOWS)
   pthread_exit ((THREAD_RET_T) thr_ret);
-  return (THREAD_RET_T) thr_ret;
 #else
   pthread_exit ((THREAD_RET_T) & thr_ret);
-  return (THREAD_RET_T) & thr_ret;
 #endif
 }
 
@@ -1610,10 +1608,8 @@ unload_writer_thread (void *param)
 
 #if defined(WINDOWS)
   pthread_exit ((THREAD_RET_T) thr_ret);
-  return (THREAD_RET_T) thr_ret;
 #else
   pthread_exit ((THREAD_RET_T) & thr_ret);
-  return (THREAD_RET_T) & thr_ret;
 #endif
 }
 

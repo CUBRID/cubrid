@@ -4804,7 +4804,7 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
-  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
   if (!old_class || !newname)
@@ -4822,6 +4822,7 @@ do_rename_partition (MOP old_class, const char *newname)
 
   /* The pexpr format is defined in the function pt_node_to_partition_info. */
   strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
+  expr[DB_MAX_PARTITION_EXPR_LENGTH] = '\0';
   expr_ptr = strchr (expr, ']');	// skip select list
   expr_ptr = strchr (expr_ptr + 1, '[');	// find table name
   sprintf (expr_ptr, "[%s]", newname);
@@ -6019,7 +6020,7 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 	{
 	  return error;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_ADD_HASHPARTITION:
       error = do_redistribute_partitions_data (entity_name, pinfo->keycol, NULL, 0, PT_ADD_HASHPARTITION, true, false);
       break;
@@ -10812,7 +10813,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    {
 	      break;
 	    }
-	  /* fall through */
+	  [[fallthrough]];
 
 	default:
 	  att = attribute->info.attr_def.attr_name;
@@ -11404,7 +11405,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;

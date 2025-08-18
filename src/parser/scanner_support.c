@@ -747,6 +747,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
+	case PT_HINT_NO_PARALLEL_SUBQUERY:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
 	case PT_HINT_PARALLEL:
 	  if (node->node_type == PT_SELECT)
 	    {
@@ -1103,6 +1109,8 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 		}
 	      in++;
 	    }
+
+	  continue;
 	}
 
       if (*in == '(')
@@ -1136,10 +1144,6 @@ read_hint_args (unsigned char *instr, PT_HINT hint_table[], int hint_idx, PT_HIN
 	    }
 
 	  return in + 1;
-	}
-      else if (*in == NULL)
-	{
-	  break;
 	}
 
       in++;

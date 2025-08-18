@@ -28,6 +28,7 @@
 #include <memory>
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
+#include "page_buffer.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
@@ -63,8 +64,13 @@ namespace parallel_heap_scan
   {
     std::unique_lock<std::mutex> lock (m_context->m_locked_vpid.mutex);
     HEAP_SCANCACHE *scan_cache = &scan_id->s.hsid.scan_cache;
+    SCAN_CODE page_scan_code;
     if (m_context->m_locked_vpid.is_ended)
       {
+	if (m_old_page_watcher.pgptr != NULL)
+	  {
+	    pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+	  }
 	return S_END;
       }
     if (VPID_ISNULL (&m_context->m_locked_vpid.vpid))
@@ -74,7 +80,16 @@ namespace parallel_heap_scan
 	m_context->m_locked_vpid.vpid.volid = hfid->vfid.volid;
       }
     VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
-    SCAN_CODE page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &m_old_page_watcher);
+      }
+    page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (m_old_page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+      }
+
     if (page_scan_code == S_END)
       {
 	m_context->m_locked_vpid.is_ended = true;
@@ -121,14 +136,26 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
+    if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
+      {
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
+      }
+    else
+      {
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
+      }
+
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
+	if (m_context->m_orig_thread_p->m_px_stats != NULL)
+	  {
+	    thread_p->m_px_stats = m_context->m_orig_thread_p->m_px_stats;
+	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
 #endif
-    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     if (is_list_merge)
       {
 	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
@@ -161,9 +188,11 @@ namespace parallel_heap_scan
 			 hsidp->pred_attrs.num_attrs, hsidp->pred_attrs.attr_ids, hsidp->pred_attrs.attr_cache,
 			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
 			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
+    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
     ret = scan_start_scan (thread_p, scan_id);
     /* lock because of mvcc_snapshot */
     lock.unlock();
+    PGBUF_INIT_WATCHER (&m_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -173,18 +202,21 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
 	  }
+#endif
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t1);
 	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
 	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
 	  }
-
+#endif
 	if (page_scan_code == S_END)
 	  {
 	    m_context->is_scan_internal_ended = true;
@@ -208,17 +240,21 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t2);
 	      }
+#endif
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t1);
 		tsc_elapsed_time_usec (&tv_diff, t1, t2);
 		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
 	      }
+#endif
 	    if (rec_scan_code == S_ERROR)
 	      {
 		if (m_context->has_error())
@@ -235,24 +271,19 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t1);
 		  }
+#endif
 		if (is_list_merge)
 		  {
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
 		      {
 			break;
 		      }
-		    {
-		      std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
-		      if (!m_mergable_list_writer->is_tfile_allocated())
-			{
-			  tfile_lock.lock();
-			}
-		      writer_error_code = m_mergable_list_writer->write (thread_p);
-		    }
+		    writer_error_code = m_mergable_list_writer->write (thread_p);
 		    if (!resolved_dbval_stored)
 		      {
 			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
@@ -267,19 +298,22 @@ namespace parallel_heap_scan
 		  }
 		else
 		  {
-		    std::unique_lock<std::mutex> tfile_lock (m_context->m_open_list_mutex, std::defer_lock);
-		    if (!writer.is_tfile_allocated())
+		    writer_error_code = writer.write (thread_p, scan_id, data);
+		    if (writer_error_code != NO_ERROR)
 		      {
-			tfile_lock.lock();
+			m_context->set_has_error();
+			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
+			break;
 		      }
-		    writer.write (thread_p, scan_id, data);
 		  }
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
 		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
 		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
 		  }
+#endif
 	      }
 	  }
       }
@@ -306,8 +340,8 @@ namespace parallel_heap_scan
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
-    thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
+    thread_p->m_px_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif

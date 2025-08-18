@@ -186,8 +186,6 @@ extern "C"
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
-  extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
-			   int *outputlen);
   extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
   extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);

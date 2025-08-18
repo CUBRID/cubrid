@@ -3210,6 +3210,8 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
 
+  ptr = or_pack_int (ptr, xasl->parallelism);
+
   return ptr;
 }
 
@@ -5533,8 +5535,6 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
       ptr = or_pack_int (ptr, offset);
     }
 
-  ptr = or_pack_int (ptr, aggregate->flag_agg_optimize);
-
   ptr = or_pack_btid (ptr, (BTID *) (&aggregate->btid));
   if (ptr == NULL)
     {
@@ -5559,6 +5559,15 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
 
       ptr = or_pack_int (ptr, offset);
     }
+
+  int flagint = 0;
+  flagint |= (aggregate->flag.agg_optimized ? 1 : 0) << 0;
+  flagint |= (aggregate->flag.min_max_optimized ? 1 : 0) << 1;
+  flagint |= (aggregate->flag.part_key_descending ? 1 : 0) << 2;
+  flagint |= (aggregate->flag.dummy ? 1 : 0) << 3;
+
+  ptr = or_pack_int (ptr, flagint);
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -6104,7 +6113,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE		/* next */
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
-	   + PTR_SIZE);		/* sq_cache */
+	   + PTR_SIZE		/* sq_cache */
+	   + OR_INT_SIZE);	/* parallelism */
 
   return size;
 }
@@ -7358,7 +7368,8 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 	   + OR_INT_SIZE	/* curr_cnt */
 	   + OR_INT_SIZE	/* function */
 	   + OR_INT_SIZE	/* option */
-	   + OR_INT_SIZE);	/* opr_dbtype */
+	   + OR_INT_SIZE	/* opr_dbtype */
+	   + OR_INT_SIZE);	/* is_ended */
 
   tmp_size = xts_sizeof_regu_variable_list (aggregate->operands);
   if (tmp_size == ER_FAILED)
@@ -7389,6 +7400,7 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 	}
     }
 
+  size += OR_INT_SIZE;		/* flag */
   return size;
 }
 

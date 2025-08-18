@@ -549,6 +549,7 @@ typedef enum
   PARAMDUMP_MSG_CLIENT_PARAMETER = 21,
   PARAMDUMP_MSG_SERVER_PARAMETER = 22,
   PARAMDUMP_MSG_STANDALONE_PARAMETER = 23,
+  PARAMDUMP_MSG_BAD_OPTION = 24,
   PARAMDUMP_MSG_USAGE = 60
 } MSGCAT_PARAMDUMP_MSG;
 
@@ -1546,6 +1547,14 @@ typedef struct _ha_config
 #define PARAMDUMP_SA_MODE_L                     "SA-mode"
 #define PARAMDUMP_CS_MODE_S                     'C'
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
+#define PARAMDUMP_HA_ONLY_S			12200
+#define PARAMDUMP_HA_ONLY_L			"ha-only"
+#define PARAMDUMP_EXCLUDE_HA_S			12201
+#define PARAMDUMP_EXCLUDE_HA_L			"exclude-ha"
+#define PARAMDUMP_DUMP_FLAG_S			12202
+#define PARAMDUMP_DUMP_FLAG_L			"dump-flag"
+#define PARAMDUMP_FOR_CM_S			12203
+#define PARAMDUMP_FOR_CM_L			"for-cm"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'

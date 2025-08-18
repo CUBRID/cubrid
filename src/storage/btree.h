@@ -718,7 +718,7 @@ extern int btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAI
 					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
-
+extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern bool btree_is_unique_type (BTREE_TYPE type);
 extern int xbtree_get_unique_pk (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_get_unique_statistics (THREAD_ENTRY * thread_p, BTID * btid, long long *oid_cnt, long long *null_cnt,

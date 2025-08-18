@@ -51,7 +51,6 @@ namespace cubpl
 	return ER_FAILED;
       }
 
-    cubpacking::unpacker unpacker (response_blk);
     if (!response_blk.is_valid ())
       {
 	error_code = ER_SP_NETWORK_ERROR;
@@ -59,6 +58,7 @@ namespace cubpl
       }
     else
       {
+	cubpacking::unpacker unpacker (response_blk);
 	unpacker.unpack_int (code);
 	(void) m_stack->read_payload_block (unpacker);
       }
@@ -112,41 +112,52 @@ namespace cubpl
     do
       {
 	error_code = read_request (response_blk, code);
-
-	cubmem::block &payload_blk = m_stack->get_data_queue().front ();
-
-	if (code == METHOD_REQUEST_COMPILE)
+	if (error_code == NO_ERROR)
 	  {
-	    if (payload_blk.dim > 0)
+
+	    cubmem::block &payload_blk = m_stack->get_data_queue().front ();
+
+	    if (code == METHOD_REQUEST_COMPILE)
 	      {
-		out_blk.extend_to (payload_blk.dim);
-		std::memcpy (out_blk.get_ptr (), payload_blk.ptr, payload_blk.dim);
+		if (payload_blk.dim > 0)
+		  {
+		    out_blk.extend_to (payload_blk.dim);
+		    std::memcpy (out_blk.get_ptr (), payload_blk.ptr, payload_blk.dim);
+		  }
+		else
+		  {
+		    create_error_response (out_blk, error_code);
+		  }
+	      }
+	    else if (code == METHOD_REQUEST_SQL_SEMANTICS)
+	      {
+		packing_unpacker respone_unpacker (payload_blk);
+		sql_semantics_request request;
+		respone_unpacker.unpack_all (request);
+
+		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+	      }
+	    else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
+	      {
+		packing_unpacker respone_unpacker (payload_blk);
+		global_semantics_request request;
+		respone_unpacker.unpack_all (request);
+
+		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
 	      }
 	    else
 	      {
-		create_error_response (out_blk, error_code);
+		if (code != METHOD_REQUEST_ERROR)
+		  {
+		    er_log_debug (ARG_FILE_LINE, "wrong code %d in a response to COMPILE request\n", code);
+		    assert (false);
+		  }
+		error_code = ER_FAILED;
 	      }
-	  }
-	else if (code == METHOD_REQUEST_SQL_SEMANTICS)
-	  {
-	    packing_unpacker respone_unpacker (payload_blk);
-	    sql_semantics_request request;
-	    respone_unpacker.unpack_all (request);
-
-	    error_code = m_stack->send_data_to_client_recv (bypass_block, request);
-	  }
-	else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
-	  {
-	    packing_unpacker respone_unpacker (payload_blk);
-	    global_semantics_request request;
-	    respone_unpacker.unpack_all (request);
-
-	    error_code = m_stack->send_data_to_client_recv (bypass_block, request);
 	  }
 	else
 	  {
-	    assert (code == METHOD_REQUEST_ERROR);
-	    error_code = ER_FAILED;
+	    create_error_response (out_blk, error_code);
 	  }
 
 	if (m_stack->get_data_queue ().empty() == false)
@@ -158,8 +169,6 @@ namespace cubpl
 	response_blk.freemem ();
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
-
-exit:
 
     return error_code;
   }

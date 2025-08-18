@@ -627,7 +627,7 @@ static HEAP_FINDSPACE heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p
 							 int record_length, int needed_space,
 							 HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
 static PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-					   int newrec_size, HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
+					   HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
 static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				      VPID * hdr_vpid, bool scan_all, bool can_cycle);
 
@@ -2695,7 +2695,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   char *classname;
   const char *attr_name;
   DB_VALUE def_dbvalue;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int disk_length;
   OR_BUF buf;
   bool copy;
@@ -3482,8 +3482,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
  *   hfid(in): Object heap file identifier
  *   needed_space(in): The minimal space needed
  *   isnew_rec(in): Are we inserting a new record to the heap ?
- *   newrec_size(in): Size of the new record
  *   scan_cache(in/out): Scan cache used to estimate the best space pages
+ *   pg_watcher(out): watcher for a found page.
  *
  * Note: Find a page among the set of best pages of the heap which has
  * the needed space. If we do not find any page, a new page is
@@ -3493,7 +3493,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
  */
 static PAGE_PTR
 heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-			   int newrec_size, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
+			   HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
 {
   VPID vpid;			/* Volume and page identifiers */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -3508,13 +3508,16 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   int error_code = NO_ERROR;
   PERF_UTIME_TRACKER time_find_best_page = PERF_UTIME_TRACKER_INITIALIZER;
 
+  assert (!heap_is_big_length (needed_space));
+  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
+
   PERF_UTIME_TRACKER_START (thread_p, &time_find_best_page);
+
   /*
    * Try to use the space cache for as much information as possible to avoid
    * fetching and updating the header page a lot.
    */
 
-  assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
   PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
   /*
@@ -3557,14 +3560,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   if (isnew_rec == true)
     {
       heap_hdr->estimates.num_recs += 1;
-      if (newrec_size > DB_PAGESIZE)
-	{
-	  heap_hdr->estimates.num_pages += CEIL_PTVDIV (newrec_size, DB_PAGESIZE);
-	}
     }
-  heap_hdr->estimates.recs_sumlen += (float) newrec_size;
+  heap_hdr->estimates.recs_sumlen += (float) needed_space;
 
-  assert (!heap_is_big_length (needed_space));
   /* Take into consideration the unfill factor for pages with objects */
   total_space = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
   if (heap_is_big_length (total_space))
@@ -6823,10 +6821,31 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
+#if defined(SERVER_MODE)
+	  THREAD_ENTRY *orig_thread_p = NULL;
+	  if (thread_p->m_px_orig_thread_entry != NULL)
+	    {
+	      orig_thread_p = thread_p->m_px_orig_thread_entry;
+	      assert (orig_thread_p != NULL);
+	      pthread_mutex_lock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK) != LK_GRANTED)
 	    {
+#if defined(SERVER_MODE)
+	      if (orig_thread_p != NULL)
+		{
+		  pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+		}
+#endif
 	      goto exit_on_error;
 	    }
+#if defined(SERVER_MODE)
+	  if (orig_thread_p != NULL)
+	    {
+	      pthread_mutex_unlock (&orig_thread_p->m_px_lock);
+	    }
+#endif
 	}
 
       ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);
@@ -7677,7 +7696,7 @@ try_again:
 	  return S_DOESNT_EXIST;
 	}
       /* REC_NEWHOME are only allowed to be accessed through REC_RELOCATION slots. */
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       /* Unexpected case. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid_p->volid,
@@ -8209,8 +8228,9 @@ heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid, 
     }
   else
     {
-      scan_cache->page_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE, S_LOCK, NULL,
-								    &scan_cache->page_watcher);
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, curr_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL,
+				     &scan_cache->page_watcher);
       if (scan_cache->page_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
@@ -8349,13 +8369,13 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		{
 		  /* must be last slot of page, end scanning */
 		  OID_SET_NULL (next_oid);
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	      else
 		{
 		  /* Error, stop scanning */
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  /* not unfix page here cause fix page executed on parallel heap scan task */
 		  return scan;
 		}
 	    }
@@ -10370,7 +10390,7 @@ static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   OR_ATTRIBUTE *attrepr;
   char *disk_data = NULL;
   int disk_bound = false;
@@ -11520,7 +11540,7 @@ int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
@@ -11854,7 +11874,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   char *ptr_bound, *ptr_varvals;
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   DB_VALUE temp_dbvalue;
-  PR_TYPE *pr_type;		/* Primitive type array function structure */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
   unsigned int repid_bits;
   SCAN_CODE status;
   int i;
@@ -20718,13 +20738,13 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
+  assert (context->recdes_p->type != REC_NEWHOME);
 
   if (home_hint_p == NULL)
     {
       /* find and fix page for insert */
       if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length,
-				     (context->recdes_p->type != REC_NEWHOME), context->recdes_p->length,
-				     context->scan_cache_p, context->home_page_watcher_p) == NULL)
+				     true, context->scan_cache_p, context->home_page_watcher_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -20865,9 +20885,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
     }
 #endif
 
-  if (heap_stats_find_best_page
-      (thread_p, &context->hfid, context->recdes_p->length, false, context->recdes_p->length, context->scan_cache_p,
-       context->home_page_watcher_p) == NULL)
+  if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length, false,
+				 context->scan_cache_p, context->home_page_watcher_p) == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
@@ -23858,7 +23877,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     case REC_ASSIGN_ADDRESS:
       /* it's not an old record, it was inserted in this transaction */
       context->is_logical_old = false;
-      /* FALLTHRU */
+      [[fallthrough]];
     case REC_HOME:
       rc = heap_update_home (thread_p, context, is_mvcc_op);
       break;
@@ -25359,6 +25378,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
 		{
+		  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+		    {
+		      *recdes = *peeked_recdes;
+		      return scan;
+		    }
+
 		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
 		      SNAPSHOT_SATISFIED)
 		    {
