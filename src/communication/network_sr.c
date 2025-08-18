@@ -895,11 +895,14 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	  session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
 	  if (net_histo_ctx_p != NULL)
 	    {
-	      if (!net_histo_ctx_p->is_started ())
+	      if (thread_need_clear_trace (thread_p) == false)
 		{
-		  net_histo_ctx_p->start_collect ();
+		  if (!net_histo_ctx_p->is_started ())
+		    {
+		      net_histo_ctx_p->start_collect ();
+		    }
+		  net_histo_ctx_p->add_request (request, size);
 		}
-	      net_histo_ctx_p->add_request (request, size);
 	    }
 	}
 #endif /* SERVER_MODE */
