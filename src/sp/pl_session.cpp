@@ -127,7 +127,7 @@ namespace cubpl
 	  }
       }
 
-    execution_stack *stack = new execution_stack (thread_p);
+    execution_stack *stack = new execution_stack (thread_p, this);
     if (stack)
       {
 	// update stack index
@@ -381,13 +381,6 @@ namespace cubpl
 
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
     m_cond_pl_session_done.wait (ulock, pl_session_is_not_running);
-  }
-
-  int
-  session::get_depth ()
-  {
-    std::unique_lock<std::mutex> ulock (m_mutex_stack);
-    return m_stack_map.size () - m_deferred_free_stack.size ();
   }
 
   SESSION_ID

@@ -30,7 +30,7 @@
 #include "memory_wrapper.hpp"
 namespace cubpl
 {
-  execution_stack::execution_stack (cubthread::entry *thread_p)
+  execution_stack::execution_stack (cubthread::entry *thread_p, session *sess)
     : m_id ((std::uint64_t) this)
     , m_thread_p (thread_p)
     , m_connection {nullptr}
@@ -40,13 +40,8 @@ namespace cubpl
   {
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;
-
-    session *sess = get_session ();
-    if (sess)
-      {
-	m_client_header.id = sess->get_id ();
-	m_java_header.id = sess->get_id ();
-      }
+    m_client_header.id = sess->get_id ();
+    m_java_header.id = sess->get_id ();
   }
 
   execution_stack::~execution_stack ()

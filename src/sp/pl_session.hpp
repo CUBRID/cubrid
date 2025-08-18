@@ -152,8 +152,6 @@ namespace cubpl
       void wait_until_pl_session_done ();
       void set_local_error_for_interrupt (); // set interrupt on thread local error manager
 
-      int get_depth ();
-
       bool is_running ();
 
       inline METHOD_REQ_ID get_and_increment_request_id ()
