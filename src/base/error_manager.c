@@ -1690,7 +1690,7 @@ er_log (int err_id)
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
+      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 127, ".%03ld",
 		tv.tv_usec / 1000);
     }
 
@@ -2050,7 +2050,7 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
+      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 127, ".%03ld",
 		tv.tv_usec / 1000);
     }
 
