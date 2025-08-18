@@ -399,6 +399,10 @@ namespace cubconn
 	    return result::Error;
 	  }
       }
+    else
+      {
+	ctx->m_recv.m_receiver.release (packet);
+      }
     ctx->m_recv.m_command = false;
     NEXT_STATE (ctx, m_recv, HEADER);
     return result::Ok;
@@ -439,11 +443,25 @@ namespace cubconn
       {
 	if (waiter)
 	  {
+	    /* for alignment */
+	    /* TODO: remove this and handle this problem in other way */
+	    char *buf;
+	    buf = (char *) new std::byte[packet.size ()];
+	    std::memcpy (buf, packet.data (), packet.size ());
+	    ctx->m_recv.m_receiver.release (packet);
+	    *waiter->buffer = buf;
+	    *waiter->size = packet.size ();
+	    *waiter->rc = NO_ERRORS;
+	    waiter->thrd_entry = NULL;
+	    css_free_wait_queue_entry (conn, waiter);
+
+	    /*
 	    *waiter->buffer = reinterpret_cast<char *> (packet.data ());
 	    *waiter->size = packet.size ();
 	    *waiter->rc = NO_ERRORS;
 	    waiter->thrd_entry = NULL;
 	    css_free_wait_queue_entry (conn, waiter);
+	    */
 	  }
 	else
 	  {
@@ -506,6 +524,7 @@ namespace cubconn
 
     if (css_is_request_aborted (ctx->m_conn, ctx->m_recv.m_request_id))
       {
+	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header);
 	return result::Aborted;
       }
 
@@ -586,25 +605,30 @@ namespace cubconn
 	break;
 
       case DATA_TYPE:
+	ctx->m_recv.m_receiver.release (packet);
 	NEXT_STATE (ctx, m_recv, DATA);
 	break;
 
       case ABORT_TYPE:
 	/* no more packets are requested */
+	ctx->m_recv.m_receiver.release (packet);
 	ctx->m_recv.m_command = false;
 	css_process_abort_packet (ctx->m_conn, ctx->m_recv.m_request_id);
 	break;
 
       case CLOSE_TYPE:
+	ctx->m_recv.m_receiver.release (packet);
 	/* no more packets are requested */
 	status = result::ClosedConnection;
 	break;
 
       case ERROR_TYPE:
+	ctx->m_recv.m_receiver.release (packet);
 	NEXT_STATE (ctx, m_recv, ERROR);
 	break;
 
       default:
+	ctx->m_recv.m_receiver.release (packet);
 	_er_log_debug (ARG_FILE_LINE,
 		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
