@@ -114,7 +114,9 @@ namespace cubconn
       void enqueue (const message &item);
       bool notify ();
 
+      void init ();
       bool run ();
+      void attach ();
 
     private:
       /* thread handle */
@@ -132,8 +134,7 @@ namespace cubconn
       /* consumption must happen from only one thread.	    */
       tbb::concurrent_queue<message> m_queue;
 
-      /* to use a recursive mutex */
-      cubthread::entry m_entry;
+      cubthread::entry *m_entry;
 
       void push_task_into_worker_pool (context *ctx);
 

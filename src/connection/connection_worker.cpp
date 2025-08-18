@@ -88,8 +88,7 @@ namespace cubconn
 	assert_release (false);
       }
 
-    m_entry.register_id ();
-    m_thread = std::thread (&connection_worker::run, this);
+    m_thread = std::thread (&connection_worker::attach, this);
   }
 
   connection_worker::~connection_worker ()
@@ -99,7 +98,7 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
-    m_entry.unregister_id ();
+    m_entry->unregister_id ();
   }
 
   void connection_worker::enqueue (const message &item)
@@ -160,9 +159,13 @@ namespace cubconn
       }
 
     ctx->m_send.m_transmitter.clear ();
-    //css_end_server_request (ctx->m_conn);
-    /* TODO: net_server_conn_down */
-    css_free_conn_tmp (&m_entry, ctx->m_conn);
+
+    /* net_server_conn_down */
+    /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
+    m_entry->conn_entry = ctx->m_conn;
+    css_Connection_error_handler (m_entry, ctx->m_conn);
+    m_entry->conn_entry = NULL;
+
     delete ctx;
 
     return true;
@@ -196,7 +199,9 @@ namespace cubconn
 	  case EINTR:
 	    continue;
 	  case EAGAIN:
-	    /* case EWOULDBLOCK: */
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+	  case EWOULDBLOCK:
+#endif
 	    /* pending (= successfully drained all) */
 	    return result::Ok;
 	  case EPIPE:
@@ -659,7 +664,7 @@ namespace cubconn
       }
 
     /* hold m_conn */
-    mtx = rmutex_lock (&m_entry, &ctx->m_conn->rmutex);
+    mtx = rmutex_lock (m_entry, &ctx->m_conn->rmutex);
     if (mtx != NO_ERROR)
       {
 	return result::Error;
@@ -678,7 +683,7 @@ namespace cubconn
 	    if (status == result::PeerReset || status == result::Error)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
-		mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+		mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 		if (mtx != NO_ERROR)
 		  {
 		    return result::Error;
@@ -690,7 +695,7 @@ namespace cubconn
 	else if (status == result::ClosedConnection)
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
-	    mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+	    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    if (mtx != NO_ERROR)
 	      {
 		return result::Error;
@@ -701,7 +706,7 @@ namespace cubconn
       }
 
     /* release m_conn */
-    mtx = rmutex_unlock (&m_entry, &ctx->m_conn->rmutex);
+    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
     if (mtx != NO_ERROR)
       {
 	return result::Error;
@@ -746,12 +751,25 @@ namespace cubconn
     return status;
   }
 
+  void connection_worker::init ()
+  {
+    m_entry = cubthread::get_manager ()->claim_entry ();
+    m_entry->register_id ();
+    m_entry->index = m_index;
+    m_entry->type = TT_SERVER;
+    m_entry->m_status = cubthread::entry::status::TS_RUN;
+    m_entry->shutdown = false;
+
+    m_entry->get_error_context ().register_thread_local ();
+  }
+
   bool connection_worker::run ()
   {
     std::array<epoll_event, 128> events;
     result status;
     context *ctx;
     int nfds, i;
+
 
     while (!m_stop)
       {
@@ -824,5 +842,11 @@ namespace cubconn
       }
 
     return true;
+  }
+
+  void connection_worker::attach ()
+  {
+    this->init ();
+    this->run ();
   }
 }

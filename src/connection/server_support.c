@@ -1434,6 +1434,18 @@ shutdown:
 unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
+  int rc = 0;
+
+  assert (conn != NULL);
+
+  rc = css_send_data (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+#if 0
+unsigned int
+css_send_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
+{
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header;
   std::byte *mem_reply;
@@ -1469,10 +1481,11 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
     }
   return 0;
 }
+#endif
 
 unsigned int
-css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
-				   int buffer_size)
+css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
+				   int buffer_size, std::function<void ()> &&deleter)
 {
   int rc = 0;
 
@@ -1503,8 +1516,9 @@ css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, 
  *
  * Note: This is to be used only by the server
  */
+#if 0
 unsigned int
-css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
+css_send_reply_and_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
 				   int buffer_size, std::function<void ()> &&deleter)
 {
   cubconn::connection_worker::message request;
@@ -1568,6 +1582,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
     }
   return 0;
 }
+#endif
 
 #if 0
 /*
@@ -1665,6 +1680,25 @@ unsigned int
 css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, std::function<void ()> &&deleter)
 {
+  int rc = 0;
+
+  assert (conn != NULL);
+
+  if (buffer2 == NULL || buffer2_size <= 0)
+    {
+      return (css_send_reply_and_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size, std::move (deleter)));
+    }
+  rc =
+    css_send_three_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size);
+
+  return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+#if 0
+unsigned int
+css_send_reply_and_2_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
+				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, std::function<void ()> &&deleter)
+{
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header[3] = { nullptr, nullptr, nullptr };
   std::byte *mem_reply;
@@ -1743,6 +1777,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   return 0;
 }
+#endif
 
 /*
  * css_send_reply_and_3_data_to_client() - send a reply to the server,
@@ -1763,6 +1798,28 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
  */
 unsigned int
 css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
+				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
+				     int buffer3_size, std::function<void ()> &&deleter)
+{
+  int rc = 0;
+
+  assert (conn != NULL);
+
+  if (buffer3 == NULL || buffer3_size <= 0)
+    {
+      return (css_send_reply_and_2_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2,
+						   buffer2_size, std::move (deleter)));
+    }
+
+  rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2,
+			   buffer2_size, buffer3, buffer3_size);
+
+  return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+#if 0
+unsigned int
+css_send_reply_and_3_data_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
 				     int buffer3_size, std::function<void ()> &&deleter)
 {
@@ -1861,6 +1918,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   return 0;
 }
+#endif
 
 /*
  * css_send_error_to_client() - send an error buffer to the server
@@ -1875,6 +1933,19 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
  */
 unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
+{
+  int rc;
+
+  assert (conn != NULL);
+
+  rc = css_send_error (conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+
+  return (rc == NO_ERRORS) ? 0 : rc;
+}
+
+#if 0
+unsigned int
+css_send_error_to_client_old (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header;
@@ -1911,6 +1982,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
     }
   return 0;
 }
+#endif
 
 /*
  * css_send_abort_to_client() - send an abort message to the client

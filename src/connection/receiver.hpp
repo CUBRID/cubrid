@@ -40,9 +40,11 @@ namespace cubconn
       enum class state
       {
 	Recv,
-	RecvInAllocated,
 	RecvSizeInTmp,
-	ParseSize
+	RecvInAllocated,
+
+	ParseSize,
+	ParseSizeInTmp
       };
 
     public:
@@ -65,7 +67,6 @@ namespace cubconn
       std::byte *m_bufptr;
       std::size_t m_bufsize;
 
-      bool m_use_tmpsize;
       int m_tmpsize;
 
       std::vector<std::byte *> m_allocated;
@@ -73,9 +74,16 @@ namespace cubconn
       /* output */
       std::vector<cubbase::span<std::byte>> m_result;
 
-      void parse_packet (bool is_buffer);
-      result parse_size ();
+      result to_result (ssize_t bytes, int errid);
 
+      void parse_packet (bool is_buffer);
+
+      result receive_in_allocated (int fd);
+
+      result parse_size_in_tmpsize ();
+      result receive_in_tmpsize (int fd);
+
+      result parse_size ();
       result receive (int fd);
   };
 }

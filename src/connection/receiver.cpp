@@ -27,6 +27,7 @@
 #include "object_primitive.h"
 
 #include <unistd.h>
+#include <errno.h>
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
@@ -74,8 +75,34 @@ namespace cubconn
     buffer = m_buf.buffer ();
     m_bufptr = buffer.data ();
     m_bufsize = buffer.size ();
-    m_use_tmpsize = false;
     m_tmpsize = 0;
+  }
+
+  result receiver::to_result (ssize_t bytes, int errid)
+  {
+    if (__builtin_expect (bytes == 0, 0))
+      {
+	return result::PeerReset;
+      }
+
+    switch (errid)
+      {
+      case EINTR:
+	/* retry */
+	return result::Partial;
+      case EAGAIN:
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+      case EWOULDBLOCK:
+#endif
+	return result::Pending;
+      case EPIPE:
+      case ECONNRESET:
+	return result::PeerReset;
+      default:
+	return result::Error;
+      }
+
+    return result::Error;
   }
 
   void receiver::parse_packet (bool is_buffer)
@@ -111,6 +138,39 @@ namespace cubconn
     _er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: remains = %d.\n", m_received);
   }
 
+  result receiver::parse_size_in_tmpsize ()
+  {
+    cubbase::span<std::byte> mem, buffer;
+    std::byte *ptr;
+
+    assert (m_received >= SIZE_HEADER);
+
+    m_size = ntohl (m_tmpsize);
+    if (m_size == 0)
+      {
+	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: zero-length frame: peer sent a size of 0.\n");
+	assert_release (false);
+      }
+
+    ptr = new std::byte[SIZE_HEADER + m_size];
+    if (!ptr)
+      {
+	return result::Error;
+      }
+    _er_log_debug (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
+		   m_bufsize, m_size);
+
+    assert (m_received == SIZE_HEADER);
+    std::memcpy (ptr, &m_tmpsize, m_received);
+
+    m_allocated.push_back (ptr);
+
+    m_bufptr = ptr;
+    m_bufsize = SIZE_HEADER + m_size;
+    NEXT_STATE (RecvInAllocated);
+    return result::Partial;
+  }
+
   result receiver::parse_size ()
   {
     cubbase::span<std::byte> mem, buffer;
@@ -119,15 +179,8 @@ namespace cubconn
 
     assert (m_received >= SIZE_HEADER);
 
-    if (__builtin_expect (!m_use_tmpsize, 1))
-      {
-	std::memcpy (&aligned, m_bufptr, sizeof (std::uint32_t));
-	m_size = ntohl (aligned);
-      }
-    else
-      {
-	m_size = ntohl (m_tmpsize);
-      }
+    std::memcpy (&aligned, m_bufptr, sizeof (std::uint32_t));
+    m_size = ntohl (aligned);
     if (m_size == 0)
       {
 	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: zero-length frame: peer sent a size of 0.\n");
@@ -150,7 +203,7 @@ namespace cubconn
       }
     else
       {
-	if (m_use_tmpsize || SIZE_HEADER + m_size > m_bufsize)
+	if (SIZE_HEADER + m_size > m_bufsize)
 	  {
 	    ptr = new std::byte[SIZE_HEADER + m_size];
 	    if (!ptr)
@@ -159,143 +212,103 @@ namespace cubconn
 	      }
 	    _er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
 			   m_bufsize, m_size);
-	    if (__builtin_expect (!m_use_tmpsize, 1))
-	      {
-		std::memcpy (ptr, m_bufptr, m_received);
-	      }
-	    else
-	      {
-		assert (m_received == SIZE_HEADER);
-		std::memcpy (ptr, &m_tmpsize, m_received);
-	      }
+	    std::memcpy (ptr, m_bufptr, m_received);
 
 	    m_allocated.push_back (ptr);
 #if !defined (NDEBUG)
-	    if (__builtin_expect (!m_use_tmpsize, 1))
-	      {
-		std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
-		assert (m_size == ntohl (aligned));
-	      }
-	    else
-	      {
-		assert (m_size == ntohl (m_tmpsize));
-	      }
+	    std::memcpy (&aligned, ptr, sizeof (std::uint32_t));
+	    assert (m_size == ntohl (aligned));
 #endif
 	    m_bufptr = ptr;
 	    m_bufsize = SIZE_HEADER + m_size;
 	    NEXT_STATE (RecvInAllocated);
 	  }
       }
-    m_use_tmpsize = false;
     return result::Partial;
   }
 
-  result receiver::receive (int fd)
+  result receiver::receive_in_allocated (int fd)
   {
-    char *buf;
-    std::size_t length;
     ssize_t bytes;
 
-    /* buffer selection */
-    if (__builtin_expect (m_state == state::RecvSizeInTmp, 0))
-      {
-	buf = reinterpret_cast<char *> (&m_tmpsize) + m_received;
-	length = SIZE_HEADER - m_received;
-      }
-    else
-      {
-	buf = reinterpret_cast<char *> (m_bufptr) + m_received;
-	length = m_bufsize - m_received;
-      }
-
-    if (length == 0)
-      {
-	if (m_state == state::Recv && m_received < SIZE_HEADER)
-	  {
-	    /* move partial header bytes to temporary buffer */
-	    std::memcpy (&m_tmpsize, m_bufptr, m_received);
-	    NEXT_STATE (RecvSizeInTmp);
-	    _er_log_debug (ARG_FILE_LINE, "receiver->receive: buffer full, saved %d header bytes to temporary buffer\n",
-			   (int) m_received);
-	    return result::Partial;
-	  }
-	else
-	  {
-	    _er_log_debug (ARG_FILE_LINE, "receiver->receive: no buffer space for state %d\n", (int) m_state);
-	    assert_release (false);
-	    return result::Error;
-	  }
-      }
-
-    _er_log_debug (ARG_FILE_LINE, "receiver->receive: state = %d, buffer = %p, length = %d\n", (int) m_state, buf,
-		   (int) length);
-
     /* receive data from socket */
-    bytes = ::recv (fd, buf, length, 0);
+    bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
     if (bytes > 0)
       {
 	m_received += bytes;
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n", (int) m_state,
 		       (int) bytes, (int) m_received);
-	if (m_state == state::RecvInAllocated)
+
+	if (m_received < SIZE_HEADER + m_size)
 	  {
-	    if (m_received < SIZE_HEADER + m_size)
-	      {
-		return result::Partial;
-	      }
-	    assert (m_received == SIZE_HEADER + m_size);
-	    this->parse_packet (false);
-	    assert (m_received == 0);
+	    return result::Partial;
+	  }
+	assert (m_received == SIZE_HEADER + m_size);
+	this->parse_packet (false);
+	assert (m_received == 0);
 
-	    assert (m_bufptr == m_buf.buffer ().data ());
-	    assert (m_bufsize == m_buf.buffer ().size ());
+	assert (m_bufptr == m_buf.buffer ().data ());
+	assert (m_bufsize == m_buf.buffer ().size ());
 
-	    if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
-	      {
-		NEXT_STATE (RecvSizeInTmp);
-	      }
-	    else
-	      {
-		NEXT_STATE (Recv);
-	      }
+	if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
+	  {
+	    NEXT_STATE (RecvSizeInTmp);
 	  }
 	else
 	  {
-	    if (m_received < SIZE_HEADER)
-	      {
-		return result::Partial;
-	      }
-	    if (m_state == state::RecvSizeInTmp)
-	      {
-		m_use_tmpsize = true;
-	      }
-	    NEXT_STATE (ParseSize);
+	    NEXT_STATE (Recv);
 	  }
 
 	return result::Ok;
       }
 
-    if (__builtin_expect (bytes == 0, 0))
+    return this->to_result (bytes, errno);
+  }
+
+  result receiver::receive_in_tmpsize (int fd)
+  {
+    ssize_t bytes;
+
+    /* receive data from socket */
+    bytes = ::recv (fd, reinterpret_cast<char *> (&m_tmpsize) + m_received, SIZE_HEADER - m_received, 0);
+    if (bytes > 0)
       {
-	return result::PeerReset;
+	m_received += bytes;
+	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+		       (int) bytes, (int) m_received);
+
+	if (m_received < SIZE_HEADER)
+	  {
+	    return result::Partial;
+	  }
+	NEXT_STATE (ParseSizeInTmp);
+	return result::Ok;
       }
 
-    switch (errno)
+    return this->to_result (bytes, errno);
+  }
+
+  result receiver::receive (int fd)
+  {
+    ssize_t bytes;
+
+    /* receive data from socket */
+    bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
+    if (bytes > 0)
       {
-      case EINTR:
-	/* retry */
-	return result::Partial;
-      case EAGAIN:
-	/* case EWOULDBLOCK: */
-	return result::Pending;
-      case EPIPE:
-      case ECONNRESET:
-	return result::PeerReset;
-      default:
-	return result::Error;
+	m_received += bytes;
+	_er_log_debug (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+		       (int) bytes, (int) m_received);
+	if (m_received < SIZE_HEADER)
+	  {
+	    return result::Partial;
+	  }
+	NEXT_STATE (ParseSize);
+
+	return result::Ok;
       }
 
-    return result::Error;
+    return this->to_result (bytes, errno);
   }
 
   result receiver::drain (int fd)
@@ -308,13 +321,23 @@ namespace cubconn
 	switch (m_state)
 	  {
 	  case state::Recv:
-	  case state::RecvInAllocated:
-	  case state::RecvSizeInTmp:
 	    status = this->receive (fd);
+	    break;
+
+	  case state::RecvSizeInTmp:
+	    status = this->receive_in_tmpsize (fd);
+	    break;
+
+	  case state::RecvInAllocated:
+	    status = this->receive_in_allocated (fd);
 	    break;
 
 	  case state::ParseSize:
 	    status = this->parse_size ();
+	    break;
+
+	  case state::ParseSizeInTmp:
+	    status = this->parse_size_in_tmpsize ();
 	    break;
 
 	  default:

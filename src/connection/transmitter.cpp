@@ -89,7 +89,9 @@ namespace cubconn
 	    /* retry */
 	    continue;
 	  case EAGAIN:
-	    /* case EWOULDBLOCK: */
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+	  case EWOULDBLOCK:
+#endif
 	    return result::Pending;
 	  case EPIPE:
 	  case ECONNRESET:
