@@ -3181,12 +3181,12 @@ do_send_comm_histo_to_session (PARSER_CONTEXT * parser)
 
   if (fp)
     {
-      fprintf (fp, "\n[Query Execution Time]\n");
-      fprintf (fp, "Parsing time: (%ld.%06ld sec)\n", parser->parsing_time.tv_sec, parser->parsing_time.tv_usec);
-      fprintf (fp, "Compile time: (%ld.%06ld sec)\n", parser->compile_time.tv_sec, parser->compile_time.tv_usec);
-      fprintf (fp, "Execution time: (%ld.%06ld sec)\n", parser->execution_time.tv_sec, parser->execution_time.tv_usec);
+      fprintf (fp, "\n<Query Execution Time>\n\n");
+      fprintf (fp, "* Parsing time: (%ld.%06ld sec)\n", parser->parsing_time.tv_sec, parser->parsing_time.tv_usec);
+      fprintf (fp, "* Compile time: (%ld.%06ld sec)\n", parser->compile_time.tv_sec, parser->compile_time.tv_usec);
+      fprintf (fp, "* Execution time: (%ld.%06ld sec)\n", parser->execution_time.tv_sec, parser->execution_time.tv_usec);
 
-      fprintf (fp, "\n[Communication Histogram]\n");
+      fprintf (fp, "\n<Communication Histogram>\n");
       histo_print (fp);
 
       port_close_memstream (fp, &histo_str, &sizeloc);
