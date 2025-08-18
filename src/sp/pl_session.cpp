@@ -471,12 +471,7 @@ namespace cubpl
       }
 
     std::lock_guard<std::mutex> ulock (m_mutex_cursor);
-    return destroy_cursor_internal (thread_p, query_id);
-  }
 
-  void
-  session::destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id)
-  {
     // find in map
     auto search = m_cursor_map.find (query_id);
     if (search != m_cursor_map.end ())
@@ -522,14 +517,7 @@ namespace cubpl
   session::is_session_cursor (QUERY_ID query_id)
   {
     std::lock_guard<std::mutex> ulock (m_mutex_cursor);
-    if (m_session_cursors.find (query_id) != m_session_cursors.end ())
-      {
-	return true;
-      }
-    else
-      {
-	return false;
-      }
+    return (m_session_cursors.find (query_id) != m_session_cursors.end ());
   }
 
   void
