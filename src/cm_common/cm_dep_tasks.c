@@ -158,7 +158,7 @@ static int grant_base = 0;
 
 #define GRANT_ENTRY_LENGTH	(3 + grant_base)
 #define GRANT_ENTRY_CLASS(index)  ((index) + grant_base)
-#define GRANT_ENTRY_CACHE(index)  ((index) + grant_base + 2)
+#define GRANT_ENTRY_TYPE(index)  ((index) + grant_base + 2)
 
 #if defined(WINDOWS)
 static void
@@ -2791,8 +2791,8 @@ revoke_all_from_user (DB_OBJECT * user)
 {
   int i;
   DB_VALUE v;
-  DB_OBJECT *obj, **class_obj = NULL;
-  int num_class = 0;
+  DB_OBJECT *obj, **auth_obj = NULL;
+  int num_auth = 0;
   DB_COLLECTION *col;
 
   if (cubrid_version < 0)
@@ -2810,20 +2810,20 @@ revoke_all_from_user (DB_OBJECT * user)
 	{
 	  continue;
 	}
-      class_obj = (DB_OBJECT **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
-      if (class_obj == NULL)
+      auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
+      if (auth_obj == NULL)
 	{
 	  return ERR_MEM_ALLOC;
 	}
-      class_obj[num_class] = obj;
-      num_class++;
+      auth_obj[num_auth] = obj;
+      num_auth++;
     }
 
-  for (i = 0; i < num_class; i++)
+  for (i = 0; i < num_auth; i++)
     {
-      db_revoke (user, class_obj[i], DB_AUTH_ALL);
+      db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
-  FREE_MEM (class_obj);
+  FREE_MEM (auth_obj);
   return ERR_NO_ERROR;
 }
 
@@ -2880,7 +2880,7 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
     {
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      db_seq_get (col, GRANT_ENTRY_CACHE (i), &v);
+      db_seq_get (col, GRANT_ENTRY_TYPE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
       nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
