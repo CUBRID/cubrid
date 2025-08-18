@@ -25474,7 +25474,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *statement, *where, *group_by, *oid, *save_next;
+  PT_NODE *statement, *where, *group_by, *oid, *save_next, *arg = NULL;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -25605,7 +25605,51 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   /* set index hint */
   if (info->hint & PT_HINT_USE_UPDATE_IDX)
     {
-      statement->info.query.q.select.using_index = parser_copy_tree_list (parser, info->update.index_hint);
+      arg = info->update.index_hint;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.using_index = arg;
+    }
+
+  if (info->hint & PT_HINT_NO_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_NO_USE_HASH;
+
+      arg = info->no_use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.no_use_hash = arg;
+    }
+
+  if (info->hint & PT_HINT_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_USE_HASH;
+
+      arg = info->use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.use_hash = arg;
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))

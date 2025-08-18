@@ -2583,6 +2583,8 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *hashjoin_xasl = NULL;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
+  int parallelism;
+
   int error = NO_ERROR;
 
   assert (env != NULL);
@@ -2597,6 +2599,29 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
+
+  if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
+    {
+      if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  parallelism = 0;
+	}
+      else if (PT_SELECT_INFO_IS_FLAGED (QO_ENV_PT_TREE (env), PT_SELECT_INFO_IS_MERGE_QUERY))
+	{
+	  /* TODO: xtran_server_start_topop does not support concurrency. */
+	  parallelism = 0;
+	}
+      else
+	{
+	  parallelism = xasl->parallelism;
+	}
+    }
+  else
+    {
+      /* impossible case */
+      assert (false);
+      parallelism = xasl->parallelism;
+    }
 
   /* projection_info */
   error = qo_init_projection_info (env, plan, pred_set, &projection_info);
@@ -2615,6 +2640,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  outer_xasl->parallelism = parallelism;
 
   outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
   if (outer_xasl == NULL)
@@ -2629,6 +2655,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  inner_xasl->parallelism = parallelism;
 
   inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
   if (inner_xasl == NULL)
@@ -2643,29 +2670,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
-
-  if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
-    {
-      if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
-	{
-	  hashjoin_xasl->parallelism = 0;
-	}
-      else if (PT_SELECT_INFO_IS_FLAGED (QO_ENV_PT_TREE (env), PT_SELECT_INFO_IS_MERGE_QUERY))
-	{
-	  /* TODO: xtran_server_start_topop does not support concurrency. */
-	  hashjoin_xasl->parallelism = 0;
-	}
-      else
-	{
-	  hashjoin_xasl->parallelism = xasl->parallelism;
-	}
-    }
-  else
-    {
-      /* impossible case */
-      assert (false);
-      hashjoin_xasl->parallelism = xasl->parallelism;
-    }
+  hashjoin_xasl->parallelism = parallelism;
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);

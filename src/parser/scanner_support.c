@@ -533,6 +533,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.update.no_use_hash_hint = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
 	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.no_use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
 	  break;
 	case PT_HINT_USE_HASH:	/* force hash-join */
 	  if (node->node_type == PT_SELECT)
@@ -551,6 +557,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    {
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 	      node->info.update.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.use_hash = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
 	    }
 	  break;

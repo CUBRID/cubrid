@@ -3215,6 +3215,8 @@ struct pt_merge_info
   PT_NODE *check_where;		/* check option */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *no_use_hash;		/* NO_USE_HASH hint's arguments (PT_NAME list) */
+  PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */

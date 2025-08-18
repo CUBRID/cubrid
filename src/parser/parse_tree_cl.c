@@ -17347,6 +17347,38 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
 	}
+      if (p->info.merge.hint & PT_HINT_NO_USE_HASH)
+	{
+	  /* disable hash-join */
+	  q = pt_append_nulstring (parser, q, " NO_USE_HASH");
+	  if (p->info.merge.no_use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.no_use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+      if (p->info.merge.hint & PT_HINT_USE_HASH)
+	{
+	  /* force hash-join */
+	  q = pt_append_nulstring (parser, q, " USE_HASH");
+	  if (p->info.merge.use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
       q = pt_append_nulstring (parser, q, " */");
     }
 
