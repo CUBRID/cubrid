@@ -80,9 +80,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
+#ifndef CCI_XA
   /* dblink transaction commit first */
-  // QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
-#if 0
+  QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
   if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
     {
       /* transaction is aborted for dblink commit fail */
