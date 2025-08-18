@@ -19,7 +19,6 @@
 /*
  * px_query_task.cpp
  */
-#if SERVER_MODE
 #include "px_query_task.hpp"
 #include "query_executor.h"
 #include "query_list.h"
@@ -497,5 +496,3 @@ namespace parallel_query_execute
   }
 
 }
-
-#endif

@@ -19,7 +19,6 @@
 /*
  * px_query_executor.cpp
  */
-#if SERVER_MODE
 #include "px_query_executor.hpp"
 #include <algorithm>
 #include "xasl_cache.h"
@@ -195,4 +194,3 @@ namespace parallel_query_execute
       }
   }
 }
-#endif // SERVER_MODE
