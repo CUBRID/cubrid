@@ -2940,39 +2940,12 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 	    {
 	      if (state_p->comm_histo_cl != NULL)
 		{
-		  fprintf (fp, "\nClient Communication Histogram:\n%s", state_p->comm_histo_cl);
-		}
-
-	      if (state_p->comm_histo_sr == NULL)
-		{
-		  // server histogram
-		  char *histo_str = NULL;
-		  size_t sizeloc2;
-		  FILE *fp2;
-
-		  fp2 = port_open_memstream (&histo_str, &sizeloc2);
-		  if (fp2)
-		    {
-		      net_histo_ctx *net_histo_ctx_p = NULL;
-		      session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
-		      if (net_histo_ctx_p != NULL)
-			{
-			  net_histo_ctx_p->print_histogram (fp2);
-			  net_histo_ctx_p->stop_collect ();
-			  net_histo_ctx_p->clear ();
-			}
-		      port_close_memstream (fp2, &histo_str, &sizeloc2);
-		    }
-
-		  if (histo_str != NULL)
-		    {
-		      session_set_comm_histo_sr (thread_p, histo_str);
-		    }
+		  fprintf (fp, "%s", state_p->comm_histo_cl);
 		}
 
 	      if (state_p->comm_histo_sr != NULL)
 		{
-		  fprintf (fp, "\nServer Communication Histogram:\n%s", state_p->comm_histo_sr);
+		  fprintf (fp, "%s", state_p->comm_histo_sr);
 		}
 	    }
 
