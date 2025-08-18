@@ -20,7 +20,6 @@
  * px_heap_scan_mergable_list.cpp - mergable list for parallel heap scan
  */
 #include "xasl.h"
-#if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_mergable_list.hpp"
 #include "query_opfunc.h"
@@ -201,5 +200,3 @@ namespace parallel_heap_scan
     return (*m_list_id_p)->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
   }
 }
-
-#endif /* SERVER_MODE && !WINDOWS */

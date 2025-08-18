@@ -20,7 +20,6 @@
  * px_heap_scan_task.cpp - derived from cubthread::entry_task
  */
 
-#if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_misc.hpp"
@@ -356,4 +355,3 @@ namespace parallel_heap_scan
     worker_manager_p->pop_task();
   }
 }
-#endif /* SERVER_MODE && !WINDOWS */

@@ -32,13 +32,13 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "px_heap_scan_perf_monitor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 #include "query_hash_join.h"
-#include "px_heap_scan_perf_monitor.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
