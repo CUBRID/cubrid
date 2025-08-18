@@ -68,7 +68,6 @@ struct log_2pc_global_data
 {
   int (*get_participants) (THREAD_ENTRY * thread_p, int *particp_id_length, void **block_particps_ids);
   int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids);
-  char *(*sprintf_participant) (void *particp_id);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
     bool (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
   void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
@@ -77,7 +76,7 @@ struct log_2pc_global_data
 		      void *block_particps_ids, bool collect);
 };
 struct log_2pc_global_data log_2pc_Userfun =
-  { dblink_2pc_get_participants, NULL, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
+  { dblink_2pc_get_participants, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
   dblink_2pc_send_commit,
   dblink_2pc_send_abort
 };
