@@ -284,12 +284,15 @@ namespace cubconn
     context *ctx;
 
     assert (item.conn && item.conn->context);
-    assert (item.mem.data ());
+    assert (item.packet.size () > 0);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
-    ctx->m_recv.m_receiver.release (item.mem);
+    for (auto &packet : item.packet)
+    {
+      ctx->m_recv.m_receiver.release (packet);
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
+    }
 
-    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.mem.data ());
     return true;
   }
 

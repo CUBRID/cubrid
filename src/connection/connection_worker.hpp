@@ -58,12 +58,10 @@ namespace cubconn
 
 	css_conn_entry *conn;
 
-	/* send packet */
+	/* send packet/release packet */
 	std::vector<cubbase::span<std::byte>> packet;
+	/* send packet */
 	std::function<void ()> deleter;
-
-	/* release packet */
-	cubbase::span<std::byte> mem;
       };
 
     private:
