@@ -4869,7 +4869,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
 
       /* check worker */
-      if (!parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
+      if (parallel_num > 1 && !parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
 	{
 	  return 1;
 	}
