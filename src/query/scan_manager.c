@@ -3722,14 +3722,22 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   assert (key_ranges[0].range == K_NN);
 
-  fetch_peek_dbval (thread_p, key_ranges[0].key1, vd, NULL, NULL, NULL, &visid->query_dbvalue);
-  fetch_peek_dbval (thread_p, key_ranges[0].key2, vd, NULL, NULL, NULL, &visid->k_dbvalue);
+  if (fetch_peek_dbval (thread_p, key_ranges[0].key1, vd, NULL, NULL, NULL, &visid->query_dbvalue) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  if (fetch_peek_dbval (thread_p, key_ranges[0].key2, vd, NULL, NULL, NULL, &visid->k_dbvalue) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   visid->hnsw_id = indx_info->btid.root_pageid;
 
+  return NO_ERROR;
+
 exit_on_error:
 
-  return NO_ERROR;
+  return ER_FAILED;
 }
 
 /*
@@ -6366,6 +6374,11 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   if (visid->oidp == NULL)
     {
+      if (visid->k_dbvalue == NULL || visid->query_dbvalue == NULL)
+	{
+	  return S_END;
+	}
+
       int k = db_get_int (visid->k_dbvalue);
       if (k > 0)
 	{

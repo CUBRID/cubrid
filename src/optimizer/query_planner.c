@@ -10533,6 +10533,24 @@ qo_validate_index_for_vector_index (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entry
 	goto end;
       }
 
+    /* session variable */
+    if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
+      {
+	arg1 = arg1->info.expr.arg1;
+	if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_EVALUATE_VARIABLE)
+	  {
+	    arg1 = arg1->info.expr.arg1;
+	  }
+      }
+    if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+      {
+	arg2 = arg2->info.expr.arg1;
+	if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_EVALUATE_VARIABLE)
+	  {
+	    arg2 = arg2->info.expr.arg1;
+	  }
+      }
+
     if (arg1->node_type == PT_NAME && PT_IS_CONST (arg2))
       {
 	// ok
