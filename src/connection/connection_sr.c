@@ -3192,7 +3192,7 @@ void css_release_packet (css_conn_entry *conn, void *buffer, int size)
   request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
   request.conn = conn;
   request.packet.emplace_back ((std::byte *) buffer, size);
-  conn->worker->enqueue (request);
+  conn->worker->enqueue (std::move (request));
 }
 
 void css_wakeup_handler (css_conn_entry *conn)
