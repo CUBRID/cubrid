@@ -46,6 +46,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "db_set_function.h"
+#include "dbtype_def.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -113,7 +114,7 @@ static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, co
  *  value(out) : value container to set NULL.
  */
 int
-db_value_put_null (DB_VALUE * value)
+db_value_put_null (DB_VALUE *value)
 {
   CHECK_1ARG_ERROR (value);
 
@@ -144,7 +145,7 @@ IS_INVALID_PRECISION (int p, int m)
  *
  */
 int
-db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale)
+db_value_domain_init (DB_VALUE *value, const DB_TYPE type, const int precision, const int scale)
 {
   int error = NO_ERROR;
 
@@ -159,6 +160,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.numeric_info.scale = scale;
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
+  value->domain.numeric_info.has_round = false;
 
   switch (type)
     {
@@ -171,18 +173,19 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.precision = precision;
 	}
-      if (scale == DB_DEFAULT_SCALE)
-	{
-	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
-	}
-      else
-	{
-	  value->domain.numeric_info.scale = scale;
-	}
+
+      value->domain.numeric_info.scale = scale;
       if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+      else if (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION || scale < DB_MIN_NUMERIC_SCALE)
+	{
+	  error = ER_INVALID_SCALE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE);
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
@@ -386,10 +389,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 // type - desired type of value
 //
 void
-db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type)
+db_value_domain_init_default (DB_VALUE *value, const DB_TYPE type)
 {
   // default initialization should not fail
-  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  int scale = type == DB_TYPE_NUMERIC ? 0 : DB_DEFAULT_SCALE;
+  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, scale);
 }
 
 /*
@@ -405,9 +409,9 @@ db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type)
  * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION.
  */
 int
-db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
+db_value_domain_min (DB_VALUE *value, const DB_TYPE type,
 		     const int precision, const int scale, const int codeset,
-		     const int collation_id, const DB_ENUMERATION * enumeration)
+		     const int collation_id, const DB_ENUMERATION *enumeration)
 {
   int error;
 
@@ -576,9 +580,9 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
  * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION.
  */
 int
-db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
+db_value_domain_max (DB_VALUE *value, const DB_TYPE type,
 		     const int precision, const int scale, const int codeset,
-		     const int collation_id, const DB_ENUMERATION * enumeration)
+		     const int collation_id, const DB_ENUMERATION *enumeration)
 {
   int error;
 
@@ -754,9 +758,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
  * enumeration(in) : enumeration elements for DB_TYPE_ENUMERATION
  */
 int
-db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
+db_value_domain_default (DB_VALUE *value, const DB_TYPE type,
 			 const int precision, const int scale,
-			 const int codeset, const int collation_id, DB_ENUMERATION * enumeration)
+			 const int codeset, const int collation_id, DB_ENUMERATION *enumeration)
 {
   int error = NO_ERROR;
 
@@ -903,7 +907,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
  *	  types it returns an error (ER_UCI_INVALID_DATA_TYPE);
  */
 int
-db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale)
+db_value_domain_zero (DB_VALUE *value, const DB_TYPE type, const int precision, const int scale)
 {
   int error = NO_ERROR;
 
@@ -962,7 +966,7 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
  * precision(in)  : value's precision after truncate.
  */
 int
-db_string_truncate (DB_VALUE * value, const int precision)
+db_string_truncate (DB_VALUE *value, const int precision)
 {
   int error = NO_ERROR;
   DB_VALUE src_value;
@@ -1144,7 +1148,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
  * value(in) :
  */
 bool
-db_value_type_is_collection (const DB_VALUE * value)
+db_value_type_is_collection (const DB_VALUE *value)
 {
   bool is_collection;
   DB_TYPE type;
@@ -1164,7 +1168,7 @@ db_value_type_is_collection (const DB_VALUE * value)
  * value(in) :
  */
 void *
-db_value_eh_key (DB_VALUE * value)
+db_value_eh_key (DB_VALUE *value)
 {
   DB_OBJECT *obj;
 
@@ -1196,7 +1200,7 @@ db_value_eh_key (DB_VALUE * value)
  * data(in)      : Pointer to a DB_DATA.
  */
 int
-db_value_put_db_data (DB_VALUE * value, const DB_DATA * data)
+db_value_put_db_data (DB_VALUE *value, const DB_DATA *data)
 {
   CHECK_2ARGS_ERROR (value, data);
 
@@ -1211,7 +1215,7 @@ db_value_put_db_data (DB_VALUE * value, const DB_DATA * data)
  * value(in)   : Pointer to a DB_VALUE.
  */
 DB_DATA *
-db_value_get_db_data (DB_VALUE * value)
+db_value_get_db_data (DB_VALUE *value)
 {
   CHECK_1ARG_NULL (value);
 
@@ -1225,7 +1229,7 @@ db_value_get_db_data (DB_VALUE * value)
  * type(in)       : new type.
  */
 int
-db_value_alter_type (DB_VALUE * value, const DB_TYPE type)
+db_value_alter_type (DB_VALUE *value, const DB_TYPE type)
 {
   CHECK_1ARG_ERROR (value);
 
@@ -1256,7 +1260,7 @@ db_value_alter_type (DB_VALUE * value, const DB_TYPE type)
  *
  */
 int
-db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length)
+db_value_put (DB_VALUE *value, const DB_TYPE_C c_type, void *input, const int input_length)
 {
   int error_code = NO_ERROR;
   int status = C_TO_VALUE_NOERROR;
@@ -1308,7 +1312,7 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
  * time(in):
  */
 int
-db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time)
+db_value_put_encoded_time (DB_VALUE *value, const DB_TIME *time)
 {
   CHECK_1ARG_ERROR (value);
 
@@ -1334,7 +1338,7 @@ db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time)
  * date(in):
  */
 int
-db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date)
+db_value_put_encoded_date (DB_VALUE *value, const DB_DATE *date)
 {
   CHECK_1ARG_ERROR (value);
 
@@ -1360,7 +1364,7 @@ db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date)
  * type(in):
  */
 int
-db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
+db_value_put_monetary_currency (DB_VALUE *value, DB_CURRENCY const type)
 {
   int error;
 
@@ -1421,7 +1425,7 @@ db_value_put_monetary_currency (DB_VALUE * value, DB_CURRENCY const type)
  * amount(in):
  */
 int
-db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
+db_value_put_monetary_amount_as_double (DB_VALUE *value, const double amount)
 {
   CHECK_1ARG_ERROR (value);
 
@@ -1443,7 +1447,7 @@ db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount)
  * value(in):
  */
 DB_CURRENCY
-db_value_get_monetary_currency (const DB_VALUE * value)
+db_value_get_monetary_currency (const DB_VALUE *value)
 {
   CHECK_1ARG_ZERO_WITH_TYPE (value, DB_CURRENCY);
 
@@ -1456,7 +1460,7 @@ db_value_get_monetary_currency (const DB_VALUE * value)
  * value(in):
  */
 double
-db_value_get_monetary_amount_as_double (const DB_VALUE * value)
+db_value_get_monetary_amount_as_double (const DB_VALUE *value)
 {
   CHECK_1ARG_ZERO (value);
 
@@ -1488,7 +1492,7 @@ db_value_create (void)
  * value(in) : The value to copy.
  */
 DB_VALUE *
-db_value_copy (DB_VALUE * value)
+db_value_copy (DB_VALUE *value)
 {
   DB_VALUE *new_ = NULL;
 
@@ -1515,7 +1519,7 @@ db_value_copy (DB_VALUE * value)
  *
  */
 int
-db_value_clone (DB_VALUE * src, DB_VALUE * dest)
+db_value_clone (DB_VALUE *src, DB_VALUE *dest)
 {
   int error = NO_ERROR;
 
@@ -1539,7 +1543,7 @@ db_value_clone (DB_VALUE * src, DB_VALUE * dest)
  *
  */
 int
-db_value_clear (DB_VALUE * value)
+db_value_clear (DB_VALUE *value)
 {
   int error = NO_ERROR;
 
@@ -1561,7 +1565,7 @@ db_value_clear (DB_VALUE * value)
  * value(out) : The value to free.
  */
 int
-db_value_free (DB_VALUE * value)
+db_value_free (DB_VALUE *value)
 {
   int error = NO_ERROR;
 
@@ -1584,7 +1588,7 @@ db_value_free (DB_VALUE * value)
  * value_array(out) : the value array to clear
  */
 int
-db_value_clear_array (DB_VALUE_ARRAY * value_array)
+db_value_clear_array (DB_VALUE_ARRAY *value_array)
 {
   int error = NO_ERROR;
   int i = 0;
@@ -1614,7 +1618,7 @@ db_value_clear_array (DB_VALUE_ARRAY * value_array)
  * value(in): value container to print.
  */
 void
-db_value_print (const DB_VALUE * value)
+db_value_print (const DB_VALUE *value)
 {
   CHECK_CONNECT_VOID ();
 
@@ -1632,7 +1636,7 @@ db_value_print (const DB_VALUE * value)
  * value(in) : value container to print.
  */
 void
-db_value_fprint (FILE * fp, const DB_VALUE * value)
+db_value_fprint (FILE *fp, const DB_VALUE *value)
 {
   CHECK_CONNECT_VOID ();
 
@@ -1730,7 +1734,7 @@ db_type_to_db_domain (const DB_TYPE type)
  * desired_domain(in) : the desired domain of the coerced result.
  */
 int
-db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain)
+db_value_coerce (const DB_VALUE *src, DB_VALUE *dest, const DB_DOMAIN *desired_domain)
 {
   TP_DOMAIN_STATUS status;
   int err = NO_ERROR;
@@ -1754,7 +1758,7 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desire
  *        value has no meaning.
  */
 int
-db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2)
+db_value_equal (const DB_VALUE *value1, const DB_VALUE *value2)
 {
   int retval;
 
@@ -1784,7 +1788,7 @@ db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2)
  *
  */
 int
-db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2)
+db_set_compare (const DB_VALUE *value1, const DB_VALUE *value2)
 {
   int retval;
 
@@ -1806,7 +1810,7 @@ db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2)
  *                   a more certain answer
  */
 int
-db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2)
+db_value_compare (const DB_VALUE *value1, const DB_VALUE *value2)
 {
   /* this handles NULL arguments */
   return tp_value_compare (value1, value2, 1, 0);
@@ -1827,7 +1831,7 @@ db_get_currency_default ()
 }
 
 int
-db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
+db_get_deep_copy_of_json (const DB_JSON *src, DB_JSON *dst)
 {
   char *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
@@ -1847,7 +1851,7 @@ db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 }
 
 int
-db_init_db_json_pointers (DB_JSON * val)
+db_init_db_json_pointers (DB_JSON *val)
 {
   CHECK_1ARG_ERROR (val);
 
@@ -1871,7 +1875,7 @@ db_init_db_json_pointers (DB_JSON * val)
  *
  */
 static int
-coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
+coerce_char_to_dbvalue (DB_VALUE *value, char *buf, const int buflen)
 {
   int status = C_TO_VALUE_NOERROR;
   DB_TYPE db_type = DB_VALUE_DOMAIN_TYPE (value);
@@ -1928,7 +1932,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
  * domain(in): domain descriptor.
  */
 DB_DOMAIN *
-db_domain_next (const DB_DOMAIN * domain)
+db_domain_next (const DB_DOMAIN *domain)
 {
   DB_DOMAIN *next = NULL;
 
@@ -1960,7 +1964,7 @@ db_domain_next (const DB_DOMAIN * domain)
  *    elements of the set.
  */
 DB_TYPE
-db_domain_type (const DB_DOMAIN * domain)
+db_domain_type (const DB_DOMAIN *domain)
 {
   return TP_DOMAIN_TYPE (domain);
 }
@@ -1984,7 +1988,7 @@ db_domain_type (const DB_DOMAIN * domain)
  *    object domains.
  */
 DB_OBJECT *
-db_domain_class (const DB_DOMAIN * domain)
+db_domain_class (const DB_DOMAIN *domain)
 {
   DB_OBJECT *class_mop = NULL;
 
@@ -2014,7 +2018,7 @@ db_domain_class (const DB_DOMAIN * domain)
  *    in the future.
  */
 DB_DOMAIN *
-db_domain_set (const DB_DOMAIN * domain)
+db_domain_set (const DB_DOMAIN *domain)
 {
   DB_DOMAIN *setdomain = NULL;
 
@@ -2033,7 +2037,7 @@ db_domain_set (const DB_DOMAIN * domain)
  *
  */
 int
-db_domain_precision (const DB_DOMAIN * domain)
+db_domain_precision (const DB_DOMAIN *domain)
 {
   int precision = 0;
 
@@ -2052,7 +2056,7 @@ db_domain_precision (const DB_DOMAIN * domain)
  *
  */
 int
-db_domain_scale (const DB_DOMAIN * domain)
+db_domain_scale (const DB_DOMAIN *domain)
 {
   int scale = 0;
 
@@ -2070,7 +2074,7 @@ db_domain_scale (const DB_DOMAIN * domain)
  * domain(in): domain descriptor.
  */
 int
-db_domain_codeset (const DB_DOMAIN * domain)
+db_domain_codeset (const DB_DOMAIN *domain)
 {
   int codeset = 0;
 
@@ -2088,7 +2092,7 @@ db_domain_codeset (const DB_DOMAIN * domain)
  * domain(in): domain descriptor.
  */
 int
-db_domain_collation_id (const DB_DOMAIN * domain)
+db_domain_collation_id (const DB_DOMAIN *domain)
 {
   int collation_id = 0;
 
@@ -2101,7 +2105,7 @@ db_domain_collation_id (const DB_DOMAIN * domain)
 }
 
 const char *
-db_domain_raw_json_schema (const DB_DOMAIN * domain)
+db_domain_raw_json_schema (const DB_DOMAIN *domain)
 {
   if (domain == NULL || domain->json_validator == NULL)
     {
@@ -2118,7 +2122,7 @@ db_domain_raw_json_schema (const DB_DOMAIN * domain)
  * collation_id(in): collation identifier
  */
 int
-db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id)
+db_string_put_cs_and_collation (DB_VALUE *value, const int codeset, const int collation_id)
 {
   int error = NO_ERROR;
 
@@ -2145,7 +2149,7 @@ db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int c
  * collation_id(in): collation identifier
  */
 int
-db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id)
+db_enum_put_cs_and_collation (DB_VALUE *value, const int codeset, const int collation_id)
 {
   int error = NO_ERROR;
 
@@ -2175,7 +2179,7 @@ db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int col
  *
  */
 static VALCNV_BUFFER *
-valcnv_append_bytes (VALCNV_BUFFER * buffer_p, const char *new_tail_p, const size_t new_tail_length)
+valcnv_append_bytes (VALCNV_BUFFER *buffer_p, const char *new_tail_p, const size_t new_tail_length)
 {
   size_t old_length;
 
@@ -2219,7 +2223,7 @@ valcnv_append_bytes (VALCNV_BUFFER * buffer_p, const char *new_tail_p, const siz
  *
  */
 static VALCNV_BUFFER *
-valcnv_append_string (VALCNV_BUFFER * buffer_p, const char *new_tail_p)
+valcnv_append_string (VALCNV_BUFFER *buffer_p, const char *new_tail_p)
 {
   return valcnv_append_bytes (buffer_p, new_tail_p, strlen (new_tail_p));
 }
@@ -2233,7 +2237,7 @@ valcnv_append_string (VALCNV_BUFFER * buffer_p, const char *new_tail_p)
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_float_to_string (VALCNV_BUFFER * buffer_p, const float value)
+valcnv_convert_float_to_string (VALCNV_BUFFER *buffer_p, const float value)
 {
   char tbuf[24];
 
@@ -2261,7 +2265,7 @@ valcnv_convert_float_to_string (VALCNV_BUFFER * buffer_p, const float value)
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_double_to_string (VALCNV_BUFFER * buffer_p, const double value)
+valcnv_convert_double_to_string (VALCNV_BUFFER *buffer_p, const double value)
 {
   char tbuf[24];
 
@@ -2289,7 +2293,7 @@ valcnv_convert_double_to_string (VALCNV_BUFFER * buffer_p, const double value)
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
+valcnv_convert_bit_to_string (VALCNV_BUFFER *buffer_p, const DB_VALUE *value_p)
 {
   const unsigned char *bit_string_p;
   int nibble_len, nibbles, count;
@@ -2332,7 +2336,7 @@ valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
+valcnv_convert_set_to_string (VALCNV_BUFFER *buffer_p, DB_SET *set_p)
 {
   DB_VALUE value;
   int err, size, max_n, i;
@@ -2432,7 +2436,7 @@ valcnv_convert_money_to_string (const double value)
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
+valcnv_convert_data_to_string (VALCNV_BUFFER *buffer_p, const DB_VALUE *value_p)
 {
   OID *oid_p;
   DB_SET *set_p;
@@ -2769,7 +2773,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
+valcnv_convert_db_value_to_string (VALCNV_BUFFER *buffer_p, const DB_VALUE *value_p)
 {
   if (DB_IS_NULL (value_p))
     {
@@ -2855,7 +2859,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
  *
  */
 int
-valcnv_convert_value_to_string (DB_VALUE * value_p)
+valcnv_convert_value_to_string (DB_VALUE *value_p)
 {
   VALCNV_BUFFER buffer = { 0, NULL };
   VALCNV_BUFFER *buf_p;
@@ -2935,7 +2939,7 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
 }
 
 int
-db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
+db_convert_json_into_scalar (const DB_VALUE *src, DB_VALUE *dest)
 {
   CHECK_2ARGS_ERROR (src, dest);
   JSON_DOC *doc = db_get_json_document (src);
@@ -3036,7 +3040,7 @@ db_is_json_doc_type (DB_TYPE type)
 }
 
 char *
-db_get_json_raw_body (const DB_VALUE * value)
+db_get_json_raw_body (const DB_VALUE *value)
 {
   return db_json_get_json_body_from_document (*value->data.json.document);
 }
@@ -3048,7 +3052,7 @@ db_get_json_raw_body (const DB_VALUE * value)
  *   value(in): the value to check
  */
 bool
-db_value_is_corrupted (const DB_VALUE * value)
+db_value_is_corrupted (const DB_VALUE *value)
 {
   if (value == NULL || DB_IS_NULL (value))
     {
@@ -3058,7 +3062,9 @@ db_value_is_corrupted (const DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
-      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
+      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION)
+	  && (value->domain.numeric_info.scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION
+	      || value->domain.numeric_info.scale < DB_MIN_NUMERIC_SCALE))
 	{
 	  return true;
 	}

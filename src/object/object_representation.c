@@ -98,7 +98,7 @@ static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * va
  * Remember to clear the value with pr_clear_value or equivalent.
  */
 int
-classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
+classobj_get_prop (DB_SEQ *properties, const char *name, DB_VALUE *pvalue)
 {
   int error;
   int found, max, i;
@@ -277,7 +277,7 @@ int or_Type_sizes[] = {
  *    if there are weird alignment or character set problems.
  */
 char *
-or_class_name (RECDES * record)
+or_class_name (RECDES *record)
 {
   char *start, *name;
   int offset, len;
@@ -321,7 +321,7 @@ or_class_name (RECDES * record)
  *    record(in): disk record
  */
 int
-or_rep_id (RECDES * record)
+or_rep_id (RECDES *record)
 {
   int rep = NULL_REPRID;
 
@@ -354,7 +354,7 @@ or_rep_id (RECDES * record)
  * the actual id might differ). Do not use this function in another context!
  */
 int
-or_set_rep_id (RECDES * record, int repid)
+or_set_rep_id (RECDES *record, int repid)
 {
   OR_BUF orep, *buf;
   unsigned int new_bits = 0;
@@ -392,7 +392,7 @@ or_set_rep_id (RECDES * record, int repid)
  *    record(in): disk record
  */
 int
-or_chn (RECDES * record)
+or_chn (RECDES *record)
 {
   if (record->length < OR_CHN_OFFSET + OR_CHN_SIZE)
     {
@@ -414,7 +414,7 @@ or_chn (RECDES * record)
  *	   parameter.
  */
 int
-or_replace_chn (RECDES * record, int chn)
+or_replace_chn (RECDES *record, int chn)
 {
   OR_BUF orep, *buf;
   int offset;
@@ -439,7 +439,7 @@ or_replace_chn (RECDES * record, int chn)
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
+or_mvcc_get_repid_and_flags (OR_BUF *buf, int *error)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -462,7 +462,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int variable_offset_size)
+or_mvcc_set_repid_and_flags (OR_BUF *buf, int mvcc_flag, int repid, int bound_bit, int variable_offset_size)
 {
   int repid_and_flags;
 
@@ -546,7 +546,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
  *    monetary(in): pointer to DB_MONETARY value
  */
 int
-or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
+or_put_monetary (OR_BUF *buf, DB_MONETARY *monetary)
 {
   int error;
 
@@ -606,7 +606,7 @@ or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
  *    monetary(out): pointer to DB_MONETARY value
  */
 int
-or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
+or_get_monetary (OR_BUF *buf, DB_MONETARY *monetary)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -629,7 +629,7 @@ or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
  *    binary data to be on a word boundary.
  */
 int
-or_put_binary (OR_BUF * buf, DB_BINARY * binary)
+or_put_binary (OR_BUF *buf, DB_BINARY *binary)
 {
   int header, len, bits, pad;
   int rc = NO_ERROR;
@@ -666,7 +666,7 @@ or_put_binary (OR_BUF * buf, DB_BINARY * binary)
  *    bitlen(in): length of varbit
  */
 extern int
-or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
+or_put_varbit (OR_BUF *buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
@@ -679,7 +679,7 @@ or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
  *    length_ptr(out): length of varbit read
  */
 char *
-or_get_varbit (OR_BUF * buf, int *length_ptr)
+or_get_varbit (OR_BUF *buf, int *length_ptr)
 {
   int bitlen, charlen;
   char *new_ = NULL;
@@ -734,7 +734,7 @@ or_get_varbit (OR_BUF * buf, int *length_ptr)
  *    charlen(in): string length
  */
 int
-or_put_varchar (OR_BUF * buf, char *string, int charlen)
+or_put_varchar (OR_BUF *buf, char *string, int charlen)
 {
   return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
 }
@@ -747,7 +747,7 @@ or_put_varchar (OR_BUF * buf, char *string, int charlen)
  *    length_ptr(out): length of returned string
  */
 char *
-or_get_varchar (OR_BUF * buf, int *length_ptr)
+or_get_varchar (OR_BUF *buf, int *length_ptr)
 {
   int rc = NO_ERROR;
   int charlen;
@@ -794,7 +794,7 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
-or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
+or_put_varbit_internal (OR_BUF *buf, const char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -828,7 +828,7 @@ or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 }
 
 static int
-or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
+or_put_varchar_internal (OR_BUF *buf, char *string, int charlen, int align)
 {
   int net_charlen = 0, compress_buffer_size;
   char *compressed_string = NULL;
@@ -981,7 +981,7 @@ cleanup:
  * up to a word boundary.
  */
 int
-or_length_binary (DB_BINARY * binary)
+or_length_binary (DB_BINARY *binary)
 {
   int len, bits;
 
@@ -1036,7 +1036,7 @@ or_length_string (char *string)
  *    bitlen(in): length of varbit
  */
 int
-or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
+or_packed_put_varbit (OR_BUF *buf, const char *string, int bitlen)
 {
   return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
@@ -1060,7 +1060,7 @@ or_packed_varbit_length (int bitlen)
  *    charlen(in): string length
  */
 int
-or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
+or_packed_put_varchar (OR_BUF *buf, char *string, int charlen)
 {
   return or_put_varchar_internal (buf, string, charlen, INT_ALIGNMENT);
 }
@@ -1098,7 +1098,7 @@ or_packed_recdesc_length (int length)
  *    structures that will be filled in.
  */
 char *
-or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
+or_unpack_var_table (char *ptr, int nvars, OR_VARINFO *vars)
 {
   return or_unpack_var_table_internal (ptr, nvars, vars, BIG_VAR_OFFSET_SIZE);
 }
@@ -1118,7 +1118,7 @@ or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
  *    structures that will be filled in.
  */
 static char *
-or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size)
+or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO *vars, int offset_size)
 {
   int i, offset, offset2;
 
@@ -1151,7 +1151,7 @@ or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offse
  *    allocator(in): allocator for return value allocation
  */
 OR_VARINFO *
-or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
+or_get_var_table (OR_BUF *buf, int nvars, char *(*allocator) (int))
 {
   return or_get_var_table_internal (buf, nvars, allocator, BIG_VAR_OFFSET_SIZE);
 }
@@ -1165,7 +1165,7 @@ or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
  *    allocator(in): allocator for return value allocation
  */
 OR_VARINFO *
-or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), int offset_size)
+or_get_var_table_internal (OR_BUF *buf, int nvars, char *(*allocator) (int), int offset_size)
 {
   OR_VARINFO *vars;
   int length;
@@ -1258,7 +1258,7 @@ or_pack_bigint (char *ptr, DB_BIGINT number)
  *    number(out): bigint value
  */
 char *
-or_unpack_bigint (char *ptr, DB_BIGINT * number)
+or_unpack_bigint (char *ptr, DB_BIGINT *number)
 {
   return or_unpack_int64 (ptr, number);
 }
@@ -1286,7 +1286,7 @@ or_pack_int64 (char *ptr, INT64 number)
  *    number(out): INT64 value
  */
 char *
-or_unpack_int64 (char *ptr, INT64 * number)
+or_unpack_int64 (char *ptr, INT64 *number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
@@ -1378,7 +1378,7 @@ or_pack_lock (char *ptr, LOCK lock)
  *    lock(out): LOCK value
  */
 char *
-or_unpack_lock (char *ptr, LOCK * lock)
+or_unpack_lock (char *ptr, LOCK *lock)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1470,7 +1470,7 @@ or_pack_time (char *ptr, DB_TIME time)
  *    time(out): DB_TIME value
  */
 char *
-or_unpack_time (char *ptr, DB_TIME * time)
+or_unpack_time (char *ptr, DB_TIME *time)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1500,7 +1500,7 @@ or_pack_utime (char *ptr, DB_UTIME utime)
  *    utime(out): DB_UTIME value
  */
 char *
-or_unpack_utime (char *ptr, DB_UTIME * utime)
+or_unpack_utime (char *ptr, DB_UTIME *utime)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1530,7 +1530,7 @@ or_pack_date (char *ptr, DB_DATE date)
  *    date(out): DB_DATE value
  */
 char *
-or_unpack_date (char *ptr, DB_DATE * date)
+or_unpack_date (char *ptr, DB_DATE *date)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1545,7 +1545,7 @@ or_unpack_date (char *ptr, DB_DATE * date)
  *    money(in): DB_MONETARY value
  */
 char *
-or_pack_monetary (char *ptr, DB_MONETARY * money)
+or_pack_monetary (char *ptr, DB_MONETARY *money)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1560,7 +1560,7 @@ or_pack_monetary (char *ptr, DB_MONETARY * money)
  *    money(out): DB_MONETARY value
  */
 char *
-or_unpack_monetary (char *ptr, DB_MONETARY * money)
+or_unpack_monetary (char *ptr, DB_MONETARY *money)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1611,7 +1611,7 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
  *    oid(in): OID value
  */
 char *
-or_pack_oid (char *ptr, const OID * oid)
+or_pack_oid (char *ptr, const OID *oid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1635,7 +1635,7 @@ or_pack_oid (char *ptr, const OID * oid)
  * oids (in) : OID array.
  */
 char *
-or_pack_oid_array (char *ptr, int n, const OID * oids)
+or_pack_oid_array (char *ptr, int n, const OID *oids)
 {
   int i;
 
@@ -1661,7 +1661,7 @@ or_pack_oid_array (char *ptr, int n, const OID * oids)
  *    oid(out): OID value
  */
 char *
-or_unpack_oid (char *ptr, OID * oid)
+or_unpack_oid (char *ptr, OID *oid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1677,7 +1677,7 @@ or_unpack_oid (char *ptr, OID * oid)
  *    oids(out): OID array
  */
 char *
-or_unpack_oid_array (char *ptr, int n, OID ** oids)
+or_unpack_oid_array (char *ptr, int n, OID **oids)
 {
   int i;
 
@@ -1707,7 +1707,7 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
  *    hfid(in): HFID value
  */
 char *
-or_pack_hfid (const char *ptr, const HFID * hfid)
+or_pack_hfid (const char *ptr, const HFID *hfid)
 {
   char *new_;
 
@@ -1734,7 +1734,7 @@ or_pack_hfid (const char *ptr, const HFID * hfid)
  *    hfid(out): HFID value
  */
 char *
-or_unpack_hfid (char *ptr, HFID * hfid)
+or_unpack_hfid (char *ptr, HFID *hfid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1750,7 +1750,7 @@ or_unpack_hfid (char *ptr, HFID * hfid)
  *    hfids(out): HFID array
  */
 char *
-or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
+or_unpack_hfid_array (char *ptr, int n, HFID **hfids)
 {
   int i = 0;
 
@@ -1780,7 +1780,7 @@ or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
  *    ehid(in): HFID value
  */
 char *
-or_pack_ehid (char *ptr, EHID * ehid)
+or_pack_ehid (char *ptr, EHID *ehid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1790,7 +1790,7 @@ or_pack_ehid (char *ptr, EHID * ehid)
 }
 
 char *
-or_pack_recdes (char *buf, RECDES * recdes)
+or_pack_recdes (char *buf, RECDES *recdes)
 {
   buf = or_pack_int (buf, recdes->length);
   buf = or_pack_short (buf, recdes->type);
@@ -1805,7 +1805,7 @@ or_pack_recdes (char *buf, RECDES * recdes)
  *    ehid(out): EHID value
  */
 char *
-or_unpack_ehid (char *ptr, EHID * ehid)
+or_unpack_ehid (char *ptr, EHID *ehid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1821,7 +1821,7 @@ or_unpack_ehid (char *ptr, EHID * ehid)
  *    btid(in): BTID value
  */
 char *
-or_pack_btid (char *ptr, const BTID * btid)
+or_pack_btid (char *ptr, const BTID *btid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1849,7 +1849,7 @@ or_pack_btid (char *ptr, const BTID * btid)
  *    btid(out): a BTID value
  */
 char *
-or_unpack_btid (char *ptr, BTID * btid)
+or_unpack_btid (char *ptr, BTID *btid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1865,7 +1865,7 @@ or_unpack_btid (char *ptr, BTID * btid)
  *    lsa(in): LOG_LSA value
  */
 char *
-or_pack_log_lsa (const char *ptr, const log_lsa * lsa)
+or_pack_log_lsa (const char *ptr, const log_lsa *lsa)
 {
   char *new_;
 
@@ -1897,7 +1897,7 @@ or_pack_log_lsa (const char *ptr, const log_lsa * lsa)
  *    lsa(out): LOG_LSA value
  */
 char *
-or_unpack_log_lsa (char *ptr, log_lsa * lsa)
+or_unpack_log_lsa (char *ptr, log_lsa *lsa)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -1913,7 +1913,7 @@ or_unpack_log_lsa (char *ptr, log_lsa * lsa)
  *    domain(in): domain of the set (can be NULL)
  */
 char *
-or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
+or_unpack_set (char *ptr, setobj **set, TP_DOMAIN *domain)
 {
   OR_BUF orbuf;
 
@@ -1930,7 +1930,7 @@ or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
  *    ref(out): reference for a set
  */
 char *
-or_unpack_setref (char *ptr, DB_SET ** ref)
+or_unpack_setref (char *ptr, DB_SET **ref)
 {
   SETOBJ *set = NULL;
 
@@ -2304,7 +2304,7 @@ or_packed_json_schema_length (const char *json_schema)
  *    json_validator(in): json_validator
  */
 static int
-or_packed_json_validator_length (JSON_VALIDATOR * json_validator)
+or_packed_json_validator_length (JSON_VALIDATOR *json_validator)
 {
   if (json_validator == NULL)
     {
@@ -2350,7 +2350,7 @@ or_packed_stream_length (size_t len)
  *    size(in): size of bool array
  */
 char *
-or_pack_bool_array (char *ptr, const bool * bools, int size)
+or_pack_bool_array (char *ptr, const bool *bools, int size)
 {
   int bits, pad;
   if (ptr == NULL)
@@ -2390,7 +2390,7 @@ or_pack_bool_array (char *ptr, const bool * bools, int size)
  *    bools(out): bool array
  */
 char *
-or_unpack_bool_array (char *ptr, bool ** bools)
+or_unpack_bool_array (char *ptr, bool **bools)
 {
   bool *new_;
   int length;
@@ -2435,7 +2435,7 @@ or_unpack_bool_array (char *ptr, bool ** bools)
  * stored at the top.
  */
 int
-or_packed_bool_array_length (const bool * bools, int size)
+or_packed_bool_array_length (const bool *bools, int size)
 {
   int total, bits, pad;
 
@@ -2583,7 +2583,7 @@ or_decode (const char *buffer, char *dest, int size)
  *    flag value.
  */
 int
-or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
+or_packed_domain_size (TP_DOMAIN *domain, int include_classoids)
 {
   TP_DOMAIN *d;
   int size, precision, scale;
@@ -2620,6 +2620,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
 	    {
 	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
+	  if (scale < 0)
+	    {
+	      size += OR_INT_SIZE;
 	    }
 	  break;
 
@@ -2714,7 +2718,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
  *    and the value is logically NULL.
  */
 int
-or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_null)
+or_put_domain (OR_BUF *buf, TP_DOMAIN *domain, int include_classoids, int is_null)
 {
   unsigned int carrier, extended_precision, extended_scale;
   int precision, scale;
@@ -2789,12 +2793,12 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	  /* safe guard for scale */
 	  scale = d->scale;
-	  if (scale <= DB_DEFAULT_SCALE)
+	  if (scale < 0)
 	    {
-	      scale = 0;
+	      carrier |= (OR_DOMAIN_SCALE_MAX - 1) << OR_DOMAIN_SCALE_SHIFT;
+	      extended_scale = -scale;
 	    }
-
-	  if (scale < OR_DOMAIN_SCALE_MAX)
+	  else if (scale < OR_DOMAIN_SCALE_MAX)
 	    {
 	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
 	    }
@@ -3026,7 +3030,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
  *    is_null(out): set 1 if NULL domain
  */
 static TP_DOMAIN *
-unpack_domain_2 (OR_BUF * buf, int *is_null)
+unpack_domain_2 (OR_BUF *buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
@@ -3368,14 +3372,15 @@ error:
  *    used as a tag for a packed value.
  */
 static TP_DOMAIN *
-unpack_domain (OR_BUF * buf, int *is_null)
+unpack_domain (OR_BUF *buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *dom;
   TP_DOMAIN *setdomain, *td, *next;
   DB_TYPE type;
   bool more, is_desc;
   unsigned int carrier, index;
-  unsigned int precision, scale, codeset = 0, collation_id;
+  unsigned int precision, codeset = 0, collation_id;
+  int scale;
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
@@ -3384,7 +3389,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   unsigned char collation_flag;
 
   domain = last = dom = setdomain = NULL;
-  precision = scale = 0;
+  precision = 0;
+  scale = 0;
 
   char *schema_raw = NULL;
 
@@ -3471,6 +3477,15 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      if (scale == OR_DOMAIN_SCALE_MAX)
 		{
 		  scale = or_get_int (buf, &rc);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else if (scale == OR_DOMAIN_SCALE_MAX - 1)
+		{
+		  scale = or_get_int (buf, &rc);
+		  scale = -scale;
 		  if (rc != NO_ERROR)
 		    {
 		      goto error;
@@ -3780,7 +3795,7 @@ error:
  *    is_null(out): OR_DOMAIN_NULL_FLAG was on in the packed domain?
  */
 TP_DOMAIN *
-or_get_domain (OR_BUF * buf, TP_DOMAIN * caller_dom, int *is_null)
+or_get_domain (OR_BUF *buf, TP_DOMAIN *caller_dom, int *is_null)
 {
   TP_DOMAIN *domain;
 
@@ -3821,7 +3836,7 @@ or_get_domain (OR_BUF * buf, TP_DOMAIN * caller_dom, int *is_null)
  *    for more information.
  */
 char *
-or_pack_domain (char *ptr, TP_DOMAIN * domain, int include_classoids, int is_null)
+or_pack_domain (char *ptr, TP_DOMAIN *domain, int include_classoids, int is_null)
 {
   OR_BUF buf;
   int rc = 0;
@@ -3879,7 +3894,7 @@ or_unpack_domain (char *ptr, struct tp_domain **domain_ptr, int *is_null)
  *    hard to add to the tp_Domain array.
  */
 int
-or_put_sub_domain (OR_BUF * buf)
+or_put_sub_domain (OR_BUF *buf)
 {
   unsigned int carrier;
 
@@ -3912,7 +3927,7 @@ or_put_sub_domain (OR_BUF * buf)
  *    or_put_set and or_packed_set_size.
  */
 void
-or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, int *bound_bits, int *offset_table,
+or_packed_set_info (DB_TYPE set_type, TP_DOMAIN *domain, int include_domain, int *bound_bits, int *offset_table,
 		    int *element_tags, int *element_size)
 {
   TP_DOMAIN *element_domain;
@@ -4001,7 +4016,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
  *
  */
 int
-or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain, int bound_bits, int offset_table,
+or_put_set_header (OR_BUF *buf, DB_TYPE set_type, int size, int domain, int bound_bits, int offset_table,
 		   int element_tags, int common_sub_header)
 {
   unsigned int header;
@@ -4053,7 +4068,7 @@ or_put_set_header (OR_BUF * buf, DB_TYPE set_type, int size, int domain, int bou
  *    common_sub(out): set non-zero if there will be substructure tags
  */
 int
-or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *domain, int *bound_bits, int *offset_table,
+or_get_set_header (OR_BUF *buf, DB_TYPE *set_type, int *size, int *domain, int *bound_bits, int *offset_table,
 		   int *element_tags, int *common_sub)
 {
   unsigned int header;
@@ -4086,7 +4101,7 @@ or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size, int *domain, int
  *    of the set is.
  */
 int
-or_skip_set_header (OR_BUF * buf)
+or_skip_set_header (OR_BUF *buf)
 {
   DB_TYPE set_type;
   int count, length, rc = NO_ERROR;
@@ -4140,7 +4155,7 @@ or_skip_set_header (OR_BUF * buf)
  *    don't pack the class OIDs of object domains.
  */
 int
-or_packed_set_length (setobj * set, int include_domain)
+or_packed_set_length (setobj *set, int include_domain)
 {
   DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
@@ -4229,7 +4244,7 @@ or_packed_set_length (setobj * set, int include_domain)
  *    include_domain(in): non-zero to store full set domain too
  */
 void
-or_put_set (OR_BUF * buf, setobj * set, int include_domain)
+or_put_set (OR_BUF *buf, setobj *set, int include_domain)
 {
   DB_VALUE *value = NULL;
   unsigned int bound_word;
@@ -4405,7 +4420,7 @@ or_put_set (OR_BUF * buf, setobj * set, int include_domain)
  *    domain by looking in the catalog.
  */
 setobj *
-or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
+or_get_set (OR_BUF *buf, TP_DOMAIN *domain)
 {
   SETOBJ *set;
   DB_VALUE value;
@@ -4598,7 +4613,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
  *    of the set.
  */
 int
-or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
+or_disk_set_size (OR_BUF *buf, TP_DOMAIN *set_domain, DB_TYPE *set_type)
 {
   TP_DOMAIN *element_domain;
   DB_TYPE disk_set_type;
@@ -4771,7 +4786,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
 {
   const PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -4851,7 +4866,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_put_value (OR_BUF *buf, DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
 {
   const PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -4959,7 +4974,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
  *
  */
 int
-or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, bool copy)
+or_get_value (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int expected, bool copy)
 {
   char *start;
   int is_null, total, pad;
@@ -5084,7 +5099,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
  *    them later though.
  */
 char *
-or_pack_value (char *buf, DB_VALUE * value)
+or_pack_value (char *buf, DB_VALUE *value)
 {
   OR_BUF orbuf;
   char *aligned_buf;
@@ -5099,7 +5114,7 @@ or_pack_value (char *buf, DB_VALUE * value)
 }
 
 char *
-or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
+or_pack_mem_value (char *ptr, DB_VALUE *value, int *packed_len_except_alignment)
 {
   OR_BUF orbuf, *buf;
   const PR_TYPE *type;
@@ -5195,7 +5210,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
  *    details.
  */
 char *
-or_unpack_value (const char *buf, DB_VALUE * value)
+or_unpack_value (const char *buf, DB_VALUE *value)
 {
   OR_BUF orbuf;
 
@@ -5207,7 +5222,7 @@ or_unpack_value (const char *buf, DB_VALUE * value)
 }
 
 char *
-or_unpack_mem_value (char *ptr, DB_VALUE * value)
+or_unpack_mem_value (char *ptr, DB_VALUE *value)
 {
   OR_BUF orbuf, *buf;
   TP_DOMAIN *domain;
@@ -5332,7 +5347,7 @@ or_pack_listid (char *ptr, void *listid_ptr)
 }
 
 char *
-or_unpack_recdes (char *buf, RECDES ** recdes)
+or_unpack_recdes (char *buf, RECDES **recdes)
 {
   RECDES *tmp_recdes = NULL;
   int length;
@@ -5580,7 +5595,7 @@ or_unpack_key_val_range (char *ptr, void *key_val_range_ptr)
  *    var(in): DB_VALUE
  */
 char *
-or_pack_db_value (char *buffer, DB_VALUE * var)
+or_pack_db_value (char *buffer, DB_VALUE *var)
 {
   return or_pack_value (buffer, var);
 }
@@ -5591,7 +5606,7 @@ or_pack_db_value (char *buffer, DB_VALUE * var)
  *    var(in): DB_VALUE
  */
 int
-or_db_value_size (DB_VALUE * var)
+or_db_value_size (DB_VALUE *var)
 {
   /* don't collapse nulls, include the domain, and include domain class oids */
   return or_packed_value_size (var, 0, 1, 1);
@@ -5604,7 +5619,7 @@ or_db_value_size (DB_VALUE * var)
  *    val(out): DB_VALUE
  */
 char *
-or_unpack_db_value (char *buffer, DB_VALUE * val)
+or_unpack_db_value (char *buffer, DB_VALUE *val)
 {
   /* new interface, hopefully compatible */
   return or_unpack_value (buffer, val);
@@ -5616,7 +5631,7 @@ or_unpack_db_value (char *buffer, DB_VALUE * val)
  *    enumeration (in): enumeration
  */
 int
-or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
+or_packed_enumeration_size (const DB_ENUMERATION *enumeration)
 {
   int size = 0, idx;
   DB_VALUE value;
@@ -5649,7 +5664,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
  *    enumeration (in): enumeration
  */
 int
-or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
+or_put_enumeration (OR_BUF *buf, const DB_ENUMERATION *enumeration)
 {
   int rc = NO_ERROR, idx;
   DB_VALUE value;
@@ -5691,7 +5706,7 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
  *    enumeration(in/out): pointer to enumeration holder
  */
 int
-or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
+or_get_enumeration (OR_BUF *buf, DB_ENUMERATION *enumeration)
 {
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
@@ -5840,7 +5855,7 @@ or_packed_string_array_length (int count, const char **string_array)
  *    val(in): DB_VALUE array
  */
 int
-or_packed_db_value_array_length (int count, DB_VALUE * val)
+or_packed_db_value_array_length (int count, DB_VALUE *val)
 {
   int i;
   int size = OR_INT_SIZE;
@@ -5964,7 +5979,7 @@ or_unpack_string_array (char *buffer, char ***string_array, int *cnt)
  *    val(in): DB_VALUE array
  */
 char *
-or_pack_db_value_array (char *buffer, int count, DB_VALUE * val)
+or_pack_db_value_array (char *buffer, int count, DB_VALUE *val)
 {
   int i;
   char *ptr;
@@ -5990,7 +6005,7 @@ or_pack_db_value_array (char *buffer, int count, DB_VALUE * val)
  *    count(in): array length
  */
 char *
-or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
+or_unpack_db_value_array (char *buffer, DB_VALUE **val, int *count)
 {
   int i;
   char *ptr;
@@ -6045,7 +6060,7 @@ or_pack_ptr (char *ptr, UINTPTR ptrval)
  *    ptrval(out): pointer value
  */
 char *
-or_unpack_ptr (char *ptr, UINTPTR * ptrval)
+or_unpack_ptr (char *ptr, UINTPTR *ptrval)
 {
   ptr = PTR_ALIGN (ptr, PTR_ALIGNMENT);
 
@@ -6081,7 +6096,7 @@ or_pack_mvccid (char *ptr, const MVCCID mvccid)
  * mvccid (out) : MVCCID value.
  */
 char *
-or_unpack_mvccid (char *ptr, MVCCID * mvccid)
+or_unpack_mvccid (char *ptr, MVCCID *mvccid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
   assert (mvccid != NULL);
@@ -6101,7 +6116,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * sha1 (in) : Value to pack.
  */
 char *
-or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
+or_pack_sha1 (char *ptr, const SHA1Hash *sha1)
 {
   assert (sha1 != NULL);
 
@@ -6124,7 +6139,7 @@ or_pack_sha1 (char *ptr, const SHA1Hash * sha1)
  * sha1 (out) : Value to unpack.
  */
 char *
-or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
+or_unpack_sha1 (char *ptr, SHA1Hash *sha1)
 {
   assert (sha1 != NULL);
 
@@ -6149,7 +6164,7 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
  * files (in) : space information for files (may be NULL)
  */
 int
-or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+or_packed_spacedb_size (const SPACEDB_ALL *all, const SPACEDB_ONEVOL *vols, const SPACEDB_FILES *files)
 {
   int size_total = 0;
 
@@ -6190,7 +6205,7 @@ or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, co
  * files (in) : space information for files (may be NULL)
  */
 char *
-or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+or_pack_spacedb (char *ptr, const SPACEDB_ALL *all, const SPACEDB_ONEVOL *vols, const SPACEDB_FILES *files)
 {
   int i;
 
@@ -6241,7 +6256,7 @@ or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols
  * SPACEDB_FILES * files (in) :
  */
 char *
-or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+or_unpack_spacedb (char *ptr, SPACEDB_ALL *all, SPACEDB_ONEVOL **vols, SPACEDB_FILES *files)
 {
   int i;
   int unpacked_value;
@@ -6322,7 +6337,7 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
  *   default_expr(out): default expression
  */
 void
-classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
+classobj_initialize_default_expr (DB_DEFAULT_EXPR *default_expr)
 {
   assert (default_expr != NULL);
 
@@ -6332,7 +6347,7 @@ classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
 }
 
 int
-or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
+or_get_json_validator (OR_BUF *buf, REFPTR (JSON_VALIDATOR, validator))
 {
   int rc;
   char *str = NULL;
@@ -6371,13 +6386,13 @@ exit:
 }
 
 int
-or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator)
+or_put_json_validator (OR_BUF *buf, JSON_VALIDATOR *validator)
 {
   return or_put_json_schema (buf, db_json_get_schema_raw_from_validator (validator));
 }
 
 int
-or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
+or_get_json_schema (OR_BUF *buf, REFPTR (char, schema))
 {
   DB_VALUE schema_value;
   int rc;
@@ -6404,7 +6419,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 }
 
 int
-or_put_json_schema (OR_BUF * buf, const char *schema)
+or_put_json_schema (OR_BUF *buf, const char *schema)
 {
   int rc = NO_ERROR;
   DB_VALUE schema_raw;

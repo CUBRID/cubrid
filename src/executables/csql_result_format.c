@@ -620,7 +620,7 @@ double_to_string (double double_value, int field_width, int precision, const boo
  *   conversion(in): conversion format string
  */
 static char *
-time_as_string (DB_TIME * time_value, const char *conversion)
+time_as_string (DB_TIME *time_value, const char *conversion)
 {
   char temp_string[TIME_STRING_MAX];
 
@@ -645,7 +645,7 @@ time_as_string (DB_TIME * time_value, const char *conversion)
  *   format(in): conversion format type
  */
 static char *
-date_as_string (DB_DATE * date_value, int format)
+date_as_string (DB_DATE *date_value, int format)
 {
   char temp_buffer[DATE_TEMP_BUFFER_LENGTH];
   int month, day, year;
@@ -863,7 +863,7 @@ bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros, bool
  *   format(in): conversion format type
  */
 static char *
-object_to_string (DB_OBJECT * object, int format)
+object_to_string (DB_OBJECT *object, int format)
 {
   if (object == NULL)
     return NULL;
@@ -901,11 +901,11 @@ object_to_string (DB_OBJECT * object, int format)
  *   commas(in): whether or not to display commas
  */
 static char *
-numeric_to_string (DB_VALUE * value, bool commas)
+numeric_to_string (DB_VALUE *value, bool commas)
 {
-  char str_buf[NUMERIC_MAX_STRING_SIZE];
+  char str_buf[NUMERIC_MAX_STRING_SIZE + 1];
   char *return_string;
-  int prec;
+  int prec, scale;
   int comma_length;
   int max_length;
 
@@ -914,6 +914,18 @@ numeric_to_string (DB_VALUE * value, bool commas)
    * character for each of the sign, decimal point, and NULL terminator.
    */
   prec = DB_VALUE_PRECISION (value);
+  scale = DB_VALUE_SCALE (value);
+  // This condition was added due to the if (strlen (str_buf) > max_length - 1) condition.
+  // If removed, NUM OVERFLOW will be output.
+  if (scale < 0)
+    {
+      prec -= scale;
+    }
+  else if (scale > prec)
+    {
+      prec += scale;
+    }
+
   comma_length = COMMAS_OFFSET (commas, prec);
   max_length = prec + comma_length + 3;
   return_string = (char *) malloc (max_length);
@@ -939,7 +951,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
  *   value(in): bit value to convert
  */
 static char *
-bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
+bit_to_string (DB_VALUE *value, char string_delimiter, bool plain_string)
 {
   char *temp_string;
   char *return_string;
@@ -983,8 +995,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
  *   column_enclosure(in): column enclosure for query output
  */
 static char *
-set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
-	       const CSQL_ARGUMENT * csql_arg)
+set_to_string (DB_VALUE *value, char begin_notation, char end_notation, int max_entries, const CSQL_ARGUMENT *csql_arg)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1396,7 +1407,7 @@ conv_double_to_string (char *double_str, int *length)
  *   column_enclosure(in): column enclosure for query output
  */
 char *
-csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg)
+csql_db_value_as_string (DB_VALUE *value, int *length, const CSQL_ARGUMENT *csql_arg)
 {
   char *result = NULL;
   char *json_body = NULL;

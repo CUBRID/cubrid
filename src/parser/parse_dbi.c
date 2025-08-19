@@ -144,7 +144,7 @@ pt_misc_to_qp_misc_operand (PT_MISC_TYPE misc_specifier)
  *   dt2(in): second data type
  */
 bool
-pt_is_same_enum_data_type (PT_NODE * dt1, PT_NODE * dt2)
+pt_is_same_enum_data_type (PT_NODE *dt1, PT_NODE *dt2)
 {
   PT_NODE *e1 = NULL, *e2 = NULL;
   PARSER_VARCHAR *pvc1 = NULL, *pvc2 = NULL;
@@ -195,7 +195,7 @@ pt_is_same_enum_data_type (PT_NODE * dt1, PT_NODE * dt2)
  *  modifies: parser heap, set
  */
 void
-pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** set)
+pt_add_type_to_set (PARSER_CONTEXT *parser, const PT_NODE *typs, PT_NODE **set)
 {
   PT_TYPE_ENUM typ, expected_typ;
   PT_NODE *next_typs, *expected_typs = NULL;
@@ -412,7 +412,7 @@ exit_on_error:
  *             describing val's data_type
  */
 static PT_NODE *
-pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
+pt_get_object_data_type (PARSER_CONTEXT *parser, const DB_VALUE *val)
 {
   DB_OBJECT *cls;
   PT_NODE *name, *dt;
@@ -474,7 +474,7 @@ pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val)
  *   val(in):  a db_value of a set type
  */
 static PT_NODE *
-pt_set_elements_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
+pt_set_elements_to_value (PARSER_CONTEXT *parser, const DB_VALUE *val)
 {
   PT_NODE result, *elem = NULL;
   DB_VALUE element;
@@ -513,7 +513,7 @@ pt_set_elements_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
  *  default_value (in):
  */
 PT_NODE *
-pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * sm_attr)
+pt_sm_attribute_default_value_to_node (PARSER_CONTEXT *parser, const SM_ATTRIBUTE *sm_attr)
 {
   PT_NODE *result;
   const SM_DEFAULT_VALUE *default_value;
@@ -571,14 +571,14 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
  *   val(in):  a db_value
  */
 PT_NODE *
-pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
+pt_dbval_to_value (PARSER_CONTEXT *parser, const DB_VALUE *val)
 {
   PT_NODE *result;
   const char *bytes;
   int size;
   DB_OBJECT *mop;
   DB_TYPE db_type;
-  char buf[100];
+  char buf[NUMERIC_MAX_STRING_SIZE + 1];
   char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
@@ -976,7 +976,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
  *  effects : evaluates and adds the values as elements of the db_value
  */
 DB_VALUE *
-pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values, DB_VALUE * db_value, PT_NODE ** el_types)
+pt_seq_value_to_db (PARSER_CONTEXT *parser, PT_NODE *values, DB_VALUE *db_value, PT_NODE **el_types)
 {
   PT_NODE *element;
   DB_VALUE e_val;
@@ -1030,7 +1030,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values, DB_VALUE * db_val
  *            set or multiset.
  */
 DB_VALUE *
-pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values, DB_VALUE * db_value, PT_NODE ** el_types)
+pt_set_value_to_db (PARSER_CONTEXT *parser, PT_NODE **values, DB_VALUE *db_value, PT_NODE **el_types)
 {
   PT_NODE *element;
   DB_VALUE e_val;
@@ -1085,7 +1085,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values, DB_VALUE * db_va
  *  modifies: heap, parser->error_msgs, value->data_type
  */
 DB_VALUE *
-pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
+pt_value_to_db (PARSER_CONTEXT *parser, PT_NODE *value)
 {
   DB_VALUE *db_value;
   int more_type_info_needed;
@@ -1261,7 +1261,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 // value_out : DB_VALUE initialized according to node data type
 //
 void
-pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
+pt_data_type_init_value (const PT_NODE *node, DB_VALUE *value_out)
 {
   // init as null
   db_make_null (value_out);
@@ -1384,7 +1384,7 @@ pt_string_to_db_domain (const char *s, const char *class_name)
  *   node(out):
  */
 void
-pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s, PT_NODE * node)
+pt_string_to_data_type (PARSER_CONTEXT *parser, const char *s, PT_NODE *node)
 {
   DB_DOMAIN *dom;
 
@@ -1652,7 +1652,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
  *   dt(in): a PT_DATA_TYPE node and nothing else.
  */
 const char *
-pt_data_type_to_db_domain_name (const PT_NODE * dt)
+pt_data_type_to_db_domain_name (const PT_NODE *dt)
 {
   assert (dt != NULL);
 
@@ -1683,7 +1683,7 @@ pt_data_type_to_db_domain_name (const PT_NODE * dt)
  *   enumeration(in/out): address of a DB_ENUMERATION structure to fill.
  */
 static int
-pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt, DB_ENUMERATION * enumeration)
+pt_get_enumeration_from_data_type (PARSER_CONTEXT *parser, PT_NODE *dt, DB_ENUMERATION *enumeration)
 {
   int err = NO_ERROR;
   PT_NODE *node = NULL;
@@ -1802,7 +1802,7 @@ error:
  *             Subtle, ain't it?
  */
 DB_DOMAIN *
-pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *class_name)
+pt_data_type_to_db_domain (PARSER_CONTEXT *parser, PT_NODE *dt, const char *class_name)
 {
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_TYPE domain_type;
@@ -2026,7 +2026,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 /* TODO: PT_TYPE_ENUM should be changed to
  * PT_TYPE_NUM by adjusting the order of including header files */
 DB_DOMAIN *
-pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_ENUM type)
+pt_node_data_type_to_db_domain (PARSER_CONTEXT *parser, PT_NODE *dt, PT_TYPE_ENUM type)
 {
   DB_TYPE domain_type;
   DB_OBJECT *class_obj = (DB_OBJECT *) 0;
@@ -2221,7 +2221,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
  *   node(in):  any PT_NODE
  */
 const char *
-pt_node_to_db_domain_name (PT_NODE * node)
+pt_node_to_db_domain_name (PT_NODE *node)
 {
   assert (node != NULL);
 
@@ -2241,7 +2241,7 @@ pt_node_to_db_domain_name (PT_NODE * node)
  *   class_name(in):
  */
 DB_DOMAIN *
-pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class_name)
+pt_node_to_db_domain (PARSER_CONTEXT *parser, PT_NODE *node, const char *class_name)
 {
   int error = NO_ERROR, natts = 0;
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
@@ -2450,7 +2450,7 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
  *   node(in):  a PT_NODE
  */
 DB_TYPE
-pt_node_to_db_type (PT_NODE * node)
+pt_node_to_db_type (PT_NODE *node)
 {
   DB_TYPE db_type;
 
@@ -2481,7 +2481,7 @@ pt_node_to_db_type (PT_NODE * node)
  */
 
 PT_NODE *
-pt_sort_in_desc_order (PT_NODE * vlist)
+pt_sort_in_desc_order (PT_NODE *vlist)
 {
   PT_NODE *init_list = vlist, *c_addr, *p_addr;
   int t;
@@ -2536,7 +2536,7 @@ pt_sort_in_desc_order (PT_NODE * vlist)
  */
 
 DB_AUTH
-pt_auth_to_db_auth (const PT_NODE * auth)
+pt_auth_to_db_auth (const PT_NODE *auth)
 {
   PT_PRIV_TYPE pt_auth;
   DB_AUTH db_auth;
@@ -2737,7 +2737,7 @@ pt_db_to_type_enum (const DB_TYPE t)
  *   node(in):
  */
 CUBRID_STMT_TYPE
-pt_node_to_cmd_type (PT_NODE * node)
+pt_node_to_cmd_type (PT_NODE *node)
 {
   if (node == NULL)
     {
@@ -2791,7 +2791,7 @@ pt_node_to_cmd_type (PT_NODE * node)
  */
 
 static PT_NODE *
-pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *data_type_added)
+pt_bind_helper (PARSER_CONTEXT *parser, PT_NODE *node, DB_VALUE *val, int *data_type_added)
 {
   PT_NODE *dt;
   DB_TYPE val_type;
@@ -2997,7 +2997,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
  */
 
 static PT_NODE *
-pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *data_type_added)
+pt_bind_set_type (PARSER_CONTEXT *parser, PT_NODE *node, DB_VALUE *val, int *data_type_added)
 {
   SET_ITERATOR *iterator;
   DB_VALUE *element;
@@ -3069,7 +3069,7 @@ error:
  */
 
 PT_NODE *
-pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val)
+pt_bind_type_from_dbval (PARSER_CONTEXT *parser, PT_NODE *node, DB_VALUE *val)
 {
   int data_type_added;
 
@@ -3088,7 +3088,7 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
  * 	maintainability of applications.
  */
 void
-pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
+pt_set_host_variables (PARSER_CONTEXT *parser, int count, DB_VALUE *values)
 {
   DB_VALUE *val, *hv;
   DB_TYPE typ;
@@ -3162,7 +3162,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
  *   hv(in):
  */
 DB_VALUE *
-pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
+pt_host_var_db_value (PARSER_CONTEXT *parser, PT_NODE *hv)
 {
   DB_VALUE *val = NULL;
   int idx;
@@ -3197,7 +3197,7 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
  *      pt_fixup_column_type function.
  */
 DB_VALUE *
-pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_value, int *more_type_info_needed)
+pt_db_value_initialize (PARSER_CONTEXT *parser, PT_NODE *value, DB_VALUE *db_value, int *more_type_info_needed)
 {
   DB_SET *set;
   DB_MULTISET *multiset;
@@ -3580,7 +3580,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
  *   json_val(out): output JSON DB_VALUE
  */
 int
-db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val)
+db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE *json_val)
 {
   JSON_DOC *json_doc = NULL;
   int error_code = NO_ERROR;

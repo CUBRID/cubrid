@@ -111,14 +111,14 @@ static int pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type, 
 static int pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1, const PT_NODE * col2,
 				     bool view_definition_context);
 static PT_UNION_COMPATIBLE pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2,
-						bool view_definition_context, bool * is_object_type);
+						bool view_definition_context, bool *is_object_type);
 static bool pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * dest_sci, PT_NODE * src,
-					   bool * is_cast_allowed);
+					   bool *is_cast_allowed);
 static PT_NODE *pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE_INFO * cinfo,
 				       int num_cinfo);
 static void pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * cinfo);
 static PT_NODE *pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1, PT_NODE * att2,
-					      SEMAN_COMPATIBLE_INFO * cinfo, int idx, bool * need_cast);
+					      SEMAN_COMPATIBLE_INFO * cinfo, int idx, bool *need_cast);
 static PT_NODE *pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser, PT_NODE * statement_list,
 						       PT_NODE * stmt_node, const char *class_name,
 						       const char *attr_name, PT_NODE * attr);
@@ -132,11 +132,11 @@ static PT_NODE *pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser
 static PT_NODE *pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 						    SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
 static PT_NODE *pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_NODE * att, PT_NODE * next_att,
-						   SEMAN_COMPATIBLE_INFO * cinfo, bool * new_cast_added);
+						   SEMAN_COMPATIBLE_INFO * cinfo, bool *new_cast_added);
 static SEMAN_COMPATIBLE_INFO *pt_get_values_query_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node,
-								   bool * need_cast);
+								   bool *need_cast);
 static SEMAN_COMPATIBLE_INFO *pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_list1,
-						      PT_NODE * select_list2, bool * need_cast);
+						      PT_NODE * select_list2, bool *need_cast);
 static bool pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo1,
 					SEMAN_COMPATIBLE_INFO * cinfo2, PT_NODE * att1, PT_NODE * att2, int index);
 static bool pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo, PT_TYPE_ENUM common_type,
@@ -260,7 +260,7 @@ static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NOD
 						 int *continue_walk);
 static void pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts, PT_NODE * node, MOP db_obj);
 static PT_NODE *pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
-static PT_NODE *pt_get_assignments (PT_NODE * node, bool * dblinked);
+static PT_NODE *pt_get_assignments (PT_NODE * node, bool *dblinked);
 static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static PT_UNION_COMPATIBLE pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query,
 							   SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
@@ -286,8 +286,8 @@ static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * p
  *   index(in): for update the idx of cinfo1
  */
 static bool
-pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo1, SEMAN_COMPATIBLE_INFO * cinfo2,
-			    PT_NODE * att1, PT_NODE * att2, int index)
+pt_combine_compatible_info (PARSER_CONTEXT *parser, SEMAN_COMPATIBLE_INFO *cinfo1, SEMAN_COMPATIBLE_INFO *cinfo2,
+			    PT_NODE *att1, PT_NODE *att2, int index)
 {
   PT_TYPE_ENUM common_type;
   bool is_compatible = false;
@@ -326,8 +326,8 @@ pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cin
  *   int p1, s1, p2, s2: prec1,scale1,prec2 and scale2
  */
 static bool
-pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo, PT_TYPE_ENUM common_type,
-			   SEMAN_COMPATIBLE_INFO * att1_info, SEMAN_COMPATIBLE_INFO * att2_info)
+pt_update_compatible_info (PARSER_CONTEXT *parser, SEMAN_COMPATIBLE_INFO *cinfo, PT_TYPE_ENUM common_type,
+			   SEMAN_COMPATIBLE_INFO *att1_info, SEMAN_COMPATIBLE_INFO *att2_info)
 {
   bool is_compatible = false;
 
@@ -381,11 +381,7 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
 
       if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
 	{			/* overflow */
-	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
-	  if (cinfo->scale < 0)
-	    {
-	      cinfo->scale = 0;
-	    }
+	  cinfo->scale = (DB_MAX_NUMERIC_PRECISION - cinfo->prec);
 	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
 	}
       break;
@@ -416,8 +412,7 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
  *   cinfo(in):
  */
 static PT_NODE *
-pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE_INFO * cinfo,
-				    int num_cinfo)
+pt_values_query_to_compatible_cast (PARSER_CONTEXT *parser, PT_NODE *node, SEMAN_COMPATIBLE_INFO *cinfo, int num_cinfo)
 {
   PT_NODE *node_list, *result = node;
   int i;
@@ -523,8 +518,8 @@ out_of_mem:
  *   note: the return pointer must be freed by free_and_init
  */
 static SEMAN_COMPATIBLE_INFO *
-pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_list1, PT_NODE * select_list2,
-			bool * need_cast)
+pt_get_compatible_info (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *select_list1, PT_NODE *select_list2,
+			bool *need_cast)
 {
   PT_NODE *att1, *att2, *p, *q;
   PT_UNION_COMPATIBLE compatible;
@@ -637,8 +632,8 @@ out_of_mem:
  *   new_cast_added(out): true if a new PT_EXPR node for cast if allocated, else false
  */
 static PT_NODE *
-pt_make_cast_with_compatible_info (PARSER_CONTEXT * parser, PT_NODE * att, PT_NODE * next_att,
-				   SEMAN_COMPATIBLE_INFO * cinfo, bool * new_cast_added)
+pt_make_cast_with_compatible_info (PARSER_CONTEXT *parser, PT_NODE *att, PT_NODE *next_att,
+				   SEMAN_COMPATIBLE_INFO *cinfo, bool *new_cast_added)
 {
   PT_EXPR_INFO *temp_expr;
   PT_DATA_TYPE_INFO *temp_data_type;
@@ -753,7 +748,7 @@ out_of_mem:
  *   note: the return pointer must be freed by free_and_init
  */
 static SEMAN_COMPATIBLE_INFO *
-pt_get_values_query_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, bool * need_cast)
+pt_get_values_query_compatible_info (PARSER_CONTEXT *parser, PT_NODE *node, bool *need_cast)
 {
   PT_NODE *attrs1, *attrs2, *att1, *att2, *node_list, *next_node_list;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL, *cinfo_cur = NULL, *result = NULL;
@@ -880,7 +875,7 @@ end:
  * pt_check_compatible_node_for min(), max()
  */
 bool
-pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column)
+pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT *parser, PT_NODE *order, PT_NODE *column)
 {
   PT_NODE *arg1;
   PT_TYPE_ENUM type1;
@@ -923,7 +918,7 @@ pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE 
  * pt_check_compatible_node_for_orderby ()
  */
 bool
-pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column)
+pt_check_compatible_node_for_orderby (PARSER_CONTEXT *parser, PT_NODE *order, PT_NODE *column)
 {
   PT_NODE *arg1, *cast_type;
   PT_TYPE_ENUM type1, type2;
@@ -989,7 +984,7 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, 
  *   node(in): the node to check
  */
 bool
-pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_cast_op (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *arg1;
   PT_TYPE_ENUM cast_type = PT_TYPE_NONE, arg_type;
@@ -1375,7 +1370,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
  *   Otherwise, pt_check_user_owns_class should be used.
  */
 static DB_OBJECT *
-pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
+pt_check_user_exists (PARSER_CONTEXT *parser, PT_NODE *cls_ref)
 {
   const char *user_name = NULL;
   DB_OBJECT *result;
@@ -1404,7 +1399,7 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
  *   cls_ref(in): a PT_NAME node
  */
 DB_OBJECT *
-pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
+pt_check_user_owns_class (PARSER_CONTEXT *parser, PT_NODE *cls_ref)
 {
   DB_OBJECT *result, *cls, *owner;
 
@@ -1438,7 +1433,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
  *   c(in): a query_spec column
  */
 static PT_NODE *
-pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
+pt_derive_attribute (PARSER_CONTEXT *parser, PT_NODE *c)
 {
   PT_NODE *attr = NULL;
   PT_NODE *cname = NULL;
@@ -1500,7 +1495,7 @@ pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
  *      no attributes and an execution error.
  */
 static PT_NODE *
-pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
+pt_get_attributes (PARSER_CONTEXT *parser, const DB_OBJECT *c)
 {
   DB_ATTRIBUTE *attributes;
   const char *class_name;
@@ -1591,7 +1586,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
  *   cls(in): a class instance
  */
 static PT_MISC_TYPE
-pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls)
+pt_get_class_type (PARSER_CONTEXT *parser, const DB_OBJECT *cls)
 {
   if (!cls)
     {
@@ -1625,7 +1620,7 @@ pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls)
  * non-inherited class_attributes are excluded from the attribute count.
  */
 static int
-pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** attrs)
+pt_number_of_attributes (PARSER_CONTEXT *parser, PT_NODE *stmt, PT_NODE **attrs)
 {
   int count = 0;
   PT_NODE *crt_attr = NULL;
@@ -1830,7 +1825,7 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
  *   d_class(in): a PT_DATA_TYPE node whose type_enum is PT_TYPE_OBJECT
  */
 static int
-pt_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, const PT_NODE * d_class)
+pt_is_real_class_of_vclass (PARSER_CONTEXT *parser, const PT_NODE *s_class, const PT_NODE *d_class)
 {
   if (!d_class || d_class->node_type != PT_DATA_TYPE || !s_class || s_class->node_type != PT_DATA_TYPE)
     {
@@ -1848,7 +1843,7 @@ pt_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, co
  *   s_class(in): source PT_NODE
  */
 static int
-pt_objects_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt, const PT_NODE * s_class)
+pt_objects_assignable (PARSER_CONTEXT *parser, const PT_NODE *d_class_dt, const PT_NODE *s_class)
 {
   PT_NODE *s_class_type, *d_class_dt_type = NULL;
 
@@ -1895,7 +1890,7 @@ pt_objects_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt, cons
  *   s_class(in): a PT_NODE whose type_enum is PT_TYPE_OBJECT
  */
 int
-pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt, const PT_NODE * s_class)
+pt_class_assignable (PARSER_CONTEXT *parser, const PT_NODE *d_class_dt, const PT_NODE *s_class)
 {
 
   /* a wildcard destination object accepts any other object type */
@@ -1936,8 +1931,7 @@ pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt, const 
  *   view_definition_context(in):
  */
 static int
-pt_class_compatible (PARSER_CONTEXT * parser, const PT_NODE * class1, const PT_NODE * class2,
-		     bool view_definition_context)
+pt_class_compatible (PARSER_CONTEXT *parser, const PT_NODE *class1, const PT_NODE *class2, bool view_definition_context)
 {
   if (!class1 || class1->type_enum != PT_TYPE_OBJECT || !class2 || class2->type_enum != PT_TYPE_OBJECT)
     {
@@ -1963,7 +1957,7 @@ pt_class_compatible (PARSER_CONTEXT * parser, const PT_NODE * class1, const PT_N
  *   qcol(in): a query spec column
  */
 static bool
-pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NODE * qcol)
+pt_vclass_compatible (PARSER_CONTEXT *parser, const PT_NODE *att, const PT_NODE *qcol)
 {
   PT_NODE *entity, *qcol_entity, *qcol_typ;
   DB_OBJECT *vcls = NULL;
@@ -2024,7 +2018,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NOD
  *   s_type(in): a PT_DATA_TYPE node whose type_enum is PT_TYPE_OBJECT
  */
 static int
-pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type, const PT_NODE * s_type)
+pt_type_assignable (PARSER_CONTEXT *parser, const PT_NODE *d_type, const PT_NODE *s_type)
 {
   PT_NODE *src_type, *dest_type = NULL;
 
@@ -2073,7 +2067,7 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type, const PT_NO
  *   s_col(in): a PT_NODE whose type_enum is a PT_IS_COLLECTION_TYPE
  */
 static int
-pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col, const PT_NODE * s_col)
+pt_collection_assignable (PARSER_CONTEXT *parser, const PT_NODE *d_col, const PT_NODE *s_col)
 {
   int assignable = 1;		/* innocent until proven guilty */
 
@@ -2154,7 +2148,7 @@ pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col, const 
  *   view_definition_context(in):
  */
 static int
-pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1, const PT_NODE * col2,
+pt_collection_compatible (PARSER_CONTEXT *parser, const PT_NODE *col1, const PT_NODE *col2,
 			  bool view_definition_context)
 {
   if (!col1 || !PT_IS_COLLECTION_TYPE (col1->type_enum) || !col2 || !PT_IS_COLLECTION_TYPE (col2->type_enum))
@@ -2192,8 +2186,8 @@ pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1, const P
  */
 
 static PT_UNION_COMPATIBLE
-pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, bool view_definition_context,
-		     bool * is_object_type)
+pt_union_compatible (PARSER_CONTEXT *parser, PT_NODE *item1, PT_NODE *item2, bool view_definition_context,
+		     bool *is_object_type)
 {
   PT_TYPE_ENUM typ1, typ2, common_type;
   PT_NODE *dt1, *dt2, *data_type;
@@ -2293,10 +2287,6 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	    {
 	      data_type->info.data_type.dec_precision =
 		(DB_MAX_NUMERIC_PRECISION - data_type->info.data_type.dec_precision);
-	      if (data_type->info.data_type.dec_precision < 0)
-		{
-		  data_type->info.data_type.dec_precision = 0;
-		}
 	      data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
 	    }
 	}
@@ -2344,8 +2334,8 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
  *   src(in):
  */
 static bool
-pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * dest_sci, PT_NODE * src,
-			       bool * is_cast_allowed)
+pt_is_compatible_without_cast (PARSER_CONTEXT *parser, SEMAN_COMPATIBLE_INFO *dest_sci, PT_NODE *src,
+			       bool *is_cast_allowed)
 {
   assert (dest_sci != NULL);
   assert (src != NULL);
@@ -2427,7 +2417,7 @@ pt_is_compatible_without_cast (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * 
  *   cinfo(in):
  */
 static PT_NODE *
-pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo)
+pt_to_compatible_cast (PARSER_CONTEXT *parser, PT_NODE *node, SEMAN_COMPATIBLE_INFO *cinfo, int num_cinfo)
 {
   PT_NODE *attrs, *att;
   PT_NODE *prev_att, *next_att, *new_att = NULL, *new_dt = NULL;
@@ -2576,7 +2566,7 @@ out_of_mem:
  *   cinfo(out):
  */
 static void
-pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * cinfo)
+pt_get_compatible_info_from_node (const PT_NODE *att, SEMAN_COMPATIBLE_INFO *cinfo)
 {
   assert (cinfo != NULL);
 
@@ -2636,8 +2626,8 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
  *   need_cast(out):
  */
 static PT_NODE *
-pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1, PT_NODE * att2, SEMAN_COMPATIBLE_INFO * cinfo,
-			      int idx, bool * need_cast)
+pt_get_common_type_for_union (PARSER_CONTEXT *parser, PT_NODE *att1, PT_NODE *att2, SEMAN_COMPATIBLE_INFO *cinfo,
+			      int idx, bool *need_cast)
 {
   PT_NODE *dt1, *dt2;
   PT_TYPE_ENUM common_type;
@@ -2697,7 +2687,7 @@ pt_get_common_type_for_union (PARSER_CONTEXT * parser, PT_NODE * att1, PT_NODE *
  */
 
 PT_NODE *
-pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_union_compatibility (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *attrs1, *attrs2, *result = node;
   PT_NODE *arg1, *arg2;
@@ -2792,7 +2782,7 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
  *   every two rows' compatible attributes are considered union-compatible.
  */
 PT_NODE *
-pt_check_type_compatibility_of_values_query (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_type_compatibility_of_values_query (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *node_list, *result = node;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL;
@@ -2859,7 +2849,7 @@ end:
  *   and pt_check_type_compatibility_of_values_query
  */
 PT_NODE *
-pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_union_type_compatibility_of_values_query (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *attrs1, *attrs2, *att1, *att2, *result = node;
   int cnt1, cnt2, i;
@@ -3070,7 +3060,7 @@ end:
  *   attr_name(in): name of attr to be defined a default value
  */
 static PT_NODE *
-pt_make_default_value (PARSER_CONTEXT * parser, const char *class_name, const char *attr_name)
+pt_make_default_value (PARSER_CONTEXT *parser, const char *class_name, const char *attr_name)
 {
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *attr_obj;
@@ -3104,7 +3094,7 @@ pt_make_default_value (PARSER_CONTEXT * parser, const char *class_name, const ch
  */
 
 static PT_NODE *
-pt_make_parameter (PARSER_CONTEXT * parser, const char *name, int is_out_parameter)
+pt_make_parameter (PARSER_CONTEXT *parser, const char *name, int is_out_parameter)
 {
   PT_NODE *node;
 
@@ -3143,8 +3133,8 @@ pt_make_parameter (PARSER_CONTEXT * parser, const char *name, int is_out_paramet
  */
 
 static PT_NODE *
-pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser, PT_NODE * statement_list, PT_NODE * stmt_node,
-				       const char *class_name, const char *attr_name, PT_NODE * attr)
+pt_append_statements_on_add_attribute (PARSER_CONTEXT *parser, PT_NODE *statement_list, PT_NODE *stmt_node,
+				       const char *class_name, const char *attr_name, PT_NODE *attr)
 {
   PT_NODE *s1, *s2, *s3, *s4;
   char *text_class_name = NULL, *stmt = NULL;
@@ -3250,8 +3240,8 @@ pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser, PT_NODE * statem
  *     => (main) alter class c change ..., a default null, ...;
  */
 static PT_NODE *
-pt_append_statements_on_change_default (PARSER_CONTEXT * parser, PT_NODE * statement_list, PT_NODE * stmt_node,
-					const char *class_name, const char *attr_name, PT_NODE * value)
+pt_append_statements_on_change_default (PARSER_CONTEXT *parser, PT_NODE *statement_list, PT_NODE *stmt_node,
+					const char *class_name, const char *attr_name, PT_NODE *value)
 {
   PT_NODE *s1, *save_next;
   char *text_class_name = NULL, *stmt = NULL;
@@ -3308,7 +3298,7 @@ pt_append_statements_on_change_default (PARSER_CONTEXT * parser, PT_NODE * state
  */
 
 static PT_NODE *
-pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser, PT_NODE * statement_list, const char *class_name_list)
+pt_append_statements_on_drop_attributes (PARSER_CONTEXT *parser, PT_NODE *statement_list, const char *class_name_list)
 {
   PT_NODE *s1;
   char *stmt = NULL;
@@ -3347,8 +3337,8 @@ pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser, PT_NODE * stat
  *     => (post) update c set a.object = :obj2 where c = :obj1;
  */
 static PT_NODE *
-pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node, const char *class_name,
-				const char *attr_name, PT_NODE * value, PT_NODE * parameter)
+pt_append_statements_on_insert (PARSER_CONTEXT *parser, PT_NODE *stmt_node, const char *class_name,
+				const char *attr_name, PT_NODE *value, PT_NODE *parameter)
 {
   PT_NODE *s1, *s2, *list;
   PT_NODE *save_next;
@@ -3462,8 +3452,8 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
  *         where a.object in :obj1
  */
 static PT_NODE *
-pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node, const char *class_name,
-				const char *attr_name, const char *alias_name, PT_NODE * value, PT_NODE ** where_ptr)
+pt_append_statements_on_update (PARSER_CONTEXT *parser, PT_NODE *stmt_node, const char *class_name,
+				const char *attr_name, const char *alias_name, PT_NODE *value, PT_NODE **where_ptr)
 {
   PT_NODE *s1, *s2, *list;
   PT_NODE *save_next;
@@ -3615,8 +3605,8 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
  */
 
 static PT_NODE *
-pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node, const char *class_name,
-				const char *attr_name, const char *alias_name, PT_NODE ** where_ptr)
+pt_append_statements_on_delete (PARSER_CONTEXT *parser, PT_NODE *stmt_node, const char *class_name,
+				const char *attr_name, const char *alias_name, PT_NODE **where_ptr)
 {
   PT_NODE *s1, *s2, *list;
   DB_VALUE *param1_dbvalp;
@@ -3735,7 +3725,7 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
  *   insert(in): parse tree of a insert statement
  */
 static void
-pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
+pt_resolve_insert_external (PARSER_CONTEXT *parser, PT_NODE *insert)
 {
   PT_NODE *a, *v, *lhs, *rhs, *save_next;
   PT_NODE *spec, *entity, *value;
@@ -3855,7 +3845,7 @@ exit_on_error:
  *   update(in): parse tree of a update statement
  */
 static void
-pt_resolve_update_external (PARSER_CONTEXT * parser, PT_NODE * update)
+pt_resolve_update_external (PARSER_CONTEXT *parser, PT_NODE *update)
 {
   PT_NODE *a, *lhs, *rhs;
   PT_NODE *spec, *entity, *alias;
@@ -3910,7 +3900,7 @@ exit_on_error:
  *   delete(in): parse tree of a delete statement
  */
 static void
-pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
+pt_resolve_delete_external (PARSER_CONTEXT *parser, PT_NODE *delete)
 {
   PT_NODE *spec, *entity, *alias;
   DB_OBJECT *db_obj;
@@ -3957,7 +3947,7 @@ exit_on_error:
  *   alter(in): parse tree of a alter statement
  */
 static void
-pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
+pt_resolve_default_external (PARSER_CONTEXT *parser, PT_NODE *alter)
 {
   PT_NODE *attr_name_list, *data_default_list, *stmt_list;
   PT_NODE *a, *v;
@@ -4003,7 +3993,7 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
  * data_default_list(in) : data default node
  */
 static PT_NODE *
-pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
+pt_check_data_default (PARSER_CONTEXT *parser, PT_NODE *data_default_list)
 {
   PT_NODE *result;
   PT_NODE *default_value;
@@ -4141,7 +4131,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
  * default_coll(in): collation of the attribute's class, or override value
  */
 int
-pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int default_cs, int default_coll)
+pt_attr_check_default_cs_coll (PARSER_CONTEXT *parser, PT_NODE *attr, int default_cs, int default_coll)
 {
   int attr_cs = attr->data_type->info.data_type.units;
   int attr_coll = attr->data_type->info.data_type.collation_id;
@@ -4250,7 +4240,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
  * continue_walk  : Continue walk.
  */
 static PT_NODE *
-pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   PT_NODE **sp = (PT_NODE **) arg;
 
@@ -4279,7 +4269,7 @@ pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  * continue_walk  : Continue walk.
  */
 static PT_NODE *
-pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_query (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   bool *has_query = (bool *) arg;
   assert (has_query != NULL);
@@ -4304,7 +4294,7 @@ pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue
  * continue_walk  :
  */
 static PT_NODE *
-pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_default_expression (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   PT_NODE **default_expr = (PT_NODE **) arg, *node = NULL;
 
@@ -4360,7 +4350,7 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
  * continue_walk  :
  */
 static PT_NODE *
-pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_aggregate_function (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   PT_NODE **agg_function = (PT_NODE **) arg;
 
@@ -4390,7 +4380,7 @@ pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
  * continue_walk  :
  */
 static PT_NODE *
-pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_aggregate_analytic_pre (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   PT_NODE **function = (PT_NODE **) arg;
 
@@ -4442,7 +4432,7 @@ pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
  * continue_walk  :
  */
 static PT_NODE *
-pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_aggregate_analytic_post (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
   PT_NODE **function = (PT_NODE **) arg;
 
@@ -4483,7 +4473,7 @@ pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *
  *     PT_FUNCTION, PT_EXPR, PT_MERGE, PT_INSERT
  */
 static PT_NODE *
-pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_find_aggregate_analytic_in_where (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *find = NULL;
 
@@ -4595,8 +4585,8 @@ pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static void
-pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC_TYPE class_type, const char *self,
-			   const bool reuse_oid, PT_NODE * stmt)
+pt_check_attribute_domain (PARSER_CONTEXT *parser, PT_NODE *attr_defs, PT_MISC_TYPE class_type, const char *self,
+			   const bool reuse_oid, PT_NODE *stmt)
 {
   PT_NODE *def, *att, *dtyp, *sdtyp;
   DB_OBJECT *cls;
@@ -4775,7 +4765,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC
  */
 
 static void
-pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs)
+pt_check_mutable_attributes (PARSER_CONTEXT *parser, DB_OBJECT *cls, PT_NODE *attr_defs)
 {
   PT_NODE *def, *att;
   const char *att_nam, *cls_nam;
@@ -4815,7 +4805,7 @@ pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE *
  *   alter(in): an alter statement
  */
 static void
-pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
+pt_check_alter (PARSER_CONTEXT *parser, PT_NODE *alter)
 {
   DB_OBJECT *db, *super;
   PT_ALTER_CODE code;
@@ -5385,7 +5375,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
  *   att(in): an attribute
  */
 static const char *
-attribute_name (PARSER_CONTEXT * parser, PT_NODE * att)
+attribute_name (PARSER_CONTEXT *parser, PT_NODE *att)
 {
   if (!att)
     {
@@ -5412,7 +5402,7 @@ attribute_name (PARSER_CONTEXT * parser, PT_NODE * att)
  *   att(in): an attribute
  */
 static int
-is_shared_attribute (PARSER_CONTEXT * parser, PT_NODE * att)
+is_shared_attribute (PARSER_CONTEXT *parser, PT_NODE *att)
 {
   if (!att)
     {
@@ -5449,7 +5439,7 @@ is_shared_attribute (PARSER_CONTEXT * parser, PT_NODE * att)
  *   name_node(in/out):
  */
 static int
-pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
+pt_find_partition_column_count_func (PT_NODE *func, PT_NODE **name_node)
 {
   int cnt = 0, ret;
   PT_NODE *f_arg;
@@ -5526,7 +5516,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
  *   name_node(in/out):
  */
 static int
-pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
+pt_find_partition_column_count (PT_NODE *expr, PT_NODE **name_node)
 {
   int cnt = 0, ret;
 
@@ -5803,7 +5793,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
  *   ptl(in):
  */
 static int
-pt_value_links_add (PARSER_CONTEXT * parser, PT_NODE * parts, PT_NODE * val, PT_VALUE_LINKS * ptl)
+pt_value_links_add (PARSER_CONTEXT *parser, PT_NODE *parts, PT_NODE *val, PT_VALUE_LINKS *ptl)
 {
   PT_VALUE_LINKS *vblk, *blks;
 
@@ -5866,8 +5856,8 @@ duplicate_error:
  *   parts (in)	      : node specifying one partition
  */
 static int
-pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, PT_NODE * data_type,
-			   PT_VALUE_LINKS * ptl, PT_NODE * parts)
+pt_check_partition_values (PARSER_CONTEXT *parser, PT_TYPE_ENUM desired_type, PT_NODE *data_type,
+			   PT_VALUE_LINKS *ptl, PT_NODE *parts)
 {
   int error = NO_ERROR;
   PT_NODE *val = NULL;
@@ -5974,7 +5964,7 @@ pt_check_partition_values (PARSER_CONTEXT * parser, PT_TYPE_ENUM desired_type, P
  */
 
 static void
-pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
+pt_check_partitions (PARSER_CONTEXT *parser, PT_NODE *stmt, MOP dbobj)
 {
   PT_NODE *pinfo, *pcol, *attr, *pattr, *parts;
   int name_count, valchk, parts_cnt;
@@ -6345,7 +6335,7 @@ pvl_free_end:
  * - valid hash size
  */
 static int
-partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
+partition_range_min_max (DB_VALUE **dest, DB_VALUE *inval, int min_max)
 {
   int op, rst;
   DB_VALUE nullval;
@@ -6415,7 +6405,7 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
  *   val(in):
  */
 static int
-db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
+db_value_list_add (DB_VALUE_PLIST **ptail, DB_VALUE *val)
 {
   DB_VALUE_PLIST *tmp_vallist;
   DB_VALUE nullval, *chkval;
@@ -6464,7 +6454,7 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
  *   val(in):
  */
 static int
-db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
+db_value_list_find (const DB_VALUE_PLIST *phead, const DB_VALUE *val)
 {
   DB_VALUE_PLIST *tmp;
   DB_VALUE nullval, *chkval;
@@ -6502,7 +6492,7 @@ db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
  *   val(in):
  */
 static int
-db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
+db_value_list_finddel (DB_VALUE_PLIST **phead, DB_VALUE *val)
 {
   DB_VALUE_PLIST *tmp, *pre = NULL;
   DB_VALUE nullval, *chkval;
@@ -6560,7 +6550,7 @@ db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
  */
 
 static void
-pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
+pt_check_alter_partition (PARSER_CONTEXT *parser, PT_NODE *stmt, MOP dbobj)
 {
   PT_NODE *name_list, *part_list;
   PT_NODE *names, *parts, *val, *next_parts;
@@ -7302,7 +7292,7 @@ out_of_mem:
  *   self(in): name of vclass being created/altered
  */
 static bool
-pt_attr_refers_to_self (PARSER_CONTEXT * parser, PT_NODE * attr, const char *self)
+pt_attr_refers_to_self (PARSER_CONTEXT *parser, PT_NODE *attr, const char *self)
 {
   PT_NODE *type;
   DB_OBJECT *self_obj, *attr_obj;
@@ -7424,7 +7414,7 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
  *   attrs(in):
  */
 static PT_NODE *
-pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrds)
+pt_check_vclass_union_spec (PARSER_CONTEXT *parser, PT_NODE *qry, PT_NODE *attrds)
 {
   PT_NODE *attrd = NULL;
   PT_NODE *attrs1 = NULL;
@@ -7516,7 +7506,7 @@ pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
  *   continue_walk(in):
  */
 PT_NODE *
-pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   const char *spec_name = NULL;
   PT_NODE *entity_name = NULL;
@@ -7615,7 +7605,7 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
  */
 
 static PT_NODE *
-pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs, const char *self,
+pt_check_vclass_query_spec (PARSER_CONTEXT *parser, PT_NODE *qry, PT_NODE *attrs, const char *self,
 			    const bool do_semantic_check)
 {
   PT_NODE *columns, *col, *attr;
@@ -7733,7 +7723,7 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
  */
 
 PT_NODE *
-pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col)
+pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT *parser, PT_NODE *attr, PT_NODE *col)
 {
   bool is_object_type;
   PT_UNION_COMPATIBLE c;
@@ -7810,7 +7800,7 @@ pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser, PT_NODE * attr, 
  *   attrs(in):
  */
 static PT_NODE *
-pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs)
+pt_type_cast_vclass_query_spec (PARSER_CONTEXT *parser, PT_NODE *qry, PT_NODE *attrs)
 {
   PT_NODE *columns, *col, *attr;
   PT_NODE *new_col, *prev_col;
@@ -7951,7 +7941,7 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE 
  * In both cases, each attribute in attrs will correspond to the column in the select list at the same index
  */
 static PT_NODE *
-pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs)
+pt_check_default_vclass_query_spec (PARSER_CONTEXT *parser, PT_NODE *qry, PT_NODE *attrs)
 {
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
@@ -8137,7 +8127,7 @@ error:
  */
 
 static void
-pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_check_create_view (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   PT_NODE *all_attrs = NULL;
   PT_NODE *derived_attr = NULL;
@@ -8365,7 +8355,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * node(in)	: create user node
  */
 static void
-pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_create_user (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *user_name;
   const char *name;
@@ -8399,7 +8389,7 @@ pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static PT_NODE *
-pt_check_query_cache_in_create_entity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_query_cache_in_create_entity (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   bool *has_cache_hint = (bool *) arg;
 
@@ -8425,7 +8415,7 @@ pt_check_query_cache_in_create_entity (PARSER_CONTEXT * parser, PT_NODE * node, 
  */
 
 static void
-pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_create_entity (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *parent, *qry_specs, *name, *create_like;
   PT_NODE *all_attrs, *r, *resolv_class, *attr;
@@ -8938,7 +8928,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static void
-pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_create_index (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *name, *prefix_length, *col, *col_expr;
   DB_OBJECT *db_obj;
@@ -9113,7 +9103,7 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static void
-pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_alter_synonym (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_OBJECT *synonym_obj = NULL;
   DB_OBJECT *owner_obj = NULL;
@@ -9198,7 +9188,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static void
-pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_create_synonym (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_OBJECT *synonym_obj = NULL;
   DB_OBJECT *owner_obj = NULL;
@@ -9304,7 +9294,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static void
-pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_drop_synonym (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_OBJECT *synonym_obj = NULL;
   DB_OBJECT *owner_obj = NULL;
@@ -9370,7 +9360,7 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static void
-pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_rename_synonym (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_OBJECT *old_synonym_obj = NULL;
   DB_OBJECT *new_synonym_obj = NULL;
@@ -9507,7 +9497,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static bool
-pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
+pt_is_defined_class (PARSER_CONTEXT *parser, PT_NODE *data_type)
 {
   if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
     {
@@ -9527,7 +9517,7 @@ pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 }
 
 static PT_TYPE_ENUM
-pt_get_type_enum_of_table_column (PARSER_CONTEXT * parser, PT_NODE * data_type)
+pt_get_type_enum_of_table_column (PARSER_CONTEXT *parser, PT_NODE *data_type)
 {
   PT_NODE *table_column = data_type->info.data_type.table_column;
   assert (PT_IS_DOT_NODE (table_column));
@@ -9554,7 +9544,7 @@ pt_get_type_enum_of_table_column (PARSER_CONTEXT * parser, PT_NODE * data_type)
 }
 
 static bool
-pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, PT_NODE * data_type)
+pt_is_type_supported_by_sp (PARSER_CONTEXT *parser, PT_TYPE_ENUM & type_enum, PT_NODE *data_type)
 {
 
   if (type_enum == PT_TYPE_NONE && data_type && data_type->type_enum == PT_TYPE_TABLE_COLUMN)
@@ -9608,7 +9598,7 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
 }
 
 static const char *
-pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
+pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE *data_type)
 {
 
   if (type_enum == PT_TYPE_OBJECT)
@@ -9633,7 +9623,7 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
  *   node(in): a statement
  */
 static int
-pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
+pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *param)
 {
   int error = NO_ERROR;
   PT_NODE *node_ptr = NULL;
@@ -9707,7 +9697,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
  *   node(in): a statement
  */
 static void
-pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   int error = NO_ERROR;
   PT_NODE *param = NULL;
@@ -9840,7 +9830,7 @@ end:
  *   node(in): a statement
  */
 static void
-pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_drop (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *temp;
   PT_NODE *name;
@@ -10097,7 +10087,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static void
-pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_grant_revoke (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *user;
   const char *username;
@@ -10165,7 +10155,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static void
-pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_method (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *target;
   DB_VALUE val;
@@ -10284,7 +10274,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
  *   node(in): a statement
  */
 static void
-pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_truncate (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *temp;
   PT_NODE *name;
@@ -10346,7 +10336,7 @@ pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
  *   node(in): a statement
  */
 static void
-pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_kill (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *tran_id;
 
@@ -10367,7 +10357,7 @@ pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
  *   node(in): a statement
  */
 static void
-pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_alter_serial (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   DB_OBJECT *serial_class = NULL, *serial_object = NULL;
   DB_IDENTIFIER serial_obj_id;
@@ -10473,7 +10463,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
  *   node(in): a statement
  */
 static void
-pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_update_stats (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *class_name_node;
   PT_FLAT_SPEC_INFO info;
@@ -10535,7 +10525,7 @@ pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node)
  *   continue_walk(in/out):
  */
 static PT_NODE *
-pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_single_valued_node (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_AGG_CHECK_INFO *info = (PT_AGG_CHECK_INFO *) arg;
   PT_NODE *spec, *arg2, *group, *expr;
@@ -10684,7 +10674,7 @@ pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
  *   continue_walk(in/out):
  */
 static PT_NODE *
-pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_single_valued_node_post (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_AGG_CHECK_INFO *info = (PT_AGG_CHECK_INFO *) arg;
 
@@ -10705,7 +10695,7 @@ pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void 
  *   qry(in): a SELECT/UNION/INTERSECTION/DIFFERENCE statement
  */
 static void
-pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
+pt_check_into_clause_for_static_sql (PARSER_CONTEXT *parser, PT_NODE *qry, int into_cnt)
 {
   // set external into labels in parser context
   PT_NODE *into = qry->info.query.into_list;
@@ -10732,7 +10722,7 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
  *   qry(in): a SELECT/UNION/INTERSECTION/DIFFERENCE statement
  */
 static void
-pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
+pt_check_into_clause (PARSER_CONTEXT *parser, PT_NODE *qry)
 {
   PT_NODE *into;
   int tgt_cnt, col_cnt;
@@ -10774,7 +10764,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 }
 
 static int
-pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
+pt_normalize_path (PARSER_CONTEXT *parser, REFPTR (char, c))
 {
   std::string normalized_path;
 
@@ -10790,7 +10780,7 @@ pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
 }
 
 static int
-pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c))
+pt_json_str_codeset_normalization (PARSER_CONTEXT *parser, REFPTR (char, c))
 {
   DB_VALUE res_str, temp;
   db_make_string (&temp, c);
@@ -10817,7 +10807,7 @@ pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c))
  *   node(in): json_table node
  */
 static int
-pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_json_table_node (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
@@ -10913,7 +10903,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_semantic_check_local (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   SEMANTIC_CHK_INFO *info = (SEMANTIC_CHK_INFO *) arg;
   PT_NODE *next, *top_node = info->top_node;
@@ -11626,7 +11616,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
  *   chain(in):
  */
 static PT_NODE *
-pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain)
+pt_gen_isnull_preds (PARSER_CONTEXT *parser, PT_NODE *pred, PT_CHAIN_INFO *chain)
 {
   PT_NODE *disj, *arg1, *next_spec, *conj, *new_path, *new_expr;
   PT_NODE *new_pred = NULL;
@@ -11777,7 +11767,7 @@ error:
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_path_chain (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_CHAIN_INFO *chain = (PT_CHAIN_INFO *) arg;
   PT_NODE *tmp;
@@ -11871,7 +11861,7 @@ out_of_mem:
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_expand_isnull_preds_helper (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *statement = (PT_NODE *) arg;
   PT_CHAIN_INFO chain_info;
@@ -11911,7 +11901,7 @@ pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_expand_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_expand_isnull_preds (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *statement = (PT_NODE *) arg;
   PT_NODE **pred = NULL;
@@ -11970,7 +11960,7 @@ pt_expand_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  *   continue_walk(in/out):
  */
 static PT_NODE *
-pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_and_replace_hostvar (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *value;
   DB_VALUE *dbval;
@@ -12047,7 +12037,7 @@ pt_check_and_replace_hostvar (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
  */
 
 static PT_NODE *
-pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_with_clause (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *cte = node->info.query.with->info.with_clause.cte_definition_list;
 
@@ -12096,7 +12086,7 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static PT_NODE *
-pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * info)
+pt_check_with_info (PARSER_CONTEXT *parser, PT_NODE *node, SEMANTIC_CHK_INFO *info)
 {
   PT_NODE *next;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
@@ -12526,7 +12516,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
  *  the call. This is why we have to pass pointers to PT_NODE*
  */
 PT_NODE *
-pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p, PT_NODE ** node_p)
+pt_semantic_quick_check_node (PARSER_CONTEXT *parser, PT_NODE **spec_p, PT_NODE **node_p)
 {
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   int error = NO_ERROR;
@@ -12559,7 +12549,7 @@ pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE ** spec_p, PT_NOD
  */
 
 PT_NODE *
-pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_semantic_check (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   return pt_check_with_info (parser, node, NULL);
 }
@@ -12575,7 +12565,7 @@ pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
  * Finds CLASS VCLASS VIEW only
  */
 static DB_OBJECT *
-pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update)
+pt_find_class (PARSER_CONTEXT *parser, PT_NODE *p, bool for_update)
 {
   if (!p)
     return 0;
@@ -12597,7 +12587,7 @@ pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p, bool for_update)
  *   att_type(in): an attribute definition type list
  */
 static void
-pt_check_unique_attr (PARSER_CONTEXT * parser, const char *entity_name, PT_NODE * att, PT_NODE_TYPE att_type)
+pt_check_unique_attr (PARSER_CONTEXT *parser, const char *entity_name, PT_NODE *att, PT_NODE_TYPE att_type)
 {
   PT_NODE *p, *q, *p_nam, *q_nam;
 
@@ -12686,7 +12676,7 @@ pt_check_unique_attr (PARSER_CONTEXT * parser, const char *entity_name, PT_NODE 
  *   rhs(in): the AST form of an expression from the values part of an insert
  */
 static int
-pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
+pt_assignment_class_compatible (PARSER_CONTEXT *parser, PT_NODE *lhs, PT_NODE *rhs)
 {
   assert (parser != NULL);
   assert (lhs != NULL);
@@ -12720,7 +12710,7 @@ pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE 
  *   rhs(in): the AST form of an expression from the values part of an insert
  */
 static PT_NODE *
-pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
+pt_assignment_compatible (PARSER_CONTEXT *parser, PT_NODE *lhs, PT_NODE *rhs)
 {
   assert (parser != NULL);
   assert (lhs != NULL);
@@ -12941,7 +12931,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
  */
 
 static void
-pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_check_assignments (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   PT_NODE *a, *next, *lhs, *rhs, *list, *rhs_list;
   PT_NODE *assignment_list;
@@ -13110,7 +13100,7 @@ pt_check_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
  *   replace the value with that assignment.
  */
 static PT_NODE *
-pt_replace_names_in_update_values (PARSER_CONTEXT * parser, PT_NODE * update)
+pt_replace_names_in_update_values (PARSER_CONTEXT *parser, PT_NODE *update)
 {
   PT_NODE *attr = NULL, *val = NULL;
   PT_NODE *node = NULL, *prev = NULL;
@@ -13190,7 +13180,7 @@ pt_replace_names_in_update_values (PARSER_CONTEXT * parser, PT_NODE * update)
  * continue_walk (in) :
  */
 static PT_NODE *
-pt_replace_referenced_attributes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_replace_referenced_attributes (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_NODE *assignment = NULL, *val = NULL;
   PT_NODE *assignments = (PT_NODE *) arg;
@@ -13261,7 +13251,7 @@ pt_replace_referenced_attributes (PARSER_CONTEXT * parser, PT_NODE * node, void 
  *   stmt(in): an update/merge statement
  */
 void
-pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser, PT_NODE * statement)
+pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   bool has_attrib = false, has_meta_attrib = false;
   PT_ASSIGNMENTS_HELPER ea;
@@ -13301,7 +13291,7 @@ pt_no_attr_and_meta_attr_updates (PARSER_CONTEXT * parser, PT_NODE * statement)
  * stmt (in)   : Insert statement.
  */
 void
-pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_no_double_insert_assignments (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   PT_NODE *attr = NULL, *spec = NULL;
   PT_NODE *entity_name;
@@ -13353,7 +13343,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
  */
 
 void
-pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_no_double_updates (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   PT_NODE *a, *b, *att_a, *att_b;
   PT_NODE *assignment_list;
@@ -13476,7 +13466,7 @@ exit_on_error:
  * Can't invert:  x+y;  x+x;  x*x; constants ; count(*);  f(x) ;
  */
 PT_NODE *
-pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
+pt_invert (PARSER_CONTEXT *parser, PT_NODE *name_expr, PT_NODE *result)
 {
   int result_isnull = 0;
   PT_NODE *tmp;
@@ -13904,7 +13894,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
  */
 
 int
-pt_find_var (PT_NODE * p, PT_NODE ** result)
+pt_find_var (PT_NODE *p, PT_NODE **result)
 {
   if (!p)
     return 0;
@@ -13934,7 +13924,7 @@ pt_find_var (PT_NODE * p, PT_NODE ** result)
  *   list(in/out):
  */
 PT_NODE *
-pt_remove_from_list (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
+pt_remove_from_list (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *list)
 {
   PT_NODE *temp;
 
@@ -13975,7 +13965,7 @@ pt_remove_from_list (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list)
  */
 
 PT_NODE *
-pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_NODE * sort_value, const PT_NODE * order_list)
+pt_find_order_value_in_list (PARSER_CONTEXT *parser, const PT_NODE *sort_value, const PT_NODE *order_list)
 {
   PT_NODE *match = NULL;
 
@@ -14021,7 +14011,7 @@ pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_NODE * sort_value
  */
 
 int
-pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
+pt_check_order_by (PARSER_CONTEXT *parser, PT_NODE *query)
 {
   PT_NODE *select_list, *order_by, *col, *r, *temp, *order, *match;
   int n, i, select_list_len, select_list_full_len;
@@ -14427,7 +14417,7 @@ check_select_list:
  */
 
 int
-pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_group_by (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   int error = NO_ERROR;
   PT_NODE *t_node;
@@ -14546,7 +14536,7 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
  *   q(in):
  */
 int
-pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
+pt_check_path_eq (PARSER_CONTEXT *parser, const PT_NODE *p, const PT_NODE *q)
 {
   PT_NODE_TYPE n;
 
@@ -14685,7 +14675,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
  *   q(in):
  */
 int
-pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
+pt_check_class_eq (PARSER_CONTEXT *parser, PT_NODE *p, PT_NODE *q)
 {
   PT_NODE_TYPE n;
 
@@ -14761,7 +14751,7 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
  *   stmt(in): the AST form of an insert/merge statement
  */
 static PT_NODE *
-pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_coerce_insert_values (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   PT_NODE *v = NULL, *a = NULL, *crt_list = NULL;
   int a_cnt = 0, v_cnt = 0;
@@ -14895,7 +14885,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * continue_walk (in) : Continue walk.
  */
 static PT_NODE *
-pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+pt_check_sub_insert (PARSER_CONTEXT *parser, PT_NODE *node, void *void_arg, int *continue_walk)
 {
   PT_NODE *entity_name = NULL, *value_clauses = NULL;
 
@@ -14975,7 +14965,7 @@ pt_check_sub_insert (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, in
  */
 
 PT_NODE *
-pt_count_input_markers (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_count_input_markers (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *num_markers;
 
@@ -15003,7 +14993,7 @@ pt_count_input_markers (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  *   continue_walk(in):
  */
 PT_NODE *
-pt_count_output_markers (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_count_output_markers (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *num_markers;
 
@@ -15029,7 +15019,7 @@ pt_count_output_markers (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
  *   continue_walk(in):
  */
 PT_NODE *
-pt_has_using_index_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_has_using_index_clause (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   bool *found = (bool *) arg;
   PT_NODE *ui_node;
@@ -15072,7 +15062,7 @@ pt_has_using_index_clause (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
  */
 
 int
-pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
+pt_validate_query_spec (PARSER_CONTEXT *parser, PT_NODE *s, DB_OBJECT *c)
 {
   PT_NODE *attrs = NULL;
   int error_code = NO_ERROR;
@@ -15146,7 +15136,7 @@ error_exit:
  */
 
 static void
-pt_check_xaction_list (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_xaction_list (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   int num_iso_nodes = 0;
   int num_time_nodes = 0;
@@ -15176,7 +15166,7 @@ pt_check_xaction_list (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static PT_NODE *
-pt_count_iso_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_count_iso_nodes (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
 
@@ -15197,7 +15187,7 @@ pt_count_iso_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_count_time_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_count_time_nodes (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
 
@@ -15224,7 +15214,7 @@ pt_count_time_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  */
 
 static PT_NODE *
-pt_check_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_isolation_lvl (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   DB_TRAN_ISOLATION cur_lvl;
   int dummy;
@@ -15309,7 +15299,7 @@ pt_check_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  */
 
 PT_NODE *
-pt_find_attr_def (const PT_NODE * attr_def_list, const PT_NODE * name)
+pt_find_attr_def (const PT_NODE *attr_def_list, const PT_NODE *name)
 {
   PT_NODE *p;
 
@@ -15332,7 +15322,7 @@ pt_find_attr_def (const PT_NODE * attr_def_list, const PT_NODE * name)
  *   name(in): a PT_NAME node
  */
 PT_NODE *
-pt_find_cnstr_def (const PT_NODE * cnstr_def_list, const PT_NODE * name)
+pt_find_cnstr_def (const PT_NODE *cnstr_def_list, const PT_NODE *name)
 {
   PT_NODE *p;
 
@@ -15368,7 +15358,7 @@ pt_find_cnstr_def (const PT_NODE * cnstr_def_list, const PT_NODE * name)
  */
 
 static PT_NODE *
-pt_check_constraint (PARSER_CONTEXT * parser, const PT_NODE * create, const PT_NODE * constraint)
+pt_check_constraint (PARSER_CONTEXT *parser, const PT_NODE *create, const PT_NODE *constraint)
 {
   switch (constraint->info.constraint.type)
     {
@@ -15413,7 +15403,7 @@ error:
  *   create(in): a CREATE_ENTITY node
  */
 static PT_NODE *
-pt_check_constraints (PARSER_CONTEXT * parser, const PT_NODE * create)
+pt_check_constraints (PARSER_CONTEXT *parser, const PT_NODE *create)
 {
   PT_NODE *constraint;
 
@@ -15438,7 +15428,7 @@ pt_check_constraints (PARSER_CONTEXT * parser, const PT_NODE * create)
  *   condition will be searched for.
  */
 PT_NODE *
-pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name, const DB_CONSTRAINT_TYPE index_type)
+pt_find_class_of_index (PARSER_CONTEXT *parser, const char *const index_name, const DB_CONSTRAINT_TYPE index_type)
 {
   PT_NODE *node = NULL;
   DB_OBJECT *const class_ = db_find_class_of_index (index_name, index_type);
@@ -15463,7 +15453,7 @@ pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name, c
  *   node(in): the node to check
  */
 static int
-pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_defaultf (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *arg;
 
@@ -15533,7 +15523,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
  *   create(in): a CREATE_ENTITY node
  */
 static int
-pt_check_auto_increment_table_option (PARSER_CONTEXT * parser, PT_NODE * create)
+pt_check_auto_increment_table_option (PARSER_CONTEXT *parser, PT_NODE *create)
 {
   PT_NODE *attr = NULL;
   PT_NODE *auto_inc_attr = NULL;
@@ -15640,7 +15630,7 @@ pt_check_auto_increment_table_option (PARSER_CONTEXT * parser, PT_NODE * create)
  *    - if it doesn't match, an error is issued.
  */
 static int
-pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
+pt_check_group_concat_order_by (PARSER_CONTEXT *parser, PT_NODE *func)
 {
   PT_NODE *arg_list = NULL;
   PT_NODE *order_by = NULL;
@@ -15829,7 +15819,7 @@ error_exit:
  */
 
 static int
-pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
+pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT *parser, PT_NODE *func)
 {
   PT_NODE *arg_list = NULL;
   PT_NODE *order_by = NULL;
@@ -15962,7 +15952,7 @@ error_exit:
  * stmt (in)	: statement
  */
 static bool
-pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt)
+pt_has_parameters (PARSER_CONTEXT *parser, PT_NODE *stmt)
 {
   bool has_paramenters = false;
 
@@ -15980,7 +15970,7 @@ pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt)
  * continue_walk (in) :
  */
 static PT_NODE *
-pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_is_parameter_node (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   bool *is_parameter = (bool *) arg;
   *continue_walk = PT_CONTINUE_WALK;
@@ -16010,7 +16000,7 @@ pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *  select_list(in): statement's select list for PT_VALUE lookup
  */
 static PT_NODE *
-pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list)
+pt_resolve_sort_spec_expr (PARSER_CONTEXT *parser, PT_NODE *sort_spec, PT_NODE *select_list)
 {
   PT_NODE *expr, *resolved;
 
@@ -16073,7 +16063,7 @@ pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE
  *  expr2(in): second expression
  */
 bool
-pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2)
+pt_compare_sort_spec_expr (PARSER_CONTEXT *parser, PT_NODE *expr1, PT_NODE *expr2)
 {
   if (parser == NULL || expr1 == NULL || expr2 == NULL || (expr1->node_type != expr2->node_type))
     {
@@ -16116,7 +16106,7 @@ pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * e
  *  select_list(in): statement's select list, for PT_VALUE lookup
  */
 static PT_NODE *
-pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list, PT_NODE * select_list)
+pt_find_matching_sort_spec (PARSER_CONTEXT *parser, PT_NODE *spec, PT_NODE *spec_list, PT_NODE *select_list)
 {
   PT_NODE *spec_expr, *expr;
 
@@ -16168,7 +16158,7 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * s
  *  (e.g.: order by null, order by 1 + 5, etc)
  */
 static PT_NODE *
-pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
+pt_remove_unusable_sort_specs (PARSER_CONTEXT *parser, PT_NODE *list)
 {
   PT_NODE *item, *expr, *save_next;
 
@@ -16234,7 +16224,7 @@ pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
  *
  */
 static PT_NODE *
-pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, int *continue_walk)
+pt_check_analytic_function (PARSER_CONTEXT *parser, PT_NODE *func, void *arg, int *continue_walk)
 {
   PT_NODE *arg_list, *partition_by, *order_by, *select_list;
   PT_NODE *order, *query;
@@ -16482,7 +16472,7 @@ error_exit:
  * node (in) : node - PT_CREATE_INDEX
  */
 static void
-pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_function_index_expr (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *col, *rem = NULL;
   int fnc_cnt = 0;
@@ -16554,7 +16544,7 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
  * continue_walk (in/out) : Walker argument to know when to stop advancing.
  */
 static PT_NODE *
-pt_check_function_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_function_index_expr_pre (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   assert (continue_walk != NULL);
 
@@ -16581,7 +16571,7 @@ pt_check_function_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
  * db_obj (in) : class mop
  */
 static void
-pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts, PT_NODE * node, MOP db_obj)
+pt_check_filter_index_expr (PARSER_CONTEXT *parser, PT_NODE *atts, PT_NODE *node, MOP db_obj)
 {
   PT_FILTER_INDEX_INFO info;
   int atts_count = 0, i = 0;
@@ -16697,7 +16687,7 @@ pt_check_filter_index_expr (PARSER_CONTEXT * parser, PT_NODE * atts, PT_NODE * n
  * continue_walk (in) : continue walk
  */
 static PT_NODE *
-pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_filter_index_expr_post (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
   assert (info != NULL);
@@ -16738,7 +16728,7 @@ pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *
  * continue_walk (in) : continue walk
  */
 static PT_NODE *
-pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_filter_index_expr_pre (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   PT_FILTER_INDEX_INFO *info = (PT_FILTER_INDEX_INFO *) arg;
   assert (info != NULL);
@@ -17161,7 +17151,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * node (in): statement node
  */
 static PT_NODE *
-pt_get_assignments (PT_NODE * node, bool * dblinked)
+pt_get_assignments (PT_NODE *node, bool *dblinked)
 {
   PT_NODE *spec, *assignment;
 
@@ -17211,7 +17201,7 @@ pt_get_assignments (PT_NODE * node, bool * dblinked)
  *    - only instance attributes are updated
  */
 PT_NODE *
-pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
+pt_check_odku_assignments (PARSER_CONTEXT *parser, PT_NODE *insert)
 {
   PT_NODE *assignment, *spec, *lhs;
   if (insert == NULL || insert->node_type != PT_INSERT)
@@ -17268,7 +17258,7 @@ pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
  * node (in)   : VACUUM parse tree node.
  */
 static void
-pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_vacuum (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_FLAT_SPEC_INFO info;
 
@@ -17298,7 +17288,7 @@ pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node)
  *   num_cinfo(in): number of elements in cinfo
  */
 static PT_UNION_COMPATIBLE
-pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo)
+pt_get_select_list_coll_compat (PARSER_CONTEXT *parser, PT_NODE *query, SEMAN_COMPATIBLE_INFO *cinfo, int num_cinfo)
 {
   PT_NODE *attrs, *att;
   int i;
@@ -17377,7 +17367,7 @@ pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_
  *   num_cinfo(in): number of elements in cinfo
  */
 static PT_UNION_COMPATIBLE
-pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_COMPATIBLE_INFO * cinfo,
+pt_apply_union_select_list_collation (PARSER_CONTEXT *parser, PT_NODE *query, SEMAN_COMPATIBLE_INFO *cinfo,
 				      int num_cinfo)
 {
   PT_NODE *attrs, *att, *prev_att, *next_att, *new_att;
@@ -17504,7 +17494,7 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
  *   continue_walk(in/out):
  */
 static PT_NODE *
-pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_mark_union_leaf_nodes (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   if (PT_IS_UNION (node) || PT_IS_INTERSECTION (node) || PT_IS_DIFFERENCE (node))
     {
@@ -17533,7 +17523,7 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
  *   node(in): the node to check
  */
 static PT_NODE *
-pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_check_where (PARSER_CONTEXT *parser, PT_NODE *node)
 {
   PT_NODE *function = NULL;
 
@@ -17565,8 +17555,8 @@ pt_check_where (PARSER_CONTEXT * parser, PT_NODE * node)
  *
  */
 static int
-pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * part,
-					    PT_NODE * part_next, PT_NODE * column_dt)
+pt_check_range_partition_strict_increasing (PARSER_CONTEXT *parser, PT_NODE *stmt, PT_NODE *part,
+					    PT_NODE *part_next, PT_NODE *column_dt)
 {
   int error = NO_ERROR;
   PT_NODE *pt_val1 = NULL, *pt_val2 = NULL;
@@ -17681,7 +17671,7 @@ end:
  *
  */
 static int
-pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type)
+pt_coerce_partition_value_with_data_type (PARSER_CONTEXT *parser, PT_NODE *value, PT_NODE *data_type)
 {
   int error = NO_ERROR;
 
@@ -17704,7 +17694,7 @@ pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * val
  *  query(in/out): Processed query
  */
 void
-pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
+pt_try_remove_order_by (PARSER_CONTEXT *parser, PT_NODE *query)
 {
   PT_NODE *col, *next;
 
@@ -17756,7 +17746,7 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *  union_node(in) : Union node.
  */
 STATEMENT_SET_FOLD
-pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
+pt_check_union_is_foldable (PARSER_CONTEXT *parser, PT_NODE *union_node)
 {
   PT_NODE *arg1, *arg2;
   bool arg1_is_null, arg2_is_null;
@@ -17837,7 +17827,7 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
  *  fold_as (in) : indicated folding method
  */
 PT_NODE *
-pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as)
+pt_fold_union (PARSER_CONTEXT *parser, PT_NODE *union_node, STATEMENT_SET_FOLD fold_as)
 {
   PT_NODE *new_node, *next;
   int line, column;

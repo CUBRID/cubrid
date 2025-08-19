@@ -1910,7 +1910,7 @@ pr_make_ext_value (void)
  *    "freeval" type vector function to do this work.
  */
 int
-pr_clear_value (DB_VALUE * value)
+pr_clear_value (DB_VALUE *value)
 {
   char *midxkey_buf = NULL;
   const char *char_medium_buf = NULL;
@@ -2109,7 +2109,7 @@ pr_clear_value_vector (std::vector<DB_VALUE> &value_vector)
  *    value(in/out): value to clear & free
  */
 int
-pr_free_value (DB_VALUE * value)
+pr_free_value (DB_VALUE *value)
 {
   int error = NO_ERROR;
 
@@ -2132,7 +2132,7 @@ pr_free_value (DB_VALUE * value)
  * Value_area instead of to the workspace.
  */
 int
-pr_free_ext_value (DB_VALUE * value)
+pr_free_ext_value (DB_VALUE *value)
 {
   int error = NO_ERROR;
 
@@ -2155,7 +2155,7 @@ pr_free_ext_value (DB_VALUE * value)
  *    The contents are copied.
  */
 int
-pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
+pr_clone_value (const DB_VALUE *src, DB_VALUE *dest)
 {
   const PR_TYPE *type;
   DB_TYPE src_dbtype;
@@ -2208,7 +2208,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
  *    value(in): value to copy
  */
 DB_VALUE *
-pr_copy_value (DB_VALUE * value)
+pr_copy_value (DB_VALUE *value)
 {
   DB_VALUE *new_ = NULL;
 
@@ -2249,7 +2249,7 @@ pr_copy_value (DB_VALUE * value)
  *    memptr():
  */
 static void
-mr_initmem_null (void *memptr, TP_DOMAIN * domain)
+mr_initmem_null (void *memptr, TP_DOMAIN *domain)
 {
 }
 
@@ -2261,7 +2261,7 @@ mr_initmem_null (void *memptr, TP_DOMAIN * domain)
  *    value():
  */
 static int
-mr_setmem_null (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_null (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   return NO_ERROR;
 }
@@ -2275,7 +2275,7 @@ mr_setmem_null (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
  *    copy():
  */
 static int
-mr_getmem_null (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_null (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   db_make_null (value);
   return NO_ERROR;
@@ -2289,7 +2289,7 @@ mr_getmem_null (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
  *    domain():
  */
 static void
-mr_data_writemem_null (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_null (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
 }
 
@@ -2302,12 +2302,12 @@ mr_data_writemem_null (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
  *    size():
  */
 static void
-mr_data_readmem_null (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_null (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
 }
 
 static void
-mr_initval_null (DB_VALUE * value, int precision, int scale)
+mr_initval_null (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_NULL, precision, scale);
 }
@@ -2320,7 +2320,7 @@ mr_initval_null (DB_VALUE * value, int precision, int scale)
  *    copy():
  */
 static int
-mr_setval_null (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_null (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   mr_initval_null (dest, 0, 0);
   return NO_ERROR;
@@ -2333,7 +2333,7 @@ mr_setval_null (DB_VALUE * dest, const DB_VALUE * src, bool copy)
  *    value():
  */
 static int
-mr_data_writeval_null (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_null (OR_BUF *buf, DB_VALUE *value)
 {
   return NO_ERROR;
 }
@@ -2350,7 +2350,7 @@ mr_data_writeval_null (OR_BUF * buf, DB_VALUE * value)
  *    copy_buf_len():
  */
 static int
-mr_data_readval_null (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_null (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   if (value)
@@ -2372,7 +2372,7 @@ mr_data_readval_null (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
  *    start_colp():
  */
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -2389,7 +2389,7 @@ mr_data_cmpdisk_null (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
  *    start_colp():
  */
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_null (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return DB_UNK;
 }
@@ -2403,13 +2403,13 @@ mr_cmpval_null (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
  */
 
 static void
-mr_initmem_int (void *mem, TP_DOMAIN * domain)
+mr_initmem_int (void *mem, TP_DOMAIN *domain)
 {
   *(int *) mem = 0;
 }
 
 static int
-mr_setmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_int (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value != NULL)
     *(int *) mem = db_get_int (value);
@@ -2420,19 +2420,19 @@ mr_setmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_int (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_int (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_int (value, *(int *) mem);
 }
 
 static void
-mr_data_writemem_int (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_int (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_int (buf, *(int *) mem);
 }
 
 static void
-mr_data_readmem_int (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_int (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
 
@@ -2447,14 +2447,14 @@ mr_data_readmem_int (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_int (DB_VALUE * value, int precision, int scale)
+mr_initval_int (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_INTEGER, precision, scale);
   db_make_int (value, 0);
 }
 
 static int
-mr_setval_int (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_int (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -2467,13 +2467,13 @@ mr_setval_int (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_int (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_int (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_int (buf, db_get_int (value));
 }
 
 static int
-mr_data_readval_int (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_int (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   int temp_int, rc = NO_ERROR;
@@ -2495,7 +2495,7 @@ mr_data_readval_int (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 }
 
 static int
-mr_index_writeval_int (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_int (OR_BUF *buf, DB_VALUE *value)
 {
   int i;
 
@@ -2505,7 +2505,7 @@ mr_index_writeval_int (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_int (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_int (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   int i, rc = NO_ERROR;
@@ -2527,7 +2527,7 @@ mr_index_readval_int (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   int i1, i2;
 
@@ -2540,7 +2540,7 @@ mr_index_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   int i1, i2;
 
@@ -2553,7 +2553,7 @@ mr_data_cmpdisk_int (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_int (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   int i1, i2;
 
@@ -2570,13 +2570,13 @@ mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
  */
 
 static void
-mr_initmem_short (void *mem, TP_DOMAIN * domain)
+mr_initmem_short (void *mem, TP_DOMAIN *domain)
 {
   *(short *) mem = 0;
 }
 
 static int
-mr_setmem_short (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_short (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     mr_initmem_short (mem, domain);
@@ -2587,13 +2587,13 @@ mr_setmem_short (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_short (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_short (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_short (value, *(short *) mem);
 }
 
 static void
-mr_data_writemem_short (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_short (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   short *mem = (short *) memptr;
 
@@ -2601,7 +2601,7 @@ mr_data_writemem_short (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_short (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_short (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
 
@@ -2616,14 +2616,14 @@ mr_data_readmem_short (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_short (DB_VALUE * value, int precision, int scale)
+mr_initval_short (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_SHORT, precision, scale);
   db_make_short (value, 0);
 }
 
 static int
-mr_setval_short (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_short (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -2636,13 +2636,13 @@ mr_setval_short (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_short (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_short (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_short (buf, db_get_short (value));
 }
 
 static int
-mr_data_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_short (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -2666,7 +2666,7 @@ mr_data_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static int
-mr_index_writeval_short (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_short (OR_BUF *buf, DB_VALUE *value)
 {
   short s;
 
@@ -2676,7 +2676,7 @@ mr_index_writeval_short (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_short (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -2700,7 +2700,7 @@ mr_index_readval_short (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   short s1, s2;
 
@@ -2713,7 +2713,7 @@ mr_index_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   short s1, s2;
 
@@ -2726,7 +2726,7 @@ mr_data_cmpdisk_short (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_short (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   short s1, s2;
 
@@ -2744,13 +2744,13 @@ mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
  */
 
 static void
-mr_initmem_bigint (void *mem, TP_DOMAIN * domain)
+mr_initmem_bigint (void *mem, TP_DOMAIN *domain)
 {
   *(DB_BIGINT *) mem = 0;
 }
 
 static int
-mr_setmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_bigint (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value != NULL)
     *(DB_BIGINT *) mem = db_get_bigint (value);
@@ -2761,19 +2761,19 @@ mr_setmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_bigint (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_bigint (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_bigint (value, *(DB_BIGINT *) mem);
 }
 
 static void
-mr_data_writemem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_bigint (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_bigint (buf, *(DB_BIGINT *) mem);
 }
 
 static void
-mr_data_readmem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_bigint (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
 
@@ -2788,14 +2788,14 @@ mr_data_readmem_bigint (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_bigint (DB_VALUE * value, int precision, int scale)
+mr_initval_bigint (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_BIGINT, precision, scale);
   db_make_bigint (value, 0);
 }
 
 static int
-mr_setval_bigint (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_bigint (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -2808,13 +2808,13 @@ mr_setval_bigint (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_bigint (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_bigint (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_bigint (buf, db_get_bigint (value));
 }
 
 static int
-mr_data_readval_bigint (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_bigint (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -2837,7 +2837,7 @@ mr_data_readval_bigint (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static int
-mr_index_writeval_bigint (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_bigint (OR_BUF *buf, DB_VALUE *value)
 {
   DB_BIGINT bi;
 
@@ -2847,7 +2847,7 @@ mr_index_writeval_bigint (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_bigint (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_bigint (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -2871,7 +2871,7 @@ mr_index_readval_bigint (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_BIGINT i1, i2;
 
@@ -2884,7 +2884,7 @@ mr_index_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_BIGINT i1, i2;
 
@@ -2897,8 +2897,7 @@ mr_data_cmpdisk_bigint (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
+mr_cmpval_bigint (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_BIGINT i1, i2;
 
@@ -2915,13 +2914,13 @@ mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
  */
 
 static void
-mr_initmem_float (void *mem, TP_DOMAIN * domain)
+mr_initmem_float (void *mem, TP_DOMAIN *domain)
 {
   *(float *) mem = 0.0;
 }
 
 static int
-mr_setmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_float (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     {
@@ -2936,19 +2935,19 @@ mr_setmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_float (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_float (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_float (value, *(float *) mem);
 }
 
 static void
-mr_data_writemem_float (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_float (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_float (buf, *(float *) mem);
 }
 
 static void
-mr_data_readmem_float (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_float (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
 
@@ -2963,14 +2962,14 @@ mr_data_readmem_float (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_float (DB_VALUE * value, int precision, int scale)
+mr_initval_float (DB_VALUE *value, int precision, int scale)
 {
   db_make_float (value, 0.0);
   value->need_clear = false;
 }
 
 static int
-mr_setval_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_float (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -2983,13 +2982,13 @@ mr_setval_float (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_float (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_float (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_float (buf, db_get_float (value));
 }
 
 static int
-mr_data_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_float (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   float temp;
@@ -3012,7 +3011,7 @@ mr_data_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static int
-mr_index_writeval_float (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_float (OR_BUF *buf, DB_VALUE *value)
 {
   float f;
 
@@ -3022,7 +3021,7 @@ mr_index_writeval_float (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_float (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   float f;
@@ -3046,7 +3045,7 @@ mr_index_readval_float (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   float f1, f2;
 
@@ -3059,7 +3058,7 @@ mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   float f1, f2;
 
@@ -3072,7 +3071,7 @@ mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_float (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   float f1, f2;
 
@@ -3093,7 +3092,7 @@ mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
  */
 
 static void
-mr_initmem_double (void *mem, TP_DOMAIN * domain)
+mr_initmem_double (void *mem, TP_DOMAIN *domain)
 {
   double d = 0.0;
 
@@ -3101,7 +3100,7 @@ mr_initmem_double (void *mem, TP_DOMAIN * domain)
 }
 
 static int
-mr_setmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_double (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   double d;
 
@@ -3118,7 +3117,7 @@ mr_setmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_double (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   double d = 0;
 
@@ -3127,7 +3126,7 @@ mr_getmem_double (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static void
-mr_data_writemem_double (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_double (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   double d = 0;
 
@@ -3136,7 +3135,7 @@ mr_data_writemem_double (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_double (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_double (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   double d;
   int rc = NO_ERROR;
@@ -3153,14 +3152,14 @@ mr_data_readmem_double (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_double (DB_VALUE * value, int precision, int scale)
+mr_initval_double (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_DOUBLE, precision, scale);
   db_make_double (value, 0.0);
 }
 
 static int
-mr_setval_double (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_double (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -3173,13 +3172,13 @@ mr_setval_double (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_double (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_double (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_double (buf, db_get_double (value));
 }
 
 static int
-mr_data_readval_double (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_double (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   double temp;
@@ -3203,7 +3202,7 @@ mr_data_readval_double (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static int
-mr_index_writeval_double (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_double (OR_BUF *buf, DB_VALUE *value)
 {
   double d;
 
@@ -3213,7 +3212,7 @@ mr_index_writeval_double (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_double (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_double (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   double d;
@@ -3237,7 +3236,7 @@ mr_index_readval_double (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   double d1, d2;
 
@@ -3250,7 +3249,7 @@ mr_index_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   double d1, d2;
 
@@ -3263,8 +3262,7 @@ mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
+mr_cmpval_double (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   double d1, d2;
 
@@ -3283,13 +3281,13 @@ mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
  */
 
 static void
-mr_initmem_time (void *mem, TP_DOMAIN * domain)
+mr_initmem_time (void *mem, TP_DOMAIN *domain)
 {
   *(DB_TIME *) mem = 0;
 }
 
 static int
-mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_time (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     mr_initmem_time (mem, domain);
@@ -3300,7 +3298,7 @@ mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_time (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   (void) db_value_put_encoded_time (value, (DB_TIME *) mem);
   value->need_clear = false;
@@ -3308,13 +3306,13 @@ mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static void
-mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_time (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_time (buf, (DB_TIME *) mem);
 }
 
 static void
-mr_data_readmem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_time (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -3327,7 +3325,7 @@ mr_data_readmem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_time (DB_VALUE * value, int precision, int scale)
+mr_initval_time (DB_VALUE *value, int precision, int scale)
 {
   DB_TIME tm = 0;
 
@@ -3336,7 +3334,7 @@ mr_initval_time (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_time (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -3352,13 +3350,13 @@ mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_time (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_time (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_time (buf, db_get_time (value));
 }
 
 static int
-mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_time (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   DB_TIME tm;
@@ -3381,7 +3379,7 @@ mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static int
-mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_time (OR_BUF *buf, DB_VALUE *value)
 {
   DB_TIME *tm;
 
@@ -3391,7 +3389,7 @@ mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_time (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   DB_TIME tm;
@@ -3415,7 +3413,7 @@ mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_TIME t1, t2;
 
@@ -3428,7 +3426,7 @@ mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_TIME t1, t2;
 
@@ -3441,7 +3439,7 @@ mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_time (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_TIME *t1, *t2;
 
@@ -3461,13 +3459,13 @@ mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
  */
 
 static void
-mr_initmem_utime (void *mem, TP_DOMAIN * domain)
+mr_initmem_utime (void *mem, TP_DOMAIN *domain)
 {
   *(DB_UTIME *) mem = 0;
 }
 
 static int
-mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_utime (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     mr_initmem_utime (mem, domain);
@@ -3478,7 +3476,7 @@ mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_utime (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error;
 
@@ -3488,7 +3486,7 @@ mr_getmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_getmem_timestampltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_timestampltz (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error;
 
@@ -3498,13 +3496,13 @@ mr_getmem_timestampltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool co
 }
 
 static void
-mr_data_writemem_utime (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_utime (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_utime (buf, (DB_UTIME *) mem);
 }
 
 static void
-mr_data_readmem_utime (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_utime (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -3517,21 +3515,21 @@ mr_data_readmem_utime (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_utime (DB_VALUE * value, int precision, int scale)
+mr_initval_utime (DB_VALUE *value, int precision, int scale)
 {
   db_make_utime (value, 0);
   value->need_clear = false;
 }
 
 static void
-mr_initval_timestampltz (DB_VALUE * value, int precision, int scale)
+mr_initval_timestampltz (DB_VALUE *value, int precision, int scale)
 {
   db_make_timestampltz (value, 0);
   value->need_clear = false;
 }
 
 static int
-mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_utime (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -3547,7 +3545,7 @@ mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_timestampltz (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -3563,13 +3561,13 @@ mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_utime (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_utime (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_utime (buf, db_get_timestamp (value));
 }
 
 static int
-mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_utime (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   DB_UTIME utm;
@@ -3592,7 +3590,7 @@ mr_data_readval_utime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static int
-mr_data_readval_timestampltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_timestampltz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len)
 {
   DB_UTIME utm;
@@ -3612,7 +3610,7 @@ mr_data_readval_timestampltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 }
 
 static int
-mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_utime (OR_BUF *buf, DB_VALUE *value)
 {
   DB_UTIME *utm;
 
@@ -3622,7 +3620,7 @@ mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_utime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_utime (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   DB_UTIME utm;
@@ -3646,7 +3644,7 @@ mr_index_readval_utime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static int
-mr_index_readval_timestampltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_timestampltz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			       int copy_buf_len)
 {
   DB_UTIME utm;
@@ -3670,7 +3668,7 @@ mr_index_readval_timestampltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domai
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_UTIME utm1, utm2;
 
@@ -3683,7 +3681,7 @@ mr_index_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_TIMESTAMP ts1, ts2;
 
@@ -3696,7 +3694,7 @@ mr_data_cmpdisk_utime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_utime (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_TIMESTAMP *ts1, *ts2;
 
@@ -3715,7 +3713,7 @@ mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
  */
 
 static void
-mr_initmem_timestamptz (void *mem, TP_DOMAIN * domain)
+mr_initmem_timestamptz (void *mem, TP_DOMAIN *domain)
 {
   DB_TIMESTAMPTZ *ts_tz = (DB_TIMESTAMPTZ *) mem;
 
@@ -3724,7 +3722,7 @@ mr_initmem_timestamptz (void *mem, TP_DOMAIN * domain)
 }
 
 static int
-mr_setmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_timestamptz (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     {
@@ -3739,7 +3737,7 @@ mr_setmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_timestamptz (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error;
 
@@ -3748,13 +3746,13 @@ mr_getmem_timestamptz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 }
 
 static void
-mr_data_writemem_timestamptz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_timestamptz (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_timestamptz (buf, (DB_TIMESTAMPTZ *) mem);
 }
 
 static void
-mr_data_readmem_timestamptz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_timestamptz (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -3767,7 +3765,7 @@ mr_data_readmem_timestamptz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int si
 }
 
 static void
-mr_initval_timestamptz (DB_VALUE * value, int precision, int scale)
+mr_initval_timestamptz (DB_VALUE *value, int precision, int scale)
 {
   DB_TIMESTAMPTZ ts_tz;
 
@@ -3776,7 +3774,7 @@ mr_initval_timestamptz (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setval_timestamptz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_timestamptz (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -3792,13 +3790,13 @@ mr_setval_timestamptz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_timestamptz (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_timestamptz (buf, db_get_timestamptz (value));
 }
 
 static int
-mr_data_readval_timestamptz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_timestamptz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			     int copy_buf_len)
 {
   DB_TIMESTAMPTZ ts_tz;
@@ -3817,7 +3815,7 @@ mr_data_readval_timestamptz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 }
 
 static int
-mr_index_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_timestamptz (OR_BUF *buf, DB_VALUE *value)
 {
   DB_TIMESTAMPTZ *ts_tz;
   int rc = NO_ERROR;
@@ -3836,7 +3834,7 @@ mr_index_writeval_timestamptz (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_timestamptz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_timestamptz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len)
 {
   DB_TIMESTAMPTZ ts_tz;
@@ -3860,7 +3858,7 @@ mr_index_readval_timestamptz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			      int *start_colp)
 {
   DB_UTIME utm1, utm2;
@@ -3875,7 +3873,7 @@ mr_index_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			     int *start_colp)
 {
   DB_TIMESTAMP ts1, ts2;
@@ -3890,7 +3888,7 @@ mr_data_cmpdisk_timestamptz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_timestamptz (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		       int collation)
 {
   const DB_TIMESTAMPTZ *ts_tz1, *ts_tz2;
@@ -3916,7 +3914,7 @@ mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  */
 
 static void
-mr_initmem_datetime (void *memptr, TP_DOMAIN * domain)
+mr_initmem_datetime (void *memptr, TP_DOMAIN *domain)
 {
   DB_DATETIME *mem = (DB_DATETIME *) memptr;
 
@@ -3925,7 +3923,7 @@ mr_initmem_datetime (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_datetime (DB_VALUE * value, int precision, int scale)
+mr_initval_datetime (DB_VALUE *value, int precision, int scale)
 {
   DB_DATETIME dt;
 
@@ -3935,7 +3933,7 @@ mr_initval_datetime (DB_VALUE * value, int precision, int scale)
 }
 
 static void
-mr_initval_datetimeltz (DB_VALUE * value, int precision, int scale)
+mr_initval_datetimeltz (DB_VALUE *value, int precision, int scale)
 {
   DB_DATETIME dt;
 
@@ -3945,7 +3943,7 @@ mr_initval_datetimeltz (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_datetime (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     {
@@ -3960,19 +3958,19 @@ mr_setmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_datetime (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_datetime (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_datetime (value, (DB_DATETIME *) mem);
 }
 
 static int
-mr_getmem_datetimeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_datetimeltz (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_datetimeltz (value, (DB_DATETIME *) mem);
 }
 
 static int
-mr_setval_datetime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_datetime (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -3988,7 +3986,7 @@ mr_setval_datetime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_setval_datetimeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_datetimeltz (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -4004,13 +4002,13 @@ mr_setval_datetimeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static void
-mr_data_writemem_datetime (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_datetime (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_datetime (buf, (DB_DATETIME *) mem);
 }
 
 static void
-mr_data_readmem_datetime (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_datetime (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -4023,13 +4021,13 @@ mr_data_readmem_datetime (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_writeval_datetime (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_datetime (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_datetime (buf, db_get_datetime (value));
 }
 
 static int
-mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_datetime (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
   DB_DATETIME datetime;
@@ -4052,7 +4050,7 @@ mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 }
 
 static int
-mr_data_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_datetimeltz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			     int copy_buf_len)
 {
   DB_DATETIME datetime;
@@ -4071,7 +4069,7 @@ mr_data_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 }
 
 static int
-mr_index_writeval_datetime (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_datetime (OR_BUF *buf, DB_VALUE *value)
 {
   DB_DATETIME *datetime;
   int rc = NO_ERROR;
@@ -4090,7 +4088,7 @@ mr_index_writeval_datetime (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_datetime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_datetime (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			   int copy_buf_len)
 {
   DB_DATETIME datetime;
@@ -4121,7 +4119,7 @@ mr_index_readval_datetime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 }
 
 static int
-mr_index_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_datetimeltz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len)
 {
   DB_DATETIME datetime;
@@ -4152,8 +4150,7 @@ mr_index_readval_datetimeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			   int *start_colp)
+mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   DB_DATETIME dt1, dt2;
@@ -4165,7 +4162,7 @@ mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
       return DB_EQ;
     }
 
-  COPYMEM (unsigned int, &dt1.date, (char *)mem1 + OR_DATETIME_DATE);
+  COPYMEM (unsigned int, &dt1.date, (char *) mem1 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt1.time, (char *) mem1 + OR_DATETIME_TIME);
   COPYMEM (unsigned int, &dt2.date, (char *) mem2 + OR_DATETIME_DATE);
   COPYMEM (unsigned int, &dt2.time, (char *) mem2 + OR_DATETIME_TIME);
@@ -4198,7 +4195,7 @@ mr_index_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   DB_DATETIME dt1, dt2;
@@ -4241,7 +4238,7 @@ mr_data_cmpdisk_datetime (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_datetime (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
   const DB_DATETIME *dt1, *dt2;
@@ -4283,7 +4280,7 @@ mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
  */
 
 static void
-mr_initmem_datetimetz (void *memptr, TP_DOMAIN * domain)
+mr_initmem_datetimetz (void *memptr, TP_DOMAIN *domain)
 {
   DB_DATETIMETZ *mem = (DB_DATETIMETZ *) memptr;
 
@@ -4293,7 +4290,7 @@ mr_initmem_datetimetz (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_datetimetz (DB_VALUE * value, int precision, int scale)
+mr_initval_datetimetz (DB_VALUE *value, int precision, int scale)
 {
   DB_DATETIMETZ dt_tz;
 
@@ -4302,7 +4299,7 @@ mr_initval_datetimetz (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setmem_datetimetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_datetimetz (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     {
@@ -4317,13 +4314,13 @@ mr_setmem_datetimetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_datetimetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_datetimetz (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_datetimetz (value, (DB_DATETIMETZ *) mem);
 }
 
 static int
-mr_setval_datetimetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_datetimetz (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -4339,13 +4336,13 @@ mr_setval_datetimetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static void
-mr_data_writemem_datetimetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_datetimetz (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_datetimetz (buf, (DB_DATETIMETZ *) mem);
 }
 
 static void
-mr_data_readmem_datetimetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_datetimetz (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -4358,13 +4355,13 @@ mr_data_readmem_datetimetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int siz
 }
 
 static int
-mr_data_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_datetimetz (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_datetimetz (buf, db_get_datetimetz (value));
 }
 
 static int
-mr_data_readval_datetimetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_datetimetz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			    int copy_buf_len)
 {
   DB_DATETIMETZ datetimetz;
@@ -4383,7 +4380,7 @@ mr_data_readval_datetimetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 }
 
 static int
-mr_index_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_datetimetz (OR_BUF *buf, DB_VALUE *value)
 {
   DB_DATETIMETZ *datetimetz;
   int rc = NO_ERROR;
@@ -4406,7 +4403,7 @@ mr_index_writeval_datetimetz (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_datetimetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_datetimetz (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			     int copy_buf_len)
 {
   DB_DATETIMETZ datetimetz;
@@ -4441,7 +4438,7 @@ mr_index_readval_datetimetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_index_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			     int *start_colp)
 {
   /* DATETIMETZ compares the same as DATETIME (tz_id is ignored) */
@@ -4449,7 +4446,7 @@ mr_index_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			    int *start_colp)
 {
   /* DATETIMETZ compares the same as DATETIME (tz_id is ignored) */
@@ -4457,7 +4454,7 @@ mr_data_cmpdisk_datetimetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_c
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_datetimetz (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		      int collation)
 {
   const DB_DATETIMETZ *dt_tz1, *dt_tz2;
@@ -4515,7 +4512,7 @@ mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int
  */
 
 static void
-mr_initmem_money (void *memptr, TP_DOMAIN * domain)
+mr_initmem_money (void *memptr, TP_DOMAIN *domain)
 {
   DB_MONETARY *mem = (DB_MONETARY *) memptr;
 
@@ -4526,7 +4523,7 @@ mr_initmem_money (void *memptr, TP_DOMAIN * domain)
 }
 
 static int
-mr_setmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_money (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   DB_MONETARY *mem = (DB_MONETARY *) memptr;
   DB_MONETARY *money;
@@ -4545,7 +4542,7 @@ mr_setmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_money (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   DB_MONETARY *mem = (DB_MONETARY *) memptr;
@@ -4558,13 +4555,13 @@ mr_getmem_money (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static void
-mr_data_writemem_money (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_money (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_monetary (buf, (DB_MONETARY *) mem);
 }
 
 static void
-mr_data_readmem_money (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_money (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -4577,14 +4574,14 @@ mr_data_readmem_money (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_money (DB_VALUE * value, int precision, int scale)
+mr_initval_money (DB_VALUE *value, int precision, int scale)
 {
   db_make_monetary (value, DB_CURRENCY_DEFAULT, 0.0);
   value->need_clear = false;
 }
 
 static int
-mr_setval_money (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_money (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
   DB_MONETARY *money;
@@ -4601,13 +4598,13 @@ mr_setval_money (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_money (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_money (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_monetary (buf, db_get_monetary (value));
 }
 
 static int
-mr_data_readval_money (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_money (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   DB_MONETARY money;
@@ -4630,7 +4627,7 @@ mr_data_readval_money (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static int
-mr_index_writeval_money (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_money (OR_BUF *buf, DB_VALUE *value)
 {
   DB_MONETARY *money;
   int rc = NO_ERROR;
@@ -4647,7 +4644,7 @@ mr_index_writeval_money (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_money (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_money (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   DB_MONETARY money;
@@ -4676,7 +4673,7 @@ mr_index_readval_money (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_MONETARY m1, m2;
 
@@ -4689,7 +4686,7 @@ mr_index_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_MONETARY m1, m2;
 
@@ -4702,7 +4699,7 @@ mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_money (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_MONETARY *m1, *m2;
 
@@ -4719,13 +4716,13 @@ mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
  */
 
 static void
-mr_initmem_date (void *mem, TP_DOMAIN * domain)
+mr_initmem_date (void *mem, TP_DOMAIN *domain)
 {
   *(DB_DATE *) mem = 0;
 }
 
 static int
-mr_setmem_date (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_date (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     mr_initmem_date (mem, domain);
@@ -4736,19 +4733,19 @@ mr_setmem_date (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_date (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_date (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_value_put_encoded_date (value, (DB_DATE *) mem);
 }
 
 static void
-mr_data_writemem_date (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_date (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_date (buf, (DB_DATE *) mem);
 }
 
 static void
-mr_data_readmem_date (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_date (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   if (mem == NULL)
     {
@@ -4761,14 +4758,14 @@ mr_data_readmem_date (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static void
-mr_initval_date (DB_VALUE * value, int precision, int scale)
+mr_initval_date (DB_VALUE *value, int precision, int scale)
 {
   db_value_put_encoded_date (value, 0);
   value->need_clear = false;
 }
 
 static int
-mr_setval_date (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_date (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -4784,13 +4781,13 @@ mr_setval_date (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_date (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_date (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_date (buf, db_get_date (value));
 }
 
 static int
-mr_data_readval_date (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_date (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   DB_DATE dt;
@@ -4813,7 +4810,7 @@ mr_data_readval_date (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static int
-mr_index_writeval_date (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_date (OR_BUF *buf, DB_VALUE *value)
 {
   DB_DATE *dt;
 
@@ -4823,7 +4820,7 @@ mr_index_writeval_date (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_date (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_date (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   DB_DATE dt;
@@ -4847,7 +4844,7 @@ mr_index_readval_date (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_DATE d1, d2;
 
@@ -4860,7 +4857,7 @@ mr_index_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_DATE d1, d2;
 
@@ -4873,7 +4870,7 @@ mr_data_cmpdisk_date (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_date (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   const DB_DATE *d1, *d2;
 
@@ -4916,7 +4913,7 @@ mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
  *    Should be an inline function.
  */
 static void
-mr_null_oid (OID * oid)
+mr_null_oid (OID *oid)
 {
   oid->pageid = 0;
   oid->volid = 0;
@@ -4926,7 +4923,7 @@ mr_null_oid (OID * oid)
 }
 
 static void
-mr_initmem_object (void *memptr, TP_DOMAIN * domain)
+mr_initmem_object (void *memptr, TP_DOMAIN *domain)
 {
   /* there is no use for initmem on the server */
 #if !defined (SERVER_MODE)
@@ -4943,7 +4940,7 @@ mr_initmem_object (void *memptr, TP_DOMAIN * domain)
  */
 
 static void
-mr_initval_object (DB_VALUE * value, int precision, int scale)
+mr_initval_object (DB_VALUE *value, int precision, int scale)
 {
   OID oid;
 
@@ -4967,7 +4964,7 @@ mr_initval_object (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_object (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   /* there is no need for setmem on the server */
 #if !defined (SERVER_MODE)
@@ -5008,7 +5005,7 @@ mr_setmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_object (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
 
@@ -5045,7 +5042,7 @@ mr_getmem_object (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
 
 static int
-mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_object (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   OID *oid;
@@ -5104,7 +5101,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
 
 static int
-mr_index_lengthval_object (DB_VALUE * value)
+mr_index_lengthval_object (DB_VALUE *value)
 {
   return tp_Oid.disksize;
 }
@@ -5118,7 +5115,7 @@ mr_index_lengthval_object (DB_VALUE * value)
  *    disk(in): indicator that it is disk object
  */
 static int
-mr_data_lengthval_object (DB_VALUE * value, int disk)
+mr_data_lengthval_object (DB_VALUE *value, int disk)
 {
 #if !defined (SERVER_MODE)
   MOP mop;
@@ -5161,7 +5158,7 @@ mr_data_lengthval_object (DB_VALUE * value, int disk)
 }
 
 static void
-mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_object (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
 #if !defined (SERVER_MODE)	/* there is no need for writemem on the server */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
@@ -5223,7 +5220,7 @@ mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
 
 static void
-mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_object (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
 #if !defined (SERVER_MODE)	/* there is no need for readmem on the server ??? */
   WS_MEMOID *mem = (WS_MEMOID *) memptr;
@@ -5246,13 +5243,13 @@ mr_data_readmem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 }
 
 static int
-mr_index_writeval_object (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_object (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_index_writeval_oid (buf, value);
 }
 
 static int
-mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_object (OR_BUF *buf, DB_VALUE *value)
 {
 #if !defined (SERVER_MODE)
   MOP mop;
@@ -5335,14 +5332,14 @@ mr_data_writeval_object (OR_BUF * buf, DB_VALUE * value)
 
 
 static int
-mr_index_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_object (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   return mr_index_readval_oid (buf, value, domain, size, copy, copy_buf, copy_buf_len);
 }
 
 static int
-mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_object (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   OID oid;
@@ -5400,7 +5397,7 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -5408,7 +5405,7 @@ mr_index_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   OID o1, o2;
   int oidc;
@@ -5425,8 +5422,7 @@ mr_data_cmpdisk_object (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
+mr_cmpval_object (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
 #if defined (SERVER_MODE)
   const OID *o1, *o2;
@@ -5631,7 +5627,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 #endif /* !SERVER_MODE */
 
 static void
-mr_initmem_elo (void *memptr, TP_DOMAIN * domain)
+mr_initmem_elo (void *memptr, TP_DOMAIN *domain)
 {
   if (memptr != NULL)
     {
@@ -5640,14 +5636,14 @@ mr_initmem_elo (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_elo (DB_VALUE * value, int precision, int scale)
+mr_initval_elo (DB_VALUE *value, int precision, int scale)
 {
   /* should not be called */
   assert (0);
 }
 
 static void
-mr_initval_blob (DB_VALUE * value, int precision, int scale)
+mr_initval_blob (DB_VALUE *value, int precision, int scale)
 {
   DB_ELO *null_elo = NULL;
   db_value_domain_init (value, DB_TYPE_BLOB, precision, scale);
@@ -5655,7 +5651,7 @@ mr_initval_blob (DB_VALUE * value, int precision, int scale)
 }
 
 static void
-mr_initval_clob (DB_VALUE * value, int precision, int scale)
+mr_initval_clob (DB_VALUE *value, int precision, int scale)
 {
   DB_ELO *null_elo = NULL;
   db_value_domain_init (value, DB_TYPE_CLOB, precision, scale);
@@ -5663,7 +5659,7 @@ mr_initval_clob (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_elo (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int rc;
   DB_ELO *elo, *e;
@@ -5702,7 +5698,7 @@ mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy, DB_TYPE type)
+getmem_elo_with_type (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy, DB_TYPE type)
 {
   DB_ELO *elo;
   int r = NO_ERROR;
@@ -5741,7 +5737,7 @@ getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool c
 }
 
 static int
-mr_getmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_elo (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   /* should not happen */
   assert (0);
@@ -5749,19 +5745,19 @@ mr_getmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_blob (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_BLOB);
 }
 
 static int
-mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_clob (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return getmem_elo_with_type (memptr, domain, value, copy, DB_TYPE_CLOB);
 }
 
 static int
-setval_elo_with_type (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE type)
+setval_elo_with_type (DB_VALUE *dest, const DB_VALUE *src, bool copy, DB_TYPE type)
 {
   int r = NO_ERROR;
 
@@ -5792,26 +5788,26 @@ setval_elo_with_type (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE 
 }
 
 static int
-mr_setval_elo (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_elo (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   assert (0);
   return ER_FAILED;
 }
 
 static int
-mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_blob (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return setval_elo_with_type (dest, src, copy, DB_TYPE_BLOB);
 }
 
 static int
-mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_clob (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return setval_elo_with_type (dest, src, copy, DB_TYPE_CLOB);
 }
 
 static int
-mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_elo (void *memptr, TP_DOMAIN *domain, int disk)
 {
   int len = 0;
 
@@ -5841,7 +5837,7 @@ mr_data_lengthmem_elo (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_data_lengthval_elo (DB_VALUE * value, int disk)
+mr_data_lengthval_elo (DB_VALUE *value, int disk)
 {
   DB_ELO *elo;
 
@@ -5857,7 +5853,7 @@ mr_data_lengthval_elo (DB_VALUE * value, int disk)
 }
 
 static void
-mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_elo (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   DB_ELO *elo;
 
@@ -5895,7 +5891,7 @@ mr_data_writemem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-peekmem_elo (OR_BUF * buf, DB_ELO * elo)
+peekmem_elo (OR_BUF *buf, DB_ELO *elo)
 {
   int locator_len, meta_data_len;
   int rc = NO_ERROR;
@@ -5972,7 +5968,7 @@ error:
 }
 
 static void
-mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_elo (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   DB_ELO *elo;
   DB_ELO e;
@@ -6011,7 +6007,7 @@ mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_writeval_elo (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_elo (OR_BUF *buf, DB_VALUE *value)
 {
   DB_ELO *elo;
 
@@ -6021,7 +6017,7 @@ mr_data_writeval_elo (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-readval_elo_with_type (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+readval_elo_with_type (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len, DB_TYPE type)
 {
   int rc = NO_ERROR;
@@ -6062,7 +6058,7 @@ readval_elo_with_type (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static int
-mr_data_readval_elo (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_elo (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   /* should not happen */
@@ -6071,14 +6067,14 @@ mr_data_readval_elo (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 }
 
 static int
-mr_data_readval_blob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_blob (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_BLOB);
 }
 
 static int
-mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_clob (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   return readval_elo_with_type (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CLOB);
@@ -6102,7 +6098,7 @@ mr_freemem_elo (void *memptr)
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -6114,7 +6110,7 @@ mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_elo (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_ELO *elo1, *elo2;
 
@@ -6145,39 +6141,39 @@ mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
  */
 
 static void
-mr_initval_variable (DB_VALUE * value, int precision, int scale)
+mr_initval_variable (DB_VALUE *value, int precision, int scale)
 {
   mr_initval_null (value, precision, scale);
 }
 
 static int
-mr_setval_variable (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_variable (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   mr_initval_null (dest, 0, 0);
   return NO_ERROR;
 }
 
 static int
-mr_data_lengthval_variable (DB_VALUE * value, int disk)
+mr_data_lengthval_variable (DB_VALUE *value, int disk)
 {
   return 0;
 }
 
 static int
-mr_data_writeval_variable (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_variable (OR_BUF *buf, DB_VALUE *value)
 {
   return NO_ERROR;
 }
 
 static int
-mr_data_readval_variable (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_variable (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
   return NO_ERROR;
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_variable (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_variable (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -6185,7 +6181,7 @@ mr_data_cmpdisk_variable (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_variable (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_variable (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
   return DB_UNK;
@@ -6200,71 +6196,71 @@ mr_cmpval_variable (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
  */
 
 static void
-mr_initmem_sub (void *mem, TP_DOMAIN * domain)
+mr_initmem_sub (void *mem, TP_DOMAIN *domain)
 {
 }
 
 static void
-mr_initval_sub (DB_VALUE * value, int precision, int scale)
+mr_initval_sub (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_SUB, precision, scale);
 }
 
 static int
-mr_setmem_sub (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_sub (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   return NO_ERROR;
 }
 
 static int
-mr_getmem_sub (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_sub (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return NO_ERROR;
 }
 
 static int
-mr_setval_sub (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_sub (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return NO_ERROR;
 }
 
 static int
-mr_data_lengthmem_sub (void *mem, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_sub (void *mem, TP_DOMAIN *domain, int disk)
 {
   return 0;
 }
 
 static int
-mr_data_lengthval_sub (DB_VALUE * value, int disk)
+mr_data_lengthval_sub (DB_VALUE *value, int disk)
 {
   return 0;
 }
 
 static void
-mr_data_writemem_sub (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_sub (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
 }
 
 static void
-mr_data_readmem_sub (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_sub (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
 }
 
 static int
-mr_data_writeval_sub (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_sub (OR_BUF *buf, DB_VALUE *value)
 {
   return NO_ERROR;
 }
 
 static int
-mr_data_readval_sub (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_sub (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   return NO_ERROR;
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_sub (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_sub (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -6272,7 +6268,7 @@ mr_data_cmpdisk_sub (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_sub (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_sub (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return DB_UNK;
 }
@@ -6289,7 +6285,7 @@ mr_cmpval_sub (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
  */
 
 static void
-mr_initmem_ptr (void *memptr, TP_DOMAIN * domain)
+mr_initmem_ptr (void *memptr, TP_DOMAIN *domain)
 {
   void **mem = (void **) memptr;
 
@@ -6297,14 +6293,14 @@ mr_initmem_ptr (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_ptr (DB_VALUE * value, int precision, int scale)
+mr_initval_ptr (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_POINTER, precision, scale);
   db_make_pointer (value, NULL);
 }
 
 static int
-mr_setmem_ptr (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_ptr (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   void **mem = (void **) memptr;
 
@@ -6320,7 +6316,7 @@ mr_setmem_ptr (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_ptr (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_ptr (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   void **mem = (void **) memptr;
 
@@ -6328,7 +6324,7 @@ mr_getmem_ptr (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_setval_ptr (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_ptr (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
@@ -6342,13 +6338,13 @@ mr_setval_ptr (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_lengthmem_ptr (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_ptr (void *memptr, TP_DOMAIN *domain, int disk)
 {
   return 0;
 }
 
 static int
-mr_data_lengthval_ptr (DB_VALUE * value, int disk)
+mr_data_lengthval_ptr (DB_VALUE *value, int disk)
 {
   void *ptr;
 
@@ -6364,12 +6360,12 @@ mr_data_lengthval_ptr (DB_VALUE * value, int disk)
 }
 
 static void
-mr_data_writemem_ptr (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_ptr (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
 }
 
 static void
-mr_data_readmem_ptr (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_ptr (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   void **mem = (void **) memptr;
 
@@ -6377,13 +6373,13 @@ mr_data_readmem_ptr (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_writeval_ptr (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_ptr (OR_BUF *buf, DB_VALUE *value)
 {
   return NO_ERROR;
 }
 
 static int
-mr_data_readval_ptr (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_ptr (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   if (value)
@@ -6394,7 +6390,7 @@ mr_data_readval_ptr (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_ptr (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_ptr (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -6403,7 +6399,7 @@ mr_data_cmpdisk_ptr (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_ptr (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   void *p1, *p2;
 
@@ -6421,7 +6417,7 @@ mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
  */
 
 static void
-mr_initmem_error (void *memptr, TP_DOMAIN * domain)
+mr_initmem_error (void *memptr, TP_DOMAIN *domain)
 {
   int *mem = (int *) memptr;
 
@@ -6429,14 +6425,14 @@ mr_initmem_error (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_error (DB_VALUE * value, int precision, int scale)
+mr_initval_error (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_ERROR, precision, scale);
   db_make_error (value, NO_ERROR);
 }
 
 static int
-mr_setmem_error (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_error (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int *mem = (int *) memptr;
 
@@ -6452,7 +6448,7 @@ mr_setmem_error (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_error (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_error (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int *mem = (int *) memptr;
 
@@ -6460,7 +6456,7 @@ mr_getmem_error (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_setval_error (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_error (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
@@ -6474,13 +6470,13 @@ mr_setval_error (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_lengthmem_error (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_error (void *memptr, TP_DOMAIN *domain, int disk)
 {
   return 0;
 }
 
 static int
-mr_data_lengthval_error (DB_VALUE * value, int disk)
+mr_data_lengthval_error (DB_VALUE *value, int disk)
 {
   int error;
 
@@ -6496,12 +6492,12 @@ mr_data_lengthval_error (DB_VALUE * value, int disk)
 }
 
 static void
-mr_data_writemem_error (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_error (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
 }
 
 static void
-mr_data_readmem_error (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_error (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   int *mem = (int *) memptr;
 
@@ -6509,13 +6505,13 @@ mr_data_readmem_error (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_writeval_error (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_error (OR_BUF *buf, DB_VALUE *value)
 {
   return NO_ERROR;
 }
 
 static int
-mr_data_readval_error (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_error (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   if (value)
@@ -6527,7 +6523,7 @@ mr_data_readval_error (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_error (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_error (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -6536,7 +6532,7 @@ mr_data_cmpdisk_error (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_error (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   int e1, e2;
 
@@ -6565,7 +6561,7 @@ mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
  */
 
 static void
-mr_initmem_oid (void *memptr, TP_DOMAIN * domain)
+mr_initmem_oid (void *memptr, TP_DOMAIN *domain)
 {
   OID *mem = (OID *) memptr;
 
@@ -6573,7 +6569,7 @@ mr_initmem_oid (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_oid (DB_VALUE * value, int precision, int scale)
+mr_initval_oid (DB_VALUE *value, int precision, int scale)
 {
   OID oid;
 
@@ -6583,7 +6579,7 @@ mr_initval_oid (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_oid (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   OID *mem = (OID *) memptr;
   OID *oid;
@@ -6610,7 +6606,7 @@ mr_setmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_oid (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   OID *mem = (OID *) memptr;
   OID oid;
@@ -6622,7 +6618,7 @@ mr_getmem_oid (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_setval_oid (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_oid (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   OID *oid;
 
@@ -6639,7 +6635,7 @@ mr_setval_oid (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static void
-mr_data_writemem_oid (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_oid (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   OID *mem = (OID *) memptr;
 
@@ -6647,7 +6643,7 @@ mr_data_writemem_oid (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_oid (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_oid (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   OID *mem = (OID *) memptr;
   OID oid;
@@ -6663,13 +6659,13 @@ mr_data_readmem_oid (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_writeval_oid (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_oid (OR_BUF *buf, DB_VALUE *value)
 {
   return (or_put_oid (buf, db_get_oid (value)));
 }
 
 static int
-mr_data_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_oid (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   OID oid;
@@ -6690,7 +6686,7 @@ mr_data_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 }
 
 static int
-mr_index_writeval_oid (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_oid (OR_BUF *buf, DB_VALUE *value)
 {
   OID *oidp = NULL;
   int rc = NO_ERROR;
@@ -6713,7 +6709,7 @@ mr_index_writeval_oid (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_oid (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   OID oid;
@@ -6746,7 +6742,7 @@ mr_index_readval_oid (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   OID o1, o2;
   int oidc;
@@ -6766,7 +6762,7 @@ mr_index_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   OID o1, o2;
   int oidc;
@@ -6781,7 +6777,7 @@ mr_data_cmpdisk_oid (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_oid (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   OID *oid1, *oid2;
   int oidc;
@@ -6811,7 +6807,7 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
 
 
 static void
-mr_initmem_set (void *memptr, TP_DOMAIN * domain)
+mr_initmem_set (void *memptr, TP_DOMAIN *domain)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
 
@@ -6819,14 +6815,14 @@ mr_initmem_set (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_initval_set (DB_VALUE * value, int precision, int scale)
+mr_initval_set (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_SET, precision, scale);
   db_make_set (value, NULL);
 }
 
 static int
-mr_setmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_set (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
   int error = NO_ERROR;
@@ -6861,7 +6857,7 @@ mr_setmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_set (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
   int error = NO_ERROR;
@@ -6896,7 +6892,7 @@ mr_getmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE set_type)
+mr_setval_set_internal (DB_VALUE *dest, const DB_VALUE *src, bool copy, DB_TYPE set_type)
 {
   int error = NO_ERROR;
   SETREF *src_ref, *ref;
@@ -6990,13 +6986,13 @@ err_set:
 }
 
 static int
-mr_setval_set (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_set (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return mr_setval_set_internal (dest, src, copy, DB_TYPE_SET);
 }
 
 static int
-mr_data_lengthmem_set (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_set (void *memptr, TP_DOMAIN *domain, int disk)
 {
   int size;
 
@@ -7015,7 +7011,7 @@ mr_data_lengthmem_set (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_data_lengthval_set (DB_VALUE * value, int disk)
+mr_data_lengthval_set (DB_VALUE *value, int disk)
 {
   SETREF *ref;
   SETOBJ *set;
@@ -7060,7 +7056,7 @@ mr_data_lengthval_set (DB_VALUE * value, int disk)
 }
 
 static void
-mr_data_writemem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_set (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
 
@@ -7072,7 +7068,7 @@ mr_data_writemem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static int
-mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_set (OR_BUF *buf, DB_VALUE *value)
 {
   SETREF *ref;
   SETOBJ *set;
@@ -7140,7 +7136,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
 }
 
 static void
-mr_data_readmem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_set (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
   SETOBJ *set;
@@ -7184,7 +7180,7 @@ mr_data_readmem_set (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_data_readval_set (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_set (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   SETOBJ *set;
@@ -7344,7 +7340,7 @@ mr_freemem_set (void *memptr)
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   SETOBJ *set1 = NULL, *set2 = NULL;
@@ -7371,7 +7367,7 @@ mr_data_cmpdisk_set (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_set (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return set_compare_order (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
 }
@@ -7381,14 +7377,14 @@ mr_cmpval_set (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
  */
 
 static void
-mr_initval_multiset (DB_VALUE * value, int precision, int scale)
+mr_initval_multiset (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_MULTISET, precision, scale);
   db_make_multiset (value, NULL);
 }
 
 static int
-mr_getmem_multiset (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_multiset (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
   int error = NO_ERROR;
@@ -7420,7 +7416,7 @@ mr_getmem_multiset (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 }
 
 static int
-mr_setval_multiset (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_multiset (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return mr_setval_set_internal (dest, src, copy, DB_TYPE_MULTISET);
 }
@@ -7430,14 +7426,14 @@ mr_setval_multiset (DB_VALUE * dest, const DB_VALUE * src, bool copy)
  */
 
 static void
-mr_initval_sequence (DB_VALUE * value, int precision, int scale)
+mr_initval_sequence (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_SEQUENCE, precision, scale);
   db_make_sequence (value, NULL);
 }
 
 static int
-mr_getmem_sequence (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_sequence (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   SETOBJ **mem = (SETOBJ **) memptr;
   int error = NO_ERROR;
@@ -7472,13 +7468,13 @@ mr_getmem_sequence (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 }
 
 static int
-mr_setval_sequence (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_sequence (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   return mr_setval_set_internal (dest, src, copy, DB_TYPE_SEQUENCE);
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_sequence (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_sequence (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   SETOBJ *seq1 = NULL, *seq2 = NULL;
@@ -7505,7 +7501,7 @@ mr_data_cmpdisk_sequence (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_sequence (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
   return set_seq_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
@@ -7516,7 +7512,7 @@ mr_cmpval_sequence (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
  */
 
 static void
-mr_initval_midxkey (DB_VALUE * value, int precision, int scale)
+mr_initval_midxkey (DB_VALUE *value, int precision, int scale)
 {
   DB_MIDXKEY *midxkey = NULL;
   db_value_domain_init (value, DB_TYPE_MIDXKEY, precision, scale);
@@ -7524,7 +7520,7 @@ mr_initval_midxkey (DB_VALUE * value, int precision, int scale)
 }
 
 static int
-mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_midxkey (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision;
@@ -7589,13 +7585,13 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_midxkey (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_midxkey (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_index_writeval_midxkey (buf, value);
 }
 
 static int
-mr_index_writeval_midxkey (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_midxkey (OR_BUF *buf, DB_VALUE *value)
 {
   DB_MIDXKEY *midxkey;
   int rc;
@@ -7612,14 +7608,14 @@ mr_index_writeval_midxkey (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_data_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_midxkey (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   return mr_index_readval_midxkey (buf, value, domain, size, copy, copy_buf, copy_buf_len);
 }
 
 static int
-mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_midxkey (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
   char *new_;
@@ -7703,8 +7699,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 }
 
 static DB_VALUE_COMPARE_RESULT
-pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2, int do_coercion,
-			    int total_order)
+pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN *dom1, TP_DOMAIN *dom2, int do_coercion, int total_order)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE val1, val2;
@@ -7758,8 +7753,8 @@ clean_up:
 }
 
 DB_VALUE_COMPARE_RESULT
-pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
-		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
+pr_midxkey_compare (DB_MIDXKEY *mul1, DB_MIDXKEY *mul2, int do_coercion, int total_order, int num_index_term,
+		    int *start_colp, int *diff_column, bool *dom_is_desc, int *result_size)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -8056,8 +8051,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		   int collation)
+mr_cmpval_midxkey (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_MIDXKEY *midxkey1;
@@ -8099,7 +8093,7 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (false);
 
@@ -8109,7 +8103,7 @@ mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_MIDXKEY midxkey1;
@@ -8163,13 +8157,13 @@ mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static int
-mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN *domain, int disk)
 {
   return mr_index_lengthmem_midxkey (memptr, domain);
 }
 
 static int
-mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN *domain)
 {
   char *nullmap_ptr, *buf_ptr;
   TP_DOMAIN *dom;
@@ -8251,13 +8245,13 @@ exit_on_error:
 }
 
 static int
-mr_data_lengthval_midxkey (DB_VALUE * value, int disk)
+mr_data_lengthval_midxkey (DB_VALUE *value, int disk)
 {
   return mr_index_lengthval_midxkey (value);
 }
 
 static int
-mr_index_lengthval_midxkey (DB_VALUE * value)
+mr_index_lengthval_midxkey (DB_VALUE *value)
 {
   int len;
 
@@ -8278,13 +8272,13 @@ mr_index_lengthval_midxkey (DB_VALUE * value)
  */
 
 static void
-mr_initval_vobj (DB_VALUE * value, int precision, int scale)
+mr_initval_vobj (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_VOBJ, precision, scale);
 }
 
 static int
-mr_setval_vobj (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_vobj (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error;
 
@@ -8295,7 +8289,7 @@ mr_setval_vobj (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_readval_vobj (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_vobj (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   if (mr_data_readval_set (buf, value, &tp_Sequence_domain, size, copy, copy_buf, copy_buf_len) != NO_ERROR)
@@ -8311,7 +8305,7 @@ mr_data_readval_vobj (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   SETOBJ *seq1 = NULL, *seq2 = NULL;
@@ -8338,7 +8332,7 @@ mr_data_cmpdisk_vobj (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_vobj (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   return vobj_compare (db_get_set (value1), db_get_set (value2), do_coercion, total_order);
 }
@@ -8348,7 +8342,7 @@ mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
  */
 
 static void
-mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
+mr_initmem_numeric (void *memptr, TP_DOMAIN *domain)
 {
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
@@ -8362,7 +8356,7 @@ mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
  * an on-the-fly coercion here.
  */
 static int
-mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_numeric (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   int src_precision, src_scale, byte_size;
@@ -8396,7 +8390,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_numeric (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   DB_C_NUMERIC num;
@@ -8414,7 +8408,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static void
-mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_numeric (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   int disk_size;
 
@@ -8423,7 +8417,7 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_numeric (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
@@ -8454,13 +8448,13 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 }
 
 static int
-mr_index_lengthmem_numeric (void *mem, TP_DOMAIN * domain)
+mr_index_lengthmem_numeric (void *mem, TP_DOMAIN *domain)
 {
   return mr_data_lengthmem_numeric (mem, domain, 1);
 }
 
 static int
-mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_numeric (void *mem, TP_DOMAIN *domain, int disk)
 {
   int len;
 
@@ -8478,13 +8472,13 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 }
 
 static void
-mr_initval_numeric (DB_VALUE * value, int precision, int scale)
+mr_initval_numeric (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_NUMERIC, precision, scale);
 }
 
 static int
-mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_numeric (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_scale;
@@ -8493,7 +8487,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
     {
-      db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
     }
   else
     {
@@ -8519,13 +8513,13 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_numeric (DB_VALUE * value)
+mr_index_lengthval_numeric (DB_VALUE *value)
 {
   return mr_data_lengthval_numeric (value, 1);
 }
 
 static int
-mr_data_lengthval_numeric (DB_VALUE * value, int disk)
+mr_data_lengthval_numeric (DB_VALUE *value, int disk)
 {
   int precision, len;
 
@@ -8547,13 +8541,13 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
 }
 
 static int
-mr_index_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_numeric (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_data_writeval_numeric (buf, value);
 }
 
 static int
-mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_numeric (OR_BUF *buf, DB_VALUE *value)
 {
   DB_C_NUMERIC numeric;
   int precision, disk_size;
@@ -8573,14 +8567,14 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_numeric (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
   return mr_data_readval_numeric (buf, value, domain, size, copy, copy_buf, copy_buf_len);
 }
 
 static int
-mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_numeric (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -8626,7 +8620,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -8634,7 +8628,7 @@ mr_index_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   OR_BUF buf;
@@ -8670,8 +8664,7 @@ mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		   int collation)
+mr_cmpval_numeric (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE answer;
@@ -8865,7 +8858,7 @@ pr_find_type (const char *name)
  *
  */
 int
-pr_mem_size (const PR_TYPE * type)
+pr_mem_size (const PR_TYPE *type)
 {
   return type->size;
 }
@@ -8898,7 +8891,7 @@ pr_mem_size (const PR_TYPE * type)
  *    Used by some statistics modules that calculate memory sizes of structures.
  */
 int
-pr_value_mem_size (const DB_VALUE * value)
+pr_value_mem_size (const DB_VALUE *value)
 {
   const PR_TYPE *type;
   DB_TYPE dbval_type;
@@ -8926,7 +8919,7 @@ pr_value_mem_size (const DB_VALUE * value)
  */
 
 static int
-pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
+pr_midxkey_get_vals_size (TP_DOMAIN *domains, DB_VALUE *dbvals, int total)
 {
   TP_DOMAIN *dom;
   int i;
@@ -8951,7 +8944,7 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
  *    index(in):
  */
 int
-pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
+pr_midxkey_get_element_offset (const DB_MIDXKEY *midxkey, int index)
 {
   TP_DOMAIN *domain;
   int idx_ncols = 0, i;
@@ -9027,7 +9020,7 @@ exit_on_error:
  *    n_prefix(in):
  */
 int
-pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix)
+pr_midxkey_add_prefix (DB_VALUE *result, DB_VALUE *prefix, DB_VALUE *postfix, int n_prefix)
 {
   int i, offset, offset_postfix, offset_prefix;
   DB_MIDXKEY *midx_prefix, *midx_postfix;
@@ -9141,7 +9134,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
  *    prefix(in):
  */
 int
-pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
+pr_midxkey_remove_prefix (DB_VALUE *key, int prefix)
 {
   DB_MIDXKEY *midx_key;
   TP_DOMAIN *domain;
@@ -9237,7 +9230,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
  *    key2(in):
  */
 int
-pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
+pr_midxkey_common_prefix (DB_VALUE *key1, DB_VALUE *key2)
 {
   int diff_column, ret;
   DB_MIDXKEY *midx_lf_key, *midx_uf_key;
@@ -9273,7 +9266,7 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
  */
 
 static int
-pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy, int *prev_indexp,
+pr_midxkey_get_element_internal (const DB_MIDXKEY *midxkey, int index, DB_VALUE *value, bool copy, int *prev_indexp,
 				 char **prev_ptrp)
 {
   TP_DOMAIN *domain;
@@ -9417,7 +9410,7 @@ exit_on_error:
  *
  */
 int
-pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midxkey2, DB_VALUE * db_result)
+pr_midxkey_unique_prefix (const DB_VALUE *db_midxkey1, const DB_VALUE *db_midxkey2, DB_VALUE *db_result)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i, offset;
@@ -9545,7 +9538,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
  */
 
 int
-pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
+pr_midxkey_get_element_nocopy (const DB_MIDXKEY *midxkey, int index, DB_VALUE *value, int *prev_indexp,
 			       char **prev_ptrp)
 {
   return pr_midxkey_get_element_internal (midxkey, index, value, false /* not copy */ ,
@@ -9553,7 +9546,7 @@ pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE *
 }
 
 int
-pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
+pr_midxkey_add_elements (DB_VALUE *keyval, DB_VALUE *dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
 {
   TP_DOMAIN *dom;
   DB_MIDXKEY *midxkey;
@@ -9651,7 +9644,7 @@ error:
 
 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 int
-pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
+pr_midxkey_add_elements_with_null (DB_VALUE *keyval, DB_VALUE *dbvals, int num_dbvals,
 				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
 {
   TP_DOMAIN *dom;
@@ -9737,7 +9730,7 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
  *    look at the or_put_value family of functions.
  */
 int
-pr_data_writeval_disk_size (DB_VALUE * value)
+pr_data_writeval_disk_size (DB_VALUE *value)
 {
   const PR_TYPE *type;
   DB_TYPE dbval_type;
@@ -9763,7 +9756,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
  * Note:
  */
 int
-pr_index_writeval_disk_size (DB_VALUE * value)
+pr_index_writeval_disk_size (DB_VALUE *value)
 {
   const PR_TYPE *type;
   DB_TYPE dbval_type;
@@ -9782,7 +9775,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
 }
 
 void
-pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
+pr_data_writeval (struct or_buf *buf, DB_VALUE *value)
 {
   const PR_TYPE *type;
   DB_TYPE dbval_type;
@@ -9813,7 +9806,7 @@ pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (const DB_VALUE * val)
+pr_valstring (const DB_VALUE *val)
 {
   const size_t BUFFER_SIZE = 1024;
   string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
@@ -9839,7 +9832,7 @@ pr_valstring (const DB_VALUE * val)
  *    domain(in): enumeration domain against which the value is checked.
  */
 int
-pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
+pr_complete_enum_value (DB_VALUE *value, struct tp_domain *domain)
 {
   unsigned short short_val;
   const char *str_val;
@@ -9919,13 +9912,13 @@ pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
  */
 
 static void
-mr_initmem_resultset (void *mem, TP_DOMAIN * domain)
+mr_initmem_resultset (void *mem, TP_DOMAIN *domain)
 {
   *(DB_BIGINT *) mem = 0;
 }
 
 static int
-mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_resultset (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value != NULL)
     {
@@ -9940,19 +9933,19 @@ mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_resultset (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   return db_make_resultset (value, *(DB_BIGINT *) mem);
 }
 
 static void
-mr_data_writemem_resultset (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_resultset (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   or_put_bigint (buf, *(DB_BIGINT *) mem);
 }
 
 static void
-mr_data_readmem_resultset (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_resultset (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
 
@@ -9967,14 +9960,14 @@ mr_data_readmem_resultset (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size
 }
 
 static void
-mr_initval_resultset (DB_VALUE * value, int precision, int scale)
+mr_initval_resultset (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_RESULTSET, precision, scale);
   db_make_resultset (value, 0);
 }
 
 static int
-mr_setval_resultset (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_resultset (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   if (src && !DB_IS_NULL (src))
     {
@@ -9987,13 +9980,13 @@ mr_setval_resultset (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_writeval_resultset (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_resultset (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_bigint (buf, db_get_resultset (value));
 }
 
 static int
-mr_data_readval_resultset (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_resultset (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			   int copy_buf_len)
 {
   DB_BIGINT temp;
@@ -10016,8 +10009,7 @@ mr_data_readval_resultset (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			   int *start_colp)
+mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_BIGINT i1, i2;
 
@@ -10033,7 +10025,7 @@ mr_data_cmpdisk_resultset (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_resultset (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		     int collation)
 {
   DB_BIGINT i1, i2;
@@ -10050,7 +10042,7 @@ mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int 
  */
 
 static void
-mr_initmem_string (void *mem, TP_DOMAIN * domain)
+mr_initmem_string (void *mem, TP_DOMAIN *domain)
 {
   *(char **) mem = NULL;
 }
@@ -10062,7 +10054,7 @@ mr_initmem_string (void *mem, TP_DOMAIN * domain)
  * to hold the string characters.
  */
 static int
-mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_string (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   const char *src;
@@ -10128,7 +10120,7 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_string (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   int mem_length;
@@ -10195,7 +10187,7 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
  * the terminator is actually in the or_put_varchar, family of functions.
  */
 static int
-mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_string (void *memptr, TP_DOMAIN *domain, int disk)
 {
   char **mem, *cur;
   int len;
@@ -10229,7 +10221,7 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_string (void *memptr, TP_DOMAIN *domain)
 {
   int charlen;
   OR_BUF buf;
@@ -10269,7 +10261,7 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_writemem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_string (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   char **mem, *cur;
   int len;
@@ -10295,7 +10287,7 @@ mr_data_writemem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
  * padding.
  */
 static void
-mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_string (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   char **mem, *cur, *new_;
   int len;
@@ -10402,14 +10394,14 @@ mr_freemem_string (void *memptr)
 }
 
 static void
-mr_initval_string (DB_VALUE * value, int precision, int scale)
+mr_initval_string (DB_VALUE *value, int precision, int scale)
 {
   db_make_varchar (value, precision, NULL, 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   value->need_clear = false;
 }
 
 static int
-mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_string (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
@@ -10505,38 +10497,38 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_string (DB_VALUE * value)
+mr_index_lengthval_string (DB_VALUE *value)
 {
   return mr_lengthval_string_internal (value, 1, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_writeval_string (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_string (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_string_internal (buf, value, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_string (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_lengthval_string (DB_VALUE * value, int disk)
+mr_data_lengthval_string (DB_VALUE *value, int disk)
 {
   return mr_lengthval_string_internal (value, disk, INT_ALIGNMENT);
 }
 
 static int
-mr_data_writeval_string (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_string (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_string_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_string (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
@@ -10547,7 +10539,7 @@ mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
  * varchar.
  */
 static int
-mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
+mr_lengthval_string_internal (DB_VALUE *value, int disk, int align)
 {
   int len;
   bool is_temporary_data = false;
@@ -10627,7 +10619,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
  * varchar.
  */
 static int
-mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_string_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_length, compressed_size;
   const char *str, *compressed_string;
@@ -10693,7 +10685,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 }
 
 static int
-mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_readval_string_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			    int copy_buf_len, int align)
 {
   int pad, precision;
@@ -10993,7 +10985,7 @@ cleanup:
  * TO-DO: After applying [CBRD-25293], decide whether to consolidate and rewrite the function.
  */
 int
-data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+data_readval_string (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   int precision;
@@ -11149,7 +11141,7 @@ cleanup:
 #endif // #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -11157,7 +11149,7 @@ mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   char *str1, *str2;
@@ -11315,8 +11307,7 @@ cleanup:
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
+mr_cmpval_string (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
   int size1, size2;
@@ -11386,7 +11377,7 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+mr_cmpval_string2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   int c;
   int len1, len2, string_size;
@@ -11441,7 +11432,7 @@ const PR_TYPE *tp_Type_string = &tp_String;
  */
 
 static void
-mr_initmem_char (void *memptr, TP_DOMAIN * domain)
+mr_initmem_char (void *memptr, TP_DOMAIN *domain)
 {
 #if !defined(NDEBUG)
   int mem_length;
@@ -11469,7 +11460,7 @@ mr_initmem_char (void *memptr, TP_DOMAIN * domain)
  *
  */
 static int
-mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_char (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   char *mem;
@@ -11540,7 +11531,7 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
 
 static int
-mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_char (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int mem_length;
   char *new_;
@@ -11585,7 +11576,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_data_lengthmem_char (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_char (void *memptr, TP_DOMAIN *domain, int disk)
 {
   int mem_length;
 
@@ -11597,7 +11588,7 @@ mr_data_lengthmem_char (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_index_lengthmem_char (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_char (void *memptr, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -11617,7 +11608,7 @@ mr_index_lengthmem_char (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_writemem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_char (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -11634,7 +11625,7 @@ mr_data_writemem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_char (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int mem_length, padding;
 
@@ -11691,13 +11682,13 @@ mr_freemem_char (void *memptr)
 }
 
 static void
-mr_initval_char (DB_VALUE * value, int precision, int scale)
+mr_initval_char (DB_VALUE *value, int precision, int scale)
 {
   DB_DOMAIN_INIT_CHAR (value, precision);
 }
 
 static int
-mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_char (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
@@ -11761,7 +11752,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_char (DB_VALUE * value)
+mr_index_lengthval_char (DB_VALUE *value)
 {
   return mr_data_lengthval_char (value, 1);
 }
@@ -11769,7 +11760,7 @@ mr_index_lengthval_char (DB_VALUE * value)
 /*
  */
 static int
-mr_data_lengthval_char (DB_VALUE * value, int disk)
+mr_data_lengthval_char (DB_VALUE *value, int disk)
 {
   int packed_length, src_precision;
 
@@ -11815,7 +11806,7 @@ mr_data_lengthval_char (DB_VALUE * value, int disk)
 
 
 static int
-mr_index_writeval_char (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_char (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_char_internal (buf, value, CHAR_ALIGNMENT);
 }
@@ -11824,13 +11815,13 @@ mr_index_writeval_char (OR_BUF * buf, DB_VALUE * value)
  * See commentary in mr_lengthval_char.
  */
 static int
-mr_data_writeval_char (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_char (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_char_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_char_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_precision, src_length, packed_length, pad;
   const char *src;
@@ -11916,21 +11907,21 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
 }
 
 static int
-mr_index_readval_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_index_readval_char (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   return mr_readval_char_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_readval_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_data_readval_char (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   return mr_readval_char_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
 static int
-mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_readval_char_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 			  int copy_buf_len, int align)
 {
   int mem_length, padding;
@@ -12112,7 +12103,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -12120,7 +12111,7 @@ mr_index_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -12128,7 +12119,7 @@ mr_data_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp,
+mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp,
 			  int align)
 {
   DB_VALUE_COMPARE_RESULT c;
@@ -12176,7 +12167,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_char (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
   int strc, size1, size2;
@@ -12244,7 +12235,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+mr_cmpval_char2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   int c;
   int len1, len2, string_size;
@@ -12299,7 +12290,7 @@ const PR_TYPE *tp_Type_char = &tp_Char;
  */
 
 static void
-mr_initmem_nchar (void *memptr, TP_DOMAIN * domain)
+mr_initmem_nchar (void *memptr, TP_DOMAIN *domain)
 {
 #if !defined(NDEBUG)
   int mem_length;
@@ -12326,7 +12317,7 @@ mr_initmem_nchar (void *memptr, TP_DOMAIN * domain)
  * used to determine the number of significant characters.
  */
 static int
-mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_nchar (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   char *mem;
@@ -12403,7 +12394,7 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
  * NULL termination.
  */
 static int
-mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_nchar (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int mem_length;
   char *new_;
@@ -12451,7 +12442,7 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_data_lengthmem_nchar (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_nchar (void *memptr, TP_DOMAIN *domain, int disk)
 {
   assert (!IS_FLOATING_PRECISION (domain->precision));
 
@@ -12459,7 +12450,7 @@ mr_data_lengthmem_nchar (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_index_lengthmem_nchar (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_nchar (void *memptr, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -12479,7 +12470,7 @@ mr_index_lengthmem_nchar (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_writemem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_nchar (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -12494,7 +12485,7 @@ mr_data_writemem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_nchar (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int mem_length, padding;
 
@@ -12549,13 +12540,13 @@ mr_freemem_nchar (void *memptr)
 }
 
 static void
-mr_initval_nchar (DB_VALUE * value, int precision, int scale)
+mr_initval_nchar (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_NCHAR, precision, scale);
 }
 
 static int
-mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_nchar (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
@@ -12616,13 +12607,13 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
 
 static int
-mr_index_lengthval_nchar (DB_VALUE * value)
+mr_index_lengthval_nchar (DB_VALUE *value)
 {
   return mr_data_lengthval_nchar (value, 1);
 }
 
 static int
-mr_data_lengthval_nchar (DB_VALUE * value, int disk)
+mr_data_lengthval_nchar (DB_VALUE *value, int disk)
 {
   int packed_length, src_precision;
   INTL_CODESET src_codeset = (INTL_CODESET) db_get_string_codeset (value);
@@ -12693,7 +12684,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 
 
 static int
-mr_index_writeval_nchar (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_nchar (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_nchar_internal (buf, value, CHAR_ALIGNMENT);
 }
@@ -12702,13 +12693,13 @@ mr_index_writeval_nchar (OR_BUF * buf, DB_VALUE * value)
  * See commentary in mr_lengthval_nchar.
  */
 static int
-mr_data_writeval_nchar (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_nchar (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_nchar_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_nchar_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_precision, src_size, packed_size, pad;
   const char *src;
@@ -12834,21 +12825,21 @@ error:
 }
 
 static int
-mr_index_readval_nchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_index_readval_nchar (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   return mr_readval_nchar_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_readval_nchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_data_readval_nchar (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 		       int copy_buf_len)
 {
   return mr_readval_nchar_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
 static int
-mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_readval_nchar_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 			   int copy_buf_len, int align)
 {
   int mem_length, padding;
@@ -13048,7 +13039,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -13056,7 +13047,7 @@ mr_index_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -13064,7 +13055,7 @@ mr_data_cmpdisk_nchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			   int *start_colp, int align)
 {
   DB_VALUE_COMPARE_RESULT c;
@@ -13109,7 +13100,7 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_nchar (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
   int strc, size1, size2;
@@ -13153,7 +13144,7 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+mr_cmpval_nchar2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   int c;
   int len1, len2, string_size;
@@ -13209,7 +13200,7 @@ const PR_TYPE *tp_Type_nchar = &tp_NChar;
  */
 
 static void
-mr_initmem_varnchar (void *mem, TP_DOMAIN * domain)
+mr_initmem_varnchar (void *mem, TP_DOMAIN *domain)
 {
   *(char **) mem = NULL;
 }
@@ -13221,7 +13212,7 @@ mr_initmem_varnchar (void *mem, TP_DOMAIN * domain)
  * to hold the string characters.
  */
 static int
-mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_varnchar (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   const char *src;
@@ -13290,7 +13281,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_varnchar (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   int mem_length;
@@ -13357,7 +13348,7 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
  * the terminator is actually in the or_put_varchar, family of functions.
  */
 static int
-mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN *domain, int disk)
 {
   char **mem, *cur;
   int len;
@@ -13391,13 +13382,13 @@ mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_index_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_varnchar (void *memptr, TP_DOMAIN *domain)
 {
   return mr_index_lengthmem_string (memptr, domain);
 }
 
 static void
-mr_data_writemem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_varnchar (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   char **mem, *cur;
   int len;
@@ -13422,7 +13413,7 @@ mr_data_writemem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
  * end of a string are padding.
  */
 static void
-mr_data_readmem_varnchar (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_varnchar (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   return mr_data_readmem_string (buf, memptr, domain, size);
 }
@@ -13443,14 +13434,14 @@ mr_freemem_varnchar (void *memptr)
 }
 
 static void
-mr_initval_varnchar (DB_VALUE * value, int precision, int scale)
+mr_initval_varnchar (DB_VALUE *value, int precision, int scale)
 {
   db_make_varnchar (value, precision, NULL, 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   value->need_clear = false;
 }
 
 static int
-mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_varnchar (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
@@ -13532,38 +13523,38 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_varnchar (DB_VALUE * value)
+mr_index_lengthval_varnchar (DB_VALUE *value)
 {
   return mr_lengthval_varnchar_internal (value, 1, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_writeval_varnchar (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_varnchar (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_varnchar_internal (buf, value, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_readval_varnchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_varnchar (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			   int copy_buf_len)
 {
   return mr_readval_varnchar_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_lengthval_varnchar (DB_VALUE * value, int disk)
+mr_data_lengthval_varnchar (DB_VALUE *value, int disk)
 {
   return mr_lengthval_varnchar_internal (value, disk, INT_ALIGNMENT);
 }
 
 static int
-mr_data_writeval_varnchar (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_varnchar (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_varnchar_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_data_readval_varnchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_varnchar (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			  int copy_buf_len)
 {
   return mr_readval_varnchar_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
@@ -13574,7 +13565,7 @@ mr_data_readval_varnchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
  * varnchar.
  */
 static int
-mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
+mr_lengthval_varnchar_internal (DB_VALUE *value, int disk, int align)
 {
   int src_size, len, rc = NO_ERROR;
   const char *str;
@@ -13664,7 +13655,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 }
 
 static int
-mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_varnchar_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_size, size, compressed_size;
   INTL_CODESET src_codeset;
@@ -13756,7 +13747,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 }
 
 static int
-mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_readval_varnchar_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len, int align)
 {
   int pad, precision;
@@ -14091,8 +14082,7 @@ cleanup:
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
-			   int *start_colp)
+mr_index_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -14100,7 +14090,7 @@ mr_index_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   char *str1, *str2;
@@ -14244,7 +14234,7 @@ cleanup:
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_varnchar (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		    int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
@@ -14290,8 +14280,7 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
-		     int *start_colp)
+mr_cmpval_varnchar2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   int c;
   int len1, len2, string_size;
@@ -14346,7 +14335,7 @@ const PR_TYPE *tp_Type_varnchar = &tp_VarNChar;
  */
 
 static void
-mr_initmem_bit (void *memptr, TP_DOMAIN * domain)
+mr_initmem_bit (void *memptr, TP_DOMAIN *domain)
 {
 #if !defined(NDEBUG)
   int mem_length;
@@ -14374,7 +14363,7 @@ mr_initmem_bit (void *memptr, TP_DOMAIN * domain)
  * used to determine the number of significant characters.
  */
 static int
-mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_bit (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   char *mem;
@@ -14437,7 +14426,7 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_bit (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int mem_length;
   char *new_;
@@ -14470,7 +14459,7 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_data_lengthmem_bit (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_bit (void *memptr, TP_DOMAIN *domain, int disk)
 {
   assert (!IS_FLOATING_PRECISION (domain->precision));
   assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
@@ -14480,7 +14469,7 @@ mr_data_lengthmem_bit (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static void
-mr_data_writemem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
+mr_data_writemem_bit (OR_BUF *buf, void *mem, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -14496,7 +14485,7 @@ mr_data_writemem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_bit (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int mem_length, padding;
 
@@ -14549,13 +14538,13 @@ mr_freemem_bit (void *memptr)
 }
 
 static void
-mr_initval_bit (DB_VALUE * value, int precision, int scale)
+mr_initval_bit (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_BIT, precision, scale);
 }
 
 static int
-mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_bit (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_number_of_bits = 0;
@@ -14606,7 +14595,7 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthmem_bit (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_bit (void *memptr, TP_DOMAIN *domain)
 {
   int mem_length;
 
@@ -14629,13 +14618,13 @@ mr_index_lengthmem_bit (void *memptr, TP_DOMAIN * domain)
 }
 
 static int
-mr_index_lengthval_bit (DB_VALUE * value)
+mr_index_lengthval_bit (DB_VALUE *value)
 {
   return mr_data_lengthval_bit (value, 1);
 }
 
 static int
-mr_data_lengthval_bit (DB_VALUE * value, int disk)
+mr_data_lengthval_bit (DB_VALUE *value, int disk)
 {
   int packed_length, src_precision;
 
@@ -14676,7 +14665,7 @@ mr_data_lengthval_bit (DB_VALUE * value, int disk)
 
 
 static int
-mr_index_writeval_bit (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_bit (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_bit_internal (buf, value, CHAR_ALIGNMENT);
 }
@@ -14685,13 +14674,13 @@ mr_index_writeval_bit (OR_BUF * buf, DB_VALUE * value)
  * See commentary in mr_data_lengthval_bit.
  */
 static int
-mr_data_writeval_bit (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_bit (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_bit_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_bit_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_precision, src_length, packed_length, pad;
   const char *src;
@@ -14767,21 +14756,21 @@ mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 }
 
 static int
-mr_index_readval_bit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_index_readval_bit (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   return mr_readval_bit_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_readval_bit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_data_readval_bit (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 		     int copy_buf_len)
 {
   return mr_readval_bit_internal (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
 static int
-mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int disk_size, bool copy, char *copy_buf,
+mr_readval_bit_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int disk_size, bool copy, char *copy_buf,
 			 int copy_buf_len, int align)
 {
   int mem_length, padding;
@@ -14943,7 +14932,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -14951,7 +14940,7 @@ mr_index_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -14959,7 +14948,7 @@ mr_data_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp,
+mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp,
 			 int align)
 {
   DB_VALUE_COMPARE_RESULT c;
@@ -14995,7 +14984,7 @@ mr_cmpdisk_bit_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_bit (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
   int bitc;
@@ -15015,7 +15004,7 @@ mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+mr_cmpval_bit2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   int len1, len2, string_size;
@@ -15071,7 +15060,7 @@ const PR_TYPE *tp_Type_bit = &tp_Bit;
  */
 
 static void
-mr_initmem_varbit (void *mem, TP_DOMAIN * domain)
+mr_initmem_varbit (void *mem, TP_DOMAIN *domain)
 {
   *(char **) mem = NULL;
 }
@@ -15083,7 +15072,7 @@ mr_initmem_varbit (void *mem, TP_DOMAIN * domain)
  * to hold the string characters.
  */
 static int
-mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_varbit (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   const char *src;
@@ -15141,7 +15130,7 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_varbit (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   int mem_bit_length;
@@ -15194,7 +15183,7 @@ mr_getmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
  * to round up to a word boundary.
  */
 static int
-mr_data_lengthmem_varbit (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_varbit (void *memptr, TP_DOMAIN *domain, int disk)
 {
   char **mem, *cur;
   int len;
@@ -15219,7 +15208,7 @@ mr_data_lengthmem_varbit (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static int
-mr_index_lengthmem_varbit (void *memptr, TP_DOMAIN * domain)
+mr_index_lengthmem_varbit (void *memptr, TP_DOMAIN *domain)
 {
   OR_BUF buf;
   int bitlen;
@@ -15233,7 +15222,7 @@ mr_index_lengthmem_varbit (void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_writemem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_varbit (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   char **mem, *cur;
   int bitlen;
@@ -15258,7 +15247,7 @@ mr_data_writemem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
  * string are padding.
  */
 static void
-mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_varbit (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   char **mem, *cur, *new_;
   int bit_len;
@@ -15356,14 +15345,14 @@ mr_freemem_varbit (void *memptr)
 }
 
 static void
-mr_initval_varbit (DB_VALUE * value, int precision, int scale)
+mr_initval_varbit (DB_VALUE *value, int precision, int scale)
 {
   db_make_varbit (value, precision, NULL, 0);
   value->need_clear = false;
 }
 
 static int
-mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_varbit (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
@@ -15413,45 +15402,45 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_index_lengthval_varbit (DB_VALUE * value)
+mr_index_lengthval_varbit (DB_VALUE *value)
 {
   return mr_lengthval_varbit_internal (value, 1, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_writeval_varbit (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_varbit (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_varbit_internal (buf, value, CHAR_ALIGNMENT);
 }
 
 static int
-mr_index_readval_varbit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_varbit (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
   return mr_readval_varbit_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
 }
 
 static int
-mr_data_lengthval_varbit (DB_VALUE * value, int disk)
+mr_data_lengthval_varbit (DB_VALUE *value, int disk)
 {
   return mr_lengthval_varbit_internal (value, disk, INT_ALIGNMENT);
 }
 
 static int
-mr_data_writeval_varbit (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_varbit (OR_BUF *buf, DB_VALUE *value)
 {
   return mr_writeval_varbit_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
-mr_data_readval_varbit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_varbit (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
   return mr_readval_varbit_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
 static int
-mr_lengthval_varbit_internal (DB_VALUE * value, int disk, int align)
+mr_lengthval_varbit_internal (DB_VALUE *value, int disk, int align)
 {
   int bit_length, len;
 
@@ -15474,7 +15463,7 @@ mr_lengthval_varbit_internal (DB_VALUE * value, int disk, int align)
 }
 
 static int
-mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
+mr_writeval_varbit_internal (OR_BUF *buf, DB_VALUE *value, int align)
 {
   int src_bit_length;
   const char *str;
@@ -15509,7 +15498,7 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
  * negative size here that is greater than -4.
  */
 static int
-mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_readval_varbit_internal (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			    int copy_buf_len, int align)
 {
   int pad, precision;
@@ -15648,7 +15637,7 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_index_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   assert (domain != NULL);
 
@@ -15656,7 +15645,7 @@ mr_index_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   int bit_length1, bit_length2;
@@ -15683,8 +15672,7 @@ mr_data_cmpdisk_varbit (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
+mr_cmpval_varbit (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   DB_VALUE_COMPARE_RESULT c;
   int bitc;
@@ -15704,7 +15692,7 @@ mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+mr_cmpval_varbit2 (DB_VALUE *value1, DB_VALUE *value2, int length, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c;
   int len1, len2, string_size;
@@ -15757,20 +15745,20 @@ const PR_TYPE *tp_Type_varbit = &tp_VarBit;
 
 
 static void
-mr_initmem_enumeration (void *mem, TP_DOMAIN * domain)
+mr_initmem_enumeration (void *mem, TP_DOMAIN *domain)
 {
   *(unsigned short *) mem = 0;
 }
 
 static void
-mr_initval_enumeration (DB_VALUE * value, int precision, int scale)
+mr_initval_enumeration (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_ENUMERATION, precision, scale);
   db_make_enumeration (value, 0, NULL, 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 }
 
 static int
-mr_setmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_enumeration (void *mem, TP_DOMAIN *domain, DB_VALUE *value)
 {
   if (value == NULL)
     {
@@ -15785,7 +15773,7 @@ mr_setmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_enumeration (void *mem, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   unsigned short short_val = 0;
 
@@ -15795,7 +15783,7 @@ mr_getmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 }
 
 static int
-mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_enumeration (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   const char *str = NULL;
   bool need_clear = false;
@@ -15835,7 +15823,7 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static void
-mr_data_writemem_enumeration (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_enumeration (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   unsigned short *mem = (unsigned short *) memptr;
 
@@ -15843,7 +15831,7 @@ mr_data_writemem_enumeration (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_enumeration (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
+mr_data_readmem_enumeration (OR_BUF *buf, void *mem, TP_DOMAIN *domain, int size)
 {
   int rc = NO_ERROR;
   if (mem == NULL)
@@ -15869,7 +15857,7 @@ mr_data_readmem_enumeration (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int si
  * copy_buf_len(in):
  */
 static int
-mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned short index, int size, bool copy,
+mr_setval_enumeration_internal (DB_VALUE *value, TP_DOMAIN *domain, unsigned short index, int size, bool copy,
 				char *copy_buf, int copy_buf_len)
 {
   bool need_clear = false;
@@ -15928,7 +15916,7 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
 }
 
 static int
-mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_enumeration (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			     int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -15950,13 +15938,13 @@ mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 }
 
 static int
-mr_data_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_enumeration (OR_BUF *buf, DB_VALUE *value)
 {
   return or_put_short (buf, db_get_enum_short (value));
 }
 
 static int
-mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
+mr_index_writeval_enumeration (OR_BUF *buf, DB_VALUE *value)
 {
   unsigned short s = db_get_enum_short (value);
 
@@ -15964,7 +15952,7 @@ mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_index_readval_enumeration (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 			      int copy_buf_len)
 {
   int rc = NO_ERROR;
@@ -15986,7 +15974,7 @@ mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			      int *start_colp)
 {
   unsigned short s1, s2;
@@ -16000,7 +15988,7 @@ mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order,
+mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order,
 			     int *start_colp)
 {
   unsigned short s1, s2;
@@ -16014,7 +16002,7 @@ mr_data_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * domain, int do_
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
+mr_cmpval_enumeration (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp,
 		       int collation)
 {
   unsigned short s1, s2;
@@ -16151,7 +16139,7 @@ cleanup:
  *	to the write of the DB_VALUE in the buffer.
  */
 int
-pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE *value, int *val_size, int align)
 {
   const char *string = NULL, *str = NULL;
   char *compressed_string = NULL;
@@ -16273,7 +16261,7 @@ cleanup:
  */
 
 static int
-pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *compressed_string, int compressed_length,
+pr_write_compressed_string_to_buffer (OR_BUF *buf, const char *compressed_string, int compressed_length,
 				      int decompressed_length, int align)
 {
   int storage_length = 0;
@@ -16350,7 +16338,7 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, const char *compressed_strin
  */
 
 static int
-pr_write_uncompressed_string_to_buffer (OR_BUF * buf, const char *string, int size, int align)
+pr_write_uncompressed_string_to_buffer (OR_BUF *buf, const char *string, int size, int align)
 {
   int rc = NO_ERROR;
 
@@ -16453,7 +16441,7 @@ pr_data_compress_string (const char *string, int str_length, char *compressed_st
  */
 
 int
-pr_clear_compressed_string (DB_VALUE * value)
+pr_clear_compressed_string (DB_VALUE *value)
 {
   char *data = NULL;
   DB_TYPE db_type;
@@ -16501,7 +16489,7 @@ pr_clear_compressed_string (DB_VALUE * value)
  */
 
 int
-pr_do_db_value_string_compression (DB_VALUE * value)
+pr_do_db_value_string_compression (DB_VALUE *value)
 {
   DB_TYPE db_type;
   const char *string;
@@ -16603,7 +16591,7 @@ const PR_TYPE tp_Json = {
 const PR_TYPE *tp_Type_json = &tp_Json;
 
 static void
-mr_initmem_json (void *mem, TP_DOMAIN * domain)
+mr_initmem_json (void *mem, TP_DOMAIN *domain)
 {
   DB_JSON *json = (DB_JSON *) mem;
 
@@ -16619,7 +16607,7 @@ mr_initmem_json (void *mem, TP_DOMAIN * domain)
 }
 
 static int
-mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+mr_setmem_json (void *memptr, TP_DOMAIN *domain, DB_VALUE *value)
 {
   int error = NO_ERROR;
   DB_JSON *json;
@@ -16654,7 +16642,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 }
 
 static int
-mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+mr_getmem_json (void *memptr, TP_DOMAIN *domain, DB_VALUE *value, bool copy)
 {
   int error = NO_ERROR;
   const char *json_schema = NULL;
@@ -16699,7 +16687,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 }
 
 static int
-mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
+mr_data_lengthmem_json (void *memptr, TP_DOMAIN *domain, int disk)
 {
   int len = 0;
   DB_JSON *json;
@@ -16726,7 +16714,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 }
 
 static void
-mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+mr_data_writemem_json (OR_BUF *buf, void *memptr, TP_DOMAIN *domain)
 {
   DB_JSON *json;
   int rc = NO_ERROR;
@@ -16745,7 +16733,7 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 }
 
 static void
-mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+mr_data_readmem_json (OR_BUF *buf, void *memptr, TP_DOMAIN *domain, int size)
 {
   DB_JSON *json;
   int rc = NO_ERROR;
@@ -16806,14 +16794,14 @@ mr_freemem_json (void *memptr)
 }
 
 static void
-mr_initval_json (DB_VALUE * value, int precision, int scale)
+mr_initval_json (DB_VALUE *value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_JSON, precision, scale);
   value->need_clear = false;
 }
 
 static int
-mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+mr_setval_json (DB_VALUE *dest, const DB_VALUE *src, bool copy)
 {
   int error = NO_ERROR;
 
@@ -16849,7 +16837,7 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 }
 
 static int
-mr_data_lengthval_json (DB_VALUE * value, int disk)
+mr_data_lengthval_json (DB_VALUE *value, int disk)
 {
   if (!disk)
     {
@@ -16867,7 +16855,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 }
 
 static int
-mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
+mr_data_writeval_json (OR_BUF *buf, DB_VALUE *value)
 {
   int rc = NO_ERROR;
 
@@ -16896,7 +16884,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 }
 
 static int
-mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+mr_data_readval_json (OR_BUF *buf, DB_VALUE *value, TP_DOMAIN *domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
   JSON_DOC *doc = NULL;
@@ -16923,7 +16911,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 }
 
 static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN *domain, int do_coercion, int total_order, int *start_colp)
 {
   char *first, *second;
   OR_BUF first_buf, second_buf;
@@ -16973,7 +16961,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
  * total_order is false
  */
 static DB_VALUE_COMPARE_RESULT
-mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+mr_cmpval_json (DB_VALUE *value1, DB_VALUE *value2, int do_coercion, int total_order, int *start_colp, int collation)
 {
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
   DB_JSON_TYPE type1 = DB_JSON_UNKNOWN;

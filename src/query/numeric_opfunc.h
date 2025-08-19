@@ -40,7 +40,17 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+/*
+ * NUMERIC_MAX_STRING_SIZE:
+ * The maximum input digits for numeric values is limited to 254 digits including
+ * sign, decimal point, etc. NUMERIC_MAX_STRING_SIZE is used for numeric parsing,
+ * arithmetic operations, scale adjustment, rounding, etc. It is set to twice
+ * the size of TWICE_NUM_MAX_PREC to accommodate digit increase due to scale adjustment.
+ * 
+ * Maximum string size for NUMERIC output: 175 * 2 = 350
+ * = (max fractional digits (38 + 127) + 10 extra digits) * 2
+ */
+#define NUMERIC_MAX_STRING_SIZE ((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10) * 2
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
