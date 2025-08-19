@@ -2806,11 +2806,6 @@ revoke_all_from_user (DB_OBJECT * user)
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      if (!is_class_entry (col, i))
-	{
-	  continue;
-	}
-
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
       if (db_is_system_class (obj))
