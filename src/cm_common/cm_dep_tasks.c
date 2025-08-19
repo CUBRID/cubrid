@@ -153,12 +153,14 @@ static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
 
 static void get_authorization_base (void);
+static bool is_class_entry (DB_COLLECTION *col, int index);
 static int cubrid_version = -1;
 static int grant_base = 0;
 
-#define GRANT_ENTRY_LENGTH	(3 + grant_base)
-#define GRANT_ENTRY_CLASS(index)  ((index) + grant_base)
-#define GRANT_ENTRY_TYPE(index)  ((index) + grant_base + 2)
+#define GRANT_ENTRY_LENGTH              (3 + grant_base)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        ((index) + grant_base)
+#define GRANT_ENTRY_TYPE(index)         ((index) + grant_base + 2)
 
 #if defined(WINDOWS)
 static void
@@ -2804,6 +2806,11 @@ revoke_all_from_user (DB_OBJECT * user)
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
+      if (!is_class_entry (col, i))
+        {
+          continue;
+        }
+
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
       if (db_is_system_class (obj))
@@ -2878,12 +2885,36 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
+      if (!is_class_entry (col, i))
+        {
+          continue;
+        }
+
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
       db_seq_get (col, GRANT_ENTRY_TYPE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
       nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
+}
+
+static bool
+is_class_entry (DB_COLLECTION *col, int index)
+{
+  DB_VALUE v;
+
+  if (cubrid_version < 1104)
+    {
+      return true;
+    }
+
+  db_seq_get (col, GRANT_ENTRY_OBJECT_TYPE (index), &v);
+  if (db_get_int (&v) == 0)
+    {
+      return true;
+    }
+
+  return false;
 }
 
 static void
