@@ -55,7 +55,6 @@ net_histo_ctx::net_histo_ctx ()
   , last_call_tick {}
   , total_server_time (0)
   , histogram_entries {}
-  , last_request_id (-1)
 {
   //
 }
@@ -217,23 +216,6 @@ net_histo_ctx::add_request (int request, int data_sent)
   tsc_getticks (&last_call_tick);
 
   call_cnt++;
-
-  last_request_id = request;
-}
-
-void
-net_histo_ctx::cancel_last_request (void)
-{
-  if (last_request_id >= 0)
-    {
-      net_histogram_entry &entry = histogram_entries[last_request_id];
-      entry.request_count--;
-      call_cnt--;
-      last_request_id = -1;
-
-      // clear TSC_TICKS (last_call_tick)
-      memset (&last_call_tick, 0, sizeof (last_call_tick));
-    }
 }
 
 /*

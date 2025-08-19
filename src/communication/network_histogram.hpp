@@ -63,8 +63,6 @@ class net_histo_ctx
 
     int print_histogram (FILE *stream);
 
-    void cancel_last_request (void);
-
   private:
     bool is_collecting; /* whether collecting histogram is started */
     bool is_perfmon_setup; /* whether perfmon stat should be setup */
@@ -72,8 +70,6 @@ class net_histo_ctx
     TSC_TICKS last_call_tick;
     UINT64 total_server_time;
     net_histogram_array_type histogram_entries;
-
-    int last_request_id;
 };
 
 #if !defined (SERVER_MODE)
