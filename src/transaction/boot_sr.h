@@ -139,7 +139,7 @@ extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_in
 extern const char *boot_db_name (void);
 extern const char *boot_db_full_name (void);
 #if !defined(CS_MODE)
-extern const char *boot_get_lob_path (void);
+extern const char *boot_get_lobfile_path (void);
 #endif /* !CS_MODE */
 int boot_find_root_heap (HFID * root_hfid_p);
 
@@ -153,7 +153,7 @@ extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart
 extern int boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final);
 extern int xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name,
-		       const char *new_db_path, const char *new_log_path, const char *new_lob_path,
+		       const char *new_db_path, const char *new_log_path, const char *new_lobfile_path,
 		       const char *new_db_server_host, const char *new_volext_path,
 		       const char *fileof_vols_and_copypaths, bool new_db_overwrite);
 extern int xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char *new_db_name,

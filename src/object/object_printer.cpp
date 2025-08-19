@@ -217,8 +217,8 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
+	case DB_TYPE_BFILE:
+	case DB_TYPE_CFILE:
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
