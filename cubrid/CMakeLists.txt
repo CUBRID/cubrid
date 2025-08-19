@@ -200,7 +200,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_list_sr.c
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/server_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
   ${CONNECTION_DIR}/master_connector.cpp
   ${CONNECTION_DIR}/connection_pool.cpp
