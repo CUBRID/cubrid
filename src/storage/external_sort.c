@@ -244,6 +244,7 @@ struct sort_param
   int px_parallel_num;
   RESULT_RUN *px_result_run;
   ORDERBY_STATS orderby_stats;
+  cuberr::context *main_error_context;
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
@@ -1683,7 +1684,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       goto cleanup;
     }
 
-  sort_listfile_internal (&thread_ref, sort_param);
+  if (sort_listfile_internal (&thread_ref, sort_param) != NO_ERROR)
+    {
+      sort_param->px_status = PX_ERR_FAILED;
+      goto cleanup;
+    }
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
@@ -1709,6 +1714,11 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     }
 
 cleanup:
+  if (sort_param->px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->push_error_stack ();
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
   if (sort_param->px_orig_thread_p->on_trace)
     {
       thread_set_sort_stats_active (thread_p, false);
@@ -4430,6 +4440,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       /* Copy the parent's thread_p. */
       px_sort_param[i].px_orig_thread_p = thread_p;
       px_sort_param[i].ori_sort_param = sort_param;
+      px_sort_param[i].main_error_context = &cuberr::context::get_thread_local_context ();
     }
 
   if (error != NO_ERROR)
@@ -4887,7 +4898,6 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
   SORT_INFO *sort_info_p, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  int error = NO_ERROR;
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
@@ -4919,14 +4929,9 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
 
   /* write last temp file */
-  error = sort_put_result_from_tmpfile (thread_p, sort_param, sort_param->file_contents[0].start_index);
-  if (error != NO_ERROR)
+  if (sort_put_result_from_tmpfile (thread_p, sort_param, sort_param->file_contents[0].start_index) != NO_ERROR)
     {
       sort_param->px_status = PX_ERR_FAILED;
-    }
-  else
-    {
-      sort_param->px_status = PX_DONE;
     }
 
   qfile_close_list (thread_p, sort_info_p->output_file);
@@ -4945,8 +4950,14 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   thread_p->pop_resource_tracks ();
 
+  if (sort_param->px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->push_error_stack ();
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = PX_DONE;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 
@@ -4965,7 +4976,6 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
   SORT_INFO *sort_info_p, *ori_sort_info_p;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  int error = NO_ERROR;
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
@@ -4983,14 +4993,9 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
 
   sort_param->px_status = PX_PROGRESS;
 
-  error = sort_merge_nruns (thread_p, sort_param);
-  if (error != NO_ERROR)
+  if (sort_merge_nruns (thread_p, sort_param) != NO_ERROR)
     {
       sort_param->px_status = PX_ERR_FAILED;
-    }
-  else
-    {
-      sort_param->px_status = PX_DONE;
     }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
@@ -5007,8 +5012,14 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     }
   thread_p->pop_resource_tracks ();
 
+  if (sort_param->px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->push_error_stack ();
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = PX_DONE;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 
