@@ -782,7 +782,8 @@ static int file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_A
 STATIC_INLINE int file_temp_set_type (THREAD_ENTRY * thread_p, VFID * vfid,
 				      FILE_TYPE ftype) __attribute__ ((ALWAYS_INLINE));
 static int file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid);
-STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int file_temp_retire_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool was_preserved)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* Temporary cache section                                              */
