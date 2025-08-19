@@ -1693,3 +1693,87 @@ sm_define_view_db_server_spec (void)
 
   return stmt;
 }
+
+const char *
+sm_define_view_dependency_spec (void)
+{
+  static char stmt[4096];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+        "SELECT "
+          "[d].[name] AS [name], "
+          "CAST ([d].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
+          "CASE [d].[type] "
+            "WHEN 2 THEN 'VIEW' "
+            "WHEN 3 THEN 'TRIGGER' "
+            "WHEN 4 THEN 'FUNCTION' "
+            "WHEN 5 THEN 'PROCEDURE' "
+            "WHEN 7 THEN 'SYNONYM' "
+            "ELSE 'UNKNOWN' "
+            "END AS [type], "
+          "[d].[referenced_name] AS [referenced_name], "
+          "CAST ([d].[referenced_owner].[name] AS VARCHAR(255)) AS [referenced_owner_name], "
+          "CASE [d].[referenced_type] "
+            "WHEN 1 THEN 'TABLE' "
+            "WHEN 2 THEN 'VIEW' "
+            "WHEN 3 THEN 'TRIGGER' "
+            "WHEN 4 THEN 'FUNCTION' "
+            "WHEN 5 THEN 'PROCEDURE' "
+            "WHEN 6 THEN 'SERIAL' "
+            "WHEN 7 THEN 'SYNONYM' "
+            "ELSE 'UNKNOWN' "
+            "END AS [referenced_type], "
+          "CASE [d].[dependency_type] "
+            "WHEN 0 THEN 'HARD' "
+            "WHEN 1 THEN 'REF' "
+            "END AS [dependency_type] "
+        "FROM "
+          /* CT_DEPENDENCY_NAME */
+          "[%s] AS [d] "
+        "WHERE "
+          "{'DBA'} SUBSETEQ ("
+              "SELECT "
+                "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+              "FROM "
+                /* AU_USER_CLASS_NAME */
+                "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+              "WHERE "
+                "[u].[name] = CURRENT_USER"
+            ") "
+          "OR {[d].[owner].[name]} SUBSETEQ ("
+              "SELECT "
+                "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+              "FROM "
+                /* AU_USER_CLASS_NAME */
+                "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+              "WHERE "
+                "[u].[name] = CURRENT_USER"
+            ") "
+          "OR {[d]} SUBSETEQ ("
+              "SELECT "
+                "SUM (SET {[au].[object_of]}) "
+              "FROM "
+                /* CT_CLASSAUTH_NAME */
+                "[%s] AS [au] "
+              "WHERE "
+                "{[au].[grantee].[name]} SUBSETEQ ("
+                    "SELECT "
+                      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+                    "FROM "
+                      /* AU_USER_CLASS_NAME */
+                      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                    "WHERE "
+                      "[u].[name] = CURRENT_USER"
+                  ") "
+                "AND [au].[auth_type] = 'SELECT'"
+            ")",
+        CT_DEPENDENCY_NAME,
+        AU_USER_CLASS_NAME,
+        AU_USER_CLASS_NAME,
+        CT_CLASSAUTH_NAME,
+        AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}

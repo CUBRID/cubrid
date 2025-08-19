@@ -54,6 +54,7 @@
 #define CT_DUAL_NAME               "dual"
 #define CT_DB_SERVER_NAME          "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
+#define CT_DEPENDENCY_NAME         "_db_dependency"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -78,6 +79,7 @@
 #define CTV_DB_CHARSET_NAME	   "db_charset"
 #define CTV_DB_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
+#define CTV_DEPENDENCY_NAME        "db_dependency"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
@@ -92,5 +94,15 @@
 #define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
+
+#define CT_DEPENDENCY_UNIQUE_NAME_COLUMN                "unique_name"
+#define CT_DEPENDENCY_NAME_COLUMN                       "name"
+#define CT_DEPENDENCY_OWNER_COLUMN                      "owner"
+#define CT_DEPENDENCY_TYPE_COLUMN                       "type"
+#define CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN     "referenced_unique_name"
+#define CT_DEPENDENCY_REFERENCED_NAME_COLUMN            "referenced_name"
+#define CT_DEPENDENCY_REFERENCED_OWNER_COLUMN           "referenced_owner"
+#define CT_DEPENDENCY_REFERENCED_TYPE_COLUMN            "referenced_type"
+#define CT_DEPENDENCY_DEPENDENCY_TYPE_COLUMN            "dependency_type"
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */

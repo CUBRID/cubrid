@@ -274,6 +274,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
   ADD_TABLE_DEFINITION (CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server ());
+  ADD_TABLE_DEFINITION (CT_DEPENDENCY_NAME, system_catalog_initializer::get_dependency ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ());
@@ -297,6 +298,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
   ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
+  ADD_VIEW_DEFINITION (CTV_DEPENDENCY_NAME, system_catalog_initializer::get_view_dependency ());
 }
 
 int
@@ -1201,6 +1203,44 @@ namespace cubschema
 	   );
   }
 
+  system_catalog_definition
+  system_catalog_initializer::get_dependency ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_DEPENDENCY_NAME,
+		   // columns
+    {
+      {CT_DEPENDENCY_UNIQUE_NAME_COLUMN, format_varchar (255)},
+      {CT_DEPENDENCY_NAME_COLUMN, format_varchar (255)},
+      {CT_DEPENDENCY_OWNER_COLUMN, AU_USER_CLASS_NAME},
+      {CT_DEPENDENCY_TYPE_COLUMN, "integer"},
+      {CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN, format_varchar (255)},
+      {CT_DEPENDENCY_REFERENCED_NAME_COLUMN, format_varchar (255)},
+      {CT_DEPENDENCY_REFERENCED_OWNER_COLUMN, AU_USER_CLASS_NAME},
+      {CT_DEPENDENCY_REFERENCED_TYPE_COLUMN, "integer"},
+      {CT_DEPENDENCY_DEPENDENCY_TYPE_COLUMN, "integer"}
+    },
+// constraints
+    {
+      // TODO: add more index after analyzing query performance
+      {
+	DB_CONSTRAINT_UNIQUE, "", {
+	  CT_DEPENDENCY_UNIQUE_NAME_COLUMN, CT_DEPENDENCY_TYPE_COLUMN,
+	  CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN, CT_DEPENDENCY_REFERENCED_TYPE_COLUMN, nullptr
+	}, false
+      },
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
   /* ========================================================================== */
   /* NEW DEFINITION (VCLASS) */
   /* ========================================================================== */
@@ -2027,6 +2067,40 @@ namespace cubschema
       {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_dependency ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_DEPENDENCY_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"owner_name", format_varchar (255)},
+      {"type", format_varchar (16)},
+      {"referenced_name", format_varchar (255)},
+      {"referenced_owner_name", format_varchar (255)},
+      {"referenced_type", format_varchar (16)},
+      {"dependency_type", format_varchar (8)},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_dependency_spec ()}
     },
 // constraint
     {},

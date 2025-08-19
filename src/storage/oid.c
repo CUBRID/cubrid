@@ -66,6 +66,7 @@ static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
 static OID oid_Synonym_class = { 0, 0, 0 };
+static OID oid_Dependency_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
@@ -111,6 +112,7 @@ const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_DBServer_class, CT_DB_SERVER_NAME},
   {&oid_Synonym_class, CT_SYNONYM_NAME},
   {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
+  {&oid_Dependency_class, CT_DEPENDENCY_NAME},
 };
 
 /*

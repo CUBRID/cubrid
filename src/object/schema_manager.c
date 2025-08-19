@@ -20,6 +20,7 @@
  * schema_manager.c - "Schema" (in the SQL standard sense) implementation
  */
 
+#include "schema_system_catalog_constants.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -4420,7 +4421,8 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
     CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
     CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
-    CT_DB_SERVER_NAME, CT_SYNONYM_NAME, NULL
+    CT_DB_SERVER_NAME, CT_SYNONYM_NAME, CT_DEPENDENCY_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
