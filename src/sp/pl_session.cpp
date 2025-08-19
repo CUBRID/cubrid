@@ -110,7 +110,8 @@ namespace cubpl
 
     if (m_stack_idx == -1)
       {
-	assert (m_interrupt_id == 0);
+	// clear previous interrupt state
+	clear_interrupt ();
       }
     else
       {
