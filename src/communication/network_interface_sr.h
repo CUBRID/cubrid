@@ -129,6 +129,7 @@ extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
