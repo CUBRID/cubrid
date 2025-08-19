@@ -281,7 +281,7 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
+    cubmethod::header header (m_id, SP_CODE_DESTROY);
 
     m_last_conn_epoch = -1;
 
@@ -469,13 +469,7 @@ namespace cubpl
     auto search = m_cursor_map.find (query_id);
     if (search != m_cursor_map.end ())
       {
-	query_cursor *cursor = search->second;
-	if (cursor)
-	  {
-	    // close the cursor, if it is opened
-	    delete cursor;
-	  }
-
+	delete search->second;  // search->second cannot be null
 	m_cursor_map.erase (search);
       }
   }
