@@ -901,6 +901,7 @@ end:
     {
       thread_p->release_packet (buffer, size);
     }
+  css_wakeup_handler (thread_p->conn_entry);
 
   /* clear memory to be used at request handling */
   db_clear_private_heap (thread_p, 0);
